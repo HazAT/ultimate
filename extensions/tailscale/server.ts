@@ -173,8 +173,8 @@ export default function tailscale(host: ExtensionHost) {
       // Tailscale user IDs can exceed Number.MAX_SAFE_INTEGER; preserve the original numeric token.
       const node = JSON.parse(
         output,
-        (key: string, value: unknown, context?: { source?: string }) =>
-          key === 'UserID' && typeof value === 'number' ? context?.source : value,
+        (property: string, value: unknown, context?: { source?: string }) =>
+          property === 'UserID' && typeof value === 'number' ? context?.source : value,
       ) as {
         BackendState?: string
         Self?: { DNSName?: string; UserID?: string }

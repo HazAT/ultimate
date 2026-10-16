@@ -1,4 +1,4 @@
-import type { IncomingHttpHeaders } from 'node:http'
+import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 
 export interface AccessRule {
   origin: string
@@ -30,7 +30,7 @@ export function createAccess(changed: () => void = () => {}) {
 export type Access = ReturnType<typeof createAccess>
 
 export async function admit(
-  request: { headers: IncomingHttpHeaders },
+  request: Pick<IncomingMessage, 'headers' | 'method' | 'url'>,
   port: string,
   rules: Set<AccessRule>,
 ) {
@@ -42,7 +42,15 @@ export async function admit(
   )
     return true
   const site = request.headers['sec-fetch-site']
-  if (site !== undefined && site !== 'same-origin' && site !== 'none') return false
+  const navigation =
+    (site === 'cross-site' || site === 'same-site') &&
+    request.method === 'GET' &&
+    (request.url === '/' || request.url?.startsWith('/?') === true) &&
+    request.headers['sec-fetch-mode'] === 'navigate' &&
+    request.headers['sec-fetch-dest'] === 'document' &&
+    request.headers.upgrade === undefined
+  // Root navigation relaxes only fetch metadata, not origin or identity verification.
+  if (site !== undefined && site !== 'same-origin' && site !== 'none' && !navigation) return false
   for (const rule of rules) {
     if (host !== new URL(rule.origin).host || (origin && origin !== rule.origin)) continue
     try {

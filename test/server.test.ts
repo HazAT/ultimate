@@ -110,9 +110,74 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
       }
     }
     for (const site of ['cross-site', 'same-site']) {
-      expect(await wire('/@vite/client', 'owner', { 'sec-fetch-site': site })).toBe(403)
+      const navigation = {
+        origin: '',
+        'sec-fetch-site': site,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      }
+      // A link may open only the UI root, with or without a query or exact Origin.
+      for (const path of ['/', '/?conversation=1']) {
+        expect.soft(await wire(path, 'owner', navigation), `${site} ${path}`).toBe(200)
+        expect.soft(await wire(path, 'owner', { ...navigation, origin })).toBe(200)
+        expect(await wire(path, 'other', navigation)).toBe(403)
+        expect(await wire(path, null, navigation)).toBe(403)
+      }
+      expect(await wire('/', 'owner', { ...navigation, host: 'unknown.example:5799' })).toBe(403)
+      expect(await wire('/', 'owner', { ...navigation, origin: 'https://evil.example' })).toBe(403)
+      expect(await wire('/', 'owner', navigation, 'POST')).toBe(403)
+      for (const metadata of [
+        { 'sec-fetch-mode': '', 'sec-fetch-dest': '' },
+        { 'sec-fetch-mode': '', 'sec-fetch-dest': 'document' },
+        { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': '' },
+        { 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'document' },
+        { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' },
+        { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'embed' },
+      ])
+        expect(await wire('/', 'owner', { ...navigation, ...metadata })).toBe(403)
+      expect(await wire('/', 'owner', { origin: '', 'sec-fetch-site': site })).toBe(403)
+      expect(
+        await wire('/', 'owner', {
+          origin: '',
+          'sec-fetch-site': site,
+          'sec-fetch-dest': 'document',
+        }),
+      ).toBe(403)
+      expect(
+        await wire('/', 'owner', {
+          origin: '',
+          'sec-fetch-site': site,
+          'sec-fetch-mode': 'navigate',
+        }),
+      ).toBe(403)
+      // Navigation metadata cannot turn API, SSE, actions or assets into documents.
+      for (const path of [
+        '/api',
+        '/api/models',
+        '/api/events',
+        '/api/extensions/access/actions/ping',
+        '/@vite/client',
+        '/src/main.tsx',
+        '/other',
+      ]) {
+        expect(await wire(path, 'owner', { 'sec-fetch-site': site })).toBe(403)
+        expect(await wire(path, 'owner', navigation)).toBe(403)
+      }
+      expect(await wire('/api/extensions/access/actions/ping', 'owner', navigation, 'POST')).toBe(
+        403,
+      )
       expect(await wire(wsPath, 'owner', { ...upgrade, 'sec-fetch-site': site })).toBe(403)
+      expect(await wire(wsPath, 'owner', { ...upgrade, ...navigation, origin })).toBe(403)
+      expect(await wire('/', 'owner', { ...navigation, upgrade: 'websocket' })).toBe(403)
+      expect(await wire('/', 'owner', { ...navigation, upgrade: '' })).toBe(403)
     }
+    expect(
+      await wire('/', 'owner', {
+        'sec-fetch-site': 'unknown',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      }),
+    ).toBe(403)
     expect(await wire('/api/models', 'owner', { 'sec-fetch-site': 'none' })).toBe(200)
     expect(await wire(wsPath, 'owner', upgrade)).toBe(101)
     expect(await wire(wsPath, 'other', upgrade)).toBe(403)
@@ -124,6 +189,14 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
     await until(() => server.system.current().access.origins.includes(origin))
     expect(await wire('/api/extensions/access/actions/revoke', 'owner', {}, 'POST')).toBe(200)
     expect(await wire('/api/models')).toBe(403)
+    for (const site of ['cross-site', 'same-site'])
+      expect(
+        await wire('/?conversation=1', 'owner', {
+          'sec-fetch-site': site,
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-dest': 'document',
+        }),
+      ).toBe(403)
     expect(await wire(wsPath, 'owner', upgrade)).toBe(403)
     // Reload the facet to create a new registration, then disable it.
     await writeFile(
