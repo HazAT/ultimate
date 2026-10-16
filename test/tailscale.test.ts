@@ -36,7 +36,7 @@ const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
 const config = JSON.parse(fs.readFileSync(${JSON.stringify(config)}, 'utf8'));
 if (config.error && (!config.errorOn || args.join(' ') === config.errorOn)) { console.error(config.error); process.exit(1); }
-if (args[0] === 'status') console.log(JSON.stringify(config.node));
+if (args[0] === 'status') console.log(config.statusJson ?? JSON.stringify(config.node));
 else if (args.join(' ') === 'serve status --json') console.log(JSON.stringify(config.serve));
 else if (args[0] === 'serve') {
   const port = args.find(arg => arg.startsWith('--https=')).split('=')[1];
@@ -214,6 +214,42 @@ it('serves, verifies the owner login by default, and tears down only its port', 
     JSON.parse(await readFile(join(f.home, '.ultimate/tailscale.json'), 'utf8')).ports,
   ).toEqual({ '/project/a': { port: 4747, owner: expect.stringMatching(/^\d+:/) } })
 })
+it.each([
+  { name: 'absent', users: {} },
+  { name: 'present', users: { '9007199254740992': { LoginName: 'decoy@example.com' } } },
+])(
+  'preserves a raw 64-bit owner ID and rejects other logins (rounded-key decoy: $name)',
+  async ({ users: decoy }) => {
+    const users = {
+      '9007199254740993': { LoginName: 'owner@example.com' },
+      ...decoy,
+    }
+    const f = await fixture({
+      // Keep the numeric token raw: parsing/stringifying it in the fixture would round it first.
+      statusJson: `{
+        "BackendState": "Running",
+        "Self": { "DNSName": "rog.example.ts.net.", "UserID": 9007199254740993 },
+        "User": ${JSON.stringify(users)},
+        "CertDomains": ["rog.example.ts.net"]
+      }`,
+    })
+    const app = await f.instance()
+    expect(await app.status()).toEqual({
+      state: 'ready',
+      url: 'https://rog.example.ts.net:4747',
+      allow: ['owner@example.com'],
+    })
+    const rule = [...app.access.rules][0]
+    expect(await rule.verify({ headers: { 'tailscale-user-login': 'owner@example.com' } })).toEqual(
+      {
+        login: 'owner@example.com',
+      },
+    )
+    for (const login of ['decoy@example.com', 'shared@example.com'])
+      expect(await rule.verify({ headers: { 'tailscale-user-login': login } })).toBeUndefined()
+    expect(await rule.verify({ headers: {} })).toBeUndefined()
+  },
+)
 it('assigns distinct stable ports to two projects even when local ports change', async () => {
   const f = await fixture()
   const first = await f.instance('/project/a', 4747)
@@ -276,6 +312,34 @@ it('skips foreign ports for new projects and refuses foreign targets on existing
   })
   await app.close()
   expect((await f.invocations()).filter((args) => args.includes('--https=4747'))).toEqual([])
+})
+it.each([
+  { field: 'DNS name', status: { ...node, Self: { UserID: 7 } }, hint: 'MagicDNS' },
+  { field: 'owner login', status: { ...node, User: {} }, hint: 'Self.UserID and User' },
+  {
+    field: 'owner ID',
+    status: { ...node, Self: { DNSName: node.Self.DNSName } },
+    hint: 'Self.UserID and User',
+  },
+])('reports missing $field on a running daemon as a metadata error', async ({ status, hint }) => {
+  const f = await fixture({ node: status })
+  const app = await f.instance()
+  expect(await app.status()).toMatchObject({
+    state: 'error',
+    hint: expect.stringContaining(hint),
+  })
+  expect(app.access.origins()).toEqual([])
+  expect(await f.invocations()).toEqual([['status', '--json']])
+})
+it('reports a stopped daemon as not running without attempting Serve', async () => {
+  const f = await fixture({ node: { BackendState: 'Stopped' } })
+  const app = await f.instance()
+  expect(await app.status()).toMatchObject({
+    state: 'not-running',
+    hint: expect.stringContaining('tailscale up'),
+  })
+  expect(app.access.origins()).toEqual([])
+  expect(await f.invocations()).toEqual([['status', '--json']])
 })
 it.each([
   [{ node: { ...node, CertDomains: [] } }, 'https-disabled', 'admin console'],

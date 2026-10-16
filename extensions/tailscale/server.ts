@@ -170,16 +170,35 @@ export default function tailscale(host: ExtensionHost) {
         }
         output = (await command(['status', '--json'])).stdout
       }
-      const node = JSON.parse(output) as {
+      // Tailscale user IDs can exceed Number.MAX_SAFE_INTEGER; preserve the original numeric token.
+      const node = JSON.parse(
+        output,
+        (key: string, value: unknown, context?: { source?: string }) =>
+          key === 'UserID' && typeof value === 'number' ? context?.source : value,
+      ) as {
         BackendState?: string
-        Self?: { DNSName?: string; UserID?: number }
+        Self?: { DNSName?: string; UserID?: string }
         User?: Record<string, { LoginName?: string }>
         CertDomains?: string[]
       }
-      const dns = node.Self?.DNSName?.replace(/\.$/, '')
-      const owner = node.User?.[String(node.Self?.UserID)]?.LoginName
-      if (node.BackendState !== 'Running' || !dns || !owner) {
+      if (node.BackendState !== 'Running') {
         fail('not-running', 'Start Tailscale and log in (tailscale up).')
+        return
+      }
+      const dns = node.Self?.DNSName?.replace(/\.$/, '')
+      if (!dns) {
+        fail(
+          'error',
+          'Tailscale is running but its DNS name is missing from status; check MagicDNS in the Tailscale admin console.',
+        )
+        return
+      }
+      const owner = node.Self?.UserID ? node.User?.[node.Self.UserID]?.LoginName : undefined
+      if (!owner) {
+        fail(
+          'error',
+          'Tailscale is running but its owner login is missing from status; check Self.UserID and User in tailscale status --json.',
+        )
         return
       }
       const allow = settings.tailscale?.allow ?? [owner]
