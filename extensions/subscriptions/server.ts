@@ -1,13 +1,28 @@
 import { spawn } from 'node:child_process'
-import type { ChildProcess } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants, writeFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { access, appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord'
 import { Type } from '@earendil-works/pi-ai'
+import {
+  Cause,
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FiberSet,
+  Layer,
+  ManagedRuntime,
+  Queue,
+  Schedule,
+  Scope,
+  Semaphore,
+} from 'effect'
 import {
   AgentDoc,
   defineDoc,
@@ -51,8 +66,8 @@ export const Subscriptions = defineDoc<{
   scope: 'session',
   initial: () => ({ next: 1, subscriptions: {} }),
 })
-type Effect = { id: string; action: string; previousPid?: number }
-const Receipt = defineDoc<{ result?: JsonValue; effect?: Effect }>({
+type Mutation = { id: string; action: string; previousPid?: number }
+const Receipt = defineDoc<{ result?: JsonValue; effect?: Mutation }>({
   kind: 'ultimate.subscription-receipt',
   version: 1,
   scope: 'task',
@@ -99,23 +114,68 @@ type Delivery = {
   text: string
   targets: number[]
 }
-type Run = {
-  child: ChildProcess
+class MissingSecret extends Data.TaggedError('MissingSecret')<{ secret: string }> {
+  override get message() {
+    return `Missing secret ${this.secret}; add it in Secrets (⌘K → Secrets)`
+  }
+}
+class NotExecutable extends Data.TaggedError('NotExecutable')<{ path: string }> {
+  override get message() {
+    return `Missing or non-executable ${this.path}; write it and chmod +x it first`
+  }
+}
+class GroupDidNotExit extends Data.TaggedError('GroupDidNotExit')<{ id: string; pid: number }> {
+  override get message() {
+    return `Subscription ${this.id}: process group ${this.pid} did not exit`
+  }
+}
+class Closing extends Data.TaggedError('Closing') {
+  override get message() {
+    return 'Subscription supervisor is closing'
+  }
+}
+const attempt = <A>(work: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: work,
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  })
+type Output = { text: string; stdout: boolean } | { code: number | null; signal?: string }
+type ProcessRun = {
+  child: ChildProcessWithoutNullStreams
+  fiber: Fiber.Fiber<unknown, unknown>
+  closed: Deferred.Deferred<void>
+  cleanupLock: Semaphore.Semaphore
   active: boolean
   afterFire: boolean
-  queue: Promise<void>
-  closed: Promise<void>
-  cleanup?: Promise<void>
+  cleaned?: boolean
   error?: string
   finished?: boolean
   stopped?: 'stop' | 'restart' | 'shutdown'
 }
+class Supervisor extends Context.Service<
+  Supervisor,
+  {
+    scope: Scope.Scope
+    launches: FiberSet.FiberSet<void, Error>
+  }
+>()('subscriptions.supervisor') {}
 
 function backend(host: ExtensionHost) {
   return host.resource('subscriptions.supervisor', () => {
-    const runs = new Map<string, Run>()
-    const launches = new Set<Promise<void>>()
+    const runs = new Map<string, ProcessRun>()
+    const locks = new Map<string, Semaphore.Semaphore>()
+    const layer = Layer.effect(
+      Supervisor,
+      Effect.gen(function* () {
+        return { scope: yield* Effect.scope, launches: yield* FiberSet.make<void, Error>() }
+      }),
+    )
+    // The resource (and its code) survives facet reloads. A closed runtime cannot be reused:
+    // onOpen creates a new one after close/release, while ordinary calls share this one.
+    let effectRuntime = ManagedRuntime.make(layer)
     let closing = false
+    let disposed = false
+    let closingWork: Promise<void> | undefined
     // home is the stable project state directory (~/.ultimate/projects/<name>-<hash>), not a worktree cwd.
     const folder = (id: string) =>
       join(host.userHome, '.ultimate/subscriptions', basename(host.home), id)
@@ -222,241 +282,298 @@ function backend(host: ExtensionHost) {
       if (!Number.isSafeInteger(pid) || pid < 1) throw new Error(`Invalid pid file for ${id}`)
       return pid
     }
-    function cleanup(id: string, pid: number, run?: Run): Promise<void> {
-      if (run?.cleanup) return run.cleanup
-      const work = (async () => {
-        kill(pid)
-        const grace = Date.now() + 3000
-        while (alive(pid) && Date.now() < grace) await sleep(20)
-        if (alive(pid)) kill(pid, 'SIGKILL')
-        if (run) await run.closed
-        const deadline = Date.now() + 3000
-        while (alive(pid) && Date.now() < deadline) await sleep(20)
-        if (alive(pid)) throw new Error(`Subscription ${id}: process group ${pid} did not exit`)
-        // Never erase evidence for a replacement process, or before the whole group is confirmed gone.
-        if ((await readPid(id)) === pid) await rm(join(folder(id), 'pid'), { force: true })
-        if (runs.get(id) === run) runs.delete(id)
-      })()
-      if (!run) return work
-      run.cleanup = work.catch((error: unknown) => {
-        // Keep the pid file and allow a later close/open to retry cleanup after a failed kill.
-        delete run.cleanup
-        throw error
+    const waitGone = (pid: number) =>
+      Effect.sync(() => alive(pid)).pipe(
+        Effect.repeat(
+          Schedule.spaced('20 millis').pipe(
+            Schedule.upTo({ duration: '3 seconds' }),
+            Schedule.while(() => Effect.succeed(alive(pid))),
+          ),
+        ),
+      )
+    function cleanup(id: string, pid: number, run?: ProcessRun): Effect.Effect<void, Error> {
+      const work = Effect.gen(function* () {
+        if (run?.cleaned) return
+        yield* Effect.try(() => kill(pid))
+        yield* waitGone(pid)
+        if (alive(pid)) yield* Effect.try(() => kill(pid, 'SIGKILL'))
+        if (run) yield* Deferred.await(run.closed)
+        yield* waitGone(pid)
+        if (alive(pid)) yield* Effect.fail(new GroupDidNotExit({ id, pid }))
+        // Never erase evidence for a replacement, or before the whole group is confirmed gone.
+        if ((yield* attempt(() => readPid(id))) === pid)
+          yield* attempt(() => rm(join(folder(id), 'pid'), { force: true }))
+        if (run) run.cleaned = true
       })
-      return run.cleanup
+      // Failed cleanup is retryable; the pid file remains evidence for the next open/close.
+      return run ? run.cleanupLock.withPermit(work) : work
     }
-    async function finish(
+    function finish(
       id: string,
-      run: Run | undefined,
+      run: ProcessRun | undefined,
       code: number | null,
       signal?: string,
       error?: string,
-    ) {
-      if (run?.finished) return
-      if (run) {
-        run.finished = true
-        run.active = false
-      }
-      if (run?.child.pid) await cleanup(id, run.child.pid, run)
-      else if (run && runs.get(id) === run) runs.delete(id)
-      if (closing && !run) return
-      await host.harness().commit(async (tx) => {
-        const sub = (await tx.doc(Subscriptions)).subscriptions[id]
-        if (!sub || (run && sub.pid !== run.child.pid)) return
-        const done = sub.once && sub.state === 'done'
-        const stopped = !!run?.stopped || closing
-        if (!stopped && sub.state !== 'running' && !done) return
-        // A fired one-shot is already done in its FIRE commit, so any other unplanned exit is a failure.
-        // Shutdown keeps running subscriptions enabled for reopen.
-        if (!stopped && !done) sub.state = 'investigating'
-        sub.updatedAt = sub.exitedAt = Date.now()
-        if (code !== null) sub.exitCode = code
-        delete sub.pid
-        const event = await host.emit(tx, Exited, { id, code, ...(signal ? { signal } : {}) })
-        if (sub.state === 'done') sub.enabled = false
-        else if (!stopped) {
-          sub.error = error ?? `Process exited with code ${code}${signal ? ` (${signal})` : ''}`
-          await deliver(tx, sub, event.id, 'failed', sub.error)
-        }
-      }, BACKGROUND_CONTEXT)
-    }
-    async function stopProcess(id: string, pid?: number, reason: Run['stopped'] = 'stop') {
-      // Receipts target the process present at mutation time, never a later start.
-      if (!pid) return
-      const run = runs.get(id)
-      if (run && run.child.pid !== pid) return
-      if (run) {
-        run.stopped = reason
-        run.active = false
-        await cleanup(id, pid, run)
-        await run.queue
-      } else if ((await readPid(id)) === pid) await cleanup(id, pid)
-    }
-    async function launch(id: string, previousPid?: number) {
-      const work = launchRun(id, previousPid)
-      launches.add(work)
-      try {
-        await work
-      } finally {
-        launches.delete(work)
-      }
-    }
-    async function launchRun(id: string, previousPid?: number) {
-      if (closing) throw new Error('Subscription supervisor is closing')
-      const sub = await snapshot(id)
-      if (!sub.enabled || sub.state !== 'running') return
-      const current = runs.get(id)
-      // A replay of a start receipt (including after onOpen reconciliation) reuses this process.
-      if (current?.active && current.child.pid === sub.pid && current.child.pid !== previousPid)
-        return
-      await stopProcess(id, current?.child.pid, 'restart')
-      const recorded = await readPid(id)
-      if (recorded) await cleanup(id, recorded)
-      const dir = folder(id)
-      await mkdir(join(dir, 'state'), { recursive: true })
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        SUBSCRIPTION_ID: id,
-        SUBSCRIPTION_STATE: join(dir, 'state'),
-      }
-      for (const name of sub.secrets ?? []) {
-        const value = await readSecret(host.userHome, name)
-        if (!value) throw new Error(`Missing secret ${name}; add it in Secrets (⌘K → Secrets)`)
-        env[name] = value
-      }
-      await access(join(dir, 'run'), constants.X_OK)
-      if (closing) throw new Error('Subscription supervisor is closing')
-      const child = spawn('/bin/sh', ['-c', launchHandshake, join(dir, 'run')], {
-        cwd: dir,
-        detached: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env,
-      })
-      const closed = Promise.withResolvers<void>()
-      const run: Run = {
-        child,
-        active: true,
-        afterFire: false,
-        queue: Promise.resolve(),
-        closed: closed.promise,
-      }
-      runs.set(id, run)
-      child.on('error', (error) => {
-        run.error = error.message
-      })
-      child.stdin.on('error', (error) => {
-        run.error = error.message
-      })
-      child.on('close', (code, signal) => {
-        closed.resolve()
-        enqueue(() => finish(id, run, code, signal ?? undefined, run.error))
-      })
-      try {
-        // The wrapper waits for go until its pid is recorded; exec preserves the pid and process group.
-        if (child.pid) {
-          writeFileSync(join(dir, 'pid'), `${child.pid}\n`)
-          child.stdin.end('\n')
-        }
-      } catch (error) {
-        run.active = false
-        if (child.pid) await cleanup(id, child.pid, run)
-        throw error
-      }
-      // Hold output until the pid and Started event are committed, even for an immediately exiting script.
-      run.queue = host.harness().commit(async (tx) => {
-        const saved = (await tx.doc(Subscriptions)).subscriptions[id]
-        if (!saved || !saved.enabled || saved.state !== 'running') {
+    ): Effect.Effect<void, Error> {
+      return Effect.gen(function* () {
+        if (run?.finished) return
+        if (run) {
+          run.finished = true
           run.active = false
-          return
         }
-        delete saved.pid
-        if (child.pid) {
-          saved.pid = child.pid
-          saved.startedAt = saved.updatedAt = Date.now()
-          delete saved.exitedAt
-          delete saved.exitCode
-          delete saved.error
-          await host.emit(tx, Started, { id, pid: child.pid })
-        }
-      }, BACKGROUND_CONTEXT)
-      function enqueue(work: () => Promise<void>) {
-        run.queue = run.queue
-          .then(work)
-          .catch(async (error: unknown) => {
-            host.notice(`Subscription ${id}: ${String(error)}`)
-            await finish(id, run, null, undefined, String(error))
-          })
-          .catch((error: unknown) => {
-            // If storage itself failed, no durable recovery can be scheduled; retain a loud host diagnostic.
-            host.notice(`Subscription ${id} recovery could not be recorded: ${String(error)}`)
-          })
-      }
-      async function line(text: string, stdout: boolean) {
+        if (run?.child.pid) yield* cleanup(id, run.child.pid, run)
+        if (closing && !run) return
+        yield* attempt(() =>
+          host.harness().commit(async (tx) => {
+            const sub = (await tx.doc(Subscriptions)).subscriptions[id]
+            if (!sub || (run && sub.pid !== run.child.pid)) return
+            const done = sub.once && sub.state === 'done'
+            const stopped = !!run?.stopped || closing
+            if (!stopped && sub.state !== 'running' && !done) return
+            // FIRE commits done before termination. Shutdown keeps running subscriptions enabled.
+            if (!stopped && !done) sub.state = 'investigating'
+            sub.updatedAt = sub.exitedAt = Date.now()
+            if (code !== null) sub.exitCode = code
+            delete sub.pid
+            const event = await host.emit(tx, Exited, { id, code, ...(signal ? { signal } : {}) })
+            if (sub.state === 'done') sub.enabled = false
+            else if (!stopped) {
+              sub.error = error ?? `Process exited with code ${code}${signal ? ` (${signal})` : ''}`
+              await deliver(tx, sub, event.id, 'failed', sub.error)
+            }
+          }, BACKGROUND_CONTEXT),
+        )
+        if (run && runs.get(id) === run) runs.delete(id)
+      })
+    }
+    function stopProcess(id: string, pid?: number, reason: ProcessRun['stopped'] = 'stop') {
+      return Effect.gen(function* () {
+        // Receipts target the process present at mutation time, never a later start.
+        if (!pid) return
+        const run = runs.get(id)
+        if (run && run.child.pid !== pid) return
+        if (run) {
+          run.stopped = reason
+          run.active = false
+          yield* cleanup(id, pid, run)
+          const exit = yield* Fiber.await(run.fiber)
+          if (Exit.isFailure(exit)) host.notice(`Subscription ${id}: ${Cause.pretty(exit.cause)}`)
+          if (runs.get(id) === run) runs.delete(id)
+        } else if ((yield* attempt(() => readPid(id))) === pid) yield* cleanup(id, pid)
+      })
+    }
+    function line(id: string, run: ProcessRun, text: string, stdout: boolean) {
+      return Effect.gen(function* () {
         if (!run.active) return
-        const path = join(dir, 'output.log')
-        await appendFile(path, `${text}\n`)
-        const output = await readFile(path, 'utf8')
+        const path = join(folder(id), 'output.log')
+        yield* attempt(() => appendFile(path, `${text}\n`))
+        const output = yield* attempt(() => readFile(path, 'utf8'))
         const trimmed = trimLog(output)
-        if (trimmed !== output) await writeFile(path, trimmed)
+        if (trimmed !== output) yield* attempt(() => writeFile(path, trimmed))
         const fire = fireText(text, stdout)
-        await host.harness().commit(async (tx) => {
-          const saved = (await tx.doc(Subscriptions)).subscriptions[id]
-          if (!saved || saved.pid !== child.pid || saved.state !== 'running') return
-          saved.lastOutputAt = saved.updatedAt = Date.now()
-          if (fire === undefined || run.afterFire) return
-          saved.lastFireAt = Date.now()
-          saved.fires++
-          const event = await host.emit(tx, Fired, { id, text: fire, fire: saved.fires })
-          if (saved.once) {
-            saved.state = 'done'
-            saved.enabled = false
-            run.afterFire = true
-          }
-          await deliver(tx, saved, event.id, 'fired', fire)
-        }, BACKGROUND_CONTEXT)
-        if (run.afterFire && child.pid) {
+        yield* attempt(() =>
+          host.harness().commit(async (tx) => {
+            const saved = (await tx.doc(Subscriptions)).subscriptions[id]
+            if (!saved || saved.pid !== run.child.pid || saved.state !== 'running') return
+            saved.lastOutputAt = saved.updatedAt = Date.now()
+            if (fire === undefined || run.afterFire) return
+            saved.lastFireAt = Date.now()
+            saved.fires++
+            const event = await host.emit(tx, Fired, { id, text: fire, fire: saved.fires })
+            if (saved.once) {
+              saved.state = 'done'
+              saved.enabled = false
+              run.afterFire = true
+            }
+            await deliver(tx, saved, event.id, 'fired', fire)
+          }, BACKGROUND_CONTEXT),
+        )
+        if (run.afterFire && run.child.pid) {
           run.active = false
-          await cleanup(id, child.pid, run)
+          yield* cleanup(id, run.child.pid, run)
         }
-      }
-      for (const [stream, stdout] of [
-        [child.stdout, true],
-        [child.stderr, false],
-      ] as const) {
-        let pending = ''
-        stream.setEncoding('utf8')
-        stream.on('data', (chunk: string) => {
-          pending += chunk
-          let index: number
-          while ((index = pending.indexOf('\n')) !== -1) {
-            const text = pending.slice(0, index).replace(/\r$/, '')
-            pending = pending.slice(index + 1)
-            enqueue(() => line(text, stdout))
-          }
-          // Bound memory for scripts that produce output without newlines; only a complete line can FIRE.
-          if (Buffer.byteLength(pending) > 256 * 1024) {
-            const text = pending
-            pending = ''
-            enqueue(() => line(text, false))
-          }
-        })
-        stream.on('end', () => {
-          if (pending) enqueue(() => line(pending, stdout))
-        })
-      }
-      await run.queue
-      if (!run.active && !run.afterFire) await stopProcess(id, child.pid)
+      })
     }
-    async function effect(value: Effect) {
-      if (value.action === 'start') {
-        try {
-          await launch(value.id, value.previousPid)
-        } catch (error) {
-          await finish(value.id, undefined, null, undefined, String(error))
-          throw error
+    function launchRun(id: string, previousPid?: number) {
+      return Effect.gen(function* () {
+        if (closing) yield* Effect.fail(new Closing())
+        const sub = yield* attempt(() => snapshot(id))
+        if (!sub.enabled || sub.state !== 'running') return
+        const current = runs.get(id)
+        if (current?.active && current.child.pid === sub.pid && current.child.pid !== previousPid)
+          return
+        yield* stopProcess(id, current?.child.pid, 'restart')
+        const recorded = yield* attempt(() => readPid(id))
+        if (recorded) yield* cleanup(id, recorded)
+        const dir = folder(id)
+        yield* attempt(() => mkdir(join(dir, 'state'), { recursive: true }))
+        const env: NodeJS.ProcessEnv = {
+          ...process.env,
+          SUBSCRIPTION_ID: id,
+          SUBSCRIPTION_STATE: join(dir, 'state'),
         }
-      } else await stopProcess(value.id, value.previousPid)
+        for (const name of sub.secrets ?? []) {
+          const value = yield* attempt(() => readSecret(host.userHome, name))
+          if (!value) yield* Effect.fail(new MissingSecret({ secret: name }))
+          env[name] = value
+        }
+        yield* attempt(() => access(join(dir, 'run'), constants.X_OK)).pipe(
+          Effect.mapError(() => new NotExecutable({ path: join(dir, 'run') })),
+        )
+        if (closing) yield* Effect.fail(new Closing())
+        const { scope } = yield* Supervisor
+        const ready = yield* Deferred.make<void, Error>()
+        const messages = yield* Queue.unbounded<Output>()
+        let owned: ProcessRun | undefined
+        const worker = Effect.scoped(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.fiber
+            const closed = yield* Deferred.make<void>()
+            const cleanupLock = yield* Semaphore.make(1)
+            const run = yield* Effect.acquireRelease(
+              Effect.sync(() => {
+                const child = spawn('/bin/sh', ['-c', launchHandshake, join(dir, 'run')], {
+                  cwd: dir,
+                  detached: true,
+                  stdio: ['pipe', 'pipe', 'pipe'],
+                  env,
+                })
+                const acquired: ProcessRun = {
+                  child,
+                  fiber,
+                  closed,
+                  cleanupLock,
+                  active: true,
+                  afterFire: false,
+                }
+                owned = acquired
+                runs.set(id, acquired)
+                child.on('error', (error) => {
+                  acquired.error = error.message
+                })
+                child.stdin.on('error', (error) => {
+                  acquired.error = error.message
+                })
+                child.on('close', (code, signal) => {
+                  Deferred.doneUnsafe(closed, Effect.void)
+                  Queue.offerUnsafe(messages, { code, ...(signal ? { signal } : {}) })
+                })
+                for (const [stream, stdout] of [
+                  [child.stdout, true],
+                  [child.stderr, false],
+                ] as const) {
+                  let pending = ''
+                  stream.setEncoding('utf8')
+                  stream.on('data', (chunk: string) => {
+                    pending += chunk
+                    let index: number
+                    while ((index = pending.indexOf('\n')) !== -1) {
+                      const text = pending.slice(0, index).replace(/\r$/, '')
+                      pending = pending.slice(index + 1)
+                      Queue.offerUnsafe(messages, { text, stdout })
+                    }
+                    // Only a complete line can FIRE; bound memory for output without newlines.
+                    if (Buffer.byteLength(pending) > 256 * 1024) {
+                      Queue.offerUnsafe(messages, { text: pending, stdout: false })
+                      pending = ''
+                    }
+                  })
+                  stream.on('end', () => {
+                    if (pending) Queue.offerUnsafe(messages, { text: pending, stdout })
+                  })
+                }
+                return acquired
+              }),
+              (acquired) =>
+                (acquired.child.pid ? cleanup(id, acquired.child.pid, acquired) : Effect.void).pipe(
+                  Effect.orDie,
+                ),
+            )
+            // Acquisition is registered before this can fail. EOF without go still aborts on host death.
+            yield* Effect.try(() => {
+              if (run.child.pid) {
+                writeFileSync(join(dir, 'pid'), `${run.child.pid}\n`)
+                run.child.stdin.end('\n')
+              }
+            })
+            // The queue consumer starts only after Started commits, including for immediate exits.
+            yield* attempt(() =>
+              host.harness().commit(async (tx) => {
+                const saved = (await tx.doc(Subscriptions)).subscriptions[id]
+                if (!saved || !saved.enabled || saved.state !== 'running') {
+                  run.active = false
+                  return
+                }
+                delete saved.pid
+                if (run.child.pid) {
+                  saved.pid = run.child.pid
+                  saved.startedAt = saved.updatedAt = Date.now()
+                  delete saved.exitedAt
+                  delete saved.exitCode
+                  delete saved.error
+                  await host.emit(tx, Started, { id, pid: run.child.pid })
+                }
+              }, BACKGROUND_CONTEXT),
+            )
+            yield* Deferred.succeed(ready, undefined)
+            if (!run.active && run.child.pid) yield* cleanup(id, run.child.pid, run)
+            yield* Effect.gen(function* () {
+              while (true) {
+                const message = yield* Queue.take(messages)
+                if ('code' in message) {
+                  yield* finish(id, run, message.code, message.signal, run.error)
+                  return
+                }
+                yield* line(id, run, message.text, message.stdout)
+              }
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.gen(function* () {
+                  host.notice(`Subscription ${id}: ${Cause.pretty(cause)}`)
+                  yield* finish(id, run, null, undefined, Cause.pretty(cause)).pipe(
+                    Effect.catchCause((recovery) =>
+                      Effect.sync(() => {
+                        // Storage failure cannot schedule durable recovery; retain a loud diagnostic.
+                        host.notice(
+                          `Subscription ${id} recovery could not be recorded: ${Cause.pretty(recovery)}`,
+                        )
+                      }),
+                    ),
+                  )
+                }),
+              ),
+            )
+          }),
+        ).pipe(
+          Effect.onExit((exit) =>
+            Effect.gen(function* () {
+              // Also remove a successfully cleaned acquisition whose Started commit failed.
+              if (owned?.cleaned && runs.get(id) === owned) runs.delete(id)
+              yield* Deferred.done(ready, exit)
+            }),
+          ),
+          Effect.ensuring(Queue.shutdown(messages)),
+        )
+        yield* worker.pipe(Effect.forkIn(scope))
+        yield* Deferred.await(ready)
+      })
     }
+    const launch = (id: string, previousPid?: number) =>
+      Effect.gen(function* () {
+        const { launches } = yield* Supervisor
+        const fiber = yield* FiberSet.run(launches, launchRun(id, previousPid))
+        yield* Fiber.join(fiber)
+      })
+    const effect = (value: Mutation) =>
+      value.action === 'start'
+        ? launch(value.id, value.previousPid).pipe(
+            Effect.catch((error) =>
+              finish(value.id, undefined, null, undefined, String(error)).pipe(
+                Effect.andThen(Effect.fail(error)),
+              ),
+            ),
+          )
+        : stopProcess(value.id, value.previousPid)
     async function prepare(args: Args, caller?: number) {
       const valid = [
         'create',
@@ -514,9 +631,7 @@ function backend(host: ExtensionHost) {
         try {
           await access(join(folder(id), 'run'), constants.X_OK)
         } catch {
-          throw new Error(
-            `Missing or non-executable ${join(folder(id), 'run')}; write it and chmod +x it first`,
-          )
+          throw new NotExecutable({ path: join(folder(id), 'run') })
         }
       }
       if (args.action === 'escalate') required(args.reason, 'reason')
@@ -543,7 +658,7 @@ function backend(host: ExtensionHost) {
       args: Args,
       prepared: Awaited<ReturnType<typeof prepare>>,
       caller?: number,
-    ): Promise<{ result: JsonValue; effect?: Effect }> {
+    ): Promise<{ result: JsonValue; effect?: Mutation }> {
       const state = await tx.doc(Subscriptions)
       if (args.action === 'list')
         return {
@@ -616,21 +731,12 @@ function backend(host: ExtensionHost) {
       }
       return { result: sub }
     }
-    const effects = new Map<string, Promise<void>>()
-    async function apply(value?: Effect) {
-      if (!value) return
-      const previous = effects.get(value.id) ?? Promise.resolve()
-      const work = previous.then(async () => {
-        await effect(value)
-      })
-      // A failed start has already become an investigating subscription; it must not block its repair.
-      const settled = work.catch(() => {})
-      effects.set(value.id, settled)
-      try {
-        await work
-      } finally {
-        if (effects.get(value.id) === settled) effects.delete(value.id)
-      }
+    function apply(value?: Mutation) {
+      if (!value) return Promise.resolve()
+      let lock = locks.get(value.id)
+      if (!lock) locks.set(value.id, (lock = Semaphore.makeUnsafe(1)))
+      // A permit is released on failure as well: a failed start must not block its repair.
+      return effectRuntime.runPromise(lock.withPermit(effect(value)))
     }
     async function operate(args: Args, caller?: number) {
       const prepared = await prepare(args, caller)
@@ -641,40 +747,88 @@ function backend(host: ExtensionHost) {
       if (args.action === 'start') return json(await snapshot(required(args.id, 'id')))
       return receipt.result
     }
-    const close = async () => {
+    const close = () => {
+      // Synchronous admission barrier, even when release and close arrive together.
       closing = true
-      // A pending launch may be reading secrets or checking its executable; it must settle before cleanup.
-      await Promise.allSettled(launches)
-      for (const [id, run] of runs) await stopProcess(id, run.child.pid, 'shutdown')
+      if (closingWork) return closingWork
+      if (disposed) {
+        effectRuntime = ManagedRuntime.make(layer)
+        disposed = false
+      }
+      closingWork = effectRuntime
+        .runPromise(
+          Effect.gen(function* () {
+            const { launches } = yield* Supervisor
+            // Let secret reads / snapshot bridges settle before disposing the runtime's scopes.
+            yield* FiberSet.awaitEmpty(launches)
+            for (const [id, run] of runs) yield* stopProcess(id, run.child.pid, 'shutdown')
+          }),
+        )
+        .finally(async () => {
+          try {
+            await effectRuntime.dispose()
+          } finally {
+            disposed = true
+          }
+        })
+        .catch((error: unknown) => {
+          // Keep failed cleanup retryable on the next close; pid files are still intact.
+          closingWork = undefined
+          throw error
+        })
+      return closingWork
     }
     const open = async () => {
-      closing = false
-      let folders: Dirent[]
-      try {
-        folders = await readdir(
-          join(host.userHome, '.ultimate/subscriptions', basename(host.home)),
-          { withFileTypes: true },
-        )
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        folders = []
-      }
-      // Sweep files, not ledger records: stop/delete may have committed just before a crash.
-      for (const entry of folders) {
-        if (!entry.isDirectory() || !/^S[1-9]\d*$/.test(entry.name)) continue
-        const pid = await readPid(entry.name)
-        if (pid) await cleanup(entry.name, pid, runs.get(entry.name))
-      }
-      const state = await host.harness().snapshot(Subscriptions, BACKGROUND_CONTEXT)
-      for (const sub of Object.values(state?.subscriptions ?? {})) {
-        if (sub.state !== 'running' || !sub.enabled) continue
+      if (closingWork) {
         try {
-          await launch(sub.id)
+          await closingWork
         } catch (error) {
-          host.notice(`Subscription ${sub.id}: ${String(error)}`)
-          await finish(sub.id, undefined, null, undefined, String(error))
+          // Reconciliation must still sweep evidence left by a failed close.
+          host.notice(`Subscription cleanup will be retried on open: ${String(error)}`)
         }
       }
+      if (disposed) {
+        effectRuntime = ManagedRuntime.make(layer)
+        disposed = false
+      }
+      closingWork = undefined
+      closing = false
+      await effectRuntime.runPromise(
+        Effect.gen(function* () {
+          const folders: Dirent[] = yield* attempt(async () => {
+            try {
+              return await readdir(
+                join(host.userHome, '.ultimate/subscriptions', basename(host.home)),
+                { withFileTypes: true },
+              )
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+              return []
+            }
+          })
+          // Sweep files, not ledger records: stop/delete may have committed just before a crash.
+          for (const entry of folders) {
+            if (!entry.isDirectory() || !/^S[1-9]\d*$/.test(entry.name)) continue
+            const pid = yield* attempt(() => readPid(entry.name))
+            if (pid) yield* cleanup(entry.name, pid, runs.get(entry.name))
+            runs.delete(entry.name)
+          }
+          const state = yield* attempt(() =>
+            host.harness().snapshot(Subscriptions, BACKGROUND_CONTEXT),
+          )
+          for (const sub of Object.values(state?.subscriptions ?? {})) {
+            if (sub.state !== 'running' || !sub.enabled) continue
+            yield* launch(sub.id).pipe(
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  host.notice(`Subscription ${sub.id}: ${String(error)}`)
+                  yield* finish(sub.id, undefined, null, undefined, String(error))
+                }),
+              ),
+            )
+          }
+        }),
+      )
     }
     return { Deliver, operate, prepare, change, apply, open, close }
   })

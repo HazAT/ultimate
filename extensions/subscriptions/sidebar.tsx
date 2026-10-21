@@ -1,9 +1,16 @@
 import { useState } from 'react'
+import { useAtomValue } from '@effect/atom-react'
+import * as Atom from 'effect/reactivity/Atom'
 import { ChevronRightIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn, useExtensionUiState, useNow } from '@/sdk'
-import { Dot, since, states, useOpenSubscription, useSubscriptions, worst } from './parts.tsx'
+import { Dot, sidebarPoll, since, states, useOpenSubscription, worst } from './parts.tsx'
 import type { SubscriptionListItem } from './types.ts'
+
+const subscriptions = Atom.readable((get) => {
+  get.addFinalizer(sidebarPoll.subscribe(() => get.setSelf(sidebarPoll.snapshot())))
+  return sidebarPoll.snapshot()
+})
 
 const FIRST = 5
 const active = (sub: SubscriptionListItem) => sub.state !== 'stopped' && sub.state !== 'done'
@@ -21,7 +28,7 @@ function short(sub: SubscriptionListItem, now: number) {
 
 /** The Agent sidebar's Watching section: active subscriptions, worst first; hidden while none is active. */
 export function WatchingSection() {
-  const { data } = useSubscriptions(5000)
+  const { data } = useAtomValue(subscriptions)
   const now = useNow(10_000)
   const open = useOpenSubscription()
   const [expanded, setExpanded] = useExtensionUiState('sidebarOpen', true)

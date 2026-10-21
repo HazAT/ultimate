@@ -101,18 +101,31 @@ const listen = (listener: () => void) => {
   return () => void poll.listeners.delete(listener)
 }
 
+function mountPoll(ms: number | false) {
+  const key = Symbol()
+  poll.rates.set(key, ms === false ? Infinity : ms)
+  reschedule()
+  void refreshSubscriptions()
+  return () => {
+    poll.rates.delete(key)
+    reschedule()
+  }
+}
+/** The sidebar's atom uses the same poll, including immediate refreshes after mutations. */
+export const sidebarPoll = {
+  snapshot: () => poll.state,
+  subscribe(listener: () => void) {
+    const unlisten = listen(listener)
+    const unmount = mountPoll(5000)
+    return () => {
+      unlisten()
+      unmount()
+    }
+  },
+}
 /** The subscriptions, fetched again every `ms` while this component is mounted (`false`: once). */
 export function useSubscriptions(ms: number | false): Polled {
-  useEffect(() => {
-    const key = Symbol()
-    poll.rates.set(key, ms === false ? Infinity : ms)
-    reschedule()
-    void refreshSubscriptions()
-    return () => {
-      poll.rates.delete(key)
-      reschedule()
-    }
-  }, [ms])
+  useEffect(() => mountPoll(ms), [ms])
   return useSyncExternalStore(listen, () => poll.state)
 }
 
