@@ -26,6 +26,11 @@ async function setup() {
     join(home, '.ultimate/skills/mine/SKILL.md'),
     '---\nname: mine\ndescription: A personal skill\n---\n',
   )
+  await mkdir(join(home, '.agents/skills/shared/inspect'), { recursive: true })
+  await writeFile(
+    join(home, '.agents/skills/shared/inspect/SKILL.md'),
+    '---\nname: inspect\ndescription: A shared personal skill\n---\n',
+  )
   return { ultimateRoot: resolve('.'), projectRoot, userHome: home, home: join(home, 'state') }
 }
 
@@ -37,6 +42,7 @@ it("gives Pi Ultimate's context, skills and Claude Code instead of Pi's personal
     expect.arrayContaining(['--no-context-files', '--no-skills', '--no-extensions']),
   )
   expect(flag('--skill')).toContain(join(home, '.ultimate/skills/mine/SKILL.md'))
+  expect(flag('--skill')).toContain(join(home, '.agents/skills/shared/inspect/SKILL.md'))
   expect(flag('--extension')).toEqual([expect.stringMatching(/pi-claude-code\/src\/index\.ts$/)])
   expect(flag('--session-dir')).toEqual([join(host.home, 'cli-sessions')])
   // The harness's default model first, then the user's own arguments, so their --model wins and their message stays.

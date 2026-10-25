@@ -43,8 +43,9 @@ place.
 By default you get Pi's coding agent in a web UI: read, write, edit, bash, codemode, and browser debugging tools,
 with the conversation, model and thinking controls, login, and footer, plus every other built-in building block.
 
-Needs Node 26 and pnpm, and a `pi` login (Ultimate shares `~/.pi/agent`: credentials, models, settings; personal skills and
-instructions go in `~/.ultimate/skills/` and `~/.ultimate/AGENTS.md`). The
+Needs Node 26 and pnpm, and a `pi` login (Ultimate shares `~/.pi/agent`: credentials, models, settings; personal skills
+load from `~/.agents/skills/` and `~/.ultimate/skills/`, with Ultimate-specific skills winning name conflicts;
+personal instructions go in `~/.ultimate/AGENTS.md`). The
 screenshot and browser tools need a Chromium: `/usr/bin/chromium`, Google Chrome, Playwright's cached Chromium, or
 `ULTIMATE_CHROMIUM=<path>`.
 
