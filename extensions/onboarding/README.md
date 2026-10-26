@@ -59,7 +59,7 @@ the agent should wait for an `onboarding.choice` input before continuing.
 The tool renderer shows a quiet, transcript-width card:
 
 - **Extensions:** recommended extensions as checkboxes, initially checked unless the user's settings disable them.
-  The default-off built-ins (`cloud`, `parallel`, `tailscale`, `health`, `classify`, `phase`, `sounds`;
+  The default-off built-ins (`cloud`, `parallel`, `exa`, `tailscale`, `health`, `classify`, `phase`, `sounds`;
   see [settings](../../docs/settings.md)) start unchecked unless the user's settings enable them, each with one line
   on what it needs (a key, a service, a Worker).
   Core-tier extensions (`ExtensionInfo.core`, such as `subagents`, `messages`, `lineage`, `onboarding` and `documents`)

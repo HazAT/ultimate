@@ -64,7 +64,7 @@ lineage, messages and sidebar) stays on whatever the settings say, and depends o
 optional extension plugs into it through a point or an event, never the other way round (lint `core-tier-deps`; see
 [Core tier](../docs/extensions.md#core-tier)).
 
-The `parallel` web tools read their key from `secrets`. Secrets are user-global, not project state.
+The `parallel` and `exa` web tools read their key from `secrets`. Secrets are user-global, not project state.
 
 A server facet may export `secrets: { name: string; description: string; url?: string }[]`. Names must match `^[A-Z][A-Z0-9_]*$`, descriptions must be non-empty, and optional URLs must use http(s). Installed declarations appear in `ExtensionInfo.server.secrets` and the Secrets panel; values never appear in extension info. Other server facets read values with `readSecret(userHome, name)` from `lib/secrets.ts`; only the secrets extension writes them.
 
