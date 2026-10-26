@@ -12,7 +12,19 @@ refuses a folder with files, whose first commit is a judgement for an agent; onb
 
 Each conversation has one record in the root `ultimate.workspaces` document.
 Its path is `<home>/worktrees/<conversationId>`; its branch includes the home hash and conversation ID.
-Preparation runs `isolates.worktree.setup` with `ULTIMATE_SOURCE` set to the source checkout.
+Preparation fills the new worktree per `isolates.worktree.clone`: `auto` (default) clones the source checkout
+copy-on-write (APFS `clonefile` on macOS, `cp --reflink=always` on Linux), ignored files such as `node_modules`
+included and submodules left out, then resets tracked files to the branch and removes untracked ones; when cloning
+fails it checks out plainly and reports the backend and reason in a notice. Repository identity failures (a path
+that is a symlink, the source itself, or a checkout whose admin dir points back elsewhere) always abort before
+destructive operations. Absolute symlinks pointing inside the source are removed after copying
+(tracked links are restored by reset), so ignored links cannot lead back into the source. Copied nested worktrees
+whose gitdirs point into the source's common Git directory are removed too. `apfs` and `reflink` insist on their
+backend; `git` always checks out plainly. The lander's checkout always checks out plainly. `du` counts cloned blocks
+in full, so the disk row overstates on APFS. Cloned ignored files keep any absolute paths written into them: a
+Python virtualenv's scripts still run the source's interpreter and install into the source's environment, so setup
+should recreate such environments. Registering with `--no-checkout` skips the `post-checkout` hook.
+It then runs `isolates.worktree.setup` with `ULTIMATE_SOURCE` set to the source checkout.
 Setup commands must be safe to repeat after interruption.
 What a project's setup should do (dependencies, `.env`, a copy-on-write SQLite clone, a dev port per worktree, skipping
 the database in the lander's checkout, and when to ask about Postgres) is the "Worktree setup" step of the
@@ -45,7 +57,11 @@ ancestors, reported with `descendant: <id>`. The removal transaction also checks
 from the checkout, so a descendant resumed during the batch keeps its source ancestors. Nested recreation checks
 its source parent's `ready` state and folder in the transaction that starts preparation; otherwise it readies the
 parent and retries. Source queues are acquired ancestor-first for that decision and filesystem recovery.
-Git writes are serialized per source and removal is never forced.
+Git writes are serialized per source. Removal refuses a missing checkout and a HEAD that no branch, tag or remote
+reaches. It forces only past submodules, which Git refuses even in a clean checkout, and only when the checkout is
+clean, no submodule has uncommitted changes, and every submodule repository's commits are on a remote-tracking ref
+after a fetch that prunes deleted branches; an unreachable remote keeps the checkout. Ignored files are deleted, as
+Git does.
 Release atomically checks run admission and marks the record `removed` before deleting the folder. Requests wait
 on that same source queue before checking the record and recreating. Reconciliation and recreation finish
 interrupted removals; newly found pending work is kept and the checkout returns to `ready`. Unlanded counts include

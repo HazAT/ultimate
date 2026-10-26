@@ -2812,6 +2812,11 @@ it.concurrent('refused release and recovery restore ready and report the reason 
     workspace.base,
   )
   expect(await git(workspace.path, 'rev-parse', 'HEAD')).toBe(workspace.base)
+  expect((await f.service.get(id, context))!.error).toContain('recorded branch tip')
+  await git(workspace.path, 'checkout', workspace.branch)
+  expect(await f.service.release([id], context)).toEqual([])
+  expect((await f.service.get(id, context))!.state).toBe('removed')
+  expect((await f.service.get(id, context))!.error).toBeUndefined()
 })
 
 it.concurrent('a branch deletion failure after removing the worktree stays removed and the next request recreates it', async () => {

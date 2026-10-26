@@ -98,7 +98,8 @@ it.each(['symlinked home mid-setup', 'branch creation before registration'])(
       join(bin, 'git'),
       `#!/bin/sh
 if [ "$1 $2" = "worktree add" ]; then
-  /usr/bin/git branch "$4" "$6" || exit 1
+  # worktree add --no-checkout -b <branch> <path> <base>
+  /usr/bin/git branch "$5" "$7" || exit 1
   echo branch > '${started}'
   while [ ! -f '${gate}' ]; do sleep 0.05; done
 fi
