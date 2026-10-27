@@ -468,7 +468,8 @@ function Footer({ session }: { session: Session }) {
       {confirming ? (
         <>
           <span className="mr-auto text-muted-foreground">
-            End the session? Open proposals stay undecided; branches already started go on.
+            End the session? Open proposals stay undecided; approved ones still settle when their
+            branches land.
           </span>
           <Button className="h-6" onClick={() => setConfirming(false)} size="xs" variant="ghost">
             Keep it open

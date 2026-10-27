@@ -21,6 +21,7 @@ import dream, {
   fileJournal,
   journalText,
   landed,
+  reachable,
   reportPass,
   Sessions,
   startDreamIn,
@@ -28,6 +29,7 @@ import dream, {
   toolStats,
 } from '../extensions/dream/server.ts'
 import { busyElsewhere, working } from '../extensions/dream/types.ts'
+import { git } from '../lib/git.ts'
 import { temp, until } from './helpers.ts'
 
 /** A transaction over plain documents, keyed by kind and conversation. */
@@ -134,6 +136,93 @@ it('follows approved proposals to landing and ends the session when all are sett
     'has ended',
   )
   expect(await startSession(tx, 7)).toBe(2)
+})
+
+it('lands a proposal by a sha reachable from HEAD and refuses an unreachable or unknown one', async () => {
+  const repo = await temp()
+  await git(repo, 'init', '-q', '-b', 'main')
+  const commit = async (message: string) => {
+    await git(
+      repo,
+      '-c',
+      'user.name=t',
+      '-c',
+      'user.email=t@t',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      message,
+    )
+    return git(repo, 'rev-parse', 'HEAD')
+  }
+  const merged = await commit('fix')
+  await git(repo, 'checkout', '-q', '-b', 'side')
+  const aside = await commit('aside')
+  await git(repo, 'checkout', '-q', 'main')
+  expect(await reachable(repo, merged.slice(0, 8))).toBe(merged)
+  await expect(reachable(repo, aside)).rejects.toThrow('not reachable from HEAD')
+  await expect(reachable(repo, 'deadbeef')).rejects.toThrow('Unknown commit deadbeef')
+
+  const tx = fakeTx()
+  await startSession(tx, 1)
+  await fileJournal(tx, journal, 2)
+  await expect(
+    decide(tx, { session: 1, proposal: 'fast-default', status: 'landed', sha: merged }, 3),
+  ).rejects.toThrow('must be approved before it lands')
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'approved', branch: 77 }, 3)
+  await decide(tx, { session: 1, proposal: 'drop-stale', status: 'rejected' }, 3)
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'landed', sha: merged }, 4)
+  const found = await session(tx)
+  expect(found.proposals[0]).toMatchObject({ status: 'landed', sha: merged, branch: 77 })
+  expect(found.endedAt).toBe(4)
+})
+
+it('refuses approved → applied without a reason naming what was written', async () => {
+  const tx = fakeTx()
+  await startSession(tx, 1)
+  await fileJournal(tx, journal, 2)
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'approved', branch: 77 }, 3)
+  await expect(
+    decide(tx, { session: 1, proposal: 'fast-default', status: 'applied' }, 4),
+  ).rejects.toThrow('reason must name what was written')
+  const reason = 'files in ~/sk/.ultimate/skills/sk-verify'
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'applied', reason }, 4)
+  expect((await session(tx)).proposals[0]).toMatchObject({ status: 'applied', reason })
+})
+
+it('settles an ended session in one direction: approved proposals land or apply, nothing reopens', async () => {
+  const tx = fakeTx()
+  await startSession(tx, 1)
+  await fileJournal(
+    tx,
+    {
+      ...journal,
+      proposals: [
+        ...journal.proposals,
+        { id: 'by-branch', pass: 'tools', title: 'Land through a workspace' },
+      ],
+    },
+    2,
+  )
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'approved', branch: 77 }, 3)
+  await decide(tx, { session: 1, proposal: 'drop-stale', status: 'approved', branch: 78 }, 3)
+  await decide(tx, { session: 1, proposal: 'by-branch', status: 'approved', branch: 79 }, 3)
+  ;(await session(tx)).endedAt = 4
+  await decide(tx, { session: 1, proposal: 'fast-default', status: 'landed', sha: 'abc' }, 5)
+  await decide(tx, { session: 1, proposal: 'drop-stale', status: 'applied', reason: 'notes' }, 5)
+  for (const status of ['approved', 'rejected'])
+    await expect(
+      decide(tx, { session: 1, proposal: 'drop-stale', status, branch: 1 }, 6),
+    ).rejects.toThrow('has ended')
+  expect(await landed(tx, 79, 'def', 7)).toEqual([await session(tx)])
+  const found = await session(tx)
+  expect(found.proposals.map((item) => [item.id, item.status, item.sha])).toEqual([
+    ['fast-default', 'landed', 'abc'],
+    ['drop-stale', 'applied', undefined],
+    ['by-branch', 'landed', 'def'],
+  ])
+  expect(found.endedAt).toBe(4)
 })
 
 it('returns a journal with no proposals again after its session ended', async () => {

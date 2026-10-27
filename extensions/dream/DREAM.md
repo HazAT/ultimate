@@ -41,14 +41,23 @@ evidenced and small; skip what is risky or vague), and record it with `decide {â
 decision:
 
 - **Approved code, prompt or doc change:** start a branch for it (it is ordinary work: assess or build, review, land),
-  then `decide {status: 'approved', branch}`. The dream marks it landed when that branch lands. A `project` proposal
+  then `decide {status: 'approved', branch}`. The dream marks it landed when that branch lands. When it reaches the
+  repository another way (merged or fast-forwarded by hand), record `decide {status: 'landed', sha, repo}` with the
+  commit and the repository it is in (the clone path for Ultimate work; default the project folder); the dream
+  refuses a sha not reachable from that repository's HEAD.
+- **Approved work whose result is not in a repository** (files under a non-git folder such as `~/sk/.ultimate`):
+  once written, `decide {status: 'applied', reason}` with the reason naming what was written, e.g. "files in
+  ~/sk/.ultimate/skills/sk-verify". `applied` means the change is in place outside git; the dream refuses it without
+  a reason. A `project` proposal
   is built into the project's `.ultimate/`: put its evidence and the existing extension or feature pull request it
   adapts into the branch prompt, and the branch follows the integrate-ultimate skill.
 - **Approved memory change:** apply it with one `remember` batch, then `decide {status: 'applied'}`.
 - **Rejected:** `decide {status: 'rejected'}`.
 
 A codified memory (`retire` on the proposal) stays until its branch lands; then delete or update it with `remember`.
-The session ends by itself once every proposal is settled; the user can also end it from the journal card.
+The session ends by itself once every proposal is settled; the user can also end it from the journal card. An ended
+session still accepts approved proposals settling (landed, applied or rejected) and branch landings, never a reopened
+one; settle every approved proposal so Fall asleep is offered.
 
 When the built-in automation's dream settles, a `dream.settled` entry says whether it was worth a fresh chapter (landed and
 applied changes against the `dream.asleepAfter` setting, default 5). Below it, carry on in this chapter. At or above

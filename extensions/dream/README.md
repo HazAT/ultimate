@@ -22,8 +22,13 @@ for @ultimate and the dream branch, is in [DREAM.md](DREAM.md); this file is the
    its model text lists the proposal ids.
 5. The branch answers @ultimate with a `Decisions:` block. @ultimate records each decision with `decide`: `approved`
    with the branch doing it, `applied` (a memory change it made with `remember`) or `rejected`.
-6. Reactor `dream/landed` marks approved proposals `landed` with the sha when their branch's submission lands. A
-   session ends once its journal is filed and no proposal is open or approved; the user can `end` it earlier.
+6. Reactor `dream/landed` marks approved proposals `landed` with the sha when their branch's submission lands, in ended
+   sessions too. Work merged outside a workspace is recorded with `decide {status: 'landed', sha, repo?}`: the action
+   refuses a sha not reachable from HEAD in `repo` (default the project folder; the clone path for Ultimate work).
+   Approved work whose result is files outside git becomes `applied` with a `reason` naming them; without one it is
+   refused. A session ends once its journal is filed and no proposal is open or approved; the user can `end` it
+   earlier. An ended session settles in one direction only: `decide` moves approved proposals to rejected, applied or
+   landed and never reopens one; once none is approved, Fall asleep is offered and the settle check runs.
 
 The session flow does not edit code or memory. Once its journal is filed and every proposal is settled, the user can
 call `asleep { session, name? }` to start a new chapter. The name defaults to the journal's proposed `chapter`.

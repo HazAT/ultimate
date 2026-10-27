@@ -11,6 +11,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { TaskGraph, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { git } from '../../lib/git.ts'
 import {
   chapterFiles,
   chapterName,
@@ -93,7 +94,9 @@ const JOURNAL_CHARS = 20_000
 const PROPOSALS = 40
 const PROPOSAL_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 const STATUSES = ['waiting', 'running', 'done', 'failed'] as const
-const DECISIONS = ['approved', 'rejected', 'applied'] as const
+const DECISIONS = ['approved', 'rejected', 'applied', 'landed'] as const
+/** What an ended session still accepts: an approved proposal settling, never one reopening. */
+const SETTLING = ['rejected', 'applied', 'landed']
 
 const fields = (args: unknown) =>
   args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
@@ -125,14 +128,26 @@ async function open(tx: Tx, id: unknown) {
   return found
 }
 
+const unsettled = (found: Session) =>
+  found.proposals.some((item) => item.status === 'open' || item.status === 'approved')
+
 /** A session ends by itself once its journal is filed and every proposal is rejected, applied or landed. */
 function settle(found: Session, now: number) {
-  if (
-    found.journal &&
-    found.endedAt === undefined &&
-    found.proposals.every((item) => item.status !== 'open' && item.status !== 'approved')
-  )
-    found.endedAt = now
+  if (found.journal && found.endedAt === undefined && !unsettled(found)) found.endedAt = now
+}
+
+/**
+ * The full sha of commit `sha` when it is reachable from HEAD in `repo`; refuses an unknown or unreachable one. How
+ * `decide` verifies a proposal landed outside a workspace (a fix merged by hand).
+ */
+export async function reachable(repo: string, sha: string) {
+  const full = await git(repo, 'rev-parse', '--verify', '--quiet', `${sha}^{commit}`).catch(() => {
+    throw new Error(`Unknown commit ${sha} in ${repo}`)
+  })
+  await git(repo, 'merge-base', '--is-ancestor', full, 'HEAD').catch(() => {
+    throw new Error(`Commit ${sha} is not reachable from HEAD in ${repo}`)
+  })
+  return full
 }
 
 /** Record a new session in `tx`; refuses while one is open. */
@@ -219,39 +234,59 @@ export async function fileJournal(tx: Tx, args: unknown, now: number) {
   return { found, filed: true }
 }
 
-/** @ultimate records the user's decision on one proposal; an approved one names its branch. */
+/**
+ * @ultimate records the user's decision on one proposal; an approved one names its branch. `landed` takes the `sha`
+ * the action verified with `reachable`; an approved proposal turning `applied` names what was written in `reason`. An
+ * ended session only lets approved proposals settle.
+ */
 export async function decide(tx: Tx, args: unknown, now: number) {
   const input = fields(args)
-  const found = await open(tx, input.session)
+  const found = await find(tx, input.session)
   const proposal = found.proposals.find((item) => item.id === input.proposal)
   if (!proposal) throw new Error(`No proposal ${String(input.proposal)} in session ${found.id}`)
   if (proposal.status === 'landed') throw new Error(`Proposal ${proposal.id} already landed`)
   if (!DECISIONS.includes(input.status as (typeof DECISIONS)[number]))
     throw new Error(`status must be one of ${DECISIONS.join(', ')}`)
-  proposal.status = input.status as Proposal['status']
-  if (proposal.status === 'approved') proposal.branch = positive(input.branch, 'branch')
-  else delete proposal.branch
+  const status = input.status as Proposal['status']
+  if (found.endedAt !== undefined && (proposal.status !== 'approved' || !SETTLING.includes(status)))
+    throw new Error(
+      `Dream session ${found.id} has ended: only an approved proposal may still become rejected, applied or landed`,
+    )
+  if (status === 'landed' && proposal.status !== 'approved')
+    throw new Error(`Proposal ${proposal.id} must be approved before it lands`)
   const reason = optional(input.reason, 'reason', LINE_CHARS)
+  if (status === 'applied' && proposal.status === 'approved' && !reason)
+    throw new Error(
+      `reason must name what was written when approved proposal ${proposal.id} is applied`,
+    )
+  if (status === 'landed') proposal.sha = text(input.sha, 'sha', 64)
+  if (status === 'approved') proposal.branch = positive(input.branch, 'branch')
+  else if (status !== 'landed') delete proposal.branch
+  proposal.status = status
   if (reason) proposal.reason = reason
   else delete proposal.reason
   settle(found, now)
   return { found, proposal: { ...proposal } }
 }
 
-/** A landed branch lands the approved proposals it carries, in every open session; returns the sessions it settled. */
+/**
+ * A landed branch lands the approved proposals it carries, in every session, ended ones included; returns the sessions
+ * that carried one.
+ */
 export async function landed(tx: Tx, branch: number, sha: string, now: number) {
-  const settled: Session[] = []
+  const touched: Session[] = []
   for (const found of (await tx.doc(Sessions, ROOT_CONVERSATION_ID)).sessions) {
-    if (found.endedAt !== undefined) continue
-    for (const proposal of found.proposals)
-      if (proposal.status === 'approved' && proposal.branch === branch) {
-        proposal.status = 'landed'
-        proposal.sha = sha
-      }
+    const carried = found.proposals.filter(
+      (proposal) => proposal.status === 'approved' && proposal.branch === branch,
+    )
+    for (const proposal of carried) {
+      proposal.status = 'landed'
+      proposal.sha = sha
+    }
     settle(found, now)
-    if (found.endedAt !== undefined) settled.push(found)
+    if (carried.length) touched.push(found)
   }
-  return settled
+  return touched
 }
 
 /** The model text of a filed journal: what @ultimate reads, with the proposal ids `decide` takes. */
@@ -261,7 +296,7 @@ export function journalText(found: Session) {
     ...found.journal!.learned.map((line) => `- ${line}`),
     '',
     found.proposals.length
-      ? `Proposals (record each decision with ultimate.action('dream', 'decide', {session: ${found.id}, proposal, status, branch?})):`
+      ? `Proposals (record each decision with ultimate.action('dream', 'decide', {session: ${found.id}, proposal, status, branch?, sha?, repo?, reason?})):`
       : 'No proposals.',
     ...found.proposals.map(
       (item) =>
@@ -513,8 +548,16 @@ export const actions = {
     return result
   }),
   decide: implementAction(DecideAction, async (args, { host }) => {
+    const input = fields(args)
+    const sha =
+      input.status === 'landed'
+        ? await reachable(
+            optional(input.repo, 'repo', 4096) ?? host.projectRoot,
+            text(input.sha, 'sha', 64),
+          )
+        : undefined
     const decided = await host.harness().commit(async (tx) => {
-      const { found, proposal } = await decide(tx, args, Date.now())
+      const { found, proposal } = await decide(tx, { ...input, sha }, Date.now())
       await settled(host, tx, found)
       return proposal
     }, context)
@@ -621,8 +664,7 @@ async function sleepable(tx: Tx, id: unknown) {
       : await find(tx, id)
   if (!found) throw new Error('No dream session has a journal yet')
   if (!found.journal) throw new Error(`Dream session ${found.id} has no journal`)
-  if (found.proposals.some((item) => item.status === 'open' || item.status === 'approved'))
-    throw new Error('Settle every dream proposal before falling asleep')
+  if (unsettled(found)) throw new Error('Settle every dream proposal before falling asleep')
   if (found.sleep && found.sleep.phase !== 'failed')
     throw new Error(`Dream session ${found.id} is already falling asleep (${found.sleep.phase})`)
   return found
@@ -685,8 +727,13 @@ const compaction = (host: ExtensionHost) =>
     tasks: () => liveTasks(host),
   })
 
-/** Inside `tx`: the built-in automation's session that has just settled gets its "worth a fresh chapter?" check, once. */
-const settled = (host: ExtensionHost, tx: Tx, found: Session) => compaction(host).settled(tx, found)
+/**
+ * Inside `tx`: the built-in automation's session that has just settled gets its "worth a fresh chapter?" check, once. An
+ * ended session counts only once nothing is open or approved.
+ */
+const settled = async (host: ExtensionHost, tx: Tx, found: Session) => {
+  if (!unsettled(found)) await compaction(host).settled(tx, found)
+}
 
 export default function dream(host: ExtensionHost) {
   const { Wait, Retired, Settle, fired, healed } = compaction(host)

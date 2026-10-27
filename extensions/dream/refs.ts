@@ -7,7 +7,8 @@ export type PassState = { status: 'waiting' | 'running' | 'done' | 'failed'; not
 
 /**
  * One proposal from a pass. `open` until @ultimate records the user's decision: `approved` with the branch that does it,
- * `applied` for a memory change made at once, `rejected`; an approved branch becomes `landed` with its sha. `retire` is
+ * `applied` for a memory change made at once, `rejected`; an approved branch becomes `landed` with its sha, or `applied`
+ * with a `reason` naming files it wrote outside git. `retire` is
  * the memory slug a codified proposal makes redundant once it lands.
  */
 export type Proposal = {
@@ -20,7 +21,7 @@ export type Proposal = {
   status: 'open' | 'approved' | 'rejected' | 'applied' | 'landed'
   branch?: number
   sha?: string
-  /** Why @ultimate decided it, when it decided in the user's place (a hands-off goal). */
+  /** Why @ultimate decided it in the user's place (a hands-off goal), or what an approved proposal wrote when applied. */
   reason?: string
 }
 
@@ -147,15 +148,20 @@ export const ChaptersAction = actionRef<
 /** `{ chapter }`: restart into an existing, idle chapter. User-only; a returned error means restart failed. */
 export const SwitchAction = actionRef<{ chapter: string }, never>('dream', 'switch')
 /**
- * `{ session, proposal, status, branch?, reason? }`: @ultimate records the user's decision on one proposal, or its own
- * with `reason` when it decides in the user's place (a hands-off goal).
+ * `{ session, proposal, status, branch?, sha?, repo?, reason? }`: @ultimate records the user's decision on one proposal,
+ * or its own with `reason` when it decides in the user's place (a hands-off goal). `landed` settles an approved proposal
+ * merged outside a workspace: `sha` must be reachable from HEAD in `repo` (default the project folder). Approved →
+ * `applied` needs `reason` naming what was written. An ended session accepts only approved → rejected, applied or landed.
+ * Returns the proposal.
  */
 export const DecideAction = actionRef<
   {
     session: number
     proposal: string
-    status: 'approved' | 'rejected' | 'applied'
+    status: 'approved' | 'rejected' | 'applied' | 'landed'
     branch?: number
+    sha?: string
+    repo?: string
     reason?: string
   },
   Proposal
