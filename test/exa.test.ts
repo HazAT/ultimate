@@ -12,7 +12,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
   for (const close of cleanup.splice(0)) await close()
 })
-async function fixture({ secrets = true, parallel = false } = {}) {
+async function fixture({ secrets = true } = {}) {
   const root = await temp()
   cleanup.push(() => removeTemp(root))
   const notice = vi.fn<(message: string) => void>()
@@ -20,10 +20,7 @@ async function fixture({ secrets = true, parallel = false } = {}) {
     userHome: root,
     notice,
     resource: <T>(_key: string, create: () => T) => create(),
-    extensions: () => [
-      ...(secrets ? [{ name: 'secrets', enabled: true, server: {} }] : []),
-      ...(parallel ? [{ name: 'parallel', enabled: true, server: {} }] : []),
-    ],
+    extensions: () => (secrets ? [{ name: 'secrets', enabled: true, server: {} }] : []),
   } as unknown as ExtensionHost
   const tools = exa(host).tools!
   const details = vi.fn<(value: unknown, context: unknown) => Promise<void>>(async () => {})
@@ -90,11 +87,6 @@ const shown = {
   excerpts: ['excerpt'],
 }
 
-it('refuses to load while parallel is on, since both register web_search and web_fetch', async () => {
-  await expect(fixture({ parallel: true })).rejects.toThrow(
-    'parallel is on and registers web_search and web_fetch too',
-  )
-})
 it('sends search and contents bodies with the stored key, formats output and renderer details', async () => {
   const f = await fixture()
   await writeSecret(f.root, 'EXA_API_KEY', 'stored-sentinel')

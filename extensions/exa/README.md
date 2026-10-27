@@ -1,4 +1,4 @@
-Search the public web and fetch clean page content with exa.ai through `web_search` and `web_fetch`. It ships off; turn it on in the Extensions panel. It needs `secrets` on as well, and refuses to load while `parallel` is on, because both register the same tool names.
+Search the public web and fetch clean page content with exa.ai through `web_search` and `web_fetch`. It ships off; turn it on in the Extensions panel. It needs `secrets` on as well, and `parallel` off: both register `web_search` and `web_fetch`, so the host refuses whichever of the two loads second (`web_search is already provided by …`).
 
 Set `EXA_API_KEY` in the Secrets panel (⌘K → Secrets), obtained from https://dashboard.exa.ai/api-keys. The user-global secret store takes priority over `EXA_API_KEY` in the server environment. Missing credentials produce a tool error and one process-local notice, never an in-chat credential form.
 

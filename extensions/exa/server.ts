@@ -13,8 +13,6 @@ export const secrets = [
     url: 'https://dashboard.exa.ai/api-keys',
   },
 ]
-/** Turning parallel on or off changes whether exa may load. */
-export const reloadOnSettings = true
 const guidance = `Use web_search to discover pages, verify current facts, or locate documentation.
 Use web_search searchQueries for 2-3 concise keyword variants when a topic benefits from multiple angles.
 Use web_fetch after web_search when the full content of a promising result is needed.
@@ -27,11 +25,6 @@ Do not use web_fetch for discovery; use web_search when no URL is known yet.`
 const missing =
   'Missing EXA_API_KEY or secrets is not enabled. Enable secrets and add EXA_API_KEY in the Secrets panel (⌘K → Secrets).'
 export default function exa(host: ExtensionHost) {
-  if (host.extensions().some((extension) => extension.name === 'parallel' && extension.enabled)) {
-    throw new Error(
-      'parallel is on and registers web_search and web_fetch too: turn parallel or exa off in the Extensions panel.',
-    )
-  }
   const notices = host.resource('exa:missing-key', () => ({ sent: false }))
   async function key() {
     if (
