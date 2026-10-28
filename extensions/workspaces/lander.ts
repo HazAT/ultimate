@@ -11,7 +11,7 @@ import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/p
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
-import { readSettings } from '../../lib/settings.ts'
+import { declaredLander } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CheckRan, SubmissionLanded } from './api.ts'
 import { setup } from './setup.ts'
@@ -281,13 +281,7 @@ export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promi
 export async function untrustedLander(host: Pick<Host, 'projectRoot' | 'projectSetup'>) {
   const { decision } = await host.projectSetup()
   if (decision === true) return undefined
-  const lander = (await readSettings(join(host.projectRoot, '.ultimate/settings.json'))).lander as
-    | { checks?: unknown; push?: unknown }
-    | undefined
-  const declared = [
-    ...(Array.isArray(lander?.checks) && lander.checks.length ? ['checks'] : []),
-    ...(lander?.push ? ['push'] : []),
-  ]
+  const declared = await declaredLander(host.projectRoot)
   if (!declared.length) return undefined
   return `this project's setup is ${decision === false ? 'turned off' : 'not chosen yet'}, so the lander ${declared.join(' and ')} that .ultimate/settings.json declares would not run`
 }

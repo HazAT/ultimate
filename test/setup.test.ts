@@ -88,6 +88,7 @@ async function checkHost(options: { logins: string[]; secrets?: string[] }) {
       }),
     },
     projectSettings: async () => ({ lander: { checks: ['pnpm check'] } }),
+    projectSetup: async () => ({ config: false, decision: true }),
     extensions: () => [
       {
         name: 'parallel',
@@ -230,6 +231,40 @@ it('warns about a missing worktree setup until one is configured', async () => {
   expect(await row({ isolates: { worktree: { setup: ['composer install'] } } })).toMatchObject({
     status: 'ok',
   })
+})
+
+it('warns about lander checks an untrusted project setup leaves unread', async () => {
+  const host = await checkHost({ logins: ['openrouter', 'openai-codex'] })
+  await mkdir(join(host.projectRoot, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(host.projectRoot, '.ultimate/settings.json'),
+    JSON.stringify({ lander: { checks: ['pnpm check'] } }),
+  )
+  const workspaces = [...host.extensions(), { name: 'workspaces', enabled: true }] as ReturnType<
+    typeof host.extensions
+  >
+  const row = async (decision: boolean | null) =>
+    (
+      await check({
+        ...host,
+        extensions: () => workspaces,
+        // As the host: an untrusted project's settings read as empty.
+        projectSettings: async (): Promise<JsonObject> =>
+          decision ? { lander: { checks: ['pnpm check'] } } : {},
+        projectSetup: async () => ({ config: true, decision }),
+      })
+    ).find((issue) => issue.area === 'Lander checks')
+  expect(await row(null)).toEqual({
+    area: 'Lander checks',
+    status: 'warn',
+    summary: 'declared but not run: project setup not chosen',
+    impact: "The lander refuses every submission until you choose this project's setup.",
+    fix: { label: 'Choose', command: 'onboarding.extensions' },
+  })
+  expect(await row(false)).toMatchObject({
+    summary: 'declared but not run: project setup turned off',
+  })
+  expect(await row(true)).toMatchObject({ status: 'ok', summary: '1 configured' })
 })
 
 it('warns about a listed root without memories until it has one', async () => {

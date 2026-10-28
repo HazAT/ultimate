@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { readSettings, userSettingsPath } from '../../lib/settings.ts'
+import { declaredLander, readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readSecret, secretMetadata } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -49,6 +49,7 @@ type CheckHost = Pick<
   | 'userHome'
   | 'modelRuntime'
   | 'projectSettings'
+  | 'projectSetup'
   | 'extensions'
   | 'need'
   | 'want'
@@ -240,6 +241,16 @@ async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
   const lander = (await host.projectSettings()).lander as { checks?: unknown } | undefined
   if (Array.isArray(lander?.checks) && lander.checks.length)
     return { area: 'Lander checks', status: 'ok', summary: `${lander.checks.length} configured` }
+  // Untrusted settings read as empty; the lander refuses to land while its file declares checks or a push.
+  const { decision } = await host.projectSetup()
+  if (decision !== true && (await declaredLander(host.projectRoot)).length)
+    return {
+      area: 'Lander checks',
+      status: 'warn',
+      summary: `declared but not run: project setup ${decision === false ? 'turned off' : 'not chosen'}`,
+      impact: "The lander refuses every submission until you choose this project's setup.",
+      fix: { label: 'Choose', command: 'onboarding.extensions' },
+    }
   return {
     area: 'Lander checks',
     status: 'info',
