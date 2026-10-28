@@ -18,11 +18,21 @@ export function answeredMessages(messages: Message[], conversation: number, entr
 }
 
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
+/** A question to the user they have neither answered nor dismissed; only @ultimate's conversation sends them. */
+const waitsOnUser = (message: Message): message is Message & { from: number } =>
+  message.to === 'user' && message.reply && message.state === 'delivered'
+
 /** What waits on the user: each question to the user they have neither answered nor dismissed. */
-export const waitingOnUser = (log: MessagesData) =>
-  log.messages.filter(
-    (message) => message.to === 'user' && message.reply && message.state === 'delivered',
-  ).length
+export const waitingOnUser = (log: MessagesData) => log.messages.filter(waitsOnUser).length
+
+/**
+ * The open question to show after `last`: the next by id, wrapping to the oldest; one answered or dismissed meanwhile
+ * is simply no longer among them.
+ */
+export function nextWaiting(log: MessagesData, last?: number) {
+  const open = log.messages.filter(waitsOnUser)
+  return open.find((message) => last === undefined || message.id > last) ?? open[0]
+}
 
 /**
  * Where a conversation stands, the one state every view shows:
