@@ -90,6 +90,8 @@ export default defineWebExtension({
     'board.wake': () => null,
     // The agent's reminder of the questions still open; the user sees them in the To-dos panel.
     'board.open': () => null,
+    // The agent's notice of a question queued behind its run; the question itself shows when it arrives.
+    'board.queued': () => null,
     'pi.assistant': CompactAnswer,
   },
   tools: { message: MessageCall, branch: BranchCall },

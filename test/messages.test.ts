@@ -982,6 +982,30 @@ it('queues a busy recipient as follow-up, or steers its current run; @ultimate s
     expect(steer ? released === -1 : released < delivered).toBe(true)
   }
 })
+it('tells the sender its message to a busy recipient is queued, and the recipient that it waits', async () => {
+  // #18345's question sat queued behind #18872's run: #18872 thought it lost and answered it twice.
+  const f = await fixture()
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = 999 as ConversationId
+  }, context)
+  await f.recipient.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  await f.send(`#${f.recipient.id}`, 'Hook?')
+  expect((await f.log())!.messages[0]).toMatchObject({ state: 'sent', queued: 'followUp' })
+  const root = await f.opened.root.viewState(context)
+  expect(JSON.stringify(root.value.entries.findLast((e) => e.kind === 'pi.tool-result'))).toContain(
+    'Message 1 queued as a follow-up',
+  )
+  root.dispose()
+  f.hold.release()
+  await until(async () => (await replies(f)).length === 1)
+  // The note reached the held run's next request, before the question itself.
+  const noted = f.transcripts.findIndex((t) => t.includes('Queued for you: message 1 from #1'))
+  const asked = f.transcripts.findIndex((t) => t.includes('Message from #1:\\nHook?'))
+  expect(noted).toBeGreaterThan(-1)
+  expect(noted).toBeLessThan(asked)
+  expect((await f.log())!.messages[0].queued).toBeUndefined()
+})
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)

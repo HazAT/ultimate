@@ -4,6 +4,7 @@ import { awaitWithContext } from '@earendil-works/chord/context'
 import {
   AssistantEntry,
   InboxDoc,
+  LiveDoc,
   defineTask,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
@@ -16,6 +17,7 @@ import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { answered, append, terminal } from './log.ts'
 import { remoteLabel } from './addresses.ts'
+import { gist } from './questions.ts'
 
 export function delivery(host: ExtensionHost) {
   const refresh = async (id: number, ctx: Context) => {
@@ -73,6 +75,33 @@ export function delivery(host: ExtensionHost) {
           : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}`
         const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
         const requestId = `board:${m.id}`
+        // An agent's question queued behind the recipient's run: it learns at its next step that the question waits, so it
+        // neither answers it early nor thinks it lost. Placed before the input, so it never follows the question it
+        // announces; skipped when the run has ended since the message was posted.
+        if (
+          m.queued === 'followUp' &&
+          m.reply &&
+          m.from !== 'user' &&
+          (await host.harness().snapshot(LiveDoc, recipient.id, ctx))?.run
+        )
+          await recipient.submit(
+            {
+              type: 'write',
+              requestId: `board-queued:${m.id}`,
+              entry: {
+                kind: 'board.queued',
+                data: { id: m.id, from: m.from },
+                model: [
+                  {
+                    role: 'user',
+                    content: `Queued for you: message ${m.id} from ${task.input.fromLabel}, expecting your answer: ${gist(m)}\nIt arrives as your next input once this run ends, unless it is withdrawn; answer it when it arrives, not before.`,
+                    timestamp: Date.now(),
+                  },
+                ],
+              },
+            },
+            ctx,
+          )
         // A delivery started before triage was removed may have written the message as context already. That write
         // stands; one short input after it wakes the recipient, as triage would have.
         const written =
@@ -122,6 +151,7 @@ export function delivery(host: ExtensionHost) {
             if (stored) {
               stored.state = 'failed'
               stored.error = error
+              delete stored.queued
             }
             return terminal
           }, ctx)
@@ -154,6 +184,7 @@ export function delivery(host: ExtensionHost) {
           const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
             (item) => item.id === m.id,
           )
+          if (stored) delete stored.queued
           // A recipient that answered with a message before this commit has moved it past delivered already.
           if (stored?.state === 'sent') {
             // A queued input withdrawn by a Stop or a cancel was stopped, not failed.
@@ -226,6 +257,7 @@ export function delivery(host: ExtensionHost) {
               const placed = await tx.submissionByRequest(recipient.id, `board:${other.id}`)
               if (placed?.type !== 'input' || placed.status !== 'done' || placed.answer !== answer)
                 continue
+              delete other.queued
               other.state = state ?? 'answered'
               other.entry = placed.entry
               other.answer = answer

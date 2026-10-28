@@ -1,6 +1,6 @@
 /** `send()`: validating, admitting and logging a message, and starting its delivery. */
 import type { Context } from '@earendil-works/chord'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
@@ -174,12 +174,17 @@ export async function send(
         return response.id
       }
     }
+    const note = options.note ?? (starter === to && input.reply === false)
+    // A busy recipient queues it, so the sender can see it waits rather than think it lost; delivery clears it once placed.
+    const busy =
+      typeof to === 'number' && !note && (await tx.doc(LiveDoc, to as ConversationId)).run
     const message = await append(tx, {
       from,
       to,
       text: input.text,
       reply: input.reply ?? true,
       state: to === 'user' ? 'delivered' : 'sent',
+      ...(busy ? { queued: steer ? ('steer' as const) : ('followUp' as const) } : {}),
       ...(re === undefined ? {} : { re }),
       ...(also ? { also } : {}),
       ...(callId === undefined ? {} : { call: callId }),
@@ -209,7 +214,7 @@ export async function send(
         {
           message,
           steer,
-          note: options.note ?? (starter === to && input.reply === false),
+          note,
           fromLabel,
           toLabel,
         },

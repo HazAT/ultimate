@@ -24,6 +24,13 @@ An idle recipient wakes. A busy one receives a follow-up after its current run, 
 `steer: true`. `steer` defaults to `true` for @ultimate's messages, to any recipient including standing agents, and
 to `false` for everyone else; an explicit value always wins. The typed `board.message` input identifies its sender and explains where its answer goes. Its `delivery`
 field records `steer` or `followUp`.
+A message to a recipient that is running when it is sent is marked `queued: 'steer' | 'followUp'` in the posting
+commit, so it never looks lost: the `message` tool returns `Message N queued as a follow-up: #id is busy…` (or
+`queued: … after its current step` for a steer), the outgoing card reads `queued as follow-up` or `queued to steer`,
+and delivery clears the mark when the input leaves the recipient's queue. An agent's queued reply-enabled follow-up
+that still waits behind a run when its delivery starts also leaves the recipient a `board.queued` note (a write, `board-queued:<id>`, rendering nothing), placed before the input,
+so its run's next request reads `Queued for you: message N from #id, expecting your answer: …` and it neither
+answers early nor takes the question for lost.
 The answer returns as `board.reply`, steering the sender. An unanswered input produces a failure reply instead.
 A run that took several reply-enabled messages from one sender (steers at different tool rounds, follow-ups placed
 together) settles them all with its one final answer, and they get one reply: the first delivery to record the answer
@@ -210,6 +217,7 @@ type Message = {
   error?: string
   remote?: { project: string; machine: string; key: string; id?: number } // the other Ultimate
   report?: true // a branch's routed final answer after it stopped with nothing under way
+  queued?: 'steer' | 'followUp' // waiting in a busy recipient's queue; cleared once placed
   questions?: Question[] // what a reply-expected message to the user asks (see Questions)
 }
 ```

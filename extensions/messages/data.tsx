@@ -145,6 +145,7 @@ export const scriptMessaged = (
 const hiddenKinds = new Set([
   'board.wake',
   'board.open',
+  'board.queued',
   'setup.note',
   'questions.asked',
   'questions.answers',
@@ -341,7 +342,12 @@ export function outgoingState(message: Message | undefined, toUser: boolean, run
   if (message.state === 'stopped') return 'stopped by the user'
   if (message.state === 'answered') return 'answered'
   if (message.state === 'dismissed') return 'dismissed'
-  if (message.state === 'sent') return 'sending'
+  if (message.state === 'sent')
+    return message.queued === 'followUp'
+      ? 'queued as follow-up'
+      : message.queued === 'steer'
+        ? 'queued to steer'
+        : 'sending'
   if (!message.reply) return 'delivered'
   return toUser ? 'awaiting your reply' : 'awaiting reply'
 }

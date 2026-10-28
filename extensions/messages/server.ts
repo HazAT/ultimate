@@ -234,7 +234,19 @@ export default function messages(host: ExtensionHost) {
               )
           }
           if (input.to !== 'user')
-            return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
+            return {
+              output: [
+                {
+                  type: 'text',
+                  text:
+                    sent?.queued === 'followUp'
+                      ? `Message ${id} queued as a follow-up: #${sent.to} is busy and reads it when its current run ends. It is not lost; do not send it again.`
+                      : sent?.queued === 'steer'
+                        ? `Message ${id} queued: #${sent.to} is busy and reads it after its current step.`
+                        : `Message ${id} sent.`,
+                },
+              ],
+            }
           // The message is @ultimate's answer: the run ends here instead of restating it, unless a reply it has read
           // is owed. One still queued gets its own turn.
           const owed = await host
