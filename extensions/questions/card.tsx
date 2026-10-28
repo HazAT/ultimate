@@ -1,4 +1,9 @@
-import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
+import {
+  CircleAlertIcon,
+  CornerDownRightIcon,
+  MessageCircleQuestionIcon,
+  Undo2Icon,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
@@ -220,6 +225,43 @@ function Note({
   )
 }
 
+/** Send with questions left unanswered asks in place of the buttons, so a partial answer goes out only on purpose. */
+function Confirm({
+  done,
+  total,
+  hints,
+  onSend,
+  onEdit,
+}: {
+  done: number
+  total: number
+  hints: boolean
+  onSend: () => void
+  onEdit: () => void
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex w-full flex-wrap items-center gap-2 motion-safe:animate-fade-in"
+    >
+      <CircleAlertIcon className="size-3.5 shrink-0 text-warning" />
+      <span className="text-[13px] text-foreground">
+        {done} of {total} answered: send anyway?
+      </span>
+      <span className="ml-auto flex items-center gap-1.5">
+        <Button variant="ghost" size="sm" onClick={onEdit}>
+          Keep editing
+          {hints && <Key className="bg-transparent">esc</Key>}
+        </Button>
+        <Button size="sm" onClick={onSend}>
+          Send anyway
+          {hints && <Key className="bg-transparent text-primary-foreground/70">↵</Key>}
+        </Button>
+      </span>
+    </div>
+  )
+}
+
 function Card({
   card,
   questions,
@@ -245,6 +287,8 @@ function Card({
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  // Send with questions still unanswered asks first: a partial answer is easy to send by accident.
+  const [confirming, setConfirming] = useState(false)
   // The send waiting out its undo window, and the click that folds a chosen question away.
   const pending = useRef<{ timer: ReturnType<typeof setTimeout>; fire: () => void }>(undefined)
   const advance = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -279,8 +323,10 @@ function Card({
     setCurrent(next)
     if (questions[next]?.kind === 'text') focusField(next)
   }
-  const draft = (index: number, change: (old: Draft) => Draft) =>
+  const draft = (index: number, change: (old: Draft) => Draft) => {
+    setConfirming(false)
     setDrafts((old) => ({ ...old, [index]: change(old[index] ?? { chosen: [] }) }))
+  }
   const select = (index: number, option: number, click = false) => {
     const question = questions[index]
     const choice = question && choices(question)[option]
@@ -312,6 +358,7 @@ function Card({
     const next = { ...drafts }
     for (const [index, question] of questions.entries())
       if (indices.includes(index)) next[index] = pickDraft(question)
+    setConfirming(false)
     setDrafts(next)
     return answered(
       questions,
@@ -330,10 +377,13 @@ function Card({
       setBusy(false)
     }
   }
+  /** Sends `list` with the note; with questions left unanswered, asks first and sends on the next send. */
   const send = (list: Answer[] = ready) => {
     const extra = note.trim()
     if ((!list.length && !extra) || pending.current || phase !== 'answering') return
     clearTimeout(advance.current)
+    if (!confirming && list.length < questions.length) return setConfirming(true)
+    setConfirming(false)
     const fire = () => {
       pending.current = undefined
       setPhase('sending')
@@ -348,6 +398,12 @@ function Card({
     }
     pending.current = { timer: setTimeout(fire, UNDO_MS), fire }
     setPhase('undo')
+  }
+  /** Back from "send anyway?" to the first question still unanswered. */
+  const keepEditing = () => {
+    setConfirming(false)
+    const first = words.findIndex((value) => !value)
+    if (first >= 0) go(first)
   }
   const now = flush
   const undo = () => {
@@ -406,6 +462,14 @@ function Card({
         (!root.current?.contains(target) && target?.closest('[data-questions-card], button, a'))
       )
         return
+      if (confirming && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey))) {
+        // Enter on a focused button presses that button instead.
+        if (event.key === 'Enter' && target?.closest('button')) return
+        event.preventDefault()
+        if (event.key === 'Enter') send()
+        else keepEditing()
+        return
+      }
       if (phase === 'undo') {
         if (event.key === 'Escape' || event.key === 'u') {
           event.preventDefault()
@@ -563,71 +627,83 @@ function Card({
         <Note value={note} disabled={busy} hint={hints} onChange={setNote} onSend={() => send()} />
       </div>
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
-        {hints && (
-          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
-            {shownKeys.length > 0 && (
-              <span className="flex items-center gap-1">
-                {shownKeys.map((key) => (
-                  <Key key={key}>{key}</Key>
-                ))}{' '}
-                choose
+        {confirming ? (
+          <Confirm
+            done={ready.length}
+            total={questions.length}
+            hints={hints}
+            onSend={() => send()}
+            onEdit={keepEditing}
+          />
+        ) : (
+          <>
+            {hints && (
+              <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
+                {shownKeys.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    {shownKeys.map((key) => (
+                      <Key key={key}>{key}</Key>
+                    ))}{' '}
+                    choose
+                  </span>
+                )}
+                {questions.length > 1 && (
+                  <span className="flex items-center gap-1">
+                    <Key>↑</Key>
+                    <Key>↓</Key> move
+                  </span>
+                )}
+                <span className="flex items-center gap-1">
+                  <Key>↵</Key>
+                  {!words[current] && open.includes(current)
+                    ? 'take pick'
+                    : current < last && unanswered
+                      ? 'next'
+                      : 'send'}
+                </span>
+                {words[current] && (
+                  <span className="flex items-center gap-1">
+                    <Key>esc</Key> clear
+                  </span>
+                )}
               </span>
             )}
-            {questions.length > 1 && (
-              <span className="flex items-center gap-1">
-                <Key>↑</Key>
-                <Key>↓</Key> move
-              </span>
-            )}
-            <span className="flex items-center gap-1">
-              <Key>↵</Key>
-              {!words[current] && open.includes(current)
-                ? 'take pick'
-                : current < last && unanswered
-                  ? 'next'
-                  : 'send'}
+            <span className="ml-auto flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => void run(dismiss)}
+                title="Close it without an answer; the agent gets a note"
+              >
+                Dismiss
+              </Button>
+              {open.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => takePicks(open)}
+                  title="Choose @ultimate's pick for every question still open (⇧↵ also sends)"
+                >
+                  Accept picks
+                  {hints && <Key className="bg-transparent">⇧↵</Key>}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                disabled={(!ready.length && !note.trim()) || busy}
+                onClick={() => send()}
+              >
+                {!ready.length && note.trim()
+                  ? 'Send note'
+                  : unanswered && ready.length
+                    ? `Send ${ready.length} of ${questions.length}`
+                    : 'Send'}
+              </Button>
             </span>
-            {words[current] && (
-              <span className="flex items-center gap-1">
-                <Key>esc</Key> clear
-              </span>
-            )}
-          </span>
+          </>
         )}
-        <span className="ml-auto flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => void run(dismiss)}
-            title="Close it without an answer; the agent gets a note"
-          >
-            Dismiss
-          </Button>
-          {open.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => takePicks(open)}
-              title="Choose @ultimate's pick for every question still open (⇧↵ also sends)"
-            >
-              Accept picks
-              {hints && <Key className="bg-transparent">⇧↵</Key>}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            disabled={(!ready.length && !note.trim()) || busy}
-            onClick={() => send()}
-          >
-            {!ready.length && note.trim()
-              ? 'Send note'
-              : unanswered && ready.length
-                ? `Send ${ready.length} of ${questions.length}`
-                : 'Send'}
-          </Button>
-        </span>
         {error && (
           <p role="alert" className="w-full text-xs text-error">
             {error}

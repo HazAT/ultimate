@@ -151,4 +151,33 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     (await log())?.messages.find((m) => m.re === second.id && m.from === 'user')
   await until(async () => !!(await picked()))
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+  await next.waitFor({ state: 'detached' })
+  await until(async () => (await picked())!.state === 'answered')
+
+  // A third card answered in part: Send asks first; Esc keeps editing, Enter sends anyway.
+  await (await conversation.submit({ type: 'input', content: 'ask' }, context)).wait(context)
+  await until(async () => (await ask())!.id !== second.id)
+  const third = (await ask())!
+  const partial = page.locator(`[data-questions-card="message:${third.id}"]`)
+  await partial.locator('fieldset').nth(2).waitFor()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('b')
+  const confirm = partial.getByText('1 of 3 answered: send anyway?')
+  await partial.getByRole('button', { name: 'Send 1 of 3' }).click()
+  await confirm.waitFor()
+  await page.keyboard.press('Escape')
+  await confirm.waitFor({ state: 'detached' })
+  // Keep editing opens the first question still unanswered.
+  await partial.locator('[data-question="1"] fieldset[data-current]').waitFor()
+  await partial.getByRole('button', { name: 'Send 1 of 3' }).click()
+  await confirm.waitFor()
+  await page.keyboard.press('Enter')
+  // Enter in the undo window sends at once.
+  await page.keyboard.press('Enter')
+  const sent = async () =>
+    (await log())?.messages.find((m) => m.re === third.id && m.from === 'user')
+  await until(async () => !!(await sent()))
+  expect((await sent())!.text).toBe(
+    '1b. Branch starts in the context: drop them, rely on abstracts',
+  )
 })
