@@ -63,7 +63,9 @@ Lifecycle events: `automations.started`, `.fired` `{id, text, fire}`, `.done`, `
 ## Script files
 
 User scripts live in `~/.ultimate/automations/<project>/<id>/`: executable `run`, persistent `state/`, `output.log`
-(about 2000 lines / 256 KiB) and `pid`. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
+(about 2000 lines / 256 KiB) and `pid`. Ids restart in every chapter, so a chapter after the first keeps its scripts
+in `<project>@<chapter>/<id>/` instead; the first chapter's folders stay where they were, and switching chapters never
+shares a folder. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
 `secrets` from Secrets; records never hold their values. Script state must survive a restart: open stops leftover
 processes and relaunches enabled running scripts.
 
