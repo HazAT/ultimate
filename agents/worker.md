@@ -1,6 +1,6 @@
 ---
 name: worker
-model: openai-codex/gpt-6.1-sol
+family: fast
 fast: true
 isolate: worktree
 denyTools: [instance]

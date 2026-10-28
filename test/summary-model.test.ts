@@ -207,11 +207,11 @@ it('asks the configured summary model with its thinking level and records it', a
   expect(await f.ledger()).toEqual(['faux/faux-1', 'acme/mini'])
 })
 
-it('uses GPT-6 Luna with medium thinking when no summary model is set', async () => {
+it('uses the tiny family, GPT-6 Luna with low thinking, when no summary model is set', async () => {
   const f = await launch()
   await f.submit()
   await until(async () => (await f.read())?.assessmentStatus === 'ready')
-  expect(f.requests()).toEqual([{ model: 'openai-codex/gpt-6-luna', reasoning: 'medium' }])
+  expect(f.requests()).toEqual([{ model: 'openai-codex/gpt-6-luna', reasoning: 'low' }])
   expect(await f.assessed()).toMatchObject([{ model: 'openai-codex/gpt-6-luna' }])
 })
 
@@ -285,7 +285,7 @@ it('writes only the user summary model, and refuses while project settings decid
   expect(await actions.summaryModel(null, ctx)).toEqual({
     value: 'acme/large',
     source: 'project',
-    default: 'openai-codex/gpt-6-luna:medium',
+    default: 'openai-codex/gpt-6-luna:low',
     path: projectFile,
   })
   for (const value of ['acme/mini:low', null])
@@ -300,7 +300,7 @@ it('writes only the user summary model, and refuses while project settings decid
   expect(await actions.summaryModel(null, ctx)).toEqual({
     value: 'acme/mini',
     source: 'user',
-    default: 'openai-codex/gpt-6-luna:medium',
+    default: 'openai-codex/gpt-6-luna:low',
   })
   expect(await actions.setSummaryModel({ value: 'acme/mini:low' }, ctx)).toMatchObject({
     value: 'acme/mini:low',

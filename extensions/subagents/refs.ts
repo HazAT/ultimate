@@ -19,6 +19,15 @@ export type Definition = {
   source: Source
   model?: ModelRef
   thinking?: string
+  /** The model family its file names (lib/families.ts). */
+  family?: string
+  /** What it runs on once the families apply: an assignment in settings, its pin, its family, else the default. */
+  runs?: {
+    family?: string
+    model?: ModelRef
+    thinking?: string
+    via: 'assigned' | 'pin' | 'family'
+  }
   tools?: string[]
   denyTools?: string[]
   isolate?: 'none' | 'worktree'
@@ -56,6 +65,7 @@ export type DefinitionFields = {
   description: string
   model?: string
   thinking?: string
+  family?: string
   tools?: string[]
   denyTools?: string[]
   isolate?: 'none' | 'worktree'

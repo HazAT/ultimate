@@ -800,7 +800,7 @@ async function forkBranch(
     input.model ??
     (hasLogin(host.modelRuntime.getAvailableSnapshot(), source)
       ? undefined
-      : hostDefaultModel(host))
+      : await hostDefaultModel(host))
   await configure(tx, fork.id, {
     cwd: host.projectRoot,
     ...(model ? { model } : {}),

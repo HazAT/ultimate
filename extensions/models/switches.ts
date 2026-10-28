@@ -2,7 +2,8 @@ import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 
 export interface Switch {
-  model?: { from: string; to: string }
+  /** `from` and `to` as shown (the id alone when the provider stays), `fromRef` and `toRef` as `provider/id`. */
+  model?: { from: string; to: string; fromRef: string; toRef: string }
   thinking?: { from: string; to: string }
 }
 
@@ -45,7 +46,12 @@ export function switchAt(entries: readonly EntryRecord[], entry: EntryRecord): S
       previous?.provider === response.provider
         ? message.model
         : `${message.provider}/${message.model}`
-    change.model = { from: named(previous), to: named(response) }
+    change.model = {
+      from: named(previous),
+      to: named(response),
+      fromRef: `${previous.provider}/${previous.model}`,
+      toRef: `${response.provider}/${response.model}`,
+    }
   }
   if (thinking && thinking.from !== thinking.to) change.thinking = thinking
   return change.model || change.thinking ? change : undefined

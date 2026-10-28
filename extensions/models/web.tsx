@@ -16,6 +16,8 @@ import {
 } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import { LoginDialog } from './login.tsx'
+import { FamiliesDialog } from './families-dialog.tsx'
+import { familiesDialog, ModelLabel, modelLabel, useFamilies } from './families.tsx'
 import { ModelPicker } from './picker.tsx'
 import { nextThinking, openLogin, openPicker, thinkingDialog, useCurrentModel } from './state.tsx'
 import type { ThinkingLevel } from './state.tsx'
@@ -26,8 +28,9 @@ const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
 
 function ModelButton() {
-  const { ref, loading } = useCurrentModel()
+  const { ref, thinking, loading } = useCurrentModel()
   const actions = useUltimate()
+  const families = useFamilies()
   return (
     <button
       className={cn(toolbarButton, 'min-w-0 shrink')}
@@ -38,20 +41,19 @@ function ModelButton() {
         loading
           ? 'Loading model'
           : ref
-            ? `${ref.modelId} · ${ref.provider} — pick a model`
+            ? `${modelLabel(families, ref, thinking)} · ${ref.provider} — pick a model`
             : 'Pick a model'
       }
       type="button"
     >
       <CpuIcon className="size-3.5 shrink-0" />
-      <span
-        className={cn(
-          'truncate',
-          loading ? undefined : ref ? 'text-foreground/85' : 'text-warning',
-        )}
-      >
-        {loading ? 'model…' : (ref?.modelId ?? 'no model')}
-      </span>
+      {loading || !ref ? (
+        <span className={cn('truncate', loading ? undefined : 'text-warning')}>
+          {loading ? 'model…' : 'no model'}
+        </span>
+      ) : (
+        <ModelLabel className="text-foreground/85" model={ref} thinking={thinking} />
+      )}
       <ChevronDownIcon className="size-3 shrink-0 opacity-60 @max-md:hidden" />
     </button>
   )
@@ -126,9 +128,16 @@ function ThinkingButton() {
   )
 }
 
+/** "Fast (gpt-6-luna)" for a model a family runs, else the model as the divider names it. */
+const named = (families: ReturnType<typeof useFamilies>, ref: string, shown: string) => {
+  const label = modelLabel(families, ref)
+  return label === ref.slice(ref.indexOf('/') + 1) ? shown : label
+}
+
 /** A response that ran on another model or thinking level than the one before it, marked above it. */
 function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const change = switchAt(useTranscript(), entry)
+  const families = useFamilies()
   if (!change) return core
   const Icon = change.model ? CpuIcon : BrainIcon
   return (
@@ -142,7 +151,8 @@ function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
           <Icon className="size-3 shrink-0" />
           <span className="truncate">
             {[
-              change.model && `${change.model.from} → ${change.model.to}`,
+              change.model &&
+                `${named(families, change.model.fromRef, change.model.from)} → ${named(families, change.model.toRef, change.model.to)}`,
               change.thinking && `thinking ${change.thinking.from} → ${change.thinking.to}`,
             ]
               .filter(Boolean)
@@ -168,6 +178,7 @@ const switchedTo: Record<Exclude<Fallback['reason'], 'none'>, string> = {
 function FellBack({ entry }: { entry: EntryRecord }) {
   const { from, to, reason } = entry.data as Fallback
   const actions = useUltimate()
+  const families = useFamilies()
   const provider = from.split('/')[0]
   return (
     <section
@@ -182,12 +193,14 @@ function FellBack({ entry }: { entry: EntryRecord }) {
         <p className="font-mono text-[12px]">
           {to ? (
             <>
-              <span className="text-muted-foreground line-through">{from}</span>
+              <span className="text-muted-foreground line-through">
+                {named(families, from, from)}
+              </span>
               {' → '}
-              <span className="text-foreground">{to}</span>
+              <span className="text-foreground">{named(families, to, to)}</span>
             </>
           ) : (
-            <span className="text-foreground">{from}</span>
+            <span className="text-foreground">{named(families, from, from)}</span>
           )}
         </p>
         <p className="text-muted-foreground">
@@ -218,8 +231,16 @@ function FellBack({ entry }: { entry: EntryRecord }) {
 
 export default defineWebExtension({
   entries: { 'pi.assistant': Switched, 'models.fallback': FellBack },
-  slots: { 'composer.toolbar': [ModelButton, ThinkingButton], overlay: [ModelPicker, LoginDialog] },
+  slots: {
+    'composer.toolbar': [ModelButton, ThinkingButton],
+    overlay: [ModelPicker, LoginDialog, FamiliesDialog],
+  },
   commands: [
+    {
+      id: 'model.families',
+      title: 'Model families…',
+      run: (context) => context.open(familiesDialog),
+    },
     {
       id: 'model.pick',
       title: 'Pick a model',

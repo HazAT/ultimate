@@ -56,7 +56,7 @@ export function scheduler(
           if (!host.extensions().some((e) => e.name === 'subagents' && e.enabled))
             throw new Error('automations needs the subagents extension enabled')
           // The root's agent for its tools, on the default model: the root's stored model may have lost its login.
-          const parent = { ...(await runtime.agent(context)), model: hostDefaultModel(host) }
+          const parent = { ...(await runtime.agent(context)), model: await hostDefaultModel(host) }
           const profile = a.agent ? await definition(host, a.agent) : undefined
           await runtime.commit(async (tx) => {
             const child = await host.need(SubagentsApi).createChild(tx, {

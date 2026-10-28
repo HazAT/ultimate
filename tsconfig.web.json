@@ -68,6 +68,7 @@
     "lib/compare.ts",
     "lib/context-usage.ts",
     "lib/entries.ts",
+    "lib/families.ts",
     "extensions/subagents/message-types.ts",
     "test/web"
   ]

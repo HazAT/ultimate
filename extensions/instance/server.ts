@@ -32,17 +32,24 @@ import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
+import { readFamilies } from '../../lib/families-settings.ts'
+import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.ts'
 
-/** Previews run every agent on this model unless `instance.model` names another or is `null`. */
-export const DEFAULT_PREVIEW_MODEL = 'openai-codex/gpt-6.1-sol'
+/** Previews run every agent on the previews family's model unless `instance.model` names another or is `null`. */
+export const DEFAULT_PREVIEW_MODEL = BUILTIN_FAMILIES[FEATURES.preview.family].model!
 
-/** The `instance.model` setting, project over user: the `provider/id` a preview runs every agent on, or none. */
+/**
+ * The `instance.model` setting, project over user: the `provider/id` a preview runs every agent on, or none. Without
+ * it, the model of the family previews are assigned to (`modelFamilies`, default `fast`).
+ */
 export async function previewModelSetting(
-  host: Pick<ExtensionHost, 'userHome' | 'projectSettings'>,
+  host: Pick<ExtensionHost, 'userHome' | 'projectSettings' | 'projectRoot'> &
+    Partial<Pick<ExtensionHost, 'settings'>>,
 ): Promise<string | undefined> {
   // Invalid settings JSON is reported where settings load; here it counts as unset.
   const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
-  for (const settings of [await host.projectSettings(), user]) {
+  const project = await host.projectSettings()
+  for (const settings of [project, user]) {
     const instance = settings.instance
     if (instance && typeof instance === 'object' && !Array.isArray(instance))
       if (Object.hasOwn(instance, 'model')) {
@@ -54,6 +61,17 @@ export async function previewModelSetting(
           )
         return model
       }
+  }
+  const families = await readFamilies(host.userHome, host.projectRoot, project)
+  const assigned = families.assign.preview ?? FEATURES.preview.family
+  const family = Object.hasOwn(families.families, assigned) ? assigned : DEFAULT_FAMILY
+  const own = families.families[family].model
+  if (own) return own
+  // A default family without a model of its own runs Pi's default model.
+  if (family === DEFAULT_FAMILY) {
+    const provider = host.settings?.getDefaultProvider()
+    const id = host.settings?.getDefaultModel()
+    return provider && id ? `${provider}/${id}` : DEFAULT_PREVIEW_MODEL
   }
   return DEFAULT_PREVIEW_MODEL
 }

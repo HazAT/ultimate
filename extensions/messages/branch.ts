@@ -54,7 +54,7 @@ export const branchTool = (host: ExtensionHost) =>
           .conversation(root as ConversationId, ctx))!.agent(ctx)
         const { model, thinkingLevel, modelTools } = definitionAgent(
           coordinator,
-          { ...rootAgent, model: hostDefaultModel(host) },
+          { ...rootAgent, model: await hostDefaultModel(host) },
           host.modelRuntime,
         )
         const branch = await lineage.branch(

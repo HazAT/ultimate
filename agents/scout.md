@@ -1,8 +1,7 @@
 ---
 name: scout
 description: Fast read-only reconnaissance; answers one question about the code with file:line evidence.
-model: openai-codex/gpt-6-luna
-thinking: low
+family: tiny
 tools: [read, bash]
 ---
 

@@ -2,8 +2,7 @@
 name: voice
 description: Your fast spoken interface to Ultimate
 resident: true
-model: openai-codex/gpt-6-luna
-thinking: low
+family: tiny
 fast: true
 summaries: false
 tools: [voice_say, voice_ask_ultimate, voice_note, codemode]

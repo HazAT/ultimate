@@ -30,6 +30,7 @@ import type {
   TaskId,
   ToolExecutionApi,
   SubmissionRecord,
+  Tx,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../server/project.ts'
@@ -424,12 +425,24 @@ export const actions = {
     if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter))
       throw new Error('frontmatter must be an object')
     if (typeof instructions !== 'string') throw new Error('instructions must be a string')
-    const { description, model, thinking, tools, denyTools, isolate, resident, fast, summaries } =
-      frontmatter
+    const {
+      description,
+      model,
+      thinking,
+      family,
+      tools,
+      denyTools,
+      isolate,
+      resident,
+      fast,
+      summaries,
+    } = frontmatter
     if (typeof description !== 'string') throw new Error('description is required')
     if (model !== undefined && typeof model !== 'string') throw new Error('model must be a string')
     if (thinking !== undefined && typeof thinking !== 'string')
       throw new Error('thinking must be a string')
+    if (family !== undefined && typeof family !== 'string')
+      throw new Error('family must be a string')
     if (
       tools !== undefined &&
       (!Array.isArray(tools) || !tools.every((tool) => typeof tool === 'string'))
@@ -459,6 +472,7 @@ export const actions = {
       description,
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
+      ...(family ? { family } : {}),
       ...(tools ? { tools } : {}),
       ...(denyTools?.length ? { denyTools } : {}),
       ...(isolate ? { isolate } : {}),
@@ -557,9 +571,12 @@ export default function subagents(
   }
   // The definition a conversation runs as: children and standing agents record it, branches and the lander carry it
   // as a label. Its pin, read fresh, is what a conversation whose model lost its login switches to first.
+  const definitionOf = async (tx: Tx, id: ConversationId) =>
+    (await tx.doc(Profile, id)).definition ?? (await tx.doc(host.metadata, id)).label
   host.implement(Pin, {
+    definitionOf,
     async pin(tx, id) {
-      const name = (await tx.doc(Profile, id)).definition ?? (await tx.doc(host.metadata, id)).label
+      const name = await definitionOf(tx, id)
       if (!name) return undefined
       const { definitions } = await discoverAgents(
         host.ultimateRoot,
@@ -567,7 +584,8 @@ export default function subagents(
         host.userHome,
         host.modelRuntime,
       )
-      return definitions.find((definition) => definition.name === name)?.model
+      const definition = definitions.find((item) => item.name === name)
+      return definition?.runs ? definition.runs.model : definition?.model
     },
   })
   host.implement(SubagentsApi, {
@@ -596,7 +614,7 @@ export default function subagents(
         let created: ConversationRecord | undefined
         // A new conversation starts on the default model; an existing one keeps the model and thinking level chosen
         // in it, so a refresh changes them only where the definition pins them.
-        let base = { ...main, model: hostDefaultModel(host) }
+        let base = { ...main, model: await hostDefaultModel(host) }
         if (id !== undefined && (await tx.conversation(id))) {
           const own = await tx.doc(AgentDoc, id)
           base = {

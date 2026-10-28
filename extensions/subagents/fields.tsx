@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { cn, useModels } from '@/sdk'
 import type { ModelsResponse } from '@/sdk'
+import { FamilyName, useFamilies } from '../models/ui.tsx'
 
 type ModelInfo = ModelsResponse['models'][number]
 export type ModelRef = { provider: string; modelId: string }
@@ -432,5 +433,36 @@ export function InstructionsEditor({
         </pre>
       )}
     </div>
+  )
+}
+
+/** The pin choice of `FamilyField`: the definition names a model instead of a family. */
+export const PIN = ':pin'
+
+/** Which family a definition runs on, or `PIN` for a model of its own. */
+export function FamilyField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const families = useFamilies()
+  return (
+    <Segmented
+      label="Model family"
+      onChange={onChange}
+      options={[
+        ...(families?.families ?? []).map((family) => ({
+          value: family.name,
+          label: <FamilyName family={family} />,
+          title: family.model
+            ? `${family.model}${family.thinking ? ` · thinking ${family.thinking}` : ''}`
+            : undefined,
+        })),
+        { value: PIN, label: 'pin a model', title: 'Run on one model, whatever the families say' },
+      ]}
+      value={value}
+    />
   )
 }

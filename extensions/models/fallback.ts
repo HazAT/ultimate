@@ -8,7 +8,7 @@ import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryDraft, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { configuredModel, hasLogin } from '../../lib/agents.ts'
+import { configuredModel, familyDefault, hasLogin } from '../../lib/agents.ts'
 import { Pin } from './api.ts'
 import type { Fallback } from './refs.ts'
 
@@ -53,7 +53,7 @@ export async function fallback(
   const candidates: [Ref | undefined, Fallback['reason']][] = [
     [same && { provider: same.provider, modelId: same.id }, 'same'],
     [await host.want(Pin)?.pin(tx, conversationId), 'pin'],
-    [configuredModel(fresh, host.settings), 'default'],
+    [configuredModel(fresh, host.settings, await familyDefault(host)), 'default'],
   ]
   const found = candidates.find(([ref]) => hasLogin(fresh, ref) && allowed(ref!.provider))
   const data: Fallback = found

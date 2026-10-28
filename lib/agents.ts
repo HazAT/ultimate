@@ -8,6 +8,8 @@ import { parseFrontmatter, resolveCliModel } from '@earendil-works/pi-coding-age
 import type { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
 import type { Source } from '../server/project.ts'
 import { writeTextAtomically } from './json-file.ts'
+import { DEFAULT_FAMILY, definitionRuns, isFamilyName, refOf } from './families.ts'
+import { readFamilies } from './families-settings.ts'
 // oxlint-disable-next-line no-restricted-imports -- agent discovery follows the core project trust decision
 import { projectDecision, useProjectSetup } from '../server/project-setup.ts'
 // oxlint-disable-next-line no-restricted-imports -- extension-owned definitions follow the same enabled folders as their facets
@@ -20,6 +22,10 @@ export interface AgentDefinition {
   instructions: string
   model?: { provider: string; modelId: string }
   thinking?: ModelThinkingLevel
+  /** The model family it runs on unless it pins a model or settings assign it another (lib/families.ts). */
+  family?: string
+  /** What it runs on once the families are applied; discovery sets it. */
+  runs?: ReturnType<typeof definitionRuns>
   tools?: string[]
   /** Tools overlays added to a definition without a `tools` list: it has every tool already, and deferred ones load. */
   addTools?: string[]
@@ -53,39 +59,53 @@ export const hasLogin = (available: readonly Listed[], ref: ModelRef | undefined
   !!ref && available.some((model) => model.provider === ref.provider && model.id === ref.modelId)
 
 /**
- * The model a conversation runs on when nothing pins one: a preview's, else Pi's default, else the first model with a
- * login here; each only when it has a login. Undefined while no model has one.
+ * The model a conversation runs on when nothing pins one: a preview's, else the default family's (`family`), else
+ * Pi's default, else the first model with a login here; each only when it has a login. Undefined while none has one.
  */
 export function defaultModel(
   available: readonly Listed[],
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>,
+  family?: ModelRef,
 ): ModelRef | undefined {
   const first = available[0]
   return (
-    configuredModel(available, settings) ??
+    configuredModel(available, settings, family) ??
     (first && { provider: first.provider, modelId: first.id })
   )
 }
 
-/** A preview's model, else Pi's default, each only when it has a login here: `defaultModel` without its last resort. */
+/**
+ * A preview's model, else the default family's (`family`), else Pi's default, each only when it has a login here:
+ * `defaultModel` without its last resort.
+ */
 export function configuredModel(
   available: readonly Listed[],
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>,
+  family?: ModelRef,
 ): ModelRef | undefined {
   const configured = {
     provider: settings.getDefaultProvider(),
     modelId: settings.getDefaultModel(),
   }
-  for (const ref of [previewModel(), configured])
+  for (const ref of [previewModel(), family, configured])
     if (ref?.provider && ref.modelId && hasLogin(available, ref as ModelRef)) return ref as ModelRef
   return undefined
 }
 
-/** `defaultModel` for a host's model runtime and Pi settings. */
-export const hostDefaultModel = (host: {
+type DefaultHost = {
   modelRuntime: Pick<ModelRuntime, 'getAvailableSnapshot'>
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>
-}) => defaultModel(host.modelRuntime.getAvailableSnapshot(), host.settings)
+  userHome: string
+  projectRoot: string
+}
+
+/** The model of the project's default family, when it names one; else the default is Pi's. */
+export const familyDefault = async (host: Pick<DefaultHost, 'userHome' | 'projectRoot'>) =>
+  refOf((await readFamilies(host.userHome, host.projectRoot)).families[DEFAULT_FAMILY].model)
+
+/** `defaultModel` for a host's model runtime, its project's default family and Pi settings. */
+export const hostDefaultModel = async (host: DefaultHost) =>
+  defaultModel(host.modelRuntime.getAvailableSnapshot(), host.settings, await familyDefault(host))
 
 /**
  * The agent change a definition makes over `parent`: the explicit model, else the definition's pin when it has a login
@@ -108,12 +128,15 @@ export function definitionAgent(
   } = {},
 ): AgentChange {
   const excludeTools = [...excluded, ...(definition?.denyTools ?? [])]
-  const pin = hasLogin(modelRuntime.getAvailableSnapshot(), definition?.model)
-    ? definition?.model
-    : undefined
+  // Discovery resolved the definition's family; a definition made elsewhere runs on its own pin.
+  const wanted = definition?.runs ? definition.runs.model : definition?.model
+  const pin = hasLogin(modelRuntime.getAvailableSnapshot(), wanted) ? wanted : undefined
   const ref = previewModel() ?? overrideModel ?? pin ?? parent.model
   const model = ref && modelRuntime.getModel(ref.provider, ref.modelId)
-  const thinking = overrideThinking ?? definition?.thinking ?? parent.thinkingLevel
+  const thinking =
+    overrideThinking ??
+    (definition?.runs ? definition.runs.thinking : definition?.thinking) ??
+    parent.thinkingLevel
   const tools = [
     ...new Map([...parent.tools, ...parent.deferred].map((tool) => [tool.name, tool])).values(),
   ]
@@ -161,6 +184,7 @@ const fields = new Set([
   'description',
   'model',
   'thinking',
+  'family',
   'tools',
   'denyTools',
   'isolate',
@@ -173,13 +197,22 @@ const fields = new Set([
 function parseSettings(frontmatter: Record<string, unknown>): Partial<
   Pick<
     AgentDefinition,
-    'description' | 'thinking' | 'isolate' | 'resident' | 'fast' | 'summaries' | 'denyTools'
+    | 'description'
+    | 'thinking'
+    | 'family'
+    | 'isolate'
+    | 'resident'
+    | 'fast'
+    | 'summaries'
+    | 'denyTools'
   >
 > & {
   model?: string
 } {
-  const { description, model, thinking, isolate, resident, fast, summaries, denyTools } =
+  const { description, model, thinking, family, isolate, resident, fast, summaries, denyTools } =
     frontmatter
+  if (family !== undefined && (typeof family !== 'string' || !isFamilyName(family)))
+    throw new Error('family must be a family name: lowercase letters, digits and -')
   if (denyTools !== undefined && !isTools(denyTools))
     throw new Error('denyTools must be a list of tool names')
   if (description !== undefined && (typeof description !== 'string' || !description.trim()))
@@ -199,6 +232,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     ...(description !== undefined ? { description: description.trim() } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(thinking ? { thinking: thinking as ModelThinkingLevel } : {}),
+    ...(family ? { family: family } : {}),
     ...(isolate ? { isolate: isolate } : {}),
     ...(resident !== undefined ? { resident: resident } : {}),
     ...(fast !== undefined ? { fast } : {}),
@@ -379,8 +413,12 @@ export async function discoverAgents(
     }
   }
   const decision = projectDecision(projectRoot, userHome)
+  const families = await readFamilies(userHome, projectRoot)
   return {
-    definitions: [...definitions.values()],
+    definitions: [...definitions.values()].map((definition) => ({
+      ...definition,
+      runs: definitionRuns(definition, families),
+    })),
     errors,
     replaced,
     projectSetup: decision === true ? 'trusted' : decision === false ? 'declined' : 'undecided',
@@ -392,6 +430,7 @@ export interface DefinitionFields {
   description: string
   model?: string
   thinking?: string
+  family?: string
   tools?: string[]
   denyTools?: string[]
   isolate?: 'none' | 'worktree'
@@ -425,6 +464,7 @@ export function serializeDefinition(
     `description: ${scalar(frontmatter.description.trim())}`,
     ...(frontmatter.model ? [`model: ${scalar(frontmatter.model)}`] : []),
     ...(frontmatter.thinking ? [`thinking: ${scalar(frontmatter.thinking)}`] : []),
+    ...(frontmatter.family ? [`family: ${scalar(frontmatter.family)}`] : []),
     ...(frontmatter.tools ? [`tools: ${toolList(frontmatter.tools)}`] : []),
     ...(frontmatter.denyTools?.length ? [`denyTools: ${toolList(frontmatter.denyTools)}`] : []),
     ...(frontmatter.isolate === 'worktree' ? ['isolate: worktree'] : []),
@@ -510,6 +550,10 @@ export async function saveOverlay(
   if (form.thinking !== base.thinking) {
     if (!form.thinking) throw cannot('clear thinking')
     settings.push(`thinking: ${scalar(form.thinking)}`)
+  }
+  if (form.family !== base.family) {
+    if (!form.family) throw cannot('clear the family')
+    settings.push(`family: ${scalar(form.family)}`)
   }
   if ((form.isolate ?? 'none') !== (base.isolate ?? 'none'))
     settings.push(`isolate: ${form.isolate ?? 'none'}`)

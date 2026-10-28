@@ -19,6 +19,7 @@ import type { SystemInfo, Usage } from '@/sdk'
 import { Row, Rows } from '@/components/ui/rows'
 import { useWorkspacesMeta, Workspaces as WorkspaceRows } from '../workspaces/ui.tsx'
 import { Copy, ErrorText, Meter, Section } from './ui.tsx'
+import { ModelLabel } from '../models/ui.tsx'
 import { SkillPicker, skillDialog } from './skill-picker.tsx'
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -261,7 +262,11 @@ function Model() {
     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
   )
   return (
-    <Section id="model" meta={ref?.modelId ?? 'none'} title="Model & usage">
+    <Section
+      id="model"
+      meta={ref ? <ModelLabel model={ref} thinking={agent.thinkingLevel} /> : 'none'}
+      title="Model & usage"
+    >
       <Rows>
         <Row label="provider">
           {ref?.provider ?? <span className="text-warning">none</span>}

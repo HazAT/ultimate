@@ -37,6 +37,8 @@ export const ContextDoc = docRef<ContextUsage>('conversations.context')
 export type SummaryModelSetting = {
   value: unknown
   source: 'default' | 'user' | 'project'
+  /** Without a pin: the model family summaries run on (`modelFamilies`). */
+  family?: string
   default: string
   /** The project's settings file, when it decides the model. */
   path?: string

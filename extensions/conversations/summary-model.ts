@@ -5,20 +5,29 @@ import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { previewModel } from '../../lib/agents.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { parseSummaryModel } from './summary-model-ref.ts'
+import { readFamilies } from '../../lib/families-settings.ts'
+import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES, mergeFamilies } from '../../lib/families.ts'
 
-/** Titles, summaries and reply summaries use this model unless settings name another. */
-const DEFAULT_SUMMARY_MODEL = 'openai-codex/gpt-6-luna:medium'
+/** Titles, summaries and reply summaries use the summaries family's model unless settings pin another. */
+const tiny = BUILTIN_FAMILIES[FEATURES.summaries.family]
+const DEFAULT_SUMMARY_MODEL = `${tiny.model}:${tiny.thinking ?? 'medium'}`
 
 /** A resolved summary model, kept in a task's memo so a resumed task asks the same one. */
 export type SummaryModel = { provider: string; id: string; thinking: ModelThinkingLevel }
 
 export type SummaryModelHost = Pick<ExtensionHost, 'userHome' | 'projectSettings' | 'notice'> & {
   modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getAvailableSnapshot'>
+  settings?: Pick<ExtensionHost['settings'], 'getDefaultProvider' | 'getDefaultModel'>
+  /** The project whose model families apply; without it, the built-in ones. */
+  projectRoot?: string
 }
 
-/** The configured value and where it comes from: the project's settings override the user's. */
+/**
+ * The configured value and where it comes from: a `summaryModel` pin, the project's over the user's, else the model of
+ * the family summaries are assigned to (`modelFamilies`, default `tiny`).
+ */
 export async function summaryModelSetting(
-  host: Pick<SummaryModelHost, 'userHome' | 'projectSettings'>,
+  host: Pick<SummaryModelHost, 'userHome' | 'projectSettings' | 'settings' | 'projectRoot'>,
 ) {
   // Invalid settings JSON is reported where settings load; here it counts as unset.
   const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
@@ -29,9 +38,22 @@ export async function summaryModelSetting(
   ] as const)
     if (Object.hasOwn(settings, 'summaryModel'))
       return { value: settings.summaryModel, source, default: DEFAULT_SUMMARY_MODEL }
+  const families = host.projectRoot
+    ? await readFamilies(host.userHome, host.projectRoot, project)
+    : mergeFamilies()
+  const assigned = families.assign.summaries ?? FEATURES.summaries.family
+  const family = Object.hasOwn(families.families, assigned) ? assigned : DEFAULT_FAMILY
+  const spec = families.families[family]
+  // A default family without a model of its own runs Pi's default model.
+  const model =
+    spec.model ??
+    (family === DEFAULT_FAMILY && host.settings?.getDefaultProvider()
+      ? `${host.settings.getDefaultProvider()}/${host.settings.getDefaultModel()}`
+      : undefined)
   return {
-    value: DEFAULT_SUMMARY_MODEL,
+    value: model ? `${model}:${spec.thinking ?? 'medium'}` : DEFAULT_SUMMARY_MODEL,
     source: 'default' as const,
+    family,
     default: DEFAULT_SUMMARY_MODEL,
   }
 }

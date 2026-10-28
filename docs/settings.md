@@ -20,11 +20,14 @@ tier, while a core-tier name (`onboarding`, `subagents`, `lineage`, …) is igno
 produce a notice. To skip onboarding on a machine whose user knows Ultimate, set `"onboarding": false` in
 `~/.ultimate/settings.json` (user settings only): no Get ready, no Start here, no setup cards and no "set up git"
 reminder, while the Extensions panel and ⌘K Get ready… stay available and an undecided project setup keeps its
-status-line reminder. `summaryModel` (`"provider/id[:thinking]"`, default `openai-codex/gpt-6-luna:medium`; project over user)
-picks the model for automatic titles, summaries, reply summaries and tree abstracts. Set it in either file or with
+status-line reminder. Model families (⌘K Model families…, `extensions/models/README.md`) are kept per project in
+`~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; a
+project's `.ultimate/settings.json` `modelFamilies` applies over them. `summaryModel` (`"provider/id[:thinking]"`; project over user; without it the
+summaries family's model, by default the tiny family's `openai-codex/gpt-6-luna:low`)
+pins the model for automatic titles, summaries, reply summaries and tree abstracts. Set it in either file or with
 the "Summary model…" command, and it applies to the next request. `fastModels` (`["openai-codex/<id>", …]`, or `openai/`; project over
 user) runs those models on the priority tier through the `fast` extension, at a higher usage rate. `instance.model`
-(`"provider/id"`, project over user, default `openai-codex/gpt-6.1-sol`; `null` turns it off) is the one model every
+(`"provider/id"`, project over user, default the previews family's model, the fast family's `openai-codex/gpt-6.1-sol`; `null` turns it off) is the one model every
 agent in a preview (`instance start`) runs on, fast tier included; see `extensions/instance/README.md`.
 `remotes` (user settings only, `{ "<machine>": { "<project>": "<url>" } }`) names other machines' Ultimate instances,
 for example `{ "laptop": { "my-app": "https://laptop.tail1234.ts.net:4747" } }`: codemode's `{ project }` reads and

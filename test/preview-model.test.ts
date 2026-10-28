@@ -61,7 +61,7 @@ it('reads instance.model project over user, defaults to Sol and turns off with n
   const user = (value: unknown) =>
     writeFile(join(userHome, '.ultimate/settings.json'), JSON.stringify(value))
   let project = {}
-  const host = { userHome, projectSettings: async () => project }
+  const host = { userHome, projectRoot: userHome, projectSettings: async () => project }
 
   expect(await previewModelSetting(host)).toBe(DEFAULT_PREVIEW_MODEL)
   await user({ instance: { model: 'openai-codex/gpt-6-luna' } })

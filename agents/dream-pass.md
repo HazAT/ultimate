@@ -1,7 +1,7 @@
 ---
 name: dream-pass
 description: Runs one read-only pass of a dream (memory, failures, tools, corrections, codify or project) and reports findings with evidence.
-model: openai-codex/gpt-6.1-sol
+family: fast
 fast: true
 tools: [read, bash, codemode, memory]
 ---

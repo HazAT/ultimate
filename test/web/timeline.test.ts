@@ -61,9 +61,16 @@ describe('switchAt', () => {
       response({ model: 'sonnet' }),
       response({ provider: 'claude-code', model: 'sonnet' }),
     ]
-    expect(switchAt(entries, entries[1])).toEqual({ model: { from: 'opus', to: 'sonnet' } })
+    expect(switchAt(entries, entries[1])).toEqual({
+      model: { from: 'opus', to: 'sonnet', fromRef: 'anthropic/opus', toRef: 'anthropic/sonnet' },
+    })
     expect(switchAt(entries, entries[2])).toEqual({
-      model: { from: 'anthropic/sonnet', to: 'claude-code/sonnet' },
+      model: {
+        from: 'anthropic/sonnet',
+        to: 'claude-code/sonnet',
+        fromRef: 'anthropic/sonnet',
+        toRef: 'claude-code/sonnet',
+      },
     })
   })
 
@@ -96,11 +103,16 @@ describe('switchAt', () => {
   it('reports a model and thinking change together', () => {
     const entries = [response({ provider: 'openai', model: 'gpt', level: null }), response()]
     expect(switchAt(entries, entries[1])).toEqual({
-      model: { from: 'openai/gpt', to: 'anthropic/opus' },
+      model: {
+        from: 'openai/gpt',
+        to: 'anthropic/opus',
+        fromRef: 'openai/gpt',
+        toRef: 'anthropic/opus',
+      },
     })
     const both = [response(), input(1), response({ model: 'sonnet', level: 'low' })]
     expect(switchAt(both, both[2])).toEqual({
-      model: { from: 'opus', to: 'sonnet' },
+      model: { from: 'opus', to: 'sonnet', fromRef: 'anthropic/opus', toRef: 'anthropic/sonnet' },
       thinking: { from: 'high', to: 'low' },
     })
   })

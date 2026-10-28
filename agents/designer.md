@@ -1,6 +1,6 @@
 ---
 name: designer
-model: claude-code/claude-opus-5-5
+family: design
 isolate: worktree
 denyTools: [instance]
 description: A product designer who builds front-end, UI and design work, and judges it from screenshots.

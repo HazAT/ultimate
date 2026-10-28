@@ -14,7 +14,17 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { LoginChanged } from './api.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
-import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
+import {
+  AnswerAction,
+  CancelAction,
+  FamiliesAction,
+  LoginAction,
+  LoginDoc,
+  LogoutAction,
+  SaveFamiliesAction,
+} from './refs.ts'
+import type { SaveFamilies } from './refs.ts'
+import { familiesView, saveFamilies } from './families.ts'
 import { fallback } from './fallback.ts'
 
 /** A Pi type as a document holds it: plain JSON, arrays mutable. */
@@ -97,6 +107,14 @@ const loginChanged = async (host: ActionContext['host'], provider: string) =>
     })
 
 export const actions = {
+  /** The families, who runs on which, and the concurrency caps, for the families dialog. */
+  families: implementAction(FamiliesAction, (_args, { host }) => familiesView(host)),
+  /** Save the families dialog: families, assignments, caps; optionally move running conversations along. */
+  saveFamilies: implementAction(SaveFamiliesAction, (args, { host }) => {
+    if (!args || typeof args !== 'object' || Array.isArray(args))
+      throw new Error('Expected families')
+    return saveFamilies(host, args as SaveFamilies)
+  }),
   /** Start a login flow for the calling conversation and resolve with its id; the document shows its progress. */
   login: implementAction(LoginAction, async (args, { host, conversationId }) => {
     const provider = text(args, 'provider')

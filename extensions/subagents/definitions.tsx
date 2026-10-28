@@ -1,4 +1,13 @@
-import { BotIcon, CopyIcon, PlusIcon, Trash2Icon, TriangleAlertIcon, XIcon } from 'lucide-react'
+import {
+  BotIcon,
+  CopyIcon,
+  LayersIcon,
+  PinIcon,
+  PlusIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  XIcon,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -16,11 +25,14 @@ import {
   useSystem,
   useUltimate,
 } from '@/sdk'
+import { familiesDialog, FamilyLabel, useFamilies } from '../models/ui.tsx'
 import {
+  FamilyField,
   Field,
   InstructionsEditor,
   inputClass,
   ModelField,
+  PIN,
   Segmented,
   ToolsField,
   StandingField,
@@ -66,6 +78,7 @@ export function Definitions() {
   const [editing] = useDialog(definitionDialog)
   useRefresh(refetch, String(editing))
   const show = useOpenDefinition()
+  const { open } = useUltimate()
   if (!data) return null
   const { definitions, errors } = data
   return (
@@ -77,6 +90,16 @@ export function Definitions() {
               {definitions.length}
               {errors.length > 0 && <span className="text-error"> · {errors.length} invalid</span>}
             </span>
+            <Button
+              className="h-5 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => open(familiesDialog)}
+              size="xs"
+              title="Pick a model per family and put agents in families"
+              variant="ghost"
+            >
+              <LayersIcon className="size-3" />
+              Families
+            </Button>
             <Button
               className="h-5 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
               onClick={() => show('')}
@@ -99,7 +122,10 @@ export function Definitions() {
           onClick={() => show(definition.name)}
           title={[
             definition.path,
-            definition.model && `model: ${definition.model.provider}/${definition.model.modelId}`,
+            definition.runs?.family
+              ? `family: ${definition.runs.family}${definition.runs.via === 'assigned' ? ' (families dialog)' : ''}`
+              : definition.model &&
+                `model: ${definition.model.provider}/${definition.model.modelId}`,
             `tools: ${definition.tools?.join(', ') ?? 'inherited'}`,
           ]
             .filter(Boolean)
@@ -111,9 +137,17 @@ export function Definitions() {
             <span className="shrink-0 text-foreground/85">{definition.name}</span>
             {definition.source !== 'builtin' && <Tag>{definition.source}</Tag>}
             {definition.isolate === 'worktree' && <Tag>worktree</Tag>}
-            <span className="ml-auto truncate pl-2 text-[10.5px] text-muted-foreground/70">
-              {definition.model?.modelId ?? 'inherits model'}
-              {definition.thinking && ` · ${definition.thinking}`}
+            <span className="ml-auto flex min-w-0 items-center gap-1 truncate pl-2 text-[10.5px] text-muted-foreground/70">
+              {definition.runs?.family || !definition.model ? (
+                <FamilyLabel family={definition.runs?.family} />
+              ) : (
+                <>
+                  <PinIcon className="size-2.5 shrink-0" />
+                  <span className="truncate">{definition.model.modelId}</span>
+                </>
+              )}
+              {(definition.runs?.thinking ?? definition.thinking) &&
+                ` · ${definition.runs?.thinking ?? definition.thinking}`}
             </span>
           </div>
           <p className="line-clamp-2 pl-5 font-sans text-[12px] leading-snug text-muted-foreground">
@@ -221,6 +255,8 @@ interface Draft {
   description: string
   model: ModelRef | null
   thinking: string | null
+  /** The family it names; unused while it pins `model`. */
+  family: string | null
   tools: string[] | null
   /** Kept as read: the form has no control for it, and a save must not drop it. */
   denyTools: string[]
@@ -235,6 +271,7 @@ const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
   description: definition?.description ?? '',
   model: definition?.model ?? null,
   thinking: definition?.thinking ?? null,
+  family: definition?.family ?? null,
   tools: definition?.tools ?? null,
   denyTools: definition?.denyTools ?? [],
   resident: definition?.resident ?? false,
@@ -279,8 +316,21 @@ function Form({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string>()
   const models = useModels()
+  const { open } = useUltimate()
+  const families = useFamilies()
+  const [pinning, setPinning] = useState(!!draft.model)
+  const runs = shown?.definition?.runs
+  const assigned = runs?.via === 'assigned' ? runs.family : undefined
+  const familyOf = (name: string | null) =>
+    families?.families.find((family) => family.name === (name ?? 'default'))
+  const familyRef = (name: string | null) => {
+    const model = familyOf(name)?.model
+    const slash = model?.indexOf('/') ?? -1
+    return model ? { provider: model.slice(0, slash), modelId: model.slice(slash + 1) } : undefined
+  }
+  const familyModel = familyRef(assigned ?? draft.family) ?? discovery.main.model
   const levelsOf = (model: ModelRef | undefined) => thinkingLevels(models, model)
-  const levels = levelsOf(draft.model ?? discovery.main.model)
+  const levels = levelsOf(draft.model ?? familyModel)
   const set = (change: Partial<Draft>) => {
     setDraft((previous) => ({ ...previous, ...change }))
     setError(undefined)
@@ -326,6 +376,7 @@ function Form({
           description: draft.description,
           ...(draft.model ? { model: `${draft.model.provider}/${draft.model.modelId}` } : {}),
           ...(draft.thinking ? { thinking: draft.thinking } : {}),
+          ...(!draft.model && draft.family ? { family: draft.family } : {}),
           ...(draft.tools ? { tools: draft.tools } : {}),
           ...(draft.denyTools.length ? { denyTools: draft.denyTools } : {}),
           resident: draft.resident,
@@ -439,24 +490,70 @@ function Form({
               value={draft.description}
             />
           </Field>
-          <Field label="Model">
-            <ModelField
-              inherited={discovery.main.model}
-              onChange={(model) => {
-                // A level the new model lacks would be clamped at start; inherit instead.
-                const unsupported =
-                  draft.thinking &&
-                  !levelsOf(model ?? discovery.main.model).includes(draft.thinking)
-                set({ model, ...(unsupported ? { thinking: null } : {}) })
+          <Field
+            hint={
+              pinning ? (
+                'Runs on this model whatever the families say, unless the families dialog assigns it a family.'
+              ) : assigned ? (
+                <>
+                  The families dialog assigns it to <FamilyLabel family={assigned} />, which wins
+                  over this file.{' '}
+                  <button
+                    className="cursor-pointer text-foreground hover:underline"
+                    onClick={() => open(familiesDialog)}
+                    type="button"
+                  >
+                    Open families
+                  </button>
+                </>
+              ) : (
+                <>
+                  Runs on <FamilyLabel family={draft.family ?? 'default'} />; change a family's
+                  model in{' '}
+                  <button
+                    className="cursor-pointer text-foreground hover:underline"
+                    onClick={() => open(familiesDialog)}
+                    type="button"
+                  >
+                    Model families
+                  </button>
+                  .
+                </>
+              )
+            }
+            label="Model family"
+          >
+            <FamilyField
+              onChange={(value) => {
+                if (value === PIN) {
+                  setPinning(true)
+                  return
+                }
+                setPinning(false)
+                set({ family: value, model: null })
               }}
-              value={draft.model}
+              value={pinning ? PIN : (draft.family ?? 'default')}
             />
+            {pinning && (
+              <ModelField
+                inherited={familyModel}
+                onChange={(model) => {
+                  // A level the new model lacks would be clamped at start; inherit instead.
+                  const unsupported =
+                    draft.thinking && !levelsOf(model ?? familyModel).includes(draft.thinking)
+                  set({ model, ...(unsupported ? { thinking: null } : {}) })
+                }}
+                value={draft.model}
+              />
+            )}
           </Field>
           <Field
             hint={
               draft.thinking
                 ? undefined
-                : `Inherits the main conversation's${discovery.main.thinking ? ` (${discovery.main.thinking})` : ''}, within what the model supports.`
+                : !pinning && familyOf(assigned ?? draft.family)?.thinking
+                  ? `Inherits its family's (${familyOf(assigned ?? draft.family)?.thinking}), within what the model supports.`
+                  : `Inherits the main conversation's${discovery.main.thinking ? ` (${discovery.main.thinking})` : ''}, within what the model supports.`
             }
             label="Thinking"
           >

@@ -1,8 +1,7 @@
 ---
 name: watcher
 description: Owns one script automation, writing and repairing its supervised background script.
-model: openai-codex/gpt-6-luna
-thinking: low
+family: tiny
 tools: [read, write, edit, bash, automation]
 ---
 

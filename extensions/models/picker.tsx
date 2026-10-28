@@ -1,4 +1,11 @@
-import { BrainIcon, CheckIcon, KeyRoundIcon, LogInIcon, TerminalIcon } from 'lucide-react'
+import {
+  BrainIcon,
+  CheckIcon,
+  KeyRoundIcon,
+  LayersIcon,
+  LogInIcon,
+  TerminalIcon,
+} from 'lucide-react'
 import { Fragment, useMemo, useState } from 'react'
 import {
   Command,
@@ -11,6 +18,8 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { cn, errorMessage, useDialog, useUltimate } from '@/sdk'
+import { familyColor, familyTitle } from '../../lib/families.ts'
+import { FamilyDot, familiesDialog, runsOn, useFamilies } from './families.tsx'
 import {
   authLabel,
   dialogs,
@@ -51,6 +60,7 @@ export function ModelRow({
     >
       <CheckIcon className={cn('size-3.5', current ? 'text-brand' : 'opacity-0')} />
       <span className={cn('shrink-0', current ? 'text-brand' : 'text-foreground')}>{model.id}</span>
+      <Families model={`${model.provider}/${model.id}`} />
       {model.name !== model.id && (
         <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground/80">
           {model.name}
@@ -77,6 +87,23 @@ export function ModelRow({
       </span>
     </CommandItem>
   )
+}
+
+/** The families that run `model`, each as its colored name. */
+function Families({ model }: { model: string }) {
+  const families = useFamilies()
+  const own = families?.families.filter((family) => runsOn(family) === model) ?? []
+  return own.map((family) => (
+    <span
+      className="flex shrink-0 items-center gap-1 font-sans text-[11px]"
+      key={family.name}
+      style={{ color: familyColor(family.color) }}
+      title={`The ${family.name} family's model${family.thinking ? ` · thinking ${family.thinking}` : ''}`}
+    >
+      <FamilyDot color={family.color} />
+      {familyTitle(family.name)}
+    </span>
+  ))
 }
 
 /** Searchable models of every provider, grouped; picking one configures the conversation that opened it. */
@@ -179,6 +206,20 @@ export function ModelPicker() {
               </Fragment>
             ))}
             <CommandGroup heading="Accounts">
+              <CommandItem
+                className="gap-2 py-1 font-mono text-[12px]"
+                onSelect={() => {
+                  setOpen(false)
+                  actions.open(familiesDialog)
+                }}
+                value="families"
+              >
+                <LayersIcon className="size-3.5" />
+                Model families…
+                <span className="ml-auto text-[11px] text-muted-foreground">
+                  a model per family, agents in families
+                </span>
+              </CommandItem>
               <CommandItem
                 className="gap-2 py-1 font-mono text-[12px]"
                 onSelect={() => openLogin({ ...actions, conversationId: id })}

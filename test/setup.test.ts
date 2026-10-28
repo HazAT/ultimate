@@ -38,7 +38,7 @@ it('falls back from a default summary model without a login, and says so once', 
   const status = await summaryModelStatus(host)
   expect(status).toMatchObject({
     model: { provider: 'openrouter', id: 'anthropic/claude-haiku-5.5' },
-    configured: 'openai-codex/gpt-6-luna:medium',
+    configured: 'openai-codex/gpt-6-luna:low',
     fellBack: true,
   })
   await summaryModelStatus(host)
@@ -104,7 +104,7 @@ async function checkHost(options: { logins: string[]; secrets?: string[] }) {
     need: () => ({
       summaryModelStatus: async () => ({
         model: { provider: 'openrouter', id: 'haiku', thinking: 'medium' },
-        configured: 'openai-codex/gpt-6-luna:medium',
+        configured: 'openai-codex/gpt-6-luna:low',
         source: 'default',
         fellBack: true,
       }),
