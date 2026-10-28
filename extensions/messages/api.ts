@@ -20,6 +20,8 @@ export type Message = {
   at: number
   reply: boolean
   re?: number
+  /** A reply that answers several open messages at once: the others it answers, after `re`. */
+  also?: number[]
   state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
   entry?: EntryId
   answer?: EntryId

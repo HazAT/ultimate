@@ -11,6 +11,13 @@ export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
   if (log.messages.length > 300) log.messages.splice(0, log.messages.length - 300)
   return message
 }
+/** The messages reply `m` answers, as the model reads them: "message 4", "messages 4 and 6". */
+export function answered(m: Pick<Message, 're' | 'also'>) {
+  const ids = [m.re!, ...(m.also ?? [])]
+  return ids.length === 1
+    ? `message ${ids[0]}`
+    : `messages ${ids.slice(0, -1).join(', ')} and ${ids.at(-1)}`
+}
 export const terminal = {
   status: 'terminal',
   outcome: { status: 'completed', result: null },

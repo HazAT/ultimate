@@ -515,6 +515,53 @@ it('turns a message to a sender it owes an answer into that answer, once, with i
   view.dispose()
   expect(f.observed.filter((t) => t.startsWith('Reply from'))).toHaveLength(1)
 })
+/**
+ * Two messages from #1 that steer the recipient's held run at two tool rounds (the first holds once more), so the
+ * run's one final answer settles both.
+ */
+async function twoOpen(f: Awaited<ReturnType<typeof fixture>>, second: string) {
+  await f.recipient.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  await f.send(`#${f.recipient.id}`, 'HOLD')
+  await f.send(`#${f.recipient.id}`, second)
+  f.hold.release()
+  await f.recipient.waitForIdle(context)
+  await f.opened.harness.waitForIdle(context)
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      (t) => t.record.kind !== 'board.delivery',
+    ),
+  )
+  return (await f.log())!.messages
+}
+it('sends one reply naming every open message a run answered', async () => {
+  // #14820 answered three messages from @ultimate in one run, and its answer arrived three times.
+  const f = await fixture()
+  const [first, second, reply, ...rest] = await twoOpen(f, 'Second')
+  expect(rest).toEqual([])
+  expect([first.state, second.state]).toEqual(['answered', 'answered'])
+  expect(reply).toMatchObject({ from: f.recipient.id, to: 1, re: first.id, also: [second.id] })
+  expect(await replies(f)).toHaveLength(1)
+  expect(f.observed.filter((t) => t.startsWith('Reply from'))).toEqual([
+    expect.stringMatching(
+      new RegExp(`^Reply from #${f.recipient.id} to your messages ${first.id} and ${second.id}:`),
+    ),
+  ])
+})
+it('answers every owed message with one message, failing none', async () => {
+  // #10238 answered with a message; it settled one of three owed messages, and the other two came back "failed".
+  const f = await fixture()
+  const [first, second, reply, ...rest] = await twoOpen(
+    f,
+    'SEND ' + JSON.stringify({ to: '#1', text: 'Both done' }),
+  )
+  expect(rest).toEqual([])
+  expect([first.state, second.state]).toEqual(['answered', 'answered'])
+  expect(reply).toMatchObject({ text: 'Both done', re: first.id, also: [second.id] })
+  expect((await toolResults(f)).at(-1)).toContain(
+    `Sent as your answer to messages ${first.id} and ${second.id}.`,
+  )
+})
 it("turns @ultimate's message to the user it owes an answer into that answer and ends the run", async () => {
   const f = await fixture()
   const owe = (text: string) =>

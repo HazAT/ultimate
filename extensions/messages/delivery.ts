@@ -14,7 +14,7 @@ import { locate, postAction } from '../../lib/remote.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
-import { append, terminal } from './log.ts'
+import { answered, append, terminal } from './log.ts'
 import { remoteLabel } from './addresses.ts'
 
 export function delivery(host: ExtensionHost) {
@@ -174,15 +174,19 @@ export function delivery(host: ExtensionHost) {
         await runtime.commit(async (tx) => {
           const answer =
             settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
-          const original = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-            (item) => item.id === m.id,
-          )
+          const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+          const original = log.messages.find((item) => item.id === m.id)
           if (!m.reply) {
             if (original && answer !== undefined) original.answer = answer
             return terminal
           }
-          // The recipient answered with a message; its final answer stays where it is.
-          if (original?.state === 'answered') return terminal
+          // The recipient answered with a message, or another message's reply answers this one too: the final answer
+          // stays where it is.
+          if (
+            original?.state === 'answered' ||
+            log.messages.some((item) => item.re === m.id || item.also?.includes(m.id))
+          )
+            return terminal
           const model =
             answer === undefined ? undefined : (await tx.entry(AssistantEntry, answer))?.model?.[0]
           const text =
@@ -211,12 +215,31 @@ export function delivery(host: ExtensionHost) {
             if (error !== undefined) original.error = error
             if ('entry' in settled && settled.entry !== undefined) original.entry = settled.entry
           }
+          // One run took several open messages from this sender: its one answer settled them all, and one reply names
+          // them all. Their deliveries find this reply and send none of their own.
+          const together = [m.id]
+          if (answer !== undefined && m.from !== 'remote')
+            for (const other of log.messages) {
+              if (other.id === m.id || other.from !== m.from || other.to !== m.to) continue
+              // Still `sent` when its own delivery has not yet seen it leave the queue.
+              if (!other.reply || (other.state !== 'delivered' && other.state !== 'sent')) continue
+              const placed = await tx.submissionByRequest(recipient.id, `board:${other.id}`)
+              if (placed?.type !== 'input' || placed.status !== 'done' || placed.answer !== answer)
+                continue
+              other.state = state ?? 'answered'
+              other.entry = placed.entry
+              other.answer = answer
+              if (error !== undefined) other.error = error
+              together.push(other.id)
+            }
+          const [re, ...also] = together.toSorted((a, b) => a - b)
           const response = await append(tx, {
             from: m.to,
             to: m.from,
             text: error ?? text,
             reply: false,
-            re: m.id,
+            re,
+            ...(also.length ? { also } : {}),
             state: state ?? 'sent',
             ...(answer ? { answer } : {}),
             ...(error ? { error } : {}),
@@ -287,6 +310,7 @@ export function delivery(host: ExtensionHost) {
             data: {
               id: m.id,
               re: m.re!,
+              ...(m.also ? { also: m.also } : {}),
               from: m.from,
               text: m.text,
               failed,
@@ -295,7 +319,7 @@ export function delivery(host: ExtensionHost) {
               ...(m.remote ? { remote: m.remote } : {}),
             },
           }
-          const body = `Reply from ${task.input.toLabel} to your message ${m.re}${stopped ? ' (stopped)' : failed ? ' (failed)' : ''}:\n${m.text}`
+          const body = `Reply from ${task.input.toLabel} to your ${answered(m)}${stopped ? ' (stopped)' : failed ? ' (failed)' : ''}:\n${m.text}`
           const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
           const requestId = `board-reply:${m.id}`
           // A reply that triage, before its removal, wrote as context stands; a short input after it wakes the sender.

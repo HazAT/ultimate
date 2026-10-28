@@ -24,6 +24,7 @@ import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
+import { answered } from './log.ts'
 import { send } from './send.ts'
 import { route, working } from './route.ts'
 import { remoteAction, remoteReplyAction, tell } from './remote.ts'
@@ -215,7 +216,7 @@ export default function messages(host: ExtensionHost) {
               output: [
                 {
                   type: 'text',
-                  text: `Sent as your answer to message ${sent.re}.`,
+                  text: `Sent as your answer to ${answered(sent)}.`,
                 },
               ],
               control: { terminate: true as const },
