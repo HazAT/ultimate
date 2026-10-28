@@ -422,6 +422,10 @@ codeBlocks: {
 }
 ```
 
+Fenced `mermaid` blocks already render as diagrams in the page's theme (Streamdown's diagram support, with Mermaid
+loaded when a message first shows one); a chart that does not parse, or not yet, stays its highlighted code. A
+`codeBlocks` renderer for `mermaid` takes over from it.
+
 ### Message actions
 
 `messageActions` contributes components to the hover action row on stored user and assistant messages, between the

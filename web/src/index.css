@@ -277,17 +277,25 @@
   & [data-streamdown='inline-code'] {
     @apply rounded-sm bg-muted px-1 py-px font-mono text-[0.86em];
   }
-  & [data-streamdown='code-block'] {
+  /* A Mermaid diagram sits in the same frame as a code block: its header, its actions, its body. */
+  & :is([data-streamdown='code-block'], [data-streamdown='mermaid-block']) {
     @apply my-3 gap-0 rounded-md border-border/80 bg-terminal p-0;
   }
-  & [data-streamdown='code-block-header'] {
+  &
+    :is(
+      [data-streamdown='code-block-header'],
+      [data-streamdown='mermaid-block'] > div:first-child
+    ) {
     @apply h-7 px-3 text-[11px];
   }
-  & [data-streamdown='code-block'] > div.absolute {
+  & :is([data-streamdown='code-block'], [data-streamdown='mermaid-block']) > div.absolute {
     @apply top-0 right-0.5;
   }
-  & [data-streamdown='code-block-actions'] {
+  & :is([data-streamdown='code-block-actions'], [data-streamdown='mermaid-block-actions']) {
     @apply border-none bg-transparent;
+  }
+  & [data-streamdown='mermaid-block'] > div:last-child {
+    @apply rounded-none border-none bg-transparent;
   }
   & [data-streamdown='code-block-body'] {
     @apply rounded-none border-none bg-transparent px-3 pt-0 pb-2.5 font-mono text-[12px] leading-[1.6];
