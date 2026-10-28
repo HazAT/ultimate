@@ -184,7 +184,8 @@ lander's sidebar row shows the feature it lands or landed last.
      concluded branch.
 
 Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin" }`;
-both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
+both are optional. They apply only once the project's setup is trusted: until then the lander refuses a submission
+whose settings declare them, saying how to trust it, rather than landing unchecked. Anything that must follow every landing (a deploy, a notification) is an automation on the
 `workspaces.landed` event.
 
 Each attempt starts from a reset checkout, and the integrated commit is memoized after the checks, so a crash resumes

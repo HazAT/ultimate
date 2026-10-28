@@ -15,6 +15,7 @@ import type { ConversationId, JsonObject, TaskId, Tx } from '@earendil-works/pi-
 import { afterAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../server/harness.ts'
 import { Metadata } from '../../server/metadata.ts'
+import { projectSetup } from '../../server/project-setup.ts'
 import { eventLog } from '../../server/events.ts'
 import { UiState } from '../../server/ui-state.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -129,6 +130,7 @@ async function fixture(
     need: (api: { name: string }) =>
       new Proxy({}, { get: (_, key) => (lookup(api) as Record<string | symbol, unknown>)?.[key] }),
     projectSettings: async () => ({ isolates: { worktree: { setup: commands } } }),
+    projectSetup: () => projectSetup(paths.projectRoot, paths.directory),
     extensions: () => [{ name: 'workspaces', enabled: true }],
     resource<T>(key: string, create: () => T): T {
       if (!resources.has(key)) resources.set(key, create())
@@ -1196,6 +1198,21 @@ it.concurrent('wakes only the submitter on a failed landing and leaves it open',
       (entry) => entry.kind === 'workspaces.lander-report',
     ),
   ).toHaveLength(0)
+})
+it.concurrent('refuses to land when the untrusted project setup declares checks', async () => {
+  const { f, id } = await concluding()
+  await mkdir(join(f.projectRoot, '.ultimate'))
+  await writeFile(
+    join(f.projectRoot, '.ultimate/settings.json'),
+    JSON.stringify({ lander: { checks: ['exit 1'] } }),
+  )
+  const main = await git(f.projectRoot, 'rev-parse', 'main')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain(
+    "was not landed: this project's setup is not chosen yet, so the lander checks that .ultimate/settings.json declares would not run",
+  )
+  expect(await git(f.projectRoot, 'rev-parse', 'main')).toBe(main)
 })
 it.concurrent('delivers a message to a resumed branch whose checkout conclude released', async () => {
   const { f, id } = await concluding()

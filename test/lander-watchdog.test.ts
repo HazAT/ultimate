@@ -1,14 +1,16 @@
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import { afterEach, expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
 import { runGroup } from '../lib/process-group.ts'
+import { projectSetup } from '../server/project-setup.ts'
 import {
   landerSettings,
   limitsFor,
   runLanderCheck as run,
+  untrustedLander,
 } from '../extensions/workspaces/lander.ts'
 
 vi.mock('../lib/process-group.ts', () => ({ runGroup: vi.fn<typeof runGroup>() }))
@@ -140,6 +142,31 @@ it('reads plain commands and commands with their own timeout from settings', asy
     'pnpm test',
   ])
     await expect(settings(invalid)).rejects.toThrow('lander.checks must be')
+})
+
+it('refuses lander settings an untrusted project setup would skip', async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'lander-trust-')))
+  const projectRoot = join(home, 'project')
+  await mkdir(join(projectRoot, '.ultimate'), { recursive: true })
+  const host = { projectRoot, projectSetup: () => projectSetup(projectRoot, home) }
+  const declare = (lander: unknown) =>
+    writeFile(join(projectRoot, '.ultimate/settings.json'), JSON.stringify({ lander }))
+  const trust = async (decision: boolean) => {
+    await mkdir(join(home, '.ultimate'), { recursive: true })
+    await writeFile(join(home, '.ultimate/trust.json'), JSON.stringify({ [projectRoot]: decision }))
+  }
+
+  expect(await untrustedLander(host)).toBeUndefined()
+  await declare({ checks: [] })
+  expect(await untrustedLander(host)).toBeUndefined()
+  await declare({ checks: ['pnpm check'], push: 'origin' })
+  expect(await untrustedLander(host)).toBe(
+    "this project's setup is not chosen yet, so the lander checks and push that .ultimate/settings.json declares would not run",
+  )
+  await trust(false)
+  expect(await untrustedLander(host)).toMatch(/^this project's setup is turned off/)
+  await trust(true)
+  expect(await untrustedLander(host)).toBeUndefined()
 })
 
 it('preserves task cancellation instead of reporting a watchdog failure', async () => {

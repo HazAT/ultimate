@@ -11,6 +11,7 @@ import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/p
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
+import { readSettings } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CheckRan, SubmissionLanded } from './api.ts'
 import { setup } from './setup.ts'
@@ -104,7 +105,16 @@ export const log = (
 }
 type Host = Pick<
   ExtensionHost,
-  'home' | 'ultimateRoot' | 'harness' | 'projectSettings' | 'doc' | 'metadata' | 'notice' | 'emit'
+  | 'home'
+  | 'ultimateRoot'
+  | 'projectRoot'
+  | 'harness'
+  | 'projectSettings'
+  | 'projectSetup'
+  | 'doc'
+  | 'metadata'
+  | 'notice'
+  | 'emit'
 >
 /** One check command, with its own total limit in seconds when set. */
 type Check = { command: string; timeout?: number }
@@ -263,6 +273,23 @@ export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promi
     checks: checks as Settings['checks'],
     ...(lander?.push ? { push: lander.push } : {}),
   }
+}
+/**
+ * Why landing must wait: `.ultimate/settings.json` declares lander checks or a push, but `projectSettings()` reads
+ * none of it until the project's setup is trusted, so landing now would skip them without a word.
+ */
+export async function untrustedLander(host: Pick<Host, 'projectRoot' | 'projectSetup'>) {
+  const { decision } = await host.projectSetup()
+  if (decision === true) return undefined
+  const lander = (await readSettings(join(host.projectRoot, '.ultimate/settings.json'))).lander as
+    | { checks?: unknown; push?: unknown }
+    | undefined
+  const declared = [
+    ...(Array.isArray(lander?.checks) && lander.checks.length ? ['checks'] : []),
+    ...(lander?.push ? ['push'] : []),
+  ]
+  if (!declared.length) return undefined
+  return `this project's setup is ${decision === false ? 'turned off' : 'not chosen yet'}, so the lander ${declared.join(' and ')} that .ultimate/settings.json declares would not run`
 }
 export const contains = (cwd: string, ancestor: string, descendant: string) =>
   git(cwd, 'merge-base', '--is-ancestor', ancestor, descendant).then(
@@ -533,6 +560,13 @@ export function createLander(
           )
         }
         try {
+          const untrusted = await untrustedLander(host)
+          if (untrusted)
+            return await fail(
+              untrusted,
+              undefined,
+              "Ask the user to choose This project's setup (Extensions panel, Project), then submit again.",
+            )
           const settings = await landerSettings(host)
           // An earlier lander task fast-forwarded this submission and then ended (a reload or fault before its push):
           // nothing to merge or check again, push exactly what landed and report that landing.
