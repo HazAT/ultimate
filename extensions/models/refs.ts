@@ -88,6 +88,11 @@ export type FamiliesView = {
   /** The saved assignments, which the dialog edits; the project's team settings may add more. */
   assign: Record<string, string>
   limits: FamilyLimits
+  /**
+   * Open conversations on their family's model, by user id; `default` counts those of no definition. A switch moves
+   * them when their family's model changes.
+   */
+  open: Record<string, number>
   /** Whose families these are: this project's own, the most recently saved ones, or the built-in ones. */
   from: 'project' | 'recent' | 'builtin'
   /** Settings problems: a `modelFamilies` layer that fails to parse counts as empty. */

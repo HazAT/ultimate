@@ -575,6 +575,7 @@ export default function subagents(
     (await tx.doc(Profile, id)).definition ?? (await tx.doc(host.metadata, id)).label
   host.implement(Pin, {
     definitionOf,
+    concludedIn: (tx) => conversations.concludedIn(tx),
     async pin(tx, id) {
       const name = await definitionOf(tx, id)
       if (!name) return undefined

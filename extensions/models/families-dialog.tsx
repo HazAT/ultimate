@@ -1,15 +1,14 @@
 /**
- * The model families dialog: each family's model, thinking and color at the top, then a board of everything that
- * calls a model (agent definitions, summaries, previews) in one column per family, moved by drag and drop or by each
- * card's menu, and the concurrency caps under Advanced. Saving writes it all at once; "Save all & switch running"
- * also moves conversations that run on a family's old model to its new one.
+ * The model families editor, one matrix: each family is a column. Its first rows are the family's settings (model,
+ * thinking, and under More settings the concurrency cap), so another setting is another row; below them, every
+ * agent definition and feature is a row with one dot per family, and clicking a dot moves it there. Apply saves it
+ * all and, ticked, moves open conversations still on a family's old model to the new one.
  */
 import {
   AlertTriangleIcon,
   BotIcon,
   ChevronRightIcon,
   ChevronsUpDownIcon,
-  GaugeIcon,
   LayersIcon,
   PinIcon,
   PlusIcon,
@@ -18,9 +17,9 @@ import {
   XIcon,
 } from 'lucide-react'
 import { Fragment, useMemo, useState } from 'react'
-import type { DragEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Command,
   CommandEmpty,
@@ -43,22 +42,27 @@ import { FamilyDot, familiesDialog, refreshFamilies } from './families.tsx'
 import { ModelRow } from './picker.tsx'
 import { FamiliesAction, SaveFamiliesAction } from './refs.ts'
 import type { FamiliesView, FamilyLimits, FamilyUser, SaveFamilies } from './refs.ts'
-import type { ModelInfo } from './state.tsx'
 
 type Draft = SaveFamilies['families'][string]
-/** A board column for users that keep the model they pin. */
+/** The choice of a row that keeps the model its definition or setting pins. */
 const PINNED = ':pinned'
-const DRAG_TYPE = 'text/x-ultimate-family-user'
 const label = 'font-mono text-[10.5px] tracking-wider text-muted-foreground uppercase'
 const selectClass =
   'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-1.5 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50'
+const choiceOf = (user: FamilyUser) => user.family ?? PINNED
+const FROM: Record<FamiliesView['from'], string> = {
+  project: "This project's families.",
+  recent: 'This project has none of its own yet: these are the ones you saved last.',
+  builtin:
+    'The built-in families; applying makes them this project’s and the start for new projects.',
+}
 
 export function FamiliesDialog() {
   const [open, setOpen] = useDialog(familiesDialog)
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogContent
-        className="flex h-[min(92vh,60rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+        className="flex max-h-[min(92vh,60rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
         showCloseButton={false}
       >
         {open && <Loader close={() => setOpen(false)} />}
@@ -75,13 +79,13 @@ function Loader({ close }: { close: () => void }) {
       <>
         <DialogTitle className="sr-only">Model families</DialogTitle>
         <DialogDescription className="sr-only">Loading the model families</DialogDescription>
-        <p className="m-auto font-mono text-[12px] text-muted-foreground">
+        <p className="m-auto py-16 font-mono text-[12px] text-muted-foreground">
           {error ? errorMessage(error) : 'Loading…'}
         </p>
       </>
     )
   return (
-    <Editor
+    <Matrix
       close={close}
       key={JSON.stringify(data)}
       onSaved={async (message) => {
@@ -94,17 +98,20 @@ function Loader({ close }: { close: () => void }) {
   )
 }
 
-const choiceOf = (user: FamilyUser) => user.family ?? PINNED
-
-const FROM: Record<FamiliesView['from'], string> = {
-  project: "These are this project's.",
-  recent:
-    'This project has none of its own yet: these are the ones you saved last. Saving makes them its own.',
-  builtin:
-    'These are the built-in ones; saving makes them this project’s and the start for new projects.',
+/** The model and thinking a row runs on, as the draft stands: what a change of it is measured by. */
+function runsOf(
+  families: Record<string, Draft>,
+  view: FamiliesView,
+  choice: string,
+  user: FamilyUser,
+) {
+  if (choice === PINNED) return `pin ${user.pinned}`
+  const family = families[choice]
+  const follows = view.families.find((item) => item.name === choice)
+  return `${family?.model ?? follows?.follows ?? ''} ${family?.thinking ?? follows?.followsThinking ?? ''}`
 }
 
-function Editor({
+function Matrix({
   view,
   close,
   saved,
@@ -112,7 +119,7 @@ function Editor({
 }: {
   view: FamiliesView
   close: () => void
-  /** What the last save did, shown until the next change. */
+  /** What the last apply did, shown until the next change. */
   saved?: string
   onSaved: (message: string) => Promise<unknown>
 }) {
@@ -138,18 +145,39 @@ function Editor({
   const [families, setFamilies] = useState(initialFamilies)
   const [choices, setChoices] = useState<Record<string, string>>(initialChoices)
   const [limits, setLimits] = useState<FamilyLimits>(view.limits)
-  const [pending, setPending] = useState<'save' | 'switch'>()
+  const [more, setMore] = useState(
+    () => !!view.limits.global || Object.keys(view.limits.models).length > 0,
+  )
+  const [switchRunning, setSwitchRunning] = useState(true)
+  const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
   const names = Object.keys(families)
-  const dirty =
-    JSON.stringify(families) !== JSON.stringify(initialFamilies) ||
-    JSON.stringify(choices) !== JSON.stringify(initialChoices) ||
-    JSON.stringify(limits) !== JSON.stringify(view.limits)
   const users = view.users
-  const anyPinned = users.some((user) => user.pinned)
-  const byChoice = Map.groupBy(users, (user) => choices[user.id] ?? choiceOf(user))
   const find = (ref: string | undefined) =>
     ref ? models?.models.find((model) => `${model.provider}/${model.id}` === ref) : undefined
+  const choice = (user: FamilyUser) => choices[user.id] ?? choiceOf(user)
+
+  const changedFamilies = names.filter(
+    (name) => JSON.stringify(families[name]) !== JSON.stringify(initialFamilies[name]),
+  )
+  const removedFamilies = Object.keys(initialFamilies).filter((name) => !(name in families))
+  const movedUsers = users.filter((user) => choice(user) !== choiceOf(user))
+  const limitsChanged = JSON.stringify(limits) !== JSON.stringify(view.limits)
+  const changes =
+    changedFamilies.length + removedFamilies.length + movedUsers.length + (limitsChanged ? 1 : 0)
+  // Open conversations whose model or thinking the draft changes: what "switch" would move.
+  const affected =
+    users.reduce(
+      (sum, user) =>
+        runsOf(families, view, choice(user), user) ===
+        runsOf(initialFamilies, view, choiceOf(user), user)
+          ? sum
+          : sum + (view.open[user.id] ?? 0),
+      0,
+    ) +
+    (JSON.stringify(families[DEFAULT_FAMILY]) === JSON.stringify(initialFamilies[DEFAULT_FAMILY])
+      ? 0
+      : (view.open[DEFAULT_FAMILY] ?? 0))
 
   const setFamily = (name: string, change: Partial<Draft>) => {
     setFamilies((previous) => ({ ...previous, [name]: { ...previous[name], ...change } }))
@@ -164,8 +192,8 @@ function Editor({
     // Whoever ran on it goes back to where it would be without an assignment.
     setChoices((previous) =>
       Object.fromEntries(
-        Object.entries(previous).map(([id, choice]) => {
-          if (choice !== name) return [id, choice]
+        Object.entries(previous).map(([id, current]) => {
+          if (current !== name) return [id, current]
           const user = users.find((item) => item.id === id)
           const natural = user?.natural && user.natural !== name ? user.natural : DEFAULT_FAMILY
           return [id, user?.pinned ? PINNED : natural]
@@ -173,43 +201,62 @@ function Editor({
       ),
     )
   }
+  const discard = () => {
+    setFamilies(initialFamilies)
+    setChoices(initialChoices)
+    setLimits(view.limits)
+    setError(undefined)
+  }
 
-  async function save(switchRunning: boolean) {
-    setPending(switchRunning ? 'switch' : 'save')
+  async function apply() {
+    setPending(true)
     setError(undefined)
     const known = new Set(users.map((user) => user.id))
-    // Assignments of definitions not found now (another project's, a removed file) stay as they were.
+    // Assignments of definitions not found now (a removed file) stay as they were.
     const assign: Record<string, string> = Object.fromEntries(
       Object.entries(view.assign).filter(([id, family]) => !known.has(id) && family in families),
     )
     const unpin: string[] = []
     for (const user of users) {
       if (user.project) continue
-      const choice = choices[user.id] ?? choiceOf(user)
-      if (choice === PINNED) continue
-      if (user.pinned || choice !== user.natural) assign[user.id] = choice
+      const chosen = choice(user)
+      if (chosen === PINNED) continue
+      if (user.pinned || chosen !== user.natural) assign[user.id] = chosen
       if (user.kind === 'feature' && user.pinned && user.pinnedIn?.startsWith('user'))
         unpin.push(user.id)
     }
+    const switching = switchRunning && affected > 0
     try {
       const { switched } = await api.action(SaveFamiliesAction, {
         families,
         assign,
         limits,
         unpin,
-        switchRunning,
+        switchRunning: switching,
       })
       await onSaved(
-        switchRunning
-          ? `Saved · ${switched} conversation${switched === 1 ? '' : 's'} switched`
-          : 'Saved · running conversations keep their models',
+        switching
+          ? `Applied · ${switched} conversation${switched === 1 ? '' : 's'} switched`
+          : 'Applied',
       )
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
-      setPending(undefined)
+      setPending(false)
     }
   }
+
+  const sharedWith = (name: string) =>
+    names.filter(
+      (other) =>
+        other !== name && families[other].model && families[other].model === families[name].model,
+    )
+  const columns = names.length + 2
+  const groups: [string, FamilyUser[]][] = [
+    ['Agents', users.filter((user) => user.kind === 'agent')],
+    ['Features', users.filter((user) => user.kind === 'feature')],
+  ]
+  const cell = 'border-b border-border/50 px-1.5 py-1.5 align-middle'
 
   return (
     <>
@@ -218,8 +265,8 @@ function Editor({
         <div className="min-w-0 flex-1">
           <DialogTitle className="font-mono text-[14px] font-medium">Model families</DialogTitle>
           <DialogDescription className="mt-0.5 font-sans text-[12px] text-muted-foreground">
-            Pick a model per family, then put each agent and feature in a family. Changing a
-            family's model moves everything in it. {FROM[view.from]}
+            Each column is a family: its model and settings on top, who runs on it below.{' '}
+            {FROM[view.from]}
           </DialogDescription>
         </div>
         <Button
@@ -232,123 +279,268 @@ function Editor({
           <XIcon className="size-4" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 overflow-auto px-5 pt-1 pb-4">
         {view.errors.map((problem) => (
           <p
-            className="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-3 py-2 text-[12px] text-error"
+            className="mt-3 flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-3 py-2 text-[12px] text-error"
             key={problem}
           >
             <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
             {problem}
           </p>
         ))}
-        <section className="space-y-2">
-          <div className={label}>Families</div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-2">
+        <table
+          className="w-full table-fixed border-separate border-spacing-0 text-[12px]"
+          style={{ minWidth: `${15 + names.length * 8 + 2.5}rem` }}
+        >
+          <colgroup>
+            <col style={{ width: '15rem' }} />
             {names.map((name) => (
-              <FamilyCard
-                count={byChoice.get(name)?.length ?? 0}
-                draft={families[name]}
-                follows={view.families.find((family) => family.name === name)}
-                info={find(
-                  families[name].model ??
-                    view.families.find((family) => family.name === name)?.follows,
-                )}
-                key={name}
-                name={name}
-                onChange={(change) => setFamily(name, change)}
-                onRemove={
-                  Object.hasOwn(BUILTIN_FAMILIES, name) ? undefined : () => removeFamily(name)
-                }
-                project={view.families.find((family) => family.name === name)?.project}
-              />
+              <col key={name} />
             ))}
-            <AddFamily
-              onAdd={(name) =>
-                setFamilies((previous) => ({
-                  ...previous,
-                  [name]: {
-                    color:
-                      Object.keys(FAMILY_COLORS)[names.length % Object.keys(FAMILY_COLORS).length],
-                  },
-                }))
-              }
-              taken={names}
-            />
-          </div>
-        </section>
-        <section className="space-y-2">
-          <div className="flex items-baseline gap-2">
-            <span className={label}>Who runs on which</span>
-            <span className="font-sans text-[11.5px] text-muted-foreground/80">
-              drag a card to another family, or use its menu
-            </span>
-          </div>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-2">
-            {[...names, ...(anyPinned ? [PINNED] : [])].map((column) => (
-              <Column
-                color={column === PINNED ? undefined : families[column].color}
-                key={column}
-                model={column === PINNED ? undefined : families[column].model}
-                name={column}
-                onDrop={(id) => {
-                  const user = users.find((item) => item.id === id)
-                  if (!user || user.project || (column === PINNED && !user.pinned)) return
-                  move(id, column)
-                }}
+            <col style={{ width: '2.5rem' }} />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-background">
+            <tr>
+              <th className={cn(cell, 'pt-3')} />
+              {names.map((name) => (
+                <th className={cn(cell, 'pt-3 text-left')} key={name}>
+                  <FamilyHeader
+                    color={families[name].color}
+                    name={name}
+                    onColor={(color) => setFamily(name, { color })}
+                    onRemove={
+                      Object.hasOwn(BUILTIN_FAMILIES, name) ? undefined : () => removeFamily(name)
+                    }
+                    project={view.families.find((family) => family.name === name)?.project}
+                  />
+                </th>
+              ))}
+              <th className={cn(cell, 'pt-3')}>
+                <AddFamily
+                  onAdd={(name) =>
+                    setFamilies((previous) => ({
+                      ...previous,
+                      [name]: {
+                        color:
+                          Object.keys(FAMILY_COLORS)[
+                            names.length % Object.keys(FAMILY_COLORS).length
+                          ],
+                      },
+                    }))
+                  }
+                  taken={names}
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <SettingRow cell={cell} label="Model">
+              {names.map((name) => {
+                const follows = view.families.find((family) => family.name === name)?.follows
+                const info = find(families[name].model ?? follows)
+                return (
+                  <td className={cell} key={name}>
+                    <div className="flex items-center gap-0.5">
+                      <ModelSelect
+                        onChange={(model) => setFamily(name, { model })}
+                        placeholder={
+                          follows ? `Pi · ${follows.slice(follows.indexOf('/') + 1)}` : undefined
+                        }
+                        value={families[name].model}
+                      />
+                      {name === DEFAULT_FAMILY && families[name].model && follows && (
+                        <button
+                          aria-label="Follow Pi's default model"
+                          className="shrink-0 rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                          onClick={() => setFamily(name, { model: undefined })}
+                          title={`Follow Pi's default model (${follows})`}
+                          type="button"
+                        >
+                          <XIcon className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                    {(families[name].model ?? follows) && (!info || !info.available) && (
+                      <p
+                        className="mt-0.5 truncate font-sans text-[10.5px] text-warning"
+                        title="Its members run the default model until it has a login"
+                      >
+                        {info ? `no ${info.provider} login` : 'not in the model list'}
+                      </p>
+                    )}
+                  </td>
+                )
+              })}
+            </SettingRow>
+            <SettingRow cell={cell} label="Thinking">
+              {names.map((name) => {
+                const follows = view.families.find((family) => family.name === name)
+                const info = find(families[name].model ?? follows?.follows)
+                const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
+                // A built-in level can be changed but not cleared: settings keep only what differs from it.
+                const inherit = !BUILTIN_FAMILIES[name]?.thinking
+                const current = families[name].thinking
+                return (
+                  <td className={cell} key={name}>
+                    <select
+                      aria-label={`${name} thinking`}
+                      className={selectClass}
+                      onChange={(event) =>
+                        setFamily(name, {
+                          thinking:
+                            event.target.value === ''
+                              ? undefined
+                              : (event.target.value as Draft['thinking']),
+                        })
+                      }
+                      value={current ?? ''}
+                    >
+                      {inherit && (
+                        <option value="">
+                          {name === DEFAULT_FAMILY && follows?.followsThinking
+                            ? `Pi · ${follows.followsThinking}`
+                            : 'inherit'}
+                        </option>
+                      )}
+                      {[...new Set([...levels, ...(current ? [current] : [])])].map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                )
+              })}
+            </SettingRow>
+            <tr>
+              <td className={cn(cell, 'py-1')} colSpan={columns}>
+                <button
+                  aria-expanded={more}
+                  className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setMore(!more)}
+                  type="button"
+                >
+                  <ChevronRightIcon
+                    className={cn('size-3 transition-transform', more && 'rotate-90')}
+                  />
+                  More settings
+                  {!more && (limits.global || Object.keys(limits.models).length > 0) && (
+                    <span className="text-warning">· caps set</span>
+                  )}
+                </button>
+              </td>
+            </tr>
+            {more && (
+              <SettingRow
+                cell={cell}
+                hint={
+                  <span className="flex items-center gap-1.5">
+                    all models
+                    <span className="w-16">
+                      <LimitInput
+                        label="Overall cap"
+                        onChange={(global) => setLimits({ ...limits, global })}
+                        value={limits.global}
+                      />
+                    </span>
+                  </span>
+                }
+                label="At most, at once"
+                title="Model requests over a cap wait for a free slot, first come first served. A cap holds the family's model, so families on the same model share it."
               >
-                {(byChoice.get(column) ?? []).map((user) => (
-                  <UserCard
-                    changed={(choices[user.id] ?? choiceOf(user)) !== choiceOf(user)}
-                    choice={choices[user.id] ?? choiceOf(user)}
+                {names.map((name) => {
+                  const model =
+                    families[name].model ??
+                    view.families.find((family) => family.name === name)?.follows
+                  const shared = sharedWith(name)
+                  return (
+                    <td className={cell} key={name}>
+                      {model ? (
+                        <>
+                          <LimitInput
+                            label={`${model} cap`}
+                            onChange={(value) => {
+                              const { [model]: _old, ...rest } = limits.models
+                              setLimits({
+                                ...limits,
+                                models: value ? { ...rest, [model]: value } : rest,
+                              })
+                            }}
+                            value={limits.models[model]}
+                          />
+                          {shared.length > 0 && (
+                            <p className="mt-0.5 truncate font-sans text-[10.5px] text-muted-foreground/70">
+                              shared with {shared.map(familyTitle).join(', ')}
+                            </p>
+                          )}
+                        </>
+                      ) : null}
+                    </td>
+                  )
+                })}
+              </SettingRow>
+            )}
+            {groups.map(([group, list]) => (
+              <Fragment key={group}>
+                <tr>
+                  <td className={cn(label, 'px-1.5 pt-4 pb-1')} colSpan={columns}>
+                    {group}
+                  </td>
+                </tr>
+                {list.map((user) => (
+                  <UserRow
+                    cell={cell}
+                    changed={choice(user) !== choiceOf(user)}
+                    choice={choice(user)}
+                    colors={Object.fromEntries(names.map((name) => [name, families[name].color]))}
                     families={names}
                     key={user.id}
                     onMove={(to) => move(user.id, to)}
+                    open={view.open[user.id] ?? 0}
                     user={user}
                   />
                 ))}
-              </Column>
+              </Fragment>
             ))}
-          </div>
-        </section>
-        <Advanced
-          families={families}
-          find={find}
-          limits={limits}
-          onChange={setLimits}
-          pinned={users.flatMap((user) =>
-            user.pinned && user.pinned !== 'off' ? [user.pinned.replace(/:[a-z]+$/, '')] : [],
-          )}
-        />
+          </tbody>
+        </table>
       </div>
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-3">
         <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
-          {saved && !dirty ? (
+          {changes ? (
+            `${changes} change${changes === 1 ? '' : 's'}`
+          ) : saved ? (
             <span className="text-success">{saved}</span>
           ) : (
-            'Saved for this project; new projects start from the families you saved last'
+            'Applies to this project; new projects start from the families you applied last'
           )}
         </span>
-        <Button className="h-7 px-3 text-[12px]" onClick={close} size="sm" variant="ghost">
-          {dirty ? 'Cancel' : 'Close'}
-        </Button>
+        {changes > 0 && affected > 0 && (
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <Checkbox
+              checked={switchRunning}
+              onCheckedChange={(value) => setSwitchRunning(value === true)}
+            />
+            also switch {affected} open conversation{affected === 1 ? '' : 's'}
+          </label>
+        )}
+        {changes > 0 ? (
+          <Button className="h-7 px-3 text-[12px]" onClick={discard} size="sm" variant="ghost">
+            Discard
+          </Button>
+        ) : (
+          <Button className="h-7 px-3 text-[12px]" onClick={close} size="sm" variant="ghost">
+            Close
+          </Button>
+        )}
         <Button
           className="h-7 px-3 text-[12px]"
-          disabled={!dirty || pending !== undefined}
-          onClick={() => void save(false)}
+          disabled={!changes || pending}
+          onClick={() => void apply()}
           size="sm"
-          variant="outline"
         >
-          {pending === 'save' ? 'Saving…' : 'Save all'}
-        </Button>
-        <Button
-          className="h-7 px-3 text-[12px]"
-          disabled={!dirty || pending !== undefined}
-          onClick={() => void save(true)}
-          size="sm"
-          title="Save, and move conversations that run on a family's old model to its new one"
-        >
-          {pending === 'switch' ? 'Saving…' : 'Save all & switch running'}
+          {pending ? 'Applying…' : 'Apply'}
         </Button>
         {error && (
           <p className="basis-full font-mono text-[11.5px] leading-snug break-words text-error">
@@ -360,125 +552,248 @@ function Editor({
   )
 }
 
-function FamilyCard({
+/** One family setting across every family: its label, then one cell per family. */
+function SettingRow({
+  label: name,
+  hint,
+  title,
+  cell,
+  children,
+}: {
+  label: string
+  hint?: ReactNode
+  title?: string
+  cell: string
+  children: ReactNode
+}) {
+  return (
+    <tr>
+      <td className={cn(cell, 'pr-3')} title={title}>
+        <div className="font-mono text-[11.5px] text-foreground/85">{name}</div>
+        {hint && <div className="mt-0.5 font-mono text-[10.5px] text-muted-foreground">{hint}</div>}
+      </td>
+      {children}
+      <td className={cell} />
+    </tr>
+  )
+}
+
+function FamilyHeader({
   name,
-  draft,
-  info,
-  follows,
-  count,
+  color,
   project,
-  onChange,
+  onColor,
   onRemove,
 }: {
   name: string
-  draft: Draft
-  info: ModelInfo | undefined
-  /** Pi's default model and thinking, for the default family. */
-  follows?: { follows?: string; followsThinking?: string }
-  count: number
+  color: string
   project?: true
-  onChange: (change: Partial<Draft>) => void
+  onColor: (color: string) => void
   onRemove?: () => void
 }) {
-  const builtin = Object.hasOwn(BUILTIN_FAMILIES, name) ? BUILTIN_FAMILIES[name] : undefined
-  const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
-  // A built-in level can be changed but not cleared: settings keep only what differs from the built-in.
-  const inherit = !builtin?.thinking
   return (
     <div
-      data-family-card={name}
-      className="flex flex-col gap-2 rounded-md border border-border/80 border-t-2 bg-muted/15 px-2.5 pt-2 pb-2.5"
-      style={{ borderTopColor: familyColor(draft.color) }}
+      className="flex min-w-0 items-center gap-1.5 border-t-2 pt-1.5"
+      style={{ borderTopColor: familyColor(color) }}
     >
-      <div className="flex items-center gap-1.5">
-        <ColorPicker color={draft.color} onChange={(color) => onChange({ color })} />
-        <span
-          className="truncate font-mono text-[12.5px] font-medium"
-          style={{ color: familyColor(draft.color) }}
-        >
-          {familyTitle(name)}
-        </span>
-        {project && <Tag title="The project's settings change this family">project</Tag>}
-        <span className="ml-auto font-mono text-[10.5px] text-muted-foreground/70 tabular-nums">
-          {count}
-        </span>
-        {onRemove && (
-          <button
-            aria-label={`Remove ${name}`}
-            className="rounded p-0.5 text-muted-foreground/60 hover:bg-accent hover:text-error"
-            onClick={onRemove}
-            type="button"
-          >
-            <Trash2Icon className="size-3" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center gap-1">
-        <ModelSelect
-          onChange={(model) => onChange({ model })}
-          placeholder={follows?.follows ? `Pi's default · ${follows.follows}` : undefined}
-          value={draft.model}
-        />
-        {name === DEFAULT_FAMILY && draft.model && follows?.follows && (
-          <button
-            aria-label="Follow Pi's default model"
-            className="shrink-0 rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => onChange({ model: undefined })}
-            title={`Follow Pi's default model (${follows.follows})`}
-            type="button"
-          >
-            <XIcon className="size-3" />
-          </button>
-        )}
-      </div>
-      <select
-        aria-label={`${name} thinking`}
-        className={selectClass}
-        onChange={(event) =>
-          onChange({
-            thinking:
-              event.target.value === '' ? undefined : (event.target.value as Draft['thinking']),
-          })
-        }
-        value={draft.thinking ?? ''}
+      <ColorPicker color={color} onChange={onColor} />
+      <span
+        className="truncate font-mono text-[12.5px] font-medium"
+        style={{ color: familyColor(color) }}
       >
-        {inherit && (
-          <option value="">
-            {name === DEFAULT_FAMILY && follows?.followsThinking
-              ? `thinking · Pi's (${follows.followsThinking})`
-              : 'thinking · inherit'}
-          </option>
-        )}
-        {[...new Set([...levels, ...(draft.thinking ? [draft.thinking] : [])])].map((level) => (
-          <option key={level} value={level}>
-            thinking · {level}
-          </option>
-        ))}
-      </select>
-      <p className="font-sans text-[11px] leading-snug text-muted-foreground/80">
-        {draft.model && info && !info.available ? (
-          <span className="text-warning">
-            No login for {info.provider}: its members run the default model.
-          </span>
-        ) : draft.model && !info ? (
-          <span className="text-warning">
-            Not in the model list here: its members run the default model.
-          </span>
-        ) : name === DEFAULT_FAMILY ? (
-          'New conversations, @ultimate, branches; without a model it follows Pi’s default.'
-        ) : (
-          (FAMILY_HINTS[name] ?? 'A family of your own.')
-        )}
-      </p>
+        {familyTitle(name)}
+      </span>
+      {project && <Tag title="The project's settings change this family">project</Tag>}
+      {onRemove && (
+        <button
+          aria-label={`Remove ${name}`}
+          className="ml-auto rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-error"
+          onClick={onRemove}
+          type="button"
+        >
+          <Trash2Icon className="size-3" />
+        </button>
+      )}
     </div>
   )
 }
 
-const FAMILY_HINTS: Record<string, string> = {
-  slow: 'Deep, careful work: reviews.',
-  fast: 'Bounded execution: workers, previews.',
-  tiny: 'Quick, cheap calls: scouts, summaries.',
-  design: 'Front-end and UI work.',
+function UserRow({
+  user,
+  choice,
+  families,
+  colors,
+  changed,
+  open,
+  cell,
+  onMove,
+}: {
+  user: FamilyUser
+  choice: string
+  families: string[]
+  colors: Record<string, string>
+  changed: boolean
+  open: number
+  cell: string
+  onMove: (to: string) => void
+}) {
+  const Icon = user.kind === 'agent' ? BotIcon : SparklesIcon
+  const locked = !!user.project
+  return (
+    <tr className="group hover:bg-accent/20">
+      <td
+        className={cn(cell, 'pr-3')}
+        title={[user.description, locked && "Set in the project's settings"]
+          .filter(Boolean)
+          .join('\n')}
+      >
+        <div className="flex min-w-0 items-center gap-1.5 font-mono text-[12px]">
+          <Icon className="size-3 shrink-0 text-muted-foreground" />
+          <span className="truncate text-foreground/90">{user.label}</span>
+          {changed && (
+            <span aria-label="changed" className="size-1.5 shrink-0 rounded-full bg-brand" />
+          )}
+          {user.source && user.source !== 'builtin' && <Tag>{user.source}</Tag>}
+          {user.pinned && (
+            // Kept, the pin shows its model and a family replaces it; replaced, a quiet icon brings it back.
+            <button
+              className={cn(
+                'flex min-w-0 items-center gap-1 rounded font-mono text-[10px]',
+                choice === PINNED
+                  ? 'border border-foreground/40 px-1 text-foreground/80'
+                  : 'p-0.5 text-muted-foreground/40 hover:text-foreground',
+              )}
+              disabled={locked}
+              onClick={() => onMove(PINNED)}
+              title={`${user.pinnedIn} pins ${user.pinned}${choice === PINNED ? '; pick a family to replace it' : '; a family replaces it, click to keep the pin'}`}
+              type="button"
+            >
+              <PinIcon className="size-2.5 shrink-0" />
+              {choice === PINNED && (
+                <span className="truncate">{user.pinned.slice(user.pinned.indexOf('/') + 1)}</span>
+              )}
+            </button>
+          )}
+          {open > 0 && (
+            <span
+              className="ml-auto shrink-0 font-mono text-[10.5px] text-success"
+              title={`${open} open conversation${open === 1 ? '' : 's'} on its family's model`}
+            >
+              ● {open}
+            </span>
+          )}
+        </div>
+        <p className="truncate pl-4.5 font-sans text-[11px] text-muted-foreground/70">
+          {user.description}
+        </p>
+      </td>
+      {families.map((name) => {
+        const on = choice === name
+        return (
+          <td className={cn(cell, 'text-center')} key={name}>
+            <button
+              aria-label={`Run ${user.label} on ${name}`}
+              aria-pressed={on}
+              className={cn(
+                'inline-block size-4 rounded-full border-[1.5px] border-border transition-transform',
+                !locked && 'hover:scale-125 hover:border-muted-foreground',
+                on && 'border-[5px]',
+              )}
+              disabled={locked}
+              onClick={() => onMove(name)}
+              style={on ? { borderColor: familyColor(colors[name]) } : undefined}
+              type="button"
+            />
+          </td>
+        )
+      })}
+      <td className={cell} />
+    </tr>
+  )
+}
+
+function AddFamily({ taken, onAdd }: { taken: string[]; onAdd: (name: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const problem = !name
+    ? undefined
+    : !isFamilyName(name)
+      ? 'lowercase letters, digits and -'
+      : taken.includes(name)
+        ? 'exists already'
+        : undefined
+  const add = () => {
+    if (!name || problem) return
+    onAdd(name)
+    setName('')
+    setOpen(false)
+  }
+  return (
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <button
+          aria-label="New family"
+          className="flex size-6 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground hover:border-muted-foreground hover:text-foreground"
+          title="New family"
+          type="button"
+        >
+          <PlusIcon className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 space-y-2 p-2">
+        <div className={label}>New family</div>
+        <input
+          aria-invalid={problem ? true : undefined}
+          aria-label="New family name"
+          autoFocus
+          className={cn(selectClass, 'px-2')}
+          onChange={(event) => setName(event.target.value.trim().toLowerCase())}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') add()
+          }}
+          placeholder="local"
+          spellCheck={false}
+          value={name}
+        />
+        {problem && <p className="font-sans text-[11px] text-error">{problem}</p>}
+        <Button
+          className="h-7 w-full text-[12px]"
+          disabled={!name || !!problem}
+          onClick={add}
+          size="sm"
+          variant="outline"
+        >
+          Add column
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function LimitInput({
+  value,
+  label: name,
+  onChange,
+}: {
+  value: number | undefined
+  label: string
+  onChange: (value: number | undefined) => void
+}) {
+  return (
+    <input
+      aria-label={name}
+      className={cn(selectClass, 'text-right tabular-nums')}
+      min={0}
+      onChange={(event) => {
+        const next = Number.parseInt(event.target.value, 10)
+        onChange(Number.isFinite(next) && next > 0 ? next : undefined)
+      }}
+      placeholder="∞"
+      step={1}
+      type="number"
+      value={value ?? ''}
+    />
+  )
 }
 
 function ColorPicker({ color, onChange }: { color: string; onChange: (color: string) => void }) {
@@ -514,309 +829,6 @@ function ColorPicker({ color, onChange }: { color: string; onChange: (color: str
         ))}
       </PopoverContent>
     </Popover>
-  )
-}
-
-function AddFamily({ taken, onAdd }: { taken: string[]; onAdd: (name: string) => void }) {
-  const [name, setName] = useState('')
-  const problem = !name
-    ? undefined
-    : !isFamilyName(name)
-      ? 'lowercase letters, digits and -'
-      : taken.includes(name)
-        ? 'exists already'
-        : undefined
-  const add = () => {
-    if (!name || problem) return
-    onAdd(name)
-    setName('')
-  }
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border/80 px-2.5 py-2">
-      <div className="flex items-center gap-1.5 font-mono text-[12px] text-muted-foreground">
-        <PlusIcon className="size-3.5" />
-        New family
-      </div>
-      <input
-        aria-invalid={problem ? true : undefined}
-        aria-label="New family name"
-        className={cn(selectClass, 'px-2')}
-        onChange={(event) => setName(event.target.value.trim().toLowerCase())}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') add()
-        }}
-        placeholder="local"
-        spellCheck={false}
-        value={name}
-      />
-      {problem ? (
-        <p className="font-sans text-[11px] text-error">{problem}</p>
-      ) : (
-        <Button
-          className="h-7 text-[12px]"
-          disabled={!name}
-          onClick={add}
-          size="sm"
-          variant="outline"
-        >
-          Add
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function Column({
-  name,
-  color,
-  model,
-  onDrop,
-  children,
-}: {
-  name: string
-  color?: string
-  model?: string
-  onDrop: (id: string) => void
-  children: ReactNode
-}) {
-  const [over, setOver] = useState(false)
-  const accept = (event: DragEvent) => {
-    if (!event.dataTransfer.types.includes(DRAG_TYPE)) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setOver(true)
-  }
-  return (
-    <div
-      className={cn(
-        'flex min-h-28 flex-col gap-1.5 rounded-md border bg-muted/10 p-1.5 transition-colors',
-        over ? 'border-ring/70 bg-accent/40' : 'border-border/60',
-      )}
-      data-family-column={name}
-      onDragEnter={accept}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false)
-      }}
-      onDragOver={accept}
-      onDrop={(event) => {
-        event.preventDefault()
-        setOver(false)
-        const id = event.dataTransfer.getData(DRAG_TYPE)
-        if (id) onDrop(id)
-      }}
-    >
-      <div className="flex min-w-0 items-center gap-1.5 px-1 pt-0.5 pb-1 font-mono text-[11.5px]">
-        {name === PINNED ? (
-          <>
-            <PinIcon className="size-3 shrink-0 text-muted-foreground" />
-            <span className="text-muted-foreground">Pinned model</span>
-          </>
-        ) : (
-          <>
-            <FamilyDot color={color} />
-            <span className="shrink-0" style={{ color: familyColor(color) }}>
-              {familyTitle(name)}
-            </span>
-            <span className="truncate text-[10.5px] text-muted-foreground/70">
-              {model ? model.slice(model.indexOf('/') + 1) : ''}
-            </span>
-          </>
-        )}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function UserCard({
-  user,
-  choice,
-  families,
-  changed,
-  onMove,
-}: {
-  user: FamilyUser
-  choice: string
-  families: string[]
-  changed: boolean
-  onMove: (to: string) => void
-}) {
-  const Icon = user.kind === 'agent' ? BotIcon : SparklesIcon
-  const locked = !!user.project
-  return (
-    <div
-      className={cn(
-        'group rounded border border-border/70 bg-background px-2 py-1.5 shadow-xs',
-        locked ? 'opacity-70' : 'cursor-grab active:cursor-grabbing',
-      )}
-      data-family-user={user.id}
-      draggable={!locked}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(DRAG_TYPE, user.id)
-        event.dataTransfer.effectAllowed = 'move'
-      }}
-      title={[
-        user.description,
-        user.pinned && `pins ${user.pinned} in ${user.pinnedIn}`,
-        locked && "set in the project's settings",
-      ]
-        .filter(Boolean)
-        .join('\n')}
-    >
-      <div className="flex min-w-0 items-center gap-1.5 font-mono text-[11.5px]">
-        <Icon className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate text-foreground/90">{user.label}</span>
-        {changed && (
-          <span aria-label="changed" className="size-1.5 shrink-0 rounded-full bg-brand" />
-        )}
-        {user.source && user.source !== 'builtin' && <Tag>{user.source}</Tag>}
-      </div>
-      {choice === PINNED && user.pinned && (
-        <div className="mt-0.5 truncate pl-4.5 font-mono text-[10.5px] text-muted-foreground/80">
-          {user.pinned}
-        </div>
-      )}
-      <select
-        aria-label={`${user.label} family`}
-        className={cn(selectClass, 'mt-1 h-6 text-[11px]')}
-        disabled={locked}
-        onChange={(event) => onMove(event.target.value)}
-        value={choice}
-      >
-        {families.map((name) => (
-          <option key={name} value={name}>
-            {familyTitle(name)}
-          </option>
-        ))}
-        {user.pinned && <option value={PINNED}>Pinned · {user.pinned}</option>}
-      </select>
-    </div>
-  )
-}
-
-function Advanced({
-  families,
-  pinned,
-  limits,
-  find,
-  onChange,
-}: {
-  families: Record<string, Draft>
-  /** Models agents and features pin, which a cap can hold too. */
-  pinned: string[]
-  limits: FamilyLimits
-  find: (ref: string | undefined) => ModelInfo | undefined
-  onChange: (limits: FamilyLimits) => void
-}) {
-  const capped =
-    Object.values(limits.models).filter((limit) => limit > 0).length + (limits.global ? 1 : 0)
-  const listed = [
-    ...new Set([
-      ...Object.values(families)
-        .map((family) => family.model)
-        .filter((model): model is string => !!model),
-      ...pinned,
-      ...Object.keys(limits.models),
-    ]),
-  ]
-  const familiesOf = (model: string) =>
-    Object.entries(families)
-      .filter(([, family]) => family.model === model)
-      .map(([name, family]) => ({ name, color: family.color }))
-  const setModel = (model: string, value: number | undefined) => {
-    const { [model]: _old, ...rest } = limits.models
-    onChange({ ...limits, models: value ? { ...rest, [model]: value } : rest })
-  }
-  return (
-    <Collapsible className="rounded-md border border-border/60">
-      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left">
-        <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-        <GaugeIcon className="size-3.5 text-muted-foreground" />
-        <span className={label}>Advanced · concurrency</span>
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground/80">
-          {capped ? `${capped} cap${capped === 1 ? '' : 's'}` : 'unlimited'}
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-3 border-t border-border/60 px-3 py-3">
-        <p className="font-sans text-[12px] leading-snug text-muted-foreground">
-          Requests over a cap wait for a free slot, first come first served. Almost always
-          unlimited; cap a local model that serves only a few sessions at a time.
-        </p>
-        <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-x-3 gap-y-1.5">
-          <span className="font-mono text-[12px]">All models together</span>
-          <LimitInput
-            label="Global cap"
-            onChange={(global) => onChange({ ...limits, global })}
-            value={limits.global}
-          />
-          {listed.map((model) => (
-            <Fragment key={model}>
-              <span className="flex min-w-0 items-center gap-2 font-mono text-[12px]">
-                <span className="truncate">
-                  <span className="text-muted-foreground">
-                    {model.slice(0, model.indexOf('/') + 1)}
-                  </span>
-                  {model.slice(model.indexOf('/') + 1)}
-                </span>
-                {familiesOf(model).map((family) => (
-                  <span
-                    className="flex shrink-0 items-center gap-1 text-[10.5px] text-muted-foreground"
-                    key={family.name}
-                  >
-                    <FamilyDot color={family.color} />
-                    {familyTitle(family.name)}
-                  </span>
-                ))}
-                {!find(model) && <span className="text-[10.5px] text-warning">unknown</span>}
-              </span>
-              <LimitInput
-                label={`${model} cap`}
-                onChange={(value) => setModel(model, value)}
-                value={limits.models[model]}
-              />
-            </Fragment>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11.5px] text-muted-foreground">Cap another model</span>
-          <div className="w-72">
-            <ModelSelect
-              onChange={(model) => {
-                if (model && !listed.includes(model)) setModel(model, 4)
-              }}
-              placeholder="pick a model…"
-              value={undefined}
-            />
-          </div>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-function LimitInput({
-  value,
-  label: name,
-  onChange,
-}: {
-  value: number | undefined
-  label: string
-  onChange: (value: number | undefined) => void
-}) {
-  return (
-    <input
-      aria-label={name}
-      className={cn(selectClass, 'text-right tabular-nums')}
-      min={0}
-      onChange={(event) => {
-        const next = Number.parseInt(event.target.value, 10)
-        onChange(Number.isFinite(next) && next > 0 ? next : undefined)
-      }}
-      placeholder="unlimited"
-      step={1}
-      type="number"
-      value={value ?? ''}
-    />
   )
 }
 
@@ -862,10 +874,7 @@ function ModelSelect({
           type="button"
         >
           {value ? (
-            <span className="min-w-0 truncate">
-              <span className="text-muted-foreground">{value.slice(0, slash + 1)}</span>
-              {value.slice(slash + 1)}
-            </span>
+            <span className="min-w-0 truncate">{value.slice(slash + 1)}</span>
           ) : (
             <span className="min-w-0 truncate text-muted-foreground">{placeholder}</span>
           )}

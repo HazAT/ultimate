@@ -180,9 +180,10 @@ it('points the model and thinking controls inside a scope at the scoped conversa
     JSON.stringify({ thinkingLevel: 'high' }),
   ])
 
-  // Its model button opens the global picker on the side chat: it marks the side chat's model and configures it.
+  // Its model button's "A specific model…" opens the global picker on the side chat: it marks the side chat's model
+  // and configures it.
   renderToStaticMarkup(inSide(ModelButton))
-  ;(captured as unknown as ReactElement<{ onClick: () => void }>).props.onClick()
+  find(captured, 'pick')!.props.onClick()
   expect(store.getState().ui.dialogs[dialogs.picker]).toBe(true)
   renderToStaticMarkup(h(ModelPicker))
   harness.select.get('faux/main-model')!()
@@ -216,7 +217,7 @@ it('points the model and thinking controls inside a scope at the scoped conversa
 
   // Opened from main's toolbar, the picker configures main again.
   renderToStaticMarkup(h(Capture, { of: ModelButton }))
-  ;(captured as unknown as ReactElement<{ onClick: () => void }>).props.onClick()
+  find(captured, 'pick')!.props.onClick()
   renderToStaticMarkup(h(ModelPicker))
   harness.select.get('faux/side-model')!()
   await vi.advanceTimersByTimeAsync(10)

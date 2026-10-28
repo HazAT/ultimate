@@ -10,6 +10,8 @@ export type PinService = {
   pin(tx: Tx, id: ConversationId): Promise<{ provider: string; modelId: string } | undefined>
   /** The name of the agent definition conversation `id` runs as, read inside `tx`; undefined without one. */
   definitionOf(tx: Tx, id: ConversationId): Promise<string | undefined>
+  /** The conversations the user concluded, read inside `tx`: a family switch leaves them on their model. */
+  concludedIn(tx: Tx): Promise<Set<ConversationId>>
 }
 /**
  * The extension point a conversation whose model lost its login asks for the model its agent definition pins, before

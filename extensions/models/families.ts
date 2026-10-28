@@ -8,7 +8,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { AgentDoc } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, JsonObject } from '@earendil-works/pi-durable'
+import type { AgentState, ConversationId, Cursor, JsonObject } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents, hasLogin } from '../../lib/agents.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
@@ -142,6 +142,7 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
     users: [...agents, ...features],
     assign: layers.base.assign,
     limits: config.limits,
+    open: await openOnFamily(host, config, definitions),
     from: layers.from,
     errors: layers.errors,
   }
@@ -217,38 +218,65 @@ export async function saveFamilies(host: ExtensionHost, args: SaveFamilies) {
   if (!args.switchRunning) return { switched: 0 }
   const after = await read(host)
   const afterDefault = defaultsOf(host, after.config)
-  const pin = host.want(Pin)
-  const byName = (list: AgentDefinition[], name: string | undefined) =>
-    name === undefined ? undefined : list.find((definition) => definition.name === name)
-  const same = (a?: ModelRef, b?: ModelRef) => !!a && !!b && refName(a) === refName(b)
-  const harness = host.harness()
   const available = host.modelRuntime.getAvailableSnapshot()
   let switched = 0
+  await eachOpen(host, async (agent, name) => {
+    const from = target(before.config, beforeDefault, byName(before.definitions, name))
+    const to = target(after.config, afterDefault, byName(after.definitions, name))
+    // Only a conversation still on its family's old model: one switched by hand keeps its choice.
+    if (!to.model || !same(agent.model ?? undefined, from.model)) return
+    if (same(from.model, to.model) && from.thinking === to.thinking) return
+    // A model without a login here would only fail; the conversation keeps the one it runs.
+    const model = host.modelRuntime.getModel(to.model.provider, to.model.modelId)
+    if (!model || !hasLogin(available, to.model)) return
+    agent.model = { ...to.model }
+    const thinking = to.thinking ?? agent.thinkingLevel
+    if (thinking) agent.thinkingLevel = clampThinkingLevel(model, thinking)
+    switched++
+  })
+  return { switched }
+}
+
+const byName = (list: AgentDefinition[], name: string | undefined) =>
+  name === undefined ? undefined : list.find((definition) => definition.name === name)
+const same = (a?: ModelRef, b?: ModelRef) => !!a && !!b && refName(a) === refName(b)
+
+/**
+ * Visit every conversation the user has not concluded, inside a transaction per page, with its agent (writable) and
+ * the name of the definition it runs as.
+ */
+async function eachOpen(
+  host: ExtensionHost,
+  visit: (agent: AgentState, definition: string | undefined) => Promise<void> | void,
+) {
+  const pin = host.want(Pin)
+  const harness = host.harness()
   let cursor: Cursor | undefined
   do {
     const page = await harness.commit((tx) => tx.scanConversations({}, 256, cursor), context)
     cursor = page.next
     const ids: ConversationId[] = page.items.map((record) => record.id)
-    switched += await harness.commit(async (tx) => {
-      let count = 0
-      for (const id of ids) {
-        const agent = await tx.doc(AgentDoc, id)
-        const name = await pin?.definitionOf(tx, id)
-        const from = target(before.config, beforeDefault, byName(before.definitions, name))
-        const to = target(after.config, afterDefault, byName(after.definitions, name))
-        // Only a conversation still on its family's old model: one switched by hand keeps its choice.
-        if (!to.model || !same(agent.model ?? undefined, from.model)) continue
-        if (same(from.model, to.model) && from.thinking === to.thinking) continue
-        // A model without a login here would only fail; the conversation keeps the one it runs.
-        const model = host.modelRuntime.getModel(to.model.provider, to.model.modelId)
-        if (!model || !hasLogin(available, to.model)) continue
-        agent.model = { ...to.model }
-        const thinking = to.thinking ?? agent.thinkingLevel
-        if (thinking) agent.thinkingLevel = clampThinkingLevel(model, thinking)
-        count++
-      }
-      return count
+    await harness.commit(async (tx) => {
+      const concluded = (await pin?.concludedIn(tx)) ?? new Set()
+      for (const id of ids)
+        if (!concluded.has(id))
+          await visit(await tx.doc(AgentDoc, id), await pin?.definitionOf(tx, id))
     }, context)
   } while (cursor !== undefined)
-  return { switched }
+}
+
+/**
+ * Open conversations still on their family's model, by user id (`agent/<name>`); conversations of no definition
+ * count under `default`. These are what "switch running" moves when their family changes.
+ */
+async function openOnFamily(host: ExtensionHost, config: Families, definitions: AgentDefinition[]) {
+  const defaults = defaultsOf(host, config)
+  const counts: Record<string, number> = {}
+  await eachOpen(host, (agent, name) => {
+    const definition = byName(definitions, name)
+    if (!same(agent.model ?? undefined, target(config, defaults, definition).model)) return
+    const key = definition ? agentUser(definition.name) : DEFAULT_FAMILY
+    counts[key] = (counts[key] ?? 0) + 1
+  })
+  return counts
 }
