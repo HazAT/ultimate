@@ -1,6 +1,6 @@
 Look at Ultimate's UI and drive fresh headless Chromium pages with `screenshot` and `browser`. After UI changes, inspect the returned image rather than assuming the page renders.
 
-Install Chromium separately; playwright-core does not download browsers. Resolution checks `ULTIMATE_CHROMIUM`, `/usr/bin/chromium`, `/usr/bin/google-chrome-stable`, then `~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome`. A browser is launched lazily and closed when the host shuts down. Each call has its own isolated context, closed on completion or cancellation.
+Install Chromium separately; playwright-core does not download browsers. Resolution checks `ULTIMATE_CHROMIUM`, then the platform's system browsers (on macOS Google Chrome, Chromium and Chrome for Testing in `/Applications`; on Linux `/usr/bin/chromium` and `/usr/bin/google-chrome-stable`), then Playwright's `chromium-*` installs, newest first (`~/Library/Caches/ms-playwright` on macOS, `~/.cache/ms-playwright` on Linux). A browser is launched lazily and closed when the host shuts down. Each call has its own isolated context, closed on completion or cancellation.
 
 No call can hang: loading, each step (including `eval`, which Playwright never times out) and the capture each time out after 30 s (`timeoutMs` overrides it), and a whole call after four such limits plus its explicit waits. A timed-out step fails the call with a `TimeoutError` on its `Step n:` line. Closing a context is bounded too; a context that will not close (a wedged renderer) closes the shared browser, so the next call launches a fresh one.
 

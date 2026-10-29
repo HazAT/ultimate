@@ -8,18 +8,48 @@ import { defineExtension, defineTool, section } from '@earendil-works/pi-durable
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
+/** Where Playwright installs browsers on `platform`, and the Chromium executable inside one of its `chromium-*` folders. */
+function playwrightCache(platform: NodeJS.Platform, arch: string, home: string) {
+  return platform === 'darwin'
+    ? {
+        dir: join(home, 'Library/Caches/ms-playwright'),
+        executable: join(
+          arch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64',
+          'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+        ),
+      }
+    : { dir: join(home, '.cache/ms-playwright'), executable: 'chrome-linux64/chrome' }
+}
+
+/**
+ * The Chromium executables to try, in order: `ULTIMATE_CHROMIUM`, the system browsers of `platform`, then Playwright's
+ * installs, newest first.
+ */
+export async function browserCandidates({
+  platform = process.platform,
+  arch = process.arch,
+  home = homedir(),
+  override = process.env.ULTIMATE_CHROMIUM,
+} = {}) {
+  const system =
+    platform === 'darwin'
+      ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          '/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+        ]
+      : ['/usr/bin/chromium', '/usr/bin/google-chrome-stable']
+  const cache = playwrightCache(platform, arch, home)
+  const installed = (await readdir(cache.dir).catch(() => []))
+    .filter((name) => name.startsWith('chromium-'))
+    .toSorted()
+    .toReversed()
+    .map((name) => join(cache.dir, name, cache.executable))
+  return [override, ...system, ...installed].filter((path): path is string => !!path)
+}
+
 export async function browserBinary() {
-  const cache = join(homedir(), '.cache/ms-playwright')
-  const candidates = [
-    process.env.ULTIMATE_CHROMIUM,
-    '/usr/bin/chromium',
-    '/usr/bin/google-chrome-stable',
-    ...(await readdir(cache).catch(() => []))
-      .filter((name) => name.startsWith('chromium-'))
-      .toSorted()
-      .toReversed()
-      .map((name) => join(cache, name, 'chrome-linux64/chrome')),
-  ].filter((path): path is string => !!path)
+  const candidates = await browserCandidates()
   for (const path of candidates) {
     try {
       await access(path)
@@ -29,7 +59,7 @@ export async function browserBinary() {
     }
   }
   throw new Error(
-    'No Chromium found. Set ULTIMATE_CHROMIUM or install /usr/bin/chromium, /usr/bin/google-chrome-stable, or ~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome.',
+    `No Chromium found. Set ULTIMATE_CHROMIUM, install Google Chrome or Chromium, or run \`npx playwright install chromium\`; looked at ${candidates.join(', ')}.`,
   )
 }
 
