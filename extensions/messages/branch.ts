@@ -27,8 +27,10 @@ export const branchTool = (host: ExtensionHost) =>
     replay: 'safe',
     async execute(input, api, ctx) {
       const from = await actingAs(host, api.conversationId, ctx)
-      let id = await api.memo<number>('branch-id', ctx)
-      if (id === undefined) {
+      // The title goes with the id: a replay after the branch's summary renamed it still reports the title it started
+      // with.
+      let started = await api.memo<{ id: number; title: string }>('branch', ctx)
+      if (started === undefined) {
         const lineage = host.need(LineageApi)
         const roots = (await host.harness().snapshot(Roots, ROOT_CONVERSATION_ID, ctx))?.roots ?? []
         const root =
@@ -73,19 +75,20 @@ export const branchTool = (host: ExtensionHost) =>
         )
         // The fork has no input yet. Its instructions come from the definition; its tools stay inherited, plus the
         // deferred ones the definition names (an overlay's `addTools: [debug]`).
-        await host.harness().commit(async (tx) => {
+        const title = await host.harness().commit(async (tx) => {
           await configure(tx, branch.id, {
             instructions: coordinator.instructions,
             ...(modelTools && 'add' in modelTools && modelTools.add?.length ? { modelTools } : {}),
           })
-          ;(await tx.doc(host.metadata, branch.id)).label = 'coordinator'
+          const metadata = await tx.doc(host.metadata, branch.id)
+          metadata.label = 'coordinator'
           ;(await tx.doc(Started, branch.id)).by = from
+          return metadata.title ?? ''
         }, ctx)
-        id = await api.memo('branch-id', branch.id, ctx)
+        started = await api.memo('branch', { id: branch.id, title }, ctx)
       }
       // Named in the result: parallel results arrive in any order, so the id alone does not say which branch is which.
-      const title =
-        (await host.harness().snapshot(host.metadata, id as ConversationId, ctx))?.title ?? ''
+      const { id, title } = started
       const message = await send(
         host,
         from,

@@ -534,10 +534,9 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
   const conversations = useConversations()
   const { switchConversation, showSurface } = useUltimate()
   if (call.status === 'error' || call.status === 'interrupted') return core
-  // Results from before the title was named lack the quoted part.
-  const started = /^Branch #(\d+)(?: ".*")? started; message (\d+) sent\.$/.exec(call.output)
-  const id = started ? Number(started[1]) : undefined
-  const message = started ? log?.messages.find((m) => m.id === Number(started[2])) : undefined
+  // The branch's first message records the call that sent it; its recipient is the branch.
+  const message = log?.messages.find((m) => m.call === call.id)
+  const id = typeof message?.to === 'number' ? message.to : undefined
   const { prompt, root, isolated } = call.args as {
     prompt?: string
     root?: number
