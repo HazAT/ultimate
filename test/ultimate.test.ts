@@ -277,7 +277,11 @@ it.concurrent('starts a lineage branch with a message input and caller attributi
     join(f.home, '.ultimate/agents/coordinator.md'),
     '---\nname: coordinator\ndescription: Custom coordinator\n---\nUse the project procedure.',
   )
-  await ask(f.server, branch, 'BRANCH ' + JSON.stringify({ prompt: 'Same tree', isolated: false }))
+  await ask(
+    f.server,
+    branch,
+    'BRANCH ' + JSON.stringify({ prompt: 'Same tree', title: 'Named branch', isolated: false }),
+  )
   await until(async () => (await log(f.server)).some((m) => m.text === 'Same tree'))
   const sameTree = (await log(f.server)).find((m) => m.text === 'Same tree')!
   expect(
@@ -294,18 +298,20 @@ it.concurrent('starts a lineage branch with a message input and caller attributi
   expect(overridden.tools.map((tool) => tool.name)).toEqual(
     configured.tools.map((tool) => tool.name).filter((name) => name !== 'debug'),
   )
-  // The branch's later run (woken by its child's reply) routes its answer to its starter as a note.
+  // The branch's later run (woken by its child's reply) routes its answer to its starter as a note. The result names
+  // the branch's title: parallel results arrive in any order, so the id alone does not say which branch is which.
   await until(async () =>
     (await log(f.server)).some(
       (m) =>
         m.from === branch &&
         m.to === ultimate &&
-        m.text === `Tool result: Branch #${sameTree.to} started; message ${sameTree.id} sent.`,
+        m.text ===
+          `Tool result: Branch #${sameTree.to} "Named branch" started; message ${sameTree.id} sent.`,
     ),
   )
   await until(async () =>
     (await entries(f.server, ultimate)).some((entry) =>
-      JSON.stringify(entry).includes(`Branch #${sameTree.to} started`),
+      JSON.stringify(entry).includes(`Branch #${sameTree.to} \\"Named branch\\" started`),
     ),
   )
   await f.server.harness.commit(async (tx) => {

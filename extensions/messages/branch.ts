@@ -83,6 +83,9 @@ export const branchTool = (host: ExtensionHost) =>
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
       }
+      // Named in the result: parallel results arrive in any order, so the id alone does not say which branch is which.
+      const title =
+        (await host.harness().snapshot(host.metadata, id as ConversationId, ctx))?.title ?? ''
       const message = await send(
         host,
         from,
@@ -111,7 +114,7 @@ export const branchTool = (host: ExtensionHost) =>
         output: [
           {
             type: 'text',
-            text: `Branch #${id} started; message ${message} sent.`,
+            text: `Branch #${id} "${title}" started; message ${message} sent.`,
           },
         ],
       }

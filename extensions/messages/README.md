@@ -134,7 +134,9 @@ The deferred `branch { prompt, title?, root?, isolated?: true }` tool is offered
 `title` (one line, at most 60 characters) names the branch in the sidebar and the tally until its summary renames it.
 It chooses the explicit root, otherwise the caller's tree root, otherwise the only root. Ambiguous or missing roots
 produce an error listing the available ids. It forks the root's tally tip through lineage, attributes the tally's branch
-line to the caller, and sends the first input as a message with replies enabled. It returns the branch id and message id.
+line to the caller, and sends the first input as a message with replies enabled. It returns the branch id, its title
+and the message id (`Branch #12 "Fix the lander" started; message 40 sent.`): the title tells parallel calls' results
+apart, since they return in any order.
 The branch's answer therefore wakes its caller as a normal `board.reply`.
 The tool records the caller in the branch's `board.started` document, so later answers reach it as notes or reports
 (see Waking upward).
