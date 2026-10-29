@@ -89,7 +89,8 @@ Worker reports and submissions state divergence from the task as given (agreemen
 
 Every coordinator, worktree subagent and the lander works in a fresh `git worktree`, which has none of the
 project's ignored files: no dependencies, `.env`, database, generated files or dev-server port of its own. Always check
-this, even unasked (setup health warns while it is missing), and propose it.
+this, even unasked (setup health warns while it is missing), and propose it. When the user decides the worktrees
+need none, write `"setup": []`: the explicit empty list is the decision, and the warning stops.
 
 - **Read:** the package managers and lockfiles, `.env.example` and how `.env` is made, the database config (driver,
   file path), generated files the build or tests need, and the dev-server scripts and their ports.

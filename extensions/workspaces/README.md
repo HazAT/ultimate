@@ -45,7 +45,8 @@ Preparation runs `isolates.worktree.setup` with `ULTIMATE_SOURCE` set to the sou
 Setup commands must be safe to repeat after interruption.
 What a project's setup should do (dependencies, `.env`, a copy-on-write SQLite clone, a dev port per worktree, skipping
 the database in the lander's checkout, and when to ask about Postgres) is the "Worktree setup" step of the
-`integrate-ultimate` skill; setup health warns while an isolatable project with a package manifest has none.
+`integrate-ultimate` skill; setup health warns while an isolatable project with a package manifest has none. A project
+whose worktrees need no setup declares that with an explicit empty list, `"setup": []`, which ends the warning.
 The first model request waits for preparation. Before every tool call, the workspace must be ready with a
 present, registered checkout. Otherwise the tool is blocked with the reason; the model can still reply and
 explain why it cannot use the checkout.

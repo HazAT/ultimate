@@ -199,7 +199,7 @@ it('has no agent warning once the pinned provider has a login', async () => {
   expect(issues.find((issue) => issue.area === 'Agent models')?.status).toBe('ok')
 })
 
-it('warns about a missing worktree setup until one is configured', async () => {
+it('warns about a missing worktree setup until one is configured or declared none', async () => {
   const host = await checkHost({ logins: ['openrouter', 'openai-codex'] })
   await mkdir(host.projectRoot)
   await writeFile(join(host.projectRoot, 'composer.json'), '{}')
@@ -229,6 +229,16 @@ it('warns about a missing worktree setup until one is configured', async () => {
   })
   expect(await row({ isolates: { worktree: { setup: ['composer install'] } } })).toMatchObject({
     status: 'ok',
+    summary: '1 commands',
+  })
+  // Other worktree settings without a setup key still warn: only an explicit list decides.
+  expect(await row({ isolates: { worktree: { path: '~/trees/{name}' } } })).toMatchObject({
+    status: 'warn',
+  })
+  expect(await row({ isolates: { worktree: { setup: [] } } })).toEqual({
+    area: 'Worktree setup',
+    status: 'ok',
+    summary: 'none, by choice',
   })
 })
 

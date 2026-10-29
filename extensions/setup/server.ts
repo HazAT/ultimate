@@ -265,8 +265,11 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
     return undefined
   const commands = ((await host.projectSettings()).isolates as { worktree?: { setup?: unknown } })
     ?.worktree?.setup
-  if (Array.isArray(commands) && commands.length)
-    return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
+  if (Array.isArray(commands)) {
+    // An explicit empty list is a decision: the project's worktrees need no setup.
+    const summary = commands.length ? `${commands.length} commands` : 'none, by choice'
+    return { area: 'Worktree setup', status: 'ok', summary }
+  }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
   const manifests = MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
   if (!manifests.length) return undefined
