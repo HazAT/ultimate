@@ -48,7 +48,7 @@ it('keeps every core-tier extension checked and locked, even over saved or pendi
 
 it('leaves default-off built-ins unchecked until the user enables them, with what each needs', () => {
   const fresh = extensionOptions({ enable: [], disable: [] }, {}, core)
-  const off = ['parallel', 'cloud', 'tailscale', 'health', 'classify', 'phase', 'sounds']
+  const off = ['parallel', 'exa', 'cloud', 'tailscale', 'health', 'classify', 'phase', 'sounds']
   expect(
     fresh
       .filter((option) => off.includes(option.name))

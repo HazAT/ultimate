@@ -21,6 +21,11 @@ export const recommended: readonly { name: string; line: string; needs?: string;
       line: 'Web search and fetch (parallel.ai)',
       hint: 'needs a Parallel API key',
     },
+    {
+      name: 'exa',
+      line: 'Web search and fetch (exa.ai), instead of parallel',
+      hint: 'needs an Exa API key',
+    },
     { name: 'cloud', line: 'Encrypted project backups', hint: 'needs your own backup Worker' },
     { name: 'tailscale', line: 'Reach Ultimate from your devices', hint: 'needs Tailscale here' },
     { name: 'health', line: 'Provider health', hint: 'shows failing providers' },
