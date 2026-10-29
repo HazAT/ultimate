@@ -174,15 +174,35 @@ export function delivery(host: ExtensionHost) {
         await runtime.commit(async (tx) => {
           const answer =
             settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
-          const original = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-            (item) => item.id === m.id,
-          )
+          const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+          const original = messages.find((item) => item.id === m.id)
           if (!m.reply) {
             if (original && answer !== undefined) original.answer = answer
             return terminal
           }
           // The recipient answered with a message; its final answer stays where it is.
           if (original?.state === 'answered') return terminal
+          // One run answered several asks of this sender: the reply the first delivery to settle wrote carries the
+          // same answer, and closes this ask too. The user's and a remote Ultimate's asks each keep their own reply.
+          const replied =
+            typeof m.from === 'number' && answer !== undefined
+              ? messages.find(
+                  (item) =>
+                    item.from === m.to &&
+                    item.to === m.from &&
+                    item.re !== undefined &&
+                    item.answer === answer,
+                )
+              : undefined
+          if (replied) {
+            if (original) {
+              original.state = replied.error === undefined ? 'answered' : replied.state
+              original.answer = answer
+              if (replied.error !== undefined) original.error = replied.error
+              if ('entry' in settled && settled.entry !== undefined) original.entry = settled.entry
+            }
+            return terminal
+          }
           const model =
             answer === undefined ? undefined : (await tx.entry(AssistantEntry, answer))?.model?.[0]
           const text =

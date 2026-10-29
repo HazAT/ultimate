@@ -112,6 +112,9 @@ Delivery is a background durable task owned by the root conversation. Stable req
 `board-reply:<reply-id>`) deduplicate submissions across reopen. Recording the answer, appending its reply and
 advancing the task checkpoint happen in one transaction. A reopened task resumes that checkpoint, so both a
 placed input awaiting an answer and a recorded answer awaiting delivery survive without duplicate replies.
+One run that answers several asks of one conversation (a steered ask joins the run its earlier ask started) gets
+one reply: the first delivery to settle appends it, and each later one finds that reply by its `answer`, closes its
+own ask with it and ends. The user's and a remote Ultimate's asks each keep their own reply.
 One-way input deliveries also wait for the answer; recording it and completing the task commit together.
 Note deliveries complete after placement, without waiting for an answer.
 A delivery that triage, before its removal, had already written as context (`board:<id>` or `board-reply:<id>` is a
