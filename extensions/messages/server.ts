@@ -18,7 +18,7 @@ import { LineageApi } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
-import { CallerAction } from './refs.ts'
+import { CallerAction, WithdrawAction } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
@@ -53,6 +53,28 @@ export const actions = {
       } while (cursor !== undefined)
       return {}
     }, BACKGROUND_CONTEXT)
+  }),
+  [WithdrawAction.name]: implementAction(WithdrawAction, async (args, { host, conversationId }) => {
+    const { messageId, reason } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(messageId)) throw new Error('messageId must be a message id')
+    const why = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : ''
+    if (!why || why.length > 200)
+      throw new Error(
+        'reason must say in one short line why the question no longer needs an answer',
+      )
+    await host.harness().commit(async (tx) => {
+      const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+        (m) => m.id === messageId,
+      )
+      if (!message || !openQuestion(message)) throw new Error('These questions are no longer open')
+      if (conversationId === undefined || message.from !== conversationId)
+        throw new Error(
+          `Only the conversation that asked (#${message.from}) withdraws its question`,
+        )
+      message.state = 'withdrawn'
+      message.reason = why
+    }, BACKGROUND_CONTEXT)
+    return { id: messageId as number }
   }),
   remote: remoteAction,
   remoteReply: remoteReplyAction,
