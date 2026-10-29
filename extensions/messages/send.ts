@@ -87,7 +87,9 @@ export async function send(
   }
   if (!input.text.trim()) throw new Error('Message text must not be empty')
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
-    throw new Error('questions go only with a reply-expected message to the user')
+    throw new Error(
+      'questions go only with a reply-expected message to the user: send them with to: "user" and without reply: false, or put the decisions in your text as a Decisions: block for @ultimate to relay',
+    )
   const questions = input.questions === undefined ? undefined : checkQuestions(input.questions)
   // Checked before resolving, which may create a standing agent's conversation.
   const parent = from === 'user' ? undefined : await parentOf(host, from, ctx)

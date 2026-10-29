@@ -46,7 +46,7 @@ export const questionsParameter = Type.Array(
   }),
   {
     description:
-      'With to: user, the decisions the message asks, shown as its answer card: choice (one option), multi (any), confirm (yes/no), text (typed), scale (min–max with end labels). The card adds "Something else…" and a note field itself.',
+      'With to: user, the decisions the message asks, shown as its answer card: choice (one option), multi (any), confirm (yes/no), text (typed), scale (min–max with end labels). A multi answer comes back as its chosen labels joined with ", ", so a multi label holds no ", ". The card adds "Something else…" and a note field itself.',
   },
 )
 
