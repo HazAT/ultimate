@@ -31,6 +31,7 @@ import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
 import { column } from './layout.ts'
+import { useDrop } from './drop.tsx'
 import { storeImages, storedImages } from './draft-images.ts'
 import {
   atFirstLine,
@@ -267,11 +268,20 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
-  const { paste, reading, pending } = useImagePaste({
+  const { paste, add, reading, pending } = useImagePaste({
     images,
     setImages,
     setError,
     disabled: () => loading || draft.get().sending,
+  })
+  const drop = useDrop({
+    conversationId: id,
+    insert: (inserted) => {
+      if (id !== undefined) insertIntoComposer(id, inserted)
+    },
+    addImages: add,
+    setError,
+    disabled: loading || sending,
   })
   const models = useModels()
   const key = draft.key
@@ -362,8 +372,10 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     <div
       data-composer-target={scoped === undefined ? 'conversation' : 'scope'}
       className={cn(column(dock), 'pb-2')}
+      ref={drop.ref}
     >
       <Inbox items={inbox} />
+      {drop.picker}
       <PromptInput
         onSubmit={(event) => {
           event.preventDefault()
