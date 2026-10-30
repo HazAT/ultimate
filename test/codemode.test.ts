@@ -164,6 +164,8 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   const tool = agent.tools.find((item) => item.name === 'codemode')!
   expect(tool.description).toContain('store(key,value)/load(key)')
   expect(tool.description).toContain('yielded wait discards them')
+  expect(tool.description).toContain('already in scope (never redeclare them)')
+  expect(tool.description).toContain('setTimeout and setInterval are undefined')
   expect(tool.description).toContain('declare const ultimate')
 })
 
