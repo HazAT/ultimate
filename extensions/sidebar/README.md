@@ -24,11 +24,13 @@ which brings the Agent surface back; beside Memory no conversation row is highli
 block's brain) is.
 
 @ultimate has its own section below the project: its row shows `working`, `idle` or an amber
-`N waiting on you` (reply-enabled messages to you still waiting on your answer, plus one for its current final
-answer when that asks you questions), and the age of its latest
-message. Clicking it opens @ultimate on the Agent surface through `subagents.standing {name: 'ultimate'}`, also before
-its conversation exists. Below it, an Agents group lists the lander first, then the other ownerless top-level standing
-agents (label `agent`) by ID. These rows are never concluded or hidden and show no summary or feature:
+`N waiting on you` (reply-enabled messages to you still waiting on your answer or dismissal), and the age of its latest
+message. The count is its own button: each click opens the next open question at its message (`messages:open`, as
+the To-dos panel does), oldest first by id, then wraps to the oldest; it remembers only the last one it showed across
+Agent and Memory in this page, so one answered or dismissed meanwhile is skipped. Clicking the rest of the row opens @ultimate on the Agent surface
+through `subagents.standing {name: 'ultimate'}`, also before its conversation exists. Below it, an Agents group
+lists the lander first, then the other ownerless top-level standing agents (label `agent`) by ID.
+These rows are never concluded or hidden and show no summary or feature:
 @lander shows its state (`landing` or `idle`), `queue N` while submissions wait,
 and the age of its latest landing (what landed is its Landed section's first row); other agents show `working` or `idle` and the age. Their menu only
 compacts the context; they are never renamed, cleared or concluded.

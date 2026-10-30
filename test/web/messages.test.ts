@@ -11,6 +11,7 @@ import {
   counterparts,
   stateWord,
   messageStatus,
+  nextWaiting,
   openMessages,
   outgoingState,
   scriptMessaged,
@@ -442,6 +443,22 @@ describe('conversation state', () => {
     expect(stateWord('failed')).toBe('failed')
     expect(stateWord('done')).toBe('done')
     expect(stateWord('idle')).toBe('idle')
+  })
+
+  it('cycles the open questions by id, oldest first, skipping closed ones and wrapping', () => {
+    const log = messagesLog({}, { state: 'answered' }, { reply: false }, {}, { to: 4 }, {})
+    expect(nextWaiting(log)?.id).toBe(1)
+    expect(nextWaiting(log, 1)?.id).toBe(4)
+    expect(nextWaiting(log, 4)?.id).toBe(6)
+    expect(nextWaiting(log, 6)?.id).toBe(1)
+    // The one last shown was answered meanwhile: the next after it, by id.
+    log.messages[3].state = 'dismissed'
+    expect(nextWaiting(log, 4)?.id).toBe(6)
+    expect(nextWaiting(messagesLog({ state: 'answered' }))).toBeUndefined()
+    // A single open question: every click shows it again.
+    const one = messagesLog({ state: 'answered' }, {})
+    expect(nextWaiting(one)?.id).toBe(2)
+    expect(nextWaiting(one, 2)?.id).toBe(2)
   })
 
   it('failed when its latest input ended without an answer', () => {
