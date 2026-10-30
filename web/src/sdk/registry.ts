@@ -133,6 +133,10 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
   entries: [objectOf(isComponent), 'an object of entry kind → component'],
   inbox: [isComponent, 'an inbox renderer component'],
   composer: [isComponent, 'a composer renderer component'],
+  composerInput: [
+    arrayOf(fields({ drop: optional(isFunction), paste: optional(isFunction) })),
+    'an array of { drop?, paste? }',
+  ],
   link: [isComponent, 'a link renderer component'],
   codeBlocks: [objectOf(isComponent), 'an object of code block language → component'],
   messageActions: [arrayOf(isComponent), 'an array of message action components'],
@@ -499,6 +503,19 @@ export function composerRenderers(
       ? [{ extension: record.name, version: record.version, component: record.extension.composer }]
       : [],
   )
+}
+
+/**
+ * Each facet's input handlers, a later facet's first: a project's before a user's, and both before a built-in's, so a
+ * project can take what a built-in would have handled. Within a facet, array order. An event goes to the first handler
+ * that claims it.
+ */
+export function composerInputs(records: readonly ExtensionRecord[]) {
+  return records
+    .toReversed()
+    .flatMap(({ name, version, extension }) =>
+      (extension?.composerInput ?? []).map((handler) => ({ extension: name, version, ...handler })),
+    )
 }
 
 export function inboxRenderer(

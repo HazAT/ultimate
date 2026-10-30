@@ -33,6 +33,50 @@ sending states (side-chat forks @ultimate this way). Only the shown conversation
 (Escape, Shift+Tab); a scoped one does not.
 `switchConversation(id, { replace: true })` takes the current history entry instead of adding one, as a redirect does.
 
+A `composerInput` handler takes part in what the composer makes of a **drop** and a **paste** before the shell does: return
+`true` to claim the event, so the composer's own handling does not run, or nothing to leave it to the shell. It is an
+array of `{ drop?, paste? }`; a later facet's handlers run first (a project's, then a user's, then a built-in's, then
+array order within a facet), and the first to claim an event takes it. Each handler receives the event and a session for
+the composer it landed in:
+
+| `ComposerInput`     |                                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `conversationId`    | the conversation whose draft takes the input                                                                                |
+| `insert(text)`      | insert at the editor's cursor in place of its selection, as typing would, and focus it                                      |
+| `addImages(files)`  | attach files as images through the composer's own image path, limits and errors included                                    |
+| `setError(message)` | show a message in the composer's own error line                                                                             |
+| `show(ui?)`         | show a component above the editor until you replace it, `undefined` to clear it; it renders, and fails, as your extension's |
+
+`drop` receives `{ dataTransfer, shiftKey }` and `paste` `{ text, files }`, so a handler needs neither React nor a
+component of its own. The `drop` project extension (`<project>/.ultimate/extensions/drop/`) is the example to copy: it
+inserts the path a file has on this machine, looks a Finder drag up by name, asks which one when several carry it, and
+copies the file into the conversation on a shift-drop.
+
+```tsx
+// extensions/notes/web.tsx: a dropped Markdown file arrives as a mention, everything else as the shell places it.
+import { defineWebExtension } from '@/sdk'
+
+export default defineWebExtension({
+  composerInput: [
+    {
+      drop({ dataTransfer }, composer) {
+        const path = dataTransfer.getData('text/plain').trim()
+        if (!path.endsWith('.md')) return false
+        composer.insert(`@${path}`)
+        return true
+      },
+    },
+  ],
+})
+```
+
+The shell keeps two things whatever handlers exist, because they must not depend on an extension: a file dragged onto
+the page never navigates it (the shell cancels the drag and hands the drop to the composer), and an event no handler
+claims falls back to the composer's own handling — a drop's text where the caret is and its images as images, and for a
+paste the clipboard's images and, once the paste fold is core, a large block as a `[paste #1 +120 lines]` marker.
+Claiming a paste replaces those. A handler that throws is reported once as a notice naming its extension and skipped, so
+a broken one leaves the composer working.
+
 Wrap `<Conversation/>` in `<ConversationScope id={id}>` (both from `@/sdk`) to render another live conversation without
 switching the shell. `useConversation(select?)`, `useTranscript`, `useDoc`/`useDocKind`, `useUltimate().conversationId`,
 `useIntro`, `useCompact`/`useCompactQuiet`, and `useAction` follow the nearest scope, as do transcript/composer
@@ -302,7 +346,7 @@ No restart, no reload.
 
 ## Contributions
 
-`defineWebExtension({ slots, panels, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, intro, documents, commands })`; every key is optional. Extensions load
+`defineWebExtension({ slots, panels, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, intro, documents, commands, composerInput })`; every key is optional. Extensions load
 in parallel, installing independently; contributions follow discovery order: built-in → user → project, then folder name within each source. Give a slot item `{ component, order }` to move it (default order 0, lower first).
 
 ### Slots

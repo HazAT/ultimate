@@ -41,6 +41,11 @@ export function useImagePaste({
       })
     if (!files.length) return
     event.preventDefault()
+    await add(files)
+  }
+
+  /** Add image files as attachments, with the limits and errors pasting one has. */
+  async function add(files: readonly File[]) {
     if (pending.current || disabled()) return
     if (
       images.length + files.length > maxImages ||
@@ -79,7 +84,7 @@ export function useImagePaste({
     }
   }
 
-  return { paste, reading, pending }
+  return { paste, add, reading, pending }
 }
 
 export function ImagePreviews({
