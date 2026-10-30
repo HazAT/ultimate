@@ -3,7 +3,7 @@ import { cn } from 'cn'
 import { CornerDownRightIcon, ListPlusIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
 import { ImagePreviews, useImagePaste } from '@/components/image-paste'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ClipboardEvent, KeyboardEvent, ReactNode } from 'react'
 import {
   PromptInput,
   PromptInputFooter,
@@ -32,6 +32,8 @@ import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
 import { column } from './layout.ts'
 import { storeImages, storedImages } from './draft-images.ts'
+import { deletePasteAt, expandPastes, insertPaste, overLimit } from './text-paste.ts'
+import type { Paste } from './text-paste.ts'
 import {
   atFirstLine,
   mergedSteer,
@@ -180,6 +182,8 @@ export function Composer({ dock }: { dock?: boolean }) {
 
 type Draft = {
   text: string
+  /** The blocks behind the markers in `text`: memory only, so a reload restores the expanded text. */
+  pastes: Paste[]
   images: { data: string; mimeType: string }[]
   error?: string
   sending: boolean
@@ -192,6 +196,7 @@ function createDraft(id: number | string | undefined) {
   const key = id === undefined ? undefined : `ultimate.draft.${id}`
   let value: Draft = {
     text: key ? (localStorage.getItem(key) ?? '') : '',
+    pastes: [],
     images: key ? storedImages(key) : [],
     sending: false,
     revision: 0,
@@ -223,7 +228,7 @@ function getDraft(id: number | string | undefined) {
 /** Replace conversation `id`'s draft with `text`, as typing it would; the caller focuses the composer. */
 export function fillComposer(id: number, text: string) {
   const draft = getDraft(id)
-  draft.set({ text, revision: draft.get().revision + 1 })
+  draft.set({ text, pastes: [], revision: draft.get().revision + 1 })
   if (draft.key) localStorage.setItem(draft.key, text)
 }
 
@@ -239,19 +244,21 @@ export function insertIntoComposer(id: number, text: string) {
   const end = editor?.selectionEnd ?? current.length
   const { text: next, cursor } = spliced(current, start, end, text)
   draft.set({ text: next, revision: draft.get().revision + 1 })
-  if (draft.key) localStorage.setItem(draft.key, next)
+  if (draft.key) localStorage.setItem(draft.key, expandPastes(next, draft.get().pastes))
   // The cursor follows the inserted text once React has rendered the new value.
   requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
 }
 
 function clearDraft(
   draft: ReturnType<typeof createDraft>,
-  snapshot: { text: string; revision: number },
+  snapshot: { text: string; pastes: readonly Paste[]; revision: number },
 ) {
   const stored = draft.key ? (localStorage.getItem(draft.key) ?? '') : ''
   if (draft.get().revision !== snapshot.revision) return
-  if (draft.key && stored === snapshot.text) localStorage.removeItem(draft.key)
-  draft.set({ text: stored === snapshot.text ? '' : stored })
+  // What was stored is the draft as it would have been sent, so compare against the expanded snapshot.
+  const sent = expandPastes(snapshot.text, snapshot.pastes)
+  if (draft.key && stored === sent) localStorage.removeItem(draft.key)
+  draft.set({ text: stored === sent ? '' : stored, pastes: [] })
 }
 
 function ConversationComposer({ dock }: { dock?: boolean }) {
@@ -263,7 +270,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   // A thread's composer keeps its own draft beside the main stream's.
   const thread = useContext(ThreadContext)
   const draft = getDraft(thread === undefined ? id : `${id}.thread.${thread}`)
-  const { text, images, error, sending } = useSyncExternalStore(draft.subscribe, draft.get)
+  const { text, pastes, images, error, sending } = useSyncExternalStore(draft.subscribe, draft.get)
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
@@ -277,12 +284,15 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   const key = draft.key
   useEffect(() => {
     const stored = (key ? localStorage.getItem(key) : null) ?? ''
-    if (stored !== draft.get().text) draft.set({ text: stored, revision: draft.get().revision + 1 })
+    if (stored !== expandPastes(draft.get().text, draft.get().pastes))
+      draft.set({ text: stored, pastes: [], revision: draft.get().revision + 1 })
   }, [draft, key])
-  const update = (value: string) => {
-    draft.set({ text: value, revision: draft.get().revision + 1 })
+  /** The draft's text and the pastes behind its markers; what a reload restores is its expanded text, never a marker. */
+  const update = (value: string, nextPastes: readonly Paste[] = draft.get().pastes) => {
+    draft.set({ text: value, pastes: [...nextPastes], revision: draft.get().revision + 1 })
     if (!key) return
-    if (value) localStorage.setItem(key, value)
+    const stored = expandPastes(value, nextPastes)
+    if (stored) localStorage.setItem(key, stored)
     else localStorage.removeItem(key)
   }
   const blocked = loading ? undefined : blockedBy(agent, models)
@@ -298,7 +308,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     }
     draft.set({ sending: true, error: undefined })
     const mode = busy ? (whenBusy ?? 'steer') : undefined
-    let input = { text: text.trim(), images }
+    let input = { text: expandPastes(text, pastes).trim(), images }
     let previous: typeof input | undefined
     try {
       if (target) await target.send(input.text)
@@ -314,7 +324,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       if (draft.get().images === submitted.images) draft.set({ images: [] })
     } catch (failure) {
       if (key && draft.get().revision === submitted.revision)
-        draft.set({ text: localStorage.getItem(key) ?? '' })
+        draft.set({ text: localStorage.getItem(key) ?? '', pastes: [] })
       // A steer withdrawn for a merge that then failed to send would be lost: it comes back into the draft.
       if (previous) {
         update(mergedSteer(previous, { text: draft.get().text, images: [] }).text)
@@ -339,8 +349,51 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       draft.set({ sending: false })
     }
   }
+  /** A big pasted block folds to a marker at the caret; a small one lands as typed. */
+  function foldPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    // The image hook runs first and takes an image clipboard; only then is this a text paste to fold.
+    if (event.defaultPrevented) return
+    const block = event.clipboardData.getData('text').replace(/\r\n?/g, '\n')
+    if (!overLimit(block)) return
+    event.preventDefault()
+    const editor = event.currentTarget
+    const next = insertPaste(
+      editor.value,
+      editor.selectionStart,
+      editor.selectionEnd,
+      block,
+      pastes,
+    )
+    update(next.text, next.pastes)
+    // The caret follows the marker once React has rendered the new value.
+    requestAnimationFrame(() => editor.setSelectionRange(next.caret, next.caret))
+  }
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.nativeEvent.isComposing) return
+    if (
+      (event.key === 'Backspace' || event.key === 'Delete') &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      pastes.length > 0
+    ) {
+      const { value, selectionStart, selectionEnd } = event.currentTarget
+      const removed =
+        selectionStart === selectionEnd
+          ? deletePasteAt(
+              value,
+              selectionStart,
+              event.key === 'Backspace' ? 'backward' : 'forward',
+              pastes,
+            )
+          : undefined
+      if (!removed) return
+      event.preventDefault()
+      const editor = event.currentTarget
+      update(removed.text, removed.pastes)
+      requestAnimationFrame(() => editor.setSelectionRange(removed.caret, removed.caret))
+      return
+    }
     if (event.key === 'ArrowUp' && !target && queued.length > 0) {
       const { value, selectionStart } = event.currentTarget
       if (!atFirstLine(value, selectionStart)) return
@@ -379,7 +432,11 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         <PromptInputTextarea
           autoFocus={!touchKeyboard()}
           readOnly={loading || sending}
-          onPaste={(event) => void paste(event)}
+          onPaste={(event) => {
+            // oxlint-disable-next-line typescript/no-floating-promises -- the image hook catches its own failures into the draft's error state.
+            void paste(event)
+            foldPaste(event)
+          }}
           id={
             thread !== undefined
               ? `composer-input-thread-${thread}`

@@ -1,12 +1,12 @@
 import type { ImageContent, TextContent, UserMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { MentionText, Message, MessageContent } from '@/components/ai/message'
+import { Message, MessageContent } from '@/components/ai/message'
 import { MessageResponse } from '@/components/ai/message'
 import { Tool, ToolContent, ToolHeader, ToolImage, ToolSection } from '@/components/ai/tool'
-import { cn } from 'cn'
 import { useExtensions } from '../sdk/hooks.ts'
 import { messageItems } from '../sdk/registry.ts'
 import { ExtensionBoundary } from './boundary.tsx'
+import { FoldedText } from './folded-text.tsx'
 import { MessageActions } from './message-actions.tsx'
 
 /** The text blocks of a user message, joined. */
@@ -53,13 +53,9 @@ function SkillRun({ name, location, body }: { name: string; location: string; bo
   )
 }
 
-/** The user's words as written, with mentions as chips: the body of every user turn. */
+/** The user's words as written, with mentions as chips: the body of every user turn, a long one folded. */
 export function UserText({ text, className }: { text: string; className?: string }) {
-  return (
-    <p className={cn('break-words whitespace-pre-wrap', className)}>
-      <MentionText text={text} />
-    </p>
-  )
+  return <FoldedText className={className} text={text} />
 }
 
 /**
