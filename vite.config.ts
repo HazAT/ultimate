@@ -202,6 +202,9 @@ export default defineConfig({
     hookTimeout: 5000,
     teardownTimeout: 5000,
     maxWorkers: 8,
+    // Each server fixture boots a Vite dev server: five of them at once in one file, times eight workers, starve the
+    // machine and make every test several times slower than it is on its own.
+    maxConcurrency: 3,
     // Under an agent (AI_AGENT, CLAUDECODE, …) Vitest picks its minimal reporter, which prints nothing for passing
     // files; the lander's stall watchdog then stops a passing run that is silent for two minutes.
     reporters: ['default'],

@@ -111,8 +111,10 @@ export default (host) => {
   host.onOpen(async () => {})
   return defineExtension({ name: 'service-test' })
 }`
-it.concurrent('keeps the provider on a failed reload, replaces it on reload and drops it on disable', async () => {
-  const { home, projectRoot, server } = await fixture()
+// A reload instantiates every extension again, so each test here owns one or two of them: the whole story in one test ran
+// past the fast suite's budget on a busy machine.
+it.concurrent('keeps a provider while its reload fails, and replaces it when the reload works', async () => {
+  const { server, projectRoot } = await fixture()
   const folder = join(projectRoot, '.ultimate/extensions/service-test')
   await mkdir(folder, { recursive: true })
   const file = join(folder, 'server.ts')
@@ -134,6 +136,14 @@ it.concurrent('keeps the provider on a failed reload, replaces it on reload and 
   await writeFile(file, serviceFacet('replacement'))
   server.vite.watcher.emit('change', file)
   await until(async () => ((await lookup()) as { detail?: string })?.detail === 'replacement')
+})
+
+it.concurrent('drops a provider from the extensions using it when it is disabled', async () => {
+  const { home, projectRoot, server } = await fixture()
+  const folder = join(projectRoot, '.ultimate/extensions/service-test')
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'server.ts'), serviceFacet('first'))
+  await until(() => !!server.extensions.action('service-test', 'lookup'))
   const consumer = join(projectRoot, '.ultimate/extensions/service-consumer')
   await mkdir(consumer, { recursive: true })
   await writeFile(
@@ -240,8 +250,8 @@ const tools = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
 const web = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
   Object.keys((await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders)
 
-it.concurrent('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
-  const { home, projectRoot, server } = await fixture()
+it.concurrent('layers settings live, disabling and enabling a tool and its web facets', async () => {
+  const { projectRoot, server } = await fixture()
   const config = join(projectRoot, '.ultimate')
   const settings = join(config, 'settings.json')
   const initialBuild = server.host.build().id
@@ -261,6 +271,14 @@ it.concurrent('layers settings live, installs and uninstalls tools and web facet
   await until(async () => (await tools(server)).includes('automation'))
   await until(async () => (await web(server)).some((path) => path.includes('/automations/')))
   await until(() => server.host.build().id === initialBuild)
+})
+
+it.concurrent('installs a project extension live, notices an unknown name once, and follows its README', async () => {
+  const { home, projectRoot, server } = await fixture()
+  const config = join(projectRoot, '.ultimate')
+  const settings = join(config, 'settings.json')
+  await mkdir(config, { recursive: true })
+  await writeFile(settings, JSON.stringify({ extensions: { enable: ['automations'] } }))
   const folder = join(config, 'extensions/local')
   await mkdir(folder, { recursive: true })
   await writeFile(
