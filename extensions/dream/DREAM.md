@@ -41,9 +41,12 @@ Then end your turn with one line to the user. Other work may keep running: the d
 ### Decide
 
 The dream branch answers with its journal and its proposals as a `Decisions:` block. Relay them to the user as one
-message with structured `questions`, the three learned lines first; at night they wait for the morning. Only during a
-hands-off goal do you decide them in the user's place: decide each as the user would (keep what is evidenced and
-small; skip what is risky or vague), with one line on why. For each approved one:
+message with structured `questions`, the three learned lines first; at night they wait for the morning. Keep the card
+to about 8 questions: give the proposals that need a decision of their own a `choice` each, and group the rest (the
+small, low-risk ones: memory ops, doc lines) into one `multi` whose options are the proposals to approve, with the
+ones you would approve marked `recommended`; two or more small proposals go into one `multi`, a lone one gets a
+`confirm`. A multi answer comes back as its labels joined with ", ", so keep ", " out of those labels. Only during a hands-off goal do you decide them in the user's place: decide each as the user
+would (keep what is evidenced and small; skip what is risky or vague), with one line on why. For each approved one:
 
 - **Code, prompt or doc change:** start a branch for it, ordinary work (assess or build, review, land). A `project`
   proposal is built into the project's `.ultimate/`: put its evidence and the existing extension or feature pull
