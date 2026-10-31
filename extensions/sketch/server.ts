@@ -7,15 +7,23 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import { copyJson } from '@earendil-works/chord'
 import type { Context, JsonValue } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type, validateToolArguments } from '@earendil-works/pi-ai'
-import type { AssistantMessage, Message, Models, Tool, ToolCall } from '@earendil-works/pi-ai'
+import { clampThinkingLevel, Type, validateToolArguments } from '@earendil-works/pi-ai'
+import type {
+  AssistantMessage,
+  Message,
+  Models,
+  ModelThinkingLevel,
+  Tool,
+  ToolCall,
+} from '@earendil-works/pi-ai'
 import { defineDoc, defineExtension, defineTool } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { discoverAgents, hasLogin, hostDefaultModel, previewModel } from '../../lib/agents.ts'
+import { refName } from '../../lib/families.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
-import type { SummaryModel } from '../conversations/summary-model.ts'
 import { SketchFormsDoc, SubmitAction } from './refs.ts'
 import type { Block, SketchDetails, SketchForm, Spec, Value } from './refs.ts'
 
@@ -213,9 +221,44 @@ const errorResult = (call: ToolCall, text: string, isError = true): Message => (
   timestamp: Date.now(),
 })
 
+/** The model a sketch asks, kept in the call's memo so a rerun asks the same one. */
+export type SketchModel = { provider: string; id: string; thinking: ModelThinkingLevel }
+
+/**
+ * What the `sketch` agent definition (`agents/sketch.md`) runs on: a preview's model, else its pin or family's, else the
+ * default model. Read at each call, so a family move or an overlay applies to the next sketch.
+ */
+export async function sketchModel(
+  host: Pick<
+    ExtensionHost,
+    'ultimateRoot' | 'projectRoot' | 'userHome' | 'modelRuntime' | 'settings'
+  >,
+): Promise<SketchModel> {
+  const { definitions } = await discoverAgents(
+    host.ultimateRoot,
+    host.projectRoot,
+    host.userHome,
+    host.modelRuntime,
+  )
+  const runs = definitions.find((definition) => definition.name === 'sketch')?.runs
+  if (!runs)
+    throw new Error('No sketch agent definition: restore extensions/sketch/agents/sketch.md')
+  const ref = previewModel() ?? runs.model ?? (await hostDefaultModel(host))
+  const model = ref && host.modelRuntime.getModel(ref.provider, ref.modelId)
+  if (!model || !hasLogin(host.modelRuntime.getAvailableSnapshot(), ref))
+    throw new Error(
+      `The sketch agent's model ${ref ? refName(ref) : '(none)'} has no login here: log in, or move the sketch agent to another family in the Agents tab`,
+    )
+  return {
+    provider: model.provider,
+    id: model.id,
+    thinking: clampThinkingLevel(model, runs.thinking ?? 'medium'),
+  }
+}
+
 export type SketchRun = {
   models: Models
-  model: SummaryModel
+  model: SketchModel
   root: string
   request: string
   data?: string
@@ -411,11 +454,8 @@ export default function sketchExtension(host: ExtensionHost) {
           const conversations = host.need(ConversationsApi)
           // Memoized, so a rerun asks the model the first run asked.
           const model =
-            (await api.memo<SummaryModel>('model', ctx)) ??
-            (await conversations
-              .summaryModel()
-              .then((chosen) => chosen && api.memo('model', chosen, ctx)))
-          if (!model) throw new Error('No summary model is available to sketch with')
+            (await api.memo<SketchModel>('model', ctx)) ??
+            (await api.memo('model', await sketchModel(host), ctx))
           const root = (await api.agent(ctx)).cwd ?? host.projectRoot
           const { spec, read, steps } = await sketch({
             models: api.models,
