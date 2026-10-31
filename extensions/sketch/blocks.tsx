@@ -33,10 +33,8 @@ function useWidth<T extends Element>() {
   const ref = useRef<T>(null)
   const [width, setWidth] = useState(600)
   useLayoutEffect(() => {
-    const element = ref.current
-    if (!element) return
     const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
-    observer.observe(element)
+    if (ref.current) observer.observe(ref.current)
     return () => observer.disconnect()
   }, [])
   return [ref, width] as const
