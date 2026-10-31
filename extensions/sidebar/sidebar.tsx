@@ -49,7 +49,7 @@ import { MEMORY_SURFACE, useOpenMemory, useRoots } from '../lineage/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import type { KeptWork } from '../conversations/types.ts'
 import { LanderState } from './lander.tsx'
-import { StandingPhase, WaitingOnUser } from './ultimate.tsx'
+import { StandingPhase, WaitingCount, WaitingOnUser } from './ultimate.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 import { topLevelRows } from './listed.ts'
 import { UnderUltimate, Unlisted } from './ui.tsx'
@@ -393,6 +393,8 @@ function Tree({
           <>
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
+            ) : isUltimate && state === 'waits' && waiting > 0 ? (
+              <WaitingCount log={log} waiting={waiting} />
             ) : (
               <span className={cn('shrink-0', stateTone[state])}>{stateWord(state, waiting)}</span>
             )}

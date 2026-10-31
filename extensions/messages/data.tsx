@@ -11,11 +11,18 @@ export function answeredMessages(messages: Message[], conversation: number, entr
 }
 
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
+/** A question to the user they have neither answered nor dismissed. */
+const waitsOnUser = (message: Message): message is Message & { from: number } =>
+  message.to === 'user' && message.reply && message.state === 'delivered'
+
 /** What waits on the user: each question to the user they have neither answered nor dismissed. */
-export const waitingOnUser = (log: MessagesData) =>
-  log.messages.filter(
-    (message) => message.to === 'user' && message.reply && message.state === 'delivered',
-  ).length
+export const waitingOnUser = (log: MessagesData) => log.messages.filter(waitsOnUser).length
+
+/** The next open question by id, wrapping to the oldest; the log keeps id order. */
+export function nextWaiting(log: MessagesData, last?: number) {
+  const open = log.messages.filter(waitsOnUser)
+  return open.find((message) => last === undefined || message.id > last) ?? open[0]
+}
 
 /**
  * Where a conversation stands, the one state every view shows:

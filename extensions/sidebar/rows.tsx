@@ -9,7 +9,7 @@ import {
   PauseIcon,
   PencilIcon,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   DropdownMenu,
@@ -385,6 +385,7 @@ export function StandingRow({
   onOpen: () => void
   children: ReactNode
 }) {
+  const label = useId()
   return (
     <div
       className={cn(
@@ -398,9 +399,15 @@ export function StandingRow({
     >
       <button
         aria-current={shown ? 'true' : undefined}
-        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md pr-2 pl-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+        aria-labelledby={label}
+        className="absolute inset-0 cursor-pointer rounded-md outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
         onClick={onOpen}
         type="button"
+      />
+      {/* Clicks reach the row beneath, except on a control in its state line. */}
+      <span
+        className="pointer-events-none relative flex h-full min-w-0 flex-1 items-center gap-2.5 pr-2 pl-2 text-left [&_button]:pointer-events-auto"
+        id={label}
       >
         <AgentMark name={name} presence={presence} />
         <span className="flex min-w-0 flex-1 flex-col">
@@ -424,7 +431,7 @@ export function StandingRow({
             {children}
           </span>
         </span>
-      </button>
+      </span>
       {conversation && (
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
