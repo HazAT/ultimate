@@ -308,9 +308,11 @@ export const actions = {
       throw new Error('Expected { call, values }')
     const id = conversationId as ConversationId
     const call = data.call
-    const form = await host
-      .harness()
-      .commit(async (tx) => (await tx.doc(SketchForms, id)).forms[call], context)
+    // A copy: a document read stays valid only inside its transaction.
+    const form = await host.harness().commit(async (tx) => {
+      const kept = (await tx.doc(SketchForms, id)).forms[call]
+      return kept && (copyJson(kept) as SketchForm)
+    }, context)
     if (!form) throw new Error('No such form')
     if (form.submitted) throw new Error('This form was already submitted')
     const values = checkValues(form, data.values)
@@ -343,7 +345,7 @@ export default function sketchExtension(host: ExtensionHost) {
         // Every model step and read is memoized, so a rerun draws the same spec.
         replay: 'safe',
         description:
-          "Show the user a small UI in the transcript, drawn by a fast model from your words: charts (bar, line), tables, metrics, short text and forms. Say what to show and how; pass the numbers or rows in data when you have them, or omit data and name the files to read. A form's submitted values come back to you as the user's next input. Takes a few seconds; returns one line naming what was drawn.",
+          "Show the user a small UI in the transcript, drawn by a fast model from your words: charts (bar, line), tables, metrics, short text and forms. Say what to show and how; pass the numbers or rows in data when you have them, or omit data and name the files to read. A form's submitted values come back to you as the user's next input. Takes a few seconds; returns one line naming what was drawn. Call it directly, never inside codemode: a nested call draws no card.",
         parameters: Type.Object({
           request: Type.String({
             minLength: 1,

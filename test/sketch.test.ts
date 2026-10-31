@@ -115,9 +115,15 @@ it('submits a form once as the user’s input, then locks it', async () => {
     },
   }
   const inputs: unknown[] = []
-  const tx = { doc: async () => ({ forms }) } as unknown as Tx
+  // Like the harness's: a document read is usable only inside its transaction.
   const harness = {
-    commit: async (change: (tx: Tx) => unknown) => change(tx),
+    commit: async (change: (tx: Tx) => unknown) => {
+      const form = Proxy.revocable(forms.call_1, {})
+      const doc = { forms: { call_1: form.proxy } }
+      const result = await change({ doc: async () => doc } as unknown as Tx)
+      form.revoke()
+      return result
+    },
     conversation: async () => ({ submit: async (input: unknown) => inputs.push(input) }),
   }
   const ctx = { host: { harness: () => harness }, conversationId: 7 } as unknown as ActionContext

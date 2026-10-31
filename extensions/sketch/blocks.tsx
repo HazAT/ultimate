@@ -1,5 +1,5 @@
 /* oxlint-disable react/no-array-index-key -- A spec is immutable data without ids: its rows and blocks never reorder. */
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -18,27 +18,53 @@ const short = (value: number) =>
 
 type Chart = Extract<Leaf, { type: 'chart' }>
 
-/** A bar or line chart drawn as SVG; it scales with its card's width. */
+/** The round number at or above `value` an axis ends at: 37 → 40, 126 → 150, 0.8 → 1. */
+function nice(value: number) {
+  if (value <= 0) return 0
+  const step = 10 ** Math.floor(Math.log10(value))
+  return (
+    [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((f) => f * step).find((top) => top >= value) ??
+    10 * step
+  )
+}
+
+/** The element's width in CSS pixels, followed as it resizes. */
+function useWidth<T extends Element>() {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(600)
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, width] as const
+}
+
+/** A bar or line chart drawn as SVG at its card's width, so its labels keep their size on a phone. */
 function ChartBlock({ block }: { block: Chart }) {
   const [hover, setHover] = useState<number>()
-  const W = 600
-  const H = 200
+  const [ref, measured] = useWidth<HTMLElement>()
+  const W = Math.max(240, measured)
+  const H = W < 480 ? 160 : 200
   const pad = { top: 16, right: 8, bottom: 22, left: 36 }
   const values = block.data.flatMap((row) => block.series.map((s) => number(row[s.field])))
-  const max = Math.max(...values, 0) || 1
-  const min = Math.min(...values, 0)
+  const max = nice(Math.max(...values, 0))
+  const low = Math.min(...values, 0)
+  const min = low < 0 ? -nice(-low) : 0
   const span = max - min || 1
   const y = (value: number) => pad.top + (1 - (value - min) / span) * (H - pad.top - pad.bottom)
   const inner = W - pad.left - pad.right
   const slot = inner / block.data.length
   const x = (index: number) => pad.left + slot * index + slot / 2
   const ticks = [min, min + span / 2, max]
-  // Every label when they fit, else every nth.
-  const every = Math.ceil(block.data.length / 12)
+  // Every label when they fit (about 64 px each), else every nth.
+  const every = Math.ceil(block.data.length / Math.max(2, Math.floor(inner / 64)))
   const multi = block.series.length > 1
   const bar = Math.min(48, (slot * 0.7) / block.series.length)
   return (
-    <figure className="min-w-0 space-y-1.5">
+    <figure className="min-w-0 space-y-1.5" ref={ref}>
       {(block.title || multi) && (
         <figcaption className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
           {block.title && <span className="section-label">{block.title}</span>}
@@ -195,6 +221,8 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
   const numeric = (key: string) =>
     block.rows.length > 0 &&
     block.rows.every((row) => row[key] == null || typeof row[key] === 'number')
+  // Short values (ids, dates, counts) stay on one line; prose columns wrap.
+  const brief = (key: string) => block.rows.every((row) => String(row[key] ?? '').length <= 12)
   return (
     <div className="max-h-96 min-w-0 overflow-auto">
       <table className="w-full border-collapse text-[13px]">
@@ -221,6 +249,7 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
                   className={cn(
                     'px-2 py-1.5 align-top',
                     numeric(column.key) && 'text-right tabular-nums',
+                    brief(column.key) && 'whitespace-nowrap',
                   )}
                   key={column.key}
                 >

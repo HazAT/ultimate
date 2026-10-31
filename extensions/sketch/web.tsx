@@ -1,7 +1,15 @@
 import { PencilRulerIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
-import { api, Card, defineWebExtension, formatTime, useDoc, useToolDuration } from '@/sdk'
+import {
+  api,
+  attention,
+  Card,
+  defineWebExtension,
+  formatTime,
+  useDoc,
+  useToolDuration,
+} from '@/sdk'
 import type { ToolCallView } from '@/sdk'
 import { Blocks } from './blocks.tsx'
 import { SketchFormsDoc, SubmitAction } from './refs.ts'
@@ -54,4 +62,5 @@ function SketchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   )
 }
 
-export default defineWebExtension({ tools: { sketch: SketchCall } })
+// Drawn for the user to see (and maybe fill in): it never folds into a compact transcript's worked steps.
+export default defineWebExtension({ tools: { sketch: attention(SketchCall) } })
