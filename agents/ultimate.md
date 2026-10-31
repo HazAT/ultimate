@@ -16,6 +16,7 @@ tools:
     branch,
     web_search,
     web_fetch,
+    mcp,
     setup,
     compact,
     remember,

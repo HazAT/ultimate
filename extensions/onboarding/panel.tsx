@@ -22,6 +22,7 @@ import {
   useEvent,
   useExtensionUiState,
   useExtensions,
+  Provided,
   useSystem,
   useUltimate,
 } from '@/sdk'
@@ -35,6 +36,7 @@ import {
   sources,
   useDescribed,
 } from './parts.tsx'
+import { ExtensionDetails } from './ui.tsx'
 import { AdoptProjectSetupAction, DecideAction, DetailsAction, SetExtensionAction } from './refs.ts'
 import { switchScope } from './choices.tsx'
 import { ListAction } from '../secrets/ui.tsx'
@@ -398,6 +400,11 @@ function Details({ extension }: { extension: ExtensionInfo }) {
       )}
       {(prompt || hooks) && (
         <Field label="prompt">{[prompt, hooks].filter(Boolean).join(' · ')}</Field>
+      )}
+      {extension.enabled && (
+        <Provided input={extension.name} point={ExtensionDetails}>
+          {(part) => part}
+        </Provided>
       )}
       {details.loading && !data && <p className="text-muted-foreground/60">loading…</p>}
       {details.error && <p className="text-error">{errorMessage(details.error)}</p>}
