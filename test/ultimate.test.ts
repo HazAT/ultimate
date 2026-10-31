@@ -175,7 +175,8 @@ it.concurrent('has no lineage action that starts a branch without routing its an
   ).toBe(false)
 })
 
-it.concurrent('starts a lineage branch with a message input and caller attribution, returns its answer, and selects roots', async () => {
+// The root-selection half lives in the next test: one test's work has to fit the fast suite's budget on a busy machine.
+it.concurrent('starts a lineage branch with a message input and caller attribution, and returns its answer', async () => {
   const f = await fixture()
   await seedTally(f.server.harness)
   const ultimate = await f.subagents.standing('ultimate', context)
@@ -214,36 +215,7 @@ it.concurrent('starts a lineage branch with a message input and caller attributi
       JSON.stringify(entry).includes(`started by #${ultimate} (@ultimate)`),
     ),
   ).toBe(true)
-  const other = await f.server.harness.createConversation(
-    { ownership: { kind: 'ownerless' } },
-    context,
-  )
-  await seedTally(f.server.harness, other.id)
-  await f.server.harness.commit(async (tx) => {
-    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.push(other.id)
-  }, context)
-  await ask(
-    f.server,
-    ultimate,
-    'BRANCH ' + JSON.stringify({ prompt: 'Ambiguous', isolated: false }),
-  )
-  expect(f.requests.some((text) => text.includes(`Choose a root. Roots: #1, #${other.id}`))).toBe(
-    true,
-  )
-  await ask(
-    f.server,
-    ultimate,
-    'BRANCH ' + JSON.stringify({ prompt: 'Invalid', root: 999, isolated: false }),
-  )
-  expect((await log(f.server)).some((m) => m.text === 'Invalid')).toBe(false)
-  await ask(
-    f.server,
-    ultimate,
-    'BRANCH ' + JSON.stringify({ prompt: 'Explicit root', root: other.id, isolated: false }),
-  )
-  await until(async () => (await log(f.server)).some((m) => m.text === 'Explicit root'))
-  expect(await rootOf({ harness: () => f.server.harness }, branch, context)).toBe(1)
-  // A branch caller's tree wins over an ambiguous project root list.
+  // The branch's agent comes from the project overlay the coordinator inherited at its start.
   const branchConversation = (await f.server.harness.conversation(branch, context))!
   const configured = await branchConversation.agent(context)
   const coordinator = parseDefinition(
@@ -308,6 +280,46 @@ it.concurrent('starts a lineage branch with a message input and caller attributi
       JSON.stringify(entry).includes(`Branch #${sameTree.to} started`),
     ),
   )
+})
+
+it.concurrent('selects a branch’s root, and refuses an ambiguous or invalid one', async () => {
+  const f = await fixture()
+  await seedTally(f.server.harness)
+  const ultimate = await f.subagents.standing('ultimate', context)
+  const other = await f.server.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  await seedTally(f.server.harness, other.id)
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.push(other.id)
+  }, context)
+  // Two roots and no explicit one: @ultimate asks which, rather than guess.
+  await ask(
+    f.server,
+    ultimate,
+    'BRANCH ' + JSON.stringify({ prompt: 'Ambiguous', isolated: false }),
+  )
+  expect(f.requests.some((text) => text.includes(`Choose a root. Roots: #1, #${other.id}`))).toBe(
+    true,
+  )
+  // A root that does not exist starts nothing.
+  await ask(
+    f.server,
+    ultimate,
+    'BRANCH ' + JSON.stringify({ prompt: 'Invalid', root: 999, isolated: false }),
+  )
+  expect((await log(f.server)).some((m) => m.text === 'Invalid')).toBe(false)
+  await ask(
+    f.server,
+    ultimate,
+    'BRANCH ' + JSON.stringify({ prompt: 'Explicit root', root: other.id, isolated: false }),
+  )
+  await until(async () => (await log(f.server)).some((m) => m.text === 'Explicit root'))
+  const explicit = (await log(f.server)).find((m) => m.text === 'Explicit root')!
+    .to as ConversationId
+  // An explicit root wins over the caller's own tree, which a branch without one keeps (see the test above).
+  expect(await rootOf({ harness: () => f.server.harness }, explicit, context)).toBe(other.id)
   await f.server.harness.commit(async (tx) => {
     ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = []
   }, context)
