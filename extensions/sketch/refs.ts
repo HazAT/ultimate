@@ -39,8 +39,10 @@ export type SketchForm = {
   fields: Field[]
   submitted?: { at: number; values: Record<string, Value> }
 }
-/** `{ forms }` on the conversation that called `sketch`. */
-export const SketchFormsDoc = docRef<{ forms: Record<string, SketchForm> }>('sketch.forms')
+/** `{ forms, counted }` on the conversation that called `sketch`; `counted` names the calls whose usage was counted. */
+export const SketchFormsDoc = docRef<{ forms: Record<string, SketchForm>; counted: string[] }>(
+  'sketch.forms',
+)
 
 /**
  * `{ call, values }` → `{ id }`: submit the form `sketch` call `call` drew, once; its values reach the conversation as the

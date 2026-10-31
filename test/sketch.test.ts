@@ -127,9 +127,12 @@ it('submits a form once as the user’s input, then locks it', async () => {
     conversation: async () => ({ submit: async (input: unknown) => inputs.push(input) }),
   }
   const ctx = { host: { harness: () => harness }, conversationId: 7 } as unknown as ActionContext
-  await expect(actions.submit({ call: 'call_1', values: { every: 'daily' } }, ctx)).rejects.toThrow(
-    'every must be one of 15m, 30m',
-  )
+  await expect(
+    actions.submit({ call: 'call_1', values: { every: 'daily', phone: true } }, ctx),
+  ).rejects.toThrow('Interval: expected a select value')
+  await expect(
+    actions.submit({ call: 'call_1', values: { every: '30m', phone: 'yes' } }, ctx),
+  ).rejects.toThrow('Notify on phone: expected a toggle value')
   await actions.submit({ call: 'call_1', values: { every: '30m', phone: true } }, ctx)
   expect(inputs).toEqual([
     expect.objectContaining({
@@ -139,10 +142,23 @@ it('submits a form once as the user’s input, then locks it', async () => {
     }),
   ])
   expect(forms.call_1.submitted?.values).toEqual({ every: '30m', phone: true })
-  await expect(actions.submit({ call: 'call_1', values: { every: '15m' } }, ctx)).rejects.toThrow(
-    'already submitted',
-  )
+  await expect(
+    actions.submit({ call: 'call_1', values: { every: '15m', phone: true } }, ctx),
+  ).rejects.toThrow('already submitted')
   expect(inputs).toHaveLength(1)
+})
+
+it('sends a spec with two forms back for repair', async () => {
+  const { faux, run } = await setup()
+  const form = { type: 'form', submit: 'Go', fields: [{ name: 'a', label: 'A', kind: 'text' }] }
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall('render', { blocks: [form, form] })]),
+    (context) => {
+      expect(context.messages.at(-1)).toMatchObject({ role: 'toolResult', isError: true })
+      return fauxAssistantMessage([fauxToolCall('render', { blocks: [form] })])
+    },
+  ])
+  expect((await run('a form', '')).spec.blocks).toHaveLength(1)
 })
 
 it('fails with the model’s words when it draws nothing', async () => {

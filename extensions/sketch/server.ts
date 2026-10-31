@@ -19,14 +19,17 @@ import type { SummaryModel } from '../conversations/summary-model.ts'
 import { SketchFormsDoc, SubmitAction } from './refs.ts'
 import type { Block, SketchDetails, SketchForm, Spec, Value } from './refs.ts'
 
-export const SketchForms = defineDoc<{ forms: Record<string, SketchForm> }>({
+/** The newest calls whose usage is counted, kept to recognise a rerun, which only a recent call can have. */
+const COUNTED = 200
+
+export const SketchForms = defineDoc<{ forms: Record<string, SketchForm>; counted: string[] }>({
   kind: SketchFormsDoc.kind,
   checkpointWhen: () => false,
   version: 1,
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ forms: {} }),
+  initial: () => ({ forms: {}, counted: [] }),
 })
 export const docs = [SketchForms]
 
@@ -133,6 +136,10 @@ const READ_RULE = `
 
 type Step = { answer: AssistantMessage; results: Message[]; read: string[] }
 
+/** The spec's blocks with rows opened. */
+export const leaves = (spec: Spec) =>
+  spec.blocks.flatMap((block) => (block.type === 'row' ? block.blocks : [block]))
+
 /** One line naming what a spec shows, for the calling agent. */
 export function describe(spec: Spec) {
   const leaf = (block: Block): string =>
@@ -171,11 +178,22 @@ async function runRead(root: string, call: ToolCall, signal: AbortSignal) {
       .join('\n')
   }
   if (call.name === 'grep' && typeof args.pattern === 'string') {
-    const target = relative(root, await inside(root, path)) || '.'
+    // The checked real path itself, and no config file that could turn on --follow or preprocessors.
+    const target = await inside(root, path)
     const { stdout } = await exec(
       'rg',
-      ['-n', '--max-count', '50', '--max-columns', '300', '--', args.pattern, target],
-      { cwd: root, signal, maxBuffer: 4_000_000 },
+      [
+        '--no-config',
+        '-n',
+        '--max-count',
+        '50',
+        '--max-columns',
+        '300',
+        '--',
+        args.pattern,
+        target,
+      ],
+      { cwd: await realpath(root), signal, maxBuffer: 4_000_000 },
     ).catch((error: { code?: number; stdout?: string }) => {
       // rg exits 1 when nothing matched.
       if (error.code === 1) return { stdout: '' }
@@ -257,6 +275,8 @@ export async function sketch(
     if (drawn) {
       try {
         const spec = validateToolArguments(render, drawn) as Spec
+        if (leaves(spec).filter((block) => block.type === 'form').length > 1)
+          throw new Error('A sketch holds at most one form; put all its fields in one form.')
         return { spec, read: steps.flatMap((s) => s.read), steps }
       } catch (error) {
         if (++invalid > 1) throw error
@@ -283,21 +303,35 @@ export function submissionText(form: SketchForm, values: Record<string, Value>) 
   return [`Submitted the form${form.title ? ` "${form.title}"` : ''}:`, ...lines].join('\n')
 }
 
+/** Every field's value, checked against its kind; text, number and date may be left empty (""). */
 function checkValues(form: SketchForm, values: unknown): Record<string, Value> {
   if (!values || typeof values !== 'object' || Array.isArray(values))
     throw new Error('values must be an object')
-  const out: Record<string, Value> = {}
-  for (const [name, value] of Object.entries(values)) {
-    const field = form.fields.find((candidate) => candidate.name === name)
-    if (!field) throw new Error(`Unknown field ${name}`)
-    if (!['string', 'number', 'boolean'].includes(typeof value))
-      throw new Error(`${name} must be a string, number or boolean`)
-    if (field.kind === 'select' && field.options && !field.options.includes(String(value)))
-      throw new Error(`${name} must be one of ${field.options.join(', ')}`)
-    out[name] = value as Value
-  }
-  return out
+  const given = values as Record<string, unknown>
+  for (const name of Object.keys(given))
+    if (!form.fields.some((field) => field.name === name)) throw new Error(`Unknown field ${name}`)
+  return Object.fromEntries(
+    form.fields.map((field) => {
+      const value = given[field.name]
+      const ok =
+        field.kind === 'toggle'
+          ? typeof value === 'boolean'
+          : field.kind === 'select'
+            ? typeof value === 'string' && (field.options ?? []).includes(value)
+            : field.kind === 'number'
+              ? value === '' || (typeof value === 'number' && Number.isFinite(value))
+              : field.kind === 'date'
+                ? value === '' || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value))
+                : typeof value === 'string'
+      if (!ok) throw new Error(`${field.label}: expected a ${field.kind} value`)
+      return [field.name, value as Value]
+    }),
+  )
 }
+
+/** checkValues lists every field in the form's order, so equal values serialize alike. */
+const same = (a: Record<string, Value>, b: Record<string, Value>) =>
+  JSON.stringify(a) === JSON.stringify(b)
 
 export const userActions = ['submit']
 export const actions = {
@@ -308,30 +342,29 @@ export const actions = {
       throw new Error('Expected { call, values }')
     const id = conversationId as ConversationId
     const call = data.call
-    // A copy: a document read stays valid only inside its transaction.
-    const form = await host.harness().commit(async (tx) => {
-      const kept = (await tx.doc(SketchForms, id)).forms[call]
-      return kept && (copyJson(kept) as SketchForm)
+    // Claim and lock in one transaction, so one set of values wins; the claim is then delivered, once per request id.
+    // Repeating the winning values delivers again (a retry after a crash in between); other values are refused.
+    const claimed = await host.harness().commit(async (tx) => {
+      const form = (await tx.doc(SketchForms, id)).forms[call]
+      if (!form) throw new Error('No such form')
+      const values = checkValues(form, data.values)
+      if (form.submitted && !same(form.submitted.values, values))
+        throw new Error('This form was already submitted')
+      form.submitted ??= { at: Date.now(), values }
+      // A copy: a document read stays valid only inside its transaction.
+      return copyJson(form) as SketchForm
     }, context)
-    if (!form) throw new Error('No such form')
-    if (form.submitted) throw new Error('This form was already submitted')
-    const values = checkValues(form, data.values)
     const conversation = await host.harness().conversation(id, context)
     if (!conversation) throw new Error(`No conversation ${id}`)
-    // The request id makes a double submit one input; the lock below then refuses the next one.
     await conversation.submit(
       {
         type: 'input',
         requestId: `sketch:${call}`,
         whenBusy: 'followUp',
-        content: submissionText(form, values),
+        content: submissionText(claimed, claimed.submitted!.values),
       },
       context,
     )
-    await host.harness().commit(async (tx) => {
-      const forms = (await tx.doc(SketchForms, id)).forms
-      if (forms[call] && !forms[call].submitted) forms[call].submitted = { at: Date.now(), values }
-    }, context)
     return { ok: true as const }
   }),
 }
@@ -385,29 +418,27 @@ export default function sketchExtension(host: ExtensionHost) {
               )) as unknown as Step),
           })
           const at = (await api.memo<number>('at', ctx)) ?? (await api.memo('at', Date.now(), ctx))
-          const form = spec.blocks
-            .flatMap((block) => (block.type === 'row' ? block.blocks : [block]))
-            .find((block) => block.type === 'form')
-          // A rerun after a restart neither counts the usage again nor reopens a sent form.
-          if (!(await api.memo<boolean>('kept', ctx)))
-            await api.commit(async (tx) => {
-              const forms = (await tx.doc(SketchForms, api.conversationId)).forms
-              if (forms[api.callId]) return
-              for (const step of steps)
-                await conversations.accountResponse(tx, api.conversationId, {
-                  provider: step.answer.provider,
-                  model: step.answer.model,
-                  usage: step.answer.usage,
-                  text: '',
-                  stopReason: step.answer.stopReason,
-                })
-              if (form)
-                forms[api.callId] = {
-                  ...(spec.title ? { title: spec.title } : {}),
-                  fields: form.fields,
-                }
-            }, ctx)
-          await api.memo('kept', true, ctx)
+          const form = leaves(spec).find((block) => block.type === 'form')
+          // Recorded with the usage in one transaction: a rerun after a restart neither counts it again nor reopens a
+          // sent form.
+          await api.commit(async (tx) => {
+            const doc = await tx.doc(SketchForms, api.conversationId)
+            if (doc.counted.includes(api.callId)) return
+            doc.counted = [...doc.counted, api.callId].slice(-COUNTED)
+            for (const step of steps)
+              await conversations.accountResponse(tx, api.conversationId, {
+                provider: step.answer.provider,
+                model: step.answer.model,
+                usage: step.answer.usage,
+                text: '',
+                stopReason: step.answer.stopReason,
+              })
+            if (form)
+              doc.forms[api.callId] = {
+                ...(spec.title ? { title: spec.title } : {}),
+                fields: form.fields,
+              }
+          }, ctx)
           const details: SketchDetails = {
             spec,
             at,
