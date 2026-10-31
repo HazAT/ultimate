@@ -9,9 +9,12 @@ import { context, prepareHarness } from '../server/harness.ts'
 import type { OpenHost } from '../server/harness.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import type { ActionContext } from '../server/actions.ts'
-import messagesExtension, { gist } from '../extensions/messages/server.ts'
+import messagesExtension, {
+  actions as messageActions,
+  gist,
+} from '../extensions/messages/server.ts'
 import { Messages } from '../extensions/messages/api.ts'
-import type { Question } from '../extensions/messages/api.ts'
+import type { MessagesService, Question } from '../extensions/messages/api.ts'
 import { checkQuestions } from '../extensions/messages/questions.ts'
 import questionsExtension, {
   actions,
@@ -149,10 +152,28 @@ async function fixture() {
       message: (await log()).messages.findLast((m) => m.from === id && m.to === 'user'),
     }
   }
-  const action = () => ({ host, signal: new AbortController().signal }) as ActionContext
+  const action = (conversationId?: number) =>
+    ({ host, conversationId, signal: new AbortController().signal }) as ActionContext
   const answer = (args: Parameters<typeof actions.answer>[0]) => actions.answer(args, action())
   const dismiss = (messageId: number) => actions.dismiss({ messageId }, action())
-  return { opened, ultimate, type, ask, answer, dismiss, log, entries, observed, settled }
+  /** The `withdraw` action as conversation `by` calls it through codemode. */
+  const withdraw = (by: number | undefined, args: { messageId: number; reason: string }) =>
+    messageActions.withdraw(args, action(by))
+  const openQuestions = () => (services.get('messages') as MessagesService).openQuestions(context)
+  return {
+    opened,
+    ultimate,
+    type,
+    ask,
+    answer,
+    dismiss,
+    withdraw,
+    openQuestions,
+    log,
+    entries,
+    observed,
+    settled,
+  }
 }
 
 describe('questions on a message', () => {
@@ -330,7 +351,7 @@ describe('questions on a message', () => {
     expect(note.data).toEqual({ ids: [message!.id] })
     expect(note.model?.[0]?.content).toMatch(
       new RegExp(
-        `^Open questions to the user.*\\n- message ${message!.id}: questions 1\\. Scope; 2\\. Suites; 3\\. Land it\\?; 4\\. How finished is it\\?; 5\\. Name \\(asked just now\\)$`,
+        `^Open questions to the user.*\\n- message ${message!.id}: questions 1\\. Scope; 2\\. Suites; 3\\. Land it\\?; 4\\. How finished is it\\?; 5\\. Name \\(asked just now\\)\\nOne that no longer needs an answer .* ultimate\\.action\\('messages', 'withdraw', \\{ messageId, reason \\}\\); only its asker can\\.$`,
         's',
       ),
     )
@@ -373,6 +394,59 @@ describe('questions on a message', () => {
     await expect(f.answer({ messageId: first.id, text: 'Yes' })).rejects.toThrow(
       'These questions are no longer open',
     )
+  })
+
+  // Regression: a question its asker had superseded stayed open for 12 hours until the user answered it; only the user
+  // could close it.
+  it('lets the asker, and only the asker, withdraw its own open question with a reason', async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const first = (await f.ask(id, { text: 'Keep it running?', questions: [decisions[2]] }))
+      .message!
+    const second = (await f.ask(id, { text: 'Which layout?' })).message!
+    const other = await f.opened.harness.createConversation(
+      { ownership: { kind: 'ownerless' } },
+      context,
+    )
+    const reason = `superseded by message ${second.id}`
+    await expect(f.withdraw(other.id, { messageId: first.id, reason })).rejects.toThrow(
+      `Only the conversation that asked (#${id}) withdraws its question`,
+    )
+    await expect(f.withdraw(undefined, { messageId: first.id, reason })).rejects.toThrow(
+      'Only the conversation that asked',
+    )
+    await expect(f.withdraw(id, { messageId: first.id, reason: ' ' })).rejects.toThrow(
+      'reason must say',
+    )
+    expect((await f.log()).messages.find((m) => m.id === first.id)?.state).toBe('delivered')
+    const before = (await f.log()).messages.length
+    // The reason is kept on one line, whitespace collapsed.
+    expect(
+      await f.withdraw(id, {
+        messageId: first.id,
+        reason: `superseded by\n  message ${second.id} `,
+      }),
+    ).toEqual({ id: first.id })
+    await f.settled()
+    const log = (await f.log()).messages
+    expect(log.find((m) => m.id === first.id)).toMatchObject({ state: 'withdrawn', reason })
+    expect(log.find((m) => m.id === second.id)?.state).toBe('delivered')
+    // No note or reply: the asker closed it itself.
+    expect(log).toHaveLength(before)
+    expect(await f.openQuestions()).toEqual([
+      { message: second.id, conversation: id, at: second.at, text: 'Which layout?' },
+    ])
+    // The next run's open-questions line names only the question still open.
+    await f.type(id, 'Thanks')
+    const note = (await f.entries(id)).findLast((entry) => entry.kind === 'board.open')
+    expect(note?.data).toEqual({ ids: [second.id] })
+    await expect(f.withdraw(id, { messageId: first.id, reason })).rejects.toThrow(
+      'These questions are no longer open',
+    )
+    await expect(f.answer({ messageId: first.id, text: 'Yes' })).rejects.toThrow(
+      'These questions are no longer open',
+    )
+    await expect(f.dismiss(first.id)).rejects.toThrow('These questions are no longer open')
   })
 })
 

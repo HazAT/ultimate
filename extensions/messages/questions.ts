@@ -140,7 +140,9 @@ export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, 
   if (!open.length) return undefined
   const text = `Open questions to the user, unanswered until they answer or dismiss them:\n${open
     .map((m) => `- message ${m.id}: ${gist(m)} (asked ${formatAgo(m.at, now, { ago: true })})`)
-    .join('\n')}`
+    .join(
+      '\n',
+    )}\nOne that no longer needs an answer (superseded, settled elsewhere) you withdraw with codemode ultimate.action('messages', 'withdraw', { messageId, reason }); only its asker can.`
   return {
     entries: [
       {

@@ -49,10 +49,13 @@ export type Message = {
   at: number
   reply: boolean
   re?: number
-  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
+  /** `withdrawn`: its sender closed its own question to the user unanswered, for `reason`. */
+  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'withdrawn' | 'failed' | 'stopped'
   entry?: number
   answer?: number
   error?: string
+  /** Why its sender withdrew it. */
+  reason?: string
   /** The tool call that sent it: `message`'s own id, or `<script>/<n>` for a nested codemode call. */
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
@@ -76,6 +79,16 @@ export const MessagesDoc = docRef<MessagesData>('board')
 export const CallerAction = actionRef<{ conversation: number; call: string }, { entry?: number }>(
   'messages',
   'caller',
+)
+
+/**
+ * `{ messageId, reason }` → `{ id }`: the calling conversation withdraws its own open question to the user, which
+ * closes it unanswered as `withdrawn` with `reason` (one short line: "superseded by message 464"). Only the sender may;
+ * a message that is no longer open, or someone else's, is refused.
+ */
+export const WithdrawAction = actionRef<{ messageId: number; reason: string }, { id: number }>(
+  'messages',
+  'withdraw',
 )
 
 /**

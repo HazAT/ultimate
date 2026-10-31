@@ -90,7 +90,10 @@ A reply-enabled message to `user` stays open, and its sender shows as awaiting r
 message: a user Reply with `re` (an answer card, or a typed Reply) marks only that message answered, in the reply's
 commit. Plain input, new posts and answers to other questions leave it open. The service's `dismiss` closes it as
 `dismissed` instead, with a one-way user note to the sender (`re`, delivered as a note: no run starts) in the same
-commit.
+commit. The asker itself closes a question the user no longer needs to answer (a newer one superseded it, the matter
+settled elsewhere) with the `withdraw` action: the message becomes `withdrawn` with its `reason`, leaves the To-dos
+panel and the open-questions note, and its bubble's footer reads `withdrawn · <reason>`. Only the conversation that
+asked may withdraw it; the open-questions note names the action.
 
 While the sender has questions open, the input that starts its next run goes in after a `board.open` entry, placed
 by the patched `beforeInput` hook in the input's commit: one user-role line listing each open message's id, first
@@ -204,10 +207,11 @@ type Message = {
   at: number // Unix milliseconds
   reply: boolean
   re?: number
-  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
+  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'withdrawn' | 'failed' | 'stopped'
   entry?: EntryId
   answer?: EntryId
   error?: string
+  reason?: string // why its sender withdrew it
   remote?: { project: string; machine: string; key: string; id?: number } // the other Ultimate
   report?: true // a branch's routed final answer after it stopped with nothing under way
   questions?: Question[] // what a reply-expected message to the user asks (see Questions)
@@ -222,6 +226,9 @@ The reply's `answer` links to the recipient's assistant entry; the original also
 
 - `addresses({}) → { agents, conversations }`: resident names/descriptions with an id if already created, and up to
   50 recent top-level conversation summaries (including title and label).
+- `withdraw({ messageId, reason }) → { id }`: the calling conversation closes its own open question to the user
+  unanswered as `withdrawn` with `reason` (kept on one line, whitespace collapsed, at most 200 characters). Refused for a message that is not an
+  open question to the user, and for any conversation but its sender; the user dismisses instead.
 
 Users type in @ultimate's conversation or answer a question card; there is no user posting action.
 Agents use the `message` tool. The prompt section is stable and lists resident names and descriptions.

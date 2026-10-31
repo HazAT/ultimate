@@ -20,10 +20,13 @@ export type Message = {
   at: number
   reply: boolean
   re?: number
-  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
+  /** `withdrawn`: its sender closed its own question to the user unanswered, for `reason`. */
+  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'withdrawn' | 'failed' | 'stopped'
   entry?: EntryId
   answer?: EntryId
   error?: string
+  /** Why its sender withdrew it. */
+  reason?: string
   /** The tool call that sent it: `message`'s or `branch`'s own id, `<script>/<n>` for a nested codemode call. */
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
