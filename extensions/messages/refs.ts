@@ -67,7 +67,11 @@ export type Message = {
   remote?: Remote
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
+  /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
+  via?: Via
 }
+/** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
+export type Via = { conversation: number; entry?: number }
 export type MessagesData = { messages: Message[]; next: number }
 
 /** Every message between conversations and the user, oldest first, on conversation 1. */
@@ -81,6 +85,17 @@ export const CallerAction = actionRef<{ conversation: number; call: string }, { 
   'messages',
   'caller',
 )
+
+/**
+ * `{ messageId, text, dismiss? }` → `{ id }`: @ultimate (or its side chat) settles the user's open question
+ * `messageId` for them, from what they said in its chat: `text` is their answer, in their words or the picks read
+ * from them, sent to the asker as the user's reply; with `dismiss`, `text` says why it no longer matters and the
+ * asker gets a note. The answer records `via`, so the card shows @ultimate settled it. Refused from anyone else.
+ */
+export const SettleAction = actionRef<
+  { messageId: number; text: string; dismiss?: boolean },
+  { id: number }
+>('messages', 'settle')
 
 /**
  * Message `message` was posted from `from` to `to`; `reply` whether it waits for an answer, `steer` whether it

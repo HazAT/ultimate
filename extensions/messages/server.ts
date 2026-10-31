@@ -18,7 +18,8 @@ import { LineageApi } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
-import { CallerAction } from './refs.ts'
+import { CallerAction, SettleAction } from './refs.ts'
+import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
@@ -26,11 +27,82 @@ import { parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { send } from './send.ts'
+import type { Device } from '../../shared/events.ts'
+import type { Context } from '@earendil-works/chord'
 import { route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages]
+
+async function openMessage(host: ExtensionHost, messageId: number, ctx: Context) {
+  const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
+  const message = log?.messages.find((m) => m.id === messageId)
+  if (!message || !openQuestion(message)) throw new Error('These questions are no longer open')
+  return message
+}
+/** The user's answer `text` to open message `messageId`, or @ultimate's on their behalf (`via`). */
+async function answer(
+  host: ExtensionHost,
+  messageId: number,
+  text: string,
+  ctx: Context,
+  options: { device?: Device; via?: { via: Via; primary: number } } = {},
+) {
+  const message = await openMessage(host, messageId, ctx)
+  // @ultimate settling its own question has the answer already: a one-way note, not another turn.
+  const own = options.via !== undefined && message.from === options.via.primary
+  return send(
+    host,
+    'user',
+    { to: `#${message.from}`, text, re: messageId, ...(own ? { reply: false } : {}) },
+    ctx,
+    {
+      answerId: messageId,
+      ...(own ? { note: true } : {}),
+      device: options.device,
+      ...(options.via ? { via: options.via.via } : {}),
+    },
+  )
+}
+/** Close open message `messageId` unanswered: the user's dismissal, or @ultimate's on their behalf with `reason`. */
+async function dismiss(
+  host: ExtensionHost,
+  messageId: number,
+  ctx: Context,
+  options: { device?: Device; via?: Via; reason?: string } = {},
+) {
+  const message = await openMessage(host, messageId, ctx)
+  const { reason, ...rest } = options
+  // A one-way note: the asker reads it with its next input, and no run starts for it.
+  return send(
+    host,
+    'user',
+    {
+      to: `#${message.from}`,
+      text: reason
+        ? `Your question (message ${messageId}) is closed without an answer: ${reason}\nAsk again only if it still matters.`
+        : `The user dismissed your question (message ${messageId}): ${gist(message)}\nIt is closed without an answer; ask again only if it still matters.`,
+      reply: false,
+      re: messageId,
+      dismiss: true,
+    },
+    ctx,
+    { answerId: messageId, note: true, ...rest },
+  )
+}
+/** The user's own input that started `id`'s current run, which a settlement names as its source. */
+async function runInput(host: ExtensionHost, id: ConversationId, ctx: Context) {
+  const run = (await host.harness().snapshot(LiveDoc, id, ctx))?.run
+  let found: number | undefined
+  for (const submission of run?.inputs ?? []) {
+    const record = await (await host.harness().submission(submission, ctx))?.status(ctx)
+    if (record?.type !== 'input' || record.entry === undefined) continue
+    const entry = await host.harness().commit((tx) => tx.entry(record.entry!), ctx)
+    if (entry?.kind === 'pi.user' || entry?.kind === 'voice.utterance') found = entry.id
+  }
+  return found
+}
 
 export const actions = {
   [CallerAction.name]: implementAction(CallerAction, async (args, { host }) => {
@@ -54,6 +126,29 @@ export const actions = {
       } while (cursor !== undefined)
       return {}
     }, BACKGROUND_CONTEXT)
+  }),
+  settle: implementAction(SettleAction, async (args, { host, conversationId }) => {
+    const { messageId, text, dismiss: closing } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(messageId)) throw new Error('messageId must be a message id')
+    if (typeof text !== 'string' || !text.trim())
+      throw new Error("text must hold the user's answer, or why the question no longer matters")
+    if (closing !== undefined && typeof closing !== 'boolean')
+      throw new Error('dismiss must be a boolean')
+    const ctx = BACKGROUND_CONTEXT
+    const primary = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
+    if (
+      conversationId === undefined ||
+      primary === undefined ||
+      (await actingAs(host, conversationId as ConversationId, ctx)) !== primary
+    )
+      throw new Error("Only @ultimate settles the user's questions")
+    const entry = await runInput(host, conversationId as ConversationId, ctx)
+    const via = { conversation: conversationId, ...(entry === undefined ? {} : { entry }) }
+    return {
+      id: closing
+        ? await dismiss(host, messageId as number, ctx, { via, reason: text.trim() })
+        : await answer(host, messageId as number, text.trim(), ctx, { via: { via, primary } }),
+    }
   }),
   remote: remoteAction,
   remoteReply: remoteReplyAction,
@@ -87,15 +182,7 @@ export default function messages(host: ExtensionHost) {
     working: (tx, id) => working(tx, id),
   })
   host.implement(MessagesApi, {
-    answer: async (messageId, text, ctx, device) => {
-      const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-      const message = log?.messages.find((m) => m.id === messageId)
-      if (!message || !openQuestion(message)) throw new Error('These questions are no longer open')
-      return send(host, 'user', { to: `#${message.from}`, text, re: messageId }, ctx, {
-        answerId: messageId,
-        device,
-      })
-    },
+    answer: (messageId, text, ctx, device) => answer(host, messageId, text, ctx, { device }),
     openQuestions: async (ctx) =>
       (
         (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages ?? []
@@ -104,25 +191,7 @@ export default function messages(host: ExtensionHost) {
           ? [{ message: m.id, conversation: m.from, at: m.at, text: gist(m) }]
           : [],
       ),
-    dismiss: async (messageId, ctx, device) => {
-      const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-      const message = log?.messages.find((m) => m.id === messageId)
-      if (!message || !openQuestion(message)) throw new Error('These questions are no longer open')
-      // A one-way note: the asker reads it with its next input, and no run starts for it.
-      return send(
-        host,
-        'user',
-        {
-          to: `#${message.from}`,
-          text: `The user dismissed your question (message ${messageId}): ${gist(message)}\nIt is closed without an answer; ask again only if it still matters.`,
-          reply: false,
-          re: messageId,
-          dismiss: true,
-        },
-        ctx,
-        { answerId: messageId, note: true, device },
-      )
-    },
+    dismiss: (messageId, ctx, device) => dismiss(host, messageId, ctx, { device }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
   })

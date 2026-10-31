@@ -10,6 +10,7 @@ type Notice = {
   call?: string
   summary?: string
   dismissed?: boolean
+  via?: { conversation: number }
 }
 
 /**
@@ -31,8 +32,8 @@ export function QuestionPointer({ entry }: { entry: EntryRecord }) {
   const { showSurface, switchConversation } = useUltimate()
   const [state, text] = outcome
     ? outcome.dismissed
-      ? ['dismissed', undefined]
-      : ['answered', outcome.summary]
+      ? [outcome.via ? 'dismissed for you' : 'dismissed', undefined]
+      : [outcome.via ? 'answered for you' : 'answered', outcome.summary]
     : [undefined, summary]
   return (
     <Card attention={open} data-message-pointer={id}>

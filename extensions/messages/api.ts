@@ -8,7 +8,7 @@ import type { EntryId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote } from './refs.ts'
+import type { Question, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -38,6 +38,8 @@ export type Message = {
   remote?: Remote
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
+  /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
+  via?: Via
 }
 /** Every message between conversations and the user, on the root conversation. */
 export const Messages = defineDoc<{ messages: Message[]; next: number }>({

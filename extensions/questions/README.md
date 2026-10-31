@@ -28,7 +28,9 @@ or keys, an option that is "Something else"/"Other" (the card adds it), a scale 
 10 steps, and repeated question texts or refs. Fields that do not apply to a kind are dropped, text is trimmed.
 `questions` goes only with a reply-expected message to `user`.
 
-A question stays open until the user answers it (its card, or a Reply to that message) or dismisses it. Typed input,
+A question stays open until the user answers it (its card, or a Reply to that message) or dismisses it, or @ultimate
+settles it for them from what they said in its chat (messages' `settle`; the card then reads "@ultimate answered for
+you"). Typed input,
 answers to other messages and agent messages leave it open. While it is open, messages starts each of the asker's runs
 with a line listing it by its questions (see [Messages](../messages/README.md)).
 
