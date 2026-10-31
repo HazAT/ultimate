@@ -264,6 +264,23 @@ describe("background in @ultimate's compact transcript", () => {
     expect(threadRow(row('prompt.build'), messagesLog)).toBe(false)
   })
 
+  it('folds a final answer routed down to branches, naming them', () => {
+    // @ultimate's weigh-in to #477200's decisions rendered as a message to the user, above the branch's question card.
+    const routed = {
+      messages: [
+        { ...base, id: 1, from: 8, to: 7, reply: false, report: true as const },
+        { ...base, id: 2, from: 7, to: 8, reply: false, routed: 30 },
+        { ...base, id: 3, from: 7, to: 9, reply: false, routed: 30 },
+        { ...base, id: 4, from: 7, to: 6, reply: false, routed: 29 },
+      ],
+      next: 5,
+    }
+    const answer = row('pi.assistant', undefined, said('stop'))
+    expect(backgroundRow(answer, routed)).toBe(true)
+    expect(threadRow(answer, routed)).toBe(false)
+    expect(counterparts(answer, routed)).toEqual([8, 9])
+  })
+
   it('names who each row was with', () => {
     const toAgent = { id: 'tell', name: 'message', arguments: { to: '#5' } }
     expect(counterparts(row('board.reply', { from: 4 }), messagesLog)).toEqual([4])

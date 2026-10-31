@@ -1,7 +1,7 @@
 /** `send()`: validating, admitting and logging a message, and starting its delivery. */
 import type { Context } from '@earendil-works/chord'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
 import { Messages, MessageSent } from './api.ts'
@@ -75,8 +75,8 @@ export async function send(
     via?: Via
     /** A branch's final answer routed as its report: the branch shows as awaiting its starter. */
     report?: boolean
-    /** The starter's final answer routed down to the branch it answers. */
-    routed?: boolean
+    /** The starter's final answer, this entry of its, routed down to the branch it answers. */
+    routed?: EntryId
     /** A branch's report that answers routed answers only. */
     echo?: boolean
   } = {},
@@ -200,7 +200,7 @@ export async function send(
       ...(images ? { images } : {}),
       ...(questions ? { questions } : {}),
       ...(options.report ? { report: true as const } : {}),
-      ...(options.routed ? { routed: true as const } : {}),
+      ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
       ...(via ? { via } : {}),
     })
