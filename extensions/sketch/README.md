@@ -2,7 +2,7 @@
 
 Agents show the user a small UI (a chart, a table, metrics, a form) by describing it in words; a fast model draws it.
 
-`sketch { request, data? }` asks the summary model (the `tiny` family unless `summaryModel` pins another) to call one
+`sketch { request, data? }` asks the model of the `sketch` agent definition (`agents/sketch.md`, the `tiny` family) to call one
 tool, `render`, whose arguments are the spec: up to six blocks of `text` (Markdown), `metric`, `chart` (bar or line, up
 to four series), `table`, `form`, or a `row` of two or three of those side by side. pi-ai validates the arguments
 against the schema in `server.ts`; an invalid spec goes back to the model once with the errors, and a second invalid
@@ -11,7 +11,13 @@ one fails the call. With `data` the model draws from it in one request (about 3â
 eight steps in all. A model that cannot get the data answers in words, and the call fails with them. The idea comes
 from json-render's catalog-constrained specs (Vercel Labs); six blocks did not need the library or its zod.
 
-Every model step is memoized, so a rerun after a restart draws the same spec, and the steps' usage counts once on the
+The definition only supplies the model and thinking; its `subagent: false` keeps it out of the subagents and automations
+that can be started. It sits in the Agents tab under its family like any agent: its dot moves it to another family
+(an overlay in `.ultimate/agents/sketch.md`), and an overlay with `model:` pins one. The model is read at each call, so
+a change applies to the next sketch; a model without a login fails the call with a message naming the sketch agent. A
+preview runs it on the preview's model.
+
+Every model step and the chosen model are memoized, so a rerun after a restart draws the same spec, and the steps' usage counts once on the
 calling conversation. The call's details hold `{ spec, at, model, read? }`; the text the caller sees is one line naming
 what was drawn.
 

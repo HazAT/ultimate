@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createModels } from '@earendil-works/pi-ai/models'
 import {
   fauxAssistantMessage,
@@ -8,7 +9,8 @@ import {
 } from '@earendil-works/pi-ai/providers/faux'
 import { expect, it } from 'vitest'
 import type { Tx } from '@earendil-works/pi-durable'
-import { actions, describe, sketch } from '../extensions/sketch/server.ts'
+import { actions, describe, sketch, sketchModel } from '../extensions/sketch/server.ts'
+import { writeFamilies } from '../lib/families-settings.ts'
 import type { SketchForm } from '../extensions/sketch/refs.ts'
 import type { ActionContext } from '../server/actions.ts'
 import { temp } from './helpers.ts'
@@ -57,6 +59,47 @@ it('draws a spec from the data in one model call', async () => {
   expect(steps).toHaveLength(1)
   expect(spec).toEqual(chart)
   expect(describe(spec)).toBe('bar chart (2 points)')
+})
+
+it('runs on its own agent definition, which a family change or an overlay moves', async () => {
+  const userHome = await temp('ultimate-sketch-home-')
+  const projectRoot = await temp('ultimate-sketch-project-')
+  const runtime = await ModelRuntime.create()
+  let available = runtime.getModels()
+  const modelRuntime = Object.assign(Object.create(runtime) as ModelRuntime, {
+    getAvailableSnapshot: () => available,
+  })
+  const settings = { getDefaultProvider: () => undefined, getDefaultModel: () => undefined }
+  const host = {
+    ultimateRoot: resolve(import.meta.dirname, '..'),
+    projectRoot,
+    userHome,
+    modelRuntime,
+    settings,
+  } as unknown as Parameters<typeof sketchModel>[0]
+  // The shipped definition runs on the tiny family.
+  expect(await sketchModel(host)).toEqual({
+    provider: 'openai-codex',
+    id: 'gpt-6-luna',
+    thinking: 'low',
+  })
+  await writeFamilies(userHome, projectRoot, {
+    families: { tiny: { model: 'openai-codex/gpt-6.1-sol', thinking: 'high' } },
+  })
+  expect(await sketchModel(host)).toMatchObject({ id: 'gpt-6.1-sol', thinking: 'high' })
+  await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
+  await writeFile(
+    join(userHome, '.ultimate/agents/sketch.md'),
+    '---\nname: sketch\naddTools: []\nmodel: anthropic/claude-opus-4-8\n---\n',
+  )
+  expect(await sketchModel(host)).toMatchObject({
+    provider: 'anthropic',
+    id: 'claude-opus-4-8',
+  })
+  available = []
+  await expect(sketchModel(host)).rejects.toThrow(
+    "The sketch agent's model anthropic/claude-opus-4-8 has no login here",
+  )
 })
 
 it('repairs an invalid spec once, then fails on the second', async () => {

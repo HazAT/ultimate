@@ -488,6 +488,8 @@ export const actions = {
       ...(resident !== undefined ? { resident } : {}),
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
+      // The form has no control for it: a save keeps it as discovery read it.
+      ...(existing?.subagent === false ? { subagent: false } : {}),
     }
     // The form shows the merged definition; a whole copy would freeze the overlays' additions and the base's
     // instructions, so the save becomes an overlay holding only what differs from the base. `overlay` asks for one
@@ -846,6 +848,7 @@ export default function subagents(
           host.modelRuntime,
         )
         const definitions = discovered.definitions
+          .filter((agent) => agent.subagent !== false)
           .map((agent) => {
             const runs = runsLabel(agent.runs)
             return `${agent.name}${runs ? ` (${runs})` : ''}: ${agent.description}`
@@ -933,7 +936,7 @@ export default function subagents(
                       host.userHome,
                       host.modelRuntime,
                     )
-                  ).definitions
+                  ).definitions.filter((agent) => agent.subagent !== false)
                 : undefined
             const definition = definitions?.find((agent) => agent.name === args.agent)
             if (definitions && !definition)
