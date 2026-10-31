@@ -30,6 +30,7 @@ import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
 import { column } from './layout.ts'
+import { pasted, ShownInput, useComposerInput } from './composer-input.tsx'
 import { storeImages, storedImages } from './draft-images.ts'
 import {
   atFirstLine,
@@ -228,7 +229,7 @@ export function fillComposer(id: number, text: string) {
 
 /**
  * Insert `text` into conversation `id`'s draft at its editor's cursor (or at the end without one), with a space on
- * each side where the neighbouring text needs one, as typing it would. The composer keeps focus as it was.
+ * each side where the neighbouring text needs one, as typing it would, and focus the editor it lands in.
  */
 export function insertIntoComposer(id: number, text: string) {
   const draft = getDraft(id)
@@ -239,6 +240,7 @@ export function insertIntoComposer(id: number, text: string) {
   const { text: next, cursor } = spliced(current, start, end, text)
   draft.set({ text: next, revision: draft.get().revision + 1 })
   if (draft.key) localStorage.setItem(draft.key, next)
+  editor?.focus()
   // The cursor follows the inserted text once React has rendered the new value.
   requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
 }
@@ -264,11 +266,20 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
-  const { paste, reading, pending } = useImagePaste({
+  const { paste, add, reading, pending } = useImagePaste({
     images,
     setImages,
     setError,
     disabled: () => loading || draft.get().sending,
+  })
+  const composerInput = useComposerInput({
+    conversationId: id,
+    insert: (inserted) => {
+      if (id !== undefined) insertIntoComposer(id, inserted)
+    },
+    addImages: add,
+    setError,
+    disabled: loading || sending,
   })
   const models = useModels()
   const key = draft.key
@@ -359,8 +370,10 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     <div
       data-composer-target={scoped === undefined ? 'conversation' : 'scope'}
       className={cn(column(dock), 'pb-2')}
+      ref={composerInput.ref}
     >
       <Inbox items={inbox} />
+      {composerInput.shown && <ShownInput shown={composerInput.shown} />}
       <PromptInput
         onSubmit={(event) => {
           event.preventDefault()
@@ -376,7 +389,15 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         <PromptInputTextarea
           autoFocus={!touchKeyboard()}
           readOnly={loading || sending}
-          onPaste={(event) => void paste(event)}
+          onPaste={(event) => {
+            // A handler that takes the paste replaces the composer's own handling of it.
+            if (composerInput.took(pasted(event))) {
+              event.preventDefault()
+              return
+            }
+            // oxlint-disable-next-line typescript/no-floating-promises -- the image hook catches its own failures into the draft's error state.
+            void paste(event)
+          }}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}

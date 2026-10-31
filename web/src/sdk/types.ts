@@ -121,6 +121,51 @@ export type InboxRenderer = ComponentType<{ item: InboxItem; core: ReactNode; ca
 /** Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. */
 export type ComposerRenderer = ComponentType<{ core: ReactNode; dock?: boolean }>
 
+/**
+ * A drag arriving at the composer: what the source handed over, and whether Shift was held. A handler that takes it
+ * inserts where it likes; the shell's own handling of a drop is the text it carries, and its images as images.
+ */
+export interface ComposerDrop {
+  /** The payload: the files and the text the drag carries. */
+  dataTransfer: DataTransfer
+  /** Shift was held, as in a drag that copies the file rather than pointing at it. */
+  shiftKey: boolean
+}
+
+/** A paste arriving at the composer's editor: its text and its files, as the clipboard has them. */
+export interface ComposerPaste {
+  /** The clipboard's text, its line endings normalised to `\n`. */
+  text: string
+  /** The clipboard's files, such as a copied image. */
+  files: readonly File[]
+}
+
+/**
+ * What a handler may do with the composer the event landed in: its draft, its images, its error line, and a place above
+ * its editor for what the handler needs the user to answer. Handlers only run for a composer that takes input.
+ */
+export interface ComposerInput {
+  /** The conversation whose draft takes the input. */
+  conversationId: number
+  /** Insert `text` at the editor's cursor in place of its selection, as typing it would, and focus it. */
+  insert(text: string): void
+  /** Attach files as images through the composer's own image path, its limits and its errors included. */
+  addImages(files: readonly File[]): Promise<void>
+  /** Show a message in the composer's own error line, or clear it. */
+  setError(message: string | undefined): void
+  /** Show a component above the editor instead of what you last showed, `undefined` to clear it. */
+  show(ui?: ReactNode): void
+}
+
+/**
+ * What the composer makes of a drop or a paste before the shell does: return `true` to claim it, so the shell's own
+ * handling does not run, or nothing to leave it to the shell. A handler that throws is reported and skipped.
+ */
+export interface ComposerInputContribution {
+  drop?(drop: ComposerDrop, composer: ComposerInput): boolean | void
+  paste?(paste: ComposerPaste, composer: ComposerInput): boolean | void
+}
+
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
 export interface DocumentProps {
   value: Readonly<JsonObject>
@@ -319,6 +364,11 @@ export interface WebExtension {
   inbox?: InboxRenderer
   /** Wraps the shown conversation's composer; facets compose in discovery order, each receiving the previous core. */
   composer?: ComposerRenderer
+  /**
+   * Takes drops and pastes before the composer's own handling; handlers run in discovery order, and the first to claim
+   * an event takes it.
+   */
+  composerInput?: readonly ComposerInputContribution[]
   /** Renders links in Markdown; renderers compose in discovery order, each wrapping the one before it. */
   link?: LinkRenderer
   /** Fenced code block renderers by language; they compose in discovery order, each wrapping the one before it. */

@@ -3,6 +3,7 @@ import { createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
 import type { TestHook } from './test-hook.ts'
+import type { Notice } from '../../../shared/protocol.ts'
 
 declare global {
   interface Window {
@@ -41,6 +42,8 @@ export const store = createStore({
 })
 /** Server commands; conversation commands default to the shown conversation. */
 export const api = createApi(store)
+/** Report an outcome the user should see, as the shell's notices do: `notify({ level: 'info', message })`. */
+export const notify = (notice: Notice) => store.notify(notice)
 /**
  * A page an agent drives (the `screenshot` and `browser` tools mark it) looks at the UI without steering the user's
  * tabs: it reads the shared state once, then its selection and panels are its own, never written or followed.

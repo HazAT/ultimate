@@ -18,6 +18,7 @@ import {
   codeBlockRenderers,
   messageItems,
   composerRenderers,
+  composerInputs,
   compactDocs,
   compactTools,
 } from '../../web/src/sdk/registry.ts'
@@ -300,6 +301,21 @@ describe('web extension registry', () => {
     expect(documents.get('ultimate.plan')?.component).toBe(Second)
     expect(documents.get('a.notes')?.extension).toBe('a')
     expect(documents.has('codemode.store')).toBe(false)
+  })
+
+  it('lists composer input handlers with a later facet’s first, then each facet’s own order', async () => {
+    const registry = createRegistry()
+    await registry.setLoaders({
+      [path('alpha')]: async () =>
+        module({
+          composerInput: [{ drop: () => false }, {}, { paste: () => true }],
+        }),
+      [path('beta')]: async () => module({ composerInput: [{ drop: () => false }] }),
+    })
+    const handlers = composerInputs(registry.getSnapshot())
+    expect(
+      handlers.map((handler) => [handler.extension, ...Object.keys(handler).slice(2)]),
+    ).toEqual([['beta', 'drop'], ['alpha', 'drop'], ['alpha'], ['alpha', 'paste']])
   })
 
   it('composes all composer renderers in discovery order', async () => {
