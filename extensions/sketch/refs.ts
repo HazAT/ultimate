@@ -37,7 +37,8 @@ export type Value = string | number | boolean
 export type SketchForm = {
   title?: string
   fields: Field[]
-  submitted?: { at: number; values: Record<string, Value> }
+  /** The winning values; `delivered` once they reached the conversation as input. */
+  submitted?: { at: number; values: Record<string, Value>; delivered?: true }
 }
 /** `{ forms, counted }` on the conversation that called `sketch`; `counted` names the calls whose usage was counted. */
 export const SketchFormsDoc = docRef<{ forms: Record<string, SketchForm>; counted: string[] }>(

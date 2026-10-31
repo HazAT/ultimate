@@ -124,8 +124,14 @@ it('submits a form once as the user’s input, then locks it', async () => {
       form.revoke()
       return result
     },
-    conversation: async () => ({ submit: async (input: unknown) => inputs.push(input) }),
+    conversation: async () => ({
+      submit: async (input: unknown) => {
+        if (crash) throw new Error('crashed')
+        inputs.push(input)
+      },
+    }),
   }
+  let crash = false
   const ctx = { host: { harness: () => harness }, conversationId: 7 } as unknown as ActionContext
   await expect(
     actions.submit({ call: 'call_1', values: { every: 'daily', phone: true } }, ctx),
@@ -133,7 +139,16 @@ it('submits a form once as the user’s input, then locks it', async () => {
   await expect(
     actions.submit({ call: 'call_1', values: { every: '30m', phone: 'yes' } }, ctx),
   ).rejects.toThrow('Notify on phone: expected a toggle value')
+  // A crash between claiming and delivering leaves the claim undelivered; sending its values again delivers them.
+  crash = true
+  await expect(
+    actions.submit({ call: 'call_1', values: { every: '30m', phone: true } }, ctx),
+  ).rejects.toThrow('crashed')
+  expect(forms.call_1.submitted).toMatchObject({ values: { every: '30m', phone: true } })
+  expect(forms.call_1.submitted?.delivered).toBeUndefined()
+  crash = false
   await actions.submit({ call: 'call_1', values: { every: '30m', phone: true } }, ctx)
+  expect(forms.call_1.submitted?.delivered).toBe(true)
   expect(inputs).toEqual([
     expect.objectContaining({
       type: 'input',

@@ -342,8 +342,9 @@ export const actions = {
       throw new Error('Expected { call, values }')
     const id = conversationId as ConversationId
     const call = data.call
-    // Claim and lock in one transaction, so one set of values wins; the claim is then delivered, once per request id.
-    // Repeating the winning values delivers again (a retry after a crash in between); other values are refused.
+    // Claim and lock in one transaction, so one set of values wins; the claim is then delivered, once per request id,
+    // and marked delivered. Until then the card offers to send the claimed values again (after a crash in between);
+    // other values are refused.
     const claimed = await host.harness().commit(async (tx) => {
       const form = (await tx.doc(SketchForms, id)).forms[call]
       if (!form) throw new Error('No such form')
@@ -365,6 +366,10 @@ export const actions = {
       },
       context,
     )
+    await host.harness().commit(async (tx) => {
+      const sent = (await tx.doc(SketchForms, id)).forms[call]?.submitted
+      if (sent) sent.delivered = true
+    }, context)
     return { ok: true as const }
   }),
 }

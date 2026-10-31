@@ -345,6 +345,8 @@ function Form({
   )
   const [busy, setBusy] = useState(false)
   const sent = state?.submitted
+  // Claimed but not delivered (a crash in between): the claimed values can be sent again.
+  const stranded = !!sent && !sent.delivered
   const locked = !!sent || busy || !submit
   const shown = sent?.values ?? values
   return (
@@ -352,10 +354,10 @@ function Form({
       className="min-w-0 space-y-3"
       onSubmit={(event) => {
         event.preventDefault()
-        if (locked || !submit) return
+        if (busy || !submit || (sent && !stranded)) return
         setBusy(true)
         // A refused submit shows as a notice (api.action); the form stays editable.
-        submit(values)
+        submit(sent?.values ?? values)
           .catch(() => undefined)
           .finally(() => setBusy(false))
       }}
@@ -373,7 +375,7 @@ function Form({
         ))}
       </div>
       <div className="flex items-center justify-end gap-3">
-        {sent && (
+        {sent && !stranded && (
           <span className="font-mono text-[11px] text-muted-foreground">
             sent{' '}
             {new Date(sent.at).toLocaleTimeString([], {
@@ -383,8 +385,8 @@ function Form({
             })}
           </span>
         )}
-        <Button disabled={locked} size="sm" type="submit">
-          {sent ? 'Submitted' : block.submit}
+        <Button disabled={busy || !submit || (!!sent && !stranded)} size="sm" type="submit">
+          {stranded ? 'Send again' : sent ? 'Submitted' : block.submit}
         </Button>
       </div>
     </form>
