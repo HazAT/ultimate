@@ -57,8 +57,8 @@ function ChartBlock({ block }: { block: Chart }) {
   const slot = inner / block.data.length
   const x = (index: number) => pad.left + slot * index + slot / 2
   const ticks = [min, min + span / 2, max]
-  // Every label when they fit (about 64 px each), else every nth.
-  const every = Math.ceil(block.data.length / Math.max(2, Math.floor(inner / 64)))
+  // Every label when they fit (about 44 px each), else every nth.
+  const every = Math.ceil(block.data.length / Math.max(2, Math.floor(inner / 44)))
   const multi = block.series.length > 1
   const bar = Math.min(48, (slot * 0.7) / block.series.length)
   return (
