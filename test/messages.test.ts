@@ -1563,7 +1563,7 @@ it("routes @ultimate's final answer to a branch's reply back to the branch, once
   const toBranch = (await f.log())!.messages.filter((m) => m.from === 1 && m.to === b.id)
   expect(toBranch.map((m) => [m.reply, m.routed])).toEqual([
     [true, undefined],
-    [false, true],
+    [false, expect.any(Number)],
   ])
   expect(toBranch[1].text).toContain('Reply from')
   // The branch woke, and its answer to the routed weigh-in is an echo: @ultimate's answer to it stays local.
