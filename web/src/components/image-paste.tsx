@@ -41,35 +41,24 @@ export function useImagePaste({
       })
     if (!files.length) return
     event.preventDefault()
+    await add(files)
+  }
+
+  /** Add image files as attachments, with the limits and errors pasting one has. */
+  async function add(files: File[]) {
     if (pending.current || disabled()) return
     if (
       images.length + files.length > maxImages ||
       files.some((file) => file.size > maxImageBytes || !imageMimeTypes.includes(file.type))
     ) {
-      setError('Paste up to 4 PNG, JPEG, WebP or GIF images, at most 2 MiB each.')
+      setError('Attach up to 4 PNG, JPEG, WebP or GIF images, at most 2 MiB each.')
       return
     }
     pending.current = true
     setReading(true)
     setError(undefined)
     try {
-      const added = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise<{ data: string; mimeType: string }>((resolve, reject) => {
-              const reader = new FileReader()
-              reader.addEventListener('load', () => {
-                if (typeof reader.result !== 'string')
-                  return reject(new Error('Could not read pasted image'))
-                resolve({ data: reader.result.split(',')[1], mimeType: file.type })
-              })
-              reader.addEventListener('error', () =>
-                reject(new Error('Could not read pasted image')),
-              )
-              reader.readAsDataURL(file)
-            }),
-        ),
-      )
+      const added = await Promise.all(files.map(readFile))
       if (alive.current) setImages((current) => [...current, ...added])
     } catch (failure) {
       if (alive.current) setError(errorMessage(failure))
@@ -79,7 +68,19 @@ export function useImagePaste({
     }
   }
 
-  return { paste, reading, pending }
+  return { paste, add, reading, pending }
+}
+
+function readFile(file: File) {
+  return new Promise<{ data: string; mimeType: string }>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      if (typeof reader.result !== 'string') return reject(new Error('Could not read pasted image'))
+      resolve({ data: reader.result.split(',')[1], mimeType: file.type })
+    })
+    reader.addEventListener('error', () => reject(new Error('Could not read pasted image')))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function ImagePreviews({
