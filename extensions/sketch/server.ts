@@ -382,6 +382,16 @@ export default function sketchExtension(host: ExtensionHost) {
         name: 'sketch',
         // Every model step and read is memoized, so a rerun draws the same spec.
         replay: 'safe',
+        // Callers often pass rows as JSON rather than a string: take it as its JSON text.
+        prepareArguments(args) {
+          const input = args as { request: string; data?: unknown }
+          // Validation still checks the result.
+          return (
+            input && input.data !== undefined && typeof input.data !== 'string'
+              ? { ...input, data: JSON.stringify(input.data) }
+              : input
+          ) as { request: string; data?: string }
+        },
         description:
           "Show the user a small UI in the transcript, drawn by a fast model from your words: charts (bar, line), tables, metrics, short text and forms. Say what to show and how; pass the numbers or rows in data when you have them, or omit data and name the files to read. A form's submitted values come back to you as the user's next input. Takes a few seconds; returns one line naming what was drawn. Call it directly, never inside codemode: a nested call draws no card.",
         parameters: Type.Object({

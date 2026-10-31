@@ -272,9 +272,17 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
 const control =
   'h-8 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 disabled:opacity-70 max-md:h-11'
 
-const initial = (field: Field): Value =>
-  field.default ??
-  (field.kind === 'toggle' ? false : field.kind === 'select' ? (field.options?.[0] ?? '') : '')
+/** The value a field starts at: its default when it fits the field's kind, else the first option, off or empty. */
+const initial = (field: Field): Value => {
+  const given = field.default
+  if (field.kind === 'select')
+    return typeof given === 'string' && field.options?.includes(given)
+      ? given
+      : (field.options?.[0] ?? '')
+  if (field.kind === 'toggle') return given === true
+  if (field.kind === 'number') return typeof given === 'number' ? given : ''
+  return typeof given === 'string' ? given : ''
+}
 
 function Input({
   field,
