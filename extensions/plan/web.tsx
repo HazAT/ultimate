@@ -38,7 +38,8 @@ import {
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationTask } from '../conversations/ui.tsx'
 import { InfoAction, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
-import { finished, number, pillOf } from './progress.tsx'
+import { criteriaOf, sectionsOf, verbatim } from './body.tsx'
+import { criteriaOfBody, finished, number, pillOf, progressLabel } from './progress.tsx'
 import { PlanDoc } from './refs.ts'
 import type { Epic, Plan, Task, TaskLink } from './refs.ts'
 import { StatusIcon, TaskChip, statusOf, useOpenTask, useTaskOf } from './ui.tsx'
@@ -63,6 +64,63 @@ function StatusChip({ status }: { status: string }) {
 }
 
 const time = (at: string) => formatTime(at)
+
+/**
+ * Coordinator-written text as written: `<tags>` stay text, single newlines break, and nothing is completed as if it
+ * were still streaming (Streamdown would close a lone `*`).
+ */
+function PlanText({ children, className }: { children: string; className?: string }) {
+  return (
+    <MessageResponse className={className} parseIncompleteMarkdown={false}>
+      {verbatim(children)}
+    </MessageResponse>
+  )
+}
+
+/** Acceptance criteria as a quiet checklist: open while the epic is, met once it is done. */
+function Criteria({ items, met }: { items: string[]; met: boolean }) {
+  return (
+    <ol className="space-y-1">
+      {items.map((item, index) => (
+        // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered by position.
+        <li className="flex min-w-0 gap-1.5" key={index}>
+          <span className="pt-0.5">
+            <StatusIcon status={met ? 'done' : 'todo'} />
+          </span>
+          <PlanText className="min-w-0 flex-1 text-foreground/90">{item}</PlanText>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/**
+ * An epic's plan: each known section (Request, Scope, Risks…) under a small label, acceptance criteria as a checklist
+ * unless they are shown in place of tasks; a body without those labels renders as Markdown.
+ */
+function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteria: boolean }) {
+  const sections = sectionsOf(body)
+  if (!sections) return <PlanText>{body}</PlanText>
+  return (
+    <div className="space-y-2.5">
+      {sections.map((section, index) => {
+        if (criteria && section.label === 'Acceptance criteria') return null
+        const items = section.label === 'Acceptance criteria' && criteriaOf(section.text)
+        return (
+          // oxlint-disable-next-line react/no-array-index-key -- Sections are positional; labels can repeat.
+          <div key={index}>
+            {section.label && <div className="pb-0.5 section-label">{section.label}</div>}
+            {items ? (
+              <Criteria items={items} met={met} />
+            ) : (
+              section.text && <PlanText>{section.text}</PlanText>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function Note({ note, clamp }: { note: Task['notes'][number]; clamp?: boolean }) {
   return (
@@ -298,13 +356,13 @@ function TaskRow({
         {task.verdict && (
           <div className="rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
             <div className="pb-1 section-label">Verdict</div>
-            <MessageResponse>{task.verdict}</MessageResponse>
+            <PlanText>{task.verdict}</PlanText>
           </div>
         )}
         {open ? (
           <div className="space-y-2 pt-1">
             <div className="text-[12.5px] text-foreground/90">
-              <MessageResponse>{task.description}</MessageResponse>
+              <PlanText>{task.description}</PlanText>
             </div>
             {task.notes.length > 0 && (
               <div className="space-y-1">
@@ -339,7 +397,10 @@ function TaskRow({
   )
 }
 
-/** One epic: status and title, its plan folded below, the verdict when there is one, then its tasks. */
+/**
+ * One epic: status and title, its plan folded below, the verdict when there is one, then its tasks. An epic the
+ * coordinator works without tasks shows its acceptance criteria in their place.
+ */
 function EpicCard({
   epic,
   tasks,
@@ -356,6 +417,7 @@ function EpicCard({
   const list = Object.values(epic.tasks)
   const done = finished(epic.tasks)
   const approved = epic.verdict?.trimStart().startsWith('APPROVED')
+  const criteria = list.length === 0 ? criteriaOfBody(epic.body) : undefined
   const section = useScrollTo<HTMLElement>(focus?.key === epic.key ? focus : undefined)
   return (
     <section
@@ -374,7 +436,7 @@ function EpicCard({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="mx-3 mb-2 rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
-            <MessageResponse>{epic.body}</MessageResponse>
+            <EpicBody body={epic.body} criteria={!!criteria} met={epic.status === 'done'} />
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -393,15 +455,26 @@ function EpicCard({
           >
             Verdict
           </div>
-          <MessageResponse>{epic.verdict}</MessageResponse>
+          <PlanText>{epic.verdict}</PlanText>
         </div>
       )}
-      <div className="flex items-center px-3 pb-1 section-label">
-        Tasks
-        <span className="ml-auto">
-          {done}/{list.length} done
-        </span>
-      </div>
+      {list.length > 0 || criteria ? (
+        <div className="flex items-center px-3 pb-1 section-label">
+          {criteria ? 'Acceptance criteria' : 'Tasks'}
+          <span className="ml-auto">
+            {criteria ? 'worked directly' : `${done}/${list.length} done`}
+          </span>
+        </div>
+      ) : (
+        <p className="px-3 pb-2 font-sans text-[12px] text-muted-foreground/70">
+          Worked directly by the coordinator.
+        </p>
+      )}
+      {criteria && (
+        <div className="px-3 pb-2 text-[12.5px]">
+          <Criteria items={criteria} met={epic.status === 'done'} />
+        </div>
+      )}
       {list.map((task) => (
         <TaskRow
           coordinator={coordinator}
@@ -412,9 +485,6 @@ function EpicCard({
           tasks={tasks}
         />
       ))}
-      {list.length === 0 && (
-        <p className="px-3 pb-2 font-sans text-[12px] text-muted-foreground/70">No tasks yet.</p>
-      )}
     </section>
   )
 }
@@ -636,9 +706,7 @@ function CoordinatorPlan({
         >
           <ClipboardListIcon className="size-3.5 shrink-0" />
           <span className="text-foreground/80">{shown.epic.key}</span>
-          <span>
-            · {shown.finished}/{shown.total} done
-          </span>
+          <span>· {progressLabel(shown.epic)}</span>
           {shown.more > 0 && <span className="text-muted-foreground/70">+{shown.more}</span>}
         </button>
       )}
@@ -785,7 +853,7 @@ function PlanCall({ call }: { call: ToolCallView }) {
             value && (
               <ToolSection key={label} label={label}>
                 <div className="font-sans text-[13px] text-foreground/90">
-                  <MessageResponse>{value}</MessageResponse>
+                  <PlanText>{value}</PlanText>
                 </div>
               </ToolSection>
             ),
