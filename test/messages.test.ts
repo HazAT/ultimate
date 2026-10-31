@@ -935,6 +935,33 @@ it('queues a busy recipient as follow-up, or steers its current run; @ultimate s
     expect(steer ? released === -1 : released < delivered).toBe(true)
   }
 })
+it('answers several open asks of one sender with one reply that closes them all', async () => {
+  const f = await fixture()
+  // The first ask starts a run that works (holds); the second steers into it, and one final answer ends both.
+  await f.send(String(f.recipient.id), 'HOLD')
+  await until(f.holding)
+  await f.send(String(f.recipient.id), 'Second ask')
+  f.hold.release()
+  await until(async () => (await replies(f)).length >= 1)
+  await f.recipient.waitForIdle(context)
+  await f.opened.root.waitForIdle(context)
+  const log = (await f.log())!
+  const asks = log.messages.filter((m) => m.to === f.recipient.id)
+  const sent = log.messages.filter((m) => m.from === f.recipient.id)
+  expect(asks).toHaveLength(2)
+  expect(asks.map((m) => m.state)).toEqual(['answered', 'answered'])
+  expect(asks[1].answer).toBe(asks[0].answer)
+  expect(asks.map((m) => m.entry).every((entry) => entry !== undefined)).toBe(true)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]).toMatchObject({ answer: asks[0].answer, state: 'delivered' })
+  expect(asks.map((m) => m.id)).toContain(sent[0].re)
+  expect(await replies(f)).toHaveLength(1)
+  expect(
+    f.observed.filter((t) =>
+      t.startsWith(`Reply from #${f.recipient.id} to your message ${sent[0].re}`),
+    ),
+  ).toHaveLength(1)
+})
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)
