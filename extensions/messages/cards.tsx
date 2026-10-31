@@ -10,6 +10,7 @@ import {
   MailIcon,
   SendIcon,
   SquareArrowOutUpRightIcon,
+  Undo2Icon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -157,6 +158,14 @@ function Status({ message, perspective }: { message: Message; perspective: numbe
         answered
       </span>
     )
+  if (status === 'withdrawn')
+    return (
+      <span className="flex min-w-0 flex-wrap items-center gap-1">
+        <Undo2Icon className="size-3 shrink-0" />
+        withdrawn
+        {message.reason && <span className="min-w-0 break-words">· {message.reason}</span>}
+      </span>
+    )
   return <span className={status === 'failed' ? 'text-destructive' : ''}>{status}</span>
 }
 
@@ -201,7 +210,8 @@ export function Bubble({
     (status === 'sending' && !writing) ||
     status === 'failed' ||
     status === 'stopped' ||
-    status === 'dismissed'
+    status === 'dismissed' ||
+    status === 'withdrawn'
   // Prose on the page under a name line; what mounts beneath the text shares one quiet card.
   return (
     <section
