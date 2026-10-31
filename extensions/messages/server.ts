@@ -27,7 +27,7 @@ import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { send } from './send.ts'
 import { route, working } from './route.ts'
-import { remoteAction, remoteReplyAction, tell } from './remote.ts'
+import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages]
@@ -179,6 +179,12 @@ export default function messages(host: ExtensionHost) {
             ? ''
             : ` #${starter} started you: when you stop with nothing under way (no subagent, landing or reply pending), your final answer goes to it and wakes it; while work is under way it arrives as a note, and so do your one-way messages to it.`
         return `Use message to contact #id or @name. @ultimate and branches may message user. Messages wake their recipient; its answer returns as a reply and wakes you. End your turn instead of waiting. A one-way message (reply: false) gets no answer; use reply: true when you need one. Inputs identify their sender; answer here and your answer is sent to the sender automatically; do not use message to reply. A message to an agent whose message you still owe an answer becomes that answer and ends your run; use it only to attach images.${upward}\n${agents.map((a) => `@${a.name} — ${a.description}`).join('\n')}`
+      }),
+      // Only @ultimate can tell; the list changes when a project or a standing agent is added, not per turn.
+      section('projects', async (input, ctx) => {
+        const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
+        if (standing?.ultimate !== input.conversationId) return undefined
+        return projectsSection(host)
       }),
     ],
     tools: [

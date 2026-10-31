@@ -42,7 +42,7 @@ import {
   saveDefinition,
   saveOverlay,
 } from '../../lib/agents.ts'
-import type { DefinitionFields } from '../../lib/agents.ts'
+import type { AgentDefinition, DefinitionFields } from '../../lib/agents.ts'
 import { createChild, started } from './children.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
@@ -60,6 +60,16 @@ import {
 } from './refs.ts'
 
 export const docs = [Subagents, Standing, Profile]
+
+/** What a definition runs on, as `<subagents>` shows it: `review: openai-codex/gpt-6-astra · high`; the default family runs on the parent's model. */
+export const runsLabel = (runs: AgentDefinition['runs']) =>
+  [
+    runs?.family && (runs.model ? `${runs.family}:` : runs.family),
+    runs?.model && `${runs.model.provider}/${runs.model.modelId}`,
+    runs?.thinking && `· ${runs.thinking}`,
+  ]
+    .filter(Boolean)
+    .join(' ')
 const Anchor = defineTask<null, { phase: 'done' }, null>({
   name: 'ultimate.subagent-anchor',
   version: 1,
@@ -836,7 +846,10 @@ export default function subagents(
           host.modelRuntime,
         )
         const definitions = discovered.definitions
-          .map((agent) => `${agent.name}: ${agent.description}`)
+          .map((agent) => {
+            const runs = runsLabel(agent.runs)
+            return `${agent.name}${runs ? ` (${runs})` : ''}: ${agent.description}`
+          })
           .join('\n')
         return `Available definitions:\n${definitions}`
       }),

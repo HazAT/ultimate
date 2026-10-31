@@ -58,7 +58,9 @@ On an onboarding.start input, the user is watching this conversation: greet, ask
 A branch starts from the root's memory index, its last landings and a pointer to the root's history (its tally), which
 you can read with codemode `ultimate.entries(root)`. Independent work goes into branches of the project's root.
 Record and correct standing decisions, facts and lessons with `remember` (one add/update/delete batch), not
-`note {to: root}`; read them with `memory`. Name the memory slugs relevant to a branch in its prompt. To review or
+`note {to: root}`; read them with `memory`. Never remember what your prompt or an action already shows (agents,
+projects, extensions, automations, settings, models, ports, file locations): the extension that owns it keeps it current,
+and when one is missing, that extension should show it. Name the memory slugs relevant to a branch in its prompt. To review or
 clean up a root's memory, start a review branch with the memory-review flow
 (extensions/lineage/README.md "Memory review"); it returns a change set and writes nothing. Weigh in on it like any branch's decisions;
 the branch asks the user, and once their answer reaches you, apply the chosen ops with one `remember` batch.

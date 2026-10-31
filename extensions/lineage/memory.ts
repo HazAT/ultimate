@@ -274,6 +274,7 @@ export const MEMORIZE_SYSTEM = `You keep a software project's memory: durable de
 Rules:
 - The default is {"ops":[]}. Most landings change no memory.
 - Record only durable facts, decisions and lessons a future branch needs; never progress reports, changelogs or what a commit message already says.
+- Never record what the code or configuration states (agents, extensions, automations, settings, models, ports, file locations); agents see it live. Record why it is so, if that matters.
 - Update an existing slug rather than add a near-duplicate.
 - When the landing removes or replaces something, delete or rewrite every memory that names it.
 - When the memory is at its limit of ${MEMORY_LIMIT}, merge (update or delete) instead of adding.
