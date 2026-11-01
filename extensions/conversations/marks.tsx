@@ -1,6 +1,9 @@
-import { BotIcon, BrainIcon, GitMergeIcon, ScrollTextIcon } from 'lucide-react'
+import { BotIcon, BrainIcon, GitMergeIcon, icons, ScrollTextIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { cn } from '@/sdk'
+import { cn, useDocOf } from '@/sdk'
+import type { MarkTint } from '../../lib/marks.ts'
+import { MarksDoc } from './refs.ts'
+import type { AgentMarkStyle } from './refs.ts'
 
 /** The display names of the agents Ultimate ships with; any other standing agent is its name, capitalised. */
 const names: Record<string, string> = {
@@ -10,7 +13,10 @@ const names: Record<string, string> = {
 export const agentTitle = (name: string) =>
   names[name] ?? name.charAt(0).toUpperCase() + name.slice(1)
 
-/** Each known agent's tile: its tint and glyph. Glyphs size to the tile through `size-[60%]`. */
+/**
+ * Each built-in tile: its tint and glyph. Glyphs size to the tile through `size-[60%]`. Every other standing agent
+ * takes its definition's `icon` and `tint` (the marks doc), else the grey bot.
+ */
 const tiles: Record<string, { tint: string; glyph: ReactNode }> = {
   ultimate: {
     tint: 'bg-brand/12 text-brand ring-brand/25',
@@ -30,9 +36,41 @@ const tiles: Record<string, { tint: string; glyph: ReactNode }> = {
     glyph: <BrainIcon className="size-[58%]" strokeWidth={2} />,
   },
 }
-const fallback = {
-  tint: 'bg-muted text-muted-foreground ring-border',
-  glyph: <BotIcon className="size-[60%]" strokeWidth={2} />,
+const fallbackTint = 'bg-muted text-muted-foreground ring-border'
+const fallbackGlyph = <BotIcon className="size-[60%]" strokeWidth={2} />
+
+/** The classes of each tint a definition may name; spelled out so Tailwind generates them. */
+const tints: Record<MarkTint, string> = {
+  violet: 'bg-violet-500/12 text-violet-600 ring-violet-500/25 dark:text-violet-300',
+  blue: 'bg-blue-500/12 text-blue-600 ring-blue-500/25 dark:text-blue-300',
+  green: 'bg-emerald-500/12 text-emerald-600 ring-emerald-500/25 dark:text-emerald-300',
+  amber: 'bg-amber-500/14 text-amber-700 ring-amber-500/30 dark:text-amber-300',
+  red: 'bg-red-500/12 text-red-600 ring-red-500/25 dark:text-red-300',
+  pink: 'bg-pink-500/12 text-pink-600 ring-pink-500/25 dark:text-pink-300',
+  teal: 'bg-teal-500/12 text-teal-700 ring-teal-500/25 dark:text-teal-300',
+  grey: fallbackTint,
+}
+
+/** A lucide icon by the name a definition gives, PascalCase or kebab-case; undefined for an unknown one. */
+const iconOf = (name: string) =>
+  icons[
+    name.replace(/(^|-)([a-z0-9])/g, (_, _dash: string, letter: string) =>
+      letter.toUpperCase(),
+    ) as keyof typeof icons
+  ]
+
+const warned = new Set<string>()
+/** A standing agent's tile as its definition's `icon` and `tint` ask, else the grey bot. */
+function definedTile(style: AgentMarkStyle | undefined) {
+  const Icon = style?.icon ? iconOf(style.icon) : undefined
+  if (style?.icon && !Icon && !warned.has(style.icon)) {
+    warned.add(style.icon)
+    console.warn(`Unknown lucide icon "${style.icon}" in an agent definition; showing the default`)
+  }
+  return {
+    tint: (style?.tint && tints[style.tint as MarkTint]) || fallbackTint,
+    glyph: Icon ? <Icon className="size-[60%]" strokeWidth={2} /> : fallbackGlyph,
+  }
 }
 
 /** The presence dot in a mark's corner: pulsing while it works, amber while it waits on you, else muted. */
@@ -51,7 +89,8 @@ export function AgentMark({
   size?: 'xs' | 'sm' | 'md'
   presence?: Presence
 }) {
-  const tile = tiles[name] ?? fallback
+  const styles = useDocOf(1, MarksDoc)
+  const tile = tiles[name] ?? definedTile(styles?.[name])
   return (
     <span
       aria-hidden
