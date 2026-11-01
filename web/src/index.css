@@ -34,7 +34,7 @@
   --border: oklch(0.9 0.005 270);
   /* A control's only outline, so it needs 3:1 against the page and the card it sits on (SC 1.4.11). */
   --input: oklch(0.64 0.006 270);
-  /* Opaque: any alpha here composites with the utility's own `ring-ring/50` and halves the indicator's contrast. */
+  /* Opaque: a call site that adds its own half alpha would composite this twice and halve the indicator's contrast. */
   --ring: oklch(0.55 0.17 300);
   --brand: oklch(0.52 0.18 300);
   --brand-foreground: oklch(0.98 0.01 300);
@@ -182,7 +182,9 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* The focus fallback for anything without its own ring: opaque, because a half alpha on top of an opaque token
+       lands at 1.94:1 (light) and 2.69:1 (dark) on the accent row, under the 3:1 a focus indicator needs. */
+    @apply border-border outline-ring;
   }
   html {
     color-scheme: light;

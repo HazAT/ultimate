@@ -105,3 +105,16 @@ it('never dims muted text with a partial opacity modifier', () => {
     }
   expect(offenders).toEqual([])
 })
+
+it.each([
+  ['light', light],
+  ['dark', dark],
+])('%s never dims the focus indicator, including the global fallback outline', (_name, tokens) => {
+  // `--ring` is opaque, so a call site's `/50` (or the base-layer `outline-ring/50`) composites it twice. The
+  // fallback outline is what every focusable element gets before it opts into a ring, so it must clear 3:1 too.
+  const css = readFileSync(new URL('../web/src/index.css', import.meta.url), 'utf8')
+  const dimmed = [...css.matchAll(/\b(?:outline|ring)-ring\/(?!0\b)\d+/g)].map((match) => match[0])
+  expect(dimmed).toEqual([])
+  for (const surface of surfaces)
+    expect(contrast('ring', 1, surface, tokens), `--ring on ${surface}`).toBeGreaterThanOrEqual(3)
+})
