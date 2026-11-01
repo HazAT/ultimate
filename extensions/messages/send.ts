@@ -1,11 +1,12 @@
 /** `send()`: validating, admitting and logging a message, and starting its delivery. */
 import type { Context } from '@earendil-works/chord'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
 import { Messages, MessageSent } from './api.ts'
 import type { Question } from './api.ts'
+import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
@@ -70,15 +71,17 @@ export async function send(
     /** Place it as a note, which starts no run; by default one-way messages to the sender's starter are notes. */
     note?: boolean
     device?: Device
+    /** The user's answer or dismissal settled by @ultimate on their behalf, from their input `via.entry`. */
+    via?: Via
     /** A branch's final answer routed as its report: the branch shows as awaiting its starter. */
     report?: boolean
-    /** The starter's final answer routed down to the branch it answers. */
-    routed?: boolean
+    /** The starter's final answer, this entry of its, routed down to the branch it answers. */
+    routed?: EntryId
     /** A branch's report that answers routed answers only. */
     echo?: boolean
   } = {},
 ) {
-  const { taskId, callId, requestId, answerId, device } = options
+  const { taskId, callId, requestId, answerId, device, via } = options
   if (requestId !== undefined && from !== 'user') {
     const sent = await host.harness().snapshot(Requests, from as ConversationId, ctx)
     if (sent?.ids[requestId] !== undefined) return sent.ids[requestId]
@@ -109,7 +112,9 @@ export async function send(
       `Subagents report to the conversation that started them: message only #${parent}. Your final answer reaches it anyway.`,
     )
   const to = await resolve(host, input.to, from, ctx)
-  const fromLabel = await senderName(host, from, ctx)
+  const fromLabel = via
+    ? `user (settled for them by @ultimate, from what they said in its chat)`
+    : await senderName(host, from, ctx)
   const toLabel = await senderName(host, to, ctx)
   return host.harness().commit(async (tx) => {
     const receipt = taskId === undefined ? undefined : await tx.doc(Sent, taskId)
@@ -195,8 +200,9 @@ export async function send(
       ...(images ? { images } : {}),
       ...(questions ? { questions } : {}),
       ...(options.report ? { report: true as const } : {}),
-      ...(options.routed ? { routed: true as const } : {}),
+      ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
+      ...(via ? { via } : {}),
     })
     await host.emit(tx, MessageSent, {
       message: message.id,
@@ -229,15 +235,18 @@ export async function send(
               data: {
                 message: answerId,
                 from: to,
+                ...(via ? { via } : {}),
                 ...(input.dismiss
                   ? { dismissed: true }
                   : {
                       summary: answerSummary(input.text),
                     }),
               },
-              content: input.dismiss
-                ? `The user dismissed #${to}'s questions (message ${answerId}).`
-                : `The user answered #${to}'s questions (message ${answerId}):\n${input.text}`,
+              content: via
+                ? `You settled #${to}'s questions (message ${answerId}) for the user${input.dismiss ? ', closed without an answer' : ''}.`
+                : input.dismiss
+                  ? `The user dismissed #${to}'s questions (message ${answerId}).`
+                  : `The user answered #${to}'s questions (message ${answerId}):\n${input.text}`,
             }
           : undefined
       if (notification)
@@ -251,8 +260,9 @@ export async function send(
           },
         )
     }
-    // The user's answer or dismissal is their input to the asker; the message's `entry` names it once delivered.
-    if (from === 'user' && answerId !== undefined && typeof to === 'number')
+    // The user's answer or dismissal is their input to the asker; the message's `entry` names it once delivered. One
+    // @ultimate settled for them is not: their chat input that it came from counted already.
+    if (from === 'user' && answerId !== undefined && typeof to === 'number' && !via)
       await host.emit(tx, UserInputEvent, {
         conversation: to,
         kind: input.dismiss ? 'dismiss' : 'answer',

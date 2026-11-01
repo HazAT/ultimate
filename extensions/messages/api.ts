@@ -8,7 +8,7 @@ import type { EntryId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote } from './refs.ts'
+import type { Question, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -30,14 +30,16 @@ export type Message = {
   images?: { entry: EntryId; count: number }
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
-  /** The starter's final answer to a branch's report or reply, routed to that branch. */
-  routed?: true
+  /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
+  routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
+  /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
+  via?: Via
 }
 /** Every message between conversations and the user, on the root conversation. */
 export const Messages = defineDoc<{ messages: Message[]; next: number }>({

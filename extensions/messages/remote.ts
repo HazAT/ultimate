@@ -7,6 +7,7 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction, selfAddress } from '../../lib/remote.ts'
+import { discoverAgents } from '../../lib/agents.ts'
 import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
 import { append } from './log.ts'
@@ -38,6 +39,30 @@ const field = (value: unknown, name: string, max: number) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
     throw new Error(`${name} must be a nonempty string of at most ${max} characters`)
   return value
+}
+/**
+ * The other projects on this machine with their standing agents besides @ultimate, read from local files only (no
+ * network on a render). Undefined when there are none.
+ */
+export async function projectsSection(
+  host: Pick<ExtensionHost, 'projects' | 'ultimateRoot' | 'userHome' | 'modelRuntime'>,
+) {
+  const lines = await Promise.all(
+    (await host.projects())
+      .filter((project) => !project.current && project.root)
+      .map(async (project) => {
+        const { definitions } = await discoverAgents(
+          host.ultimateRoot,
+          project.root!,
+          host.userHome,
+          host.modelRuntime,
+        )
+        const agents = definitions.filter((d) => d.resident && d.name !== 'ultimate')
+        return `- ${project.name}${agents.length ? `: ${agents.map((a) => `@${a.name}`).join(', ')}` : ''}`
+      }),
+  )
+  if (!lines.length) return undefined
+  return `Other projects on this machine and their standing agents besides their own @ultimate. Reach one with codemode \`ultimate.tell({project, text})\`; its @ultimate routes to the others.\n${lines.join('\n')}`
 }
 /**
  * From the primary agent's conversation `from`, message another project's Ultimate. The message is logged here first,

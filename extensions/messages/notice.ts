@@ -14,6 +14,8 @@ export const notice = (host: Pick<ExtensionHost, 'harness'>) =>
         call?: string
         summary?: string
         dismissed?: boolean
+        /** @ultimate settled it for the user. */
+        via?: { conversation: number; entry?: number }
       }
       content: string
     },

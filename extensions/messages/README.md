@@ -98,11 +98,13 @@ A reply-enabled message to `user` stays open, and its sender shows as awaiting r
 message: a user Reply with `re` (an answer card, or a typed Reply) marks only that message answered, in the reply's
 commit. Plain input, new posts and answers to other questions leave it open. The service's `dismiss` closes it as
 `dismissed` instead, with a one-way user note to the sender (`re`, delivered as a note: no run starts) in the same
-commit.
+commit. When the user decides a question in @ultimate's chat instead, @ultimate settles it for them with the `settle`
+action (see Actions): the same answer or dismissal, recorded with `via`, so the card reads "@ultimate answered for you"
+with a link to the user's message, and the pointer "answered for you".
 
 While the sender has questions open, the input that starts its next run goes in after a `board.open` entry, placed
 by the patched `beforeInput` hook in the input's commit: one user-role line listing each open message's id, first
-line and age. It renders nothing in the transcript. It is per input rather than a system-prompt section, so the
+line and age. @ultimate's lists every open question to the user, each with its asker, and names `settle`. It renders nothing in the transcript. It is per input rather than a system-prompt section, so the
 prompt stays cached; nothing is added while nothing is open.
 
 A reply-expected agent message to `user` may carry `questions` (the `message` tool's argument, checked in
@@ -216,6 +218,7 @@ type Message = {
   entry?: EntryId
   answer?: EntryId
   error?: string
+  via?: { conversation: number; entry?: number } // an answer @ultimate settled for the user, and their input it read
   remote?: { project: string; machine: string; key: string; id?: number } // the other Ultimate
   report?: true // a branch's routed final answer after it stopped with nothing under way
   questions?: Question[] // what a reply-expected message to the user asks (see Questions)
@@ -230,6 +233,13 @@ The reply's `answer` links to the recipient's assistant entry; the original also
 
 - `addresses({}) → { agents, conversations }`: resident names/descriptions with an id if already created, and up to
   50 recent top-level conversation summaries (including title and label).
+- `settle({ messageId, text, dismiss? }) → { id }`: @ultimate's conversation, or its side chat, settles the user's
+  open question for them from what they said in its chat. `text` is their answer (their words or the picks read from
+  them), sent to the asker as the user's reply, naming it settled by @ultimate; with `dismiss`, `text` is why it no
+  longer matters and the asker gets a note. The reply records `via`: the calling conversation and the user's input that
+  started its current run. It emits no `user.input` event, and @ultimate's `board.answered` note says it settled it.
+  Refused for any other caller and for a message that is no longer open. The model decides that the chat answered the
+  card; no code reads the user's words.
 
 Users type in @ultimate's conversation or answer a question card; there is no user posting action.
 Agents use the `message` tool. The prompt section is stable and lists resident names and descriptions.

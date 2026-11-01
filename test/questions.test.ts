@@ -9,7 +9,11 @@ import { context, prepareHarness } from '../server/harness.ts'
 import type { OpenHost } from '../server/harness.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import type { ActionContext } from '../server/actions.ts'
-import messagesExtension, { gist } from '../extensions/messages/server.ts'
+import messagesExtension, {
+  actions as messageActions,
+  gist,
+} from '../extensions/messages/server.ts'
+import { Started } from '../extensions/messages/addresses.ts'
 import { Messages } from '../extensions/messages/api.ts'
 import type { Question } from '../extensions/messages/api.ts'
 import { checkQuestions } from '../extensions/messages/questions.ts'
@@ -88,11 +92,14 @@ async function fixture() {
   prepared.registry.install(messagesExtension(host))
   prepared.registry.install(questionsExtension(host))
   const observed: string[] = []
+  /** Runs with each input the agent reads, as an agent's tool calls would during its turn. */
+  let heard: ((text: string) => Promise<unknown>) | undefined
   const route: FauxResponseFactory = async (transcript) => {
     prepared.faux!.appendResponses([route])
     const last = transcript.messages.at(-1)!
     const text = typeof last.content === 'string' ? last.content : ''
     observed.push(text)
+    await heard?.(text)
     if (last.role === 'user' && text.startsWith('SEND '))
       return fauxAssistantMessage([fauxToolCall('message', JSON.parse(text.slice(5)))], {
         stopReason: 'toolUse',
@@ -149,10 +156,40 @@ async function fixture() {
       message: (await log()).messages.findLast((m) => m.from === id && m.to === 'user'),
     }
   }
-  const action = () => ({ host, signal: new AbortController().signal }) as ActionContext
+  const action = (conversationId?: number) =>
+    ({ host, conversationId, signal: new AbortController().signal }) as ActionContext
   const answer = (args: Parameters<typeof actions.answer>[0]) => actions.answer(args, action())
   const dismiss = (messageId: number) => actions.dismiss({ messageId }, action())
-  return { opened, ultimate, type, ask, answer, dismiss, log, entries, observed, settled }
+  const settle = (by: number, args: { messageId: number; text: string; dismiss?: boolean }) =>
+    messageActions.settle(args, action(by))
+  /** A branch that @ultimate `by` started. */
+  const branch = async (by: ConversationId) => {
+    const conversation = await opened.harness.createConversation(
+      { ownership: { kind: 'ownerless' } },
+      context,
+    )
+    const agent = await opened.root.agent(context)
+    await opened.harness.commit(async (tx) => {
+      await configure(tx, conversation.id, { model: agent.model, tools: agent.tools })
+      ;(await tx.doc(Started, conversation.id)).by = by
+    }, context)
+    return conversation.id
+  }
+  return {
+    opened,
+    hear: (fn: typeof heard) => (heard = fn),
+    ultimate,
+    branch,
+    type,
+    ask,
+    answer,
+    dismiss,
+    settle,
+    log,
+    entries,
+    observed,
+    settled,
+  }
 }
 
 describe('questions on a message', () => {
@@ -330,7 +367,7 @@ describe('questions on a message', () => {
     expect(note.data).toEqual({ ids: [message!.id] })
     expect(note.model?.[0]?.content).toMatch(
       new RegExp(
-        `^Open questions to the user.*\\n- message ${message!.id}: questions 1\\. Scope; 2\\. Suites; 3\\. Land it\\?; 4\\. How finished is it\\?; 5\\. Name \\(asked just now\\)$`,
+        `^Open questions to the user.*\\n- message ${message!.id}: questions 1\\. Scope; 2\\. Suites; 3\\. Land it\\?; 4\\. How finished is it\\?; 5\\. Name \\(asked just now\\)\\n`,
         's',
       ),
     )
@@ -371,6 +408,50 @@ describe('questions on a message', () => {
     expect(after.filter((entry) => entry.kind === 'pi.assistant')).toHaveLength(before)
     await expect(f.dismiss(first.id)).rejects.toThrow('These questions are no longer open')
     await expect(f.answer({ messageId: first.id, text: 'Yes' })).rejects.toThrow(
+      'These questions are no longer open',
+    )
+  })
+})
+
+describe('settling for the user', () => {
+  it("lets @ultimate answer a branch's question from its chat, as the user's answer that names its source", async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const asker = await f.branch(id)
+    const { message } = await f.ask(asker, { text: 'Ship it?', questions: [decisions[2]] })
+    await expect(f.settle(asker, { messageId: message!.id, text: 'Yes' })).rejects.toThrow(
+      "Only @ultimate settles the user's questions",
+    )
+    // Its turn starts with the branch's question by id, and the action that settles it.
+    f.hear(async (text) =>
+      text === 'approved, ship it'
+        ? f.settle(id, { messageId: message!.id, text: '3: Yes, ship it' })
+        : undefined,
+    )
+    await f.type(id, 'approved, ship it')
+    await f.settled()
+    const said = (await f.entries(id)).find((e) => e.kind === 'pi.user')!
+    const note = (await f.entries(id)).find((e) => e.kind === 'board.open')!
+    expect(note.model?.[0]?.content).toContain(
+      `- message ${message!.id} from #${asker}: questions 3. Land it?`,
+    )
+    expect(note.model?.[0]?.content).toContain("ultimate.action('messages', 'settle'")
+    const log = (await f.log()).messages
+    expect(log.find((m) => m.id === message!.id)?.state).toBe('answered')
+    expect(log.find((m) => m.re === message!.id)).toMatchObject({
+      from: 'user',
+      to: asker,
+      text: '3: Yes, ship it',
+      via: { conversation: id, entry: said.id },
+    })
+    // The branch reads it as the user's answer, settled by @ultimate.
+    expect(
+      f.observed.some(
+        (text) =>
+          text.includes('settled for them by @ultimate') && text.includes('3: Yes, ship it'),
+      ),
+    ).toBe(true)
+    await expect(f.settle(id, { messageId: message!.id, text: 'No' })).rejects.toThrow(
       'These questions are no longer open',
     )
   })

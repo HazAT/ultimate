@@ -543,17 +543,21 @@ export default function instanceExtension(
   return defineExtension({
     name: 'instance',
     sections: [
-      section('test_core_changes', () =>
-        ownSource
-          ? 'Before restarting after core changes, start a second instance, check its API and UI using browser/screenshot, then stop it. An instance runs every agent on the `instance.model` setting (default openai-codex/gpt-6.1-sol, fast) and spends tokens; drive it with real prompts. Instances are temporary and process-local.'
-          : "To check changes to this project's .ultimate/ extensions, agents or settings, start a second instance: it runs this Ultimate with your workspace as its project. Look at it with browser/screenshot, then stop it. It runs every agent on the `instance.model` setting (default openai-codex/gpt-6.1-sol, fast) and spends tokens. It does not run the project's own app.",
-      ),
+      section('test_core_changes', async () => {
+        const model = await previewModelSetting(host)
+        const runs = model
+          ? `every agent on ${model} (the \`instance.model\` setting)`
+          : 'the configured models (`instance.model` is null)'
+        return ownSource
+          ? `Before restarting after core changes, start a second instance, check its API and UI using browser/screenshot, then stop it. An instance runs ${runs} and spends tokens; drive it with real prompts. Instances are temporary and process-local.`
+          : `To check changes to this project's .ultimate/ extensions, agents or settings, start a second instance: it runs this Ultimate with your workspace as its project. Look at it with browser/screenshot, then stop it. It runs ${runs} and spends tokens. It does not run the project's own app.`
+      }),
     ],
     tools: [
       defineTool({
         name: 'instance',
         description:
-          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree. Instances run every agent on `instance.model` (default openai-codex/gpt-6.1-sol, fast).',
+          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree. Instances run every agent on one model, `instance.model`.',
         parameters: Type.Object({
           action: Type.Union(
             ['start', 'stop', 'logs', 'list'].map((action) => Type.Literal(action)),

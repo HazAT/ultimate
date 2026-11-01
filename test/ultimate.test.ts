@@ -125,7 +125,10 @@ it.concurrent('ships a resident Ultimate definition with valid tools; standing a
   expect(definition.resident).toBe(true)
   const ultimate = await f.subagents.standing('ultimate', context)
   const agent = await (await f.server.harness.conversation(ultimate, context))!.agent(context)
-  expect(agent.tools.map((tool) => tool.name).toSorted()).toEqual(definition.tools!.toSorted())
+  // mcp exists only while mcpServers names a server; the fixture configures none.
+  expect(agent.tools.map((tool) => tool.name).toSorted()).toEqual(
+    definition.tools!.filter((name) => name !== 'mcp').toSorted(),
+  )
   // debug is deferred: @ultimate names it, the root agent does not get it.
   expect(definition.tools).toContain('debug')
   const rootTools = (await f.server.root.agent(context)).tools.map((tool) => tool.name)

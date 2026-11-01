@@ -17,6 +17,8 @@ Built on [Pi Durable](https://earendil.com/posts/pi-durable/): the conversation,
 committed to SQLite before anything is shown, so Ultimate can rewrite its own UI, extensions, and core without losing its
 place.
 
+What Ultimate is and why it exists, in plain words: [danielgriesser.com/ultimate](https://danielgriesser.com/ultimate/).
+
 ## How to use it
 
 - **Specialize it for your project.** Working on a web shop? Ask Ultimate for what makes work on that shop easier: a

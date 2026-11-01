@@ -5,6 +5,7 @@
 import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type {
   ConversationId,
+  EntryId,
   GenerationResult,
   SubmissionId,
   TaskId,
@@ -127,7 +128,7 @@ interface Route {
   to: number
   text: string
   requestId: string
-  options: { note?: boolean; report?: boolean; echo?: boolean; routed?: boolean }
+  options: { note?: boolean; report?: boolean; echo?: boolean; routed?: EntryId }
 }
 
 /**
@@ -193,7 +194,7 @@ export function route(host: ExtensionHost) {
               to,
               text: together + text,
               requestId: `route:${answer}:${to}`,
-              options: { routed: true },
+              options: { routed: answer },
             }))
           }
           // board.delivery returns an answer to a reply-enabled message to whoever sent it. To the starter's, that is

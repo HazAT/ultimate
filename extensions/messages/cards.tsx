@@ -68,6 +68,16 @@ const Answers = ({ message }: { message: Message }) => (
   </Provided>
 )
 
+/** Who settled `question` with `answer`: you, or @ultimate for you from your chat. */
+const settledLabel = (question: Message, answer: Message) =>
+  question.state === 'dismissed'
+    ? answer.via
+      ? '@ultimate dismissed it for you'
+      : 'You dismissed it'
+    : answer.via
+      ? '@ultimate answered for you'
+      : 'You answered'
+
 /** The accent of sender `id`: @ultimate's fixed one when the standing agents name it, else `accentOf`. */
 export function useAccentOf(id: number | 'user' | 'remote') {
   const standing = useDocOf(1, StandingDoc)
@@ -292,13 +302,29 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
   const now = useNow(60000)
   const accent = accentOf('user')
   const dismissed = question.state === 'dismissed'
+  const { via } = answer
+  const { showSurface, switchConversation } = useUltimate()
   return (
     <div className="border-t border-border/60 px-3 py-2.5" data-compact-answer={answer.id}>
       <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
         <CornerDownRightIcon className={cn('size-3.5 shrink-0', accent.name)} />
-        <span className={cn('font-semibold', accent.name)}>
-          {dismissed ? 'You dismissed it' : 'You answered'}
-        </span>
+        <span className={cn('font-semibold', accent.name)}>{settledLabel(question, answer)}</span>
+        {via?.entry !== undefined && (
+          <button
+            className="flex cursor-pointer items-center gap-1 hover:text-foreground"
+            data-settled-from={via.entry}
+            onClick={() => {
+              events.emit('messages:open', { conversation: via.conversation, entry: via.entry })
+              showSurface('agent')
+              switchConversation(via.conversation)
+            }}
+            title="Show what you said that @ultimate read this from"
+            type="button"
+          >
+            <SquareArrowOutUpRightIcon className="size-3" />
+            from your message
+          </button>
+        )}
         <time
           className="ml-auto"
           dateTime={new Date(answer.at).toISOString()}
@@ -307,7 +333,7 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
           {formatAgo(answer.at, now)}
         </time>
       </div>
-      {!dismissed && (
+      {(!dismissed || via) && (
         <UserText
           className="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[13px] leading-relaxed"
           text={answer.text}
@@ -683,7 +709,13 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
         type="button"
       >
         <CornerLeftUpIcon className="size-3" />
-        {question.state === 'dismissed' ? 'you dismissed a question' : 'you answered a question'}
+        {question.state === 'dismissed'
+          ? message?.via
+            ? '@ultimate dismissed a question for you'
+            : 'you dismissed a question'
+          : message?.via
+            ? '@ultimate answered a question for you'
+            : 'you answered a question'}
       </button>
     )
   }
