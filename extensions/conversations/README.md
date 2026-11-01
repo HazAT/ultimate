@@ -1,7 +1,7 @@
 What each conversation is about: titles, summaries, features and reply summaries, the overview the sidebar reads,
 and concluding and resuming conversations. Several branches run at once as separate agents; lineage roots keep their shared context without running turns.
 A summary model (GPT-6 Luna by default) automatically gives top-level conversations concise titles and sidebar summaries, and describes each final reply without
-changing the main agent. A conversation turns these automatic triggers (intent, spawn and completed reply) off with
+changing the main agent. A conversation turns these automatic triggers (intent, spawn, steer and completed reply) off with
 `setAutomaticSummaries(tx, id, false)` on the service: it then schedules no summary task, a task admitted before settles
 without writing, and its title stays as set, with no automatic summary, feature, activity, reply summary or abstract.
 Explicit `askSummaryModel` calls are unaffected. Standing agents and landers are off (their `@name` titles stay fixed), side
@@ -78,11 +78,14 @@ The single-conversation actions below reject bad args, unknown conversations, an
 ## Automatic summaries and reply summaries
 
 Title/summary requests also classify a 1–3 word product feature label for top-level conversations.
-The label is exposed in the overview and kept unless the work clearly moves to another feature.
+The label is exposed in the overview and kept unless the work clearly moves to another feature: tags group landings
+in the sidebar, so the summary model, not code, decides that it moved. Titles name the goal, not the latest step or
+status. An accepted change of an existing tag appends `conversations.feature-changed` `{ feature, from, model?, at }`,
+shown as “Tag changed from … to …” beside “Title changed”; the first tag is not a change.
 
-All three triggers request work through the typed, transaction-scoped `requestSummary(tx, host, id, request)`
-helper in `summary.ts`: `intent`, `spawn`, and `reply`. The existing version-1 task inputs/checkpoints are preserved;
-initial intent adds an optional input field, so live reply and spawn tasks remain resumable.
+All four triggers request work through the typed, transaction-scoped `requestSummary(tx, host, id, request)`
+helper in `summary.ts`: `intent`, `spawn`, `steer` and `reply`. The existing version-1 task inputs/checkpoints are
+preserved; intent and steer add optional input fields, so live reply and spawn tasks remain resumable.
 
 `GenerationTask.beforeRequest` requests an initial title and intent summary before the main model request.
 It inspects the conversation's own stored entries since the current head marker (not inherited fork history):
@@ -90,20 +93,28 @@ exactly one user input and no assistant reply, only in top-level conversations. 
 from requesting it again. Established conversations are not backfilled on later inputs, including when the summary
 model becomes available later.
 Intent describes the requested goal, not completed work; it can publish while the main agent is busy.
-It does not assess a reply, increment exchanges, or consume the 1/4/7 cadence. New input (including queued input),
+It does not assess a reply or increment exchanges. New input (including queued input),
 a reset, or a superseding spawn/reply request makes a held result stale; compaction does not.
 Accepted intent appends `conversations.intent-summarized` with `{ summary, model?, at }` (Unix milliseconds),
 atomically with summary/title acceptance and task settlement. The transcript shows a quiet “Intent: …” row with local time
 and a full-date tooltip. This custom system entry has no model contribution; it survives replay without duplication.
+
+The same hook, in its own transaction, requests a steer refresh when an input from the user or another agent
+(`pi.user`, `board.message`) joined the running run: the run's inputs number two or more and the newest is not the
+`steered` one already considered. A subagent report or other typed input that wakes the run is recorded as considered
+but asks nothing. The refresh describes the goal as the new instructions change it, from those instructions, recent
+text and the previous summary and feature, and publishes while the run goes on, like a spawn refresh: newer input or a
+reset makes a held result stale, which is its debounce. It costs one summary request per steer; an accepted one
+appends `conversations.summarized`.
 
 The `GenerationTask.onYield` hook schedules a background observer. It waits for generation to settle and
 only counts an exchange when an input submission completed with that answer (not an intermediate yield).
 The [summary model](#summary-model) describes each completed reply in one `activity` line, including subagent replies,
 in a background task. It judges nothing: whether a conversation waits, is done or failed comes from committed records
 (messages’ `conversationState`).
-Top-level conversations also get a title and summary on exchanges 1, 4, 7, and so on, in the same request.
+Top-level conversations also get a title and summary with every completed exchange, in the same request.
 For a top-level non-root conversation in a lineage tree, that same request produces an abstract after every completed
-exchange, independent of the title/summary cadence. It uses the original branch intent, previous abstract and transcript:
+exchange. It uses the original branch intent, previous abstract and transcript:
 Ask, Diverged (agreements, approach/library or scope changes, or none), State (including named commits), Areas and Open
 questions, capped at 1200 characters. Acceptance calls `abstract` of the `conversations.trees` extension point, which lineage provides, in the same transaction as the
 reply summary, with `at` pointing to the answer entry, and saves the text in summary state. A newer abstract updates
@@ -114,8 +125,8 @@ do not count as the branch's work.
 A summary delayed by newer work is included with the next current reply. Tools and partial replies do not trigger reply summaries.
 Successful subagent creation additionally schedules a parent title/summary refresh in the creation transaction,
 before either foreground waiting or background return. It describes the plan and delegation now starting, using
-recent visible text plus the agent/task, without publishing a final-reply activity, counting an
-exchange, or consuming the 1/4/7 reply cadence. The durable action receipt deduplicates replay; failed starts,
+recent visible text plus the agent/task, without publishing a final-reply activity or counting an
+exchange. The durable action receipt deduplicates replay; failed starts,
 messages and waits do not schedule it. If conversations or the summary model is unavailable, child creation proceeds
 without it.
 Spawn refreshes share the summary task, response receipt and usage accounting. They may publish while the parent
@@ -204,11 +215,12 @@ input submission (done/unanswered) · pi.live · pi.inbox · pi.reset ───�
     summary model leaves no entry.
   - `model` is the `provider/model` the response names, else the summary model the task chose; absent only when no
     model was chosen.
-  - `conversations.title-changed`, `conversations.intent-summarized` and `conversations.summarized`, as above, with
+  - `conversations.title-changed`, `conversations.feature-changed`, `conversations.intent-summarized` and
+    `conversations.summarized`, as above, with
     `model` likewise.
     The transcript shows each as one quiet line with its local time.
 - **Summaries** (`ultimate.conversation-summaries`) keeps the current summary, activity and their statuses
-  (`pending`, `ready`, `stale`, `error`) plus the cadence. Stale shows nothing in the sidebar; error shows
+  (`pending`, `ready`, `stale`, `error`) plus the exchange count. Stale shows nothing in the sidebar; error shows
   "unavailable · retries after next reply".
 
 ## Shared sidebar index

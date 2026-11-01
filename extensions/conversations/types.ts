@@ -5,7 +5,10 @@ export type IntentSummary = { summary: string; model?: string; at: number }
 
 export type TitleChange = { title: string; model?: string; at: number }
 
-/** An accepted spawn refresh, recorded even when the title stays. */
+/** An accepted change of the feature tag from `from`; a conversation's first tag is not a change. */
+export type FeatureChange = { feature: string; from: string; model?: string; at: number }
+
+/** An accepted spawn or steer refresh, recorded even when the title stays. */
 export type SpawnSummary = { summary: string; model?: string; at: number }
 
 /** `stale`: newer work or a reset superseded the result; `error`: the request failed. */
