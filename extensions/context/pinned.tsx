@@ -1,16 +1,42 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useAction, useConversation, useConversations, useTranscript, useUiState } from '@/sdk'
+import {
+  useAction,
+  useConversation,
+  useConversations,
+  useTranscript,
+  useTranscriptScroll,
+  useUiState,
+} from '@/sdk'
 import { plural } from '@/sdk'
 import { DiffBody, Header, signed } from './parts.tsx'
 import { CurrentPromptAction } from './refs.ts'
 import type { Breakdown } from './types.ts'
 
+/** Whether the conversation's start card is in the transcript's view. */
+function useStartInView() {
+  const { scrollRef, contentRef } = useTranscriptScroll()
+  const [inView, setInView] = useState(false)
+  const entries = useTranscript()
+  useEffect(() => {
+    const start = contentRef.current?.querySelector('[data-context-header="start"]')
+    if (!start) return setInView(false)
+    const observer = new IntersectionObserver(([seen]) => setInView(seen.isIntersecting), {
+      root: scrollRef.current,
+    })
+    observer.observe(start)
+    return () => observer.disconnect()
+    // The start card mounts once the whole history is loaded, after new entries.
+  }, [scrollRef, contentRef, entries])
+  return inView
+}
+
 /**
  * At the top of a top-level conversation as it scrolls: the prompt it runs with now, as the start card shows the one it
  * started with. A change since the prompt the user last acknowledged lights it up and opens to its diff above the
  * parts; Dismiss makes the current prompt the new normal. The first prompt it sees is acknowledged as it is, so it starts
- * quiet. Acknowledged prompts are durable UI state, shared by every tab and device.
+ * quiet. Acknowledged prompts are durable UI state, shared by every tab and device. While the start card is on screen
+ * it says the same, so the pin waits for it to scroll away, unless there is a change to show.
  */
 export function PinnedPrompt() {
   const id = useConversation((conversation) => conversation.id)
@@ -19,6 +45,7 @@ export function PinnedPrompt() {
     (conversation) => conversation.id === id,
   )?.parentConversationId
   const entries = useTranscript()
+  const startInView = useStartInView()
   // A new `pi.system` entry in the stream means the prompt changed: ask for it again.
   const latest = entries.findLast((entry) => entry.kind === 'pi.system')?.id
   const [seen, setSeen] = useUiState<number | null>(`context.seen.${id}`, null)
@@ -56,8 +83,9 @@ export function PinnedPrompt() {
   if (!breakdown || !current) return null
   const diff = current.diff
   const changed = diff && diff.sections.length + diff.tools.length > 0 ? diff : undefined
+  if (startInView && !changed) return null
   return (
-    <div className="pointer-events-auto" data-ui="pinned-prompt">
+    <div className="pointer-events-auto bg-background pt-2 pb-1" data-ui="pinned-prompt">
       <Header
         bodyClassName="max-h-[min(70vh,40rem)] overflow-y-auto"
         breakdown={breakdown}

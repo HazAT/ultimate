@@ -289,7 +289,7 @@ export function Header({
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2.5 pl-2">
           {notice}
-          <span className="max-sm:hidden">
+          <span className={cn('max-sm:hidden', notice && 'max-lg:hidden')}>
             {sections.length} sections · {tools.length} tools
             {breakdown.injected && ` · ${breakdown.injected.label.split(' · ')[0]}`}
           </span>
