@@ -34,4 +34,3 @@ codebase — the model is instructed to run what you ask it to run.
 The server binds to `127.0.0.1` and expects to stay there. Do not expose an instance to a network you do not
 control. For untrusted work, run it in a container, a VM, or a disposable worktree, and review a project's
 extensions before accepting its trust prompt; accepting one runs that project's code on your machine.
-
