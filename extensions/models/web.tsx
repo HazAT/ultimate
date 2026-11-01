@@ -25,7 +25,7 @@ import { switchAt } from './switches.ts'
 import type { Fallback } from './refs.ts'
 
 const toolbarButton =
-  'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
+  'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[0.7188rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
 
 function ModelButton() {
   const { ref, thinking, loading } = useCurrentModel()
@@ -110,7 +110,7 @@ function ThinkingButton() {
         {levels.map((level) => (
           <button
             className={cn(
-              'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-[12px] transition-colors hover:bg-accent',
+              'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-[0.75rem] transition-colors hover:bg-accent',
               level === current && 'text-brand',
             )}
             key={level}
@@ -121,7 +121,7 @@ function ThinkingButton() {
             {level}
           </button>
         ))}
-        <div className="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+        <div className="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[0.6875rem] text-muted-foreground">
           {error ? (
             <span className="text-error">{error}</span>
           ) : (
@@ -143,7 +143,7 @@ function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   return (
     <div className="flex flex-col gap-3">
       <div
-        className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
+        className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
         data-models-switch
         title="The model and thinking level from this response on"
       >
@@ -183,12 +183,12 @@ function FellBack({ entry }: { entry: EntryRecord }) {
       className="min-w-0 rounded-md border border-border border-l-2 border-l-warning/60 bg-muted/20"
       data-models-fallback
     >
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <CpuIcon className="size-3.5 text-warning" />
         <span>{to ? 'model switched' : 'needs you · login missing'}</span>
       </header>
-      <div className="space-y-2 px-3 py-3 text-[13px] leading-relaxed">
-        <p className="font-mono text-[12px]">
+      <div className="space-y-2 px-3 py-3 text-[0.8125rem] leading-relaxed">
+        <p className="font-mono text-[0.75rem]">
           {to ? (
             <>
               <span className="text-muted-foreground line-through">{from}</span>

@@ -90,7 +90,7 @@ export function JsonTree({
   className?: string
 }) {
   return (
-    <div className={cn('font-mono text-[11.5px] leading-[1.6]', className)}>
+    <div className={cn('font-mono text-[0.7188rem] leading-[1.6]', className)}>
       <Node depth={0} open={open} value={value as Json} />
     </div>
   )

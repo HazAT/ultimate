@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from 'node:http'
+import type { IncomingMessage } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve as resolvePath } from 'node:path'
 import { createServer as createViteServer } from 'vite-plus'
@@ -24,6 +25,41 @@ import { viteLogger } from './vite-logger.ts'
 import type { Notice } from '../shared/protocol.ts'
 
 const send = (message: ChildMessage) => process.send?.(message)
+
+/**
+ * Every response, API and document alike. The instance is loopback-only: a page on another origin must not frame it,
+ * sniff its JSON as something else, or learn from `Referer` which conversation was open.
+ *
+ * Framing is refused for the web but allowed from loopback, because a preview frames another running instance on its
+ * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one.
+ *
+ * No IPv6 entry, and none is needed: the server listens on `127.0.0.1` only, so nothing answers over `[::1]`.
+ * `http://[::1]:*` would not have parsed anyway — a host source may not carry a port range with an IPv6 literal —
+ * and one invalid expression makes a browser drop the whole directive, silently switching framing protection off.
+ */
+const frameAncestors = ["'self'", 'http://127.0.0.1:*', 'http://localhost:*'].join(' ')
+export const securityHeaders = {
+  'Content-Security-Policy': `frame-ancestors ${frameAncestors}; object-src 'none'; base-uri 'none'`,
+  // The legacy fallback for browsers without `frame-ancestors`; they cannot express the port exceptions above.
+  'X-Frame-Options': 'SAMEORIGIN',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+} as const
+/**
+ * Conversation history is the user's code and prompts, so the API's responses do not belong in the browser's disk
+ * cache. Only `/api/*` is stamped: everything else is Vite's to answer, and its HTML is a 3 KB shell whose transcript
+ * arrives over this API, so leaving its own revalidation alone costs nothing and keeps a remote page from
+ * re-downloading every module on reload.
+ */
+const noStore = { 'Cache-Control': 'no-store' } as const
+/** The API is JSON and must never be cached; every other path is Vite's to answer, document or asset. */
+const isApi = (request: IncomingMessage) =>
+  new URL(request.url ?? '/', 'http://localhost').pathname.startsWith('/api/')
+/** For the replies that never reach a handler, so an error page carries the same framing refusal. */
+const denyHeaders = {
+  'X-Frame-Options': 'SAMEORIGIN',
+  'X-Content-Type-Options': 'nosniff',
+} as const
 
 export interface ServerOptions extends HostOptions {
   port?: number
@@ -76,19 +112,23 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
             `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
         ).port || '80'
       if (!(await admit(request, port, access.rules))) {
-        response.writeHead(403)
+        response.writeHead(403, denyHeaders)
         response.end('Forbidden')
         return
       }
       if (!api) {
-        response.writeHead(503)
+        response.writeHead(503, denyHeaders)
         response.end('Preparing')
         return
       }
+      // Set before either handler writes its own head: the API replies with JSON and Vite serves the document.
+      for (const [name, value] of Object.entries(securityHeaders)) response.setHeader(name, value)
+      if (isApi(request))
+        for (const [name, value] of Object.entries(noStore)) response.setHeader(name, value)
       if (await api.handle(request, response)) return
       vite.middlewares(request, response)
     })().catch(() => {
-      if (!response.headersSent) response.writeHead(500)
+      if (!response.headersSent) response.writeHead(500, denyHeaders)
       response.end('Internal server error')
     })
   })

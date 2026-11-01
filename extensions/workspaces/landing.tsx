@@ -32,7 +32,7 @@ export function Open({
   return (
     <Button
       className={cn(
-        'h-5 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground',
+        'h-5 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground',
         className,
       )}
       onClick={() => switchConversation(id)}
@@ -159,14 +159,14 @@ export function Subject({
     <span className={cn('flex min-w-0 items-center gap-1.5', className)}>
       {subject?.feature && <FeatureTag className="shrink-0" feature={subject.feature} />}
       <button
-        className="min-w-0 cursor-pointer truncate font-sans text-[12.5px] text-foreground hover:underline"
+        className="min-w-0 cursor-pointer truncate font-sans text-[0.7812rem] text-foreground hover:underline"
         onClick={() => switchConversation(from)}
         title={`Open #${from}`}
         type="button"
       >
         {subject?.title ?? `#${from}`}
       </button>
-      {subject?.title && <span className="shrink-0 text-muted-foreground/70">#{from}</span>}
+      {subject?.title && <span className="shrink-0 text-muted-foreground">#{from}</span>}
     </span>
   )
 }
@@ -227,7 +227,7 @@ export function LandingCard({
     >
       <section
         className={cn(
-          'min-w-0 rounded-md border border-l-2 border-border bg-muted/20 font-mono text-[12px]',
+          'min-w-0 rounded-md border border-l-2 border-border bg-muted/20 font-mono text-[0.75rem]',
           border,
         )}
         data-landing={tone}
@@ -239,7 +239,7 @@ export function LandingCard({
             {sourceEntry !== undefined && <Open id={from} entry={sourceEntry} />}
           </div>
           {subject?.summary && (
-            <p className="pl-5.5 font-sans text-[12.5px] leading-relaxed text-muted-foreground">
+            <p className="pl-5.5 font-sans text-[0.7812rem] leading-relaxed text-muted-foreground">
               {subject.summary}
             </p>
           )}
@@ -251,8 +251,8 @@ export function LandingCard({
           </div>
           {divergence && (
             <p className="flex items-baseline gap-2 text-muted-foreground">
-              <span className="shrink-0 text-[11px]">Diverged</span>
-              <span className="min-w-0 font-sans text-[12.5px] break-words">
+              <span className="shrink-0 text-[0.6875rem]">Diverged</span>
+              <span className="min-w-0 font-sans text-[0.7812rem] break-words">
                 <MentionText text={divergence} />
               </span>
             </p>

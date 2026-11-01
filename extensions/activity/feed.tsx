@@ -127,7 +127,7 @@ function Row({
   return (
     <li
       className={cn(
-        'flex min-w-0 items-start gap-1.5 border-l-2 border-transparent py-[3px] pr-3 pl-2.5 font-mono pointer-coarse:py-1.5 text-[10.5px] leading-[18px] text-muted-foreground hover:bg-muted/40',
+        'flex min-w-0 items-start gap-1.5 border-l-2 border-transparent py-[3px] pr-3 pl-2.5 font-mono pointer-coarse:py-1.5 text-[0.6562rem] leading-[1.125rem] text-muted-foreground hover:bg-muted/40',
         loud === 'error' && 'border-error/70 bg-error/[0.06]',
         loud === 'warning' && 'border-warning/60 bg-warning/[0.04]',
       )}
@@ -150,7 +150,7 @@ function Row({
       )}
       {trailing}
       <time
-        className="w-7 shrink-0 text-right text-muted-foreground/60 tabular-nums"
+        className="w-7 shrink-0 text-right text-muted-foreground tabular-nums"
         dateTime={event.at}
         title={new Date(at).toLocaleString()}
       >
@@ -161,7 +161,7 @@ function Row({
 }
 
 const iconClass = 'mt-[3px] size-3 shrink-0'
-const name = 'min-w-0 truncate font-sans text-[12px] text-foreground/85'
+const name = 'min-w-0 truncate font-sans text-[0.75rem] text-foreground/85'
 
 type Props<T> = { event: EventRecord<EventData<T>>; now: number }
 
@@ -177,7 +177,7 @@ function Landing({ event, now }: Props<typeof SubmissionLanded>) {
       title={`Landed ${landing.sha.slice(0, 7)} on ${landing.target}${landing.title ? ` · ${landing.title}` : ''}`}
       trailing={
         <CommitCount
-          className="text-muted-foreground/80"
+          className="text-muted-foreground"
           count={landing.commitCount}
           href={github ? compareUrl(github, landing.base, landing.sha) : undefined}
           range={`${landing.base}...${landing.sha}`}
@@ -200,7 +200,7 @@ function Branch({ event, now }: Props<typeof Branched>) {
       target={{ conversation: id }}
       title={`Branched from #${from}`}
     >
-      <ConversationRef className="font-sans text-[12px] text-foreground/85" id={id} />
+      <ConversationRef className="font-sans text-[0.75rem] text-foreground/85" id={id} />
       <span className="shrink-0">from #{from}</span>
     </Row>
   )
@@ -218,7 +218,7 @@ function Root({ event, now }: Props<typeof Rooted>) {
     >
       <span className="shrink-0">new root</span>
       <ConversationRef
-        className="font-sans text-[12px] text-foreground/85"
+        className="font-sans text-[0.75rem] text-foreground/85"
         id={id}
         title={intent}
       />
@@ -242,8 +242,8 @@ function Notice({ event, now }: Props<typeof NoticeEvent>) {
       target={conversation === undefined ? undefined : { conversation }}
       title={`${extension}: ${message}`}
     >
-      <span className="line-clamp-2 min-w-0 font-sans text-[12px] break-words text-foreground/80">
-        <span className={cn('mr-1.5 font-mono text-[10.5px]', warning && 'text-warning')}>
+      <span className="line-clamp-2 min-w-0 font-sans text-[0.75rem] break-words text-foreground/80">
+        <span className={cn('mr-1.5 font-mono text-[0.6562rem]', warning && 'text-warning')}>
           {extension}
         </span>
         {message}
@@ -271,7 +271,7 @@ function Check({ event, now }: Props<typeof CheckRan>) {
       title={`Lander check ${result} after ${Math.round(ms / 1000)}s: ${command}`}
     >
       <span className={cn('shrink-0', error ? 'text-error' : 'text-warning')}>check {result}</span>
-      <code className={cn(name, 'font-mono text-[11px]')}>{command}</code>
+      <code className={cn(name, 'font-mono text-[0.6875rem]')}>{command}</code>
     </Row>
   )
 }
@@ -289,8 +289,8 @@ function CloudBackup({ event, now }: Props<typeof Backup>) {
       title={failed ? `Backup failed: ${data.error ?? data.reason}` : 'Backed up to the cloud'}
     >
       {failed ? (
-        <span className="line-clamp-2 min-w-0 font-sans text-[12px] break-words text-foreground/80">
-          <span className="mr-1.5 font-mono text-[10.5px] text-error">backup failed</span>
+        <span className="line-clamp-2 min-w-0 font-sans text-[0.75rem] break-words text-foreground/80">
+          <span className="mr-1.5 font-mono text-[0.6562rem] text-error">backup failed</span>
           {data.error ?? data.reason}
         </span>
       ) : (
@@ -309,8 +309,8 @@ function Escalation({ event, now }: Props<typeof Escalated>) {
       now={now}
       title={`Automation ${id} escalated: ${reason}`}
     >
-      <span className="line-clamp-2 min-w-0 font-sans text-[12px] break-words text-foreground/80">
-        <span className="mr-1.5 font-mono text-[10.5px] text-error">{id} escalated</span>
+      <span className="line-clamp-2 min-w-0 font-sans text-[0.75rem] break-words text-foreground/80">
+        <span className="mr-1.5 font-mono text-[0.6562rem] text-error">{id} escalated</span>
         {reason}
       </span>
     </Row>
@@ -340,7 +340,7 @@ export function Feed({
 }) {
   if (list.length === 0)
     return (
-      <div className="px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground/70">
+      <div className="px-3 py-6 text-center font-mono text-[0.7188rem] text-muted-foreground">
         {empty}
       </div>
     )

@@ -42,7 +42,7 @@ function StepIcon({ state }: { state: StepState }) {
     return <LoaderCircleIcon className="size-3 shrink-0 animate-spin text-brand" />
   if (state === 'done') return <CheckIcon className="size-3 shrink-0 text-success/70" />
   if (state === 'failed') return <XIcon className="size-3 shrink-0 text-error" />
-  return <CircleIcon className="size-2 shrink-0 text-muted-foreground/40" />
+  return <CircleIcon className="size-2 shrink-0 text-muted-foreground" />
 }
 
 /** The move card's step list, for the join's four steps. */
@@ -55,7 +55,7 @@ function Steps({ result }: { result: JoinResult | 'running' }) {
           className={cn(
             'flex min-w-0 items-center gap-2 leading-5',
             states[index] === 'running' ? 'text-brand' : 'text-muted-foreground',
-            states[index] === 'pending' && 'text-muted-foreground/60',
+            states[index] === 'pending' && 'text-muted-foreground',
           )}
           key={step.id}
         >
@@ -80,19 +80,19 @@ function Command({ value }: { value: string }) {
       title="Copy"
       type="button"
     >
-      <span className="text-muted-foreground/60 select-none">$</span>
+      <span className="text-muted-foreground select-none">$</span>
       <code className="min-w-0 flex-1 break-all">{value}</code>
       {copied ? (
         <CheckIcon className="size-3.5 shrink-0 text-success" />
       ) : (
-        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground/60 group-hover:text-foreground" />
+        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
       )}
     </button>
   )
 }
 
 const field =
-  'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60'
+  'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 font-mono text-[0.75rem] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
 
 function Field({
   label,
@@ -107,7 +107,7 @@ function Field({
     <label className="block space-y-1">
       <span className="flex items-baseline gap-2 text-muted-foreground">
         {label}
-        {hint && <span className="text-muted-foreground/60">{hint}</span>}
+        {hint && <span className="text-muted-foreground">{hint}</span>}
       </span>
       {children}
     </label>
@@ -167,18 +167,18 @@ function Next({ result }: { result: Extract<JoinResult, { ok: true }> }) {
     <div className="space-y-2 border-t border-border/60 px-3 py-2" data-cloud-join-next>
       <div className="text-foreground/85">Next</div>
       <div className="space-y-1">
-        <p className="font-sans text-[12px] text-muted-foreground">
+        <p className="font-sans text-[0.75rem] text-muted-foreground">
           In the Ultimate clone, so Ultimate starts at login:
         </p>
         <Command value="pnpm setup:machine" />
       </div>
       <div className="flex items-start gap-3">
-        <p className="flex-1 font-sans text-[12px] text-muted-foreground">
+        <p className="flex-1 font-sans text-[0.75rem] text-muted-foreground">
           Backups read <code>cloud.url</code> and the secrets from the next start on. Restart this
           Ultimate now, and any other running project from its own page.
         </p>
         <Button
-          className="h-7 shrink-0 text-[12px]"
+          className="h-7 shrink-0 text-[0.75rem]"
           data-cloud-join-restart
           disabled={restart.busy}
           onClick={restart.run}
@@ -188,7 +188,7 @@ function Next({ result }: { result: Extract<JoinResult, { ok: true }> }) {
           {restart.busy ? 'Restarting…' : 'Restart now'}
         </Button>
       </div>
-      {restart.error && <p className="font-sans text-[12px] text-error">{restart.error}</p>}
+      {restart.error && <p className="font-sans text-[0.75rem] text-error">{restart.error}</p>}
       <div className="space-y-0.5">
         <div className="text-muted-foreground">
           {result.projects.length
@@ -199,7 +199,7 @@ function Next({ result }: { result: Extract<JoinResult, { ok: true }> }) {
           <ul className="flex flex-wrap gap-1">
             {result.projects.map((project) => (
               <li
-                className="rounded-sm border border-border/70 px-1.5 text-[10.5px] text-muted-foreground"
+                className="rounded-sm border border-border/70 px-1.5 text-[0.6562rem] text-muted-foreground"
                 key={project}
               >
                 {project}
@@ -252,7 +252,7 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
             if (ready) void submit()
           }}
         >
-          <p className="font-sans text-[12px] text-muted-foreground">
+          <p className="font-sans text-[0.75rem] text-muted-foreground">
             Use the values your other machines have. They go into Secrets on this machine, never
             into a conversation.
           </p>
@@ -290,7 +290,7 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
             value={snapshotKey}
           />
           <Button
-            className="h-7 font-sans text-[12px]"
+            className="h-7 font-sans text-[0.75rem]"
             disabled={!ready}
             onClick={() => void submit()}
             size="sm"
@@ -306,7 +306,7 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
           <Steps result={result} />
           {failed && (
             <p
-              className="font-sans text-[12px] leading-relaxed break-words text-error/90"
+              className="font-sans text-[0.75rem] leading-relaxed break-words text-error/90"
               data-cloud-join-error
               role="alert"
             >
@@ -333,16 +333,16 @@ export function JoinCard() {
   const form = !!state.data && (!joined || changing || joining)
   return (
     <section
-      className="min-w-0 rounded-md border border-l-2 border-border border-l-brand/60 bg-card text-left font-mono text-[11.5px] shadow-xs"
+      className="min-w-0 rounded-md border border-l-2 border-border border-l-brand/60 bg-card text-left font-mono text-[0.7188rem] shadow-xs"
       data-cloud-join={joined && !form ? 'joined' : 'form'}
     >
       <header className="flex min-w-0 items-center gap-2 py-1.5 pr-1.5 pl-3">
         <NetworkIcon className="size-3.5 shrink-0 text-brand" />
-        <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/90">
+        <span className="min-w-0 flex-1 truncate text-[0.75rem] text-foreground/90">
           {joined && !form ? (
             <>
               Joined as {joined.machine}
-              <span className="text-muted-foreground/60"> · {joined.host}</span>
+              <span className="text-muted-foreground"> · {joined.host}</span>
             </>
           ) : (
             'Join cloud backups'
@@ -350,7 +350,7 @@ export function JoinCard() {
         </span>
         {joined && !form && (
           <Button
-            className="h-5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-5 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
             onClick={() => setChanging(true)}
             size="xs"
             variant="ghost"
@@ -360,7 +360,7 @@ export function JoinCard() {
         )}
       </header>
       {state.error && (
-        <p className="border-t border-border/60 px-3 py-1.5 font-sans text-[12px] text-error/90">
+        <p className="border-t border-border/60 px-3 py-1.5 font-sans text-[0.75rem] text-error/90">
           {errorMessage(state.error)}
         </p>
       )}

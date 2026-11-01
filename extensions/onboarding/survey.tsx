@@ -51,10 +51,10 @@ function StartHere({ dock }: { dock?: boolean }) {
       >
         <CompassIcon className="size-4 shrink-0 text-brand" />
         <div className="min-w-0 flex-1 basis-60">
-          <p className="text-[13.5px] font-medium text-foreground">
+          <p className="text-[0.8438rem] font-medium text-foreground">
             Let Ultimate get familiar with {project ?? 'the project'}
           </p>
-          <p className="text-[12.5px] leading-snug text-muted-foreground">
+          <p className="text-[0.7812rem] leading-snug text-muted-foreground">
             {error ??
               '@ultimate walks you through how it works, helps you choose your setup and reads the project.'}
           </p>

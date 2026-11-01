@@ -62,7 +62,7 @@ function Body({ onClose }: { onClose: () => void }) {
             <MoonIcon className="size-4 text-brand" />
             Dream
           </DialogTitle>
-          <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+          <DialogDescription className="text-[0.8125rem] leading-relaxed text-muted-foreground">
             People make sense of the day while they sleep: what mattered settles, what didn't fades.
             A dream is that for me. I read back over our conversations, memory, failures and tools,
             and wake up with a journal of what I learned and a few changes I'd like to make.
@@ -70,7 +70,7 @@ function Body({ onClose }: { onClose: () => void }) {
         </div>
         <section className="space-y-1.5">
           <h3 className="section-label">Six passes</h3>
-          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[13px] leading-5">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[0.8125rem] leading-5">
             {PASSES.map((pass) => (
               <Fragment key={pass}>
                 <dt className="text-foreground">{passLabels[pass]}</dt>
@@ -79,14 +79,14 @@ function Body({ onClose }: { onClose: () => void }) {
             ))}
           </dl>
         </section>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="text-[0.8125rem] leading-relaxed text-muted-foreground">
           I start a dream branch with a handoff of everything I still remember. Its journal comes
           back to @ultimate's conversation, and we go through its proposals together. Each one you
           approve becomes an ordinary branch that is reviewed and lands as usual.{' '}
           <span className="text-foreground">Nothing changes code or memory by itself.</span> You can
           also just tell me to start dreaming.
         </p>
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-[12px]">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-[0.75rem]">
           <dt className="text-muted-foreground">Takes</dt>
           <dd>about 30–60 minutes</dd>
           <dt className="text-muted-foreground">Costs</dt>
@@ -101,7 +101,7 @@ function Body({ onClose }: { onClose: () => void }) {
         </dl>
       </div>
       <footer className="space-y-3 border-t border-border/60 bg-muted/30 px-6 py-4">
-        {failure && <p className="text-[12px] text-error">{failure}</p>}
+        {failure && <p className="text-[0.75rem] text-error">{failure}</p>}
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} size="sm" variant="ghost">
             Not now

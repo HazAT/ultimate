@@ -48,13 +48,13 @@ export function Selector({
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
-          className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2 font-mono text-[12px] hover:bg-accent/60"
+          className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2 font-mono text-[0.75rem] hover:bg-accent/60"
           title="Choose what to review"
           type="button"
         >
           <span className="shrink-0 text-foreground/90">{shortSpec(spec)}</span>
           {title && title !== spec && (
-            <span className="min-w-0 truncate font-sans text-[12.5px] text-muted-foreground max-md:hidden">
+            <span className="min-w-0 truncate font-sans text-[0.7812rem] text-muted-foreground max-md:hidden">
               {title}
             </span>
           )}
@@ -67,7 +67,7 @@ export function Selector({
           shouldFilter={false}
         >
           <CommandInput
-            className="font-mono text-[12.5px]"
+            className="font-mono text-[0.7812rem]"
             onValueChange={setQuery}
             placeholder="uncommitted, <sha>, <a>...<b>, branch:<name>"
             value={query}
@@ -76,7 +76,7 @@ export function Selector({
             {needle && (
               <CommandGroup heading="Spec">
                 <CommandItem
-                  className="gap-2 py-1 font-mono text-[12px]"
+                  className="gap-2 py-1 font-mono text-[0.75rem]"
                   onSelect={() => choose(query.trim())}
                   value={`spec:${query}`}
                 >
@@ -86,10 +86,10 @@ export function Selector({
               </CommandGroup>
             )}
             {ranges.loading && !ranges.data && (
-              <p className="px-3 py-3 font-mono text-[11.5px] text-muted-foreground">loading…</p>
+              <p className="px-3 py-3 font-mono text-[0.7188rem] text-muted-foreground">loading…</p>
             )}
             {!needle && ranges.data && list.length === 0 && (
-              <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+              <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
                 Nothing recent.
               </CommandEmpty>
             )}
@@ -124,10 +124,12 @@ function Choice({
   onSelect: () => void
 }) {
   return (
-    <CommandItem className="gap-2 py-1 text-[12.5px]" onSelect={onSelect} value={range.spec}>
+    <CommandItem className="gap-2 py-1 text-[0.7812rem]" onSelect={onSelect} value={range.spec}>
       <span className={cn('min-w-0 flex-1 truncate', current && 'text-brand')}>{range.label}</span>
       {range.detail && (
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{range.detail}</span>
+        <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+          {range.detail}
+        </span>
       )}
     </CommandItem>
   )

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import * as update from '../extensions/update/server.ts'
 
-const { landingInstalls } = update
+const { coreChangedSince, landingInstalls } = update
 
 it('lets agents update the clone; only asking @ultimate to merge is the user’s alone', () => {
   expect(update.userActions).toEqual(['merge'])
@@ -36,4 +36,24 @@ it('does not install after a landing that leaves packages alone', async () => {
 
 it('does not install when the landing went into another checkout', async () => {
   expect(await landingInstalls(git(['pnpm-lock.yaml'], false), landing)).toBe(false)
+})
+
+/** A clone whose commits since `boot` change `files`; git's pathspec keeps only `server/` and `shared/`. */
+const cloneSince =
+  (files: string[]) =>
+  async (...args: string[]) => {
+    expect(args).toEqual(['diff', '--name-only', 'boot', 'HEAD', '--', 'server', 'shared'])
+    return files.filter((file) => /^(server|shared)\//.test(file)).join('\n')
+  }
+
+// Commit 90fa141 changed server/ with an extension: the extension hot-reloaded, the old core refused it, and no restart
+// was asked for since no packages were installed.
+it('asks for a restart when HEAD changed the core since boot, not for extensions alone', async () => {
+  expect(
+    await coreChangedSince(
+      cloneSince(['server/extensions.ts', 'extensions/mcp/server.ts']),
+      'boot',
+    ),
+  ).toBe(true)
+  expect(await coreChangedSince(cloneSince(['extensions/mcp/server.ts']), 'boot')).toBe(false)
 })

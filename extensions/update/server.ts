@@ -65,6 +65,19 @@ const installedSince = (root: string, startedAt: number) =>
     () => false,
   )
 
+/**
+ * Whether `server/` or `shared/` changed between `boot`, the commit this process started from, and the clone's HEAD:
+ * the core still runs the old code, while extensions hot-reload against it.
+ */
+export async function coreChangedSince(git: Git, boot: string | undefined) {
+  if (!boot) return false
+  const files = await git('diff', '--name-only', boot, 'HEAD', '--', 'server', 'shared').catch(
+    // An unknown boot commit or a broken clone: no evidence of a core change, so only installs ask for a restart.
+    () => '',
+  )
+  return files !== ''
+}
+
 /** Install the lockfile's packages when they differ from the installed ones; the install's last lines when it fails. */
 async function installPackages(
   root: string,
@@ -121,6 +134,8 @@ export default function update(host: ExtensionHost) {
   host.want(PauseApi)
   host.implement(UpdateApi, { state: () => currentState(host) })
   const shared = state(host)
+  // Read HEAD at load, before any landing or update can move it.
+  boot(host)
   // A preview never fetches: it must not race the host on the same clone.
   if (preview()) return defineExtension({ name: 'update' })
   const tick = () => {
@@ -178,6 +193,18 @@ const state = (host: ExtensionHost) =>
     installing: undefined,
     latest: undefined,
     updated: undefined,
+  }))
+
+/**
+ * The clone's HEAD when this process first loaded the extension, read once: a resource outlives reloads, not the
+ * process. Undefined when git fails (see `coreChangedSince`).
+ */
+const boot = (host: ExtensionHost) =>
+  host.resource('update.boot-head', () => ({
+    head: gitIn(host.ultimateRoot)('rev-parse', 'HEAD').catch(
+      // Not a git checkout or git missing: restarts are then asked for installs only.
+      () => undefined,
+    ),
   }))
 
 /** The clone-wide lock: fetches, updates and installs of one clone never overlap across the Ultimates on it. */
@@ -246,7 +273,9 @@ async function refresh(host: ExtensionHost, check: boolean, force = false) {
     ...(error ? { error } : {}),
     ...(repo && remoteHead ? { compare: compareUrl(repo, head, remoteHead) } : {}),
     install: await installOwed(root),
-    restart: await installedSince(root, startedAt),
+    restart:
+      (await installedSince(root, startedAt)) ||
+      (await coreChangedSince(git, await boot(host).head)),
     ...(shared.updated ? { updated: shared.updated } : {}),
   }
   if (!shared.latest.refused) delete shared.latest.refused

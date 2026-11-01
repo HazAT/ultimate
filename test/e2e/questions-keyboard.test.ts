@@ -157,7 +157,8 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     (await log())?.messages.find((m) => m.re === second.id && m.from === 'user')
   await until(async () => !!(await picked()))
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
-})
+  // Two server boots and a real browser: ~30 s locally, sharing a runner with other browser suites in CI.
+}, 120_000)
 
 it('sends a held answer when the page is left inside the undo window', async () => {
   const { log, asked, page, card } = await openCard()
@@ -169,4 +170,5 @@ it('sends a held answer when the page is left inside the undo window', async () 
     (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
   await until(async () => !!(await answer()))
   expect((await answer())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
-})
+  // Same cost as the test above: a boot and a real browser.
+}, 120_000)

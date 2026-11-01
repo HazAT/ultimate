@@ -73,12 +73,12 @@ function Card({ instance, status }: { instance: Instance; status: string }) {
             {target?.kind === 'tailnet' && <ExternalLinkIcon className="size-3" />}
           </a>
         )}
-        <span className="text-muted-foreground/70">
+        <span className="text-muted-foreground">
           {target?.kind === 'off' ? target.reason.toLowerCase() : status}
         </span>
-        <span className="ml-auto text-[11px] text-muted-foreground/70">pid {instance.pid}</span>
+        <span className="ml-auto text-[0.6875rem] text-muted-foreground">pid {instance.pid}</span>
       </div>
-      <div className="flex gap-3 text-[11px] text-muted-foreground/70">
+      <div className="flex gap-3 text-[0.6875rem] text-muted-foreground">
         <span className="truncate" title={instance.home}>
           home {shortenPath(instance.home, { home: system?.machine.home })}
         </span>
@@ -110,7 +110,7 @@ function InstanceCall({ call }: { call: ToolCallView }) {
       <ToolContent>
         {call.status === 'running' && (
           <ToolSection>
-            <Shimmer className="text-[12px]">
+            <Shimmer className="text-[0.75rem]">
               {action === 'start' ? 'booting a second Ultimate…' : `${action}…`}
             </Shimmer>
           </ToolSection>
@@ -138,7 +138,7 @@ function InstanceCall({ call }: { call: ToolCallView }) {
             <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 section-label hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/logs:rotate-90" />
               Logs
-              <span className="text-muted-foreground/60">{value.split('\n').length} lines</span>
+              <span className="text-muted-foreground">{value.split('\n').length} lines</span>
             </CollapsibleTrigger>
             <CollapsibleContent>
               <pre className="max-h-80 overflow-auto bg-terminal px-3 py-2 leading-[1.55] whitespace-pre-wrap text-foreground/85">
@@ -252,7 +252,7 @@ function PreviewLink({
   if (!target) return core
   if (target.kind === 'self') return <a href={target.href}>{children}</a>
   const chip =
-    'inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted/60 px-1.5 align-baseline font-mono text-[11.5px] leading-5 wrap-anywhere'
+    'inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted/60 px-1.5 align-baseline font-mono text-[0.7188rem] leading-5 wrap-anywhere'
   if (target.kind === 'off')
     return (
       <span
@@ -299,12 +299,12 @@ function Switcher() {
       <DropdownMenuTrigger asChild>
         <ProjectChip className={cn(current && 'bg-brand/10')} menu>
           {current ? (
-            <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11.5px] text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-1.5 font-mono text-[0.7188rem] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-brand" />#{current.conversationId} ·{' '}
               {port(current.url)}
             </span>
           ) : (
-            <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground max-md:hidden">
+            <span className="shrink-0 font-mono text-[0.7188rem] text-muted-foreground max-md:hidden">
               {data.length} {data.length === 1 ? 'preview' : 'previews'}
             </span>
           )}
@@ -313,8 +313,12 @@ function Switcher() {
       <DropdownMenuContent align="start" className="w-80" sideOffset={4}>
         <DropdownMenuLabel className="px-2 pt-1 pb-1.5 section-label">Instances</DropdownMenuLabel>
         <DropdownMenuItem className="gap-2 py-1.5" onSelect={() => show(undefined)}>
-          <span className={cn('flex-1 text-[13px]', !current && 'text-brand')}>This project</span>
-          <span className="font-mono text-[11px] text-muted-foreground">{port(location.href)}</span>
+          <span className={cn('flex-1 text-[0.8125rem]', !current && 'text-brand')}>
+            This project
+          </span>
+          <span className="font-mono text-[0.6875rem] text-muted-foreground">
+            {port(location.href)}
+          </span>
         </DropdownMenuItem>
         {data.map((preview) => (
           <DropdownMenuItem
@@ -325,14 +329,14 @@ function Switcher() {
           >
             <span
               className={cn(
-                'min-w-0 flex-1 truncate text-[13px]',
+                'min-w-0 flex-1 truncate text-[0.8125rem]',
                 current?.id === preview.id && 'text-brand',
               )}
             >
               #{preview.conversationId}
               {title(preview) && <span className="text-muted-foreground"> {title(preview)}</span>}
             </span>
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+            <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
               {port(preview.url)}
             </span>
           </DropdownMenuItem>

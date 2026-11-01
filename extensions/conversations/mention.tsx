@@ -30,14 +30,14 @@ export function MentionLink({
   }
   return (
     <a
-      className="inline-flex max-w-[min(100%,26rem)] min-w-0 items-center rounded-sm px-0.5 align-bottom font-mono text-[11.5px] leading-5 text-foreground no-underline transition-colors hover:bg-accent"
+      className="inline-flex max-w-[min(100%,26rem)] min-w-0 items-center rounded-sm px-0.5 align-bottom font-mono text-[0.7188rem] leading-5 text-foreground no-underline transition-colors hover:bg-accent"
       data-conversation-mention={conversation.id}
       href={`?conversation=${conversation.id}`}
       onClick={open}
       title={`Open #${conversation.id}${entry !== undefined ? ` at entry ${entry}` : ''}${conversation.title ? `: ${conversation.title}` : ''}`}
     >
       <ConversationRef className="gap-1" id={conversation.id} />
-      {entry !== undefined && <span className="shrink-0 text-muted-foreground/70">/{entry}</span>}
+      {entry !== undefined && <span className="shrink-0 text-muted-foreground">/{entry}</span>}
     </a>
   )
 }

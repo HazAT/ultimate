@@ -81,12 +81,12 @@ function Read({ call }: { call: ToolCallView }) {
           skill ? (
             <>
               <span className="text-brand">{skill}</span>
-              <span className="text-muted-foreground/60"> · {shown}</span>
+              <span className="text-muted-foreground"> · {shown}</span>
             </>
           ) : (
             <>
               {shown}
-              <span className="text-muted-foreground/60">{range}</span>
+              <span className="text-muted-foreground">{range}</span>
             </>
           )
         }
@@ -274,9 +274,7 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
         // oxlint-disable-next-line react/no-array-index-key -- Ordered command runs can repeat the same programs.
         <span key={index}>
           {index > 0 && (
-            <span className="px-1.5 text-muted-foreground/50">
-              {separators[step.operator ?? ';']}
-            </span>
+            <span className="px-1.5 text-muted-foreground">{separators[step.operator ?? ';']}</span>
           )}
           {step.programs.map((name, position) => {
             const [program, ...rest] = name.split(' ')
@@ -292,7 +290,7 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
             )
           })}
           {written(step) && <span className="text-muted-foreground"> &gt; {written(step)}</span>}
-          {count > 1 && <span className="pl-1 text-muted-foreground/60">×{count}</span>}
+          {count > 1 && <span className="pl-1 text-muted-foreground">×{count}</span>}
         </span>
       ))}
     </>
@@ -381,8 +379,8 @@ function Bash({ call }: { call: ToolCallView }) {
         {!plain && (
           <ToolSection className="space-y-1.5">
             {display.directory && (
-              <div className="flex gap-2 text-muted-foreground/70">
-                <span className="w-4 shrink-0 text-muted-foreground/50">$</span>
+              <div className="flex gap-2 text-muted-foreground">
+                <span className="w-4 shrink-0 text-muted-foreground">$</span>
                 <span className="min-w-0 truncate" title={display.directory}>
                   cd {directory}
                 </span>
@@ -391,7 +389,7 @@ function Bash({ call }: { call: ToolCallView }) {
             {display.steps.map((step, index) => (
               // oxlint-disable-next-line react/no-array-index-key -- Command steps are positional and may repeat.
               <div className="flex gap-2" key={index}>
-                <span className="w-4 shrink-0 pt-px text-muted-foreground/50">
+                <span className="w-4 shrink-0 pt-px text-muted-foreground">
                   {step.operator ?? (display.directory ? '&&' : '$')}
                 </span>
                 <div className="min-w-0 flex-1 space-y-1">
@@ -408,7 +406,7 @@ function Bash({ call }: { call: ToolCallView }) {
                         code={heredoc.body}
                         language={languageFromPath(heredoc.file ?? '')}
                       />
-                      <pre className="px-3 text-muted-foreground/60">{heredoc.closing}</pre>
+                      <pre className="px-3 text-muted-foreground">{heredoc.closing}</pre>
                     </div>
                   ))}
                 </div>
@@ -422,7 +420,7 @@ function Bash({ call }: { call: ToolCallView }) {
             ref={scroller}
           >
             {call.dropped && (
-              <div className="text-muted-foreground/70">
+              <div className="text-muted-foreground">
                 … {call.dropped.lines.toLocaleString()} earlier lines dropped
               </div>
             )}
@@ -433,7 +431,7 @@ function Bash({ call }: { call: ToolCallView }) {
           </pre>
         )}
         {!output && !running && (
-          <ToolSection className={cn('text-muted-foreground/70')}>no output</ToolSection>
+          <ToolSection className={cn('text-muted-foreground')}>no output</ToolSection>
         )}
         <ToolDiagnostics diagnostics={call.diagnostics.filter((d) => d.code !== 'tool_error')} />
       </ToolContent>

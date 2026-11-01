@@ -1,9 +1,28 @@
 import { PassThrough } from 'node:stream'
-import { readFile, mkdir } from 'node:fs/promises'
+import { readFile, mkdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { dashboard } from '../bin/dashboard.ts'
 import { temp, removeTemp } from './helpers.ts'
+
+it('rotates the log aside once it passes its size cap, instead of growing without bound', async () => {
+  const home = await temp()
+  try {
+    const stream = new PassThrough() as unknown as NodeJS.WriteStream
+    Object.assign(stream, { isTTY: false, columns: 100, rows: 30 })
+    stream.on('data', () => {})
+    const path = join(home, 'supervisor.log')
+    // A log an earlier run left at the cap: this run must roll it aside rather than append forever.
+    await writeFile(path, 'x'.repeat(9 * 1024 * 1024))
+    const view = dashboard(path, stream)
+    view.log('info', 'web', 'first line after a full log')
+    view.close()
+    expect((await stat(`${path}.1`)).size).toBe(9 * 1024 * 1024)
+    expect(await readFile(path, 'utf8')).toContain('first line after a full log')
+  } finally {
+    await removeTemp(home)
+  }
+})
 
 for (const tty of [true, false]) {
   it(`renders ${tty ? 'TTY dashboard' : 'plain redirected output'} and retains diagnostics`, async () => {

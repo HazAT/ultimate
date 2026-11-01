@@ -79,7 +79,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       aria-label={`Composer sends to ${on ? 'a new side chat' : '@ultimate'} · Tab switches`}
       aria-pressed={on}
       data-ui="side-chat-switch"
-      className="relative flex h-5 cursor-pointer items-center rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="relative flex h-5 cursor-pointer items-center rounded-full bg-muted/60 p-0.5 font-mono text-[0.6562rem] outline-none focus-visible:ring-1 focus-visible:ring-ring"
       onClick={onToggle}
       type="button"
     >
@@ -94,7 +94,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       <span
         className={cn(
           'relative z-10 w-[4.75rem] text-center whitespace-nowrap transition-colors',
-          on ? 'text-muted-foreground/70' : 'text-foreground',
+          on ? 'text-muted-foreground' : 'text-foreground',
         )}
       >
         Normal
@@ -102,7 +102,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       <span
         className={cn(
           'relative z-10 flex w-[4.75rem] items-center justify-center gap-1 whitespace-nowrap transition-colors',
-          on ? 'text-brand' : 'text-muted-foreground/70',
+          on ? 'text-brand' : 'text-muted-foreground',
         )}
       >
         <GitForkIcon className="size-2.5" />
@@ -146,7 +146,7 @@ function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
       <div data-main-composer inert={!!shown}>
         <div className="mx-auto flex w-full max-w-[46rem] items-center justify-between gap-2 px-3 pb-1.5 sm:px-6">
           <div
-            className="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70"
+            className="flex min-w-0 items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground"
             data-ui="side-chat-hint"
           >
             {parked.map((item) => (
@@ -202,7 +202,7 @@ function MainBlocked({ onBack }: { onBack: () => void }) {
   return (
     <div className="absolute inset-0 z-10 flex items-center bg-background/70 backdrop-blur-[1px]">
       <div className="mx-auto w-full max-w-[46rem] px-3 sm:px-6">
-        <div className="flex w-fit items-center gap-3 rounded-lg border border-border bg-card px-3.5 py-2 font-mono text-[11.5px] text-muted-foreground shadow-sm">
+        <div className="flex w-fit items-center gap-3 rounded-lg border border-border bg-card px-3.5 py-2 font-mono text-[0.7188rem] text-muted-foreground shadow-sm">
           <GitForkIcon className="size-3.5 text-brand" />
           <span>Typing goes to the side chat</span>
           <button
@@ -291,7 +291,7 @@ function Stage() {
     <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden" ref={ref}>
       {inFront && phone && (
         <button
-          className="pointer-events-auto absolute inset-x-0 top-0 flex h-11 cursor-pointer items-center justify-center gap-2 bg-gradient-to-b from-background via-background/90 to-background/40 font-mono text-[11px] text-muted-foreground"
+          className="pointer-events-auto absolute inset-x-0 top-0 flex h-11 cursor-pointer items-center justify-center gap-2 bg-gradient-to-b from-background via-background/90 to-background/40 font-mono text-[0.6875rem] text-muted-foreground"
           onClick={() => setFront(null)}
           type="button"
         >
@@ -367,8 +367,8 @@ function SidePane({
     <>
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
         <GitForkIcon className="size-3.5 text-brand" />
-        <span className="text-[13px] font-semibold">Side chat</span>
-        <span className="truncate font-mono text-[11px] text-muted-foreground">
+        <span className="text-[0.8125rem] font-semibold">Side chat</span>
+        <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">
           temporary copy of @ultimate
         </span>
         <button
@@ -388,12 +388,12 @@ function SidePane({
         data-side-chat-actions
       >
         {error && (
-          <p className="pb-2 font-mono text-[11px] break-words text-error" role="alert">
+          <p className="pb-2 font-mono text-[0.6875rem] break-words text-error" role="alert">
             {error}
           </p>
         )}
         <div className="flex items-center gap-2">
-          <span className="mr-auto min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+          <span className="mr-auto min-w-0 truncate font-mono text-[0.6875rem] text-muted-foreground">
             {can.locked
               ? 'This side chat changed things · summarize to keep main informed'
               : phone
@@ -446,7 +446,7 @@ function SidePane({
 function Cut({ at }: { at: number }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-3 px-5 pt-3 font-mono text-[11px] text-muted-foreground"
+      className="flex shrink-0 items-center gap-3 px-5 pt-3 font-mono text-[0.6875rem] text-muted-foreground"
       role="separator"
     >
       <span className="h-px flex-1 border-t border-dashed border-border" />
@@ -471,7 +471,7 @@ function SummaryCard({ entry }: { entry: EntryRecord }) {
   const at = entry.model?.[0]?.timestamp
   return (
     <Card data-side-chat-summary={data.side}>
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <GitForkIcon className="size-3.5 text-brand" />
         <span className="text-foreground">Side chat</span>
         <span>summary</span>
@@ -490,7 +490,7 @@ function SummaryCard({ entry }: { entry: EntryRecord }) {
           side chat
         </button>
       </header>
-      <div className="min-w-0 px-3 py-3 font-sans text-[13px] leading-relaxed">
+      <div className="min-w-0 px-3 py-3 font-sans text-[0.8125rem] leading-relaxed">
         <MessageResponse>{data.text}</MessageResponse>
       </div>
     </Card>
@@ -531,12 +531,12 @@ function useSideRows(main: number | undefined): ReactNode {
             type="button"
           >
             <GitForkIcon className="size-3 shrink-0 text-brand" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
+            <span className="min-w-0 flex-1 truncate font-mono text-[0.6562rem] text-foreground/80">
               Side chat · {formatTime(item.openedAt)}
             </span>
             <span
               className={cn(
-                'shrink-0 font-mono text-[10px]',
+                'shrink-0 font-mono text-[0.625rem]',
                 inFront || working ? 'text-brand' : 'text-muted-foreground',
               )}
             >

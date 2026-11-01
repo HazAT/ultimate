@@ -75,7 +75,7 @@ function Running({ state }: { state: PauseState }) {
           </button>
           <span className="shrink-0 text-muted-foreground">{task.what}</span>
           {task.startedAt !== undefined && (
-            <span className="w-14 shrink-0 text-right text-muted-foreground/70 tabular-nums">
+            <span className="w-14 shrink-0 text-right text-muted-foreground tabular-nums">
               {formatDuration(Math.max(0, now - task.startedAt))}
             </span>
           )}
@@ -104,7 +104,7 @@ function Popup({
       <div className="border-b border-border/70 px-3 py-2 section-label">
         {limit ? 'Rate limited' : 'Pause'}
       </div>
-      <div className="space-y-2 px-3 py-2 text-[11.5px] leading-[1.55]">
+      <div className="space-y-2 px-3 py-2 text-[0.7188rem] leading-[1.55]">
         {limit && (
           <div className="space-y-1" data-pause-limit-detail>
             <div>
@@ -156,7 +156,7 @@ function Popup({
       </div>
       <div className="flex justify-end border-t border-border/70 px-3 py-1.5">
         <Button
-          className="h-7 font-sans text-[12px]"
+          className="h-7 font-sans text-[0.75rem]"
           data-pause-toggle
           disabled={busy}
           onClick={toggle}
@@ -205,7 +205,7 @@ function AutoPlay({ minutes }: { minutes?: number }) {
         />
         <span>min</span>
       </label>
-      <div className="text-muted-foreground/70">
+      <div className="text-muted-foreground">
         Only after a rate limit, once per limit. A Pause you press waits for you.
       </div>
       {error && <div className="break-words text-error">{error}</div>}
@@ -236,7 +236,7 @@ function Item() {
         <button
           className={cn(
             statusButton,
-            state.paused ? 'text-warning' : 'text-muted-foreground/70 hover:text-foreground',
+            state.paused ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
           )}
           data-pause={state.paused ? (pausing ? 'pausing' : 'paused') : 'running'}
           title="Pause or continue all work"
@@ -318,7 +318,7 @@ function Note({ entry }: { entry: EntryRecord }) {
   if (note.since === undefined || note.until === undefined) return null
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-note
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -345,7 +345,7 @@ function Held({ entry }: { entry: EntryRecord }) {
   const child = data.child
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-held
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -378,17 +378,17 @@ function Limit({ entry }: { entry: EntryRecord }) {
   const conversationId = limit.conversationId
   return (
     <Card attention={holding} className="border-l-warning/60" data-pause-limit>
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <PauseIcon className="size-3.5 text-warning" />
         <span className="text-foreground">{limit.provider}</span>
         <span>rate limited · Ultimate paused</span>
         <span className="ml-auto truncate">{limit.model}</span>
       </header>
-      <div className="space-y-2 px-3 py-3 text-[13px] leading-relaxed">
+      <div className="space-y-2 px-3 py-3 text-[0.8125rem] leading-relaxed">
         <p className="whitespace-pre-wrap text-warning" title={limit.error}>
           {said(limit.error)}
         </p>
-        <p className="flex flex-wrap items-center gap-1 font-mono text-[11px] text-muted-foreground">
+        <p className="flex flex-wrap items-center gap-1 font-mono text-[0.6875rem] text-muted-foreground">
           first hit in
           <button
             className="min-w-0 cursor-pointer text-foreground hover:underline"
@@ -399,7 +399,7 @@ function Limit({ entry }: { entry: EntryRecord }) {
           </button>
           · no reset time given
         </p>
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-[0.75rem] text-muted-foreground">
           {holding && doc.autoPlay && !doc.manual
             ? `Plays by itself ${doc.autoPlay} min after the limit, or press Play`
             : 'Nothing retries until you press Play'}
@@ -407,12 +407,12 @@ function Limit({ entry }: { entry: EntryRecord }) {
           Play.
         </p>
       </div>
-      <footer className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+      <footer className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
         {holding ? (
           <>
             <span>paused for {lasted(Math.max(0, now - (doc.since ?? now)))}</span>
             <Button
-              className="h-7 font-sans text-[12px]"
+              className="h-7 font-sans text-[0.75rem]"
               disabled={busy}
               onClick={() => {
                 setBusy(true)
@@ -447,7 +447,7 @@ function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
   if (data.since === undefined || data.at === undefined) return null
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-autoplayed
     >
       <span className="flex min-w-0 items-center gap-1.5">

@@ -162,7 +162,7 @@ function Trigger({ automation, now }: { automation: Automation; now: number }) {
   const script = automation.script
   const text = triggerWords(automation) || (script ? script.ask : described)
   return (
-    <p className="truncate font-mono text-[11px] text-muted-foreground" title={text}>
+    <p className="truncate font-mono text-[0.6875rem] text-muted-foreground" title={text}>
       {text}
     </p>
   )
@@ -221,20 +221,20 @@ function RunRow({ run, now }: { run: Run; now: number }) {
     >
       <RunIcon status={run.status} />
       <span
-        className="shrink-0 font-mono text-[11px] text-foreground/80 tabular-nums"
+        className="shrink-0 font-mono text-[0.6875rem] text-foreground/80 tabular-nums"
         title={`${full(run.firedAt)}\n${statusLabel(run.status)}${took}`}
       >
         {clock(run.firedAt, now)}
       </span>
       <span
-        className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground"
+        className="min-w-0 flex-1 truncate text-[0.75rem] text-muted-foreground"
         title={typeof line === 'string' ? line : run.answer}
       >
         {line}
       </span>
       {run.conversationId !== undefined && (
         <Button
-          className="h-5 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          className="h-5 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
           onClick={() => switchConversation(run.conversationId!)}
           size="xs"
           title={`Show the run's conversation #${run.conversationId}`}
@@ -255,7 +255,7 @@ function Runs({ runs, now }: { runs: Run[]; now: number }) {
   const [all, setAll] = useState(false)
   if (runs.length === 0)
     return (
-      <p className="pb-2 pl-8 text-[12px] text-muted-foreground/80">
+      <p className="pb-2 pl-8 text-[0.75rem] text-muted-foreground">
         No runs yet: Run now starts one.
       </p>
     )
@@ -269,7 +269,7 @@ function Runs({ runs, now }: { runs: Run[]; now: number }) {
       </ol>
       {newest.length > FIRST && (
         <button
-          className="mt-0.5 ml-1.5 font-mono text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
+          className="mt-0.5 ml-1.5 font-mono text-[0.6875rem] text-muted-foreground outline-none hover:text-foreground focus-visible:underline"
           onClick={() => setAll(!all)}
           type="button"
         >
@@ -298,7 +298,7 @@ function useAct() {
 function ErrorLine({ error }: { error?: string }) {
   if (!error) return null
   return (
-    <p className="flex items-start gap-1.5 px-3 pb-2 font-mono text-[11px] leading-snug text-error">
+    <p className="flex items-start gap-1.5 px-3 pb-2 font-mono text-[0.6875rem] leading-snug text-error">
       <CircleAlertIcon className="mt-px size-3 shrink-0" />
       {error}
     </p>
@@ -405,14 +405,14 @@ function AutomationRow({
             <KindIcon automation={automation} />
             <span
               className={cn(
-                'truncate text-[13px]',
+                'truncate text-[0.8125rem]',
                 automation.enabled ? 'text-foreground' : 'text-foreground/70',
               )}
               title={automation.prompt ?? script?.ask}
             >
               {automation.name}
             </span>
-            <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground/60">
+            <span className="shrink-0 font-mono text-[0.6562rem] text-muted-foreground">
               {automation.id}
             </span>
             {automation.scope === 'project' && <Tag>project</Tag>}
@@ -428,20 +428,20 @@ function AutomationRow({
       </div>
       <p
         className={cn(
-          'flex min-w-0 items-center gap-1.5 pt-0.5 pr-3 pl-[30px] font-mono text-[11px]',
+          'flex min-w-0 items-center gap-1.5 pt-0.5 pr-3 pl-[30px] font-mono text-[0.6875rem]',
           attention(look) ? looks[look].text : 'text-muted-foreground',
         )}
         title={line}
       >
         <Dot className="-ml-[12px]" look={look} />
         <span className={cn('shrink-0', looks[look].text)}>{looks[look].word}</span>
-        {line && <span className="text-muted-foreground/40">·</span>}
+        {line && <span className="text-muted-foreground">·</span>}
         <span className="truncate">{line}</span>
       </p>
       <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
         {script ? (
           <Button
-            className="h-6 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-6 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
             onClick={onOpenScript}
             size="xs"
             title={`Show the script's output beside its watcher #${script.conversationId}`}
@@ -454,7 +454,7 @@ function AutomationRow({
         ) : null}
         <Button
           aria-expanded={expanded}
-          className="h-6 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          className="h-6 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
           onClick={() => onExpand(!expanded)}
           size="xs"
           variant="ghost"
@@ -465,12 +465,12 @@ function AutomationRow({
           {automation.runs.length} run{automation.runs.length === 1 ? '' : 's'}
           {running && <BusyDot className="ml-0.5" />}
         </Button>
-        <span className="min-w-0 truncate pl-1 font-mono text-[10.5px] text-muted-foreground/60">
+        <span className="min-w-0 truncate pl-1 font-mono text-[0.6562rem] text-muted-foreground">
           {actions(automation)}
         </span>
         {script ? (
           <Button
-            className="ml-auto h-6 shrink-0 gap-1 px-1.5 text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="ml-auto h-6 shrink-0 gap-1 px-1.5 text-[0.7188rem] text-muted-foreground hover:text-foreground"
             disabled={busy !== undefined || script.state === 'writing'}
             onClick={runNow}
             size="xs"
@@ -486,7 +486,7 @@ function AutomationRow({
           </Button>
         ) : (
           <Button
-            className="ml-auto h-6 shrink-0 gap-1 px-1.5 text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="ml-auto h-6 shrink-0 gap-1 px-1.5 text-[0.7188rem] text-muted-foreground hover:text-foreground"
             disabled={busy !== undefined || running}
             onClick={runNow}
             size="xs"
@@ -523,14 +523,14 @@ function AutomationRow({
             }}
           >
             <DropdownMenuItem
-              className="text-[12.5px]"
+              className="text-[0.7812rem]"
               onSelect={() => (afterMenu.current = () => onEdit(menu.current))}
             >
               <PencilIcon />
               Edit…
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="text-[12.5px]"
+              className="text-[0.7812rem]"
               onSelect={() => (afterMenu.current = () => setConfirming(true))}
               variant="destructive"
             >
@@ -546,7 +546,7 @@ function AutomationRow({
           className="mx-3 mb-2 flex flex-col gap-1.5 rounded-md border border-error/40 bg-error/6 px-2.5 py-2"
           role="group"
         >
-          <p className="text-[12px] leading-snug text-foreground/90">
+          <p className="text-[0.75rem] leading-snug text-foreground/90">
             Delete <span className="font-medium">{automation.name}</span>?{' '}
             {script ? 'The script stops. ' : 'Future runs stop. '}
             {kept
@@ -556,7 +556,7 @@ function AutomationRow({
           <div className="flex justify-end gap-1.5">
             <Button
               autoFocus
-              className="h-6 text-[11.5px]"
+              className="h-6 text-[0.7188rem]"
               onClick={() => {
                 setConfirming(false)
                 menu.current?.focus()
@@ -567,7 +567,7 @@ function AutomationRow({
               Cancel
             </Button>
             <Button
-              className="h-6 text-[11.5px] text-error hover:bg-error/10 hover:text-error"
+              className="h-6 text-[0.7188rem] text-error hover:bg-error/10 hover:text-error"
               disabled={busy === 'delete'}
               onClick={remove}
               size="xs"
@@ -665,7 +665,7 @@ export function AutomationsPanel() {
         </Heading>
         {automations.length > 0 && (
           <Button
-            className="-mr-1.5 h-6 gap-1 px-1.5 text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="-mr-1.5 h-6 gap-1 px-1.5 text-[0.7188rem] text-muted-foreground hover:text-foreground"
             onClick={(event) => create(event.currentTarget)}
             ref={newButton}
             size="xs"
@@ -678,13 +678,13 @@ export function AutomationsPanel() {
       </div>
       {error && !data ? (
         <div className="px-3 py-3">
-          <p className="flex items-start gap-1.5 font-mono text-[11.5px] leading-snug text-error">
+          <p className="flex items-start gap-1.5 font-mono text-[0.7188rem] leading-snug text-error">
             <CircleAlertIcon className="mt-px size-3 shrink-0" />
             {errorMessage(error).replace(/^automations\/list: /, '')}
           </p>
           {/subagents/.test(errorMessage(error)) && extensionsPanel && (
             <Button
-              className="mt-2 h-7 text-[12px]"
+              className="mt-2 h-7 text-[0.75rem]"
               onClick={() => ui.openPanel('extensions')}
               size="sm"
               variant="outline"
@@ -694,16 +694,16 @@ export function AutomationsPanel() {
           )}
         </div>
       ) : !data ? (
-        <p className="px-3 py-2 font-mono text-[11.5px] text-muted-foreground">loading…</p>
+        <p className="px-3 py-2 font-mono text-[0.7188rem] text-muted-foreground">loading…</p>
       ) : automations.length === 0 ? (
         <div className="flex flex-col items-center px-6 pt-8 pb-6 text-center">
-          <TimerIcon className="size-5 text-muted-foreground/60" />
-          <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <TimerIcon className="size-5 text-muted-foreground" />
+          <p className="mt-2.5 text-[0.7812rem] leading-relaxed text-muted-foreground">
             Run a prompt on a schedule, or have a script watch for something and wake you when it
             happens.
           </p>
           <Button
-            className="mt-3.5 h-7 gap-1.5 text-[12px]"
+            className="mt-3.5 h-7 gap-1.5 text-[0.75rem]"
             onClick={(event) => create(event.currentTarget)}
             ref={newButton}
             size="sm"
@@ -788,20 +788,20 @@ function ScriptDetail({
             <ArrowLeftIcon className="size-3" />
             Automations
           </button>
-          <span className="ml-auto font-mono text-[11px] text-muted-foreground/70">
+          <span className="ml-auto font-mono text-[0.6875rem] text-muted-foreground">
             {automation.id}
           </span>
           <Toggle act={act} automation={automation} now={now} />
         </div>
-        <h2 className="mt-1 line-clamp-2 text-[13.5px] leading-snug font-medium">
+        <h2 className="mt-1 line-clamp-2 text-[0.8438rem] leading-snug font-medium">
           {automation.name}
         </h2>
         {script.ask !== automation.name && (
-          <p className="mt-0.5 line-clamp-3 text-[12px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 line-clamp-3 text-[0.75rem] leading-snug text-muted-foreground">
             {script.ask}
           </p>
         )}
-        <p className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+        <p className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
           {automation.scope === 'project' && <Tag>project</Tag>}
           <span className="truncate">{actions(automation)}</span>
         </p>
@@ -882,12 +882,14 @@ function Script({
   ].filter(Boolean)
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col border-t border-border/70 font-mono text-[12px]"
+      className="flex min-h-0 flex-1 flex-col border-t border-border/70 font-mono text-[0.75rem]"
       data-automation-script={automation.id}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3">
         <span className={heading}>Script</span>
-        <span className={cn('flex shrink-0 items-center gap-1.5 text-[11px]', looks[look].text)}>
+        <span
+          className={cn('flex shrink-0 items-center gap-1.5 text-[0.6875rem]', looks[look].text)}
+        >
           <Dot look={look} />
           {looks[look].word}
         </span>
@@ -896,7 +898,7 @@ function Script({
             <button
               aria-pressed={view === name}
               className={cn(
-                'h-6 cursor-pointer rounded-md px-2 text-[11px] text-muted-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                'h-6 cursor-pointer rounded-md px-2 text-[0.6875rem] text-muted-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 view === name ? 'bg-accent text-foreground' : 'hover:text-foreground',
               )}
               key={name}
@@ -908,7 +910,7 @@ function Script({
           ))}
           <span className="mx-1 h-4 w-px bg-border/70" />
           <Button
-            className="h-6 gap-1 px-2 font-mono text-[11px]"
+            className="h-6 gap-1 px-2 font-mono text-[0.6875rem]"
             disabled={busy || script.state === 'writing'}
             onClick={restart}
             size="xs"
@@ -924,10 +926,10 @@ function Script({
           </Button>
         </span>
       </div>
-      <div className="flex shrink-0 flex-col gap-0.5 border-b border-border/70 px-3 pb-2 text-[11px] text-muted-foreground">
+      <div className="flex shrink-0 flex-col gap-0.5 border-b border-border/70 px-3 pb-2 text-[0.6875rem] text-muted-foreground">
         <span className="truncate tabular-nums">{facts.join(' · ')}</span>
         <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-muted-foreground/50">$</span>
+          <span className="shrink-0 text-muted-foreground">$</span>
           <span className="min-w-0 truncate text-foreground/90" title={path}>
             {path ? (home ? shortenPath(path, { home }) : path) : '…'}
           </span>
@@ -954,7 +956,7 @@ function Script({
             <Output text={output} />
           ) : (
             !log.error && (
-              <span className="text-muted-foreground/70">
+              <span className="text-muted-foreground">
                 {script.state === 'writing'
                   ? 'no output yet · the watcher is writing the script'
                   : 'no output'}
@@ -983,7 +985,7 @@ function Script({
             <p
               className={cn(
                 'px-3 py-2',
-                source.error ? 'text-destructive' : 'text-muted-foreground/70',
+                source.error ? 'text-destructive' : 'text-muted-foreground',
               )}
             >
               {source.error

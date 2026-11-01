@@ -35,7 +35,7 @@ export function LanderState({
       {queued > 0 && <span className="shrink-0 text-foreground/80">queue {queued}</span>}
       {at !== undefined && (
         <span
-          className="ml-auto shrink-0 text-muted-foreground/80"
+          className="ml-auto shrink-0 text-muted-foreground"
           title={new Date(at).toLocaleString()}
         >
           {formatAgo(at, now)}

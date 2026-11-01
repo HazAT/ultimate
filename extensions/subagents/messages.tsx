@@ -29,7 +29,7 @@ export function AgentMessages() {
   if (!back || back.conversation === id) return null
   return (
     <button
-      className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-[0.6875rem] text-muted-foreground hover:bg-muted hover:text-foreground"
       onClick={() => {
         const destination = back
         setNavigation({ target: destination })
@@ -75,7 +75,7 @@ export function AgentInput({ entry }: { entry: EntryRecord }) {
       }
     >
       <Card data-agent-origin={origin.kind}>
-        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
           <BotIcon className="size-3.5 text-brand" />
           <span className="min-w-0 text-foreground">
             <Sender origin={origin} label={sender?.label} />
@@ -105,7 +105,7 @@ export function AgentInput({ entry }: { entry: EntryRecord }) {
             {sender ? 'source' : 'source unavailable'}
           </button>
         </header>
-        <div className="min-w-0 px-3 py-3 font-sans text-[13px] leading-relaxed">
+        <div className="min-w-0 px-3 py-3 font-sans text-[0.8125rem] leading-relaxed">
           <MessageResponse>{body}</MessageResponse>
         </div>
       </Card>
@@ -139,7 +139,7 @@ export function AgentInbox({
       className="flex items-center gap-2 px-2 py-1 text-muted-foreground"
     >
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-[0.6875rem]">
           <BotIcon className="size-3 shrink-0 text-brand" />
           <span
             className="min-w-0 truncate text-foreground"
@@ -152,7 +152,7 @@ export function AgentInbox({
             {item.mode === 'steer' ? 'steer' : 'follow-up'}
           </span>
         </div>
-        <p className="truncate text-[12px]" title={body}>
+        <p className="truncate text-[0.75rem]" title={body}>
           {body}
         </p>
       </div>
@@ -162,7 +162,7 @@ export function AgentInbox({
         title={
           sender ? `Open source conversation #${origin.sender}` : 'Source conversation unavailable'
         }
-        className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] hover:text-foreground disabled:cursor-default disabled:opacity-50"
+        className="flex shrink-0 cursor-pointer items-center gap-1 text-[0.6875rem] hover:text-foreground disabled:cursor-default disabled:opacity-50"
         onClick={() =>
           id &&
           openAgentSource(

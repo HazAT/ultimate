@@ -16,7 +16,7 @@ import type { DocumentItem } from '@/sdk'
 /** The value as a JSON tree, the view of every kind without a renderer. */
 function Json({ value }: { value: object }) {
   if (Object.keys(value).length === 0)
-    return <p className="px-3 font-mono text-[11.5px] text-muted-foreground/70">empty</p>
+    return <p className="px-3 font-mono text-[0.7188rem] text-muted-foreground">empty</p>
   return <JsonTree className="px-2" open={1} value={value} />
 }
 
@@ -52,10 +52,10 @@ function Document({
         className="flex h-8 w-full min-w-0 items-center gap-1.5 px-3 text-left section-label hover:bg-accent/40"
         title={`${kind} · ${owner}`}
       >
-        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/document:rotate-90" />
+        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/document:rotate-90" />
         <Icon className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate text-foreground/85">{renderer?.title ?? kind}</span>
-        <span className="ml-auto shrink-0 pl-2 text-muted-foreground/60">
+        <span className="ml-auto shrink-0 pl-2 text-muted-foreground">
           {renderer ? kind : owner}
         </span>
       </CollapsibleTrigger>
@@ -102,7 +102,7 @@ function DocumentsPanel() {
       <div className="flex items-center gap-2 px-3 pb-2 section-label">
         Documents
         {conversationId !== undefined && (
-          <span className="ml-auto text-muted-foreground/70">
+          <span className="ml-auto text-muted-foreground">
             {conversationId === 1 ? 'main' : (shown?.label ?? 'conversation')} #{conversationId}
           </span>
         )}
@@ -122,7 +122,7 @@ function DocumentsPanel() {
         </div>
       )}
       {system && kinds.length === 0 && (
-        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
+        <p className="px-3 pt-3 font-sans text-[0.75rem] leading-relaxed text-muted-foreground">
           Documents are durable state that extensions keep with a conversation, such as the plan;
           they appear here when a server facet exports them as{' '}
           <code className="font-mono">docs</code>.

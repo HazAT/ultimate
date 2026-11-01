@@ -37,7 +37,7 @@ function Toasts() {
         return (
           <div
             className={cn(
-              'group/notice flex items-start gap-2 px-2.5 py-2 font-mono text-[11.5px] leading-snug',
+              'group/notice flex items-start gap-2 px-2.5 py-2 font-mono text-[0.7188rem] leading-snug',
               notice.level === 'error' && 'bg-error/6',
               notice.level === 'warning' && 'bg-warning/6',
             )}
@@ -47,7 +47,7 @@ function Toasts() {
             <span className="min-w-0 flex-1 break-words text-foreground/90">{notice.message}</span>
             <button
               aria-label="Dismiss"
-              className="shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/notice:opacity-100 pointer-coarse:opacity-100 hover:text-foreground"
+              className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notice:opacity-100 pointer-coarse:opacity-100 hover:text-foreground"
               onClick={() => setDismissed((previous) => new Set([...previous, notice.id]))}
               type="button"
             >

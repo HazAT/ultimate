@@ -78,7 +78,7 @@ export const ProjectChip = forwardRef<
     </>
   )
   const chip =
-    'flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 font-sans text-[13px] font-medium text-foreground/90'
+    'flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 font-sans text-[0.8125rem] font-medium text-foreground/90'
   if (!menu)
     return (
       <span className={cn(chip, className)} title={system?.project.root}>
@@ -109,7 +109,7 @@ function Project() {
 }
 
 const wordmark =
-  'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[11px] font-semibold tracking-[0.28em] text-brand'
+  'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[0.6875rem] font-semibold tracking-[0.28em] text-brand'
 
 /** The ULTIMATE wordmark beyond a phone; with `onClick` a button, for an extension that fills `titlebar.brand`. */
 export function Wordmark({ onClick, label }: { onClick?: () => void; label?: string }) {
@@ -160,7 +160,7 @@ function Brand() {
           <button
             className={cn(
               wordmark,
-              'transition-opacity outline-none hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring md:hidden',
+              'cursor-pointer transition-opacity outline-none hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring md:hidden',
             )}
             data-ui="wordmark"
             title="Switch surface"
@@ -168,7 +168,7 @@ function Brand() {
           >
             ULTIMATE
             {current && current.id !== HOME && (
-              <span className="flex items-center gap-1.5 text-[12px] font-medium tracking-normal text-foreground">
+              <span className="flex items-center gap-1.5 text-[0.75rem] font-medium tracking-normal text-foreground">
                 {Icon && <Icon className="size-3.5 text-muted-foreground" />}
                 {current.title}
               </span>
@@ -191,11 +191,11 @@ function Brand() {
                   className={cn('mt-0.5 size-4', active ? 'text-brand' : 'text-muted-foreground')}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className={cn('block text-[13px]', active && 'text-brand')}>
+                  <span className={cn('block text-[0.8125rem]', active && 'text-brand')}>
                     {surface.title}
                   </span>
                   {surface.description && (
-                    <span className="block truncate text-[12px] text-muted-foreground">
+                    <span className="block truncate text-[0.75rem] text-muted-foreground">
                       {surface.description}
                     </span>
                   )}
@@ -220,7 +220,8 @@ function SurfaceItems() {
   const shown = useStore((state) => state.ui.surface?.id)
   return (
     <nav
-      className="flex h-[35px] shrink-0 items-stretch gap-4 max-md:hidden"
+      // `min-h` so the tab labels, which scale with the page font, are never clipped by the strip.
+      className="flex min-h-[2.1875rem] shrink-0 items-stretch gap-4 max-md:hidden"
       data-ui="surface-tabs"
     >
       {surfaces.map((surface, index) => {
@@ -229,7 +230,7 @@ function SurfaceItems() {
           <button
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex items-center border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
+              'flex cursor-pointer items-center border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
               active && 'border-b-brand text-foreground',
             )}
             data-selected={active || undefined}
@@ -264,7 +265,7 @@ function SurfaceItems() {
 export function TitleBar() {
   return (
     <div
-      className="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
+      className="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[0.7188rem] text-muted-foreground"
       data-ui="titlebar"
     >
       <div className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
@@ -287,7 +288,7 @@ export function TitleBar() {
         <Slot name="titlebar.right" variant="inline" />
         <Button
           aria-label="Command palette"
-          className="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
+          className="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground max-lg:hidden"
           onClick={actions.openPalette}
           size="sm"
           variant="ghost"

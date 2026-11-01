@@ -35,12 +35,12 @@ export function ReviewCard({ entry }: { entry: EntryRecord }) {
           className="w-full max-w-2xl min-w-0 overflow-hidden rounded-lg border border-border/70 border-l-2 border-l-brand/50 bg-secondary/40"
           data-review-card={entry.id}
         >
-          <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
             <FileDiffIcon className="size-3.5 shrink-0 text-brand" />
             <span className="min-w-0 truncate">{title}</span>
           </header>
           {note && (
-            <p className="border-b border-border/60 px-3 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap">
+            <p className="border-b border-border/60 px-3 py-2 text-[0.8438rem] leading-relaxed whitespace-pre-wrap">
               {note}
             </p>
           )}
@@ -49,7 +49,7 @@ export function ReviewCard({ entry }: { entry: EntryRecord }) {
               // oxlint-disable-next-line react/no-array-index-key -- Fixed submitted comments can share the same location.
               <li className="space-y-1.5 px-3 py-2.5" key={index}>
                 <button
-                  className="flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded border border-border/70 bg-background/60 px-1.5 py-0.5 font-mono text-[11px] hover:border-brand/50 hover:text-foreground"
+                  className="flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded border border-border/70 bg-background/60 px-1.5 py-0.5 font-mono text-[0.6875rem] hover:border-brand/50 hover:text-foreground"
                   data-review-chip={location(comment)}
                   onClick={() =>
                     openReview(spec, {
@@ -65,11 +65,11 @@ export function ReviewCard({ entry }: { entry: EntryRecord }) {
                   <Lines className="shrink-0" comment={comment} />
                 </button>
                 {comment.excerpt && (
-                  <pre className="max-h-40 overflow-auto rounded border border-border/50 bg-background/50 px-2 py-1 font-mono text-[11.5px] leading-[1.55] text-muted-foreground">
+                  <pre className="max-h-40 overflow-auto rounded border border-border/50 bg-background/50 px-2 py-1 font-mono text-[0.7188rem] leading-[1.55] text-muted-foreground">
                     {comment.excerpt}
                   </pre>
                 )}
-                <p className="text-[13.5px] leading-relaxed break-words whitespace-pre-wrap">
+                <p className="text-[0.8438rem] leading-relaxed break-words whitespace-pre-wrap">
                   {comment.text}
                 </p>
               </li>

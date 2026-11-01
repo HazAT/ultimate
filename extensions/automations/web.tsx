@@ -70,7 +70,7 @@ const card = (kind: Kind) =>
           )}
           data-automation-entry={kind}
         >
-          <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px]">
+          <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem]">
             <TimerIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="flex min-w-0 items-center gap-1.5">{label}</span>
             <button
@@ -85,7 +85,7 @@ const card = (kind: Kind) =>
           {text && (
             <div
               className={cn(
-                'min-w-0 px-3 py-2.5 text-[13px] leading-relaxed',
+                'min-w-0 px-3 py-2.5 text-[0.8125rem] leading-relaxed',
                 kind === 'writing' && 'text-foreground/85',
               )}
             >
@@ -149,7 +149,7 @@ export function AutomationCall({ call }: { call: ToolCallView }) {
           title={title}
         />
         <Button
-          className="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          className="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
           onClick={() => (id ? open(id) : openAutomationsPanel(shell))}
           size="sm"
           title={id ? `Show ${id} in Automations` : 'Show Automations'}
@@ -162,21 +162,21 @@ export function AutomationCall({ call }: { call: ToolCallView }) {
       <ToolContent>
         {ask && (
           <ToolSection label="Watch for">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+            <p className="font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
               {ask}
             </p>
           </ToolSection>
         )}
         {prompt && (
           <ToolSection label="Prompt">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+            <p className="font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
               {prompt}
             </p>
           </ToolSection>
         )}
         {reason && (
           <ToolSection label="Reason">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+            <p className="font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
               {reason}
             </p>
           </ToolSection>

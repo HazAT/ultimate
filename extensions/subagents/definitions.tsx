@@ -152,7 +152,7 @@ function Loader({
       <>
         <DialogTitle className="sr-only">Agent definition</DialogTitle>
         <DialogDescription className="sr-only">Loading the definition</DialogDescription>
-        <p className="m-auto font-mono text-[12px] text-muted-foreground">
+        <p className="m-auto font-mono text-[0.75rem] text-muted-foreground">
           {shown.error ? errorMessage(shown.error) : 'Loading…'}
         </p>
       </>
@@ -323,12 +323,12 @@ function Form({
       <header className="flex items-start gap-3 border-b border-border/70 px-5 py-3.5">
         <BotIcon className="mt-0.5 size-4.5 shrink-0 text-brand" />
         <div className="min-w-0 flex-1">
-          <DialogTitle className="flex items-center gap-2 font-mono text-[14px] font-medium">
+          <DialogTitle className="flex items-center gap-2 font-mono text-[0.875rem] font-medium">
             {creating ? (draft.name ? draft.name : 'New definition') : draft.name}
             {source && <Tag>{sourceLabel[source]}</Tag>}
             {creating && <Tag className="border-brand/40 text-brand">new</Tag>}
           </DialogTitle>
-          <DialogDescription className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+          <DialogDescription className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
             {shown && !creating
               ? display(shown.path)
               : 'A profile subagents and automations run with: model, thinking, tools, isolate, and instructions.'}
@@ -336,7 +336,7 @@ function Form({
         </div>
         {shown?.definition && !creating && (
           <Button
-            className="h-7 gap-1.5 px-2 font-mono text-[11.5px]"
+            className="h-7 gap-1.5 px-2 font-mono text-[0.7188rem]"
             onClick={() => {
               setCreating(true)
               set({ name: `${draft.name}-copy` })
@@ -361,7 +361,7 @@ function Form({
         </Button>
       </header>
       {shown?.invalid && (
-        <div className="flex items-start gap-2 border-b border-error/30 bg-error/8 px-5 py-2 text-[12px] text-error">
+        <div className="flex items-start gap-2 border-b border-error/30 bg-error/8 px-5 py-2 text-[0.75rem] text-error">
           <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <p className="min-w-0 leading-snug">
             <span className="font-mono">{display(shown.invalid.path)}</span> fails to parse:{' '}
@@ -389,7 +389,7 @@ function Form({
                 spellCheck={false}
                 value={draft.name}
               />
-              {nameError && <p className="text-[11.5px] text-error">{nameError}</p>}
+              {nameError && <p className="text-[0.7188rem] text-error">{nameError}</p>}
             </Field>
           )}
           <Field label="Description">
@@ -443,7 +443,7 @@ function Form({
             label="Model"
           >
             {!pinning && (
-              <div className={cn(inputClass, 'flex items-center font-mono text-[12px]')}>
+              <div className={cn(inputClass, 'flex items-center font-mono text-[0.75rem]')}>
                 <FamilyLabel family={draft.family ?? 'default'} />
               </div>
             )}
@@ -539,13 +539,13 @@ function Form({
           />
         </div>
         <span
-          className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
+          className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground"
           title={target}
         >
           {display(target)}
-          {overrides && <span className="text-muted-foreground/70"> · overrides {overrides}</span>}
+          {overrides && <span className="text-muted-foreground"> · overrides {overrides}</span>}
           {overlays.length > 0 && (
-            <span className="text-muted-foreground/70">
+            <span className="text-muted-foreground">
               {' '}
               · an overlay: only the changes, over {display(shown?.path ?? '')}
             </span>
@@ -556,7 +556,7 @@ function Form({
         </span>
         {removable &&
           (confirming ? (
-            <span className="flex items-center gap-1 text-[12px]">
+            <span className="flex items-center gap-1 text-[0.75rem]">
               {fallback
                 ? `Delete it? The ${sourceLabel[fallback]} one applies again.`
                 : 'Delete it?'}
@@ -579,7 +579,7 @@ function Form({
             </span>
           ) : (
             <Button
-              className="h-7 gap-1.5 px-2 text-[12px] text-muted-foreground hover:text-error"
+              className="h-7 gap-1.5 px-2 text-[0.75rem] text-muted-foreground hover:text-error"
               disabled={pending !== undefined}
               onClick={() => setConfirming(true)}
               size="sm"
@@ -590,11 +590,11 @@ function Form({
               {fallback ? `Revert to ${sourceLabel[fallback]}` : 'Delete'}
             </Button>
           ))}
-        <Button className="h-7 px-3 text-[12px]" onClick={close} size="sm" variant="ghost">
+        <Button className="h-7 px-3 text-[0.75rem]" onClick={close} size="sm" variant="ghost">
           Cancel
         </Button>
         <Button
-          className="h-7 px-3 text-[12px]"
+          className="h-7 px-3 text-[0.75rem]"
           disabled={!dirty || !draft.name || nameError !== undefined || pending !== undefined}
           onClick={() => void save()}
           size="sm"
@@ -602,7 +602,7 @@ function Form({
           {pending === 'save' ? 'Saving…' : 'Save'}
         </Button>
         {error && (
-          <p className="basis-full font-mono text-[11.5px] leading-snug break-words text-error">
+          <p className="basis-full font-mono text-[0.7188rem] leading-snug break-words text-error">
             {error}
           </p>
         )}

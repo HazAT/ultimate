@@ -59,7 +59,7 @@ function Body({ onClose }: { onClose: () => void }) {
             <FlagIcon className="size-4 text-brand" />
             Go hands-off
           </DialogTitle>
-          <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+          <DialogDescription className="text-[0.8125rem] leading-relaxed text-muted-foreground">
             Give me a goal and go. I write down what done means, then work toward it without you:
             whatever I would ask you, I decide myself, including approving UI previews, and note
             each decision with its reason. When every criterion is met, or every one left is stuck
@@ -69,7 +69,7 @@ function Body({ onClose }: { onClose: () => void }) {
         <textarea
           aria-label="The goal"
           autoFocus
-          className="min-h-24 w-full min-w-0 resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="min-h-24 w-full min-w-0 resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-[0.8125rem] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           data-goal-text
           disabled={!!active || starting}
           onChange={(event) => setText(event.target.value)}
@@ -78,7 +78,7 @@ function Body({ onClose }: { onClose: () => void }) {
           rows={4}
           value={text}
         />
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
+        <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
           Secrets, logins and force pushes stay yours.{' '}
           <span className="text-foreground">Pause</span> in the status line stops everything at
           once; End on the goal's card hands decisions back to you.
@@ -86,12 +86,12 @@ function Body({ onClose }: { onClose: () => void }) {
       </div>
       <footer className="space-y-3 border-t border-border/60 bg-muted/30 px-6 py-4">
         {active && (
-          <p className="text-[12px] leading-relaxed text-muted-foreground" data-goal-blocked>
+          <p className="text-[0.75rem] leading-relaxed text-muted-foreground" data-goal-blocked>
             <span className="text-foreground">Goal {active.id} is still open.</span> End it from its
             card in @ultimate's conversation first.
           </p>
         )}
-        {failure && <p className="text-[12px] text-error">{failure}</p>}
+        {failure && <p className="text-[0.75rem] text-error">{failure}</p>}
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} size="sm" variant="ghost">
             {active ? 'Close' : 'Not now'}

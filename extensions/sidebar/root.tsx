@@ -85,7 +85,7 @@ const tones = {
   brand: 'text-brand',
   waiting: 'text-amber-700 dark:text-amber-300',
   paused: 'text-warning',
-  quiet: 'text-muted-foreground/70',
+  quiet: 'text-muted-foreground',
 }
 
 type FlightProps = {
@@ -158,7 +158,7 @@ function PhasedFlightRow({
           <input
             aria-label="Conversation title"
             autoFocus
-            className="absolute inset-x-2 top-0.5 z-10 h-6 rounded-sm border border-input bg-background px-1.5 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="absolute inset-x-2 top-0.5 z-10 h-6 rounded-sm border border-input bg-background px-1.5 text-[0.75rem] outline-none focus-visible:ring-1 focus-visible:ring-ring"
             defaultValue={conversation.title ?? ''}
             onBlur={(event) => {
               setEditing(false)
@@ -203,18 +203,18 @@ function PhasedFlightRow({
             />
             <span
               className={cn(
-                'min-w-0 flex-1 truncate text-[12px]',
+                'min-w-0 flex-1 truncate text-[0.75rem]',
                 shown ? 'text-foreground' : 'text-foreground/85',
               )}
             >
               {title}
             </span>
           </span>
-          <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
+          <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[0.625rem] leading-4 text-muted-foreground">
             {feature && <FeatureTag feature={feature} />}
             <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
             {latest > 0 && (
-              <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
+              <span className="ml-auto shrink-0 pl-1 text-muted-foreground">
                 {formatAgo(latest, now)}
               </span>
             )}
@@ -238,7 +238,7 @@ function PhasedFlightRow({
       {work && (
         // Its own line under the row's button, so its links never nest in it.
         <span
-          className="flex min-w-0 items-center gap-2 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground/80"
+          className="flex min-w-0 items-center gap-2 pr-2 pb-0.5 pl-[30px] font-mono text-[0.625rem] leading-4 text-muted-foreground"
           data-flight-work={conversation.id}
         >
           {work.commits && <CommitCount count={work.commits.count} range={work.commits.spec} />}
@@ -405,19 +405,19 @@ export function MemoryRow({
         <AgentMark name="memory" presence={working === 'self' ? 'working' : undefined} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="truncate text-[13px] leading-5 font-semibold text-foreground">
+            <span className="truncate text-[0.8125rem] leading-5 font-semibold text-foreground">
               Memory
             </span>
             {tokens !== undefined && (
               <span
-                className="shrink-0 font-mono text-[10px] text-muted-foreground/70"
+                className="shrink-0 font-mono text-[0.625rem] text-muted-foreground"
                 title="Tokens every new branch starts from"
               >
                 {formatTokens(tokens)}
               </span>
             )}
           </span>
-          <span className="truncate font-mono text-[10px] leading-4 text-muted-foreground">
+          <span className="truncate font-mono text-[0.625rem] leading-4 text-muted-foreground">
             {counts}
           </span>
         </span>

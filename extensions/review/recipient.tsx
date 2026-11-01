@@ -36,7 +36,7 @@ export function Recipient({ value, onChange }: { value?: number; onChange: (id: 
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
-          className="flex h-7 max-w-64 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2 font-mono text-[11.5px] text-muted-foreground hover:bg-accent/60"
+          className="flex h-7 max-w-64 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2 font-mono text-[0.7188rem] text-muted-foreground hover:bg-accent/60"
           data-review-recipient={value}
           title="Who the review goes to"
           type="button"
@@ -52,7 +52,7 @@ export function Recipient({ value, onChange }: { value?: number; onChange: (id: 
       <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1rem))] p-0">
         <Command shouldFilter={false}>
           <CommandInput
-            className="font-mono text-[12.5px]"
+            className="font-mono text-[0.7812rem]"
             onValueChange={setQuery}
             placeholder="Send the review to…"
             value={query}
@@ -64,7 +64,7 @@ export function Recipient({ value, onChange }: { value?: number; onChange: (id: 
                   .filter(([name, id]) => matches(id, name))
                   .map(([name, id]) => (
                     <CommandItem
-                      className={cn('gap-2 py-1 text-[12.5px]', id === value && 'text-brand')}
+                      className={cn('gap-2 py-1 text-[0.7812rem]', id === value && 'text-brand')}
                       key={id}
                       onSelect={() => choose(id)}
                       value={String(id)}
@@ -79,7 +79,7 @@ export function Recipient({ value, onChange }: { value?: number; onChange: (id: 
                 {recent.map((conversation) => (
                   <CommandItem
                     className={cn(
-                      'gap-2 py-1 text-[12.5px]',
+                      'gap-2 py-1 text-[0.7812rem]',
                       conversation.id === value && 'text-brand',
                     )}
                     key={conversation.id}

@@ -64,7 +64,7 @@ function Chip() {
           aria-label="Keep @ultimate's cache warm"
           className={cn(
             '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-            !state.on && 'text-muted-foreground/60',
+            !state.on && 'text-muted-foreground',
           )}
           data-keep-warm={state.on ? (warm ? 'warm' : 'cold') : 'off'}
           type="button"
@@ -76,11 +76,11 @@ function Chip() {
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-1 font-mono" side="top">
-        <label className="flex h-8 cursor-pointer items-center justify-between px-2 text-[12px]">
+        <label className="flex h-8 cursor-pointer items-center justify-between px-2 text-[0.75rem]">
           Keep @ultimate warm
           <Switch checked={state.on} onCheckedChange={(on) => void toggle(on)} />
         </label>
-        <div className="space-y-1 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+        <div className="space-y-1 border-t border-border/70 px-2 pt-1.5 pb-1 text-[0.6875rem] text-muted-foreground">
           <div className="text-foreground/80">{cacheLine(state, now)}</div>
           <div>{nextLine(state, now)}</div>
           {state.last && (
@@ -91,7 +91,7 @@ function Chip() {
                 : ` · read ${tokens(state.last.read)}, wrote ${tokens(state.last.write)}`}
             </div>
           )}
-          <div className="pt-1 text-muted-foreground/70">
+          <div className="pt-1 text-muted-foreground">
             One small request 55 min after the last, until you have been away 8 h.
           </div>
         </div>

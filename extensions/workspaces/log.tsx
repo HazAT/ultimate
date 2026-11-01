@@ -137,18 +137,18 @@ function Line({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 pl-4 font-mono text-[11px] leading-5',
+        'flex items-center gap-2 pl-4 font-mono text-[0.6875rem] leading-5',
         active ? 'text-brand' : 'text-muted-foreground',
       )}
     >
       {icon}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {took && (
-        <span className={cn('shrink-0 tabular-nums', !active && 'text-muted-foreground/60')}>
+        <span className={cn('shrink-0 tabular-nums', !active && 'text-muted-foreground')}>
           {took}
         </span>
       )}
-      <time className="shrink-0 text-muted-foreground/60">{time(at)}</time>
+      <time className="shrink-0 text-muted-foreground">{time(at)}</time>
     </div>
   )
 }
@@ -206,9 +206,7 @@ function StepLine({
       >
         {row.check.command}
         {row.check.result !== 'passed' && ` · ${row.check.result}`}
-        {row.check.summary && (
-          <span className="text-muted-foreground/60"> · {row.check.summary}</span>
-        )}
+        {row.check.summary && <span className="text-muted-foreground"> · {row.check.summary}</span>}
       </Line>
     )
   return (
@@ -220,7 +218,7 @@ function StepLine({
         ) : done ? (
           <CheckIcon className="size-3 shrink-0 text-success/70" />
         ) : (
-          <CircleDotIcon className="size-3 shrink-0 text-muted-foreground/60" />
+          <CircleDotIcon className="size-3 shrink-0 text-muted-foreground" />
         )
       }
       took={duration}
@@ -266,7 +264,7 @@ function Steps({
   }
   return (
     <Collapsible className="group/steps" onOpenChange={onOpenChange} open={open}>
-      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/steps:rotate-90" />
         {rows.length ? `${rows.length} step${rows.length === 1 ? '' : 's'}` : 'Steps'}
       </CollapsibleTrigger>
@@ -283,7 +281,7 @@ function Steps({
           />
         ))}
         <button
-          className="cursor-pointer pt-1 pl-4 font-mono text-[11px] text-muted-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
+          className="cursor-pointer pt-1 pl-4 font-mono text-[0.6875rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           onClick={() => switchConversation(lander)}
           type="button"
         >
@@ -331,7 +329,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
           sourceEntry={data.sourceEntry}
           divergence={data.divergence}
           at={
-            <time className="shrink-0 text-[11px] text-muted-foreground/60">{time(data.at)}</time>
+            <time className="shrink-0 text-[0.6875rem] text-muted-foreground">{time(data.at)}</time>
           }
           from={data.conversationId}
           headline={headline(outcome, data.target)}
@@ -351,7 +349,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
     )
     return (
       <div className="space-y-0.5 border-t border-border/60 pt-3">
-        <div className="flex items-center gap-2 font-mono text-[12px]">
+        <div className="flex items-center gap-2 font-mono text-[0.75rem]">
           <GitMergeIcon className="size-3.5 shrink-0 text-brand" />
           <Subject from={data.conversationId} subject={data.subject} />
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
@@ -367,7 +365,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const line = <StepLine active={landing} done={done} failed={failed} row={data as LanderStep} />
   if (!data.output) return line
   return (
-    <div className="font-mono text-[11px]">
+    <div className="font-mono text-[0.6875rem]">
       {line}
       <div className="pl-9">
         <OutputTail output={data.output} />

@@ -18,7 +18,17 @@ export interface SubmitRequest {
   text: string
   images?: { data: string; mimeType: string }[]
   whenBusy?: 'steer' | 'followUp'
+  /**
+   * The caller's idempotency key, unique per message the user meant to send. A resend after a lost response
+   * carries the same key and is answered with the original submission instead of adding a second turn.
+   */
+  requestId?: string
 }
+/**
+ * The longest accepted `requestId`. The key is recorded in the durable submission, so an unbounded one would let a
+ * caller store an arbitrary payload per message; a uuid is 36 characters.
+ */
+export const maxRequestIdLength = 128
 export interface SubmitResponse {
   submissionId: number
 }

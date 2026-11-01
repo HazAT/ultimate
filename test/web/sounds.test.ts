@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import type { OverviewRow } from '../../extensions/conversations/types.ts'
 import { cuesOf, listener } from '../../extensions/sounds/cues.ts'
 import type { Watched } from '../../extensions/sounds/cues.ts'
+import { linesOf } from '../../extensions/sounds/narration.ts'
 
 const agent = 7
 const answered = (answerId: number, extra: Partial<OverviewRow> = {}): OverviewRow => ({
@@ -65,4 +66,42 @@ it('sounds each landing once, and not those that arrive while catching up', () =
   expect(hear(watched({ landings: [{ id: 2 }, { id: 1 }] }))).toEqual([])
   expect(hear(watched({ landings: [{ id: 3 }, { id: 2 }] }), true)).toEqual([])
   expect(hear(watched({ landings: [{ id: 3 }, { id: 2 }] }))).toEqual([])
+})
+
+it('narrates what arrives together as one line per kind, questions first', () => {
+  const branchAsks = { id: 3, from: 40, to: 'user' as const, reply: true }
+  const cues = cuesOf(
+    watched({
+      messages: [branchAsks],
+      landings: [
+        { id: 1, title: 'Sketch tool' },
+        { id: 2, title: 'File drops' },
+      ],
+      title: (id) => (id === 40 ? 'MCP support' : undefined),
+    }),
+  )
+  expect(linesOf(cues)).toEqual([
+    { sound: 'input', text: 'MCP support needs your answer.' },
+    { sound: 'landed', text: 'Two branches landed: Sketch tool and File drops.' },
+  ])
+  // @ultimate's own question and a finished answer: the answer keeps its sound and says nothing.
+  const own = cuesOf(
+    watched({
+      messages: [{ id: 4, from: agent, to: 'user' as const, reply: true }],
+      row: answered(9),
+    }),
+  )
+  expect(linesOf(own)).toEqual([
+    { sound: 'input', text: 'Ultimate has a question.' },
+    { sound: 'finished' },
+  ])
+})
+
+it('hears new branches once, and not those that arrive while catching up', () => {
+  const hear = listener()
+  expect(hear(watched({ branches: [{ id: 1, title: 'Narrator' }] }))).toEqual([])
+  expect(hear(watched({ branches: [{ id: 2 }, { id: 1 }] }), true)).toEqual([])
+  expect(hear(watched({ branches: [{ id: 3, title: 'Fix flaky test' }, { id: 2 }] }))).toEqual([
+    { key: 'branch:3', sound: 'started', subject: 'Fix flaky test' },
+  ])
 })

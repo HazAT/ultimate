@@ -1,7 +1,17 @@
 import { LoaderCircleIcon, PlugIcon, RefreshCwIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { api, cn, defineWebExtension, errorMessage, provide, useAction, useNow } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  errorMessage,
+  events,
+  provide,
+  useAction,
+  useEvent,
+  useNow,
+} from '@/sdk'
 import { ExtensionDetails } from '../onboarding/ui.tsx'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
@@ -51,24 +61,30 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
       onChanged()
     }
   }
+  // Its missing secret, once saved in the Secrets panel, connects it again at once instead of at the next retry.
+  useEvent('secrets:changed', (data) => {
+    if (server.missing && (data as { name?: unknown } | undefined)?.name === server.missing)
+      // oxlint-disable-next-line typescript/no-floating-promises -- reconnect reports its failure in the row.
+      void reconnect()
+  })
   const retry = server.retryAt && Math.max(0, Math.ceil((server.retryAt - now) / 1000))
   return (
     <li className="px-2 py-1.5" data-mcp-server={server.name} data-state={server.state}>
-      <div className="flex items-center gap-2 text-[12px]">
+      <div className="flex items-center gap-2 text-[0.75rem]">
         <span className={cn('size-1.5 shrink-0 rounded-full', tone[server.state])} />
         <span className="min-w-0 truncate text-foreground/90">{server.name}</span>
-        <span className="shrink-0 text-[10.5px] text-muted-foreground/70">
+        <span className="shrink-0 text-[0.6562rem] text-muted-foreground">
           {server.transport}
           {server.source === 'project' && ' · project'}
         </span>
-        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+        <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
           {server.state === 'connected'
             ? `${server.tools} ${server.tools === 1 ? 'tool' : 'tools'}`
             : server.state}
         </span>
         <button
           aria-label={`Reconnect ${server.name}`}
-          className="-mr-1 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="-mr-1 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           disabled={busy || server.state === 'connecting'}
           onClick={() => void reconnect()}
           title="Reconnect"
@@ -82,12 +98,21 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
         </button>
       </div>
       {(server.error || error) && (
-        <p className="mt-0.5 line-clamp-3 pl-3.5 text-[11px] leading-snug break-words text-error/85">
+        <p className="mt-0.5 line-clamp-3 pl-3.5 text-[0.6875rem] leading-snug break-words text-error/85">
           {error ?? server.error}
           {retry !== undefined && !error && (
-            <span className="text-muted-foreground/70"> · retry in {retry}s</span>
+            <span className="text-muted-foreground"> · retry in {retry}s</span>
           )}
         </p>
+      )}
+      {server.missing && (
+        <button
+          className="mt-1 ml-3.5 rounded-sm border border-border px-1.5 py-0.5 text-[0.6875rem] text-foreground/90 transition-colors hover:bg-accent"
+          onClick={() => events.emit('secrets:open', { name: server.missing })}
+          type="button"
+        >
+          Add {server.missing}
+        </button>
       )}
     </li>
   )
@@ -131,7 +156,7 @@ function Chip() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-1" side="top">
         <Servers onChanged={refresh} servers={servers} />
-        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[11px] text-muted-foreground/70">
+        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[0.6875rem] text-muted-foreground">
           mcpServers in ~/.ultimate/settings.json or the project's .ultimate/settings.json
         </p>
       </PopoverContent>
@@ -144,7 +169,7 @@ function useDetails(name: string) {
   const { data: servers, refetch } = useServers(name === 'mcp')
   if (name !== 'mcp') return null
   if (!servers?.length)
-    return <p className="text-muted-foreground/70">no servers: add mcpServers to settings.json</p>
+    return <p className="text-muted-foreground">no servers: add mcpServers to settings.json</p>
   return <Servers onChanged={() => void refetch()} servers={servers} />
 }
 

@@ -23,7 +23,7 @@ function FastToggle() {
           aria-label="Fast"
           aria-pressed={on}
           className={cn(
-            'flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none',
+            'flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[0.7188rem] transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none',
             on ? 'text-foreground/85' : 'text-muted-foreground',
           )}
           data-fast={on}

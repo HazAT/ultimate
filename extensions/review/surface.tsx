@@ -58,8 +58,8 @@ const themeCss = `
 :host {
   --diffs-font-family: var(--font-mono);
   --diffs-header-font-family: var(--font-sans);
-  --diffs-font-size: 12px;
-  --diffs-line-height: 19px;
+  --diffs-font-size: 0.75rem;
+  --diffs-line-height: 1.1875rem;
   --diffs-light-bg: var(--background);
   --diffs-dark-bg: var(--background);
   --diffs-addition-color-override: var(--diff-add);
@@ -73,7 +73,7 @@ const themeCss = `
 }
 /* One continuous bar down the selected line numbers, while dragging and after. */
 [data-gutter] [data-selected-line] { box-shadow: inset 3px 0 0 var(--brand); color: var(--foreground); }
-[data-diffs-header] { border-bottom: 1px solid var(--border); font-size: 12.5px; }
+[data-diffs-header] { border-bottom: 1px solid var(--border); font-size: 0.7813rem; }
 [data-annotation-content] { background: var(--background); }
 [data-utility-button] { background: var(--brand); color: var(--background); border-radius: 4px; }
 `
@@ -112,7 +112,7 @@ const anchor = (path: string) => `review-file-${path}`
 
 function Counts({ additions, deletions }: { additions: number; deletions: number }) {
   return (
-    <span className="shrink-0 font-mono text-[11px] tabular-nums">
+    <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums">
       <span className="text-diff-add">+{additions}</span>{' '}
       <span className="text-diff-del">−{deletions}</span>
     </span>
@@ -126,7 +126,7 @@ function FileList({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
         <div key={directory}>
           {directory && (
             <div
-              className="truncate px-3 pt-1.5 pb-0.5 font-mono text-[10.5px] text-muted-foreground/80"
+              className="truncate px-3 pt-1.5 pb-0.5 font-mono text-[0.6562rem] text-muted-foreground"
               title={directory}
             >
               {directory}/
@@ -142,12 +142,14 @@ function FileList({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
                 title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
                 type="button"
               >
-                <span className={cn('w-2.5 shrink-0 font-mono text-[10.5px]', tone)}>{letter}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground/90">
+                <span className={cn('w-2.5 shrink-0 font-mono text-[0.6562rem]', tone)}>
+                  {letter}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-foreground/90">
                   {fileName(file.path)}
                 </span>
                 {file.binary ? (
-                  <span className="font-mono text-[10.5px] text-muted-foreground">bin</span>
+                  <span className="font-mono text-[0.6562rem] text-muted-foreground">bin</span>
                 ) : (
                   <Counts additions={file.additions} deletions={file.deletions} />
                 )}
@@ -164,7 +166,7 @@ function FileList({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
 function FileMenu({ files, onPick }: { files: ReviewFile[]; onPick: (path: string) => void }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-8 w-full shrink-0 cursor-pointer items-center gap-1.5 border-b border-border/70 bg-sidebar px-3 font-mono text-[12px] text-muted-foreground">
+      <DropdownMenuTrigger className="flex h-8 w-full shrink-0 cursor-pointer items-center gap-1.5 border-b border-border/70 bg-sidebar px-3 font-mono text-[0.75rem] text-muted-foreground">
         {files.length} file{files.length === 1 ? '' : 's'}
         <ChevronDownIcon className="size-3 opacity-60" />
       </DropdownMenuTrigger>
@@ -174,11 +176,11 @@ function FileMenu({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
       >
         {files.map((file) => (
           <DropdownMenuItem
-            className="gap-2 font-mono text-[12px]"
+            className="gap-2 font-mono text-[0.75rem]"
             key={file.path}
             onSelect={() => onPick(file.path)}
           >
-            <span className={cn('w-2.5 shrink-0 text-[10.5px]', status[file.status][1])}>
+            <span className={cn('w-2.5 shrink-0 text-[0.6562rem]', status[file.status][1])}>
               {status[file.status][0]}
             </span>
             <span className="min-w-0 flex-1 truncate">{file.path}</span>
@@ -194,11 +196,11 @@ function FileMenu({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
 function Placeholder({ file }: { file: ReviewFile }) {
   return (
     <div className="rounded-md border border-border/70 bg-card/40">
-      <div className="flex items-center gap-2 border-b border-border/70 px-4 py-2 font-mono text-[12px]">
+      <div className="flex items-center gap-2 border-b border-border/70 px-4 py-2 font-mono text-[0.75rem]">
         <span className="min-w-0 flex-1 truncate">{file.path}</span>
         {!file.binary && <Counts additions={file.additions} deletions={file.deletions} />}
       </div>
-      <p className="px-4 py-3 font-mono text-[11.5px] text-muted-foreground">
+      <p className="px-4 py-3 font-mono text-[0.7188rem] text-muted-foreground">
         {file.binary
           ? 'Binary file'
           : file.typeChanged
@@ -396,7 +398,7 @@ function Diffs({
       <div className="flex min-w-0 flex-1 flex-col">
         {phone && <FileMenu files={diff.files} onPick={pick} />}
         {diff.truncated && (
-          <p className="shrink-0 border-b border-border/70 bg-warning/10 px-4 py-1.5 font-mono text-[11.5px] text-warning">
+          <p className="shrink-0 border-b border-border/70 bg-warning/10 px-4 py-1.5 font-mono text-[0.7188rem] text-warning">
             This diff is too large to show whole: later files are listed without their changes.
           </p>
         )}
@@ -444,7 +446,7 @@ function Sent({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-2 border-t border-border/70 bg-sidebar px-3 py-2 font-mono text-[11.5px] md:px-4"
+      className="flex shrink-0 items-center gap-2 border-t border-border/70 bg-sidebar px-3 py-2 font-mono text-[0.7188rem] md:px-4"
       data-review-sent=""
       role="status"
     >
@@ -466,7 +468,7 @@ function Sent({
       )}
       <button
         aria-label="Dismiss"
-        className="shrink-0 cursor-pointer text-muted-foreground/60 hover:text-foreground"
+        className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
         onClick={onClose}
         type="button"
       >
@@ -568,7 +570,7 @@ export default function ReviewSurface() {
             title={data?.title}
           />
           {data && totals && (
-            <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground">
+            <span className="shrink-0 font-mono text-[0.7188rem] text-muted-foreground">
               <span className="text-diff-add">+{totals.additions}</span>{' '}
               <span className="text-diff-del">−{totals.deletions}</span>
               <span className="max-md:hidden">
@@ -588,7 +590,7 @@ export default function ReviewSurface() {
                 <button
                   aria-pressed={layout === name}
                   className={cn(
-                    'flex h-6 cursor-pointer items-center gap-1 rounded-sm px-1.5 font-mono text-[11px] text-muted-foreground transition-colors',
+                    'flex h-6 cursor-pointer items-center gap-1 rounded-sm px-1.5 font-mono text-[0.6875rem] text-muted-foreground transition-colors',
                     layout === name ? 'bg-accent text-foreground' : 'hover:text-foreground',
                   )}
                   key={name}
@@ -608,7 +610,7 @@ export default function ReviewSurface() {
           )}
           {compare && (
             <a
-              className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[11.5px] text-muted-foreground hover:text-foreground hover:underline"
+              className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[0.7188rem] text-muted-foreground hover:text-foreground hover:underline"
               href={compare}
               rel="noreferrer"
               target="_blank"

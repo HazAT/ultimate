@@ -90,7 +90,7 @@ function LandedRow({ group, now }: { group: LandingGroup; now: number }) {
   }
   return (
     <li
-      className="mx-2 flex h-6 min-w-0 items-center gap-1.5 rounded-md pr-2 pl-2.5 font-mono text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
+      className="mx-2 flex h-6 min-w-0 items-center gap-1.5 rounded-md pr-2 pl-2.5 font-mono text-[0.625rem] text-muted-foreground hover:bg-sidebar-accent/50"
       data-landed={latest.sha}
     >
       <button
@@ -109,21 +109,23 @@ function LandedRow({ group, now }: { group: LandingGroup; now: number }) {
         {group.feature ? (
           <FeatureTag className="max-w-full" feature={group.feature} />
         ) : (
-          <span className="truncate font-sans text-[11.5px] text-foreground/80">{group.label}</span>
+          <span className="truncate font-sans text-[0.7188rem] text-foreground/80">
+            {group.label}
+          </span>
         )}
         {!single && (
-          <span className="shrink-0 text-muted-foreground/70">×{group.landings.length}</span>
+          <span className="shrink-0 text-muted-foreground">×{group.landings.length}</span>
         )}
       </button>
       <CommitCount
-        className="text-muted-foreground/80"
+        className="text-muted-foreground"
         count={commits}
         href={single ? latest.compare : undefined}
         range={groupRange(group.landings)}
       />
       {latest.at !== undefined && (
         <span
-          className="w-6 shrink-0 text-right text-muted-foreground/60"
+          className="w-6 shrink-0 text-right text-muted-foreground"
           title={new Date(latest.at).toLocaleString()}
         >
           {formatAgo(latest.at, now)}

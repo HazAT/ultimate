@@ -58,14 +58,14 @@ function Shot({ call, parsed }: { call: ToolCallView; parsed: ReturnType<typeof 
   return (
     <ToolSection className="flex gap-3">
       {image && <ToolImage alt={parsed.title ?? 'Screenshot'} className="shrink-0" image={image} />}
-      <div className="flex min-w-0 flex-col gap-0.5 text-[11.5px]">
+      <div className="flex min-w-0 flex-col gap-0.5 text-[0.7188rem]">
         {parsed.title !== undefined && (
           <span className="truncate text-foreground/90" title={parsed.title}>
             {parsed.title || 'untitled'}
           </span>
         )}
         {parsed.png && (
-          <span className="truncate text-muted-foreground/70" title={parsed.png}>
+          <span className="truncate text-muted-foreground" title={parsed.png}>
             {parsed.png}
           </span>
         )}
@@ -107,7 +107,7 @@ function Screenshot({ call }: { call: ToolCallView }) {
       <ToolContent>
         {call.status === 'running' && (
           <ToolSection>
-            <Shimmer className="text-[12px]">loading the page…</Shimmer>
+            <Shimmer className="text-[0.75rem]">loading the page…</Shimmer>
           </ToolSection>
         )}
         {call.status === 'error' ? (
@@ -198,7 +198,7 @@ function Browser({ call }: { call: ToolCallView }) {
                           ? 'text-error'
                           : state === 'running'
                             ? 'animate-pulse-dot text-brand'
-                            : 'text-muted-foreground/50',
+                            : 'text-muted-foreground',
                     )}
                   >
                     {state === 'ok'

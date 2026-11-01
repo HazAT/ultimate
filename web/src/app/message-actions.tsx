@@ -35,7 +35,7 @@ export function MessageActions({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground/60 opacity-0 transition-opacity focus-within:opacity-100 pointer-coarse:opacity-100',
+        'flex flex-wrap items-center gap-2 font-mono text-[0.6875rem] text-muted-foreground opacity-0 transition-opacity focus-within:opacity-100 pointer-coarse:opacity-100',
         bubble ? 'group-hover/bubble:opacity-100' : 'group-hover/message:opacity-100',
         className,
       )}

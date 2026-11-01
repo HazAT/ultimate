@@ -94,7 +94,7 @@ function useDreamButton() {
     <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
       {chapters && chapters.chapters.length > 1 ? (
         <button
-          className="-mx-1.5 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="-mx-1.5 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           data-dream-chapters-open
           onClick={() => actions.open(chaptersDialog)}
           title="This memory belongs to the open chapter: see every chapter, or switch"
@@ -104,10 +104,12 @@ function useDreamButton() {
           <span className="truncate">{chapterLabel(chapters.number, chapters.active)}</span>
         </button>
       ) : (
-        <span className="text-[11px] text-muted-foreground">What every new branch starts from</span>
+        <span className="text-[0.6875rem] text-muted-foreground">
+          What every new branch starts from
+        </span>
       )}
       <button
-        className="-mx-1.5 flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="-mx-1.5 flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         data-dream-open
         onClick={() => actions.open(dreamDialog)}
         title="Process what Ultimate learned: a journal and proposals for you to decide"

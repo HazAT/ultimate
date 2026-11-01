@@ -87,7 +87,7 @@ export function ErrorCard({
     return (
       <span
         className={cn(
-          'inline-flex max-w-72 items-center gap-1 rounded-sm bg-error/12 px-1.5 font-mono text-[11px] text-error',
+          'inline-flex max-w-72 items-center gap-1 rounded-sm bg-error/12 px-1.5 font-mono text-[0.6875rem] text-error',
           className,
         )}
         title={error}
@@ -102,7 +102,7 @@ export function ErrorCard({
   return (
     <div
       className={cn(
-        'flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 font-mono text-[12px]',
+        'flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 font-mono text-[0.75rem]',
         className,
       )}
       data-extension-error={extension}
@@ -335,7 +335,7 @@ export function ExtensionErrors() {
             error={record.error ?? ''}
             extension={record.name}
           />
-          <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
+          <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[0.6562rem] text-muted-foreground">
             <PuzzleIcon className="size-3" />
             {extensionPath(system, record.name, '/web.tsx')}
             {record.extension ? ' · previous version still running' : ' · not loaded'}
