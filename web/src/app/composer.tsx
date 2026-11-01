@@ -345,8 +345,9 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       return
     }
     if (event.key !== 'Enter' || event.shiftKey) return
-    // A touch keyboard's return key writes a new line; the send button sends.
-    if (touchKeyboard()) return
+    // A touch keyboard's return key writes a new line; the send button, or a
+    // hardware keyboard's Cmd/Ctrl+Enter (iPad with Magic Keyboard), sends.
+    if (touchKeyboard() && !event.metaKey && !event.ctrlKey) return
     event.preventDefault()
     // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
     void send(event.altKey ? 'followUp' : 'steer')
