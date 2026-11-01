@@ -33,9 +33,9 @@ const send = (message: ChildMessage) => process.send?.(message)
  * Framing is refused for the web but allowed from loopback, because a preview frames another running instance on its
  * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one.
  *
- * No IPv6 entry: `http://[::1]:*` is not a valid source expression, and one invalid expression makes a browser drop
- * the whole directive, which would silently switch framing protection off. `[::1]` is left to `X-Frame-Options`,
- * which a browser reaches before it ever connects over IPv6 loopback.
+ * No IPv6 entry, and none is needed: the server listens on `127.0.0.1` only, so nothing answers over `[::1]`.
+ * `http://[::1]:*` would not have parsed anyway — a host source may not carry a port range with an IPv6 literal —
+ * and one invalid expression makes a browser drop the whole directive, silently switching framing protection off.
  */
 const frameAncestors = ["'self'", 'http://127.0.0.1:*', 'http://localhost:*'].join(' ')
 export const securityHeaders = {
