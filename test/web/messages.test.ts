@@ -420,6 +420,10 @@ describe('conversation state', () => {
     const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
     const report = { from: 5, to: 3, reply: false, report: true as const }
     expect(conversationState(branch, messagesLog(report))).toBe('awaiting')
+    // A branch's reply awaits its answer; a standing agent's reply just answered (life's @google).
+    const reply = { from: 5, to: 3, reply: false, re: 1 }
+    expect(conversationState(branch, messagesLog({ ...reply, awaits: true }))).toBe('awaiting')
+    expect(conversationState(branch, messagesLog(reply))).toBe('idle')
     // A note (no report) waits on nothing.
     expect(conversationState(branch, messagesLog({ from: 5, to: 3, reply: false }))).toBe('idle')
     expect(conversationState(branch, messagesLog(report, { from: 3, to: 5, reply: false }))).toBe(
