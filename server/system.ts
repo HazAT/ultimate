@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
 import { stat } from 'node:fs/promises'
-import { watch } from 'node:fs'
 import {
   arch,
   cpus,
@@ -173,7 +172,8 @@ export async function createSystem(
       Math.max(100, 2000 - (Date.now() - lastGit)),
     )
   }
-  const storageWatcher = watch(host.home, schedule)
+  // Not the storage home: it changes with every conversation update (conversations.json), each refresh runs git, and
+  // nothing broadcast reads it (database sizes are left out above).
   const unwatch = watchRepo((watcher) => {
     watcher.add([
       host.ultimateRoot,
@@ -204,7 +204,6 @@ export async function createSystem(
       closed = true
       clearTimeout(timer)
       unwatch()
-      storageWatcher.close()
       await chain
     },
   }

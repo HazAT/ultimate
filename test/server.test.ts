@@ -904,6 +904,23 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(value).toEqual({ count: 1 })
     await stream.close()
   })
+  it("streams a conversation's pi.live alone, without its view", async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { docs: ['pi.live'], view: false })
+    await until(() => stream.events.some((event) => event.name === 'doc'))
+    expect(stream.events.some((event) => event.name === 'view')).toBe(false)
+    expect(stream.events.some((event) => event.name === 'notice')).toBe(false)
+    server.host.faux!.setResponses([
+      fauxAssistantMessage([fauxToolCall('increment', {})], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Incremented'),
+    ])
+    await post(server, '/api/conversations/1/submit', { text: 'increment' })
+    await server.harness.waitForIdle(context)
+    // The run started and ended in pi.live.
+    await until(() => stream.events.filter((event) => event.name === 'docOps').length > 1)
+    expect(stream.events.some((event) => event.name === 'view')).toBe(false)
+    await stream.close()
+  })
   it('carries subscriptions opened and closed on one stream, each event tagged with its id', async () => {
     const { server } = await fixture(true)
     const stream = await attach(server, { docs: ['test.counter'] })
