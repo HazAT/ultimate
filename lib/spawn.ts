@@ -181,6 +181,11 @@ export const spawn = ((
         paused[stream] = false
         send({ id, op: 'resume', stream })
       },
+      // Destroying the stream here closes the real pipe too, so output a descendant holds open cannot hold 'close'.
+      destroy(error, done) {
+        if (!ended[stream]) send({ id, op: 'destroy', stream })
+        done(error)
+      },
     })
   Object.assign(child, {
     pid: undefined,
@@ -222,6 +227,9 @@ export const spawn = ((
       child.exitCode ??= reply.code
       child.signalCode ??= reply.signal
       child.emit('exit', reply.code, reply.signal)
+      // Output nobody ever read is drained, as Node's flushStdio does at exit; held, it would hold 'close' back.
+      for (const stream of [child.stdout, child.stderr])
+        if (stream?.readableFlowing === null) stream.resume()
     } else if (reply.event === 'close') {
       settle(id)
       child.exitCode ??= reply.code
@@ -231,7 +239,7 @@ export const spawn = ((
   })
   /**
    * Emit 'close' as Node does: after the output streams ended here, so a reader that stops at 'close' has had every
-   * byte. Output with no reader at all is drained, as Node's flushStdio does at exit.
+   * byte.
    */
   function closed(code: number | null, exitSignal: NodeJS.Signals | null) {
     if (!child.stdin?.writableFinished) child.stdin?.destroy()
@@ -244,6 +252,7 @@ export const spawn = ((
       stream.once('close', one)
       // The helper sent every chunk before its close; one it never ended (a lost helper) ends here.
       end(name)
+      // A lost helper sends no 'exit': drain output nobody read here instead.
       if (stream.readableFlowing === null) stream.resume()
     }
   }

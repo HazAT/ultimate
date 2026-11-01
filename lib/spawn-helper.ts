@@ -12,7 +12,7 @@ export type Request =
   | { id: number; op: 'abort' }
   | { id: number; op: 'stdin'; data?: Uint8Array; end?: true }
   | { id: number; op: 'kill'; signal?: NodeJS.Signals | number }
-  | { id: number; op: 'pause' | 'resume'; stream: 'stdout' | 'stderr' }
+  | { id: number; op: 'pause' | 'resume' | 'destroy'; stream: 'stdout' | 'stderr' }
 
 /** An error as plain data: its message, name and own fields (code, errno, killed, signal, cmd…). */
 export type ErrorData = Record<string, unknown> & { message: string; name: string }
