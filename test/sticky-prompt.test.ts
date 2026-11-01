@@ -40,14 +40,16 @@ const turn = (stored: EntryRecord[], before: number) =>
     turn?: Turn
   }>
 
-it('finds the newest turn of the user below `before` across pages, named by its first phrase', async () => {
+it('finds the newest turn of the user below `before` across pages, with its words on one line', async () => {
   const stored = [
     user(1, 'Old ask.'),
     user(2, 'Explain alpha first. Then everything else.'),
     ...Array.from({ length: 10 }, (_, index) => answer(3 + index)),
   ]
-  expect(await turn(stored, 13)).toEqual({ turn: { entryId: 2, phrase: 'Explain alpha first…' } })
-  expect(await turn(stored, 2)).toEqual({ turn: { entryId: 1, phrase: 'Old ask.' } })
+  expect(await turn(stored, 13)).toEqual({
+    turn: { entryId: 2, text: 'Explain alpha first. Then everything else.' },
+  })
+  expect(await turn(stored, 2)).toEqual({ turn: { entryId: 1, text: 'Old ask.' } })
   expect(await turn(stored, 1)).toEqual({})
 })
 
@@ -55,12 +57,27 @@ it("stops at a fork's source history", async () => {
   expect(await turn([user(1, 'Source ask.', 3), answer(2)], 3)).toEqual({})
 })
 
-it('names a skill run by its request, a list marker as part of the phrase', async () => {
+it('keeps a skill as typed and a message reference apart from the words', async () => {
   const skill =
     '<skill name="verify" location="/s">\nReferences are relative to /s.\n\nBody.\n</skill>'
-  expect((await turn([user(1, `${skill}\n\nCheck the login. Then more.`)], 2)).turn?.phrase).toBe(
-    'Check the login…',
+  expect((await turn([user(1, `${skill}\n\nCheck the login.`)], 2)).turn).toEqual({
+    entryId: 1,
+    skill: '/skill:verify',
+    text: 'Check the login.',
+  })
+  expect((await turn([user(1, skill)], 2)).turn).toEqual({
+    entryId: 1,
+    skill: '/skill:verify',
+    text: '',
+  })
+  const reference = (conversation: number, id: number) =>
+    `Ultimate conversation #${conversation}, message #${id}. Read it in codemode with ultimate.entries(${conversation}, { before: ${id + 1}, limit: 1 }).`
+  expect((await turn([user(1, `${reference(44, 900)} — great!\nNow the piano.`)], 2)).turn).toEqual(
+    {
+      entryId: 1,
+      reference: { conversation: 44, entry: 900 },
+      text: 'great! Now the piano.',
+    },
   )
-  expect((await turn([user(1, skill)], 2)).turn?.phrase).toBe('/verify')
-  expect((await turn([user(1, '1a. Keep it. 2b. Drop it.')], 2)).turn?.phrase).toBe('1a. Keep it…')
+  expect((await turn([user(1, reference(44, 900))], 2)).turn?.text).toBe('')
 })

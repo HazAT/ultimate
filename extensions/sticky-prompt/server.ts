@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ConversationId, Cursor, EntryId } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { TurnAction } from './refs.ts'
-import { turnPhrase } from './turn.ts'
+import { turnLine } from './turn.ts'
 
 export default { name: 'sticky-prompt' }
 
@@ -27,8 +27,8 @@ export const actions = {
       for (const entry of page.items) {
         // A fork's history before its first entry is its source's, which its transcript does not show.
         if (entry.conversationId !== own.id) return {}
-        const phrase = turnPhrase(entry)
-        if (phrase !== undefined) return { turn: { entryId: entry.id, phrase } }
+        const turn = turnLine(entry)
+        if (turn) return { turn }
       }
       cursor = page.next
     } while (cursor)

@@ -10,9 +10,10 @@ import {
   useTranscript,
   useTranscriptScroll,
 } from '@/sdk'
+import { ConversationRef } from '../conversations/ui.tsx'
 import { TurnAction } from './refs.ts'
 import type { Turn } from './refs.ts'
-import { turnPhrase } from './turn.ts'
+import { turnLine } from './turn.ts'
 
 /** The newest turn of the user's below `before`, `null` when there is none; it holds below any older `before` too. */
 type Found = { before: number; turn: Turn | null }
@@ -33,10 +34,29 @@ function turnAt(entries: readonly EntryRecord[], id: number, upTo: number): Turn
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index]
     if (entry.id > upTo || entry.conversationId !== id) continue
-    const phrase = turnPhrase(entry)
-    if (phrase !== undefined) return { entryId: entry.id, phrase }
+    const turn = turnLine(entry)
+    if (turn) return turn
   }
   return undefined
+}
+
+/** A turn's words as the user wrote them, two lines at most: a skill as typed, a referenced message as its chip. */
+function TurnWords({ turn }: { turn: Turn }) {
+  return (
+    <span className="line-clamp-2 min-w-0 break-words" data-turn-text>
+      {turn.skill && `${turn.skill} `}
+      {turn.reference && (
+        <span
+          className="mr-1 inline-flex max-w-[min(100%,26rem)] min-w-0 items-center rounded-sm px-0.5 align-bottom font-mono text-[11.5px] leading-4 text-foreground"
+          data-turn-reference
+        >
+          <ConversationRef className="gap-1" id={turn.reference.conversation} />
+          <span className="shrink-0 text-muted-foreground/70">/{turn.reference.entry}</span>
+        </span>
+      )}
+      {turn.text}
+    </span>
+  )
 }
 
 /**
@@ -95,7 +115,7 @@ function StickyPrompt() {
   return (
     <div className="pt-1.5">
       <button
-        className="pointer-events-auto flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-background/90 px-2.5 py-1 text-left text-xs text-muted-foreground shadow-sm backdrop-blur-sm hover:text-foreground disabled:cursor-default"
+        className="pointer-events-auto flex w-full min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-background/90 px-2.5 py-1 text-left text-xs text-muted-foreground shadow-sm backdrop-blur-sm hover:text-foreground disabled:cursor-default"
         data-sticky-prompt={turn === 'earlier' ? 'earlier' : turn.entryId}
         disabled={turn === 'earlier'}
         onClick={() =>
@@ -105,11 +125,11 @@ function StickyPrompt() {
         title="Scroll to this message"
         type="button"
       >
-        <ArrowUpIcon className="size-3 shrink-0" />
+        <ArrowUpIcon className="mt-0.5 size-3 shrink-0" />
         {turn === 'earlier' ? (
           <Shimmer className="truncate">finding your message…</Shimmer>
         ) : (
-          <span className="truncate">{turn.phrase}</span>
+          <TurnWords turn={turn} />
         )}
       </button>
     </div>
