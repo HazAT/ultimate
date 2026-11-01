@@ -127,7 +127,7 @@ function Row({
   return (
     <li
       className={cn(
-        'flex min-w-0 items-start gap-1.5 border-l-2 border-transparent py-[3px] pr-3 pl-2.5 font-mono pointer-coarse:py-1.5 text-[0.6562rem] leading-[18px] text-muted-foreground hover:bg-muted/40',
+        'flex min-w-0 items-start gap-1.5 border-l-2 border-transparent py-[3px] pr-3 pl-2.5 font-mono pointer-coarse:py-1.5 text-[0.6562rem] leading-[1.125rem] text-muted-foreground hover:bg-muted/40',
         loud === 'error' && 'border-error/70 bg-error/[0.06]',
         loud === 'warning' && 'border-warning/60 bg-warning/[0.04]',
       )}

@@ -85,7 +85,9 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   return (
     <span
       className={cn(
-        'inline-flex h-[18px] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[0.6562rem] text-muted-foreground',
+        // `min-h` rather than a fixed height: the tag holds text, so its box has to grow with it when the page font
+        // is raised, or the label clips.
+        'inline-flex min-h-[1.125rem] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[0.6562rem] text-muted-foreground',
         className,
       )}
     >

@@ -18,7 +18,12 @@ it('never sizes text in fixed pixels', () => {
     for (const [path, text] of sources(dir)) {
       // The coarse-pointer rule is the one place a px size is wanted: below 16px iOS zooms a focused field.
       const body = text.replace(/@media \(pointer: coarse\)[\s\S]*?\n\}/, '')
-      if (/text-\[\d+(?:\.\d+)?px\]/.test(body) || /font-size:\s*\d+(?:\.\d+)?px/.test(body))
+      // A px line-height next to a rem font-size collapses the leading as the page font grows.
+      if (
+        /text-\[\d+(?:\.\d+)?px\]/.test(body) ||
+        /font-size:\s*\d+(?:\.\d+)?px/.test(body) ||
+        /leading-\[\d+(?:\.\d+)?px\]/.test(body)
+      )
         offenders.push(`${dir}/${path}`)
     }
   expect(offenders).toEqual([])

@@ -100,7 +100,7 @@ function Row({ row }: { row: SystemRow }) {
   const conversation = row.conversation
   return (
     <li data-row={row.id}>
-      <div className="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[0.6562rem] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
+      <div className="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[0.6562rem] leading-[1.125rem] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
         <button
           className="flex min-w-0 flex-1 cursor-pointer items-start gap-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring"
           disabled={!row.trace}

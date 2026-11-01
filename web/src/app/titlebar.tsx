@@ -220,7 +220,8 @@ function SurfaceItems() {
   const shown = useStore((state) => state.ui.surface?.id)
   return (
     <nav
-      className="flex h-[35px] shrink-0 items-stretch gap-4 max-md:hidden"
+      // `min-h` so the tab labels, which scale with the page font, are never clipped by the strip.
+      className="flex min-h-[2.1875rem] shrink-0 items-stretch gap-4 max-md:hidden"
       data-ui="surface-tabs"
     >
       {surfaces.map((surface, index) => {

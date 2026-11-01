@@ -189,7 +189,8 @@ function PhasedRow({
     <div
       className={cn(
         'group relative mx-2 flex items-center rounded-md transition-colors',
-        hasActivity ? 'h-[58px]' : hasMetadata ? 'h-11' : 'h-7',
+        // `rem`, like the two heights it alternates with: a fixed 58px row would not grow with the page font.
+        hasActivity ? 'h-[3.625rem]' : hasMetadata ? 'h-11' : 'h-7',
         shown ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50',
       )}
       data-conversation={conversation.id}

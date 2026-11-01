@@ -73,7 +73,7 @@ export function TraceTree({ trace }: { trace: string }) {
   const events: SystemRow[] = tree.data?.events ?? []
   return (
     <div
-      className="ml-4 border-l border-border/70 py-1 pr-1 pl-2 font-mono text-[0.6562rem] leading-[18px] text-muted-foreground"
+      className="ml-4 border-l border-border/70 py-1 pr-1 pl-2 font-mono text-[0.6562rem] leading-[1.125rem] text-muted-foreground"
       data-trace={trace}
     >
       {tree.loading && !tree.data && <p>loading…</p>}

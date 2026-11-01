@@ -124,7 +124,7 @@ function Block({
           <span
             className={cn(
               // A label shows only where the block has room for a few letters of it.
-              'relative hidden truncate px-1.5 font-mono text-[0.625rem] leading-[20px] @[2.75rem]:block',
+              'relative hidden truncate px-1.5 font-mono text-[0.625rem] leading-[1.25rem] @[2.75rem]:block',
               tone === 'running' ? 'text-brand' : 'text-foreground/70',
             )}
           >
@@ -145,7 +145,7 @@ function Block({
 function Calls({ run }: { run: LaneRun }) {
   const [open, setOpen] = useState<number>()
   return (
-    <ul className="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[0.6562rem] leading-[18px] text-muted-foreground">
+    <ul className="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[0.6562rem] leading-[1.125rem] text-muted-foreground">
       {run.calls.map((call, index) => (
         // oxlint-disable-next-line react/no-array-index-key -- Run calls have no per-call id; traces can repeat.
         <li key={index}>
