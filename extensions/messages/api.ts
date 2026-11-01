@@ -30,6 +30,8 @@ export type Message = {
   images?: { entry: EntryId; count: number }
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
+  /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
+  awaits?: true
   /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
   routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */

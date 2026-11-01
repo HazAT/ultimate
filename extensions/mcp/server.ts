@@ -80,17 +80,31 @@ function entryOf(value: unknown): Entry | string {
 
 const SECRET = /\$\{([A-Z][A-Z0-9_]*)\}/g
 
+/** The secrets an entry names with `${NAME}`, in its url, headers, command args and env. */
+const placeholders = (entry: Entry) =>
+  ('url' in entry
+    ? [entry.url, ...Object.values(entry.headers)]
+    : [...entry.args, ...Object.values(entry.env)]
+  ).flatMap((value) => [...value.matchAll(SECRET)].map(([, name]) => name))
+
+class MissingSecret extends Error {
+  secret: string
+  constructor(secret: string) {
+    super(`Missing secret ${secret}: add it in the Secrets panel (⌘K → Secrets)`)
+    this.secret = secret
+  }
+}
+
 /** `${NAME}` in a value becomes the secret `NAME` from the Secrets panel, taken literally; `found` collects them. */
 async function expand(home: string, value: string, found: string[]) {
-  const secrets = new Map<string, string>()
+  const values = new Map<string, string>()
   for (const [, name] of value.matchAll(SECRET)) {
     const secret = await readSecret(home, name)
-    if (secret === undefined)
-      throw new Error(`Missing secret ${name}: add it in the Secrets panel (⌘K → Secrets)`)
-    secrets.set(name, secret)
+    if (secret === undefined) throw new MissingSecret(name)
+    values.set(name, secret)
     found.push(secret)
   }
-  return value.replace(SECRET, (_token, name: string) => secrets.get(name)!)
+  return value.replace(SECRET, (_token, name: string) => values.get(name)!)
 }
 const expandAll = async (home: string, values: Record<string, string>, found: string[]) =>
   Object.fromEntries(
@@ -137,6 +151,18 @@ async function configured(host: ExtensionHost) {
   return servers
 }
 
+/** Every `${NAME}` in the configured servers, declared so the Secrets panel lists it with its Add button. */
+export async function secrets(host: ExtensionHost) {
+  const users = new Map<string, Set<string>>()
+  for (const server of (await configured(host)).values())
+    for (const name of server.entry ? placeholders(server.entry) : [])
+      users.set(name, (users.get(name) ?? new Set()).add(server.name))
+  return [...users].map(([name, servers]) => ({
+    name,
+    description: `Used by the MCP server${servers.size > 1 ? 's' : ''} ${[...servers].join(', ')}`,
+  }))
+}
+
 const listing = (server: Server) =>
   [
     `${server.name}: ${server.tools.length} tools. Call one with mcp {server, tool, args}.`,
@@ -181,10 +207,11 @@ export default async function mcp(host: ExtensionHost) {
     clearTimeout(server.timer)
     delete server.retryAt
     delete server.error
+    delete server.missing
     server.state = 'connecting'
     const entry = server.entry!
-    const secrets: string[] = []
-    server.secrets = secrets
+    const found: string[] = []
+    server.secrets = found
     const client = new McpClient({
       name: 'ultimate',
       version: '1.0.0',
@@ -201,13 +228,13 @@ export default async function mcp(host: ExtensionHost) {
       const transport =
         'url' in entry
           ? new StreamableHttpTransport({
-              url: await expand(host.userHome, entry.url, secrets),
-              headers: await expandAll(host.userHome, entry.headers, secrets),
+              url: await expand(host.userHome, entry.url, found),
+              headers: await expandAll(host.userHome, entry.headers, found),
             })
           : (stdio = new StdioTransport({
               command: entry.command,
-              args: await Promise.all(entry.args.map((arg) => expand(host.userHome, arg, secrets))),
-              env: await expandAll(host.userHome, entry.env, secrets),
+              args: await Promise.all(entry.args.map((arg) => expand(host.userHome, arg, found))),
+              env: await expandAll(host.userHome, entry.env, found),
               cwd: entry.cwd ?? host.projectRoot,
             }))
       await client.connect(transport)
@@ -229,6 +256,7 @@ export default async function mcp(host: ExtensionHost) {
       server.attempts = 0
     } catch (error) {
       if (closed || server.client !== client) return
+      if (error instanceof MissingSecret) server.missing = error.secret
       const stderr = stdio?.stderr.trim().split('\n').at(-1)
       fail(
         server,
@@ -285,6 +313,7 @@ export default async function mcp(host: ExtensionHost) {
         state: server.state,
         ...(server.state === 'connected' ? { tools: server.tools.length } : {}),
         ...(server.error ? { error: server.error } : {}),
+        ...(server.missing ? { missing: server.missing } : {}),
         ...(server.retryAt ? { retryAt: server.retryAt } : {}),
       })),
     async reconnect(name) {

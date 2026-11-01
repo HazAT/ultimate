@@ -46,7 +46,7 @@ export type UpdateState = {
   fetchedAt?: number
   /** `pnpm-lock.yaml` differs from the installed packages: an install is owed. */
   install: boolean
-  /** The packages changed since this server started: a restart loads them. */
+  /** Packages were installed, or `server/` or `shared/` changed in HEAD, since this server started: a restart loads them. */
   restart: boolean
   /** The last update this server made, until it restarts. */
   updated?: UpdateResult & { ok: true }

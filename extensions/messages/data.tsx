@@ -79,8 +79,8 @@ export function conversationState(
 
 /**
  * Whether conversation `id` waits on the primary agent: a reply-enabled message to it is open, or its latest report
- * (a routed final answer after it stopped with nothing under way) or reply to the primary agent's message came after
- * the primary agent's latest message to it and after it was last concluded.
+ * (a routed final answer after it stopped with nothing under way) or a branch's reply to the primary agent's message
+ * (`awaits`) came after the primary agent's latest message to it and after it was last concluded.
  */
 function awaitsPrimary(
   id: number,
@@ -93,8 +93,7 @@ function awaitsPrimary(
   for (const message of log.messages) {
     if (message.from === id && message.to === primary) {
       if (isOpen(message)) return true
-      if ((message.report || message.re !== undefined) && !settled(message, concludedSince))
-        reported = true
+      if ((message.report || message.awaits) && !settled(message, concludedSince)) reported = true
     } else if (message.from === primary && message.to === id) reported = false
   }
   return reported

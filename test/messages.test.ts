@@ -1596,6 +1596,16 @@ it("routes @ultimate's final answer to every branch whose reply shared its run",
   expect(new Set(routed.map((m) => m.to))).toEqual(new Set([a.id, b.id]))
   expect(routed[0].text).toContain(`answers #${a.id} and #${b.id} together`)
 })
+it("marks only a branch's reply as awaiting @ultimate, never a standing agent's", async () => {
+  // life: @google answered @ultimate's question and showed as awaiting @ultimate, which no routed answer ever cleared.
+  const f = await fixture()
+  await f.send(`#${f.recipient.id}`)
+  await until(async () => (await replies(f)).length === 1)
+  const b = await branched(f)
+  const reply = async (id: number) => (await f.log())!.messages.find((m) => m.from === id && m.re)
+  expect((await reply(f.recipient.id))?.awaits).toBeUndefined()
+  expect((await reply(b.id))?.awaits).toBe(true)
+})
 it("does not route an answer to the starter's reply-enabled message", async () => {
   const f = await fixture()
   const b = await branched(f)
