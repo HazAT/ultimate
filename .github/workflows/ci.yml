@@ -29,9 +29,10 @@ jobs:
       # The lockfile is authoritative: a dependency change that misses it fails here, not on a user's machine.
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      # `vite.config.ts` runs 8 workers, which suits a development machine. A CI runner has fewer cores, and the
-      # server-heavy suites are sensitive to oversubscription, so they get a worker count the runner can feed.
-      - run: pnpm test -- --maxWorkers=4
+      # `vite.config.ts` runs 8 workers, which suits a development machine. The server-heavy suites start real
+      # servers and streams, so oversubscribing a 2-core runner pushes their slowest cases past the 30 s limit;
+      # two workers keeps them inside it.
+      - run: pnpm test -- --maxWorkers=2
 
   e2e:
     name: End to end
@@ -47,6 +48,10 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Some e2e suites make commits and only set a local identity in some of them; a runner has no global one.
+      - run: |
+          git config --global user.name 'CI'
+          git config --global user.email 'ci@example.test'
       # The dependency is `playwright-core`, whose CLI is `playwright-core`; it ships no browser of its own, and the
       # browser e2e finds one under ~/.cache/ms-playwright. `--with-deps` pulls the system libraries Chromium needs.
       - run: pnpm exec playwright-core install --with-deps chromium
