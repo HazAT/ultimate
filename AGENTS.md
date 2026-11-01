@@ -13,7 +13,7 @@ A project is a forest of conversation trees, like commit histories.
   intents, latest conversation abstracts and landings with divergence and `#conversation/entry` breadcrumbs. The UI
   calls a tally **context** and shows it as the read-only **History** page (the sidebar's project path opens it), with **Open in Zed** and **Back to
   @ultimate**; the sidebar's Memory row shows the memory's estimated tokens (what a branch starts from) and opens the
-  Memory surface, and each root heads its tree with its last three events (landings, notes, branches, compactions).
+  Memory surface.
   Start a project with @ultimate: Continue on Get ready, or **Set up with @ultimate** on the Start here card that
   @ultimate's conversation shows until onboarding has run. It walks the user through Ultimate, handles setup
   cards, reads the project and writes its first memories with `remember`; the user's answer about the project
@@ -84,11 +84,9 @@ New UI is a new extension folder, not a change to `web/`: follow the `write-exte
 
 The top-level agent may commit verified work, land it and normally push the destination branch to `origin`
 (`HazAT/ultimate`), public or private, without asking. `workspace submit` runs checks and pushes. Subagents commit
-and report, never push. Preserve remote advancement with a
-non-destructive merge in an isolate, inspect it and rerun checks; stop for ambiguous conflicts, failed checks,
-security concerns or any force push/history rewrite. Never push secrets or unrelated unverified work.
-This permission does not cover other repositories, releases, publishing, deployments or GitHub issue/PR changes.
-See [integration details](docs/worktrees.md#standing-permission-to-push-this-repository) before pushing.
+and report, never push. Never force-push, rewrite history or push secrets. This permission does not cover other
+repositories, releases, publishing, deployments or GitHub issue/PR changes. A rejected push or remote advancement:
+see [integration details](docs/worktrees.md#standing-permission-to-push-this-repository).
 
 ## Conventions
 

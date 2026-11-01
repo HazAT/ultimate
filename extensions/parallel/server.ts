@@ -1,5 +1,5 @@
 import { Type } from '@earendil-works/pi-ai'
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
+import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { parallelRequest, ParallelApiError } from './client.ts'
@@ -18,15 +18,6 @@ export const secrets = [
     url: 'https://platform.parallel.ai',
   },
 ]
-const guidance = `Use web_search to discover pages, verify current facts, or locate documentation.
-Use web_search searchQueries for 2-3 concise keyword variants when a topic benefits from multiple angles.
-Use web_fetch after web_search when the full content of a promising result is needed.
-Do not use web_search for a URL already provided by the user; use web_fetch for public webpages or curl for raw/API/local URLs.
-Use web_fetch for a specific public webpage URL, including JavaScript-heavy pages and PDFs.
-Use web_fetch objective when only a particular topic or section of the page is relevant.
-Use web_fetch with an array to fetch up to 20 related webpages in one request.
-Do not use web_fetch for raw files, API endpoints, JSON feeds, or localhost; use curl or bash for those.
-Do not use web_fetch for discovery; use web_search when no URL is known yet.`
 const missing =
   'Missing PARALLEL_API_KEY or secrets is not enabled. Enable secrets and add PARALLEL_API_KEY in the Secrets panel (⌘K → Secrets).'
 export default function parallel(host: ExtensionHost) {
@@ -55,7 +46,6 @@ export default function parallel(host: ExtensionHost) {
   }
   return defineExtension({
     name: 'parallel',
-    sections: [section('web_tools', () => guidance)],
     tools: [
       defineTool({
         name: 'web_search',
@@ -155,8 +145,7 @@ export default function parallel(host: ExtensionHost) {
           "Fetch one or more known public webpages with Parallel's Extract API and return clean, LLM-optimized markdown. Handles JavaScript-rendered pages and PDFs. Use an objective to focus the returned excerpts. Do not use for raw files, APIs, JSON feeds, or localhost; fetch those directly with curl. Output is limited to 50KB or 2,000 lines.",
         parameters: Type.Object({
           url: Type.Any({
-            description:
-              'A public webpage URL or an array of up to 20 public webpage URLs. Use curl instead for raw files, API endpoints, JSON feeds, or localhost.',
+            description: 'A public webpage URL or an array of up to 20 public webpage URLs.',
           }),
           objective: Type.Optional(
             Type.String({
