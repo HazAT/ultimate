@@ -19,7 +19,7 @@ const ranges = { '24h': 86_400_000, '7d': 7 * 86_400_000, all: undefined } as co
 type Range = keyof typeof ranges
 
 const chip =
-  'h-6 shrink-0 cursor-pointer rounded-md px-2 font-mono text-[10.5px] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'h-6 shrink-0 cursor-pointer rounded-md px-2 font-mono text-[0.6562rem] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 const loud = (event: ActivityEvent) => tone(event) === 'error' || tone(event) === 'warning'
 
@@ -105,7 +105,7 @@ function ActivityPanel() {
             <button
               aria-checked={range === option}
               className={cn(
-                'h-5 cursor-pointer rounded-[5px] px-1.5 font-mono text-[10.5px] text-muted-foreground transition-colors hover:text-foreground',
+                'h-5 cursor-pointer rounded-[5px] px-1.5 font-mono text-[0.6562rem] text-muted-foreground transition-colors hover:text-foreground',
                 range === option && 'bg-accent text-foreground',
               )}
               key={option}
@@ -202,7 +202,7 @@ function Older({
         events={shown}
         now={now}
       />
-      <div className="flex min-h-7 items-center gap-2 px-3 pt-1.5 font-mono text-[10.5px] text-muted-foreground">
+      <div className="flex min-h-7 items-center gap-2 px-3 pt-1.5 font-mono text-[0.6562rem] text-muted-foreground">
         {done ? (
           shown.length > 0 && (
             <span>{since === undefined ? 'start of the log' : `start of ${where}`}</span>

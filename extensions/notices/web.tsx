@@ -37,7 +37,7 @@ function Toasts() {
         return (
           <div
             className={cn(
-              'group/notice flex items-start gap-2 px-2.5 py-2 font-mono text-[11.5px] leading-snug',
+              'group/notice flex items-start gap-2 px-2.5 py-2 font-mono text-[0.7188rem] leading-snug',
               notice.level === 'error' && 'bg-error/6',
               notice.level === 'warning' && 'bg-warning/6',
             )}

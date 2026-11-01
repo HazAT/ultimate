@@ -101,7 +101,7 @@ function Process({ system }: { system: SystemInfo }) {
             <span className="text-brand">→ {restart.pending} swapping…</span>
           )}
           <Button
-            className="ml-auto h-5 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground"
+            className="ml-auto h-5 gap-1 px-1.5 font-mono text-[0.6562rem] text-muted-foreground"
             disabled={restart.busy}
             onClick={restart.run}
             size="sm"
@@ -210,7 +210,7 @@ function Code({ system }: { system: SystemInfo }) {
             <>
               <span className="text-warning">changed · restart pending</span>
               <Button
-                className="ml-auto h-5 gap-1 px-1.5 font-mono text-[10.5px] text-warning hover:text-warning"
+                className="ml-auto h-5 gap-1 px-1.5 font-mono text-[0.6562rem] text-warning hover:text-warning"
                 disabled={restart.busy}
                 onClick={restart.run}
                 size="sm"
@@ -312,7 +312,7 @@ function Model() {
         </Row>
       </Rows>
       {buckets.length > 0 && (
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-t border-border/50 pt-2 font-mono text-[11px] text-muted-foreground">
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-t border-border/50 pt-2 font-mono text-[0.6875rem] text-muted-foreground">
           {buckets.map(([name, bucket]) => (
             <Bucket bucket={bucket} key={name} name={name} />
           ))}
@@ -349,7 +349,7 @@ function Described({
   tags?: ReactNode
 }) {
   return (
-    <div className="min-w-0 font-mono text-[11px]">
+    <div className="min-w-0 font-mono text-[0.6875rem]">
       <div className="flex min-w-0 items-center gap-1.5">
         <Copy className="text-foreground/90" value={path}>
           {name}
@@ -357,7 +357,7 @@ function Described({
         {tags}
       </div>
       {description && (
-        <p className="line-clamp-2 font-sans text-[11.5px] leading-snug text-muted-foreground">
+        <p className="line-clamp-2 font-sans text-[0.7188rem] leading-snug text-muted-foreground">
           {description}
         </p>
       )}
@@ -388,7 +388,7 @@ function Skills({ system }: { system: SystemInfo }) {
         {system.skills.length === 0 && <Empty>no skills</Empty>}
         {system.skillDiagnostics.map((diagnostic) => (
           <div
-            className={`font-mono text-[11px] leading-snug ${diagnostic.type === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}
+            className={`font-mono text-[0.6875rem] leading-snug ${diagnostic.type === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}
             key={`${diagnostic.path ?? ''}:${diagnostic.message}`}
             title={diagnostic.path}
           >
@@ -407,7 +407,7 @@ function ContextFiles({ system }: { system: SystemInfo }) {
   const path = usePath(system)
   return (
     <Section id="context" meta={system.contextFiles.length} title="Context files">
-      <div className="flex flex-col gap-0.5 font-mono text-[11.5px] text-foreground/85">
+      <div className="flex flex-col gap-0.5 font-mono text-[0.7188rem] text-foreground/85">
         {system.contextFiles.map((file) => (
           <Copy key={file} value={file}>
             {path(file, 52)}
@@ -434,13 +434,13 @@ function shortSkill(path: string) {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="font-mono text-[11px] text-muted-foreground">{children}</div>
+  return <div className="font-mono text-[0.6875rem] text-muted-foreground">{children}</div>
 }
 
 function InfoPanel() {
   const system = useSystem()
   if (!system)
-    return <div className="p-3 font-mono text-[11.5px] text-muted-foreground">connecting…</div>
+    return <div className="p-3 font-mono text-[0.7188rem] text-muted-foreground">connecting…</div>
   return (
     <div className="pb-4">
       {/* The shown conversation first, then this host, then what loads into every prompt. */}

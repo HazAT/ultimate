@@ -35,9 +35,9 @@ export function SkillPicker() {
           Pick a skill; the composer then holds its command for you to add a request and send.
         </DialogDescription>
         <Command>
-          <CommandInput className="text-[13px]" placeholder="Run a skill…" />
+          <CommandInput className="text-[0.8125rem]" placeholder="Run a skill…" />
           <CommandList className="max-h-[50vh]">
-            <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+            <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
               No matching skill.
             </CommandEmpty>
             {skills.map((skill) => (
@@ -48,14 +48,14 @@ export function SkillPicker() {
                 onSelect={() => choose(skill.name)}
                 value={skill.name}
               >
-                <span className="flex w-full items-center gap-2 text-[12.5px]">
+                <span className="flex w-full items-center gap-2 text-[0.7812rem]">
                   <span className="text-brand">{skill.name}</span>
-                  <span className="ml-auto text-[11px] text-muted-foreground">
+                  <span className="ml-auto text-[0.6875rem] text-muted-foreground">
                     {skill.scope}
                     {skill.manual && ' · manual'}
                   </span>
                 </span>
-                <span className="line-clamp-2 font-sans text-[11.5px] leading-snug text-muted-foreground">
+                <span className="line-clamp-2 font-sans text-[0.7188rem] leading-snug text-muted-foreground">
                   {skill.description}
                 </span>
               </CommandItem>

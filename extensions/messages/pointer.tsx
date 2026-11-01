@@ -37,7 +37,7 @@ export function QuestionPointer({ entry }: { entry: EntryRecord }) {
     : [undefined, summary]
   return (
     <Card attention={open} data-message-pointer={id}>
-      <header className="flex min-w-0 items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex min-w-0 items-center gap-2 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <MessageCircleQuestionIcon
           className={cn(
             'size-3.5 shrink-0',

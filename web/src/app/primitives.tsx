@@ -44,7 +44,7 @@ export function StatusLine() {
   const phone = useViewport() === 'phone'
   return (
     <footer
-      className="status-line flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border/70 bg-sidebar px-3 font-mono text-[11.5px] text-muted-foreground max-md:px-8 md:pointer-coarse:box-content md:pointer-coarse:px-7 md:pointer-coarse:pb-3"
+      className="status-line flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border/70 bg-sidebar px-3 font-mono text-[0.7188rem] text-muted-foreground max-md:px-8 md:pointer-coarse:box-content md:pointer-coarse:px-7 md:pointer-coarse:pb-3"
       data-ui="status-line"
     >
       {phone ? (
@@ -84,7 +84,7 @@ function StatusMore() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="flex w-auto max-w-[calc(100vw-2rem)] flex-col items-start gap-2.5 px-3 py-2.5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
+        className="flex w-auto max-w-[calc(100vw-2rem)] flex-col items-start gap-2.5 px-3 py-2.5 font-mono text-[0.7188rem] whitespace-nowrap text-muted-foreground"
         side="top"
       >
         <Slot name="statusline.left" phone={false} variant="inline" />
@@ -270,7 +270,7 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
   }, [panels, active])
   const hidden = panels.filter((panel) => fit.overflow.has(key(panel)))
   return (
-    <div className="flex h-10 shrink-0 items-center border-b border-border/70 px-2 font-mono text-[11.5px]">
+    <div className="flex h-10 shrink-0 items-center border-b border-border/70 px-2 font-mono text-[0.7188rem]">
       <div className="relative flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden" ref={row}>
         {/* Every tab with and without its label, and the menu button, unseen: what fits. */}
         <div aria-hidden className="invisible absolute flex w-max gap-0.5" ref={measure}>
@@ -335,7 +335,7 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
                 const Icon = panel.icon
                 return (
                   <DropdownMenuItem
-                    className="gap-2 py-1 font-mono text-[12px]"
+                    className="gap-2 py-1 font-mono text-[0.75rem]"
                     key={key(panel)}
                     onSelect={() => actions.openPanel(panel.id)}
                   >
@@ -487,7 +487,7 @@ export function Dock({
         onPointerDown={resize}
         role="separator"
       />
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 pr-1 pl-3 font-mono text-[11.5px] text-muted-foreground">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 pr-1 pl-3 font-mono text-[0.7188rem] text-muted-foreground">
         {title}
         <IconButton label={`Hide ${title}`} onClick={() => setOpen(false)}>
           {side === 'right' ? (

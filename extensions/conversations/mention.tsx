@@ -30,7 +30,7 @@ export function MentionLink({
   }
   return (
     <a
-      className="inline-flex max-w-[min(100%,26rem)] min-w-0 items-center rounded-sm px-0.5 align-bottom font-mono text-[11.5px] leading-5 text-foreground no-underline transition-colors hover:bg-accent"
+      className="inline-flex max-w-[min(100%,26rem)] min-w-0 items-center rounded-sm px-0.5 align-bottom font-mono text-[0.7188rem] leading-5 text-foreground no-underline transition-colors hover:bg-accent"
       data-conversation-mention={conversation.id}
       href={`?conversation=${conversation.id}`}
       onClick={open}

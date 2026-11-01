@@ -79,7 +79,7 @@ const day = (date: string) => (/^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 1
 function Action({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Button
-      className="mr-1.5 h-6 shrink-0 px-2 font-mono text-[11px]"
+      className="mr-1.5 h-6 shrink-0 px-2 font-mono text-[0.6875rem]"
       onClick={onClick}
       size="xs"
       type="button"
@@ -158,14 +158,14 @@ function Card({
       <ToolContent>
         {call.status === 'running' && (
           <ToolSection>
-            <Shimmer className="text-[12px]">{running}</Shimmer>
+            <Shimmer className="text-[0.75rem]">{running}</Shimmer>
           </ToolSection>
         )}
         {failure ? (
           <ToolSection>
             <div className="break-words text-error">{failure.error}</div>
             {(failure.httpStatus || failure.ref_id) && (
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-[0.6875rem] text-muted-foreground">
                 {[
                   failure.httpStatus && `HTTP ${failure.httpStatus}`,
                   failure.ref_id && `ref ${failure.ref_id}`,
@@ -205,7 +205,7 @@ function Notes({ details }: { details: Details }) {
   const warnings = details.warnings ?? []
   if (!errors.length && !warnings.length) return null
   return (
-    <ToolSection className="border-t border-border/60 text-[11.5px]">
+    <ToolSection className="border-t border-border/60 text-[0.7188rem]">
       {errors.map((error, index) => (
         // oxlint-disable-next-line react/no-array-index-key -- Fixed fetch errors may repeat for repeated input URLs.
         <div className="flex min-w-0 gap-1.5 text-error" key={`error:${index}`}>
@@ -276,7 +276,7 @@ function Search({ call }: { call: ToolCallView }) {
       }
     >
       {keywords.length > 0 && (
-        <ToolSection className="text-[11px] text-muted-foreground">
+        <ToolSection className="text-[0.6875rem] text-muted-foreground">
           keywords: {keywords.join(' · ')}
         </ToolSection>
       )}
@@ -291,12 +291,12 @@ function Search({ call }: { call: ToolCallView }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <Link
-                    className="block truncate font-sans text-[13px] text-foreground hover:underline"
+                    className="block truncate font-sans text-[0.8125rem] text-foreground hover:underline"
                     url={result.url}
                   >
                     {result.title || bare(result.url)}
                   </Link>
-                  <div className="mt-0.5 flex min-w-0 gap-2 text-[11px] text-muted-foreground">
+                  <div className="mt-0.5 flex min-w-0 gap-2 text-[0.6875rem] text-muted-foreground">
                     <span className="truncate">{host(result.url)}</span>
                     {result.publish_date && (
                       <span className="shrink-0 text-muted-foreground">
@@ -305,7 +305,7 @@ function Search({ call }: { call: ToolCallView }) {
                     )}
                   </div>
                   {excerpt && (
-                    <p className="mt-1 line-clamp-3 font-sans text-[12.5px] leading-snug text-muted-foreground">
+                    <p className="mt-1 line-clamp-3 font-sans text-[0.7812rem] leading-snug text-muted-foreground">
                       {excerpt}
                     </p>
                   )}
@@ -328,11 +328,11 @@ function FetchedPage({ page, open }: { page: Page; open: boolean }) {
   const body = page.content || page.excerpts.join('\n\n')
   return (
     <li className="px-2.5 py-2">
-      <div className="truncate font-sans text-[13px] text-foreground">
+      <div className="truncate font-sans text-[0.8125rem] text-foreground">
         {page.title || bare(page.url)}
       </div>
       <Link
-        className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+        className="flex min-w-0 items-center gap-1 text-[0.6875rem] text-muted-foreground hover:text-foreground"
         url={page.url}
       >
         <span className="truncate">{bare(page.url)}</span>
@@ -340,7 +340,7 @@ function FetchedPage({ page, open }: { page: Page; open: boolean }) {
       </Link>
       {body && (
         <Collapsible defaultOpen={open}>
-          <CollapsibleTrigger className="group mt-1.5 flex items-center gap-1 rounded-sm text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
+          <CollapsibleTrigger className="group mt-1.5 flex items-center gap-1 rounded-sm text-[0.6875rem] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
             <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]:rotate-90" />
             {page.content
               ? `content · ${formatBytes(new TextEncoder().encode(page.content).length)}${page.contentTruncated ? ' · truncated' : ''}`
@@ -348,7 +348,10 @@ function FetchedPage({ page, open }: { page: Page; open: boolean }) {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-1.5 max-h-96 overflow-y-auto rounded-sm border border-border/70 bg-background px-3 py-2 font-sans">
-              <MessageResponse className="text-[13px] leading-relaxed" disallowedElements={offline}>
+              <MessageResponse
+                className="text-[0.8125rem] leading-relaxed"
+                disallowedElements={offline}
+              >
                 {body}
               </MessageResponse>
             </div>
@@ -385,7 +388,7 @@ function Fetch({ call }: { call: ToolCallView }) {
       }
     >
       {objective && (
-        <ToolSection className="text-[11px] text-muted-foreground">
+        <ToolSection className="text-[0.6875rem] text-muted-foreground">
           objective: {objective}
         </ToolSection>
       )}

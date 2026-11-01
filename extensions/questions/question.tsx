@@ -27,7 +27,7 @@ function Mark({ hint, chosen, multi }: { hint?: string; chosen: boolean; multi: 
     <span
       aria-hidden
       className={cn(
-        'mt-px flex size-5 shrink-0 items-center justify-center border font-mono text-[10px] transition-colors duration-150',
+        'mt-px flex size-5 shrink-0 items-center justify-center border font-mono text-[0.625rem] transition-colors duration-150',
         multi ? 'rounded-[5px]' : 'rounded-full',
         chosen
           ? 'border-brand bg-brand text-brand-foreground'
@@ -64,7 +64,7 @@ function Field({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKey}
-      className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] transition-colors outline-none placeholder:text-muted-foreground focus:border-brand/60 max-md:min-h-11"
+      className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-[0.8125rem] transition-colors outline-none placeholder:text-muted-foreground focus:border-brand/60 max-md:min-h-11"
     />
   )
 }
@@ -104,7 +104,7 @@ function Option({
         aria-pressed={chosen}
         onClick={onSelect}
         onFocus={onActive}
-        className="group/option flex min-h-9 w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-[0.995] max-md:min-h-11"
+        className="group/option flex min-h-9 w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[0.8125rem] leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-[0.995] max-md:min-h-11"
       >
         <Mark hint={hint} chosen={chosen} multi={multi} />
         <span className="min-w-0 flex-1 pt-px">
@@ -116,7 +116,7 @@ function Option({
           )}
         </span>
         {choice.recommended && (
-          <span className="mt-0.5 shrink-0 rounded-full border border-brand/30 bg-brand/10 px-1.5 py-px font-mono text-[10px] text-brand">
+          <span className="mt-0.5 shrink-0 rounded-full border border-brand/30 bg-brand/10 px-1.5 py-px font-mono text-[0.625rem] text-brand">
             my pick
           </span>
         )}
@@ -153,7 +153,7 @@ function Scale({
               onClick={() => onSelect(index)}
               style={{ transitionDelay: chosen || below ? `${index * 20}ms` : undefined }}
               className={cn(
-                'h-9 min-w-0 flex-1 cursor-pointer rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-95 max-md:h-11',
+                'h-9 min-w-0 flex-1 cursor-pointer rounded-md border font-mono text-[0.8125rem] transition-[background-color,border-color,color,scale] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-95 max-md:h-11',
                 chosen
                   ? 'border-brand bg-brand text-brand-foreground'
                   : below
@@ -167,7 +167,7 @@ function Scale({
         })}
       </div>
       {(question.scale?.low || question.scale?.high) && (
-        <div className="mt-1.5 flex justify-between font-mono text-[11px] text-muted-foreground">
+        <div className="mt-1.5 flex justify-between font-mono text-[0.6875rem] text-muted-foreground">
           <span>{question.scale?.low}</span>
           <span>{question.scale?.high}</span>
         </div>
@@ -293,7 +293,7 @@ export function QuestionItem({
       >
         <span
           className={cn(
-            'flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] transition-colors duration-200',
+            'flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[0.625rem] transition-colors duration-200',
             done
               ? 'bg-brand/15 text-brand'
               : current
@@ -305,7 +305,7 @@ export function QuestionItem({
         </span>
         <span
           className={cn(
-            'min-w-0 text-[13px] leading-snug',
+            'min-w-0 text-[0.8125rem] leading-snug',
             current ? 'flex-1 text-foreground' : 'shrink truncate text-foreground/85',
           )}
         >
@@ -314,7 +314,7 @@ export function QuestionItem({
         {!current && (
           <span
             className={cn(
-              'ml-auto flex min-w-0 shrink-[2] items-center gap-1.5 font-mono text-[11px]',
+              'ml-auto flex min-w-0 shrink-[2] items-center gap-1.5 font-mono text-[0.6875rem]',
               done ? 'text-muted-foreground' : 'text-muted-foreground',
             )}
           >
@@ -331,7 +331,9 @@ export function QuestionItem({
           </span>
         )}
         {current && multi && (
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">pick any</span>
+          <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+            pick any
+          </span>
         )}
       </button>
       <div
@@ -355,7 +357,7 @@ export function QuestionItem({
                 {options}
                 <div className="relative min-h-24 min-w-0">
                   <div className="flex min-w-0 flex-col rounded-md border border-border/70 bg-background/70 @lg:absolute @lg:inset-0">
-                    <div className="border-b border-border/60 px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
+                    <div className="border-b border-border/60 px-2.5 py-1 font-mono text-[0.625rem] text-muted-foreground">
                       preview · {list[shown]?.label}
                     </div>
                     <div className="min-h-0 min-w-0 flex-1 overflow-auto px-2.5 py-2 text-xs leading-relaxed">

@@ -50,7 +50,7 @@ function Tag({ children, className }: { children: ReactNode; className?: string 
   return (
     <span
       className={cn(
-        'shrink-0 rounded-sm border border-border/80 px-1 font-mono text-[10px] leading-4 text-muted-foreground',
+        'shrink-0 rounded-sm border border-border/80 px-1 font-mono text-[0.625rem] leading-4 text-muted-foreground',
         className,
       )}
     >
@@ -124,9 +124,9 @@ function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteri
 
 function Note({ note, clamp }: { note: Task['notes'][number]; clamp?: boolean }) {
   return (
-    <p className="flex min-w-0 gap-1.5 font-sans text-[12px] leading-snug text-muted-foreground">
+    <p className="flex min-w-0 gap-1.5 font-sans text-[0.75rem] leading-snug text-muted-foreground">
       <span
-        className="shrink-0 pt-px font-mono text-[10.5px] text-muted-foreground tabular-nums"
+        className="shrink-0 pt-px font-mono text-[0.6562rem] text-muted-foreground tabular-nums"
         title={note.at}
       >
         {time(note.at)}
@@ -169,7 +169,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
   useRefresh(() => recorded && refetch(), `${child.busy} ${parentBusy}`)
   if (!isolate) return null
   return (
-    <div className="font-mono text-[11px] text-muted-foreground">
+    <div className="font-mono text-[0.6875rem] text-muted-foreground">
       <div className="flex h-6 min-w-0 items-center gap-1.5">
         <GitBranchIcon className="size-3 shrink-0" />
         <span className="min-w-0 truncate" title={`${isolate.branch}\n${isolate.path}`}>
@@ -190,7 +190,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
         </Tag>
         {isolate.ahead !== null && (
           <span
-            className="shrink-0 text-[10.5px] text-muted-foreground"
+            className="shrink-0 text-[0.6562rem] text-muted-foreground"
             title={`${isolate.ahead} commit${isolate.ahead === 1 ? '' : 's'} on the branch that the parent checkout does not have`}
           >
             ↑{isolate.ahead}
@@ -206,7 +206,7 @@ function ChildLink({ id, child }: { id: number; child?: ConversationSummary }) {
   const { switchConversation } = useUltimate()
   return (
     <Button
-      className="h-5 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+      className="h-5 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
       onClick={() => switchConversation(id)}
       size="xs"
       title={child?.title ?? `Show conversation #${id}`}
@@ -249,7 +249,7 @@ function CopyLink({
     <Button
       aria-label={`Copy link to ${id}`}
       className={cn(
-        'h-5 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100',
+        'h-5 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100',
         copied && 'opacity-100',
         className,
       )}
@@ -313,10 +313,12 @@ function TaskRow({
     >
       <CollapsibleTrigger className="group/task flex h-7 w-full min-w-0 items-center gap-1.5 px-3 text-left hover:bg-accent/40">
         <StatusIcon status={task.status} />
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.key}</span>
+        <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+          {task.key}
+        </span>
         <span
           className={cn(
-            'min-w-0 flex-1 truncate text-[12.5px] text-foreground/90',
+            'min-w-0 flex-1 truncate text-[0.7812rem] text-foreground/90',
             task.status === 'canceled' && 'text-muted-foreground line-through',
           )}
           title={task.title}
@@ -326,7 +328,7 @@ function TaskRow({
         <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/task:rotate-90" />
       </CollapsibleTrigger>
       <div className="space-y-0.5 pr-3 pb-1.5 pl-8">
-        <div className="flex h-5 min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+        <div className="flex h-5 min-w-0 items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
           <StatusChip status={task.status} />
           <Tag>{task.role}</Tag>
           {task.deps.length > 0 && (
@@ -354,14 +356,14 @@ function TaskRow({
         </div>
         {child && parent !== undefined && <IsolateRow child={child} parent={parent} />}
         {task.verdict && (
-          <div className="rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
+          <div className="rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[0.7812rem]">
             <div className="pb-1 section-label">Verdict</div>
             <PlanText>{task.verdict}</PlanText>
           </div>
         )}
         {open ? (
           <div className="space-y-2 pt-1">
-            <div className="text-[12.5px] text-foreground/90">
+            <div className="text-[0.7812rem] text-foreground/90">
               <PlanText>{task.description}</PlanText>
             </div>
             {task.notes.length > 0 && (
@@ -382,7 +384,7 @@ function TaskRow({
               </div>
               {task.notes.length > 1 && (
                 <button
-                  className="shrink-0 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+                  className="shrink-0 font-mono text-[0.6562rem] text-muted-foreground hover:text-foreground"
                   onClick={() => setOpen(true)}
                   type="button"
                 >
@@ -428,14 +430,16 @@ function EpicCard({
       <Collapsible className="group/epic">
         <CollapsibleTrigger className="flex w-full min-w-0 items-center gap-1.5 px-3 py-2 text-left hover:bg-accent/40">
           <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/epic:rotate-90" />
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{epic.key}</span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={epic.title}>
+          <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+            {epic.key}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium" title={epic.title}>
             {epic.title}
           </span>
           <StatusChip status={epic.status} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="mx-3 mb-2 rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
+          <div className="mx-3 mb-2 rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[0.7812rem]">
             <EpicBody body={epic.body} criteria={!!criteria} met={epic.status === 'done'} />
           </div>
         </CollapsibleContent>
@@ -443,7 +447,7 @@ function EpicCard({
       {epic.verdict && (
         <div
           className={cn(
-            'mx-3 mb-2 rounded-md border px-3 py-2 text-[12.5px]',
+            'mx-3 mb-2 rounded-md border px-3 py-2 text-[0.7812rem]',
             approved ? 'border-success/40 bg-success/5' : 'border-border/70 bg-card/50',
           )}
         >
@@ -466,12 +470,12 @@ function EpicCard({
           </span>
         </div>
       ) : (
-        <p className="px-3 pb-2 font-sans text-[12px] text-muted-foreground">
+        <p className="px-3 pb-2 font-sans text-[0.75rem] text-muted-foreground">
           Worked directly by the coordinator.
         </p>
       )}
       {criteria && (
-        <div className="px-3 pb-2 text-[12.5px]">
+        <div className="px-3 pb-2 text-[0.7812rem]">
           <Criteria items={criteria} met={epic.status === 'done'} />
         </div>
       )}
@@ -519,7 +523,7 @@ export function PlanBody({
     />
   )
   if (epics.length === 0)
-    return <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground">No epics yet.</p>
+    return <p className="px-3 py-2 font-sans text-[0.75rem] text-muted-foreground">No epics yet.</p>
   return (
     <>
       {open.map(card)}
@@ -530,7 +534,7 @@ export function PlanBody({
             open.length === 0 || done.some((epic) => focus && focus.key.split('.')[0] === epic.key)
           }
         >
-          <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground hover:bg-accent/40">
+          <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-3 py-2 text-left font-mono text-[0.6875rem] text-muted-foreground hover:bg-accent/40">
             <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/done:rotate-90" />
             {done.length} done epic{done.length === 1 ? '' : 's'}
           </CollapsibleTrigger>
@@ -542,7 +546,7 @@ export function PlanBody({
 }
 
 const pill =
-  'pointer-events-auto flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
+  'pointer-events-auto flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[0.6875rem] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
 
 /** The plan card above the pill: the plan with a header naming whose it is. */
 function Panel({
@@ -563,7 +567,7 @@ function Panel({
       className="pointer-events-auto flex max-h-[60vh] w-[420px] max-w-full flex-col overflow-hidden rounded-lg border border-border/80 bg-popover shadow-lg"
       data-plan-panel
     >
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border/70 px-3 font-mono text-[11px] text-muted-foreground">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border/70 px-3 font-mono text-[0.6875rem] text-muted-foreground">
         <ClipboardListIcon className="size-3.5" />
         Plan
         <span className="text-muted-foreground">· #{coordinator}</span>
@@ -580,7 +584,7 @@ function Panel({
         {plan ? (
           <PlanBody coordinator={coordinator} focus={focus} own={own} plan={plan} />
         ) : (
-          <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground">Loading…</p>
+          <p className="px-3 py-2 font-sans text-[0.75rem] text-muted-foreground">Loading…</p>
         )}
       </div>
     </div>
@@ -852,7 +856,7 @@ function PlanCall({ call }: { call: ToolCallView }) {
           ([label, value]) =>
             value && (
               <ToolSection key={label} label={label}>
-                <div className="font-sans text-[13px] text-foreground/90">
+                <div className="font-sans text-[0.8125rem] text-foreground/90">
                   <PlanText>{value}</PlanText>
                 </div>
               </ToolSection>

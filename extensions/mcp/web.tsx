@@ -54,14 +54,14 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
   const retry = server.retryAt && Math.max(0, Math.ceil((server.retryAt - now) / 1000))
   return (
     <li className="px-2 py-1.5" data-mcp-server={server.name} data-state={server.state}>
-      <div className="flex items-center gap-2 text-[12px]">
+      <div className="flex items-center gap-2 text-[0.75rem]">
         <span className={cn('size-1.5 shrink-0 rounded-full', tone[server.state])} />
         <span className="min-w-0 truncate text-foreground/90">{server.name}</span>
-        <span className="shrink-0 text-[10.5px] text-muted-foreground">
+        <span className="shrink-0 text-[0.6562rem] text-muted-foreground">
           {server.transport}
           {server.source === 'project' && ' · project'}
         </span>
-        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+        <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
           {server.state === 'connected'
             ? `${server.tools} ${server.tools === 1 ? 'tool' : 'tools'}`
             : server.state}
@@ -82,7 +82,7 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
         </button>
       </div>
       {(server.error || error) && (
-        <p className="mt-0.5 line-clamp-3 pl-3.5 text-[11px] leading-snug break-words text-error/85">
+        <p className="mt-0.5 line-clamp-3 pl-3.5 text-[0.6875rem] leading-snug break-words text-error/85">
           {error ?? server.error}
           {retry !== undefined && !error && (
             <span className="text-muted-foreground"> · retry in {retry}s</span>
@@ -131,7 +131,7 @@ function Chip() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-1" side="top">
         <Servers onChanged={refresh} servers={servers} />
-        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[11px] text-muted-foreground">
+        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[0.6875rem] text-muted-foreground">
           mcpServers in ~/.ultimate/settings.json or the project's .ultimate/settings.json
         </p>
       </PopoverContent>

@@ -83,7 +83,7 @@ function RestartCall({ call }: { call: ToolCallView }) {
       <ToolContent>
         {call.status === 'running' && (
           <ToolSection>
-            <Shimmer className="text-[12px]">
+            <Shimmer className="text-[0.75rem]">
               blue/green swap: type-check, boot, hand over storage, resume this run…
             </Shimmer>
           </ToolSection>
@@ -115,18 +115,23 @@ function CoreStale() {
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-[32rem] p-0 font-mono" side="top">
-          <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
+          <div className="border-b border-border/70 px-3 py-2 text-[0.7188rem] text-muted-foreground">
             The shared Ultimate host restart did not take.
           </div>
-          <pre className="max-h-80 overflow-auto px-3 py-2 text-[11.5px] leading-[1.55] whitespace-pre-wrap text-error">
+          <pre className="max-h-80 overflow-auto px-3 py-2 text-[0.7188rem] leading-[1.55] whitespace-pre-wrap text-error">
             {restart.error}
           </pre>
           <div className="flex justify-end gap-2 border-t border-border/70 px-3 py-2">
-            <Button className="h-7 text-[12px]" onClick={restart.clear} size="sm" variant="ghost">
+            <Button
+              className="h-7 text-[0.75rem]"
+              onClick={restart.clear}
+              size="sm"
+              variant="ghost"
+            >
               Dismiss
             </Button>
             <Button
-              className="h-7 text-[12px]"
+              className="h-7 text-[0.75rem]"
               onClick={() => {
                 restart.clear()
                 restart.run()
@@ -167,7 +172,7 @@ function CoreStale() {
               : stale}
         </button>
       </TooltipTrigger>
-      <TooltipContent className="max-w-80 font-mono text-[11px]" side="top">
+      <TooltipContent className="max-w-80 font-mono text-[0.6875rem]" side="top">
         server/ or shared/ changed since generation {system?.process.generation} booted. Restart
         type-checks and boots a new core next to this one; if it fails, this one keeps serving.
       </TooltipContent>
@@ -204,7 +209,7 @@ function Build() {
           build {short(build.id)}
         </span>
       </TooltipTrigger>
-      <TooltipContent className="max-w-[28rem] font-mono text-[11px]" side="top">
+      <TooltipContent className="max-w-[28rem] font-mono text-[0.6875rem]" side="top">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3">
           <span className="opacity-60">build</span>
           <span>
@@ -321,7 +326,7 @@ function HotReloaded() {
   if (landings.length > 0)
     return (
       <div
-        className="fixed right-3 bottom-9 z-40 flex max-w-[28rem] animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
+        className="fixed right-3 bottom-9 z-40 flex max-w-[28rem] animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[0.7188rem] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
         role="status"
       >
         <ZapIcon className="size-3.5 shrink-0 text-brand" />
@@ -343,7 +348,7 @@ function HotReloaded() {
   const named = scripts.length > 0 ? scripts : files
   return (
     <div
-      className="pointer-events-none fixed right-3 bottom-9 z-40 flex max-w-96 animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
+      className="pointer-events-none fixed right-3 bottom-9 z-40 flex max-w-96 animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[0.7188rem] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
       role="status"
     >
       <ZapIcon className="size-3.5 shrink-0 text-brand" />

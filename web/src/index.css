@@ -177,7 +177,7 @@
 
 /* A section or group heading in the chrome (panels, sidebar sections, picker groups): quiet sentence-case mono. */
 @utility section-label {
-  @apply font-mono text-[11px] font-normal tracking-normal text-muted-foreground normal-case;
+  @apply font-mono text-[0.6875rem] font-normal tracking-normal text-muted-foreground normal-case;
 }
 
 @layer base {
@@ -219,7 +219,8 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-size: 14px;
+    /* In rem, so the browser's font-size setting scales the whole UI; a px base ignores it. */
+    font-size: 0.875rem;
     font-feature-settings: 'cv11', 'ss03';
   }
   ::selection {
@@ -248,6 +249,7 @@
   input,
   textarea,
   select {
+    /* Stays 16px on touch: below it iOS zooms the page when a field takes focus. */
     font-size: 16px;
   }
 }
@@ -264,13 +266,13 @@
     @apply mb-0;
   }
   & h1 {
-    @apply mt-5 mb-2 text-[17px] font-semibold tracking-tight;
+    @apply mt-5 mb-2 text-[1.0625rem] font-semibold tracking-tight;
   }
   & h2 {
-    @apply mt-5 mb-2 text-[15.5px] font-semibold tracking-tight;
+    @apply mt-5 mb-2 text-[0.9688rem] font-semibold tracking-tight;
   }
   & :is(h3, h4, h5, h6) {
-    @apply mt-4 mb-1.5 text-[14px] font-semibold;
+    @apply mt-4 mb-1.5 text-[0.875rem] font-semibold;
   }
   & :is(p, ul, ol, blockquote) {
     @apply my-2.5;
@@ -294,7 +296,7 @@
     @apply my-3 gap-0 rounded-md border-border/80 bg-terminal p-0;
   }
   & [data-streamdown='code-block-header'] {
-    @apply h-7 px-3 text-[11px];
+    @apply h-7 px-3 text-[0.6875rem];
   }
   & [data-streamdown='code-block'] > div.absolute {
     @apply top-0 right-0.5;
@@ -303,7 +305,7 @@
     @apply border-none bg-transparent;
   }
   & [data-streamdown='code-block-body'] {
-    @apply rounded-none border-none bg-transparent px-3 pt-0 pb-2.5 font-mono text-[12px] leading-[1.6];
+    @apply rounded-none border-none bg-transparent px-3 pt-0 pb-2.5 font-mono text-[0.75rem] leading-[1.6];
   }
   & [data-streamdown='table-wrapper'] {
     @apply my-3 gap-0 rounded-md border-border/80 bg-transparent p-0;
@@ -315,7 +317,7 @@
     @apply bg-muted/50;
   }
   & :is([data-streamdown='table-header-cell'], [data-streamdown='table-cell']) {
-    @apply px-3 py-1.5 text-[13px];
+    @apply px-3 py-1.5 text-[0.8125rem];
   }
 }
 
@@ -324,7 +326,7 @@
  * spacing, across the full card width. Tool output keeps the dense `.markdown` above.
  */
 [role='log'] .markdown:not(.group\/tool .markdown) {
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.6;
   letter-spacing: -0.003em;
   font-optical-sizing: auto;
@@ -360,22 +362,22 @@
     letter-spacing: 0;
   }
   & [data-streamdown='code-block-body'] {
-    font-size: 12.5px;
+    font-size: 0.7813rem;
   }
   & :is([data-streamdown='table-header-cell'], [data-streamdown='table-cell']) {
-    font-size: 13.5px;
+    font-size: 0.8438rem;
     letter-spacing: 0;
   }
 }
 
 /* Thinking stays a quieter aside, a step below the prose. */
 [role='log'] .group\/reasoning .markdown {
-  font-size: 13.5px;
+  font-size: 0.8438rem;
 }
 
 /* The user's own turns read at the same size. */
 [role='log'] .is-user > div > p {
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.6;
   letter-spacing: -0.003em;
   font-feature-settings: normal;

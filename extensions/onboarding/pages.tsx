@@ -110,7 +110,7 @@ export function FirstRun({
       >
         <header>
           <span className="font-mono text-xs tracking-[0.3em] text-brand">ULTIMATE</span>
-          <DialogTitle className="mt-5 text-[22px]">Get ready</DialogTitle>
+          <DialogTitle className="mt-5 text-[1.375rem]">Get ready</DialogTitle>
           <DialogDescription className="mt-2">
             Two steps and Ultimate can start working in this folder.
           </DialogDescription>
@@ -257,14 +257,14 @@ export function Recommended({
                 <span className="text-xs text-muted-foreground">
                   {entry.line}
                   {entry.hint && (
-                    <span className="mt-0.5 block font-mono text-[10.5px] text-muted-foreground sm:hidden">
+                    <span className="mt-0.5 block font-mono text-[0.6562rem] text-muted-foreground sm:hidden">
                       {entry.hint}
                     </span>
                   )}
                 </span>
               </span>
               {entry.hint && (
-                <span className="hidden font-mono text-[10.5px] text-muted-foreground sm:block">
+                <span className="hidden font-mono text-[0.6562rem] text-muted-foreground sm:block">
                   {entry.hint}
                 </span>
               )}
@@ -310,7 +310,7 @@ function SetupContents({ adds }: { adds?: Status['adds'] }) {
                   : kind
             }
             className={cn(
-              'inline-flex items-center gap-1 rounded-sm border border-border/80 px-1.5 py-0.5 font-mono text-[11px] text-foreground/80',
+              'inline-flex items-center gap-1 rounded-sm border border-border/80 px-1.5 py-0.5 font-mono text-[0.6875rem] text-foreground/80',
               kind === 'replaces' && 'border-warning/40 bg-warning/8 text-warning',
               kind === 'extensions' && 'border-brand/30 text-brand',
               kind === 'disable' && 'text-muted-foreground line-through',
@@ -319,12 +319,12 @@ function SetupContents({ adds }: { adds?: Status['adds'] }) {
             {Icon && <Icon className="size-3 shrink-0" />}
             {name}
             {kind === 'replaces' && (
-              <span className="font-sans text-[10.5px]">replaces built-in</span>
+              <span className="font-sans text-[0.6562rem]">replaces built-in</span>
             )}
           </li>
         ))}
         {adds && chips.length === 0 && (
-          <li className="rounded-sm border border-border/80 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+          <li className="rounded-sm border border-border/80 px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground">
             settings only
           </li>
         )}

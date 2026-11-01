@@ -58,9 +58,9 @@ export function AgentMark({
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center rounded-[5px] ring-1 ring-inset',
         tile.tint,
-        size === 'md' && 'size-6 text-[12px]',
-        size === 'sm' && 'size-4 rounded-[4px] text-[9.5px]',
-        size === 'xs' && 'size-3.5 rounded-[3px] text-[8.5px]',
+        size === 'md' && 'size-6 text-[0.75rem]',
+        size === 'sm' && 'size-4 rounded-[4px] text-[0.5938rem]',
+        size === 'xs' && 'size-3.5 rounded-[3px] text-[0.5312rem]',
       )}
       data-agent-mark={name}
     >

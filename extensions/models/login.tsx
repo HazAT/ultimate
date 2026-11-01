@@ -54,7 +54,7 @@ function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }
   const { copied, copy } = useCopy()
   return (
     <Button
-      className="h-7 gap-1.5 px-2 font-mono text-[11.5px]"
+      className="h-7 gap-1.5 px-2 font-mono text-[0.7188rem]"
       onClick={() => copy(value)}
       size="sm"
       variant="outline"
@@ -67,7 +67,7 @@ function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }
 
 function OpenButton({ url, children = 'Open' }: { url: string; children?: ReactNode }) {
   return (
-    <Button asChild className="h-7 gap-1.5 px-2 font-mono text-[11.5px]" size="sm">
+    <Button asChild className="h-7 gap-1.5 px-2 font-mono text-[0.7188rem]" size="sm">
       <a href={url} rel="noreferrer" target="_blank">
         <ExternalLinkIcon className="size-3.5" />
         {children}
@@ -84,10 +84,12 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
     case 'info':
       return (
         <div className="flex flex-col gap-1.5">
-          <p className="font-sans text-[13px] leading-snug text-foreground/90">{event.message}</p>
+          <p className="font-sans text-[0.8125rem] leading-snug text-foreground/90">
+            {event.message}
+          </p>
           {event.links?.map((link) => (
             <a
-              className="flex items-center gap-1.5 text-[12px] text-brand hover:underline"
+              className="flex items-center gap-1.5 text-[0.75rem] text-brand hover:underline"
               href={link.url}
               key={link.url}
               rel="noreferrer"
@@ -102,10 +104,10 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
     case 'auth_url':
       return (
         <div className="flex flex-col gap-2">
-          <p className="font-sans text-[13px] text-foreground/90">
+          <p className="font-sans text-[0.8125rem] text-foreground/90">
             Open this URL in your browser to sign in:
           </p>
-          <div className="rounded-md border border-border/80 bg-terminal px-2.5 py-2 text-[11.5px] break-all text-muted-foreground">
+          <div className="rounded-md border border-border/80 bg-terminal px-2.5 py-2 text-[0.7188rem] break-all text-muted-foreground">
             <span className="line-clamp-3">{event.url}</span>
           </div>
           <div className="flex gap-2">
@@ -113,14 +115,14 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
             <CopyButton label="Copy URL" value={event.url} />
           </div>
           {event.instructions && (
-            <p className="font-sans text-[12.5px] text-warning">{event.instructions}</p>
+            <p className="font-sans text-[0.7812rem] text-warning">{event.instructions}</p>
           )}
         </div>
       )
     case 'device_code':
       return <DeviceCode event={event} since={seen.get(key) ?? Date.now()} />
     default:
-      return <p className="text-[12px] text-muted-foreground">{event.message}</p>
+      return <p className="text-[0.75rem] text-muted-foreground">{event.message}</p>
   }
 }
 
@@ -142,7 +144,7 @@ function DeviceCode({
       : `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-sans text-[13px] text-foreground/90">
+      <p className="font-sans text-[0.8125rem] text-foreground/90">
         Enter this code at{' '}
         <a
           className="text-brand hover:underline"
@@ -155,7 +157,7 @@ function DeviceCode({
         :
       </p>
       <div className="flex items-center gap-3">
-        <span className="rounded-md border border-border/80 bg-terminal px-3 py-1.5 text-[22px] font-semibold tracking-[0.25em] text-foreground">
+        <span className="rounded-md border border-border/80 bg-terminal px-3 py-1.5 text-[1.375rem] font-semibold tracking-[0.25em] text-foreground">
           {event.userCode}
         </span>
         <CopyButton label="Copy code" value={event.userCode} />
@@ -164,7 +166,7 @@ function DeviceCode({
       {clock && (
         <p
           className={cn(
-            'text-[11.5px] tabular-nums',
+            'text-[0.7188rem] tabular-nums',
             left === 0 ? 'text-error' : 'text-muted-foreground',
           )}
         >
@@ -194,7 +196,7 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
   if (prompt.type === 'select')
     return (
       <div className="flex flex-col gap-1.5">
-        <p className="font-sans text-[13px] text-foreground/90">{prompt.message}</p>
+        <p className="font-sans text-[0.8125rem] text-foreground/90">{prompt.message}</p>
         {prompt.options.map((option) => (
           <button
             className="flex flex-col items-start rounded-md border border-border/80 px-2.5 py-1.5 text-left transition-colors hover:border-brand/60 hover:bg-accent/50 disabled:opacity-50"
@@ -203,15 +205,15 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
             onClick={() => answer(option.id)}
             type="button"
           >
-            <span className="text-[12.5px] text-foreground">{option.label}</span>
+            <span className="text-[0.7812rem] text-foreground">{option.label}</span>
             {option.description && (
-              <span className="font-sans text-[12px] text-muted-foreground">
+              <span className="font-sans text-[0.75rem] text-muted-foreground">
                 {option.description}
               </span>
             )}
           </button>
         ))}
-        {error && <p className="text-[12px] text-error">{error}</p>}
+        {error && <p className="text-[0.75rem] text-error">{error}</p>}
       </div>
     )
   // A text prompt may accept a blank answer ("blank for github.com"); secrets and codes may not.
@@ -222,14 +224,14 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
   // No <form> and a one-time-code field: browsers must not take an API key for a password to save.
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="font-sans text-[13px] text-foreground/90" htmlFor="login-answer">
+      <label className="font-sans text-[0.8125rem] text-foreground/90" htmlFor="login-answer">
         {prompt.message}
       </label>
       <div className="flex gap-2">
         <input
           autoComplete={prompt.type === 'secret' ? 'one-time-code' : 'off'}
           autoFocus
-          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[0.7812rem] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
@@ -248,7 +250,7 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
           value={value}
         />
         <Button
-          className="h-8 px-3 text-[12px]"
+          className="h-8 px-3 text-[0.75rem]"
           disabled={(!value.trim() && !optional) || sending}
           onClick={submit}
           type="button"
@@ -256,7 +258,7 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
           {sending ? <LoaderCircleIcon className="size-3.5 animate-spin" /> : 'Continue'}
         </Button>
       </div>
-      {error && <p className="text-[12px] text-error">{error}</p>}
+      {error && <p className="text-[0.75rem] text-error">{error}</p>}
     </div>
   )
 }
@@ -301,11 +303,11 @@ function FlowView({
         >
           <ArrowLeftIcon className="size-3.5" />
         </Button>
-        <span className="truncate text-[13px] text-foreground">{method.name}</span>
-        <span className="text-[11px] text-muted-foreground">{typeLabel(method)}</span>
+        <span className="truncate text-[0.8125rem] text-foreground">{method.name}</span>
+        <span className="text-[0.6875rem] text-muted-foreground">{typeLabel(method)}</span>
         <span
           className={cn(
-            'ml-auto flex items-center gap-1.5 text-[11.5px]',
+            'ml-auto flex items-center gap-1.5 text-[0.7188rem]',
             status === 'complete'
               ? 'text-success'
               : status === 'error'
@@ -337,27 +339,29 @@ function FlowView({
           <PromptForm flowId={flowId} key={JSON.stringify(flow.prompt)} prompt={flow.prompt} />
         )}
         {status === 'running' && !flow?.prompt && (flow?.events.length ?? 0) === 0 && (
-          <p className="text-[12px] text-muted-foreground">Starting {method.provider.id} login…</p>
+          <p className="text-[0.75rem] text-muted-foreground">
+            Starting {method.provider.id} login…
+          </p>
         )}
         {status === 'complete' && (
-          <p className="flex items-center gap-2 font-sans text-[13px] text-success">
+          <p className="flex items-center gap-2 font-sans text-[0.8125rem] text-success">
             <CheckIcon className="size-4" /> Logged in to {method.provider.name}. Its models are
             available now.
           </p>
         )}
         {status === 'error' && (
-          <p className="flex items-start gap-2 font-sans text-[13px] text-error">
+          <p className="flex items-start gap-2 font-sans text-[0.8125rem] text-error">
             <CircleAlertIcon className="mt-0.5 size-4 shrink-0" /> {failure ?? 'Login failed'}
           </p>
         )}
         {status === 'cancel' && (
-          <p className="text-[12px] text-muted-foreground">Login cancelled.</p>
+          <p className="text-[0.75rem] text-muted-foreground">Login cancelled.</p>
         )}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border/70 px-3 py-2.5">
         {status === 'running' && flowId && (
           <Button
-            className="h-7 text-[12px]"
+            className="h-7 text-[0.75rem]"
             onClick={() => void cancel(flowId)}
             size="sm"
             variant="ghost"
@@ -366,14 +370,14 @@ function FlowView({
           </Button>
         )}
         {(status === 'error' || status === 'cancel') && (
-          <Button className="h-7 text-[12px]" onClick={onRetry} size="sm" variant="outline">
+          <Button className="h-7 text-[0.75rem]" onClick={onRetry} size="sm" variant="outline">
             Try again
           </Button>
         )}
         {status === 'complete' && (
           <>
             <Button
-              className="h-7 text-[12px]"
+              className="h-7 text-[0.75rem]"
               onClick={() => {
                 onDone()
                 reopenPicker(actions)
@@ -383,7 +387,7 @@ function FlowView({
             >
               Pick a model
             </Button>
-            <Button className="h-7 text-[12px]" onClick={onDone} size="sm">
+            <Button className="h-7 text-[0.75rem]" onClick={onDone} size="sm">
               Done
             </Button>
           </>
@@ -444,7 +448,7 @@ function Chooser({
         <SearchIcon className="size-4 shrink-0 opacity-50" />
         <input
           autoFocus
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+          className="h-full min-w-0 flex-1 bg-transparent text-[0.8125rem] outline-none placeholder:text-muted-foreground"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && shown[0]) onChoose(shown[0])
@@ -463,15 +467,15 @@ function Chooser({
                 className="flex flex-col gap-2 rounded-sm border border-warning/40 bg-warning/8 px-2.5 py-2"
                 key={row}
               >
-                <p className="font-sans text-[12.5px] text-foreground/90">
+                <p className="font-sans text-[0.7812rem] text-foreground/90">
                   Log out of {method.provider.name}? This also logs out <code>pi</code>: the
                   credential is removed from{' '}
-                  <span className="font-mono text-[11.5px]">~/.pi/agent/auth.json</span>.
+                  <span className="font-mono text-[0.7188rem]">~/.pi/agent/auth.json</span>.
                 </p>
                 <div className="flex justify-end gap-2">
                   <Button
                     autoFocus
-                    className="h-7 text-[12px]"
+                    className="h-7 text-[0.75rem]"
                     onClick={() => setConfirming(undefined)}
                     size="sm"
                     variant="ghost"
@@ -479,7 +483,7 @@ function Chooser({
                     Cancel
                   </Button>
                   <Button
-                    className="h-7 gap-1.5 text-[12px]"
+                    className="h-7 gap-1.5 text-[0.75rem]"
                     onClick={() => logout(method.provider)}
                     size="sm"
                     variant="destructive"
@@ -506,20 +510,20 @@ function Chooser({
                     label ? 'text-success' : 'text-muted-foreground',
                   )}
                 />
-                <span className="truncate text-[12.5px] text-foreground">{method.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
+                <span className="truncate text-[0.7812rem] text-foreground">{method.name}</span>
+                <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
                   {typeLabel(method)}
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
+                <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
                   {method.provider.id}
                 </span>
               </button>
               {label ? (
                 <>
-                  <span className="shrink-0 text-[11px] text-success/90">✓ {label}</span>
+                  <span className="shrink-0 text-[0.6875rem] text-success/90">✓ {label}</span>
                   {method.provider.status.source === 'stored' && (
                     <Button
-                      className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                      className="h-6 gap-1 px-1.5 text-[0.6875rem] text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                       disabled={busy === method.provider.id}
                       onClick={() => setConfirming(row)}
                       size="sm"
@@ -532,16 +536,20 @@ function Chooser({
                   )}
                 </>
               ) : (
-                <span className="shrink-0 text-[11px] text-muted-foreground">not configured</span>
+                <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+                  not configured
+                </span>
               )}
             </div>
           )
         })}
         {shown.length === 0 && (
-          <p className="py-6 text-center text-[12px] text-muted-foreground">No provider matches.</p>
+          <p className="py-6 text-center text-[0.75rem] text-muted-foreground">
+            No provider matches.
+          </p>
         )}
       </div>
-      <div className="flex items-center gap-2 border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 border-t border-border/70 px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
         {error ? (
           <span className="text-error">{error}</span>
         ) : (

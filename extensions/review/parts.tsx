@@ -8,7 +8,7 @@ export function Frame({ controls, children }: { controls?: ReactNode; children: 
   return (
     <>
       <Header>
-        <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+        <span className="flex shrink-0 items-center gap-2 text-[0.8125rem] font-medium">
           <FileDiffIcon className="size-4 text-muted-foreground" />
           <span className="max-md:hidden">Review</span>
         </span>
@@ -23,7 +23,7 @@ export function Frame({ controls, children }: { controls?: ReactNode; children: 
 /** A quiet line in place of the diff: why there is none. */
 export function Notice({ children }: { children: ReactNode }) {
   return (
-    <p className="flex-1 py-10 text-center font-mono text-[11.5px] text-muted-foreground">
+    <p className="flex-1 py-10 text-center font-mono text-[0.7188rem] text-muted-foreground">
       {children}
     </p>
   )

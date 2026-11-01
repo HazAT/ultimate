@@ -91,14 +91,14 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
         )}
         {abstract && (
           <Collapsible className="group/state">
-            <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+            <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-[0.6875rem] text-muted-foreground hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/state:rotate-90" />
               State at landing
               <span className="text-muted-foreground">
                 · #{from}/{abstract.at}
               </span>
             </CollapsibleTrigger>
-            <CollapsibleContent className="pt-1 pl-4 font-sans text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+            <CollapsibleContent className="pt-1 pl-4 font-sans text-[0.7812rem] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
               <MentionText text={abstract.text} />
             </CollapsibleContent>
           </Collapsible>
@@ -116,7 +116,7 @@ function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   return (
     <div className={`${dock ? 'w-full px-4' : 'mx-auto w-full max-w-[46rem] px-3 sm:px-6'} pb-3`}>
       <div
-        className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5 text-[12.5px] text-muted-foreground"
+        className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5 text-[0.7812rem] text-muted-foreground"
         data-lander-log={id}
       >
         <GitMergeIcon className="size-4 shrink-0 text-brand" />

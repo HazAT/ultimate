@@ -36,7 +36,7 @@ const modelName = (model: string) => model.slice(model.indexOf('/') + 1)
 /** The window's time axis: faint grid lines at each tick, labelled underneath, `now` at the right edge. */
 export function Axis({ window }: { window: WindowName }) {
   return (
-    <div className="relative h-5 font-mono text-[10px] text-muted-foreground tabular-nums">
+    <div className="relative h-5 font-mono text-[0.625rem] text-muted-foreground tabular-nums">
       {ticks(window).map((tick) => (
         <span
           className={cn(
@@ -124,7 +124,7 @@ function Block({
           <span
             className={cn(
               // A label shows only where the block has room for a few letters of it.
-              'relative hidden truncate px-1.5 font-mono text-[10px] leading-[20px] @[2.75rem]:block',
+              'relative hidden truncate px-1.5 font-mono text-[0.625rem] leading-[20px] @[2.75rem]:block',
               tone === 'running' ? 'text-brand' : 'text-foreground/70',
             )}
           >
@@ -132,7 +132,7 @@ function Block({
           </span>
         </button>
       </TooltipTrigger>
-      <TooltipContent className="font-mono text-[11px]" side="top">
+      <TooltipContent className="font-mono text-[0.6875rem]" side="top">
         {calls} {calls === 1 ? 'call' : 'calls'} · {formatDuration(duration(run, now))}
         {run.end === undefined && ' · running'}
         {failed > 0 && ` · ${failed} failed`}
@@ -145,7 +145,7 @@ function Block({
 function Calls({ run }: { run: LaneRun }) {
   const [open, setOpen] = useState<number>()
   return (
-    <ul className="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[10.5px] leading-[18px] text-muted-foreground">
+    <ul className="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[0.6562rem] leading-[18px] text-muted-foreground">
       {run.calls.map((call, index) => (
         // oxlint-disable-next-line react/no-array-index-key -- Run calls have no per-call id; traces can repeat.
         <li key={index}>
@@ -297,19 +297,19 @@ export function LaneRow({
             />
             <span className="flex min-w-0 flex-1 flex-col">
               {standing ? (
-                <span className="truncate text-[12.5px] leading-5 font-semibold text-foreground">
+                <span className="truncate text-[0.7812rem] leading-5 font-semibold text-foreground">
                   {agentTitle(standing)}
-                  <span className="ml-1.5 font-mono text-[10px] font-normal text-muted-foreground">
+                  <span className="ml-1.5 font-mono text-[0.625rem] font-normal text-muted-foreground">
                     #{lane.conversation}
                   </span>
                 </span>
               ) : (
                 <ConversationRef
-                  className="text-[12.5px] leading-5 text-foreground"
+                  className="text-[0.7812rem] leading-5 text-foreground"
                   id={lane.conversation}
                 />
               )}
-              <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
+              <span className="flex min-w-0 items-center gap-1.5 font-mono text-[0.625rem] leading-4 text-muted-foreground">
                 <span className={cn('shrink-0', laneTone(state))}>{laneWord(state)}</span>
                 {lane.agent && !standing && (
                   <span className="shrink-0">

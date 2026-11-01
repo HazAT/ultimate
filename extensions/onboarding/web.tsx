@@ -147,7 +147,7 @@ function SetupLink({
           {error ?? children}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top" className="text-[11px]">
+      <TooltipContent side="top" className="text-[0.6875rem]">
         {error ??
           (off ? "Decide on this project's setup." : 'Ask @ultimate for help with this folder.')}
       </TooltipContent>

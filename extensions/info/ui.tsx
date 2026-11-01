@@ -85,7 +85,7 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   return (
     <span
       className={cn(
-        'inline-flex h-[18px] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[10.5px] text-muted-foreground',
+        'inline-flex h-[18px] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[0.6562rem] text-muted-foreground',
         className,
       )}
     >
@@ -96,7 +96,7 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
 
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-1.5 max-h-40 overflow-auto rounded-sm border border-error/30 bg-error/8 px-2 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error">
+    <div className="mt-1.5 max-h-40 overflow-auto rounded-sm border border-error/30 bg-error/8 px-2 py-1.5 font-mono text-[0.6875rem] break-words whitespace-pre-wrap text-error">
       {children}
     </div>
   )

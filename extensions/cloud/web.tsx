@@ -92,11 +92,11 @@ function BackupRow({ state }: { state: CloudState }) {
     <div className="space-y-1 px-3 py-2" data-cloud-backup>
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] text-foreground/90">
+          <span className="block truncate text-[0.75rem] text-foreground/90">
             {uploading ? 'Backing up…' : 'Backup'}
           </span>
           <span
-            className="block text-[11px] text-muted-foreground tabular-nums"
+            className="block text-[0.6875rem] text-muted-foreground tabular-nums"
             title={lastBackup ? new Date(lastBackup.at).toLocaleString() : undefined}
           >
             {uploading && backup.total > 0
@@ -107,7 +107,7 @@ function BackupRow({ state }: { state: CloudState }) {
           </span>
         </span>
         <Button
-          className="h-6 font-sans text-[12px]"
+          className="h-6 font-sans text-[0.75rem]"
           disabled={busy || uploading}
           onClick={() => act(() => backUp(false))}
           size="xs"
@@ -128,9 +128,9 @@ function BackupRow({ state }: { state: CloudState }) {
           />
         </div>
       )}
-      {error && !state.conflict && <p className="font-sans text-[12px] text-error">{error}</p>}
+      {error && !state.conflict && <p className="font-sans text-[0.75rem] text-error">{error}</p>}
       {!error && state.lastError && (
-        <p className="font-sans text-[12px] text-error/90">{state.lastError}</p>
+        <p className="font-sans text-[0.75rem] text-error/90">{state.lastError}</p>
       )}
     </div>
   )
@@ -149,17 +149,17 @@ function ConflictRow({
   const { latest } = conflict
   return (
     <div className="space-y-1.5 border-t border-border/60 px-3 py-2" data-cloud-conflict>
-      <p className="font-sans text-[12px] leading-relaxed text-warning">{conflict.error}</p>
+      <p className="font-sans text-[0.75rem] leading-relaxed text-warning">{conflict.error}</p>
       {confirming ? (
         <div className="space-y-1.5">
-          <p className="font-sans text-[12px] leading-relaxed text-muted-foreground">
+          <p className="font-sans text-[0.75rem] leading-relaxed text-muted-foreground">
             {latest
               ? `This replaces the backup ${latest.machine} made ${since(latest.at)} (${latest.id}) as the latest. Its history stays in that backup until retention prunes it.`
               : 'This replaces the latest backup from another machine. Its history stays in that backup until retention prunes it.'}
           </p>
           <div className="flex justify-end gap-1.5">
             <Button
-              className="h-6 font-sans text-[12px]"
+              className="h-6 font-sans text-[0.75rem]"
               onClick={() => setConfirming(false)}
               size="xs"
               variant="ghost"
@@ -167,7 +167,7 @@ function ConflictRow({
               Cancel
             </Button>
             <Button
-              className="h-6 font-sans text-[12px]"
+              className="h-6 font-sans text-[0.75rem]"
               disabled={busy || action.busy}
               onClick={() =>
                 action.act(async () => {
@@ -185,7 +185,7 @@ function ConflictRow({
       ) : (
         <div className="flex justify-end">
           <Button
-            className="h-6 font-sans text-[12px]"
+            className="h-6 font-sans text-[0.75rem]"
             disabled={busy}
             onClick={() => setConfirming(true)}
             size="xs"
@@ -195,7 +195,7 @@ function ConflictRow({
           </Button>
         </div>
       )}
-      {action.error && <p className="font-sans text-[12px] text-error">{action.error}</p>}
+      {action.error && <p className="font-sans text-[0.75rem] text-error">{action.error}</p>}
     </div>
   )
 }
@@ -203,7 +203,7 @@ function ConflictRow({
 /** The restore command, for reference: what another machine runs to take this backup. */
 function RestoreRow({ name }: { name: string }) {
   return (
-    <div className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+    <div className="border-t border-border/60 px-3 py-2 text-[0.6875rem] text-muted-foreground">
       Restore elsewhere with{' '}
       <code className="rounded-sm bg-muted px-1 py-0.5 text-foreground/85">
         pnpm restore {name}

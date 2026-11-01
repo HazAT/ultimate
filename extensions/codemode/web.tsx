@@ -79,7 +79,7 @@ function CallLog({ calls, running }: { calls: readonly NestedCall[]; running: bo
               {argsPreview(call.args)}
             </span>
             {call.ms !== undefined && (
-              <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+              <span className="shrink-0 text-[0.6875rem] text-muted-foreground tabular-nums">
                 {call.ms}ms
               </span>
             )}
@@ -178,7 +178,7 @@ function CodemodeCall({ call }: { call: ToolCallView }) {
           summary ? (
             <>
               <SummaryText summary={summary} />
-              <span className="pl-2 text-[11px] text-muted-foreground">codemode</span>
+              <span className="pl-2 text-[0.6875rem] text-muted-foreground">codemode</span>
             </>
           ) : (
             firstLine(code)
@@ -246,7 +246,7 @@ function CodemodeCall({ call }: { call: ToolCallView }) {
 function StoreDocument({ value }: DocumentProps) {
   if (Object.keys(value).length > 0) return <JsonTree className="px-2" open={1} value={value} />
   return (
-    <p className="px-3 font-sans text-[12px] leading-relaxed text-muted-foreground">
+    <p className="px-3 font-sans text-[0.75rem] leading-relaxed text-muted-foreground">
       Empty. Codemode scripts keep values across runs with{' '}
       <code className="font-mono">store(key, value)</code> and read them with{' '}
       <code className="font-mono">load(key)</code>; they live with this conversation.

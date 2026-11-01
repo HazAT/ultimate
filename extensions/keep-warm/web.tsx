@@ -76,11 +76,11 @@ function Chip() {
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-1 font-mono" side="top">
-        <label className="flex h-8 cursor-pointer items-center justify-between px-2 text-[12px]">
+        <label className="flex h-8 cursor-pointer items-center justify-between px-2 text-[0.75rem]">
           Keep @ultimate warm
           <Switch checked={state.on} onCheckedChange={(on) => void toggle(on)} />
         </label>
-        <div className="space-y-1 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+        <div className="space-y-1 border-t border-border/70 px-2 pt-1.5 pb-1 text-[0.6875rem] text-muted-foreground">
           <div className="text-foreground/80">{cacheLine(state, now)}</div>
           <div>{nextLine(state, now)}</div>
           {state.last && (

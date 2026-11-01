@@ -186,7 +186,7 @@ function RoundOf({
 const preview = (sound: Sound) =>
   tones.play(sound).catch((error: unknown) => console.warn('Sound failed', error))
 
-const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[12px]'
+const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[0.75rem]'
 const section = 'border-t border-border/70 pt-1'
 
 /** The status-bar entry: sounds on or off, volume, the sound of agents, and each notification cue. */
@@ -260,7 +260,7 @@ function Control() {
                   <button
                     aria-checked={agents === variant.id}
                     className={cn(
-                      'h-6 cursor-pointer rounded-[5px] text-[11px] text-muted-foreground transition-colors hover:text-foreground',
+                      'h-6 cursor-pointer rounded-[5px] text-[0.6875rem] text-muted-foreground transition-colors hover:text-foreground',
                       agents === variant.id && 'bg-accent text-foreground',
                     )}
                     disabled={muted}
@@ -274,7 +274,7 @@ function Control() {
                   </button>
                 ))}
               </div>
-              <div className="px-2 pb-1 text-[11px] leading-4 text-muted-foreground">
+              <div className="px-2 pb-1 text-[0.6875rem] leading-4 text-muted-foreground">
                 {variants.find((variant) => variant.id === agents)?.detail}
               </div>
               <button
@@ -295,12 +295,12 @@ function Control() {
                   )}
                   {left === undefined ? 'Start demo' : 'Stop demo'}
                 </span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[0.6875rem] text-muted-foreground">
                   {left === undefined ? '40s' : `${left}s`}
                 </span>
               </button>
               {stage.blocked && (
-                <div className="px-2 pb-1 text-[11px] text-warning">
+                <div className="px-2 pb-1 text-[0.6875rem] text-warning">
                   Click anywhere to start audio
                 </div>
               )}
@@ -310,7 +310,10 @@ function Control() {
         <div className={section}>
           {sounds.map(({ sound, label }) => (
             <div
-              className={cn('flex h-7 items-center gap-2 px-2 text-[12px]', muted && 'opacity-50')}
+              className={cn(
+                'flex h-7 items-center gap-2 px-2 text-[0.75rem]',
+                muted && 'opacity-50',
+              )}
               key={sound}
             >
               <label className="flex flex-1 cursor-pointer items-center gap-2">
@@ -337,7 +340,7 @@ function Control() {
               </button>
             </div>
           ))}
-          <div className="px-2 pt-0.5 pb-1 text-[11px] text-muted-foreground">
+          <div className="px-2 pt-0.5 pb-1 text-[0.6875rem] text-muted-foreground">
             Landings from any branch; the rest from @ultimate only
           </div>
         </div>

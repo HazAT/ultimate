@@ -8,7 +8,7 @@ import type { CommentLines } from './lines.ts'
 /** The lines a comment covers, as a quiet mono label: `src/a.ts:3-5 · new`. */
 export function Lines({ comment, className }: { comment: CommentLines; className?: string }) {
   return (
-    <span className={cn('font-mono text-[11px] text-muted-foreground', className)}>
+    <span className={cn('font-mono text-[0.6875rem] text-muted-foreground', className)}>
       {location(comment).slice(comment.file.length + 1)}
       <span className="text-muted-foreground"> · {comment.side}</span>
     </span>
@@ -49,12 +49,12 @@ export function Composer({
     >
       <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
         <MessageSquareIcon className="size-3.5 text-brand" />
-        <span className="text-[12px] text-foreground/85">Comment on</span>
+        <span className="text-[0.75rem] text-foreground/85">Comment on</span>
         <Lines comment={comment} />
       </div>
       <textarea
         aria-label="Comment"
-        className="block max-h-60 min-h-16 w-full resize-y bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground"
+        className="block max-h-60 min-h-16 w-full resize-y bg-transparent px-3 py-2 text-[0.8125rem] leading-relaxed outline-none placeholder:text-muted-foreground"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') onCancel()
@@ -69,13 +69,13 @@ export function Composer({
       />
       <div className="flex items-center justify-end gap-2 border-t border-border/60 px-2 py-1.5">
         {text.length > limits.text ? (
-          <span className="mr-auto font-mono text-[11px] text-error">
+          <span className="mr-auto font-mono text-[0.6875rem] text-error">
             {text.length} / {limits.text}
           </span>
         ) : (
           refused && (
             <span
-              className="mr-auto font-mono text-[11px] text-error"
+              className="mr-auto font-mono text-[0.6875rem] text-error"
               data-review-refused=""
               role="alert"
             >
@@ -111,7 +111,7 @@ export function DraftCard({
     >
       <div className="flex items-center gap-2 px-3 pt-1.5">
         <MessageSquareIcon className="size-3 text-brand/80" />
-        <span className="text-[11px] text-muted-foreground">Pending</span>
+        <span className="text-[0.6875rem] text-muted-foreground">Pending</span>
         <Lines comment={comment} />
         <span className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover/draft:opacity-100 pointer-coarse:opacity-100">
           <button
@@ -132,7 +132,7 @@ export function DraftCard({
           </button>
         </span>
       </div>
-      <p className="px-3 pt-0.5 pb-2 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+      <p className="px-3 pt-0.5 pb-2 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
         {comment.text}
       </p>
     </div>

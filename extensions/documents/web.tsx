@@ -16,7 +16,7 @@ import type { DocumentItem } from '@/sdk'
 /** The value as a JSON tree, the view of every kind without a renderer. */
 function Json({ value }: { value: object }) {
   if (Object.keys(value).length === 0)
-    return <p className="px-3 font-mono text-[11.5px] text-muted-foreground">empty</p>
+    return <p className="px-3 font-mono text-[0.7188rem] text-muted-foreground">empty</p>
   return <JsonTree className="px-2" open={1} value={value} />
 }
 
@@ -122,7 +122,7 @@ function DocumentsPanel() {
         </div>
       )}
       {system && kinds.length === 0 && (
-        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground">
+        <p className="px-3 pt-3 font-sans text-[0.75rem] leading-relaxed text-muted-foreground">
           Documents are durable state that extensions keep with a conversation, such as the plan;
           they appear here when a server facet exports them as{' '}
           <code className="font-mono">docs</code>.

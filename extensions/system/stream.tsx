@@ -100,7 +100,7 @@ function Row({ row }: { row: SystemRow }) {
   const conversation = row.conversation
   return (
     <li data-row={row.id}>
-      <div className="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[10.5px] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
+      <div className="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[0.6562rem] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
         <button
           className="flex min-w-0 flex-1 cursor-pointer items-start gap-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring"
           disabled={!row.trace}
@@ -126,7 +126,7 @@ function Row({ row }: { row: SystemRow }) {
         </button>
         {conversation !== undefined && (
           <button
-            className="min-w-0 max-w-[40%] shrink cursor-pointer truncate rounded-sm font-sans text-[11px] text-foreground/75 hover:text-foreground md:max-w-64"
+            className="min-w-0 max-w-[40%] shrink cursor-pointer truncate rounded-sm font-sans text-[0.6875rem] text-foreground/75 hover:text-foreground md:max-w-64"
             onClick={() => {
               actions.showSurface('agent')
               actions.switchConversation(conversation)
@@ -142,7 +142,7 @@ function Row({ row }: { row: SystemRow }) {
         </span>
       </div>
       {!row.ok && row.error && (
-        <p className="truncate px-3 pb-0.5 pl-[5.5rem] font-mono text-[10.5px] text-error/90 md:hidden">
+        <p className="truncate px-3 pb-0.5 pl-[5.5rem] font-mono text-[0.6562rem] text-error/90 md:hidden">
           {row.error}
         </p>
       )}
@@ -152,7 +152,7 @@ function Row({ row }: { row: SystemRow }) {
 }
 
 const chip =
-  'h-6 shrink-0 cursor-pointer rounded-md px-2 font-mono text-[10.5px] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'h-6 shrink-0 cursor-pointer rounded-md px-2 font-mono text-[0.6562rem] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 /** The filter row: a chip per source, errors only, the conversation filtered to, and a text box. */
 function Filters({ view, setView }: { view: StreamView; setView: (view: StreamView) => void }) {
@@ -192,14 +192,14 @@ function Filters({ view, setView }: { view: StreamView; setView: (view: StreamVi
           title="Show every conversation"
           type="button"
         >
-          <ConversationRef className="max-w-48 font-sans text-[11px]" id={view.conversation} />
+          <ConversationRef className="max-w-48 font-sans text-[0.6875rem]" id={view.conversation} />
           <XIcon className="size-3" />
         </button>
       )}
       <label className="ml-auto flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-border/70 px-2 max-md:w-full md:w-56">
         <SearchIcon className="size-3 shrink-0 text-muted-foreground" />
         <input
-          className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[0.6875rem] outline-none placeholder:text-muted-foreground"
           onChange={(event) => setView({ ...view, text: event.target.value })}
           placeholder="filter text"
           value={view.text}
@@ -262,7 +262,10 @@ export function Stream({
             <Row key={row.id} row={row} />
           ))}
       </ul>
-      <div className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground" ref={end}>
+      <div
+        className="px-3 py-4 text-center font-mono text-[0.6875rem] text-muted-foreground"
+        ref={end}
+      >
         {stream.error ? (
           <span className="text-error/90" data-stream-error>
             couldn’t load: {stream.error} · retrying

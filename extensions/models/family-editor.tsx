@@ -33,7 +33,7 @@ import type { FamiliesView, FamilyView, SaveFamilies } from './refs.ts'
 type Spec = SaveFamilies['families'][string]
 const label = 'section-label'
 const control =
-  'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+  'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[0.7188rem] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
 const specOf = (family: FamilyView): Spec => ({
   ...(family.model ? { model: family.model } : {}),
@@ -141,7 +141,7 @@ function FamilyForm({
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[12.5px] font-medium">{familyTitle(family.name)}</span>
+        <span className="font-mono text-[0.7812rem] font-medium">{familyTitle(family.name)}</span>
         {family.project && <span className={label}>· the project's settings change it</span>}
         <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Color">
           {Object.keys(FAMILY_COLORS).map((name) => (
@@ -175,7 +175,7 @@ function FamilyForm({
           value={draft.model}
         />
         {model && (!info || !info.available) && (
-          <p className="text-[11px] text-warning">
+          <p className="text-[0.6875rem] text-warning">
             {info ? `No ${info.provider} login: ` : 'Not in the model list: '}
             what runs on it takes the default model until there is one.
           </p>
@@ -207,11 +207,11 @@ function FamilyForm({
           ))}
         </select>
       </div>
-      {error && <p className="font-mono text-[11px] break-words text-error">{error}</p>}
+      {error && <p className="font-mono text-[0.6875rem] break-words text-error">{error}</p>}
       <div className="flex items-center gap-1 border-t border-border/70 pt-2.5">
         {!builtin && (
           <Button
-            className="h-7 px-2 text-[12px] text-muted-foreground hover:text-error"
+            className="h-7 px-2 text-[0.75rem] text-muted-foreground hover:text-error"
             disabled={pending}
             onClick={() => void apply({ families: families() })}
             size="sm"
@@ -221,11 +221,16 @@ function FamilyForm({
             Remove
           </Button>
         )}
-        <Button className="ml-auto h-7 px-2 text-[12px]" onClick={close} size="sm" variant="ghost">
+        <Button
+          className="ml-auto h-7 px-2 text-[0.75rem]"
+          onClick={close}
+          size="sm"
+          variant="ghost"
+        >
           Cancel
         </Button>
         <Button
-          className="h-7 px-3 text-[12px]"
+          className="h-7 px-3 text-[0.75rem]"
           disabled={!changed || pending}
           onClick={() => void apply({ families: families(draft) })}
           title="New conversations take it; open ones keep their model"
@@ -271,7 +276,7 @@ export function AddFamily({ view }: { view: FamiliesView }) {
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <Button
-          className="h-5 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          className="h-5 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
           size="xs"
           title="A new model family"
           variant="ghost"
@@ -299,9 +304,9 @@ export function AddFamily({ view }: { view: FamiliesView }) {
           spellCheck={false}
           value={name}
         />
-        {(problem ?? error) && <p className="text-[11px] text-error">{problem ?? error}</p>}
+        {(problem ?? error) && <p className="text-[0.6875rem] text-error">{problem ?? error}</p>}
         <Button
-          className="h-7 w-full text-[12px]"
+          className="h-7 w-full text-[0.75rem]"
           disabled={!name || !!problem}
           onClick={() => void add()}
           size="sm"
@@ -384,19 +389,19 @@ function ModelSelect({
           {...(value ? { defaultValue: value } : {})}
         >
           <CommandInput
-            className="text-[13px]"
+            className="text-[0.8125rem]"
             onValueChange={setQuery}
             placeholder={`Search ${(models?.models.length ?? 0).toLocaleString()} models…`}
             value={query}
           />
           <CommandList className="max-h-[45vh]">
-            <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+            <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
               No model matches.
             </CommandEmpty>
             {onClear && !query && (
               <CommandGroup heading="Default">
                 <button
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left font-mono text-[12px] hover:bg-accent"
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left font-mono text-[0.75rem] hover:bg-accent"
                   onClick={() => choose(onClear)}
                   type="button"
                 >
@@ -418,7 +423,7 @@ function ModelSelect({
               </CommandGroup>
             ))}
           </CommandList>
-          <div className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="border-t border-border/70 px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
             {query ? 'all providers' : 'logged-in providers · type to search all'}
           </div>
         </Command>

@@ -23,7 +23,10 @@ function SketchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   if (call.status === 'error' || call.status === 'interrupted') return core
   if (!details?.spec)
     return (
-      <Card className="flex items-center gap-2 px-3 py-2.5 font-mono text-[12px]" data-ui="sketch">
+      <Card
+        className="flex items-center gap-2 px-3 py-2.5 font-mono text-[0.75rem]"
+        data-ui="sketch"
+      >
         <PencilRulerIcon className="size-3.5 shrink-0 text-brand" />
         <Shimmer className="min-w-0 truncate">
           {`Sketching ${typeof call.args.request === 'string' ? call.args.request : ''}`}
@@ -35,10 +38,10 @@ function SketchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const state = forms?.[call.id]
   return (
     <Card className="space-y-3 px-3.5 pt-2.5 pb-3.5" data-ui="sketch">
-      <header className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex items-baseline gap-2 font-mono text-[0.6875rem] text-muted-foreground">
         <PencilRulerIcon className="size-3 shrink-0 translate-y-px self-center text-brand" />
         {spec.title && (
-          <span className="min-w-0 truncate text-[12px] font-medium text-foreground">
+          <span className="min-w-0 truncate text-[0.75rem] font-medium text-foreground">
             {spec.title}
           </span>
         )}

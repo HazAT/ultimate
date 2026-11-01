@@ -5,7 +5,7 @@ import { useToolDuration } from '@/sdk'
 import type { ToolCallView } from '@/sdk'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
-const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90'
+const prose = 'font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90'
 
 /** What a `goal` call did, in a line: its verb first, then what it was about. */
 function headline(args: ToolCallView['args']): [string, string] {

@@ -36,7 +36,7 @@ export function Footer({
       {(noting || drafts.note) && (
         <textarea
           aria-label="Overall note"
-          className="mb-2 block max-h-40 min-h-12 w-full resize-y rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground focus:border-brand/50"
+          className="mb-2 block max-h-40 min-h-12 w-full resize-y rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[0.8125rem] leading-relaxed outline-none placeholder:text-muted-foreground focus:border-brand/50"
           onChange={(event) => {
             const note = event.target.value
             setFull(!update((all) => ({ ...all, note })))
@@ -46,13 +46,17 @@ export function Footer({
         />
       )}
       {full && (
-        <p className="mb-2 font-mono text-[11.5px] text-error" data-review-refused="" role="alert">
+        <p
+          className="mb-2 font-mono text-[0.7188rem] text-error"
+          data-review-refused=""
+          role="alert"
+        >
           Too long to keep as a draft: shorten the note, or send the review first
         </p>
       )}
       {error && (
         <p
-          className="mb-2 flex items-start gap-1.5 font-mono text-[11.5px] text-error"
+          className="mb-2 flex items-start gap-1.5 font-mono text-[0.7188rem] text-error"
           data-review-error=""
           role="alert"
         >
@@ -61,7 +65,7 @@ export function Footer({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="flex items-center gap-1.5 font-mono text-[11.5px] text-muted-foreground">
+        <span className="flex items-center gap-1.5 font-mono text-[0.7188rem] text-muted-foreground">
           <MessageSquareIcon className="size-3.5 text-brand" />
           <span className={cn(over && 'text-error')}>
             {commentCount(count)} pending
@@ -70,7 +74,7 @@ export function Footer({
         </span>
         {!noting && !drafts.note && (
           <button
-            className="cursor-pointer font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="cursor-pointer font-mono text-[0.7188rem] text-muted-foreground hover:text-foreground"
             onClick={() => setNoting(true)}
             type="button"
           >

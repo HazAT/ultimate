@@ -72,13 +72,13 @@ export function SummaryModelDialog() {
         <DialogDescription className="sr-only">
           The model that writes titles, summaries and reply summaries.
         </DialogDescription>
-        <div className="flex items-baseline gap-2 border-b border-border/70 px-3 py-2 text-[12px]">
+        <div className="flex items-baseline gap-2 border-b border-border/70 px-3 py-2 text-[0.75rem]">
           <span className="text-muted-foreground">Summary model</span>
           <span className="min-w-0 truncate text-foreground" data-testid="summary-model-current">
             {setting ? String(setting.value) : '…'}
           </span>
           {setting && (
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
               {setting.source === 'default'
                 ? 'default'
                 : setting.source === 'user'
@@ -94,19 +94,19 @@ export function SummaryModelDialog() {
           shouldFilter={false}
         >
           <CommandInput
-            className="text-[13px]"
+            className="text-[0.8125rem]"
             onValueChange={setQuery}
             placeholder="Search logged-in models…"
             value={query}
           />
           <CommandList className="max-h-[50vh]">
-            <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+            <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
               No logged-in model matches.
             </CommandEmpty>
             {!query && setting && (
               <CommandGroup heading="Default">
                 <CommandItem
-                  className="gap-2 py-1 font-mono text-[12px]"
+                  className="gap-2 py-1 font-mono text-[0.75rem]"
                   disabled={locked}
                   onSelect={() => void choose(null)}
                   value="default"
@@ -140,7 +140,7 @@ export function SummaryModelDialog() {
               </Fragment>
             ))}
           </CommandList>
-          <div className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="border-t border-border/70 px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
             {error ? (
               <span className="text-error">{error}</span>
             ) : locked ? (

@@ -60,7 +60,7 @@ export function rememberSummary(ops: readonly RememberOp[]) {
     .join(' · ')
 }
 
-const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90'
+const prose = 'font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90'
 
 /** A `remember` batch: what changed in the header, each op as a readable block. */
 export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
@@ -87,7 +87,7 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
                 <MemoryChip className="min-w-0" key={slug} slug={slug} />
               ))}
               {kept.length > 2 && (
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-[0.625rem] text-muted-foreground">
                   +{kept.length - 2}
                 </span>
               )}
@@ -125,7 +125,7 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
               )}
               {op.kind && <span className="shrink-0 text-muted-foreground">{op.kind}</span>}
               {op.source && (
-                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
                   {op.source}
                 </span>
               )}
@@ -183,7 +183,10 @@ export function NotifyCall({ call, core }: { call: ToolCallView; core: ReactNode
         )}
         <span className="shrink-0">finishes</span>
         {call.args.wake === false && (
-          <span className="ml-auto shrink-0 text-[11px]" title="Leaves a note instead of waking">
+          <span
+            className="ml-auto shrink-0 text-[0.6875rem]"
+            title="Leaves a note instead of waking"
+          >
             <span className="hidden sm:inline">as a note, </span>no wake-up
           </span>
         )}

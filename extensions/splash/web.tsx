@@ -418,7 +418,7 @@ function Late() {
   if (dismissed || (pending.length === 0 && failed.length === 0)) return null
   return (
     <div
-      className="fixed top-12 left-1/2 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-start gap-2 rounded-md border border-border/80 bg-popover px-2.5 py-2 font-mono text-[11.5px] leading-snug shadow-lg"
+      className="fixed top-12 left-1/2 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-start gap-2 rounded-md border border-border/80 bg-popover px-2.5 py-2 font-mono text-[0.7188rem] leading-snug shadow-lg"
       role="alert"
     >
       <TriangleAlertIcon className="mt-px size-3.5 shrink-0 text-warning" />

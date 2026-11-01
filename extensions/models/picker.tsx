@@ -62,7 +62,7 @@ export function ModelRow({
 }) {
   return (
     <CommandItem
-      className={cn('gap-2 py-1 font-mono text-[12px]', !model.available && 'opacity-60')}
+      className={cn('gap-2 py-1 font-mono text-[0.75rem]', !model.available && 'opacity-60')}
       disabled={disabled}
       onSelect={onSelect}
       value={`${model.provider}/${model.id}`}
@@ -70,11 +70,11 @@ export function ModelRow({
       <CheckIcon className={cn('size-3.5', current ? 'text-brand' : 'opacity-0')} />
       <span className={cn('shrink-0', current ? 'text-brand' : 'text-foreground')}>{model.id}</span>
       {model.name !== model.id && (
-        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground">
+        <span className="min-w-0 truncate font-sans text-[0.75rem] text-muted-foreground">
           {model.name}
         </span>
       )}
-      <span className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-muted-foreground tabular-nums">
+      <span className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[0.6875rem] text-muted-foreground tabular-nums">
         {model.provider === 'anthropic' && <span className="text-warning/80">paid API</span>}
         {model.reasoning ? (
           <span
@@ -202,20 +202,20 @@ export function ModelPicker() {
           shouldFilter={false}
         >
           <CommandInput
-            className="text-[13px]"
+            className="text-[0.8125rem]"
             onValueChange={setQuery}
             placeholder={`Search ${total.toLocaleString()} models…`}
             value={query}
           />
           <CommandList className="max-h-[55vh]">
-            <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+            <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
               No model matches. Log in to a provider to see its models.
             </CommandEmpty>
             {shownFamilies.length > 0 && (
               <CommandGroup heading="Families">
                 {shownFamilies.map((family) => (
                   <CommandItem
-                    className="gap-2 py-1 font-mono text-[12px]"
+                    className="gap-2 py-1 font-mono text-[0.75rem]"
                     key={family.name}
                     onSelect={() => chooseFamily(family)}
                     value={`family/${family.name}`}
@@ -227,7 +227,7 @@ export function ModelPicker() {
                     <span className="shrink-0 font-sans text-foreground">
                       {familyTitle(family.name)}
                     </span>
-                    <span className="ml-auto truncate pl-3 text-[11px] text-muted-foreground">
+                    <span className="ml-auto truncate pl-3 text-[0.6875rem] text-muted-foreground">
                       {[modelIdOf(runsOn(family)!), thinkingOf(family)].filter(Boolean).join(' · ')}
                     </span>
                   </CommandItem>
@@ -252,7 +252,7 @@ export function ModelPicker() {
             ))}
             <CommandGroup heading="Accounts">
               <CommandItem
-                className="gap-2 py-1 font-mono text-[12px]"
+                className="gap-2 py-1 font-mono text-[0.75rem]"
                 onSelect={() => {
                   setOpen(false)
                   actions.openPanel(agentsPanel)
@@ -261,24 +261,24 @@ export function ModelPicker() {
               >
                 <LayersIcon className="size-3.5" />
                 Model families…
-                <span className="ml-auto text-[11px] text-muted-foreground">
+                <span className="ml-auto text-[0.6875rem] text-muted-foreground">
                   each agent's family and model
                 </span>
               </CommandItem>
               <CommandItem
-                className="gap-2 py-1 font-mono text-[12px]"
+                className="gap-2 py-1 font-mono text-[0.75rem]"
                 onSelect={() => openLogin({ ...actions, conversationId: id })}
                 value="login"
               >
                 <LogInIcon className="size-3.5" />
                 Log in to a provider…
-                <span className="ml-auto text-[11px] text-muted-foreground">
+                <span className="ml-auto text-[0.6875rem] text-muted-foreground">
                   subscriptions and API keys, shared with pi
                 </span>
               </CommandItem>
             </CommandGroup>
           </CommandList>
-          <div className="flex items-center gap-3 border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3 border-t border-border/70 px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
             {error ? (
               <span className="truncate text-error">{error}</span>
             ) : (

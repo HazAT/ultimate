@@ -154,7 +154,7 @@ function Row({
 
 function Text({ text }: { text: string }) {
   return (
-    <pre className="max-h-96 overflow-auto rounded-sm bg-terminal px-2.5 py-2 text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap text-foreground/85">
+    <pre className="max-h-96 overflow-auto rounded-sm bg-terminal px-2.5 py-2 text-[0.7188rem] leading-[1.55] break-words whitespace-pre-wrap text-foreground/85">
       {text}
     </pre>
   )
@@ -163,7 +163,7 @@ function Text({ text }: { text: string }) {
 function ToolBody({ tool }: { tool: Tool }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-sans text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-foreground/85">
+      <p className="font-sans text-[0.7812rem] leading-relaxed break-words whitespace-pre-wrap text-foreground/85">
         {tool.description}
       </p>
       <Text text={JSON.stringify(tool.parameters, null, 2)} />
@@ -243,11 +243,11 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
             <span className="break-all text-foreground/85">{path}</span>
             <span className="text-muted-foreground"> · current file</span>
             {definition?.description && (
-              <span className="mt-0.5 block font-sans text-[12.5px] leading-snug text-muted-foreground">
+              <span className="mt-0.5 block font-sans text-[0.7812rem] leading-snug text-muted-foreground">
                 {definition.description}
               </span>
             )}
-            <span className="mt-0.5 block font-sans text-[11.5px] leading-snug text-muted-foreground">
+            <span className="mt-0.5 block font-sans text-[0.7188rem] leading-snug text-muted-foreground">
               What it ran with is the instructions section below.
             </span>
           </span>
@@ -271,7 +271,7 @@ function Header({ breakdown }: { breakdown: Breakdown }) {
   const model = breakdown.model?.model
   return (
     <Collapsible
-      className="group/context rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]"
+      className="group/context rounded-md border border-border/70 bg-card/40 font-mono text-[0.7188rem]"
       data-context-header={breakdown.start?.id ?? 'start'}
       data-ui="turn-header"
       onOpenChange={setOpen}
@@ -357,7 +357,7 @@ function Header({ breakdown }: { breakdown: Breakdown }) {
                 </Row>
               </>
             )}
-            <p className="px-3 pt-2 font-sans text-[11.5px] text-muted-foreground">
+            <p className="px-3 pt-2 font-sans text-[0.7188rem] text-muted-foreground">
               Estimates at 3.5 characters per token; an image counts as about 1.4k.
             </p>
           </>
@@ -460,7 +460,7 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
       {...(fold.folds && { open: fold.open, onOpenChange: fold.setOpen })}
     >
       <CollapsibleTrigger className="w-full cursor-pointer">
-        <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground">
+        <div className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground">
           <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">
             <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-[state=open]/marker:rotate-90" />
             <span className="truncate">{children}</span>
@@ -468,7 +468,7 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
           </span>
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-2 rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]">
+      <CollapsibleContent className="mt-2 rounded-md border border-border/70 bg-card/40 font-mono text-[0.7188rem]">
         <DiffBody diff={diff} />
       </CollapsibleContent>
     </Collapsible>

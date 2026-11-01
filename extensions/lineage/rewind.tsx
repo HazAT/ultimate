@@ -20,7 +20,7 @@ const via = { subagent: 'subagent', branch: 'branch', message: 'messaged' } as c
 /** Changed files with their line counts, as a landing card lists them. */
 function Files({ files }: { files: readonly RewindFile[] }) {
   return (
-    <ul className="flex flex-col gap-0.5 font-mono text-[11.5px]">
+    <ul className="flex flex-col gap-0.5 font-mono text-[0.7188rem]">
       {files.map((file) => (
         <li className="flex min-w-0 items-center gap-2" key={file.path}>
           <FileIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -49,7 +49,7 @@ function Files({ files }: { files: readonly RewindFile[] }) {
 
 function Dependents({ dependents }: { dependents: readonly RewindDependent[] }) {
   return (
-    <ul className="flex flex-col gap-0.5 font-mono text-[11.5px]">
+    <ul className="flex flex-col gap-0.5 font-mono text-[0.7188rem]">
       {dependents.map((dependent) => (
         <li className="flex min-w-0 items-center gap-2" key={dependent.id}>
           <GitForkIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -95,10 +95,10 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
     <Dialog onOpenChange={(open) => !open && onClose()} open>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md" showCloseButton={false}>
         <div className="max-h-[70vh] overflow-y-auto px-5 pt-5 pb-4" data-lineage-rewind-dialog>
-          <DialogTitle className="text-[14px] font-medium">
+          <DialogTitle className="text-[0.875rem] font-medium">
             Go back to #{conversation}/{at}?
           </DialogTitle>
-          <DialogDescription className="mt-2 text-[13px] leading-relaxed break-words">
+          <DialogDescription className="mt-2 text-[0.8125rem] leading-relaxed break-words">
             {refused ? (
               <span className="text-error" data-lineage-rewind-refused>
                 {refused}
@@ -111,13 +111,13 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
             )}
           </DialogDescription>
           {!result && !preview.error && (
-            <p className="mt-4 font-mono text-[11px] text-muted-foreground">
+            <p className="mt-4 font-mono text-[0.6875rem] text-muted-foreground">
               Reading what changed…
             </p>
           )}
           {result && !refused && (
             <>
-              <p className="mt-3 font-mono text-[11px] text-muted-foreground">
+              <p className="mt-3 font-mono text-[0.6875rem] text-muted-foreground">
                 {result.steps} step{result.steps === 1 ? '' : 's'} set aside
                 {result.commits.length
                   ? ` · ${result.commits.length} commit${result.commits.length === 1 ? '' : 's'} since`
@@ -127,18 +127,18 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
                 {result.files.length ? (
                   <Files files={result.files} />
                 ) : (
-                  <p className="text-[12.5px] text-muted-foreground">No changes.</p>
+                  <p className="text-[0.7812rem] text-muted-foreground">No changes.</p>
                 )}
               </Section>
               {result.dependents.length > 0 && (
                 <Section title="Built on this path">
                   <Dependents dependents={result.dependents} />
-                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                  <p className="mt-1.5 text-[0.75rem] text-muted-foreground">
                     They keep running on their own and get a marker.
                   </p>
                 </Section>
               )}
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[13px]">
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[0.8125rem]">
                 <Checkbox
                   checked={summarize}
                   className="mt-0.5"
@@ -147,7 +147,7 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
                 />
                 <span>
                   Summarize what came after this point
-                  <span className="block text-[12px] text-muted-foreground">
+                  <span className="block text-[0.75rem] text-muted-foreground">
                     {result.summaryModel
                       ? 'The summary model adds decisions, results and open threads to the note.'
                       : 'No summary model is available; the note lists the files.'}
@@ -156,7 +156,7 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
               </label>
             </>
           )}
-          {error && <p className="mt-3 font-mono text-[12px] break-words text-error">{error}</p>}
+          {error && <p className="mt-3 font-mono text-[0.75rem] break-words text-error">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 border-t border-border/70 bg-sidebar px-5 py-3">
           <Button onClick={onClose} size="sm" variant="ghost">
@@ -222,7 +222,7 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
       }
     >
       <Card data-lineage-rewound={at}>
-        <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
           <HistoryIcon className="size-3.5 shrink-0 text-brand" />
           <span className="shrink-0 text-foreground">
             Went back to #{entry.conversationId}/{at}
@@ -231,32 +231,32 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
             {steps} step{steps === 1 ? '' : 's'} set aside
           </span>
         </header>
-        <div className="flex min-w-0 flex-col gap-3 px-3 py-2.5 text-[13px] leading-relaxed">
+        <div className="flex min-w-0 flex-col gap-3 px-3 py-2.5 text-[0.8125rem] leading-relaxed">
           {summary && (
             <div className="min-w-0" data-lineage-rewound-summary>
               <MessageResponse>{summary}</MessageResponse>
             </div>
           )}
           {summaryMissing && (
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-[0.75rem] text-muted-foreground">
               The summary model gave no summary; the files are listed.
             </p>
           )}
           {files.length ? (
             <div>
-              <p className="mb-1 text-[12.5px] text-muted-foreground">
+              <p className="mb-1 text-[0.7812rem] text-muted-foreground">
                 Since then these files changed in the worktree. They&apos;re still there; decide
                 whether to keep or undo them.
               </p>
               <Files files={files} />
             </div>
           ) : (
-            <p className="text-[12.5px] text-muted-foreground">
+            <p className="text-[0.7812rem] text-muted-foreground">
               The worktree has no changes since then.
             </p>
           )}
           {commits.length > 0 && (
-            <ul className="flex flex-col gap-0.5 font-mono text-[11.5px]">
+            <ul className="flex flex-col gap-0.5 font-mono text-[0.7188rem]">
               {commits.map((commit) => (
                 <li className="flex min-w-0 items-center gap-2" key={commit.sha}>
                   <GitCommitIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -268,7 +268,7 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
           )}
           {dependents.length > 0 && (
             <div>
-              <p className="mb-1 text-[12.5px] text-muted-foreground">
+              <p className="mb-1 text-[0.7812rem] text-muted-foreground">
                 Built on the set-aside path, still running on their own:
               </p>
               <Dependents dependents={dependents} />
@@ -286,7 +286,7 @@ export function RewoundDependent({ entry }: { entry: EntryRecord }) {
   const { from, at, entry: note } = entry.data as { from: number; at: number; entry: number }
   return (
     <button
-      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-warning/90 before:h-px before:flex-1 before:bg-warning/30 after:h-px after:flex-1 after:bg-warning/30 hover:text-warning"
+      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[0.6875rem] text-warning/90 before:h-px before:flex-1 before:bg-warning/30 after:h-px after:flex-1 after:bg-warning/30 hover:text-warning"
       data-lineage-rewound-dependent={from}
       onClick={() => switchConversation(from)}
       title={`#${from} went back to #${from}/${at} (note #${note})`}

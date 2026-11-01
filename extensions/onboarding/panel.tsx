@@ -76,7 +76,7 @@ function Diagnostics({ messages }: { messages: readonly string[] }) {
       <ul className="mt-1.5 flex flex-col gap-1">
         {messages.map((text) => (
           <li
-            className="font-mono text-[11px] leading-snug break-words text-foreground/85"
+            className="font-mono text-[0.6875rem] leading-snug break-words text-foreground/85"
             key={text}
           >
             {text}
@@ -120,7 +120,7 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
   return (
     <section className="border-b border-border/60 px-3 pt-3 pb-3.5">
       <Heading meta={<span className="font-mono">{project.name}</span>}>Project</Heading>
-      <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+      <p className="mt-2 text-[0.75rem] leading-snug text-muted-foreground">
         {state}
         {project.config && (
           <>
@@ -176,7 +176,7 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
       />
       {project.config && (
         <Button
-          className="mt-2 h-7 w-full justify-start gap-1.5 px-2 font-mono text-[11px] text-muted-foreground"
+          className="mt-2 h-7 w-full justify-start gap-1.5 px-2 font-mono text-[0.6875rem] text-muted-foreground"
           disabled={busy !== undefined || copies === 0}
           onClick={() => void run('adopt', () => api.action(AdoptProjectSetupAction))}
           size="sm"
@@ -195,9 +195,9 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
           Use this project's setup everywhere
         </Button>
       )}
-      {error && <p className="mt-2 font-mono text-[11px] leading-snug text-error">{error}</p>}
+      {error && <p className="mt-2 font-mono text-[0.6875rem] leading-snug text-error">{error}</p>}
       {adopted && (
-        <p className="mt-2 font-mono text-[11px] leading-snug text-success">
+        <p className="mt-2 font-mono text-[0.6875rem] leading-snug text-success">
           Copied {copies} choices into ~/.ultimate/settings.json
         </p>
       )}
@@ -245,13 +245,13 @@ function SecretsLine({ secrets }: { secrets: readonly Secret[] | undefined }) {
         Secrets
       </Heading>
       {missing ? (
-        <span className="flex items-center gap-1.5 font-mono text-[11px] text-warning">
+        <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-warning">
           <span className="size-1.5 rounded-full bg-warning" />
           {missing} missing
         </span>
       ) : (
         secrets?.length !== undefined && (
-          <span className="font-mono text-[11px] text-muted-foreground">
+          <span className="font-mono text-[0.6875rem] text-muted-foreground">
             {secrets.length ? 'all set' : 'none needed'}
           </span>
         )
@@ -267,7 +267,7 @@ function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
   return (
     <ul className="mt-1 flex flex-col gap-0.5 pl-[18px]">
       {secrets.map((secret) => (
-        <li className="flex items-center gap-1.5 font-mono text-[11px]" key={secret.name}>
+        <li className="flex items-center gap-1.5 font-mono text-[0.6875rem]" key={secret.name}>
           <KeyRoundIcon className="size-3 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate text-foreground/80" title={secret.description}>
             {secret.name}
@@ -287,7 +287,7 @@ function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
             {secret.set ? 'set' : secret.via ? `via ${secret.via}` : 'missing'}
           </span>
           <button
-            className="ml-auto shrink-0 text-[11px] text-brand outline-none hover:underline focus-visible:underline"
+            className="ml-auto shrink-0 text-[0.6875rem] text-brand outline-none hover:underline focus-visible:underline"
             onClick={() => openSecrets(secret.name)}
             type="button"
           >
@@ -361,9 +361,9 @@ function Details({ extension }: { extension: ExtensionInfo }) {
     ...(prompt || hooks ? [] : ['prompt']),
   ]
   return (
-    <div className="mt-1.5 ml-4 flex flex-col gap-0.5 border-l border-border/60 pl-2.5 font-mono text-[11px] leading-snug">
+    <div className="mt-1.5 ml-4 flex flex-col gap-0.5 border-l border-border/60 pl-2.5 font-mono text-[0.6875rem] leading-snug">
       {data?.summary && (
-        <p className="mb-1 font-sans text-[12px] text-muted-foreground">
+        <p className="mb-1 font-sans text-[0.75rem] text-muted-foreground">
           <Line text={data.summary} />
         </p>
       )}
@@ -378,7 +378,7 @@ function Details({ extension }: { extension: ExtensionInfo }) {
                   <span className="text-foreground/90">{tool.name}</span>
                   {tool.description && (
                     <span
-                      className="line-clamp-2 font-sans text-[11.5px] text-muted-foreground"
+                      className="line-clamp-2 font-sans text-[0.7188rem] text-muted-foreground"
                       title={tool.description}
                     >
                       {tool.description}
@@ -411,7 +411,7 @@ function Details({ extension }: { extension: ExtensionInfo }) {
       {data && extension.enabled && empty.length > 0 && (
         <p className="text-muted-foreground">no {empty.join(' · ')}</p>
       )}
-      <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground" title={extension.path}>
+      <p className="mt-0.5 truncate text-[0.6562rem] text-muted-foreground" title={extension.path}>
         {extension.path}
       </p>
     </div>
@@ -469,7 +469,7 @@ function Row({
           title={open ? 'Hide details' : 'Show tools, contract and dependencies'}
           type="button"
         >
-          <span className="flex min-w-0 items-baseline gap-1.5 font-mono text-[11.5px]">
+          <span className="flex min-w-0 items-baseline gap-1.5 font-mono text-[0.7188rem]">
             <ChevronRightIcon
               className={cn(
                 'size-3 shrink-0 self-center text-muted-foreground transition-transform group-hover:text-foreground group-focus-visible:text-foreground',
@@ -490,7 +490,7 @@ function Row({
             </span>
             <span
               className={cn(
-                'truncate text-[10.5px]',
+                'truncate text-[0.6562rem]',
                 extension.source === 'builtin' ? 'text-muted-foreground' : 'text-brand',
               )}
               title={`${extension.path}\n${reason}`}
@@ -499,7 +499,7 @@ function Row({
               <span className="text-muted-foreground"> · {label}</span>
             </span>
             {secrets.some((secret) => !secret.set && !secret.via) && (
-              <span className="flex shrink-0 items-center gap-1 self-center text-[10.5px] text-warning">
+              <span className="flex shrink-0 items-center gap-1 self-center text-[0.6562rem] text-warning">
                 <TriangleAlertIcon className="size-3" />
                 secret missing
               </span>
@@ -507,7 +507,7 @@ function Row({
           </span>
           <Line
             className={cn(
-              'mt-0.5 block pl-[18px] text-[12px] leading-snug text-muted-foreground',
+              'mt-0.5 block pl-[18px] text-[0.75rem] leading-snug text-muted-foreground',
               !open && 'line-clamp-2',
             )}
             text={line}
@@ -515,7 +515,7 @@ function Row({
           {/* A project folder in place of a built-in runs its own code under a trusted name. */}
           {replaces && (
             <span
-              className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-warning"
+              className="mt-1 flex items-center gap-1.5 font-mono text-[0.6562rem] text-warning"
               title={`This project's .ultimate/extensions/${extension.name} runs instead of the built-in ${extension.name}`}
             >
               <ReplaceIcon className="size-3 shrink-0" />
@@ -546,18 +546,18 @@ function Row({
       <RowSecrets secrets={secrets} />
       {open && <Details extension={extension} />}
       {failure && (
-        <p className="mt-1 line-clamp-3 font-mono text-[11px] leading-snug break-words whitespace-pre-wrap text-error/85">
+        <p className="mt-1 line-clamp-3 font-mono text-[0.6875rem] leading-snug break-words whitespace-pre-wrap text-error/85">
           {failure}
         </p>
       )}
       {error && (
-        <p className="mt-1 flex items-start gap-1.5 font-mono text-[11px] leading-snug text-error">
+        <p className="mt-1 flex items-start gap-1.5 font-mono text-[0.6875rem] leading-snug text-error">
           <CircleAlertIcon className="mt-px size-3 shrink-0" />
           {error}
         </p>
       )}
       {note && (
-        <p className="mt-1 font-mono text-[11px] leading-snug text-muted-foreground">{note}</p>
+        <p className="mt-1 font-mono text-[0.6875rem] leading-snug text-muted-foreground">{note}</p>
       )}
     </li>
   )
@@ -599,7 +599,7 @@ export function ExtensionsPanel() {
     if (settled) follow.current = undefined
   })
   if (!system)
-    return <div className="p-3 font-mono text-[11.5px] text-muted-foreground">connecting…</div>
+    return <div className="p-3 font-mono text-[0.7188rem] text-muted-foreground">connecting…</div>
   const local = system.project.decision === true
   const scope: Scope = switchScope(local, chosen)
   const file =
@@ -674,7 +674,7 @@ export function ExtensionsPanel() {
             value={scope}
           />
         </div>
-        <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground" title={file}>
+        <p className="mt-1 truncate font-mono text-[0.6562rem] text-muted-foreground" title={file}>
           saved in {file}
         </p>
       </div>
@@ -718,7 +718,7 @@ export function ExtensionsPanel() {
             ))}
           </ul>
           {extensions.length === 0 && (
-            <p className="px-3 py-1 text-[12px] text-muted-foreground">
+            <p className="px-3 py-1 text-[0.75rem] text-muted-foreground">
               {title === 'On' ? 'Nothing is on.' : 'Everything is on.'}
             </p>
           )}

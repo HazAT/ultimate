@@ -69,7 +69,7 @@ function ChartBlock({ block }: { block: Chart }) {
           {multi &&
             block.series.map((series, index) => (
               <span
-                className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground"
+                className="flex items-center gap-1 font-mono text-[0.6875rem] text-muted-foreground"
                 key={series.field}
               >
                 <span className="size-2 rounded-[2px]" style={{ background: TONES[index % 4] }} />
@@ -96,7 +96,7 @@ function ChartBlock({ block }: { block: Chart }) {
               y2={y(tick)}
             />
             <text
-              className="fill-muted-foreground font-mono text-[11px]"
+              className="fill-muted-foreground font-mono text-[0.6875rem]"
               dominantBaseline="middle"
               textAnchor="end"
               x={pad.left - 6}
@@ -117,7 +117,7 @@ function ChartBlock({ block }: { block: Chart }) {
             />
             {index % every === 0 && (
               <text
-                className="fill-muted-foreground font-mono text-[11px]"
+                className="fill-muted-foreground font-mono text-[0.6875rem]"
                 textAnchor="middle"
                 x={x(index)}
                 y={H - 6}
@@ -142,7 +142,7 @@ function ChartBlock({ block }: { block: Chart }) {
                     />
                     {(hover === index || (!multi && block.data.length <= 12)) && (
                       <text
-                        className="fill-foreground font-mono text-[11px] tabular-nums"
+                        className="fill-foreground font-mono text-[0.6875rem] tabular-nums"
                         textAnchor="middle"
                         x={left + bar / 2}
                         y={Math.min(y(value), y(0)) - 4}
@@ -180,7 +180,7 @@ function ChartBlock({ block }: { block: Chart }) {
           ))}
         {block.kind === 'line' && hover !== undefined && (
           <text
-            className="fill-foreground font-mono text-[11px] tabular-nums"
+            className="fill-foreground font-mono text-[0.6875rem] tabular-nums"
             textAnchor="middle"
             x={x(hover)}
             y={pad.top - 4}
@@ -192,7 +192,9 @@ function ChartBlock({ block }: { block: Chart }) {
         )}
       </svg>
       {block.unit && (
-        <div className="text-right font-mono text-[11px] text-muted-foreground">{block.unit}</div>
+        <div className="text-right font-mono text-[0.6875rem] text-muted-foreground">
+          {block.unit}
+        </div>
       )}
     </figure>
   )
@@ -203,11 +205,11 @@ function Metric({ block }: { block: Extract<Leaf, { type: 'metric' }> }) {
   return (
     <div className="min-w-0 space-y-0.5">
       <div className="section-label">{block.label}</div>
-      <div className="text-[28px] leading-9 font-semibold tracking-tight tabular-nums">
+      <div className="text-[1.75rem] leading-9 font-semibold tracking-tight tabular-nums">
         {block.value}
       </div>
       {block.delta && (
-        <div className={cn('font-mono text-[11px]', down ? 'text-error' : 'text-success')}>
+        <div className={cn('font-mono text-[0.6875rem]', down ? 'text-error' : 'text-success')}>
           {block.delta}
         </div>
       )}
@@ -223,13 +225,13 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
   const brief = (key: string) => block.rows.every((row) => String(row[key] ?? '').length <= 12)
   return (
     <div className="max-h-96 min-w-0 overflow-auto">
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full border-collapse text-[0.8125rem]">
         <thead className="sticky top-0 bg-card">
           <tr>
             {block.columns.map((column) => (
               <th
                 className={cn(
-                  'border-b border-border px-2 py-1.5 font-mono text-[11px] font-normal whitespace-nowrap text-muted-foreground',
+                  'border-b border-border px-2 py-1.5 font-mono text-[0.6875rem] font-normal whitespace-nowrap text-muted-foreground',
                   numeric(column.key) ? 'text-right' : 'text-left',
                 )}
                 key={column.key}
@@ -263,14 +265,14 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
         </tbody>
       </table>
       {!block.rows.length && (
-        <div className="px-2 py-3 text-center text-[13px] text-muted-foreground">No rows</div>
+        <div className="px-2 py-3 text-center text-[0.8125rem] text-muted-foreground">No rows</div>
       )}
     </div>
   )
 }
 
 const control =
-  'h-8 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus:border-brand/60 disabled:opacity-70 max-md:h-11'
+  'h-8 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-[0.8125rem] outline-none placeholder:text-muted-foreground focus:border-brand/60 disabled:opacity-70 max-md:h-11'
 
 /** The value a field starts at: its default when it fits the field's kind, else the first option, off or empty. */
 const initial = (field: Field): Value => {
@@ -299,7 +301,7 @@ function Input({
   if (field.kind === 'toggle')
     return (
       <label className="flex items-center justify-between gap-3 py-1" htmlFor={id}>
-        <span className="text-[13px]">{field.label}</span>
+        <span className="text-[0.8125rem]">{field.label}</span>
         <Switch checked={value === true} disabled={locked} id={id} onCheckedChange={set} />
       </label>
     )
@@ -384,7 +386,7 @@ function Form({
       </div>
       <div className="flex items-center justify-end gap-3">
         {sent && !stranded && (
-          <span className="font-mono text-[11px] text-muted-foreground">
+          <span className="font-mono text-[0.6875rem] text-muted-foreground">
             sent{' '}
             {new Date(sent.at).toLocaleTimeString([], {
               hour: '2-digit',
@@ -408,7 +410,7 @@ export type FormProps = {
 
 function LeafBlock({ block, form }: { block: Leaf; form: FormProps }) {
   if (block.type === 'text')
-    return <MessageResponse className="text-[14px]">{block.markdown}</MessageResponse>
+    return <MessageResponse className="text-[0.875rem]">{block.markdown}</MessageResponse>
   if (block.type === 'metric') return <Metric block={block} />
   if (block.type === 'chart') return <ChartBlock block={block} />
   if (block.type === 'table') return <Table block={block} />

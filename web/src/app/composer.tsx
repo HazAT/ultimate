@@ -88,7 +88,7 @@ function Inbox({ items }: { items: readonly InboxItem[] }) {
     }
   }
   return (
-    <div className="mb-2 font-mono text-[12px]">
+    <div className="mb-2 font-mono text-[0.75rem]">
       <div className="max-h-40 space-y-1 overflow-y-auto">
         {queued.map((item) => {
           const cancellation = (
@@ -130,7 +130,7 @@ function Inbox({ items }: { items: readonly InboxItem[] }) {
           )
         })}
       </div>
-      <div className="mt-0.5 flex justify-end text-[11px] text-muted-foreground pointer-coarse:hidden">
+      <div className="mt-0.5 flex justify-end text-[0.6875rem] text-muted-foreground pointer-coarse:hidden">
         <span>
           <Kbd>↑</Kbd> edit queued
         </span>
@@ -417,7 +417,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
           <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2">
             <span
               className={cn(
-                'truncate font-mono text-[11px]',
+                'truncate font-mono text-[0.6875rem]',
                 error || blocked ? 'text-error' : 'text-muted-foreground',
               )}
             >
@@ -460,7 +460,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
           </div>
         </PromptInputFooter>
       </PromptInput>
-      <div className="flex items-center gap-3 overflow-hidden pt-1.5 font-mono text-[11px] whitespace-nowrap text-muted-foreground empty:hidden">
+      <div className="flex items-center gap-3 overflow-hidden pt-1.5 font-mono text-[0.6875rem] whitespace-nowrap text-muted-foreground empty:hidden">
         <Slot name="composer.status" variant="inline" />
       </div>
     </div>

@@ -6,7 +6,7 @@ export function Rows({ children, className }: { children: ReactNode; className?:
   return (
     <dl
       className={cn(
-        'grid grid-cols-[5.25rem_minmax(0,1fr)] gap-x-3 gap-y-[3px] font-mono text-[11.5px] leading-[1.5]',
+        'grid grid-cols-[5.25rem_minmax(0,1fr)] gap-x-3 gap-y-[3px] font-mono text-[0.7188rem] leading-[1.5]',
         className,
       )}
     >

@@ -6,7 +6,7 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   return (
     <span
       className={cn(
-        'shrink-0 rounded-sm border border-border/80 px-1 text-[10px] leading-4 text-muted-foreground',
+        'shrink-0 rounded-sm border border-border/80 px-1 text-[0.625rem] leading-4 text-muted-foreground',
         className,
       )}
     >

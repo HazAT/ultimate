@@ -46,7 +46,7 @@ export function PreparedCard({ entry }: { entry: EntryRecord }) {
   if (doc?.prepared?.at !== at)
     return (
       <Card data-dream-prepared="replaced">
-        <p className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <p className="flex items-center gap-2 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
           <MoonIcon className="size-3.5" />
           Next chapter prepared {formatTime(at)} · replaced by a later one
         </p>
@@ -71,7 +71,7 @@ export function NextChapter({
       className={className}
       data-dream-prepared={prepared.chapter}
     >
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <MoonStarIcon className="size-3.5 text-brand" />
         <span className="text-foreground">Ready for a fresh chapter</span>
         <span>{formatTime(prepared.at)}</span>
@@ -79,7 +79,7 @@ export function NextChapter({
       <ul className="space-y-1.5 px-4 pt-4 pb-3" data-dream-learned>
         {prepared.learned.map((line) => (
           <li
-            className="border-l-2 border-brand/30 pl-3 text-[14.5px] leading-snug text-foreground/90"
+            className="border-l-2 border-brand/30 pl-3 text-[0.9062rem] leading-snug text-foreground/90"
             key={line}
           >
             {line}
@@ -87,11 +87,11 @@ export function NextChapter({
         ))}
       </ul>
       <Collapsible className="group/handoff px-4 pb-3" data-dream-handoff>
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground">
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/handoff:rotate-90 motion-reduce:transition-none" />
           Read my handover
         </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2 text-[13px] leading-relaxed">
+        <CollapsibleContent className="pt-2 text-[0.8125rem] leading-relaxed">
           <MessageResponse>{prepared.handoff}</MessageResponse>
         </CollapsibleContent>
       </Collapsible>
@@ -128,15 +128,15 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
         <MoonIcon className="mt-0.5 size-4 shrink-0 text-brand" />
         <div className="min-w-0 flex-1 space-y-2.5">
           <div className="space-y-0.5">
-            <p className="text-[13px] text-foreground">
+            <p className="text-[0.8125rem] text-foreground">
               {failed ? 'Try falling asleep again' : 'Fall asleep'}
             </p>
-            <p className="text-[12px] leading-relaxed text-muted-foreground">
+            <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
               I carry my memory, open work and this handover into a fresh chapter and wake up there.
               This one stays on disk; you can come back any time.
             </p>
           </div>
-          <label className="flex max-w-full items-center rounded-md border border-border bg-background font-mono text-[12.5px] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring sm:w-fit">
+          <label className="flex max-w-full items-center rounded-md border border-border bg-background font-mono text-[0.7812rem] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring sm:w-fit">
             <span className="shrink-0 border-r border-border/70 px-2 py-1 text-muted-foreground">
               Chapter {number} ·
             </span>
@@ -157,7 +157,7 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
             />
           </label>
           {(taken || (invalid && name)) && (
-            <p className="text-[11.5px] text-warning">
+            <p className="text-[0.7188rem] text-warning">
               {taken
                 ? `There already is a chapter ${name}; pick another name, or switch to it from Chapters.`
                 : 'Lowercase letters, digits and dashes, up to 40.'}
@@ -165,7 +165,7 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
           )}
           {blocked && <BusyBlocker busy={busy} />}
           {refusal && (
-            <p className="text-[12px] leading-relaxed" role="alert">
+            <p className="text-[0.75rem] leading-relaxed" role="alert">
               <span className="text-error">Didn't start.</span>{' '}
               <span className="text-muted-foreground">{refusal}</span>
             </p>
@@ -186,7 +186,7 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
               )}
               Fall asleep
             </Button>
-            <span className="font-mono text-[11px] text-muted-foreground">
+            <span className="font-mono text-[0.6875rem] text-muted-foreground">
               under a minute · no model · restarts the server
             </span>
           </div>
@@ -205,25 +205,25 @@ function Failed({ sleep }: { sleep: Sleep }) {
       data-dream-sleep="failed"
       role="alert"
     >
-      <p className="flex items-center gap-2 text-[12.5px] text-foreground">
+      <p className="flex items-center gap-2 text-[0.7812rem] text-foreground">
         <Moon status="failed" />
         Falling asleep failed
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+        <span className="ml-auto font-mono text-[0.6875rem] text-muted-foreground">
           {formatTime(sleep.at)}
         </span>
       </p>
       {(sleep.backup?.id || sleep.backup?.skipped) && (
-        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+        <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground">
           {sleep.backup.id && `backed up ${sleep.backup.id.slice(0, 12)}`}
           {sleep.backup.skipped && `backup skipped: ${sleep.backup.skipped}`}
         </p>
       )}
       {sleep.error && (
-        <p className="mt-1.5 font-mono text-[11px] leading-relaxed break-words text-error/90">
+        <p className="mt-1.5 font-mono text-[0.6875rem] leading-relaxed break-words text-error/90">
           {sleep.error.replace(/^Error: /, '')}
         </p>
       )}
-      <p className="mt-2 text-[12px] text-muted-foreground">
+      <p className="mt-2 text-[0.75rem] text-muted-foreground">
         Nothing moved: we're still in{' '}
         <span className="text-foreground">
           {chapters ? chapterLabel(chapters.number, chapters.active) : 'this chapter'}
@@ -248,7 +248,7 @@ function Progress({ sleep }: { sleep: Sleep }) {
   if (!running)
     return (
       <section
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-4 py-2.5 text-[12px]"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-4 py-2.5 text-[0.75rem]"
         data-dream-sleep="asleep"
       >
         <MoonIcon className="size-3.5 text-brand" />
@@ -257,7 +257,7 @@ function Progress({ sleep }: { sleep: Sleep }) {
         </span>
         {chapters && chapters.active !== sleep.chapter && (
           <button
-            className="ml-auto cursor-pointer font-mono text-[11px] text-foreground/85 hover:text-foreground"
+            className="ml-auto cursor-pointer font-mono text-[0.6875rem] text-foreground/85 hover:text-foreground"
             onClick={() => actions.open(chaptersDialog)}
             type="button"
           >
@@ -272,9 +272,9 @@ function Progress({ sleep }: { sleep: Sleep }) {
       className="border-t border-border/60 px-4 pt-3 pb-3.5"
       data-dream-sleep={sleep.phase}
     >
-      <p className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-foreground">
+      <p className="flex flex-wrap items-baseline gap-x-2 text-[0.8125rem] text-foreground">
         Falling asleep
-        <span className="font-mono text-[11.5px] text-muted-foreground">into {label}</span>
+        <span className="font-mono text-[0.7188rem] text-muted-foreground">into {label}</span>
       </p>
       <ol className="mt-2 space-y-1.5">
         {STEPS.map((step, index) => {
@@ -282,7 +282,7 @@ function Progress({ sleep }: { sleep: Sleep }) {
             index < current ? 'done' : index === current ? 'running' : ('waiting' as const)
           return (
             <li data-status={status} data-step={step} key={step}>
-              <div className="grid grid-cols-[0.75rem_minmax(0,1fr)_auto] items-baseline gap-x-2 text-[12px] leading-5">
+              <div className="grid grid-cols-[0.75rem_minmax(0,1fr)_auto] items-baseline gap-x-2 text-[0.75rem] leading-5">
                 <Moon className="translate-y-0.5 self-start" status={status} />
                 <span
                   className={status === 'waiting' ? 'text-muted-foreground' : 'text-foreground'}
@@ -291,7 +291,7 @@ function Progress({ sleep }: { sleep: Sleep }) {
                   <span className="text-muted-foreground"> {detail(step, sleep)}</span>
                 </span>
                 {status === 'running' && (
-                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                  <span className="font-mono text-[0.6875rem] text-muted-foreground tabular-nums">
                     {elapsed(now, sleep.at)}
                   </span>
                 )}
@@ -300,7 +300,7 @@ function Progress({ sleep }: { sleep: Sleep }) {
           )
         })}
       </ol>
-      <p className="mt-2.5 text-[11.5px] text-muted-foreground">
+      <p className="mt-2.5 text-[0.7188rem] text-muted-foreground">
         Start no other work until I'm asleep — anything that starts now cancels the switch.
       </p>
     </section>

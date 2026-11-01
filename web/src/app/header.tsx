@@ -91,7 +91,7 @@ function Trail() {
       {trail.map((conversation) => (
         <Fragment key={conversation.id}>
           <button
-            className="shrink-0 rounded-sm px-1 font-mono text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
+            className="shrink-0 rounded-sm px-1 font-mono text-[0.75rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
             onClick={() => actions.switchConversation(conversation.id)}
             title={conversation.id === ROOT ? 'The main conversation' : conversation.title}
             type="button"
@@ -103,23 +103,23 @@ function Trail() {
       ))}
       {busy && <span className="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />}
       {root ? (
-        <span className="font-mono text-[12px] text-foreground/85">main</span>
+        <span className="font-mono text-[0.75rem] text-foreground/85">main</span>
       ) : (
         <>
           <Provided input={summary} point={ConversationKind}>
             {(kind) =>
               (kind ?? summary?.label) && (
-                <span className="shrink-0 font-mono text-[12px] text-brand">
+                <span className="shrink-0 font-mono text-[0.75rem] text-brand">
                   {kind ?? summary?.label}
                 </span>
               )
             }
           </Provided>
-          <span className="truncate text-[13px] font-medium" title={title}>
+          <span className="truncate text-[0.8125rem] font-medium" title={title}>
             {title}
           </span>
           {id !== undefined && (
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{id}</span>
+            <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">#{id}</span>
           )}
         </>
       )}

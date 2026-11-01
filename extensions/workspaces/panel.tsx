@@ -20,7 +20,7 @@ import {
 import type { WorkspaceConversation } from './data.tsx'
 import { DiskAction, InfoAction, StatsAction } from './refs.ts'
 
-const heading = 'mb-1 font-mono text-[10.5px] text-muted-foreground'
+const heading = 'mb-1 font-mono text-[0.6562rem] text-muted-foreground'
 
 /** One line for a collapsed section header: what lands now, else the shown conversation's checkout state. */
 export function useWorkspacesMeta() {
@@ -47,7 +47,7 @@ export function Workspaces() {
       {shown ? (
         <Checkout conversation={shown} key={shown.id} />
       ) : (
-        <p className="font-mono text-[11px] text-muted-foreground">
+        <p className="font-mono text-[0.6875rem] text-muted-foreground">
           shown conversation works in the shared checkout
         </p>
       )}
@@ -120,7 +120,7 @@ function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
       </Rows>
       {(workspace.state === 'failed' || info.error) && (
         <p
-          className="mt-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error"
+          className="mt-1.5 font-mono text-[0.6875rem] break-words whitespace-pre-wrap text-error"
           role="alert"
         >
           {workspace.state === 'failed' ? workspace.error : info.error?.message}
@@ -153,7 +153,7 @@ function LanderQueue() {
   return (
     <section aria-label="Lander queue">
       <h3 className={heading}>lander queue</h3>
-      <ol className="flex flex-col gap-0.5 font-mono text-[11.5px]">
+      <ol className="flex flex-col gap-0.5 font-mono text-[0.7188rem]">
         {queue.map((item) => (
           <li className="flex min-w-0 items-center gap-2" key={item.id}>
             <ConversationRef className="max-w-1/2" id={item.conversationId} />
@@ -202,7 +202,7 @@ function Stats() {
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [refetch, refetchDisk])
-  if (error) return <p className="font-mono text-[11px] text-error">{error.message}</p>
+  if (error) return <p className="font-mono text-[0.6875rem] text-error">{error.message}</p>
   if (!data) return null
   return (
     <section aria-label="Workspace statistics">

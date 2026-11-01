@@ -70,7 +70,7 @@ function Branched({ entry }: { entry: EntryRecord }) {
   if (entry.model) return <Started entry={entry} />
   return (
     <button
-      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-foreground"
+      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-foreground"
       data-lineage-branched={branch}
       onClick={() => switchConversation(branch)}
       title={`Open #${branch}`}
@@ -89,7 +89,7 @@ function Branched({ entry }: { entry: EntryRecord }) {
 function Woken() {
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
+      className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
       data-lineage-woken
     >
       <span className="flex items-center gap-1.5">
@@ -114,7 +114,7 @@ function Started({ entry }: { entry: EntryRecord }) {
   const timestamp = entry.model?.[0]?.timestamp
   return (
     <Card data-lineage-started={branch}>
-      <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <GitForkIcon className="size-3.5 shrink-0 text-brand" />
         <span className="shrink-0 text-foreground">Started</span>
         <button
@@ -147,7 +147,7 @@ function Started({ entry }: { entry: EntryRecord }) {
       </header>
       <button
         aria-expanded={open}
-        className="block w-full min-w-0 cursor-pointer px-3 py-2.5 text-left text-[13px] leading-relaxed"
+        className="block w-full min-w-0 cursor-pointer px-3 py-2.5 text-left text-[0.8125rem] leading-relaxed"
         onClick={() => setOpen((current) => !current)}
         title={open ? 'Show less' : 'Show more'}
         type="button"
@@ -156,7 +156,7 @@ function Started({ entry }: { entry: EntryRecord }) {
           <MentionText text={intent} />
         </span>
         {!!images && (
-          <span className="mt-1.5 block font-mono text-[11px] text-muted-foreground">
+          <span className="mt-1.5 block font-mono text-[0.6875rem] text-muted-foreground">
             {images} image{images === 1 ? '' : 's'}
           </span>
         )}
@@ -205,7 +205,7 @@ function Abstract({ entry }: { entry: EntryRecord }) {
         className="min-w-0 rounded-md border border-border bg-muted/20"
         data-lineage-abstract={conversation}
       >
-        <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+        <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
           <ScrollTextIcon className="size-3.5 shrink-0" />
           <span className="shrink-0">Abstract ·</span>
           <button
@@ -218,7 +218,7 @@ function Abstract({ entry }: { entry: EntryRecord }) {
           </button>
           <Open className="ml-auto" entry={at} id={conversation} />
         </header>
-        <p className="min-w-0 px-3 py-2.5 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
+        <p className="min-w-0 px-3 py-2.5 text-[0.7812rem] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
           <MentionText text={text} />
         </p>
       </section>
@@ -235,7 +235,7 @@ function Finished({ entry }: { entry: EntryRecord }) {
       className="min-w-0 rounded-md border border-l-2 border-border border-l-success/70 bg-muted/20"
       data-lineage-finished={from}
     >
-      <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <CircleCheckIcon className="size-3.5 shrink-0 text-success" />
         <button
           className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-foreground hover:underline"
@@ -247,7 +247,7 @@ function Finished({ entry }: { entry: EntryRecord }) {
           <span className="shrink-0">finished</span>
         </button>
       </header>
-      <div className="min-w-0 px-3 py-2.5 text-[13px] leading-relaxed">
+      <div className="min-w-0 px-3 py-2.5 text-[0.8125rem] leading-relaxed">
         <MessageResponse>{text}</MessageResponse>
       </div>
     </section>
@@ -272,7 +272,7 @@ function NoteCard({
       className="min-w-0 rounded-md border border-l-2 border-note/25 border-l-note/60 bg-note/6"
       data-lineage-note={note}
     >
-      <header className="flex min-w-0 items-center gap-2 border-b border-note/15 px-3 py-2 font-mono text-[11px] text-foreground">
+      <header className="flex min-w-0 items-center gap-2 border-b border-note/15 px-3 py-2 font-mono text-[0.6875rem] text-foreground">
         <StickyNoteIcon className="size-3.5 shrink-0 text-note" />
         {label}
         {typeof id === 'number' ? (
@@ -288,7 +288,7 @@ function NoteCard({
           id
         )}
       </header>
-      <div className="min-w-0 px-3 py-2.5 text-[13px] leading-relaxed">
+      <div className="min-w-0 px-3 py-2.5 text-[0.8125rem] leading-relaxed">
         <MessageResponse>{text}</MessageResponse>
       </div>
     </section>
@@ -312,11 +312,11 @@ function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
 function Catchup({ text }: { text: string }) {
   return (
     <Card data-lineage-note="main">
-      <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-foreground">
+      <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-foreground">
         <GitBranchIcon className="size-3.5 text-brand" />
         Catch-up
       </header>
-      <div className="min-w-0 px-3 py-2.5 text-[13px] leading-relaxed">
+      <div className="min-w-0 px-3 py-2.5 text-[0.8125rem] leading-relaxed">
         <MessageResponse>{text}</MessageResponse>
       </div>
     </Card>
@@ -350,7 +350,7 @@ function Genesis({ entry }: { entry: EntryRecord }) {
       data-lineage-genesis={entry.conversationId}
     >
       <CollapsibleTrigger className="flex w-full cursor-pointer flex-col gap-1 px-3.5 py-2.5 text-left">
-        <span className="flex items-center gap-1.5 font-mono text-[11px] text-brand">
+        <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-brand">
           <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]/genesis:rotate-90" />
           Context starts here{from ? ` · distilled from #${from[1]}/${from[2]}` : ''}
         </span>
@@ -360,7 +360,7 @@ function Genesis({ entry }: { entry: EntryRecord }) {
             : 'The conversation before this point is distilled into the start of the context. Earlier messages remain available above.'}
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-brand/20 px-3.5 py-2.5 text-[13px]">
+      <CollapsibleContent className="border-t border-brand/20 px-3.5 py-2.5 text-[0.8125rem]">
         {from && <Open id={Number(from[1])} entry={Number(from[2])} />}
         <MessageResponse>{genesis}</MessageResponse>
       </CollapsibleContent>
@@ -396,10 +396,10 @@ function HistoryBanner({ id, dock }: { id: number; dock?: boolean }) {
       >
         <ScrollTextIcon className="size-4 shrink-0 text-brand" />
         <div className="min-w-56 flex-1">
-          <p className="text-[13.5px] font-medium text-foreground">
+          <p className="text-[0.8438rem] font-medium text-foreground">
             You're reading the project's history
           </p>
-          <p className="text-[12.5px] leading-snug text-muted-foreground">
+          <p className="text-[0.7812rem] leading-snug text-muted-foreground">
             Every branch, abstract and landing so far, read-only. To change anything, talk to
             @ultimate.
           </p>
@@ -454,10 +454,10 @@ function MemorySource({ source }: { source: string }) {
   const { switchConversation, showSurface } = useUltimate()
   const [conversation, entry] = source.slice(1).split('/').map(Number)
   return (
-    <p className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] text-muted-foreground">
+    <p className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[0.6562rem] text-muted-foreground">
       <span className="shrink-0">learned in</span>
       <button
-        className="flex min-w-0 cursor-pointer items-center rounded-sm px-0.5 text-[11px] text-foreground hover:bg-accent"
+        className="flex min-w-0 cursor-pointer items-center rounded-sm px-0.5 text-[0.6875rem] text-foreground hover:bg-accent"
         data-memory-source={source}
         onClick={() => {
           if (entry !== undefined) events.emit('messages:open', { conversation, entry })
@@ -507,7 +507,7 @@ function MemoryRow({
           title={open ? 'Show less' : 'Show the memory'}
           type="button"
         >
-          <span className="flex w-full min-w-0 items-center gap-1.5 font-mono text-[10.5px] leading-4 text-muted-foreground">
+          <span className="flex w-full min-w-0 items-center gap-1.5 font-mono text-[0.6562rem] leading-4 text-muted-foreground">
             <span className="min-w-0 truncate">{slug}</span>
             <span
               className="ml-auto shrink-0 pl-1 text-muted-foreground"
@@ -518,7 +518,7 @@ function MemoryRow({
           </span>
           <span
             className={cn(
-              'block text-[13px] leading-snug break-words text-foreground/90',
+              'block text-[0.8125rem] leading-snug break-words text-foreground/90',
               !open && 'line-clamp-2',
             )}
           >
@@ -545,14 +545,14 @@ function MemoryRow({
               <Trash2Icon className="size-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent className="font-mono text-[11px]" side="left">
+          <TooltipContent className="font-mono text-[0.6875rem]" side="left">
             Forget this memory
           </TooltipContent>
         </Tooltip>
       </div>
       {open && (
         <div className="min-w-0 px-2 pb-3">
-          <div className="min-w-0 text-[13px] leading-relaxed text-muted-foreground">
+          <div className="min-w-0 text-[0.8125rem] leading-relaxed text-muted-foreground">
             <MessageResponse>{item.body}</MessageResponse>
           </div>
           {item.source && <MemorySource source={item.source} />}
@@ -582,7 +582,7 @@ function MemorySurface() {
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col">
           <Header>
-            <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+            <span className="flex shrink-0 items-center gap-2 text-[0.8125rem] font-medium">
               <BrainIcon className="size-4 text-muted-foreground" />
               Memory
             </span>
@@ -641,15 +641,15 @@ function RootMemory({
   )
   return (
     <section data-lineage-memory={root}>
-      {label && <p className="pt-4 font-mono text-[11px] text-foreground">#{root}</p>}
+      {label && <p className="pt-4 font-mono text-[0.6875rem] text-foreground">#{root}</p>}
       {slugs.length === 0 ? (
-        <p className="py-8 text-[12.5px] text-muted-foreground">
+        <p className="py-8 text-[0.7812rem] text-muted-foreground">
           No memories yet. @ultimate keeps decisions, facts and lessons here as branches land.
         </p>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-3">
-            <p className="min-w-0 font-mono text-[10.5px] text-muted-foreground">
+            <p className="min-w-0 font-mono text-[0.6562rem] text-muted-foreground">
               {needle ? `${matches.length} of ${slugs.length}` : slugs.length} memories
               {tally?.briefTokens !== undefined && (
                 <span title="Tokens every new branch starts from">
@@ -663,7 +663,7 @@ function RootMemory({
                 <SearchIcon className="size-3 shrink-0 text-muted-foreground" />
                 <input
                   aria-label="Filter memories"
-                  className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-[0.6875rem] outline-none placeholder:text-muted-foreground"
                   onChange={(event) => setFilter(event.target.value)}
                   onKeyDown={(event) => event.key === 'Escape' && setFilter('')}
                   placeholder="filter"
@@ -673,7 +673,7 @@ function RootMemory({
             )}
           </div>
           {matches.length === 0 && (
-            <p className="py-8 font-mono text-[11.5px] text-muted-foreground">
+            <p className="py-8 font-mono text-[0.7188rem] text-muted-foreground">
               No memory mentions “{filter.trim()}”.
             </p>
           )}

@@ -90,7 +90,7 @@ export function Diff({
   return (
     <div
       className={cn(
-        'overflow-auto bg-terminal py-1 font-mono text-[12px] leading-[1.6]',
+        'overflow-auto bg-terminal py-1 font-mono text-[0.75rem] leading-[1.6]',
         className,
       )}
       ref={ref}

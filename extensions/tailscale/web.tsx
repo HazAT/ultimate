@@ -72,7 +72,7 @@ function Command({ value }: { value: string }) {
   return (
     <button
       aria-label={`Copy ${value}`}
-      className="group mt-2 flex w-full items-center gap-2 rounded-md border border-border/80 bg-background px-2 py-1.5 text-left font-mono text-[11.5px] text-foreground/90 transition-colors outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring"
+      className="group mt-2 flex w-full items-center gap-2 rounded-md border border-border/80 bg-background px-2 py-1.5 text-left font-mono text-[0.7188rem] text-foreground/90 transition-colors outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => copy(value)}
       title="Copy"
       type="button"
@@ -114,12 +114,12 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
       <div className="mt-3">
         <QrCode text={url} />
       </div>
-      <p className="mt-2.5 rounded-md border border-border/80 bg-background px-2.5 py-2 font-mono text-[12.5px] leading-snug break-all text-foreground">
+      <p className="mt-2.5 rounded-md border border-border/80 bg-background px-2.5 py-2 font-mono text-[0.7812rem] leading-snug break-all text-foreground">
         {url}
       </p>
       <div className="mt-2 flex gap-1.5">
         <Button
-          className="h-7 gap-1.5 px-2 font-mono text-[11.5px]"
+          className="h-7 gap-1.5 px-2 font-mono text-[0.7188rem]"
           onClick={() => copy(url)}
           size="sm"
           variant="outline"
@@ -133,7 +133,7 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
         </Button>
         <Button
           asChild
-          className="h-7 gap-1.5 px-2 font-mono text-[11.5px]"
+          className="h-7 gap-1.5 px-2 font-mono text-[0.7188rem]"
           size="sm"
           variant="outline"
         >
@@ -143,13 +143,13 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
           </a>
         </Button>
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-snug text-muted-foreground">
+      <p className="mt-3 flex items-start gap-1.5 text-[0.75rem] leading-snug text-muted-foreground">
         <ShieldCheckIcon className="mt-px size-3.5 shrink-0 text-success" />
         <span className="min-w-0 break-words">
           Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
         </span>
       </p>
-      <p className="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground">
+      <p className="mt-1 pl-5 text-[0.75rem] leading-snug text-muted-foreground">
         Tailnet only, never on the public internet.
       </p>
     </>
@@ -161,7 +161,7 @@ function Trouble({ state, hint }: { state: Problem; hint?: string }) {
   const { text, command } = hint && state !== 'error' ? split(hint) : { text: hint }
   return (
     <>
-      <p className="mt-2.5 flex items-center gap-1.5 text-[13px] text-foreground">
+      <p className="mt-2.5 flex items-center gap-1.5 text-[0.8125rem] text-foreground">
         <TriangleAlertIcon className="size-3.5 shrink-0 text-warning" />
         {title}
       </p>
@@ -170,8 +170,8 @@ function Trouble({ state, hint }: { state: Problem; hint?: string }) {
           className={cn(
             'mt-1 leading-snug break-words',
             state === 'error'
-              ? 'line-clamp-4 font-mono text-[11px] text-error/85'
-              : 'text-[12px] text-muted-foreground',
+              ? 'line-clamp-4 font-mono text-[0.6875rem] text-error/85'
+              : 'text-[0.75rem] text-muted-foreground',
           )}
           title={state === 'error' ? text : undefined}
         >
@@ -181,7 +181,7 @@ function Trouble({ state, hint }: { state: Problem; hint?: string }) {
       {command && <Command value={command} />}
       {link && (
         <a
-          className="mt-2 inline-flex items-center gap-1 text-[12px] text-brand outline-none hover:underline focus-visible:underline"
+          className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-brand outline-none hover:underline focus-visible:underline"
           href={link.href}
           rel="noreferrer"
           target="_blank"
@@ -213,7 +213,7 @@ function CheckAgain({ onChecked }: { onChecked: () => Promise<unknown> }) {
   return (
     <>
       <Button
-        className="mt-3 h-7 gap-1.5 px-2 font-mono text-[11.5px]"
+        className="mt-3 h-7 gap-1.5 px-2 font-mono text-[0.7188rem]"
         disabled={busy}
         onClick={() => void check()}
         size="sm"
@@ -226,7 +226,7 @@ function CheckAgain({ onChecked }: { onChecked: () => Promise<unknown> }) {
         )}
         Check again
       </Button>
-      {error && <p className="mt-2 font-mono text-[11px] leading-snug text-error">{error}</p>}
+      {error && <p className="mt-2 font-mono text-[0.6875rem] leading-snug text-error">{error}</p>}
     </>
   )
 }
@@ -262,7 +262,7 @@ function Details({ status }: { status: ReturnType<typeof useStatus> }) {
     <section className="px-3 pt-3 pb-3.5 font-sans">
       <Heading meta={meta}>Tailnet</Heading>
       {error && !data && (
-        <p className="mt-2.5 font-mono text-[11px] leading-snug text-error">
+        <p className="mt-2.5 font-mono text-[0.6875rem] leading-snug text-error">
           {errorMessage(error)}
         </p>
       )}

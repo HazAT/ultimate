@@ -172,8 +172,8 @@ export function SwitchVeil() {
       >
         <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
           <MoonIcon className="size-6 text-muted-foreground" />
-          <p className="text-[15px] text-foreground">The switch didn't happen</p>
-          <p className="text-[12px] leading-relaxed text-muted-foreground">
+          <p className="text-[0.9375rem] text-foreground">The switch didn't happen</p>
+          <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
             The new server failed to start and the old one took over again: nothing moved. The
             reason is in the supervisor's output.
           </p>
@@ -197,20 +197,20 @@ export function SwitchVeil() {
           style={{ animationDuration: '3.2s' }}
         />
         <div className="space-y-1.5">
-          <p className="text-[15px] text-foreground">
+          <p className="text-[0.9375rem] text-foreground">
             {ours.verb === 'asleep' ? 'Falling asleep' : 'Switching chapters'}
           </p>
-          <p className="font-mono text-[12px] text-muted-foreground">
+          <p className="font-mono text-[0.75rem] text-muted-foreground">
             {ours.verb === 'asleep' ? 'waking up in ' : 'to '}
             <span className="text-foreground/90">{ours.to}</span>
           </p>
         </div>
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
+        <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
           The server restarts into that chapter. This page reconnects by itself.
         </p>
         {slow && (
           <div className="flex flex-col items-center gap-2 pt-1">
-            <p className="text-[12px] text-warning">This is taking longer than it should.</p>
+            <p className="text-[0.75rem] text-warning">This is taking longer than it should.</p>
             <Button onClick={() => location.reload()} size="xs" variant="outline">
               <RotateCwIcon />
               Reload the page
@@ -295,14 +295,14 @@ function ChaptersBody() {
           <LibraryIcon className="size-4 text-brand" />
           Chapters
         </DialogTitle>
-        <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+        <DialogDescription className="text-[0.8125rem] leading-relaxed text-muted-foreground">
           Each chapter is its own database. A dream starts a new one with what I learned; the others
           stay on disk, and you can switch back to any of them.
         </DialogDescription>
       </div>
       <ol className="border-y border-border/60 py-1" data-dream-chapter-list>
         {!chapters && (
-          <li className="flex items-center gap-2 px-6 py-2 text-[12px] text-muted-foreground">
+          <li className="flex items-center gap-2 px-6 py-2 text-[0.75rem] text-muted-foreground">
             <LoaderCircleIcon className="size-3 motion-safe:animate-spin" />
             Reading chapters…
           </li>
@@ -319,12 +319,14 @@ function ChaptersBody() {
               key={chapter.name}
             >
               <div className="flex items-center gap-3">
-                <span className="w-5 shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="w-5 shrink-0 font-mono text-[0.6875rem] text-muted-foreground tabular-nums">
                   {chapter.number}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-[12.5px] text-foreground">{chapter.name}</p>
-                  <p className="font-mono text-[10.5px] text-muted-foreground">
+                  <p className="truncate font-mono text-[0.7812rem] text-foreground">
+                    {chapter.name}
+                  </p>
+                  <p className="font-mono text-[0.6562rem] text-muted-foreground">
                     {chapter.createdAt
                       ? `began ${new Date(chapter.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
                       : 'the first chapter'}
@@ -332,7 +334,7 @@ function ChaptersBody() {
                   </p>
                 </div>
                 {active ? (
-                  <span className="flex items-center gap-1.5 font-mono text-[11px] text-brand">
+                  <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-brand">
                     <span className="size-1.5 rounded-full bg-brand" />
                     you're here
                   </span>
@@ -355,7 +357,7 @@ function ChaptersBody() {
                 )}
               </div>
               {asking && (
-                <div className="mt-2 ml-8 flex flex-wrap items-center gap-2 text-[12px]">
+                <div className="mt-2 ml-8 flex flex-wrap items-center gap-2 text-[0.75rem]">
                   <span className="mr-auto text-muted-foreground">
                     Restart into it? This chapter stays as it is.
                   </span>
@@ -391,7 +393,7 @@ function ChaptersBody() {
         {busy.length > 0 && <BusyBlocker busy={busy} />}
         {failure && <Refusal text={failure} />}
         {!busy.length && !failure && (
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-[0.75rem] text-muted-foreground">
             Switching restarts the server; nothing in either chapter changes.
           </p>
         )}
@@ -411,11 +413,11 @@ export function BusyBlocker({
   const actions = useUltimate()
   return (
     <div className="space-y-1" data-dream-blocked="busy">
-      <p className="text-[12px] leading-relaxed text-muted-foreground">
+      <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
         <span className="text-foreground">Wait for these to finish first</span> — their work would
         stop halfway in this chapter.
       </p>
-      <ul className="space-y-0.5 font-mono text-[11px]">
+      <ul className="space-y-0.5 font-mono text-[0.6875rem]">
         {busy.map((item) => (
           <li key={item.id}>
             <button
@@ -441,7 +443,7 @@ export function BusyBlocker({
 /** A refused chapter change: the server's reason, and that nothing moved. */
 export function Refusal({ text }: { text: string }) {
   return (
-    <p className="text-[12px] leading-relaxed" data-dream-refused role="alert">
+    <p className="text-[0.75rem] leading-relaxed" data-dream-refused role="alert">
       <span className="text-error">Didn't switch.</span>{' '}
       <span className="text-muted-foreground">{text}</span>
     </p>
@@ -462,7 +464,7 @@ export function OlderChapterBanner() {
       className="mx-2 mb-1.5 rounded-md border border-border/70 border-l-2 border-l-brand/50 bg-muted/30 px-2.5 py-2"
       data-dream-older-chapter
     >
-      <p className="flex items-start gap-1.5 text-[11.5px] leading-snug text-muted-foreground">
+      <p className="flex items-start gap-1.5 text-[0.7188rem] leading-snug text-muted-foreground">
         <MoonIcon className="mt-px size-3 shrink-0 text-brand" />
         <span>
           You're in{' '}
@@ -471,7 +473,7 @@ export function OlderChapterBanner() {
         </span>
       </p>
       <button
-        className="mt-1 ml-[18px] flex cursor-pointer items-center gap-1 font-mono text-[11px] text-foreground/85 hover:text-foreground"
+        className="mt-1 ml-[18px] flex cursor-pointer items-center gap-1 font-mono text-[0.6875rem] text-foreground/85 hover:text-foreground"
         onClick={() => actions.open(chaptersDialog)}
         type="button"
       >
