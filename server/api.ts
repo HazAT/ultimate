@@ -8,7 +8,13 @@ import type {
   SubmissionId,
 } from '@earendil-works/pi-durable'
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
-import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
+import {
+  UI_REVISION,
+  imageMimeTypes,
+  maxImageBytes,
+  maxImages,
+  maxRequestIdLength,
+} from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { expandSkillCommand } from './skills.ts'
 import type { Extensions } from './extensions.ts'
@@ -597,7 +603,9 @@ export async function createApi(
               const length = data.text.length
               if (
                 data.requestId !== undefined &&
-                (typeof data.requestId !== 'string' || !data.requestId.trim())
+                (typeof data.requestId !== 'string' ||
+                  !data.requestId.trim() ||
+                  data.requestId.length > maxRequestIdLength)
               )
                 throw new HttpError(400, 'Invalid requestId')
               const images = data.images === undefined ? [] : data.images

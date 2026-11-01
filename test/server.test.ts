@@ -1039,6 +1039,18 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     ).toEqual({ provider: 'stub', type: 'api_key', status: 'cancel', events: [] })
   })
 
+  it('refuses a requestId too long to record, so it cannot carry a payload into the submission', async () => {
+    const { server } = await fixture(false, {})
+    const created = await post(server, '/api/conversations', { title: 'requestId bound' })
+    const id = (created.data as { id: number }).id
+    const send = (requestId: unknown) =>
+      post(server, `/api/conversations/${id}/submit`, { text: 'x', requestId })
+    expect((await send('k'.repeat(129))).status).toBe(400)
+    expect((await send('k'.repeat(128))).status).toBe(202)
+    expect((await send(7)).status).toBe(400)
+    expect((await send('   ')).status).toBe(400)
+  })
+
   it('admits one message per requestId, so a resend after a lost response is not a second turn', async () => {
     const { server } = await fixture(false, {})
     const created = await post(server, '/api/conversations', { title: 'idempotency' })
