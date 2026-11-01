@@ -268,7 +268,10 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   await tick()
   expect(harness.fetch).toHaveBeenLastCalledWith(
     '/api/conversations/17/submit',
-    expect.objectContaining({ body: JSON.stringify({ text: 'hello side', images: [] }) }),
+    // The body also carries the per-send retry key, so this asserts the fields that matter, not the whole string.
+    expect.objectContaining({
+      body: expect.stringMatching(/"text":"hello side","images":\[\],"requestId":"[^"]+"/),
+    }),
   )
 
   source(17).send('view', view(17, 'side transcript', true))
@@ -290,7 +293,9 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   expect(harness.fetch).toHaveBeenLastCalledWith(
     '/api/conversations/17/submit',
     expect.objectContaining({
-      body: JSON.stringify({ text: 'queued 17\nsteer side', whenBusy: 'steer', images: [] }),
+      body: expect.stringMatching(
+        /"text":"queued 17\\nsteer side","whenBusy":"steer","images":\[\],"requestId":"[^"]+"/,
+      ),
     }),
   )
   harness.change!({ target: { value: 'follow side' } })
@@ -306,7 +311,9 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   expect(harness.fetch).toHaveBeenLastCalledWith(
     '/api/conversations/17/submit',
     expect.objectContaining({
-      body: JSON.stringify({ text: 'follow side', whenBusy: 'followUp', images: [] }),
+      body: expect.stringMatching(
+        /"text":"follow side","whenBusy":"followUp","images":\[\],"requestId":"[^"]+"/,
+      ),
     }),
   )
   render()
