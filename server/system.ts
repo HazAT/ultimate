@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import {
   arch,
@@ -11,7 +10,6 @@ import {
   totalmem,
   userInfo,
 } from 'node:os'
-import { promisify } from 'node:util'
 import { relative, basename, join } from 'node:path'
 import { projectSkills } from './skills.ts'
 import { projectSetup, projectSettings } from './project-setup.ts'
@@ -20,8 +18,7 @@ import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
 import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
-
-const run = promisify(execFile)
+import { exec as run } from '../lib/exec.ts'
 
 /** The skills the Info tab lists, with their scope and overrides, and Pi's load diagnostics as text. */
 export function skillInfo({

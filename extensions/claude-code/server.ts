@@ -5,10 +5,12 @@ import {
 import {
   getClaudeStatus,
   closeClaudeProcesses,
+  useSpawn,
 } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { spawn } from '../../lib/spawn.ts'
 import { ClaudeCodeEnv } from './api.ts'
 import type { ClaudeCodeEnvService } from './api.ts'
 import { StatusAction } from './refs.ts'
@@ -48,6 +50,9 @@ const fields = {
 type Shared = { [K in keyof typeof fields]: ReturnType<(typeof fields)[K]> }
 
 export default function claudeCode(host: ExtensionHost) {
+  // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useSpawn (patched). Claude Code starts from the
+  // process helper, so a launch does not block this process.
+  useSpawn(spawn)
   const shared = host.resource('claude-code.provider', () => {
     const state = {} as Shared
     host.onClose(async () => {
