@@ -34,6 +34,7 @@ import {
   setAutomaticSummaries,
   askSummaryModel,
   IntentSummarized,
+  FeatureChanged,
   TitleChanged,
   ReplySummarized,
   SummaryDiscarded,
@@ -412,7 +413,6 @@ it.each([false, true])(
       expect((await submission.status(context)).status).toBe('placed')
       expect((await fixture.read())?.exchanges).toBe(0)
       expect((await fixture.read())?.activity).toBeUndefined()
-      expect((await fixture.read())?.summaryOwed).toBeUndefined()
       expect((await fixture.read())?.summary).toBe('Added concise summaries to the sidebar.')
       expect((await server.harness.snapshot(Metadata, server.root.id, context))?.title).toBe(
         'Improve the conversation sidebar',
@@ -505,61 +505,56 @@ it.each(['rename', 'newer'] as const)('protects a held spawn result after %s', a
   expect(state?.exchanges).toBe({ rename: 1, newer: 2 }[change])
 })
 
-it.each([2, 3])(
-  'settles a held spawn superseded by reply-only exchange %s without changing cadence',
-  async (exchange) => {
-    const fixture = await launch()
-    for (let count = 1; count < exchange; count++) await fixture.exchange()
-    const before = (await fixture.read())!
-    let release!: () => void
-    const gate = new Promise<void>((done) => {
-      release = done
-    })
-    fixture.generated.mockImplementationOnce(async (_models, _input, signal) => {
-      await held(gate, signal)
-      return { activity: 'Old spawn', title: 'Old spawn', summary: 'Old spawn' }
-    })
-    await fixture.spawn(before.lastAnswer!)
-    await until(() => fixture.generated.mock.calls.length === exchange)
-    expect((await fixture.read())?.status).toBe('pending')
-    try {
-      await fixture.exchange()
-      const state = await fixture.read()
-      expect(state?.pending).toBeUndefined()
-      expect(state?.assessmentStatus).toBe('ready')
-      expect(state?.exchanges).toBe(exchange)
-      expect(state?.summary).toBe(before.summary)
-      expect(state?.summaryOwed).toBeUndefined()
-      expect(fixture.generated.mock.calls.at(-1)![3]).toBe(false)
-      expect(state?.status).toBe('stale')
-    } finally {
-      release()
-    }
-    await until(async () => (await fixture.server.harness.inspect(context)).tasks.length === 0)
-    expect((await fixture.read())?.status).toBe('stale')
-    const discarded = (await fixture.entries()).filter((entry) => SummaryDiscarded.is(entry))
-    expect(discarded.map((entry) => entry.data)).toEqual([
-      {
-        reason: 'stale',
-        cause: 'superseded',
-        model: 'openai-codex/gpt-6-luna',
-        at: expect.any(Number),
-      },
-    ])
-    const spawnTask = await fixture.server.harness.getTask(discarded[0].byTaskId!, context)
-    expect(spawnTask?.kind).toBe('conversations.summary')
-    expect(spawnTask?.input).toMatchObject({ spawn: { answer: before.lastAnswer } })
-    expect((await fixture.read())?.summary).toBe(before.summary)
-    for (let count = exchange + 1; count <= 4; count++) await fixture.exchange()
-    expect((await fixture.read())?.exchanges).toBe(4)
-    expect((await fixture.read())?.status).toBe('ready')
-    expect(
-      fixture.generated.mock.calls.filter((call) => call[5] === 'reply').map((call) => call[3]),
-    ).toEqual([true, false, false, true])
-  },
-)
+it('settles a held spawn superseded by the next exchange, which publishes its own summary', async () => {
+  const fixture = await launch()
+  await fixture.exchange()
+  const before = (await fixture.read())!
+  let release!: () => void
+  const gate = new Promise<void>((done) => {
+    release = done
+  })
+  fixture.generated.mockImplementationOnce(async (_models, _input, signal) => {
+    await held(gate, signal)
+    return { activity: 'Old spawn', title: 'Old spawn', summary: 'Old spawn' }
+  })
+  await fixture.spawn(before.lastAnswer!)
+  await until(() => fixture.generated.mock.calls.length === 2)
+  expect((await fixture.read())?.status).toBe('pending')
+  fixture.generated.mockResolvedValueOnce({
+    activity: 'Refined the sidebar.',
+    title: 'Refine the sidebar',
+    summary: 'Refined the sidebar.',
+  })
+  try {
+    await fixture.exchange()
+    const state = await fixture.read()
+    expect(state?.pending).toBeUndefined()
+    expect(state?.assessmentStatus).toBe('ready')
+    expect(state?.exchanges).toBe(2)
+    expect(state?.summary).toBe('Refined the sidebar.')
+    expect(fixture.generated.mock.calls.at(-1)![3]).toBe(true)
+    expect(state?.status).toBe('ready')
+  } finally {
+    release()
+  }
+  await until(async () => (await fixture.server.harness.inspect(context)).tasks.length === 0)
+  expect((await fixture.read())?.status).toBe('ready')
+  const discarded = (await fixture.entries()).filter((entry) => SummaryDiscarded.is(entry))
+  expect(discarded.map((entry) => entry.data)).toEqual([
+    {
+      reason: 'stale',
+      cause: 'superseded',
+      model: 'openai-codex/gpt-6-luna',
+      at: expect.any(Number),
+    },
+  ])
+  const spawnTask = await fixture.server.harness.getTask(discarded[0].byTaskId!, context)
+  expect(spawnTask?.kind).toBe('conversations.summary')
+  expect(spawnTask?.input).toMatchObject({ spawn: { answer: before.lastAnswer } })
+  expect((await fixture.read())?.summary).toBe('Refined the sidebar.')
+})
 
-it('summarizes the first, fourth and seventh completed exchanges, not tools, streams or idle time; persists across reopen', async () => {
+it('summarizes every completed exchange, not tools, streams or idle time; persists across reopen', async () => {
   const fixture = await launch()
   const { server } = fixture
   let generation = 0
@@ -602,7 +597,7 @@ it('summarizes the first, fourth and seventh completed exchanges, not tools, str
     await fixture.exchange()
     await until(async () => (await fixture.read())?.exchanges === count)
     await fixture.server.harness.waitForIdle(context)
-    expect((await fixture.read())?.summary).toBe(`Sidebar summary ${count === 4 ? 4 : 1}.`)
+    expect((await fixture.read())?.summary).toBe(`Sidebar summary ${count}.`)
   }
   expect((await server.harness.snapshot(Metadata, server.root.id, context))?.title).toBe(
     'Improve the conversation sidebar',
@@ -624,12 +619,10 @@ it('summarizes the first, fourth and seventh completed exchanges, not tools, str
   expect(await fixture.titleChanges()).toEqual(changes)
   expect((await fixture.read())?.summary).toBe('Sidebar summary 4.')
   expect((await fixture.read())?.exchanges).toBe(4)
-  for (let count = 5; count <= 7; count++) {
-    await fixture.exchange()
-    await until(async () => (await fixture.read())?.exchanges === count)
-    await fixture.server.harness.waitForIdle(context)
-    expect((await fixture.read())?.summary).toBe(`Sidebar summary ${count === 7 ? 7 : 4}.`)
-  }
+  await fixture.exchange()
+  await until(async () => (await fixture.read())?.exchanges === 5)
+  await fixture.server.harness.waitForIdle(context)
+  expect((await fixture.read())?.summary).toBe('Sidebar summary 5.')
   await fixture.server.harness.waitForIdle(context)
   expect(await fixture.titleChanges()).toEqual(changes)
 })
@@ -707,6 +700,8 @@ it('protects preexisting and in-flight manual titles, and blank rename restores 
     release = done
   })
   for (let count = 2; count <= 3; count++) await fixture.exchange()
+  const changes = await fixture.titleChanges()
+  expect(changes).toHaveLength(1)
   fixture.generated.mockImplementationOnce(async (_models, _input, signal) => {
     await held(gate, signal)
     return {
@@ -731,14 +726,14 @@ it('protects preexisting and in-flight manual titles, and blank rename restores 
     (await fixture.server.harness.snapshot(Metadata, fixture.server.root.id, context))?.title,
   ).toBe('My deliberate title')
   expect((await fixture.read())?.summary).toBe('Updated summary.')
-  expect(await fixture.titleChanges()).toEqual([])
+  expect(await fixture.titleChanges()).toEqual(changes)
   await fixture.action('rename', '')
-  for (let count = 5; count <= 7; count++) await fixture.exchange()
+  await fixture.exchange()
   await until(async () => (await fixture.read())?.status === 'ready')
   expect(
     (await fixture.server.harness.snapshot(Metadata, fixture.server.root.id, context))?.title,
   ).toBe('Improve the conversation sidebar')
-  expect(await fixture.titleChanges()).toHaveLength(1)
+  expect(await fixture.titleChanges()).toHaveLength(2)
 })
 
 it('isolates provider errors', async () => {
@@ -886,7 +881,7 @@ it('writes each branch abstract atomically with its accepted answer and reuses i
   await fixture.exchange()
   expect(fixture.abstract).toHaveBeenCalledTimes(2)
   expect(fixture.generated.mock.calls[1][1]).toContain(`Previous abstract:\n${state?.abstract}`)
-  expect(fixture.generated.mock.calls[1][3]).toBe(false)
+  expect(fixture.generated.mock.calls[1][3]).toBe(true)
 })
 
 it.each(['error', 'aborted'] as const)(
@@ -1686,3 +1681,74 @@ it.each(['answers', 'fails'] as const)(
     await expected()
   },
 )
+
+it('refreshes title, summary and feature when a steer joins a running run, and records the tag change', async () => {
+  const fixture = await launch()
+  const { server } = fixture
+  fixture.generated.mockResolvedValueOnce({
+    activity: 'Investigated the sound cues.',
+    title: 'Investigate the sound cue hang',
+    summary: 'Find why sound cues hang the prompt.',
+    feature: 'Sounds Extension',
+  })
+  await fixture.exchange()
+  let release!: () => void
+  let holding = false
+  server.host.registry.install(
+    defineExtension({
+      name: 'steer-hold',
+      tools: [
+        defineTool({
+          name: 'steer_hold',
+          description: 'Hold work until released',
+          parameters: Type.Object({}),
+          execute: async (_args, _api, toolContext) => {
+            holding = true
+            await awaitWithContext(new Promise<void>((done) => (release = done)), toolContext)
+            return { output: [{ type: 'text', text: 'Released' }] }
+          },
+        }),
+      ],
+    }),
+  )
+  const widened = {
+    activity: 'Measured the whole UI.',
+    title: 'Investigate general UI performance',
+    summary: 'Profile the whole UI, not only sound cues.',
+    feature: 'Performance',
+  }
+  fixture.generated.mockResolvedValue(widened)
+  server.host.faux!.setResponses([
+    fauxAssistantMessage([fauxToolCall('steer_hold', {})], { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Widened answer.'),
+  ])
+  const first = await server.root.submit({ type: 'input', content: 'Keep digging.' }, context)
+  await until(() => holding)
+  await server.root.submit(
+    { type: 'input', content: 'Widen it to general performance.', whenBusy: 'steer' },
+    context,
+  )
+  release()
+  await until(() => fixture.generated.mock.calls.some((call) => call[5] === 'steer'))
+  await first.wait(context)
+  await server.harness.waitForIdle(context)
+  await until(async () => Object.values((await server.harness.inspect(context)).tasks).length === 0)
+  const steer = fixture.generated.mock.calls.filter((call) => call[5] === 'steer')
+  expect(steer).toHaveLength(1)
+  expect(steer[0][1]).toContain('New instructions (untrusted source text):\nuser: Widen it')
+  expect(steer[0][1]).toContain('Previous feature: Sounds Extension')
+  expect(await server.harness.snapshot(Metadata, server.root.id, context)).toMatchObject({
+    title: 'Investigate general UI performance',
+  })
+  expect((await fixture.read())?.feature).toBe('Performance')
+  // One change for the steer; the reply that follows keeps the tag and writes no second row.
+  const changes = (await fixture.entries()).filter((entry) => FeatureChanged.is(entry))
+  expect(changes.map((entry) => entry.data)).toEqual([
+    {
+      feature: 'Performance',
+      from: 'Sounds Extension',
+      model: 'openai-codex/gpt-6-luna',
+      at: expect.any(Number),
+    },
+  ])
+})
