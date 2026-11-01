@@ -29,20 +29,15 @@ const send = (message: ChildMessage) => process.send?.(message)
  * Every response, API and document alike. The instance is loopback-only: a page on another origin must not frame it,
  * sniff its JSON as something else, or learn from `Referer` which conversation was open.
  *
- * Framing is refused for the web but allowed from loopback and the tailnet, because a preview frames another running
- * instance on its own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one.
- * `'none'` would break that; naming the local hosts keeps the clickjacking refusal without it.
+ * Framing is refused for the web but allowed from loopback, because a preview frames another running instance on its
+ * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one.
+ *
+ * No IPv6 entry: `http://[::1]:*` is not a valid source expression, and one invalid expression makes a browser drop
+ * the whole directive, which would silently switch framing protection off. `[::1]` is left to `X-Frame-Options`,
+ * which a browser reaches before it ever connects over IPv6 loopback.
  */
-const frameAncestors = [
-  "'self'",
-  'http://127.0.0.1:*',
-  'http://localhost:*',
-  'http://[::1]:*',
-  'https://127.0.0.1:*',
-  'https://localhost:*',
-  'https://[::1]:*',
-].join(' ')
-const securityHeaders = {
+const frameAncestors = ["'self'", 'http://127.0.0.1:*', 'http://localhost:*'].join(' ')
+export const securityHeaders = {
   'Content-Security-Policy': `frame-ancestors ${frameAncestors}; object-src 'none'; base-uri 'none'`,
   // The legacy fallback for browsers without `frame-ancestors`; they cannot express the port exceptions above.
   'X-Frame-Options': 'SAMEORIGIN',
