@@ -55,4 +55,6 @@ jobs:
       # The dependency is `playwright-core`, whose CLI is `playwright-core`; it ships no browser of its own, and the
       # browser e2e finds one under ~/.cache/ms-playwright. `--with-deps` pulls the system libraries Chromium needs.
       - run: pnpm exec playwright-core install --with-deps chromium
-      - run: pnpm test:e2e
+      # The browser suites drive a real Chromium next to the servers they boot; at the config's four workers the
+      # slowest case (`questions-keyboard`, ~30 s alone) runs past its 60 s limit on a runner this size.
+      - run: pnpm test:e2e -- --maxWorkers=2
