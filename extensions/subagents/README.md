@@ -59,7 +59,7 @@ Coordinator behaviour lives in `agents/coordinator.md`, which branches run with;
 
 ### Review team
 
-The shipped `reviewer` reviews alone on the parent's model. For a team, add `reviewer-<name>.md` definitions: when any exist, the shipped `reviewer` leads them instead, on the parent's model. It starts every one in parallel, only relays and merges, and returns one verdict, like this repository's `.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`). Add a reviewer by copying a `reviewer-*` file under a new `reviewer-<name>` with another model; definitions are reread on every start, so no restart is needed.
+The shipped `reviewer` reviews alone on the `review` family. For a team, add `reviewer-<name>.md` definitions: when any exist, the shipped `reviewer` leads them instead. It starts every one in parallel, only relays and merges, and returns one verdict, like this repository's `.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`). Add a reviewer by copying a `reviewer-*` file under a new `reviewer-<name>` with another model; definitions are reread on every start, so no restart is needed.
 
 ## History forks
 

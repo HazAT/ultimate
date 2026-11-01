@@ -86,7 +86,7 @@ lagging title/timestamp list.
 A solid purple dot means an unread reply, not ongoing work; only the pulsing dot means working.
 
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
-**waits on you** (only the primary agent, @ultimate: an open question to the user);
+**waits on you** (@ultimate or a branch with an open question to the user);
 **awaiting @ultimate** (amber question mark, never on a subagent: an open reply-expected message the conversation sent
 the primary agent); **done** (green check, subagents only: it answered, and its answer went to its parent);
 **failed** (red cross: its latest input ended unanswered); else idle. Working includes queued input. Standing rows,

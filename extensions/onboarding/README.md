@@ -4,7 +4,7 @@ Inline setup choices, the first-run prerequisites, and the Extensions panel that
 
 The first run has only **Get ready**: connect a provider and choose an available model. The model row recommends a
 1M+ context window for @ultimate, and names the chosen model's window when it is smaller. ⌘K **Get ready…** opens it
-again whatever the recorded state, e.g. on a preview, which shares the user's `~/.ultimate/onboarding.json`; its
+again whatever the recorded state, e.g. on a preview (which has its own copy of `onboarding.json`); its
 Continue starts onboarding once per root, as above. Continue waits for both, starts onboarding with @ultimate through `onDone`, then records `firstRunDone`;
 there is no second page. Escape or the close button records completion without changing settings. Closing returns
 focus to the composer. An automated browser (`navigator.webdriver`) does not get this dialog.
