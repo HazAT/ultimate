@@ -22,6 +22,7 @@ export type Reply =
   | { id: number; event: 'spawn'; pid: number }
   | { id: number; event: 'data'; stream: 'stdout' | 'stderr'; data: Uint8Array }
   | { id: number; event: 'end'; stream: 'stdout' | 'stderr' }
+  | { id: number; event: 'written'; error?: ErrorData }
   | { id: number; event: 'error'; error: ErrorData }
   | { id: number; event: 'exit' | 'close'; code: number | null; signal: NodeJS.Signals | null }
 
@@ -32,22 +33,33 @@ const data = (error: Error): ErrorData => ({
 })
 
 function serve() {
-  const send = (reply: Reply) => process.send!(reply)
+  const send = (reply: Reply) =>
+    process.send!(reply, (error: Error | null) => {
+      // Only a closed channel fails a send: the host is gone, and 'disconnect' below ends this process.
+      void error
+    })
   const aborts = new Map<number, AbortController>()
   const children = new Map<number, ChildProcess>()
 
   function exec({ id, command, args, options }: Extract<Request, { op: 'exec' }>) {
     const abort = new AbortController()
     aborts.set(id, abort)
-    execFile(
-      command,
-      args,
-      { ...options, encoding: 'utf8', signal: abort.signal },
-      (error, stdout, stderr) => {
-        aborts.delete(id)
-        send({ id, event: 'done', stdout, stderr, ...(error && { error: data(error) }) })
-      },
-    )
+    const done = (error: Error | null, stdout = '', stderr = '') => {
+      aborts.delete(id)
+      send({ id, event: 'done', stdout, stderr, ...(error && { error: data(error) }) })
+    }
+    try {
+      const child = execFile(
+        command,
+        args,
+        { ...options, encoding: 'utf8', signal: abort.signal },
+        done,
+      )
+      // Nothing writes to an exec's input: a program that reads it gets EOF, not a wait forever.
+      child.stdin?.end()
+    } catch (error) {
+      done(error as Error)
+    }
   }
 
   function start({ id, command, args, options }: Extract<Request, { op: 'spawn' }>) {
@@ -68,7 +80,7 @@ function serve() {
       send({ id, event: 'close', code, signal })
     })
     child.stdin?.on('error', () => {
-      // A child that exits before reading its input closes the pipe; its exit reports what happened.
+      // A child that exits before reading its input closes the pipe; the failed write reports it to the host.
     })
     for (const name of ['stdout', 'stderr'] as const) {
       const stream = child[name]
@@ -77,16 +89,24 @@ function serve() {
     }
   }
 
+  /** Write to a child's input; the host writes its next chunk only once this one was taken, or failed. */
+  function input({ id, data: chunk, end }: Extract<Request, { op: 'stdin' }>) {
+    const stdin = children.get(id)?.stdin
+    const written = (error?: Error | null) =>
+      send({ id, event: 'written', ...(error && { error: data(error) }) })
+    if (!stdin) written(new Error('The process has no input open'))
+    else if (end) stdin.end(written)
+    else stdin.write(chunk!, written)
+  }
+
   process.on('message', (request: Request) => {
     const child = children.get(request.id)
     if (request.op === 'exec') exec(request)
     else if (request.op === 'spawn') start(request)
+    else if (request.op === 'stdin') input(request)
     else if (request.op === 'abort') aborts.get(request.id)?.abort()
     else if (request.op === 'kill') child?.kill(request.signal)
-    else if (request.op === 'stdin') {
-      if (request.data) child?.stdin?.write(request.data)
-      if (request.end) child?.stdin?.end()
-    } else child?.[request.stream]?.[request.op]()
+    else child?.[request.stream]?.[request.op]()
   })
   // The host is gone: so is the reason to run. Its children carry on as they would have without a helper.
   process.on('disconnect', () => process.exit(0))

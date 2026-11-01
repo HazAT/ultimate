@@ -28,6 +28,24 @@ const helper: Helper = ((globalThis as Record<symbol, Helper>)[
 
 const gone = (): ErrorData => ({ name: 'Error', message: 'The process helper exited' })
 
+/**
+ * Fail every launch `child` was running, once: it exited, or its channel broke (then it is killed, so a new one takes
+ * over). The launches are detached first, so one that a failure starts again goes to the next helper.
+ */
+function lost(child: ChildProcess) {
+  if (helper.process !== child) return
+  helper.process = undefined
+  child.kill('SIGKILL')
+  const failed = helper.handlers
+  helper.handlers = new Map()
+  for (const [id, handle] of failed) {
+    handle({ id, event: 'error', error: gone() })
+    handle({ id, event: 'written', error: gone() })
+    handle({ id, event: 'done', stdout: '', stderr: '', error: gone() })
+    handle({ id, event: 'close', code: null, signal: null })
+  }
+}
+
 function connect() {
   if (helper.process) return helper.process
   const child = fork(fileURLToPath(new URL('./spawn-helper.ts', import.meta.url)), [], {
@@ -37,17 +55,18 @@ function connect() {
   child.unref()
   child.channel?.unref()
   child.on('message', (reply: Reply) => helper.handlers.get(reply.id)?.(reply))
-  child.once('exit', () => {
-    helper.process = undefined
-    for (const [id, handle] of helper.handlers) {
-      handle({ id, event: 'error', error: gone() })
-      handle({ id, event: 'done', stdout: '', stderr: '', error: gone() })
-      handle({ id, event: 'close', code: null, signal: null })
-    }
-    helper.handlers.clear()
-  })
+  child.on('error', () => lost(child))
+  child.once('exit', () => lost(child))
+  child.once('disconnect', () => lost(child))
   helper.process = child
   return child
+}
+
+/** Send to the helper; a send that fails means its channel broke, which fails all its launches. */
+function post(child: ChildProcess, message: Request) {
+  child.send(message, (error: Error | null) => {
+    if (error) lost(child)
+  })
 }
 
 /** Send a request, registering `handle` for its replies; the helper keeps this process alive only while one runs. */
@@ -58,7 +77,7 @@ function request(message: Unsent<Request>, handle: Handler) {
   const id = helper.next++
   helper.handlers.set(id, handle)
   child.channel?.ref()
-  child.send({ ...message, id })
+  post(child, { ...message, id })
   return id
 }
 
@@ -69,7 +88,7 @@ function settle(id: number) {
 
 function send(message: Request) {
   // A helper that already exited has failed the request; nothing is left to tell it.
-  if (helper.handlers.has(message.id)) helper.process?.send(message)
+  if (helper.handlers.has(message.id) && helper.process) post(helper.process, message)
 }
 
 /** The options the helper gets: what a launch from this process would inherit made explicit, and no AbortSignal. */
@@ -143,6 +162,18 @@ export const spawn = ((
   }
   // The helper pauses a stream whose reader here is behind, and resumes it once the reader asks for more.
   const paused = { stdout: false, stderr: false }
+  const ended = { stdout: false, stderr: false }
+  const end = (stream: 'stdout' | 'stderr') => {
+    if (ended[stream]) return
+    ended[stream] = true
+    child[stream]?.push(null)
+  }
+  // A write to the child's input finishes when the helper reports the child took it: one at a time, as Writable does.
+  let writing: ((error?: Error | null) => void) | undefined
+  const write = (message: Extract<Request, { op: 'stdin' }>, done: typeof writing) => {
+    writing = done
+    send(message)
+  }
   const output = (stream: 'stdout' | 'stderr') =>
     new Readable({
       read() {
@@ -158,8 +189,8 @@ export const spawn = ((
     killed: false,
     stdin: stdin
       ? new Writable({
-          write: (data: Buffer, _encoding, done) => (send({ id, op: 'stdin', data }), done()),
-          final: (done) => (send({ id, op: 'stdin', end: true }), done()),
+          write: (data: Buffer, _encoding, done) => write({ id, op: 'stdin', data }, done),
+          final: (done) => write({ id, op: 'stdin', end: true }, done),
         })
       : null,
     stdout: stdout ? output('stdout') : null,
@@ -181,20 +212,41 @@ export const spawn = ((
         paused[reply.stream] = true
         send({ id, op: 'pause', stream: reply.stream })
       }
-    } else if (reply.event === 'end') child[reply.stream]?.push(null)
-    else if (reply.event === 'error') child.emit('error', revive(reply.error))
-    else if (reply.event === 'exit' || reply.event === 'close') {
-      if (reply.event === 'close') {
-        settle(id)
-        child.stdin?.destroy()
-        for (const stream of [child.stdout, child.stderr])
-          if (stream && !stream.readableEnded) stream.push(null)
-      }
+    } else if (reply.event === 'end') end(reply.stream)
+    else if (reply.event === 'written') {
+      const done = writing
+      writing = undefined
+      done?.(reply.error && revive(reply.error))
+    } else if (reply.event === 'error') child.emit('error', revive(reply.error))
+    else if (reply.event === 'exit') {
       child.exitCode ??= reply.code
       child.signalCode ??= reply.signal
-      child.emit(reply.event, reply.code, reply.signal)
+      child.emit('exit', reply.code, reply.signal)
+    } else if (reply.event === 'close') {
+      settle(id)
+      child.exitCode ??= reply.code
+      child.signalCode ??= reply.signal
+      closed(reply.code, reply.signal)
     }
   })
+  /**
+   * Emit 'close' as Node does: after the output streams ended here, so a reader that stops at 'close' has had every
+   * byte. Output with no reader at all is drained, as Node's flushStdio does at exit.
+   */
+  function closed(code: number | null, exitSignal: NodeJS.Signals | null) {
+    if (!child.stdin?.writableFinished) child.stdin?.destroy()
+    const open = (['stdout', 'stderr'] as const).filter((name) => child[name]?.closed === false)
+    let left = open.length
+    const one = () => --left <= 0 && child.emit('close', code, exitSignal)
+    if (!left) one()
+    for (const name of open) {
+      const stream = child[name]!
+      stream.once('close', one)
+      // The helper sent every chunk before its close; one it never ended (a lost helper) ends here.
+      end(name)
+      if (stream.readableFlowing === null) stream.resume()
+    }
+  }
   if (signal) {
     const abort = () => child.kill(options.killSignal)
     if (signal.aborted) abort()

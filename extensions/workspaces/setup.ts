@@ -15,6 +15,7 @@ export async function setup(
   for (const command of commands) {
     signal.throwIfAborted()
     try {
+      // exec closes the command's input, so one that reads it gets EOF.
       await exec('sh', ['-c', command], {
         cwd: path,
         env: { ...process.env, ULTIMATE_SOURCE: source },
