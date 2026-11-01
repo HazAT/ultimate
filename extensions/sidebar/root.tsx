@@ -17,6 +17,7 @@ import {
 import type { Landing } from './landings.ts'
 import { RowMenu, saveTitle } from './rows.tsx'
 import { Section } from './section.tsx'
+import { SummaryHistory } from './summaries.tsx'
 import { useShell } from './state.tsx'
 import { workOf } from './work.ts'
 import type { Work } from './work.ts'
@@ -175,51 +176,53 @@ function PhasedFlightRow({
             }}
           />
         )}
-        <button
-          aria-current={shown ? 'true' : undefined}
-          className={cn(
-            'mx-2 flex w-[calc(100%-1rem)] min-w-0 cursor-pointer flex-col gap-0.5 rounded-md py-1 pr-2 pl-2.5 text-left outline-none hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
-            shown && 'bg-sidebar-accent',
-          )}
-          data-in-flight={conversation.id}
-          onClick={() => actions.switchConversation(conversation.id)}
-          title={`${title} · #${conversation.id}`}
-          type="button"
-        >
-          <span className="flex w-full min-w-0 items-center gap-1.5 pr-5">
-            <span
-              className={cn(
-                'size-1.5 shrink-0 rounded-full',
-                state.tone === 'brand'
-                  ? 'animate-pulse-dot bg-brand'
-                  : state.tone === 'waiting' || state.tone === 'paused'
-                    ? 'bg-amber-400'
-                    : state.tone === 'success'
-                      ? 'bg-success'
-                      : state.tone === 'failed'
-                        ? 'bg-error'
-                        : 'bg-muted-foreground/40',
-              )}
-            />
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate text-[12px]',
-                shown ? 'text-foreground' : 'text-foreground/85',
-              )}
-            >
-              {title}
-            </span>
-          </span>
-          <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
-            {feature && <FeatureTag feature={feature} />}
-            <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
-            {latest > 0 && (
-              <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
-                {formatAgo(latest, now)}
-              </span>
+        <SummaryHistory id={conversation.id}>
+          <button
+            aria-current={shown ? 'true' : undefined}
+            className={cn(
+              'mx-2 flex w-[calc(100%-1rem)] min-w-0 cursor-pointer flex-col gap-0.5 rounded-md py-1 pr-2 pl-2.5 text-left outline-none hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+              shown && 'bg-sidebar-accent',
             )}
-          </span>
-        </button>
+            data-in-flight={conversation.id}
+            onClick={() => actions.switchConversation(conversation.id)}
+            title={`${title} · #${conversation.id}`}
+            type="button"
+          >
+            <span className="flex w-full min-w-0 items-center gap-1.5 pr-5">
+              <span
+                className={cn(
+                  'size-1.5 shrink-0 rounded-full',
+                  state.tone === 'brand'
+                    ? 'animate-pulse-dot bg-brand'
+                    : state.tone === 'waiting' || state.tone === 'paused'
+                      ? 'bg-amber-400'
+                      : state.tone === 'success'
+                        ? 'bg-success'
+                        : state.tone === 'failed'
+                          ? 'bg-error'
+                          : 'bg-muted-foreground/40',
+                )}
+              />
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-[12px]',
+                  shown ? 'text-foreground' : 'text-foreground/85',
+                )}
+              >
+                {title}
+              </span>
+            </span>
+            <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
+              {feature && <FeatureTag feature={feature} />}
+              <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
+              {latest > 0 && (
+                <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
+                  {formatAgo(latest, now)}
+                </span>
+              )}
+            </span>
+          </button>
+        </SummaryHistory>
         {!editing && (
           // Beside the title rather than at the bottom right, where the age is.
           <div className="absolute top-0.5 right-2 size-5">

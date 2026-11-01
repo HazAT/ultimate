@@ -1587,6 +1587,7 @@ it('records an accepted reply summary as an entry traced to its summary and gene
       inputId: row.inputId,
       answerId: state.lastAnswer,
       activity: 'Added concise summaries to the sidebar.',
+      summary: 'Added concise summaries to the sidebar.',
       model: 'openai-codex/gpt-6-luna',
       at: expect.any(Number),
     },
@@ -1603,6 +1604,27 @@ it('records an accepted reply summary as an entry traced to its summary and gene
   expect((await fixture.entries()).filter((entry) => SummaryDiscarded.is(entry))).toEqual([])
   const view = await fixture.server.root.context(context)
   expect(JSON.stringify(view.messages)).not.toContain('Added concise summaries')
+})
+
+it('lists the summaries a conversation had, newest first, from its reply entries', async () => {
+  const fixture = await launch()
+  await fixture.exchange()
+  // Assessment-only replies refresh no summary; the fourth exchange does again.
+  fixture.generated.mockResolvedValue({
+    activity: 'Built the popover.',
+    title: 'Sidebar history',
+    summary: 'Built the popover.',
+  })
+  for (let i = 0; i < 3; i++) await fixture.exchange()
+  const response = await post(fixture.server, '/api/extensions/conversations/actions/summaries', {
+    args: { id: fixture.server.root.id },
+  })
+  const history = response.data as { result: { summary: string; at: number }[] }
+  expect(history.result.map((record) => record.summary)).toEqual([
+    'Built the popover.',
+    'Added concise summaries to the sidebar.',
+  ])
+  expect(history.result.every((record) => typeof record.at === 'number')).toBe(true)
 })
 
 it.each(['answers', 'fails'] as const)(
