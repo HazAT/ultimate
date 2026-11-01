@@ -1604,13 +1604,13 @@ it('records an accepted reply summary as an entry traced to its summary and gene
 it('lists the summaries a conversation had, newest first, from its reply entries', async () => {
   const fixture = await launch()
   await fixture.exchange()
-  // Assessment-only replies refresh no summary; the fourth exchange does again.
+  // Every top-level reply refreshes the summary and records it.
   fixture.generated.mockResolvedValue({
     activity: 'Built the popover.',
     title: 'Sidebar history',
     summary: 'Built the popover.',
   })
-  for (let i = 0; i < 3; i++) await fixture.exchange()
+  await fixture.exchange()
   const response = await post(fixture.server, '/api/extensions/conversations/actions/summaries', {
     args: { id: fixture.server.root.id },
   })
