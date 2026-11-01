@@ -125,7 +125,13 @@ it('diffs a patch against the state before it, with token deltas for sections an
   ]
   const diff = diffAt(entries, 1)
   expect(diff.sections).toEqual([
-    { key: 'grow', change: 'changed', text: 'abcdefghij'.repeat(7), delta: 20 - 1 },
+    {
+      key: 'grow',
+      change: 'changed',
+      text: 'abcdefghij'.repeat(7),
+      before: 'abc',
+      delta: 20 - 1,
+    },
     { key: 'extra', change: 'added', text: 'e'.repeat(35), delta: 10 },
     { key: 'keep', change: 'removed', text: 'same', delta: -2 },
   ])
