@@ -182,7 +182,6 @@ function PhasedRow({
           : 'text-muted-foreground',
       )}
       onDoubleClick={draft ? undefined : rename}
-      title={name}
     >
       {name}
     </span>
@@ -224,7 +223,7 @@ function PhasedRow({
           />
         </div>
       ) : (
-        <SummaryHistory id={conversation.id}>
+        <SummaryHistory id={conversation.id} title={name}>
           <button
             aria-current={shown ? 'true' : undefined}
             className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"

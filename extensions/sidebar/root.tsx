@@ -176,7 +176,7 @@ function PhasedFlightRow({
             }}
           />
         )}
-        <SummaryHistory id={conversation.id}>
+        <SummaryHistory id={conversation.id} title={title}>
           <button
             aria-current={shown ? 'true' : undefined}
             className={cn(
@@ -185,7 +185,6 @@ function PhasedFlightRow({
             )}
             data-in-flight={conversation.id}
             onClick={() => actions.switchConversation(conversation.id)}
-            title={`${title} · #${conversation.id}`}
             type="button"
           >
             <span className="flex w-full min-w-0 items-center gap-1.5 pr-5">

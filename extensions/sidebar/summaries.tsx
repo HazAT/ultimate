@@ -6,9 +6,18 @@ import { SummariesAction } from '../conversations/ui.tsx'
 
 /**
  * A branch row with its summary history on hover: the latest first, older ones below in a list that scrolls inside,
- * also with ↑/↓ while the row has focus. Read when it opens. Touch has no hover, so phones show none.
+ * also with ↑/↓ while the row has focus. Read when it opens. Touch has no hover, so phones show none. Its first line
+ * carries the full title the row may truncate, so the row has no native tooltip to cover it.
  */
-export function SummaryHistory({ id, children }: { id: number; children: ReactNode }) {
+export function SummaryHistory({
+  id,
+  title,
+  children,
+}: {
+  id: number
+  title: string
+  children: ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const list = useRef<HTMLOListElement>(null)
   return (
@@ -30,6 +39,9 @@ export function SummaryHistory({ id, children }: { id: number; children: ReactNo
         data-summary-history={id}
         side="right"
       >
+        <p className="border-b border-border/50 px-3 py-1.5 font-mono text-[10px] break-words text-muted-foreground">
+          {title} · #{id}
+        </p>
         <History id={id} list={list} />
       </HoverCardContent>
     </HoverCard>
