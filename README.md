@@ -101,6 +101,15 @@ cd ~/Projects/app && ultimate  # or Ultimate on one of your projects
 - On another machine: `ssh -L 4747:127.0.0.1:4747 <host>`, then open `http://127.0.0.1:4747`. Ultimate only listens on
   loopback.
 
+### Keep up to date
+
+The [Ultimate changelog](https://danielgriesser.com/ultimate/changelog/)
+([RSS](https://danielgriesser.com/ultimate/changelog/rss.xml)) says what landed, week by week, with links to the
+code. A clone that tracks this repository unchanged already gets everything through the update item in the status
+line. For a fork or a customised copy, paste the page's [follow prompt](https://danielgriesser.com/ultimate/changelog/#follow)
+into @ultimate: once a day it checks for new entries, costing nothing on quiet days, and tells you what is worth
+bringing into your copy, changing nothing without your yes. See what's new, pull in what you want; nothing requires it.
+
 ### Recommended models
 
 We recommend running @ultimate on Claude Code Opus 5.5 (`claude-code/claude-opus-5-5`), and ideally the

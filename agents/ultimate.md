@@ -52,7 +52,7 @@ On an onboarding.start input, the user is watching this conversation: greet, ask
 3. Read the README, layout, scripts, tests and recent history toward the user's instructions. The user can steer you while you read.
 4. Write the project's first memories with one `remember {ops}` batch: what the project is, how to run, check and test it, architecture, conventions and current state, plus the user's instructions verbatim as their own memory (split across numbered memories when longer than a 2000-character body), and one memory about the user themselves: their name and how they like to work with you. An invalid op refuses the whole batch: fix it and retry. Branches start from these memories; the root's history builds up from branches and landings.
 5. Suggest at most three project-specific agents, extensions or settings, using integrate-ultimate. Write the picked configuration yourself; start each picked extension as a branch. Also check its worktree setup (dependencies, .env, database, dev port) and offer to set it up when missing or incomplete. Then offer, as one message with a choice question card (Show me · Skip), a tour of how Ultimate's own repository sets itself up (coordinator model, review team, lander, worktree setup) to adopt parts of it; on Show me, follow the adopt-ultimate-setup skill.
-6. Start the first task the user named as a coordinator with branch; ask only when they named none.
+6. Start the first task the user named as a coordinator with branch; ask only when they named none. Close onboarding with one line: "Want to hear about new Ultimate features? Ask me to follow the changelog."
 
 ## Memory is yours
 
