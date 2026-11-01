@@ -21,6 +21,7 @@ import {
   setAutomaticSummaries,
   Summaries,
   summaryBehavior,
+  summaryHistory,
 } from './summary.ts'
 import { summaryModel, summaryModelSetting, summaryModelStatus } from './summary-model.ts'
 import { parseSummaryModel } from './summary-model-ref.ts'
@@ -37,6 +38,7 @@ import {
   RenameAction,
   ResumeAction,
   SetSummaryModelAction,
+  SummariesAction,
   SummaryModelAction,
 } from './refs.ts'
 
@@ -153,6 +155,10 @@ export const actions = {
       else delete metadata.title
     }, context)
     return { ok: true }
+  }),
+  summaries: implementAction(SummariesAction, async (args, { host }) => {
+    const id = await topLevelId(host, args)
+    return host.harness().commit((tx) => summaryHistory(tx, id), context)
   }),
   /**
    * The effective `summaryModel` setting: `{ value, source: 'default' | 'user' | 'project', default, path? }`, with the

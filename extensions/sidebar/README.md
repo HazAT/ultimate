@@ -108,6 +108,11 @@ Conclude releases clean, fully landed checkouts, including owned subagent checko
 unlanded commits, and busy checkouts are kept.
 Info's Workspace section shows checkouts read-only.
 
+Hovering a branch's row (In flight, Earlier, Concluded) for a moment opens its summary history (`summaries.tsx`): the
+latest summary first, older ones below with their time, in a list capped in height that scrolls inside, also with ↑/↓
+while the row has focus. It reads the conversations `summaries` action only when it opens. Standing agents, roots and
+subagents have no summary, so their rows get none; touch devices have no hover and show none.
+
 On hover or focus, a row's `…` menu offers Rename (inline; also on double-click; Enter or leaving the field saves,
 Escape cancels, and after either key focus returns to the row), Compact context (keeps the gist and frees context;
 disabled while the conversation works), and Conclude. Before concluding, the UI calls workspaces `pending {ids}`.
