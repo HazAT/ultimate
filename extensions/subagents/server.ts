@@ -496,7 +496,6 @@ export const actions = {
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
       // The form has no control for these: a save keeps them as discovery read them.
-      ...(existing?.subagent === false ? { subagent: false } : {}),
       ...(existing?.icon ? { icon: existing.icon } : {}),
       ...(existing?.tint ? { tint: existing.tint } : {}),
     }
@@ -862,7 +861,6 @@ export default function subagents(
           host.modelRuntime,
         )
         const definitions = discovered.definitions
-          .filter((agent) => agent.subagent !== false)
           .map((agent) => {
             const runs = runsLabel(agent.runs)
             return `${agent.name}${runs ? ` (${runs})` : ''}: ${agent.description}`
@@ -950,7 +948,7 @@ export default function subagents(
                       host.userHome,
                       host.modelRuntime,
                     )
-                  ).definitions.filter((agent) => agent.subagent !== false)
+                  ).definitions
                 : undefined
             const definition = definitions?.find((agent) => agent.name === args.agent)
             if (definitions && !definition)

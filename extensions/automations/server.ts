@@ -428,7 +428,7 @@ function backend(host: ExtensionHost) {
     if (args.agent) {
       const found = (
         await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
-      ).definitions.some((d) => d.name === args.agent && d.subagent !== false)
+      ).definitions.some((d) => d.name === args.agent)
       if (!found) throw new Error(`Unknown agent: ${args.agent}`)
     }
     if (args.model && !host.modelRuntime.getModel(args.model.provider, args.model.modelId))

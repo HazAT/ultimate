@@ -22,7 +22,6 @@ tools:
     remember,
     memory,
     todo,
-    sketch,
     goal,
     restart,
     edit,
