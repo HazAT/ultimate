@@ -2,7 +2,8 @@ import { createServer } from 'node:http'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import mcp, { actions } from '../extensions/mcp/server.ts'
+import mcp, { actions, secrets } from '../extensions/mcp/server.ts'
+import { actions as secretActions } from '../extensions/secrets/server.ts'
 import { writeSecret } from '../extensions/secrets/store.ts'
 import type { McpServerStatus } from '../extensions/mcp/refs.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
@@ -116,4 +117,51 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: true,
     output: [{ text: expect.stringContaining('MCP server locked is failed') }],
   })
+})
+
+it('declares each ${NAME} of the configured servers as a secret, missing until it is written', async () => {
+  const root = await temp()
+  cleanup.push(() => removeTemp(root))
+  await mkdir(join(root, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(root, '.ultimate/settings.json'),
+    JSON.stringify({
+      mcpServers: {
+        executor: {
+          url: 'https://example.com/mcp',
+          headers: { 'CF-Access-Client-Id': '${CF_ACCESS_CLIENT_ID}' },
+        },
+      },
+    }),
+  )
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    userHome: root,
+    projectRoot: root,
+    projectSettings: async () => ({
+      mcpServers: { tool: { command: 'x', env: { KEY: '${CF_ACCESS_CLIENT_ID}' } } },
+    }),
+    onOpen: (callback: () => Promise<void>) => void callback(),
+    onClose: (callback: () => Promise<void>) => closers.push(callback),
+    modelRuntime: { getProviderAuthStatus: () => ({ configured: false }) },
+  } as unknown as ExtensionHost
+  await mcp(host)
+  cleanup.push(async () => {
+    for (const close of closers) await close()
+  })
+  const declared = await secrets(host)
+  expect(declared).toEqual([
+    { name: 'CF_ACCESS_CLIENT_ID', description: 'Used by the MCP servers executor, tool' },
+  ])
+  const extensions = () => [{ name: 'mcp', enabled: true, server: { secrets: declared } }]
+  const list = () => secretActions.list(null, { host: { ...host, extensions } } as never)
+  expect(await list()).toMatchObject([
+    { name: 'CF_ACCESS_CLIENT_ID', declaredBy: ['mcp'], set: false },
+  ])
+  const status = () => actions.status(null, { host } as never) as unknown as McpServerStatus[]
+  await until(() => status().every((server) => server.state !== 'connecting'))
+  expect(status()[0]).toMatchObject({ name: 'executor', missing: 'CF_ACCESS_CLIENT_ID' })
+
+  await writeSecret(root, 'CF_ACCESS_CLIENT_ID', 'id')
+  expect(await list()).toMatchObject([{ name: 'CF_ACCESS_CLIENT_ID', set: true }])
 })

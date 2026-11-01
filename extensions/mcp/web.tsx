@@ -1,7 +1,17 @@
 import { LoaderCircleIcon, PlugIcon, RefreshCwIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { api, cn, defineWebExtension, errorMessage, provide, useAction, useNow } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  errorMessage,
+  events,
+  provide,
+  useAction,
+  useEvent,
+  useNow,
+} from '@/sdk'
 import { ExtensionDetails } from '../onboarding/ui.tsx'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
@@ -51,6 +61,12 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
       onChanged()
     }
   }
+  // Its missing secret, once saved in the Secrets panel, connects it again at once instead of at the next retry.
+  useEvent('secrets:changed', (data) => {
+    if (server.missing && (data as { name?: unknown } | undefined)?.name === server.missing)
+      // oxlint-disable-next-line typescript/no-floating-promises -- reconnect reports its failure in the row.
+      void reconnect()
+  })
   const retry = server.retryAt && Math.max(0, Math.ceil((server.retryAt - now) / 1000))
   return (
     <li className="px-2 py-1.5" data-mcp-server={server.name} data-state={server.state}>
@@ -88,6 +104,15 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
             <span className="text-muted-foreground/70"> · retry in {retry}s</span>
           )}
         </p>
+      )}
+      {server.missing && (
+        <button
+          className="mt-1 ml-3.5 rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-foreground/90 transition-colors hover:bg-accent"
+          onClick={() => events.emit('secrets:open', { name: server.missing })}
+          type="button"
+        >
+          Add {server.missing}
+        </button>
       )}
     </li>
   )

@@ -11,6 +11,8 @@ export type McpServerStatus = {
   /** How many tools it offers, once connected. */
   tools?: number
   error?: string
+  /** The `${NAME}` secret its last connect could not find, until it connects again. */
+  missing?: string
   /** When the next attempt runs (ms), while it is failed. */
   retryAt?: number
 }
