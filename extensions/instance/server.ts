@@ -3,6 +3,7 @@ import {
   cp,
   mkdtemp,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -115,9 +116,23 @@ export async function seedUserHome(from: string, to: string) {
 }
 
 /**
- * A preview keeps ordinary parent variables and HOME (provider logins, the pnpm store, browsers), but gets its own
- * host identity, its own user config (`ULTIMATE_USER_HOME`), no inherited cloud settings, and `ULTIMATE_MODEL` only
- * when `model` is set.
+ * Make `to` a whole home: every entry of `from` but `.ultimate` is linked back, so logins, caches and dotfiles stay
+ * shared while `~/.ultimate` is the private copy. Entries already there are kept, so it runs on every start.
+ */
+export async function linkHome(from: string, to: string) {
+  for (const name of await readdir(from)) {
+    if (name === '.ultimate') continue
+    await symlink(join(from, name), join(to, name)).catch((error: NodeJS.ErrnoException) => {
+      // Already linked, or a private copy the preview wrote over the link: keep it.
+      if (error.code !== 'EEXIST') throw error
+    })
+  }
+}
+
+/**
+ * A preview keeps ordinary parent variables, but gets its own host identity, its own home (`HOME` and
+ * `ULTIMATE_USER_HOME`, linked back by `linkHome` so `~` reaches its private `.ultimate` and the shared rest), no
+ * inherited cloud settings, and `ULTIMATE_MODEL` only when `model` is set.
  */
 export function previewEnv(
   parent: NodeJS.ProcessEnv,
@@ -144,6 +159,7 @@ export function previewEnv(
     ),
     ULTIMATE_HOME: options.home,
     ULTIMATE_PROJECT: options.project,
+    HOME: options.userHome,
     ULTIMATE_USER_HOME: options.userHome,
     ULTIMATE_PORT: '0',
     ULTIMATE_NO_OPEN: '1',
@@ -385,6 +401,7 @@ export default function instanceExtension(
       const userHome = join(home, 'user')
       // A restarted explicit home keeps the config its preview changed.
       if (!existsSync(userHome)) await seedUserHome(host.userHome, userHome)
+      await linkHome(host.userHome, userHome)
       const env = previewEnv(process.env, {
         home,
         project,
