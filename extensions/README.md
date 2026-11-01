@@ -197,17 +197,9 @@ branches `branch · coordinator`) and `MessageReference` (the copyable reference
 
 The provider calls `host.implement(Echo, { echo: (text) => text })` in its factory; it is staged, replaced and
 removed with its facet. A consumer calls `host.need(Echo)` for a hard dependency or `host.want(Echo)` for an
-optional one. Both return a handle typed by the token that resolves the current provider on every member access, so
-holding it from setup is fine. `need` throws `<ext> needs echo, which no enabled extension provides` while nothing
-provides it; called during setup it records the dependency instead (the provider may load later) and a still-missing
-provider becomes an extension diagnostic. `want` returns undefined while missing, so call it where you use it. The core
-tier is always on, so its services are always `need`ed; `want` is for optional extensions and extension points.
-`host.catalogue()` (codemode: `ultimate.catalogue()`) lists each API's provider, needs and wants, plus missing
-providers and dependency cycles, each a sorted group of extensions that depend on each other in a cycle.
-
-Which channel to use: services for calls between extensions; documents for durable state; durable events for "this
-happened" (`host.emit` in your commit, `host.react` to act on it; see
-[docs/extensions.md](../docs/extensions.md#durable-events)); actions for the UI and user boundary.
+optional one (the core tier is always on, so its services are always `need`ed). The handles, missing providers, the
+catalogue and which channel to use (services, documents, durable events, actions) are in
+[docs/extensions.md](../docs/extensions.md#extension-apis).
 
 ## Lifecycle
 

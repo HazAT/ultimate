@@ -13,14 +13,20 @@ export type SpawnSummary = { summary: string; model?: string; at: number }
 
 /** `stale`: newer work or a reset superseded the result; `error`: the request failed. */
 export type SummaryStatus = 'pending' | 'ready' | 'stale' | 'error'
-/** What the latest final reply did, in one line, for the exchange `inputId` → `answerId`. */
+/**
+ * What the latest final reply did, in one line, for the exchange `inputId` → `answerId`; `summary` when this reply also
+ * refreshed the conversation's summary.
+ */
 export type ReplySummary = {
   inputId: EntryId
   answerId: EntryId
   activity: string
+  summary?: string
   model?: string
   at: number
 }
+/** One summary a conversation had: `at` is when it was written, absent when no entry recorded it. */
+export type SummaryRecord = { summary: string; at?: number }
 export type SummaryDiscard = {
   reason: 'stale' | 'error'
   cause: string

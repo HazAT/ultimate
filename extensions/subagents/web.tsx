@@ -42,7 +42,7 @@ import { DefinitionDialog } from './definitions.tsx'
 import { AgentsOverview } from './overview.tsx'
 import { Tag } from './parts.tsx'
 import { AgentInbox, AgentInput, AgentMessages } from './messages.tsx'
-import { openAgentSource, talkToUltimate } from './ui.tsx'
+import { openAgentSource, RunName, talkToUltimate } from './ui.tsx'
 import { StandingAction, StandingDoc } from './refs.ts'
 import { landing } from './landing.ts'
 
@@ -98,7 +98,7 @@ function SubagentCall({ call }: { call: ToolCallView }) {
   const childId =
     details?.conversationId ?? (typeof call.args.id === 'number' ? call.args.id : undefined)
   const child = conversations.find((conversation) => conversation.id === childId)
-  const agent = text(call.args.agent) || child?.label
+  const agent = child?.label || text(call.args.label) || text(call.args.agent)
   const background = call.args.background === true || details?.background === true
   const instruction = action === 'start' ? text(call.args.task) : text(call.args.text)
   const finished = call.status === 'done' || call.status === 'error'
@@ -107,7 +107,10 @@ function SubagentCall({ call }: { call: ToolCallView }) {
   const title: ReactNode =
     action === 'start' ? (
       <>
-        <span className="text-brand">{agent ?? '…'}</span> {instruction}
+        <span className="text-brand">
+          <RunName id={childId} label={agent || '…'} />
+        </span>{' '}
+        {instruction}
       </>
     ) : action === 'list' ? (
       'list children'
@@ -176,7 +179,7 @@ function SubagentCall({ call }: { call: ToolCallView }) {
         {!finished && call.status !== 'interrupted' && (
           <ToolSection>
             <Shimmer className="text-[12px]">
-              {child?.busy ? `${agent ?? 'subagent'} is working…` : 'starting…'}
+              {child?.busy ? `${agent || 'subagent'} is working…` : 'starting…'}
             </Shimmer>
           </ToolSection>
         )}
@@ -302,7 +305,9 @@ function ChildList({ output }: { output: string }) {
           type="button"
         >
           {row.busy ? <BusyDot /> : <span className="size-1.5" />}
-          <span className="text-brand">{row.agent}</span>
+          <span className="text-brand">
+            <RunName id={row.conversationId} label={row.agent} />
+          </span>
           <span className="text-muted-foreground/70">#{row.conversationId}</span>
           {row.background && <Tag>bg</Tag>}
         </button>

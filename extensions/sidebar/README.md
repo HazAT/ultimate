@@ -86,7 +86,7 @@ lagging title/timestamp list.
 A solid purple dot means an unread reply, not ongoing work; only the pulsing dot means working.
 
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
-**waits on you** (only the primary agent, @ultimate: an open question to the user);
+**waits on you** (@ultimate or a branch with an open question to the user);
 **awaiting @ultimate** (amber question mark, never on a subagent: an open reply-expected message the conversation sent
 the primary agent); **done** (green check, subagents only: it answered, and its answer went to its parent);
 **failed** (red cross: its latest input ended unanswered); else idle. Working includes queued input. Standing rows,
@@ -107,6 +107,11 @@ section lists the checkouts.
 Conclude releases clean, fully landed checkouts, including owned subagent checkouts. Uncommitted files,
 unlanded commits, and busy checkouts are kept.
 Info's Workspace section shows checkouts read-only.
+
+Hovering a branch's row (In flight, Earlier, Concluded) for a moment opens its summary history (`summaries.tsx`): the
+latest summary first, older ones below with their time, in a list capped in height that scrolls inside, also with ↑/↓
+while the row has focus. It reads the conversations `summaries` action only when it opens. Standing agents, roots and
+subagents have no summary, so their rows get none; touch devices have no hover and show none.
 
 On hover or focus, a row's `…` menu offers Rename (inline; also on double-click; Enter or leaving the field saves,
 Escape cancels, and after either key focus returns to the row), Compact context (keeps the gist and frees context;

@@ -205,8 +205,11 @@ input submission (done/unanswered) · pi.live · pi.inbox · pi.reset ───�
 - **Run state**: `pi.live.run` is `working`; a user item in `pi.inbox` is `queued`.
 - **Summary task outcomes** are entries appended in the commit that settles the task, so each carries `byTaskId`
   (the summary task, whose input names the generation it observed). None contributes to the model context:
-  - `conversations.assessed` `{ inputId, answerId, activity, model?, at }`: an accepted reply summary. Entries from
-    before the judgement was removed also carry `value`, which nothing reads.
+  - `conversations.assessed` `{ inputId, answerId, activity, summary?, model?, at }`: an accepted reply summary;
+    `summary` when the reply also refreshed the conversation's summary. Entries from before the judgement was removed
+    also carry `value`, which nothing reads.
+  - The `summaries {id}` action reads them back for the sidebar's history popover: the summaries recorded by intent,
+    spawn and reply entries, newest first, at most 50, led by the current one when no entry recorded it (`at` absent).
   - `conversations.summary-discarded` `{ reason: 'stale' | 'error', cause, model?, at }`: a received result superseded
     by newer work or a reset (`stale`), or a failed or aborted request (`error`). A task superseded before it asked the
     summary model leaves no entry.

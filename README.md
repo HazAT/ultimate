@@ -30,9 +30,8 @@ What Ultimate is and why it exists, in plain words: [danielgriesser.com/ultimate
 - **One familiar core everywhere.** The conversation, Pi's tools, the model and login, and the way it works are the same
   in every project; only the project's own pieces differ. Your personal additions live in `~/.ultimate/` and follow you
   to every project.
-- **Everything on, switch off what you don't need.** A fresh Ultimate is Pi's coding agent with every built-in:
-  subagents, plans, documents, automations, remote access and the rest ship in the clone and are on by default; turn any
-  of them off per machine or per project (see "Building blocks" below).
+- **Built-ins you switch on and off.** A fresh Ultimate is Pi's coding agent with its built-ins: subagents, plans,
+  documents, automations, remote access and the rest ship in the clone (see "Building blocks" below).
 - **A forest of conversation trees.** Each root keeps a read-only context: branch intents, latest conversation abstracts,
   and landings with divergence and links back to their source. Talk to @ultimate in its conversation: it starts coordinator
   branches that inherit a root's context before their prompt. Resuming a branch catches it up on what its tree learned.
@@ -105,9 +104,9 @@ cd ~/Projects/app && ultimate  # or Ultimate on one of your projects
 ### Recommended models
 
 We recommend running @ultimate on Claude Code Opus 5.5 (`claude-code/claude-opus-5-5`), and ideally the
-coordinators too; the other agents are your choice. Coordinators inherit @ultimate's model unless a definition pins
-one, so choosing Opus 5.5 for @ultimate covers both (this repository's `.ultimate/agents/coordinator.md` overlay pins
-it with high thinking). To set it up, install the CLI (`npm install -g @anthropic-ai/claude-code`), run
+coordinators too; the other agents are your choice. Coordinators inherit @ultimate's model unless their definition
+names a family or a model, so choosing Opus 5.5 for @ultimate covers both (this repository puts its coordinator on the
+`lead` family, set to Opus 5.5 with high thinking in `.ultimate/settings.json`). To set it up, install the CLI (`npm install -g @anthropic-ai/claude-code`), run
 `claude auth login`, then pick the model in the model picker; ⌘K → **Claude Code setup…** shows the login status. The
 [Claude Code provider](extensions/claude-code/README.md) is experimental: it depends on Claude Code's protocol and
 account limits, and subscription coverage is not guaranteed. This is a recommendation only; no default changes.
@@ -166,16 +165,10 @@ The building blocks that make it possible:
 
 ## Building blocks
 
-Built-ins live in the clone's `extensions/`, and every one is on by default; `tailscale` exposes Ultimate only to your
-own Tailscale login. Each folder's README describes the building block.
-
-Turn them off in `~/.ultimate/settings.json` for this machine or `<project>/.ultimate/settings.json` for this project:
-
-```json
-{ "extensions": { "disable": ["tailscale", "claude-code"] } }
-```
-
-See [discovery and settings](docs/settings.md) for precedence, enabling extensions, project trust and live updates.
+Built-ins live in the clone's `extensions/`; each folder's README describes the building block. Most are on by
+default, a few (such as `cloud`, `parallel` and `tailscale`) start off, and the core tier is always on. Switch them in
+`~/.ultimate/settings.json` for this machine or `<project>/.ultimate/settings.json` for this project; see
+[discovery and settings](docs/settings.md) for the list, precedence, project trust and live updates.
 
 ## Surfaces
 

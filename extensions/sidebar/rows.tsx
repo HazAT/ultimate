@@ -32,9 +32,11 @@ import {
 } from '../conversations/ui.tsx'
 import type { Presence } from '../conversations/ui.tsx'
 import { Review } from '../workspaces/ui.tsx'
+import { RunName } from '../subagents/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
 import type { OverviewRow } from '../conversations/types.ts'
 import type { ConversationState } from '../messages/ui.tsx'
+import { SummaryHistory } from './summaries.tsx'
 
 /** What a row's mark and state word say for each settled state; `working` and `idle` show no icon. */
 const settled = {
@@ -222,47 +224,49 @@ function PhasedRow({
           />
         </div>
       ) : (
-        <button
-          aria-current={shown ? 'true' : undefined}
-          className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-          onClick={() => actions.switchConversation(conversation.id)}
-          ref={(element) => {
-            if (!element || !refocus.current) return
-            refocus.current = false
-            element.focus()
-          }}
-          type="button"
-        >
-          <span className="flex w-full min-w-0 items-center gap-1.5">
-            <Mark state={state} unseen={unseen} working={markWorking} />
-            {title}
-          </span>
-          {hasMetadata && (
-            <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
-              {feature && <FeatureTag feature={feature} />}
-              {conversation.workspace && (
-                <span className="shrink-0" title="Isolated checkout">
-                  #{conversation.id}
-                </span>
-              )}
-              {latest > 0 && (
-                <span
-                  className="shrink-0 text-muted-foreground/80"
-                  title={new Date(latest).toLocaleString()}
-                >
-                  {formatAgo(latest, now)}
-                </span>
-              )}
+        <SummaryHistory id={conversation.id}>
+          <button
+            aria-current={shown ? 'true' : undefined}
+            className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            onClick={() => actions.switchConversation(conversation.id)}
+            ref={(element) => {
+              if (!element || !refocus.current) return
+              refocus.current = false
+              element.focus()
+            }}
+            type="button"
+          >
+            <span className="flex w-full min-w-0 items-center gap-1.5">
+              <Mark state={state} unseen={unseen} working={markWorking} />
+              {title}
             </span>
-          )}
-          {hasActivity && (
-            <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
-              {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
-              {displayPhase && activity && <span>·</span>}
-              {activity && <span className="truncate">{activity}</span>}
-            </span>
-          )}
-        </button>
+            {hasMetadata && (
+              <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
+                {feature && <FeatureTag feature={feature} />}
+                {conversation.workspace && (
+                  <span className="shrink-0" title="Isolated checkout">
+                    #{conversation.id}
+                  </span>
+                )}
+                {latest > 0 && (
+                  <span
+                    className="shrink-0 text-muted-foreground/80"
+                    title={new Date(latest).toLocaleString()}
+                  >
+                    {formatAgo(latest, now)}
+                  </span>
+                )}
+              </span>
+            )}
+            {hasActivity && (
+              <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
+                {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
+                {displayPhase && activity && <span>·</span>}
+                {activity && <span className="truncate">{activity}</span>}
+              </span>
+            )}
+          </button>
+        </SummaryHistory>
       )}
       {(!draft || conversation.workspace) && !editing && (
         <RowMenu
@@ -526,7 +530,7 @@ function TaskedSubagentLine({
       <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
       {task?.chip}
       <span className="min-w-0 flex-1 truncate text-foreground/75">
-        {conversation.label ?? 'agent'}
+        <RunName id={conversation.id} label={conversation.label ?? 'agent'} />
         <span className="text-muted-foreground/60"> #{conversation.id}</span>
       </span>
       <span
@@ -590,7 +594,8 @@ function TaskedChildRow({
         <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
         {task?.chip}
         <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
-          {conversation.label ?? 'Agent'} · #{conversation.id}
+          <RunName id={conversation.id} label={conversation.label ?? 'Agent'} /> · #
+          {conversation.id}
         </span>
         {conversation.workspace && (
           <GitBranchIcon

@@ -38,6 +38,7 @@ import type {
   ReplySummary,
   SpawnSummary,
   SummaryDiscard,
+  SummaryRecord,
   SummaryStatus,
   TitleChange,
 } from './types.ts'
@@ -350,6 +351,32 @@ export async function generateSummary(
           .trim()
       : undefined
   return { ...result, title, summary, ...(feature ? { feature } : {}) }
+}
+
+/**
+ * Conversation `id`'s summaries, newest first, at most `limit`: the current one, then each its intent, spawn and reply
+ * entries recorded. Reply entries before they carried `summary` left no record, so the current one may lack its time.
+ */
+export async function summaryHistory(tx: Tx, id: ConversationId, limit = 50) {
+  const current = (await tx.doc(Summaries, id)).summary
+  const found: SummaryRecord[] = []
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries({ conversationId: id }, 256, cursor)
+    for (const entry of page.items) {
+      if (entry.conversationId !== id) continue
+      const data =
+        IntentSummarized.is(entry) || SpawnSummarized.is(entry) || ReplySummarized.is(entry)
+          ? (entry.data as { summary?: string; at: number })
+          : undefined
+      if (data?.summary) found.push({ summary: data.summary, at: data.at })
+      if (found.length >= limit) break
+    }
+    cursor = found.length < limit ? page.next : undefined
+  } while (cursor !== undefined)
+  return current && found[0]?.summary !== current
+    ? [{ summary: current }, ...found.slice(0, limit - 1)]
+    : found
 }
 
 /** Only a reset ends an exchange; a compaction past this entry keeps it current. */
@@ -799,6 +826,9 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
                 inputId: completed,
                 answerId: checkpoint.answer,
                 activity: result.activity,
+                ...(checkpoint.summary && result.summary !== undefined
+                  ? { summary: result.summary }
+                  : {}),
                 ...modelOf(response, model),
                 at: now,
               },

@@ -33,15 +33,6 @@ import { CancelAction, CancelledDoc, Committed } from './refs.ts'
 /** Lets Pi's read tool shrink an image past the model's limits (2000x2000 by default) instead of refusing it. */
 const images = await createNodePhotonImages()
 
-/** Pi's edit tool, with how to recover from its two common failures. */
-function editTool() {
-  const edit = createEditTool()
-  return {
-    ...edit,
-    description: `${edit.description} After "Could not find", read the region again before retrying; after "Found N occurrences", widen oldText with surrounding lines.`,
-  }
-}
-
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)
   if (!Number.isFinite(seconds) || seconds <= 0)
@@ -286,6 +277,12 @@ export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
   const shell = createBashTool()
   const parameters = Type.Object({
     ...shell.parameters.properties,
+    timeout: Type.Optional(
+      Type.Number({
+        description:
+          'Timeout in seconds (optional; without it a default tripwire, 600 s unless configured, stops the command)',
+      }),
+    ),
     interruptible: Type.Optional(
       Type.Boolean({
         description:
@@ -296,7 +293,6 @@ export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
   // In the tool itself, not a wrap, so the events carry the call's trace and conversation.
   const bashTool = defineTool({
     ...shell,
-    description: `${shell.description} Set interruptible for a command that only waits or polls, so a steering message can end it early.`,
     parameters,
     async execute({ interruptible, ...args }, api, context) {
       const change = interruptible ? changes(args.command) : undefined
@@ -333,7 +329,7 @@ export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
     tools: [
       createReadTool({ images }),
       createWriteTool(),
-      editTool(),
+      createEditTool(),
       bashTool,
     ] as ToolRegistration[],
     wraps: [

@@ -114,7 +114,7 @@ export default function browserExtension(host: ExtensionHost) {
     path: Type.Optional(
       Type.String({
         description:
-          'Where to save the PNG, relative to your cwd. Omit it unless the file must be committed: the default, a new file in the home, keeps screenshots out of your checkout.',
+          'Where to save the PNG, relative to your cwd; default: a new file in the home.',
       }),
     ),
     timeoutMs: Type.Optional(

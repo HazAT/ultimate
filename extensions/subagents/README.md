@@ -1,5 +1,23 @@
 Delegate bounded work with `subagent`: `start {agent, task, background?, fork?}`, `message {id, text, steer?}` (steers a busy child unless `steer: false` queues a follow-up), `wait {id}`, `stop {id}`, and `list`. Every new child belongs to an independent background anchor. Foreground is a waiting style, not lifetime ownership: foreground start/message and explicit wait return the answer when ready, or yield on queued steering while the child keeps running. Stopping the parent does not stop these children; use `stop {id}` explicitly. Stop cancels the captured current work and existing pending reporters/inputs, even before a child run starts; replay leaves later reuse alone. Its result lists the changed tracked and untracked paths in the child's worktree (`Left uncommitted in <path>: …`); nothing is committed or deleted. Undelivered answers steer the current run at its next tool-round boundary, or start a run when the parent is idle. Child IDs are conversation IDs. Definitions are reread on every start; children receive `subagent` and its extension only when their definition explicitly includes `subagent` in `tools`.
 
+## Agents made on the fly
+
+`start {label, task, family? | model?, thinking?, tools?, instructions?, isolate?}` without `agent` makes a child from the call. Nothing is written to disk.
+
+- **Instructions:** a short neutral base (one task, no delegating or pushing, report evidence), then the call's `instructions`.
+- **Tools:** the parent's, or the `tools` subset; never `subagent`.
+- **Model:** `family`, else the `default` family, which is the parent's model.
+- **Summaries:** none.
+- **Isolation:** `worktree` when it may `edit` or `write`, else `none`. Read-only means leaving those out; bash stays read-only only by instruction, as for `scout`.
+
+The call's `label`, `family`, `model` and `thinking` also apply over a named `agent`, for example a worker on the review family; `tools` and `instructions` need it left out.
+
+A family or model the call names must have a login here. Unlike a definition's pin, it never falls back to the parent's model; the error lists the usable families.
+
+The child's metadata label is the call's `label`. Its `Profile` records `adhoc` instead of a definition, so `Pin` and `fast` never look a definition up by that label.
+
+The root's `subagents.runs` document (`RunsDoc`, `{ [childId]: { model?, adhoc? } }`) records, for every `start`, the model id the child started on and whether it was made on the fly. The sidebar's child rows and the call card read it through `RunName` (`ui.tsx`): `label · model`, with a wand for one made on the fly. The spec stays in the transcript as the call's arguments; its worktree lands or is discarded like a worker's.
+
 ## Interruptible waits and delivery
 
 A wait can yield to steering while the child keeps running. It returns status text and the child's ID, not an answer.
@@ -59,7 +77,7 @@ Coordinator behaviour lives in `agents/coordinator.md`, which branches run with;
 
 ### Review team
 
-The shipped `reviewer` reviews alone on the parent's model. For a team, add `reviewer-<name>.md` definitions: when any exist, the shipped `reviewer` leads them instead, on the parent's model. It starts every one in parallel, only relays and merges, and returns one verdict, like this repository's `.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`). Add a reviewer by copying a `reviewer-*` file under a new `reviewer-<name>` with another model; definitions are reread on every start, so no restart is needed.
+The shipped `reviewer` reviews alone on the `review` family. For a team, add `reviewer-<name>.md` definitions: when any exist, the shipped `reviewer` leads them instead. It starts every one in parallel, only relays and merges, and returns one verdict, like this repository's `.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`). Add a reviewer by copying a `reviewer-*` file under a new `reviewer-<name>` with another model; definitions are reread on every start, so no restart is needed.
 
 ## History forks
 

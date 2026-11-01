@@ -557,7 +557,7 @@ export default function instanceExtension(
       defineTool({
         name: 'instance',
         description:
-          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree. Instances run every agent on one model, `instance.model`.',
+          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree.',
         parameters: Type.Object({
           action: Type.Union(
             ['start', 'stop', 'logs', 'list'].map((action) => Type.Literal(action)),

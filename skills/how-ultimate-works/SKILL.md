@@ -14,11 +14,12 @@ Every beat's question card includes the option **Skip the rest**. When the user 
 "skip", go straight to beat 5. Point at the real UI in words as you go ("the first row in the sidebar", "the To-dos tab
 on the right"). Use the user's language, not internal jargon; never mention tools, entries or actions.
 
-## Beat 1: you only talk to me
+## Beat 1: start everything with me
 
 - I'm @ultimate, one long-running conversation. It's this one: the first row in the sidebar, or the @ultimate button on
   a phone.
-- Tell me what you want. I hand the work out and everything comes back here, including decisions that need you.
+- Tell me what you want. I hand the work out to branches and tell you here how it went. A branch that needs your
+  decision asks you in its own conversation, and I point you to it.
 - Want me to work differently? Ask me to change myself.
 
 Question (choice): "Make sense?" — Got it · Tell me more · Skip the rest
