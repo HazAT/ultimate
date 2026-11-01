@@ -5,8 +5,11 @@ directory. Treat it as you would any tool that can edit your files and reach you
 
 ## Reporting a vulnerability
 
-Report privately through GitHub's [private vulnerability reporting][report] on this repository. Please do not open
-a public issue for a security problem.
+Report privately, not in a public issue. Where the repository has **Settings → Code security → Private vulnerability
+reporting** turned on, its **Security → Advisories → Report a vulnerability** form is the channel; otherwise contact
+the maintainer of the clone you are running through whatever private channel they publish. A fork ships with that
+feature off, and only its own administrator can turn it on, so this file names the path rather than a URL that would
+404 there.
 
 Include what you need to make the problem reproducible: the version or commit, your platform, and the smallest
 sequence of steps that shows the issue. A proof of concept in a throwaway project is welcome; do not send secrets,
@@ -32,4 +35,3 @@ The server binds to `127.0.0.1` and expects to stay there. Do not expose an inst
 control. For untrusted work, run it in a container, a VM, or a disposable worktree, and review a project's
 extensions before accepting its trust prompt; accepting one runs that project's code on your machine.
 
-[report]: https://github.com/pt-act/ultimate/security/advisories/new
