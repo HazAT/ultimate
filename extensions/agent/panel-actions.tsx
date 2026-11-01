@@ -12,7 +12,7 @@ import { cn, usePanels, useUltimate, useViewport } from '@/sdk'
 const quickPanels = ['todos', 'tasks', 'activity', 'info']
 
 const action =
-  'flex size-7 items-center justify-center rounded-md transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring'
+  'flex size-7 cursor-pointer items-center justify-center rounded-md transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring'
 
 /**
  * On a tablet (an unfolded foldable) the panels overlay the conversation and the header's toggle sits far from the
