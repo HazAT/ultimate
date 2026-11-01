@@ -81,7 +81,9 @@ answer to an echo stays local, so it goes back and forth at most once without an
 `route:<answer entry>` (`route:<answer entry>:<branch>` going down) deduplicates delivery in the sender's `board.requests`, so a restart never sends an answer
 twice.
 
-A branch whose latest report, or reply to the starter's message, came after the starter's latest message to it shows
+A branch whose latest report, or reply to the starter's message (marked `awaits` when appended, since only a branch the
+replied-to conversation started gets its answer routed down; a standing agent's reply awaits nothing), came after the
+starter's latest message to it shows
 as `awaiting @ultimate` (`conversationState` in `data.tsx`), as does one with a reply-enabled message to @ultimate
 still open; @ultimate messaging the branch (a routed answer included), or concluding it, clears it.
 
