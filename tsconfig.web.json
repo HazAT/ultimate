@@ -42,6 +42,7 @@
     "extensions/sounds/agents.ts",
     "extensions/sounds/conductor.ts",
     "extensions/sounds/engine.ts",
+    "extensions/sounds/narration.ts",
     "extensions/instance/links.ts",
     "extensions/update/item.ts",
     "extensions/pause/lasted.ts",

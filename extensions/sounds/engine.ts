@@ -80,6 +80,8 @@ const tunes: Record<Sound, Strike[]> = {
     [0, [74], 0.5],
     [0.15, [70], 0.55],
   ],
+  // A new branch, announced only by the narrator: one soft tine.
+  started: [[0, [79], 0.45]],
 }
 
 /** Strikes `tune`, starting at `time` (seconds on Tone's clock). */
@@ -92,6 +94,37 @@ function strike(tune: Sound, time: number) {
 export async function play(sound: Sound) {
   await Tone.start()
   strike(sound, Tone.now() + 0.03)
+}
+
+/** How long the kalimba leads a spoken line: its tune, before the voice starts. */
+const leadIn = 0.45
+
+/**
+ * Says a narrator line: notification sound `sound` leads, then the voice, `pcm` (16-bit mono at 24 kHz) through the
+ * master bus so the volume applies, or the browser's own voice saying `text` without it. Resolves when it is said.
+ */
+export async function say(sound: Sound, text: string, pcm: ArrayBuffer | undefined) {
+  await Tone.start()
+  const now = Tone.now() + 0.03
+  strike(sound, now)
+  if (!pcm) {
+    await new Promise((resolve) => setTimeout(resolve, leadIn * 1000))
+    const utterance = new SpeechSynthesisUtterance(text)
+    await new Promise((resolve) => {
+      utterance.addEventListener('end', resolve)
+      utterance.addEventListener('error', resolve)
+      speechSynthesis.speak(utterance)
+    })
+    return
+  }
+  const samples = new Int16Array(pcm)
+  const buffer = Tone.getContext().createBuffer(1, samples.length, 24000)
+  const wave = buffer.getChannelData(0)
+  for (let i = 0; i < samples.length; i++) wave[i] = samples[i] / 32768
+  const voice = new Tone.Player(buffer).connect(master)
+  voice.onstop = () => voice.dispose()
+  voice.start(now + leadIn)
+  await new Promise((resolve) => setTimeout(resolve, (leadIn + buffer.duration) * 1000))
 }
 
 /** Plays `notes` as bells at `volume` (the notification cues use 0.18). */

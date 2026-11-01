@@ -24,6 +24,10 @@ export function setVolume(value: number) {
 /** Plays `sound`; a browser lets a page play once someone has clicked or typed in it. */
 export const play = async (sound: Sound) => (await engine()).play(sound)
 
+/** Says a narrator line after `sound`: `pcm` is the voice, or absent for the browser's own. */
+export const say = async (sound: Sound, text: string, pcm?: ArrayBuffer) =>
+  (await engine()).say(sound, text, pcm)
+
 /** Plays `notes` as bells at `volume` (the notification sounds use 0.18); the same rule on clicks applies. */
 export const playNotes = async (notes: readonly Note[], level = 0.18) =>
   (await engine()).playNotes(notes, level)
