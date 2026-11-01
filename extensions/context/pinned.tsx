@@ -19,7 +19,10 @@ function useStartInView() {
   const [inView, setInView] = useState(false)
   const entries = useTranscript()
   useEffect(() => {
-    const start = contentRef.current?.querySelector('[data-context-header="start"]')
+    // The pin's own header carries the same mark: observing it would hide the pin, then show it again once detached.
+    const start = contentRef.current?.querySelector(
+      '[data-context-header="start"]:not([data-ui="pinned-prompt"] *)',
+    )
     if (!start) return setInView(false)
     const observer = new IntersectionObserver(([seen]) => setInView(seen.isIntersecting), {
       root: scrollRef.current,
