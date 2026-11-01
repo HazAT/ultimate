@@ -26,9 +26,12 @@ const overlay = <T extends object>(value: T): T =>
   })
 
 /** A transaction over overlaid documents and a few entries of @ultimate's conversation; @ultimate is conversation 5. */
-function fakeTx() {
+function fakeTx(
+  newer: { id: number; conversationId: number; kind?: string; model: object[] }[] = [],
+) {
   const docs = new Map<string, object>()
   const entries = [
+    ...newer,
     { id: 30, conversationId: ULTIMATE, model: [{ role: 'user', content: 'no images' }] },
     {
       id: 20,
@@ -173,6 +176,17 @@ it('records decisions with the screenshots of its own conversation only', async 
   expect((await openGoal(tx))!.decisions).toEqual([
     { at: 1, question: 'Approve?', picked: 'Yes', reason: 'Meets 1', conversation: 7, images: 20 },
   ])
+})
+
+it('never takes an earlier turn\'s screenshot for images: "latest"', async () => {
+  const tx = fakeTx([{ id: 40, kind: 'pi.user', conversationId: ULTIMATE, model: [] }])
+  await start(tx, 'Goal', 0)
+  const decide = { action: 'decide', question: 'q', picked: 'p', reason: 'r' } as const
+  await expect(act(tx, ULTIMATE, { ...decide, images: 'latest' }, 1)).rejects.toThrow(
+    'no images in this turn',
+  )
+  await act(tx, ULTIMATE, { ...decide, images: 20 }, 2)
+  expect((await openGoal(tx))!.decisions).toMatchObject([{ images: 20 }])
 })
 
 it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep it", async () => {

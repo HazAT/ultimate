@@ -16,7 +16,7 @@ import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { imagesOf } from '../../lib/entries.ts'
+import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
 import { Standing } from '../subagents/api.ts'
@@ -28,7 +28,6 @@ import type { Criterion, Decision, Ending, Goal } from './refs.ts'
 /** Failed tries after which a criterion is blocked; work goes on with the others. */
 export const TRIES = 3
 const TEXT_CHARS = 2000
-const SCAN_PAGE = 200
 
 export const Goals = defineDoc<{ next: number; goals: Goal[] }>({
   kind: GoalDoc.kind,
@@ -113,7 +112,7 @@ export function noteText(goal: Goal, reminded = false) {
   ].join('\n\n')
 }
 
-/** The newest entry of conversation `id` with images, or entry `ref` when it has some. */
+/** The newest entry with images in this turn of conversation `id`, or entry `ref` when it has some. */
 async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | number) {
   if (ref !== 'latest') {
     const entry = await tx.entry(ref as EntryId)
@@ -121,14 +120,7 @@ async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | number) {
       throw new Error(`images: entry ${ref} in your conversation has no images`)
     return ref
   }
-  let cursor: Parameters<Tx['scanEntries']>[2]
-  do {
-    const page = await tx.scanEntries({ conversationId: id }, SCAN_PAGE, cursor)
-    const found = page.items.find((item) => imagesOf(item).length > 0)
-    if (found) return found.id as number
-    cursor = page.next
-  } while (cursor !== undefined)
-  throw new Error('images: "latest" found no entry with images in your conversation')
+  return (await latestImagesEntry(tx, id)).id as number
 }
 
 type ToolArgs = {

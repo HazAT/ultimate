@@ -1213,7 +1213,7 @@ const imagesIn = (entry: { model?: readonly { content: unknown }[] } | undefined
   const content = entry?.model?.[0]?.content
   return Array.isArray(content) ? content.filter((p) => p.type === 'image') : []
 }
-it('forwards images from the sender to a message recipient, by latest or entry id', async () => {
+it('forwards images from the sender to a message recipient, by latest in this turn or entry id', async () => {
   const f = await fixture()
   const to = `#${f.recipient.id}`
   await submitWithImages(f, `SEND ${JSON.stringify({ to, text: 'See this', images: 'latest' })}`, 2)
@@ -1223,20 +1223,23 @@ it('forwards images from the sender to a message recipient, by latest or entry i
   const entry = await placed(f, f.recipient.id, first.id)
   expect(entry?.data).toMatchObject({ images: 2 })
   expect(imagesIn(entry)).toEqual([png(0), png(1)])
-  // A later input without images: `latest` still finds the one that has them, and an id names it exactly.
+  // A later input without images (a branch for an unrelated request once carried an old screenshot this way):
+  // `latest` is refused, and only an id forwards the older images.
   await f.send(to, 'Again', { images: 'latest' })
+  expect(f.observed.join('\n')).toContain('found no images in this turn')
   await f.send(to, 'By id', { images: first.images!.entry })
-  await until(async () => (await f.log())!.messages.filter((m) => m.images).length === 3)
-  for (const sent of (await f.log())!.messages.filter((m) => m.images && m.id !== first.id)) {
-    await until(async () => (await placed(f, f.recipient.id, sent.id)) !== undefined)
-    expect(imagesIn(await placed(f, f.recipient.id, sent.id))).toEqual([png(0), png(1)])
-  }
+  await until(async () => (await f.log())!.messages.filter((m) => m.images).length === 2)
+  const messages = (await f.log())!.messages
+  expect(messages.map((m) => m.text)).not.toContain('Again')
+  const byId = messages.find((m) => m.text === 'By id')!
+  await until(async () => (await placed(f, f.recipient.id, byId.id)) !== undefined)
+  expect(imagesIn(await placed(f, f.recipient.id, byId.id))).toEqual([png(0), png(1)])
 })
 it('refuses image references that do not resolve or exceed the limits', async () => {
   const f = await fixture()
   const to = `#${f.recipient.id}`
   await f.send(to, 'None yet', { images: 'latest' })
-  expect(f.observed.join('\n')).toContain('found no entry with images')
+  expect(f.observed.join('\n')).toContain('found no images in this turn')
   await f.send(to, 'Missing', { images: 99999 })
   expect(f.observed.join('\n')).toContain('entry 99999 is not in this conversation')
   const plain = await submitWithImages(f, 'plain', 0)
@@ -1267,7 +1270,7 @@ const result = (images: object[]) => [
     timestamp: Date.now(),
   },
 ]
-it('forwards tool-result images, finds latest past a page, and checks every image', async () => {
+it("forwards tool-result images by id, not an earlier turn's as latest, and checks every image", async () => {
   const f = await fixture()
   const to = `#${f.recipient.id}`
   const write = (model: object[]) =>
@@ -1277,12 +1280,10 @@ it('forwards tool-result images, finds latest past a page, and checks every imag
       context,
     )
   const shot = await write(result([png(7)]))
-  // More plain entries than one scan page: latest still reaches the screenshot.
-  await f.opened.harness.commit(async (tx) => {
-    for (let i = 0; i < 250; i++)
-      await tx.appendEntry(ROOT_CONVERSATION_ID, { kind: 'test.filler' })
-  }, context)
-  await f.send(to, 'Screenshot', { images: 'latest' })
+  // The screenshot came before this input, in an earlier turn: latest refuses it, its id forwards it.
+  await f.send(to, 'Stale', { images: 'latest' })
+  expect(f.observed.join('\n')).toContain('found no images in this turn')
+  await f.send(to, 'Screenshot', { images: shot })
   // The reply reaches the sender before the next send, so it does not steer into that send's run.
   await until(async () => (await f.log())?.messages[1]?.state === 'delivered')
   const message = (await f.log())!.messages[0]
