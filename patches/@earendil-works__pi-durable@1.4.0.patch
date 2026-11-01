@@ -1,3 +1,65 @@
+diff --git a/dist/env/node.d.ts b/dist/env/node.d.ts
+index 8c34542861db2f1944ead19a828a940881cec679..31e30f30de86d08c837433d72edffb4b02381ebc 100644
+--- a/dist/env/node.d.ts
++++ b/dist/env/node.d.ts
+@@ -9,11 +9,14 @@ export declare class NodeExecutionEnv implements ExecutionEnv {
+     private shellEnv?;
+     private watchOptions;
+     private activeChildPids;
++    private spawn;
+     constructor(options: {
+         cwd: string;
+         shellPath?: string;
+         shellEnv?: NodeJS.ProcessEnv;
+         watch?: NodeWatchOptions;
++        /** Starts the commands `exec` runs; defaults to `child_process.spawn`. */
++        spawn?: typeof import("node:child_process").spawn;
+     });
+     watch(targets: readonly WatchTarget[], onChange: (change: WatchChange) => void, context: Context): Promise<Result<FileWatcher, FileError>>;
+     absolutePath(path: string, _context: Context): Promise<Result<string, FileError>>;
+diff --git a/dist/env/node.js b/dist/env/node.js
+index 0dd56c2f346e777ba9782ea40bdc7442a83ac57e..84e9b0ba8531f42d1eab78d3588ed31a849adb1f 100644
+--- a/dist/env/node.js
++++ b/dist/env/node.js
+@@ -556,8 +556,10 @@ export class NodeExecutionEnv {
+     shellEnv;
+     watchOptions;
+     activeChildPids = new Set();
++    spawn;
+     constructor(options) {
+         this.cwd = options.cwd;
++        this.spawn = options.spawn ?? spawn;
+         this.shellPath = options.shellPath;
+         this.shellEnv = options.shellEnv;
+         this.watchOptions = options.watch ?? {};
+@@ -637,6 +639,9 @@ export class NodeExecutionEnv {
+             const onAbort = () => {
+                 if (child?.pid)
+                     killProcessTree(child.pid);
++                // An injected spawn may learn the pid only at its "spawn" event.
++                else
++                    child?.once("spawn", onAbort);
+             };
+             const failCallback = (error) => {
+                 if (callbackError !== undefined)
+@@ -739,7 +744,7 @@ export class NodeExecutionEnv {
+                 });
+             };
+             try {
+-                child = spawn(program, args, {
++                child = this.spawn(program, args, {
+                     cwd,
+                     detached: process.platform !== "win32",
+                     env: getShellEnv(this.shellEnv, options?.env, options?.inheritEnv),
+@@ -748,6 +753,8 @@ export class NodeExecutionEnv {
+                 });
+                 if (child.pid)
+                     this.activeChildPids.add(child.pid);
++                else
++                    child.once("spawn", () => !settled && this.activeChildPids.add(child.pid));
+                 if (stdinCommand !== undefined) {
+                     child.stdin?.on("error", () => { });
+                     child.stdin?.end(stdinCommand);
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
 index d046232b140f91542879ecd60d05f5796449bf31..880eae8e83327df330ea6e6bbd85fe6d64ba9671 100644
 --- a/dist/harness/generation.js
