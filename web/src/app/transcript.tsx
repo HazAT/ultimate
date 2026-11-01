@@ -80,7 +80,6 @@ import type { ToolResult } from './model.ts'
 import { ToolCallBlock } from './tool-call.tsx'
 import { TranscriptSkeleton } from './transcript-skeleton.tsx'
 
-/** The shown conversation; `dock` fits it into a narrow side region. */
 /**
  * The transcript around a contribution: its scroller, the element holding its rows (each top-level row carries
  * `data-entry-id`), and whether it follows its newest row. For `transcript.*` slots.
@@ -90,6 +89,7 @@ export function useTranscriptScroll() {
   return { scrollRef, contentRef, atBottom: isAtBottom }
 }
 
+/** The shown conversation; `dock` fits it into a narrow side region. */
 export function Transcript({ dock }: { dock?: boolean }) {
   const { id, loading } = useConversation()
   const { conversationId } = useUltimate()
