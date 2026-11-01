@@ -322,6 +322,53 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   expect(harness.fetch).toHaveBeenLastCalledWith('/api/conversations/17/abort', expect.anything())
 })
 
+it('retries a failed merged steer with the same key, so a lost response is not sent twice', async () => {
+  const pathOf = (input: RequestInfo | URL) =>
+    typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  const render = () => renderToStaticMarkup(scoped(17, h(Conversation)))
+  const release = store.watchConversation(17)
+  effects.push(release)
+  await tick()
+  source(17).send('view', view(17, 'side transcript', true))
+  render()
+  harness.change!({ target: { value: 'steer side' } })
+  render()
+  // Only the submit fails; the inbox cancel the merge makes first succeeds, so the merge really happens.
+  const submit = harness.fetch.getMockImplementation()!
+  harness.fetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
+    pathOf(input).endsWith('/submit')
+      ? Promise.reject(new Error('network down'))
+      : submit(input, init),
+  )
+  harness.keyDown!({
+    key: 'Enter',
+    shiftKey: false,
+    altKey: false,
+    nativeEvent: {},
+    preventDefault() {},
+  })
+  await tick()
+  const submitted = harness.fetch.mock.calls.filter(([u]) => pathOf(u).endsWith('/submit'))
+  expect(submitted).toHaveLength(1)
+  const body = (submitted[0][1] as RequestInit & { body: string }).body
+  expect(body).toContain('queued 17\\nsteer side')
+  const first = body.match(/"requestId":"([^"]+)"/)![1]
+  // The editor now holds the merged text; sending it again is the same message and must reuse the key.
+  harness.fetch.mockImplementation(submit)
+  harness.change!({ target: { value: 'queued 17\nsteer side' } })
+  render()
+  harness.keyDown!({
+    key: 'Enter',
+    shiftKey: false,
+    altKey: false,
+    nativeEvent: {},
+    preventDefault() {},
+  })
+  await tick()
+  const retried = harness.fetch.mock.calls.filter(([u]) => pathOf(u).endsWith('/submit')).at(-1)!
+  expect((retried[1] as RequestInit & { body: string }).body).toContain(`"requestId":"${first}"`)
+})
+
 it('adds a view to a document-only subscription, keeps documents after the scope releases, and watches the view again from a snapshot', async () => {
   const releaseDoc = store.watchDocOf(23, counter.kind)
   effects.push(releaseDoc)

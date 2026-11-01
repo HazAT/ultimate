@@ -317,7 +317,12 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       else {
         // A steer queued behind another joins it as one: the run reads a single steer at its next boundary.
         previous = mode === 'steer' ? await withdrawQueuedSteer(api, id, inbox) : undefined
-        if (previous) input = mergedSteer(previous, input)
+        if (previous) {
+          input = mergedSteer(previous, input)
+          // The retry sends the merged text, so the key is remembered against that: against the text before the
+          // merge it would not match, and a resend after a lost response would be admitted a second time.
+          draft.set({ requestFor: input.text })
+        }
         // Sending means following the run from here, wherever the reader had scrolled to.
         events.emit('ultimate:sent', { conversationId: id })
         await api.submit(input.text, mode, id, input.images, requestId)
