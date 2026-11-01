@@ -42,10 +42,12 @@ export const store = createStore({
 /** Server commands; conversation commands default to the shown conversation. */
 export const api = createApi(store)
 /**
- * A page an agent drives (the `screenshot` and `browser` tools mark it) looks at the UI without steering the user's
- * tabs: it reads the shared state once, then its selection and panels are its own, never written or followed.
+ * A page an agent drives looks at the UI without steering the user's tabs: it reads the shared state once, then its
+ * selection and panels are its own, never written or followed. Every automated browser counts (`navigator.webdriver`),
+ * not only the `screenshot` and `browser` tools: an agent's own Playwright script on `?conversation=` once moved the
+ * user's tabs back and forth between conversations.
  */
-const detached = sessionStorage.getItem('ultimate.detached') === '1'
+const detached = navigator.webdriver || sessionStorage.getItem('ultimate.detached') === '1'
 /** Durable UI state shared by every tab, fed by the stream (see ui-state.ts). */
 export const uiState = createUiState(detached ? undefined : api.updateUi, {
   onError: (error) =>
