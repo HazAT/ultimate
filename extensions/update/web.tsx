@@ -230,7 +230,7 @@ function Popup({
           <div>
             {state.install
               ? 'pnpm-lock.yaml differs from the installed packages: pnpm install is owed.'
-              : 'Packages were installed after this Ultimate started: restart it to load them.'}
+              : 'Packages or server code changed after this Ultimate started: restart it to load them.'}
           </div>
         )}
         {state.merge && !updated ? (

@@ -557,7 +557,12 @@ export async function loadExtensions(
             )
           )
             throw new Error('pollActions must contain registered action names')
-          const secrets = validateSecrets(module.secrets ?? [])
+          // A function derives them from the facet's config; it runs again on each reload.
+          const secrets = validateSecrets(
+            typeof module.secrets === 'function'
+              ? await module.secrets(facetHost)
+              : (module.secrets ?? []),
+          )
           // Pi lets the last extension win a tool name silently. A later source layer overriding a tool on purpose is
           // fine (a project's bash over coding-tools); within one layer, the extension holding the name keeps it.
           const taken = host.registry

@@ -25,7 +25,7 @@ While the clone is behind, the status line shows `↓ 5 new · update` (`↓ 5 n
   - a changed lockfile also needs `pnpm install`;
   - bin needs a supervisor restart.
 
-**Update now** runs the update. After an update that needs a restart, the item reads `updated · restart`, and the popover offers **Restart now** (the core swap, as `core changed · restart` does). Every Ultimate on the clone shows it once packages were installed after it started, also when another one updated. While `pnpm-lock.yaml` differs from the installed packages, the item reads `install owed` and offers **Retry pnpm install**. Nothing restarts by itself.
+**Update now** runs the update. After an update that needs a restart, the item reads `updated · restart`, and the popover offers **Restart now** (the core swap, as `core changed · restart` does). Every Ultimate on the clone shows it once packages were installed after it started, or once the clone's `HEAD` differs in `server/` or `shared/` from the commit it started from (a landing or another Ultimate's update), also when another one updated. While `pnpm-lock.yaml` differs from the installed packages, the item reads `install owed` and offers **Retry pnpm install**. Nothing restarts by itself.
 
 ## Updating
 

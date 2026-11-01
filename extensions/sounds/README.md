@@ -1,10 +1,11 @@
 # Sounds
 
 Short, soft notification sounds when @ultimate talks to you: a question (needs input), a
-finished answer, or a failed run, and when work lands; and an opt-in **sound of agents** that plays the whole project's activity as music.
-"sounds" in the status bar opens a switch for all of them, a volume slider, the sound of agents with its variants and
-demo, and a checkbox and a play button for each notification; the choices live in `ext.sounds.muted`,
-`ext.sounds.volume`, `ext.sounds.agents` and `ext.sounds.off`.
+finished answer, or a failed run, and when work lands; an opt-in **narrator** that says what each one is about; and an
+opt-in **sound of agents** that plays the whole project's activity as music.
+"sounds" in the status bar opens a switch for all of them, a volume slider, the narrator, the sound of agents with its
+variants and demo, and a checkbox and a play button for each notification; the choices live in `ext.sounds.muted`,
+`ext.sounds.volume`, `ext.sounds.narrator`, `ext.sounds.narrateBranches`, `ext.sounds.agents` and `ext.sounds.off`.
 
 ## Notifications
 
@@ -24,6 +25,28 @@ Each event sounds once. Whatever the documents show when a tab opens has been he
 the first that may play claims the event under a Web Lock in local storage. Browsers let a page play only after
 someone clicked or typed in it, so a tab that never had input leaves the event to another. `cues.ts` decides what
 sounds.
+
+## Narrator
+
+Off by default. Turned on, each notification's sound leads into a short spoken line, written from the event by
+`narration.ts` (no model writes it):
+
+- **Needs input:** "Ultimate has a question.", or "MCP support needs your answer." naming the asking branch.
+- **Failed:** "Ultimate stopped with an error."
+- **Landed:** "Landed: sketch tool."; several at once: "Two branches landed: sketch tool and file drops.", and past
+  three only the count.
+- **New branch**, only with **Announce new branches** checked: "Started: fix the flaky test."
+- **Finished** keeps its sound alone: the answer is on screen.
+
+It gathers cues for 1.5 s and speaks one line per kind, questions first, one line at a time; what arrives meanwhile
+joins the next. A title is cut to its first eight words. Unlike the other sounds it speaks while the tab is hidden, but
+nothing that happened while the stream was down or before the tab opened. Tabs of one browser share a claim; tabs on
+several machines each speak.
+
+The `say` action (`server.ts`) speaks a line with OpenAI's `gpt-realtime-2.1-mini` over one realtime WebSocket
+response, with the `OPENAI_API_KEY` secret that voice input uses (or an API key Pi's `openai` provider holds), and keeps
+the last 50 lines in memory, so a repeat plays at once. The line's text, branch titles included, goes to OpenAI.
+Without a key the browser's own `speechSynthesis` says it. The voice plays through the same volume.
 
 ## Sound of agents
 

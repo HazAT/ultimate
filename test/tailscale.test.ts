@@ -63,8 +63,9 @@ else if (args[0] === 'serve') {
   )
   await chmod(script, 0o755)
   // This file runs its own stub CLI from PATH, not the missing one test/setup.ts names for every other server.
+  // macOS identifies the core with ps, so /bin stays on PATH; it holds no tailscale.
   vi.stubEnv('TAILSCALE_COMMAND', undefined)
-  vi.stubEnv('PATH', home)
+  vi.stubEnv('PATH', process.platform === 'darwin' ? `${home}:/bin` : home)
   const invocations = async () => {
     try {
       return (await readFile(log, 'utf8'))
