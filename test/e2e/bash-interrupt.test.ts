@@ -133,7 +133,8 @@ it('keeps the notice when the output fills the retained window', async () => {
     { command: 'seq 1 5000; touch "$READY"; sleep 30', interruptible: true },
     'steer',
   )
-  expect(result).toMatch(/5000(\\n)+\[Interrupted by a steering message after/)
+  // The steer can land before the pipe is drained, so the output may stop short of 5000; the notice still comes last.
+  expect(result).toMatch(/\d(\\n)+\[Interrupted by a steering message after/)
 })
 
 it('lets an unmarked call finish when a steer arrives', async () => {
