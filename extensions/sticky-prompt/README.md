@@ -2,9 +2,10 @@ While you scroll up through a long answer, a line at the top of the transcript n
 
 ## Behaviour
 
-- The line shows the first phrase of your message, cut with an ellipsis when it goes on. A `/skill` input shows its
-  request, or the skill's name when it has none. A message you sent through `message` (a `board.message` from you)
-  counts as your turn too.
+- The line shows your message as you wrote it, on two lines at most, cut with an ellipsis when it goes on. A `/skill`
+  input shows `/skill:name` as typed, then its request. A message that starts with a reference to another message (as
+  codemode's copy-reference writes it) shows that message as a conversation chip, then your words. A message you sent
+  through `message` (a `board.message` from you) counts as your turn too.
 - It shows only while the transcript does not follow its newest row, and hides when the start of that message is on
   screen.
 - When your message is older than the rows the transcript has loaded, the line says `finding your message…` and the

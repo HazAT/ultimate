@@ -1,5 +1,5 @@
 // Scrolls up through long answers in a real browser: a line at the top names the turn of the user's they answer, cut to
-// its first phrase, and a click on it scrolls back to that turn.
+// two lines at most, and a click on it scrolls back to that turn.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
@@ -74,7 +74,7 @@ it('pins the answered turn while scrolled up and reveals it on click', async () 
     node.scrollIntoView({ block: 'start' })
   })
   await sticky.waitFor()
-  expect(await sticky.textContent()).toBe('Now explain beta…')
+  expect(await sticky.textContent()).toBe('Now explain beta. And the rest.')
   // Visible, not covered: the element at its centre is the line itself.
   expect(
     await sticky.evaluate((node) => {
@@ -88,7 +88,8 @@ it('pins the answered turn while scrolled up and reveals it on click', async () 
   })
   await page.waitForFunction(
     () =>
-      document.querySelector('#app [data-sticky-prompt]')?.textContent === 'Explain alpha first…',
+      document.querySelector('#app [data-sticky-prompt]')?.textContent ===
+      'Explain alpha first. Then everything else about it.',
   )
 
   // A click scrolls back to the alpha turn, which then hides the line.
@@ -129,7 +130,7 @@ it('names a turn below the loaded history with one lookup and no history pages',
       await new Promise(requestAnimationFrame)
       const line = document.querySelector('#app [data-sticky-prompt]')
       if (frame > 2 && !line) gone++
-      if (line?.textContent === 'Start the long job…') return gone
+      if (line?.textContent === 'Start the long job. Report when done.') return gone
     }
     return -1
   })
