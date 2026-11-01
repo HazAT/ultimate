@@ -266,7 +266,7 @@ export async function post(server: string | { url: string }, path: string, data:
 /** Read `/api/events`, subscribing each stream it opens as sub 0 to a conversation (the root by default) and its documents. */
 export async function attach(
   server: string | { url: string },
-  subscription: { conversation?: number; docs?: string[] } = {},
+  subscription: { conversation?: number; docs?: string[]; view?: boolean } = {},
 ) {
   const url = typeof server === 'string' ? server : server.url
   const controller = new AbortController()
@@ -318,7 +318,7 @@ export async function attach(
       await yieldIO()
     }
   })()
-  await until(() => !!view)
+  await until(() => (subscription.view === false ? connections > 0 : !!view))
   return {
     events,
     system: () => system!,
