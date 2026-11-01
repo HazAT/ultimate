@@ -27,6 +27,7 @@ vi.mock('@/sdk', async () => ({
   formatAgo: () => 'now',
   Provided: () => null,
   useConversations: () => [],
+  useConversationSummary: (id?: number) => [].find((item: { id: number }) => item.id === id),
   useDocOf: () => undefined,
   useNow: () => 0,
   useTranscript: () => [shot],

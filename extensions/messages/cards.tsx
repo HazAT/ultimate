@@ -28,7 +28,7 @@ import {
   Provided,
   useCompact,
   useConversation,
-  useConversations,
+  useConversationSummary,
   useDocOf,
   useNow,
   useTranscript,
@@ -498,11 +498,11 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
 /** The `branch` tool as the branch it started and the prompt it was given; a failed call keeps the generic card. */
 export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const log = useDocOf(1, MessagesDoc)
-  const conversations = useConversations()
   const { switchConversation, showSurface } = useUltimate()
-  if (call.status === 'error' || call.status === 'interrupted') return core
   const started = /^Branch #(\d+) started; message (\d+) sent\.$/.exec(call.output)
   const id = started ? Number(started[1]) : undefined
+  const title = useConversationSummary(id)?.title
+  if (call.status === 'error' || call.status === 'interrupted') return core
   const message = started ? log?.messages.find((m) => m.id === Number(started[2])) : undefined
   const { prompt, root, isolated } = call.args as {
     prompt?: string
@@ -528,10 +528,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
           <span className="shrink-0">Branch</span>
           {id !== undefined && (
             <span className="flex min-w-0 text-foreground/80">
-              <ConversationRef
-                id={id}
-                title={conversations.find((conversation) => conversation.id === id)?.title}
-              />
+              <ConversationRef id={id} title={title} />
             </span>
           )}
           <span className={cn('shrink-0', state === 'failed' && 'text-destructive')}>
@@ -549,11 +546,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
           </span>
           {id !== undefined && (
             <span className="flex min-w-0 overflow-hidden text-foreground">
-              <ConversationRef
-                className="w-full"
-                id={id}
-                title={conversations.find((conversation) => conversation.id === id)?.title}
-              />
+              <ConversationRef className="w-full" id={id} title={title} />
             </span>
           )}
           <span className="shrink-0 max-sm:hidden">

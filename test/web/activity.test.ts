@@ -12,6 +12,8 @@ vi.mock('@/sdk', async () => ({
   useUltimate: () => ({ showSurface: () => {}, switchConversation: () => {} }),
   useDocOf: () => ({ conversations: { '12': { feature: 'Activity Feed' } } }),
   useConversations: () => [{ id: 12, title: 'Build the Activity feed' }],
+  useConversationSummary: (id?: number) =>
+    [{ id: 12, title: 'Build the Activity feed' }].find((item: { id: number }) => item.id === id),
   useWorkspaceIndex: () => ({ queue: [], results: {} }),
 }))
 vi.mock('../../extensions/workspaces/landing.tsx', () => ({

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import {
   useAction,
   useConversation,
-  useConversations,
+  useConversationSummary,
   useTranscript,
   useTranscriptScroll,
   useUiState,
@@ -44,9 +44,7 @@ function useStartInView() {
 export function PinnedPrompt() {
   const id = useConversation((conversation) => conversation.id)
   const agent = useConversation((conversation) => conversation.agent)
-  const owned = useConversations().find(
-    (conversation) => conversation.id === id,
-  )?.parentConversationId
+  const owned = useConversationSummary(id)?.parentConversationId
   const entries = useTranscript()
   const startInView = useStartInView()
   // A new `pi.system` entry in the stream means the prompt changed: ask for it again.

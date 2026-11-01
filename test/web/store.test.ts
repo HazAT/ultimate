@@ -267,6 +267,25 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('keeps unchanged rows when the list is resent for another row', () => {
+    const { store, latest } = setup()
+    latest().open()
+    latest().send('conversations', [
+      { id: 1, title: 'my-app', busy: false },
+      { id: 2, title: 'fix login', busy: false },
+    ])
+    const [root, branch] = store.getState().conversations
+    latest().send('conversations', [
+      { id: 1, title: 'my-app', busy: false },
+      { id: 2, title: 'fix login', busy: true, answerAt: 5 },
+    ])
+    // Readers of row 1 (`useConversationSummary(1)`) see the same object and skip the re-render.
+    expect(store.getState().conversations[0]).toBe(root)
+    expect(store.getState().conversations[1]).not.toBe(branch)
+    expect(store.getState().conversations[1]).toMatchObject({ busy: true, answerAt: 5 })
+    store.stop()
+  })
+
   it('shows a conversation seen before at once, until its subscription brings a different snapshot', async () => {
     const { store, server, latest } = setup()
     latest().open()

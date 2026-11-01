@@ -6,7 +6,14 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ToolImage } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { cn, formatTokens, useAction, useConversation, useConversations, useSystem } from '@/sdk'
+import {
+  cn,
+  formatTokens,
+  useAction,
+  useConversation,
+  useConversationSummary,
+  useSystem,
+} from '@/sdk'
 import { Diff, parsePatch } from '../coding-tools/ui.tsx'
 import { AgentMark } from '../conversations/ui.tsx'
 import { DefinitionAction } from '../subagents/ui.tsx'
@@ -28,7 +35,7 @@ const tones = {
 /** Who the shown conversation is: a standing agent's @name, or its label (the definition it runs, or `branch`). */
 function useIdentity() {
   const id = useConversation((conversation) => conversation.id)
-  const summary = useConversations().find((conversation) => conversation.id === id)
+  const summary = useConversationSummary(id)
   const standing = summary?.title?.startsWith('@') ? summary.title.slice(1) : undefined
   const label = summary?.label
   // A standing agent runs the definition of its name; a branch the coordinator's.

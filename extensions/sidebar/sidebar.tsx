@@ -15,6 +15,7 @@ import {
   AllProvided,
   Provided,
   Slot,
+  useConversationSummary,
   useDocOf,
   useNow,
   useStore,
@@ -718,7 +719,7 @@ function Tree({
 /** Records the answer the user has seen: the shown top-level conversation's latest, once it is idle. */
 export function Seen() {
   const id = useShownId()
-  const summary = useConversations().find((conversation) => conversation.id === id)
+  const summary = useConversationSummary(id)
   const [seen, setSeen] = useSidebarState<Record<string, number>>('seen', {})
   const answerAt =
     summary && summary.parentConversationId === undefined && !summary.busy

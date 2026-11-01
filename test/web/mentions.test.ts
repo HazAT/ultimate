@@ -14,6 +14,7 @@ vi.mock('@/sdk', () => ({
   events: { emit: () => {} },
   useDocOf: () => ({ conversations: { '157029': { feature: 'Sidebar' } } }),
   useConversations: () => known,
+  useConversationSummary: (id?: number) => known.find((item: { id: number }) => item.id === id),
   useUltimate: () => ({ switchConversation: () => {}, showSurface: () => {} }),
 }))
 const { MentionLink } = await import('../../extensions/conversations/mention.tsx')

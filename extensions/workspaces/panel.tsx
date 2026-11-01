@@ -1,5 +1,5 @@
 import { CopyIcon, RefreshCwIcon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Row, Rows } from '@/components/ui/rows'
 import {
   cn,
@@ -8,15 +8,11 @@ import {
   shortenPath,
   useAction,
   useConversation,
+  useConversationSummary,
   useSystem,
 } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
-import {
-  stateLabel,
-  useLanderQueue,
-  useWorkspaceConversations as useConversations,
-  useWorkspaces,
-} from './data.tsx'
+import { stateLabel, useLanderQueue, useWorkspaces } from './data.tsx'
 import type { WorkspaceConversation } from './data.tsx'
 import { DiskAction, InfoAction, StatsAction } from './refs.ts'
 
@@ -31,8 +27,9 @@ export function useWorkspacesMeta() {
 }
 
 function useShown() {
-  const id = useConversation().id
-  return useConversations().find((conversation) => conversation.id === id && conversation.workspace)
+  const summary = useConversationSummary(useConversation((conversation) => conversation.id))
+  const workspace = useWorkspaces()[String(summary?.id)]
+  return useMemo(() => summary && workspace && { ...summary, workspace }, [summary, workspace])
 }
 
 /**
