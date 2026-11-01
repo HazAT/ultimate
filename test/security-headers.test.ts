@@ -30,6 +30,8 @@ it('refuses framing to a page on another origin', () => {
 it('sets the other response protections', () => {
   expect(securityHeaders['X-Content-Type-Options']).toBe('nosniff')
   expect(securityHeaders['Referrer-Policy']).toBe('no-referrer')
-  expect(securityHeaders['Cache-Control']).toBe('no-store')
   expect(securityHeaders['X-Frame-Options']).toBe('SAMEORIGIN')
+  // `Cache-Control` is applied per request instead: only the API and the HTML document skip the browser cache,
+  // so Vite's modules and assets keep their own revalidation for a remote page.
+  expect(Object.keys(securityHeaders)).not.toContain('Cache-Control')
 })

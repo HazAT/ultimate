@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from 'node:http'
+import type { IncomingMessage } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve as resolvePath } from 'node:path'
 import { createServer as createViteServer } from 'vite-plus'
@@ -43,9 +44,17 @@ export const securityHeaders = {
   'X-Frame-Options': 'SAMEORIGIN',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  // Conversation history is the user's code and prompts; it does not belong in the browser's disk cache.
-  'Cache-Control': 'no-store',
 } as const
+/**
+ * Conversation history is the user's code and prompts, so the API's responses do not belong in the browser's disk
+ * cache. Only `/api/*` is stamped: everything else is Vite's to answer, and its HTML is a 3 KB shell whose transcript
+ * arrives over this API, so leaving its own revalidation alone costs nothing and keeps a remote page from
+ * re-downloading every module on reload.
+ */
+const noStore = { 'Cache-Control': 'no-store' } as const
+/** The API is JSON and must never be cached; every other path is Vite's to answer, document or asset. */
+const isApi = (request: IncomingMessage) =>
+  new URL(request.url ?? '/', 'http://localhost').pathname.startsWith('/api/')
 /** For the replies that never reach a handler, so an error page carries the same framing refusal. */
 const denyHeaders = {
   'X-Frame-Options': 'SAMEORIGIN',
@@ -114,6 +123,8 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       }
       // Set before either handler writes its own head: the API replies with JSON and Vite serves the document.
       for (const [name, value] of Object.entries(securityHeaders)) response.setHeader(name, value)
+      if (isApi(request))
+        for (const [name, value] of Object.entries(noStore)) response.setHeader(name, value)
       if (await api.handle(request, response)) return
       vite.middlewares(request, response)
     })().catch(() => {
