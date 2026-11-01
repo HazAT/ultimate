@@ -31,7 +31,7 @@ import { Overview, overviewBehavior } from './overview.ts'
 import { activityBehavior } from './activity.ts'
 import { compactionEvents } from './compactions.ts'
 import { contextBehavior } from './context.ts'
-import { ContextUsageDoc, ConversationsApi, Previews, Release, Trees } from './api.ts'
+import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
 import {
   ConcludeAction,
   RenameAction,
@@ -51,7 +51,7 @@ const Fixed = defineDoc<{ fixed?: true }>({
   initial: () => ({}),
 })
 
-export const docs = [Summaries, Overview, Fixed, ContextUsageDoc]
+export const docs = [Summaries, Overview, Fixed, ContextUsageDoc, Marks]
 
 /** A fork needs its own identity; a new context head (compaction or reset) needs it again. */
 const SeenIdentity = defineDoc<{ head?: number }>({

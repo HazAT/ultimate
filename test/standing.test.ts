@@ -21,6 +21,7 @@ import subagents from '../extensions/subagents/server.ts'
 import { Profile, Standing, Started } from '../extensions/subagents/api.ts'
 import type { SubagentsService } from '../extensions/subagents/api.ts'
 import { Metadata } from '../server/metadata.ts'
+import { Marks } from '../extensions/conversations/api.ts'
 import { parseDefinition, saveDefinition } from '../lib/agents.ts'
 
 const ctx = BACKGROUND_CONTEXT
@@ -130,6 +131,33 @@ it('parses and saves the resident field, refusing non-booleans', async () => {
   )
   expect(saved.resident).toBe(true)
   expect(parseDefinition(await readFile(saved.path, 'utf8'), saved.path).resident).toBe(true)
+})
+
+it('reads, saves and publishes a standing agent mark', async () => {
+  const { service, host, prepared, path, file } = await fixture()
+  expect(() => parseDefinition(definition('Instructions', 'tint: purple\n'), 'test')).toThrow(
+    'tint must be one of',
+  )
+  const saved = await saveDefinition(
+    { projectRoot: path, userHome: path },
+    prepared.modelRuntime,
+    'user',
+    'saved',
+    { description: 'Saved', icon: 'notebook-pen', tint: 'teal' },
+    'Instructions',
+  )
+  expect(parseDefinition(await readFile(saved.path, 'utf8'), saved.path)).toMatchObject({
+    icon: 'notebook-pen',
+    tint: 'teal',
+  })
+  await writeFile(file, definition('Instructions', 'icon: Gem\ntint: violet\n'))
+  await service.standing('x', ctx)
+  expect(await host.harness.snapshot(Marks, ROOT_CONVERSATION_ID, ctx)).toEqual({
+    x: { icon: 'Gem', tint: 'violet' },
+  })
+  await writeFile(file, definition('Instructions'))
+  await service.standing('x', ctx)
+  expect(await host.harness.snapshot(Marks, ROOT_CONVERSATION_ID, ctx)).toEqual({})
 })
 
 it('keeps one ownerless standing conversation, refreshes its definition and recreates deleted records', async () => {

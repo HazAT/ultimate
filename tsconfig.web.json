@@ -70,6 +70,7 @@
     "lib/context-usage.ts",
     "lib/entries.ts",
     "lib/families.ts",
+    "lib/marks.ts",
     "extensions/subagents/message-types.ts",
     "test/web"
   ]

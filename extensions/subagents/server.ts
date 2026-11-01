@@ -48,7 +48,8 @@ import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { ConversationsApi } from '../conversations/api.ts'
+import { ConversationsApi, Marks } from '../conversations/api.ts'
+import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
 import { Profile, Standing, Subagents, SubagentsApi } from './api.ts'
 import {
@@ -60,6 +61,12 @@ import {
 } from './refs.ts'
 
 export const docs = [Subagents, Standing, Profile]
+
+/** Record how standing agent `definition`'s mark looks in conversations' marks doc, or that it asks for nothing. */
+const setMark = (marks: Record<string, AgentMarkStyle>, { name, icon, tint }: AgentDefinition) => {
+  if (icon || tint) marks[name] = { ...(icon ? { icon } : {}), ...(tint ? { tint } : {}) }
+  else delete marks[name]
+}
 
 /** What a definition runs on, as `<subagents>` shows it: `review: openai-codex/gpt-6-astra · high`; the default family runs on the parent's model. */
 export const runsLabel = (runs: AgentDefinition['runs']) =>
@@ -488,8 +495,10 @@ export const actions = {
       ...(resident !== undefined ? { resident } : {}),
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
-      // The form has no control for it: a save keeps it as discovery read it.
+      // The form has no control for these: a save keeps them as discovery read them.
       ...(existing?.subagent === false ? { subagent: false } : {}),
+      ...(existing?.icon ? { icon: existing.icon } : {}),
+      ...(existing?.tint ? { tint: existing.tint } : {}),
     }
     // The form shows the merged definition; a whole copy would freeze the overlays' additions and the base's
     // instructions, so the save becomes an overlay holding only what differs from the base. `overlay` asks for one
@@ -562,6 +571,10 @@ export default function subagents(
         .map((definition) => definition.name),
     )
     await host.harness().commit(async (tx) => {
+      const marks = await tx.doc(Marks, ROOT_CONVERSATION_ID)
+      for (const name of Object.keys(marks)) delete marks[name]
+      for (const definition of definitions)
+        if (definition.resident === true) setMark(marks, definition)
       const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
       for (const name of Object.keys(index)) {
         const id = index[name]
@@ -643,6 +656,7 @@ export default function subagents(
         await conversations.setAutomaticSummaries(tx, id, false)
         await conversations.setStanding(tx, id, true)
         ;(await tx.doc(Profile, id)).definition = name
+        setMark(await tx.doc(Marks, ROOT_CONVERSATION_ID), definition)
         // Only a new conversation starts: a refresh reconfigures one that already runs.
         if (created) await started(host, tx, created, name, 'standing')
         return id

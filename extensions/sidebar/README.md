@@ -9,7 +9,7 @@ other list (`listed.ts`).
 
 Every standing agent's row leads with its mark (conversations' `AgentMark`): a small tinted tile with a glyph — a brand
 `U` for @ultimate (the title bar's wordmark), a green merge for the lander,
-a bot for any other resident — with a presence dot in its corner (pulsing while it works or lands, amber while it
+its definition's `icon` and `tint` for any other resident, else a bot — with a presence dot in its corner (pulsing while it works or lands, amber while it
 waits on you). Then a fixed display name (`Ultimate`, `Lander`, else the name capitalised) with
 `@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
 
