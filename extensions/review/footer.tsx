@@ -36,7 +36,7 @@ export function Footer({
       {(noting || drafts.note) && (
         <textarea
           aria-label="Overall note"
-          className="mb-2 block max-h-40 min-h-12 w-full resize-y rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/50 focus:border-brand/50"
+          className="mb-2 block max-h-40 min-h-12 w-full resize-y rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground focus:border-brand/50"
           onChange={(event) => {
             const note = event.target.value
             setFull(!update((all) => ({ ...all, note })))

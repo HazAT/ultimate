@@ -52,7 +52,7 @@ function Machine({ system }: { system: SystemInfo }) {
       <Rows>
         <Row label="host">
           {machine.hostname}
-          <span className="text-muted-foreground/70">· {machine.user}</span>
+          <span className="text-muted-foreground">· {machine.user}</span>
         </Row>
         <Row label="os">
           <span className="truncate">
@@ -64,7 +64,7 @@ function Machine({ system }: { system: SystemInfo }) {
           <span className="truncate" title={machine.cpuModel}>
             {machine.cpuModel || 'unknown'}
           </span>
-          <span className="shrink-0 text-muted-foreground/70">×{machine.cpuCount}</span>
+          <span className="shrink-0 text-muted-foreground">×{machine.cpuCount}</span>
         </Row>
         <Row label="memory">
           <Meter
@@ -91,7 +91,7 @@ function Process({ system }: { system: SystemInfo }) {
         <Row label="node">{process.node}</Row>
         <Row label="uptime">
           <span className="tabular-nums">{uptime(now - Date.parse(process.startedAt))}</span>
-          <span className="truncate text-muted-foreground/60">
+          <span className="truncate text-muted-foreground">
             since {formatTime(process.startedAt, true)}
           </span>
         </Row>
@@ -137,9 +137,7 @@ function Persistence({ system }: { system: SystemInfo }) {
         </Row>
         <Row label="size">
           {formatBytes(persistence.sizeBytes)}
-          <span className="text-muted-foreground/70">
-            + wal {formatBytes(persistence.walBytes)}
-          </span>
+          <span className="text-muted-foreground">+ wal {formatBytes(persistence.walBytes)}</span>
         </Row>
       </Rows>
     </Section>
@@ -196,12 +194,12 @@ function Code({ system }: { system: SystemInfo }) {
           {code.dirty ? (
             <span className="text-warning">uncommitted changes</span>
           ) : (
-            <span className="text-muted-foreground/60">clean</span>
+            <span className="text-muted-foreground">clean</span>
           )}
         </Row>
         <Row label="build">
           <Copy value={build.id}>{build.id.slice(0, 7)}</Copy>
-          <span className="truncate text-muted-foreground/60">
+          <span className="truncate text-muted-foreground">
             {build.changed.length
               ? `changed ${build.changed.join(', ')}`
               : `gen ${build.generation}`}
@@ -223,7 +221,7 @@ function Code({ system }: { system: SystemInfo }) {
               </Button>
             </>
           ) : (
-            <span className="text-muted-foreground/60">{build.core.slice(0, 12)} · current</span>
+            <span className="text-muted-foreground">{build.core.slice(0, 12)} · current</span>
           )}
         </Row>
       </Rows>
@@ -266,18 +264,18 @@ function Model() {
         <Row label="provider">
           {ref?.provider ?? <span className="text-warning">none</span>}
           {provider?.isUsingSubscription && (
-            <span className="text-muted-foreground/70">· subscription</span>
+            <span className="text-muted-foreground">· subscription</span>
           )}
         </Row>
         <Row label="model">
           <span className="truncate">{ref?.modelId ?? '—'}</span>
           {model && model.name !== model.id && (
-            <span className="truncate text-muted-foreground/60">{model.name}</span>
+            <span className="truncate text-muted-foreground">{model.name}</span>
           )}
         </Row>
         <Row label="thinking">
           {model && !model.reasoning ? (
-            <span className="text-muted-foreground/70">not supported</span>
+            <span className="text-muted-foreground">not supported</span>
           ) : (
             <span
               className={
@@ -292,9 +290,7 @@ function Model() {
           <>
             <Row label="context">
               {formatTokens(model.contextWindow)}
-              <span className="text-muted-foreground/60">
-                · out {formatTokens(model.maxTokens)}
-              </span>
+              <span className="text-muted-foreground">· out {formatTokens(model.maxTokens)}</span>
             </Row>
             <Row label="price /M">
               <span className="truncate">
@@ -312,7 +308,7 @@ function Model() {
         </Row>
         <Row label="cost">
           {cost(total.cost)}
-          {provider?.isUsingSubscription && <span className="text-muted-foreground/70">(sub)</span>}
+          {provider?.isUsingSubscription && <span className="text-muted-foreground">(sub)</span>}
         </Row>
       </Rows>
       {buckets.length > 0 && (
@@ -380,7 +376,7 @@ function Skills({ system }: { system: SystemInfo }) {
             name={skill.name}
             path={skill.path}
             tags={
-              <span className="truncate text-muted-foreground/60">
+              <span className="truncate text-muted-foreground">
                 {skill.scope}
                 {skill.manual && ' · manual'}
                 {skill.overrides.length > 0 &&
@@ -438,7 +434,7 @@ function shortSkill(path: string) {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="font-mono text-[11px] text-muted-foreground/60">{children}</div>
+  return <div className="font-mono text-[11px] text-muted-foreground">{children}</div>
 }
 
 function InfoPanel() {

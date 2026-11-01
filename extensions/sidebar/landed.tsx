@@ -112,18 +112,18 @@ function LandedRow({ group, now }: { group: LandingGroup; now: number }) {
           <span className="truncate font-sans text-[11.5px] text-foreground/80">{group.label}</span>
         )}
         {!single && (
-          <span className="shrink-0 text-muted-foreground/70">×{group.landings.length}</span>
+          <span className="shrink-0 text-muted-foreground">×{group.landings.length}</span>
         )}
       </button>
       <CommitCount
-        className="text-muted-foreground/80"
+        className="text-muted-foreground"
         count={commits}
         href={single ? latest.compare : undefined}
         range={groupRange(group.landings)}
       />
       {latest.at !== undefined && (
         <span
-          className="w-6 shrink-0 text-right text-muted-foreground/60"
+          className="w-6 shrink-0 text-right text-muted-foreground"
           title={new Date(latest.at).toLocaleString()}
         >
           {formatAgo(latest.at, now)}

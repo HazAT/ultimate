@@ -75,7 +75,7 @@ function Running({ state }: { state: PauseState }) {
           </button>
           <span className="shrink-0 text-muted-foreground">{task.what}</span>
           {task.startedAt !== undefined && (
-            <span className="w-14 shrink-0 text-right text-muted-foreground/70 tabular-nums">
+            <span className="w-14 shrink-0 text-right text-muted-foreground tabular-nums">
               {formatDuration(Math.max(0, now - task.startedAt))}
             </span>
           )}
@@ -205,7 +205,7 @@ function AutoPlay({ minutes }: { minutes?: number }) {
         />
         <span>min</span>
       </label>
-      <div className="text-muted-foreground/70">
+      <div className="text-muted-foreground">
         Only after a rate limit, once per limit. A Pause you press waits for you.
       </div>
       {error && <div className="break-words text-error">{error}</div>}
@@ -236,7 +236,7 @@ function Item() {
         <button
           className={cn(
             statusButton,
-            state.paused ? 'text-warning' : 'text-muted-foreground/70 hover:text-foreground',
+            state.paused ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
           )}
           data-pause={state.paused ? (pausing ? 'pausing' : 'paused') : 'running'}
           title="Pause or continue all work"
@@ -318,7 +318,7 @@ function Note({ entry }: { entry: EntryRecord }) {
   if (note.since === undefined || note.until === undefined) return null
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-note
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -345,7 +345,7 @@ function Held({ entry }: { entry: EntryRecord }) {
   const child = data.child
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-held
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -447,7 +447,7 @@ function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
   if (data.since === undefined || data.at === undefined) return null
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
       data-pause-autoplayed
     >
       <span className="flex min-w-0 items-center gap-1.5">

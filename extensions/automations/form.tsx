@@ -238,7 +238,7 @@ function useSettled<T>(value: T, ms: number) {
 }
 
 const input =
-  'h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
+  'h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring'
 
 function Field({
   label,
@@ -301,7 +301,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
           <ol className="mt-1 flex flex-col gap-0.5 font-mono text-[11.5px]">
             {data.next.map((at, index) => (
               <li className="flex gap-2" key={at} title={full(at)}>
-                <span className="w-9 shrink-0 text-muted-foreground/60">
+                <span className="w-9 shrink-0 text-muted-foreground">
                   {index === 0 ? 'next' : 'then'}
                 </span>
                 <span className="text-foreground/85 tabular-nums">{clock(at, now)}</span>
@@ -892,7 +892,7 @@ export function AutomationForm({
                         </button>
                       ))}
                     </div>
-                    <span className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground/70">
+                    <span className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground">
                       {mode.hint}
                     </span>
                   </div>

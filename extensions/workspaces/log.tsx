@@ -144,11 +144,11 @@ function Line({
       {icon}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {took && (
-        <span className={cn('shrink-0 tabular-nums', !active && 'text-muted-foreground/60')}>
+        <span className={cn('shrink-0 tabular-nums', !active && 'text-muted-foreground')}>
           {took}
         </span>
       )}
-      <time className="shrink-0 text-muted-foreground/60">{time(at)}</time>
+      <time className="shrink-0 text-muted-foreground">{time(at)}</time>
     </div>
   )
 }
@@ -206,9 +206,7 @@ function StepLine({
       >
         {row.check.command}
         {row.check.result !== 'passed' && ` · ${row.check.result}`}
-        {row.check.summary && (
-          <span className="text-muted-foreground/60"> · {row.check.summary}</span>
-        )}
+        {row.check.summary && <span className="text-muted-foreground"> · {row.check.summary}</span>}
       </Line>
     )
   return (
@@ -220,7 +218,7 @@ function StepLine({
         ) : done ? (
           <CheckIcon className="size-3 shrink-0 text-success/70" />
         ) : (
-          <CircleDotIcon className="size-3 shrink-0 text-muted-foreground/60" />
+          <CircleDotIcon className="size-3 shrink-0 text-muted-foreground" />
         )
       }
       took={duration}
@@ -283,7 +281,7 @@ function Steps({
           />
         ))}
         <button
-          className="cursor-pointer pt-1 pl-4 font-mono text-[11px] text-muted-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
+          className="cursor-pointer pt-1 pl-4 font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           onClick={() => switchConversation(lander)}
           type="button"
         >
@@ -330,9 +328,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
           sha={outcome.commits?.length ? outcome.sha : undefined}
           sourceEntry={data.sourceEntry}
           divergence={data.divergence}
-          at={
-            <time className="shrink-0 text-[11px] text-muted-foreground/60">{time(data.at)}</time>
-          }
+          at={<time className="shrink-0 text-[11px] text-muted-foreground">{time(data.at)}</time>}
           from={data.conversationId}
           headline={headline(outcome, data.target)}
           subject={data.subject}

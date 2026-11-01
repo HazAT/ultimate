@@ -229,7 +229,7 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
         <input
           autoComplete={prompt.type === 'secret' ? 'one-time-code' : 'off'}
           autoFocus
-          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
@@ -503,14 +503,14 @@ function Chooser({
                 <KeyRoundIcon
                   className={cn(
                     'size-3.5 shrink-0',
-                    label ? 'text-success' : 'text-muted-foreground/60',
+                    label ? 'text-success' : 'text-muted-foreground',
                   )}
                 />
                 <span className="truncate text-[12.5px] text-foreground">{method.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                <span className="shrink-0 text-[11px] text-muted-foreground">
                   {typeLabel(method)}
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground/50">
+                <span className="shrink-0 text-[11px] text-muted-foreground">
                   {method.provider.id}
                 </span>
               </button>
@@ -532,9 +532,7 @@ function Chooser({
                   )}
                 </>
               ) : (
-                <span className="shrink-0 text-[11px] text-muted-foreground/50">
-                  not configured
-                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">not configured</span>
               )}
             </div>
           )

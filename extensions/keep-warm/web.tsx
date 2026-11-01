@@ -64,7 +64,7 @@ function Chip() {
           aria-label="Keep @ultimate's cache warm"
           className={cn(
             '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-            !state.on && 'text-muted-foreground/60',
+            !state.on && 'text-muted-foreground',
           )}
           data-keep-warm={state.on ? (warm ? 'warm' : 'cold') : 'off'}
           type="button"
@@ -91,7 +91,7 @@ function Chip() {
                 : ` · read ${tokens(state.last.read)}, wrote ${tokens(state.last.write)}`}
             </div>
           )}
-          <div className="pt-1 text-muted-foreground/70">
+          <div className="pt-1 text-muted-foreground">
             One small request 55 min after the last, until you have been away 8 h.
           </div>
         </div>

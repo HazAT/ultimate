@@ -98,7 +98,7 @@ function Trail() {
           >
             {nameOf(conversation)}
           </button>
-          <span className="-mx-1 shrink-0 text-muted-foreground/40 max-md:hidden">/</span>
+          <span className="-mx-1 shrink-0 text-muted-foreground max-md:hidden">/</span>
         </Fragment>
       ))}
       {busy && <span className="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />}
@@ -119,7 +119,7 @@ function Trail() {
             {title}
           </span>
           {id !== undefined && (
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">#{id}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{id}</span>
           )}
         </>
       )}

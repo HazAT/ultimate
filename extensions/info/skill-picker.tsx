@@ -50,7 +50,7 @@ export function SkillPicker() {
               >
                 <span className="flex w-full items-center gap-2 text-[12.5px]">
                   <span className="text-brand">{skill.name}</span>
-                  <span className="ml-auto text-[11px] text-muted-foreground/60">
+                  <span className="ml-auto text-[11px] text-muted-foreground">
                     {skill.scope}
                     {skill.manual && ' · manual'}
                   </span>

@@ -92,7 +92,7 @@ function Project({
           <button
             aria-expanded={open}
             aria-label={open ? 'Hide the project memory' : 'Show the project memory'}
-            className="flex h-full w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="flex h-full w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-project-toggle
             onClick={() => setOpen(!open)}
             title={open ? 'Hide Memory' : 'Show Memory'}
@@ -112,7 +112,7 @@ function Project({
           >
             <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{title}</span>
-            <span className="ml-auto shrink-0 font-mono text-[10px] font-normal text-muted-foreground/50 group-hover/project:text-muted-foreground">
+            <span className="ml-auto shrink-0 font-mono text-[10px] font-normal text-muted-foreground group-hover/project:text-muted-foreground">
               History #{root}
             </span>
           </button>
@@ -134,7 +134,7 @@ function MemoryHint({ root }: { root: number }) {
       aria-current={shown ? 'page' : undefined}
       aria-label="Open the project memory"
       className={cn(
-        'mr-0.5 flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-normal text-muted-foreground/50 outline-none hover:bg-sidebar-accent/50 hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
+        'mr-0.5 flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-normal text-muted-foreground outline-none hover:bg-sidebar-accent/50 hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
         shown && 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent hover:text-foreground',
       )}
       data-memory-hint={root}
@@ -398,7 +398,7 @@ function Tree({
             )}
             {latest > 0 && (
               <span
-                className="ml-auto shrink-0 text-muted-foreground/80"
+                className="ml-auto shrink-0 text-muted-foreground"
                 title={new Date(latest).toLocaleString()}
               >
                 {formatAgo(latest, now)}
@@ -658,12 +658,12 @@ function Tree({
               {summary.summary}
             </p>
             {(summary.summaryStatus === 'pending' || summary.assessmentStatus === 'pending') && (
-              <p className="mt-1 text-[10.5px] text-muted-foreground/70" role="status">
+              <p className="mt-1 text-[10.5px] text-muted-foreground" role="status">
                 {summary.summaryStatus === 'pending' ? 'Updating summary…' : 'Assessing reply…'}
               </p>
             )}
             {(summary.summaryStatus === 'error' || summary.assessmentStatus === 'error') && (
-              <p className="mt-1 text-[10.5px] text-muted-foreground/70" role="status">
+              <p className="mt-1 text-[10.5px] text-muted-foreground" role="status">
                 {summary.summaryStatus === 'error'
                   ? 'Summary unavailable'
                   : 'Assessment unavailable'}{' '}

@@ -27,7 +27,7 @@ export function Row({
 }) {
   return (
     <>
-      <dt className="truncate text-muted-foreground/70">{label}</dt>
+      <dt className="truncate text-muted-foreground">{label}</dt>
       <dd className={cn('flex min-w-0 items-center gap-1.5 text-foreground/85', className)}>
         {children}
       </dd>

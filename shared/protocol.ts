@@ -18,6 +18,11 @@ export interface SubmitRequest {
   text: string
   images?: { data: string; mimeType: string }[]
   whenBusy?: 'steer' | 'followUp'
+  /**
+   * The caller's idempotency key, unique per message the user meant to send. A resend after a lost response
+   * carries the same key and is answered with the original submission instead of adding a second turn.
+   */
+  requestId?: string
 }
 export interface SubmitResponse {
   submissionId: number

@@ -73,12 +73,12 @@ function Card({ instance, status }: { instance: Instance; status: string }) {
             {target?.kind === 'tailnet' && <ExternalLinkIcon className="size-3" />}
           </a>
         )}
-        <span className="text-muted-foreground/70">
+        <span className="text-muted-foreground">
           {target?.kind === 'off' ? target.reason.toLowerCase() : status}
         </span>
-        <span className="ml-auto text-[11px] text-muted-foreground/70">pid {instance.pid}</span>
+        <span className="ml-auto text-[11px] text-muted-foreground">pid {instance.pid}</span>
       </div>
-      <div className="flex gap-3 text-[11px] text-muted-foreground/70">
+      <div className="flex gap-3 text-[11px] text-muted-foreground">
         <span className="truncate" title={instance.home}>
           home {shortenPath(instance.home, { home: system?.machine.home })}
         </span>
@@ -138,7 +138,7 @@ function InstanceCall({ call }: { call: ToolCallView }) {
             <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 section-label hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/logs:rotate-90" />
               Logs
-              <span className="text-muted-foreground/60">{value.split('\n').length} lines</span>
+              <span className="text-muted-foreground">{value.split('\n').length} lines</span>
             </CollapsibleTrigger>
             <CollapsibleContent>
               <pre className="max-h-80 overflow-auto bg-terminal px-3 py-2 leading-[1.55] whitespace-pre-wrap text-foreground/85">

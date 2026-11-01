@@ -165,7 +165,7 @@ function Card({
           <ToolSection>
             <div className="break-words text-error">{failure.error}</div>
             {(failure.httpStatus || failure.ref_id) && (
-              <div className="text-[11px] text-muted-foreground/70">
+              <div className="text-[11px] text-muted-foreground">
                 {[
                   failure.httpStatus && `HTTP ${failure.httpStatus}`,
                   failure.ref_id && `ref ${failure.ref_id}`,
@@ -270,10 +270,7 @@ function Search({ call }: { call: ToolCallView }) {
         <>
           <span className="text-foreground/90">{query}</span>
           {results.length > 0 && (
-            <span className="text-muted-foreground/60">
-              {' '}
-              · {domains(results.map((r) => r.url))}
-            </span>
+            <span className="text-muted-foreground"> · {domains(results.map((r) => r.url))}</span>
           )}
         </>
       }
@@ -289,7 +286,7 @@ function Search({ call }: { call: ToolCallView }) {
             const excerpt = result.excerpts.join(' … ').replace(/\s+/g, ' ').trim()
             return (
               <li className="flex gap-2.5 px-2.5 py-2" key={result.url}>
-                <span className="w-4 shrink-0 text-right text-muted-foreground/60 tabular-nums">
+                <span className="w-4 shrink-0 text-right text-muted-foreground tabular-nums">
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -302,7 +299,7 @@ function Search({ call }: { call: ToolCallView }) {
                   <div className="mt-0.5 flex min-w-0 gap-2 text-[11px] text-muted-foreground">
                     <span className="truncate">{host(result.url)}</span>
                     {result.publish_date && (
-                      <span className="shrink-0 text-muted-foreground/70">
+                      <span className="shrink-0 text-muted-foreground">
                         {day(result.publish_date)}
                       </span>
                     )}
@@ -319,7 +316,7 @@ function Search({ call }: { call: ToolCallView }) {
         </ol>
       )}
       {shown && results.length === 0 && (
-        <ToolSection className="text-muted-foreground/70">no results</ToolSection>
+        <ToolSection className="text-muted-foreground">no results</ToolSection>
       )}
       {details && <Notes details={details} />}
     </Card>

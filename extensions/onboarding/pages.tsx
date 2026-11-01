@@ -257,14 +257,14 @@ export function Recommended({
                 <span className="text-xs text-muted-foreground">
                   {entry.line}
                   {entry.hint && (
-                    <span className="mt-0.5 block font-mono text-[10.5px] text-muted-foreground/70 sm:hidden">
+                    <span className="mt-0.5 block font-mono text-[10.5px] text-muted-foreground sm:hidden">
                       {entry.hint}
                     </span>
                   )}
                 </span>
               </span>
               {entry.hint && (
-                <span className="hidden font-mono text-[10.5px] text-muted-foreground/70 sm:block">
+                <span className="hidden font-mono text-[10.5px] text-muted-foreground sm:block">
                   {entry.hint}
                 </span>
               )}

@@ -65,7 +65,7 @@ export function AutomationsSection() {
           aria-label={`${list.length} active${failing ? `, ${failing} need attention` : ''}: show all automations`}
           className={cn(
             'cursor-pointer rounded-sm px-0.5 font-mono text-[11px] tabular-nums outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
-            failing ? 'text-error' : 'text-muted-foreground/60',
+            failing ? 'text-error' : 'text-muted-foreground',
           )}
           data-automations-open
           onClick={() => openAutomationsPanel(shell)}
@@ -83,7 +83,7 @@ export function AutomationsSection() {
         ))}
         {list.length > FIRST && (
           <button
-            className="mx-2 h-5 cursor-pointer rounded-md pl-[26px] text-left font-mono text-[10px] text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="mx-2 h-5 cursor-pointer rounded-md pl-[26px] text-left font-mono text-[10px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => setAll(!all)}
             type="button"
           >
@@ -120,7 +120,7 @@ function Row({ automation, now }: { automation: Automation; now: number }) {
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/85">
         {automation.name}
       </span>
-      <KindIcon automation={automation} className="size-2.5 text-muted-foreground/50" />
+      <KindIcon automation={automation} className="size-2.5 text-muted-foreground" />
       <span
         className={cn(
           'shrink-0 font-mono text-[10px] tabular-nums',

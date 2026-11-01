@@ -53,7 +53,7 @@ function Node({ call, depth }: { call: SystemCall; depth: number }) {
       >
         <KindIcon kind={call.kind} ok={call.ok} />
         <span className="shrink-0 text-foreground/85">{call.name}</span>
-        <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {call.error ?? call.summary}
         </span>
         {call.ms !== undefined && (
@@ -88,9 +88,7 @@ export function TraceTree({ trace }: { trace: string }) {
           <li className="flex min-w-0 items-start gap-1.5 py-px" key={event.id}>
             <KindIcon kind="event" />
             <span className="shrink-0 text-foreground/85">{event.name}</span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-              {event.summary}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{event.summary}</span>
           </li>
         ))}
       </ul>

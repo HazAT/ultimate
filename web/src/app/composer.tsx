@@ -130,7 +130,7 @@ function Inbox({ items }: { items: readonly InboxItem[] }) {
           )
         })}
       </div>
-      <div className="mt-0.5 flex justify-end text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
+      <div className="mt-0.5 flex justify-end text-[11px] text-muted-foreground pointer-coarse:hidden">
         <span>
           <Kbd>↑</Kbd> edit queued
         </span>
@@ -182,6 +182,12 @@ type Draft = {
   error?: string
   sending: boolean
   revision: number
+  /**
+   * The idempotency key of the message being sent, and the text it was minted for. It survives a failed send so
+   * the retry is deduplicated by the server, and is replaced when the text changes because that is a new message.
+   */
+  requestId?: string
+  requestFor?: string
 }
 
 // In-flight submissions and retryable failures belong to the conversation, not its mounted editor.
@@ -249,7 +255,12 @@ function clearDraft(
   const stored = draft.key ? (localStorage.getItem(draft.key) ?? '') : ''
   if (draft.get().revision !== snapshot.revision) return
   if (draft.key && stored === snapshot.text) localStorage.removeItem(draft.key)
-  draft.set({ text: stored === snapshot.text ? '' : stored })
+  // The message is admitted, so its key is spent: typing the same text again is a new send, not a duplicate.
+  draft.set({
+    text: stored === snapshot.text ? '' : stored,
+    requestId: undefined,
+    requestFor: undefined,
+  })
 }
 
 function ConversationComposer({ dock }: { dock?: boolean }) {
@@ -295,6 +306,12 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     const mode = busy ? (whenBusy ?? 'steer') : undefined
     let input = { text: text.trim(), images }
     let previous: typeof input | undefined
+    // The same key across a failure and its retry, so a request the server already admitted is not sent twice.
+    const requestId =
+      submitted.requestFor === input.text && submitted.requestId
+        ? submitted.requestId
+        : crypto.randomUUID()
+    draft.set({ requestId, requestFor: input.text })
     try {
       if (target) await target.send(input.text)
       else {
@@ -303,7 +320,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         if (previous) input = mergedSteer(previous, input)
         // Sending means following the run from here, wherever the reader had scrolled to.
         events.emit('ultimate:sent', { conversationId: id })
-        await api.submit(input.text, mode, id, input.images)
+        await api.submit(input.text, mode, id, input.images, requestId)
       }
       clearDraft(draft, submitted)
       if (draft.get().images === submitted.images) draft.set({ images: [] })
@@ -396,7 +413,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
             <span
               className={cn(
                 'truncate font-mono text-[11px]',
-                error || blocked ? 'text-error' : 'text-muted-foreground/70',
+                error || blocked ? 'text-error' : 'text-muted-foreground',
               )}
             >
               {error ??

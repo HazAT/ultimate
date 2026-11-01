@@ -35,7 +35,7 @@ export const PromptInputTextarea = ({
   return (
     <textarea
       className={cn(
-        'block w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground/60 disabled:cursor-not-allowed',
+        'block w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed',
         className,
       )}
       ref={ref}

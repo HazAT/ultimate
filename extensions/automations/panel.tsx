@@ -255,7 +255,7 @@ function Runs({ runs, now }: { runs: Run[]; now: number }) {
   const [all, setAll] = useState(false)
   if (runs.length === 0)
     return (
-      <p className="pb-2 pl-8 text-[12px] text-muted-foreground/80">
+      <p className="pb-2 pl-8 text-[12px] text-muted-foreground">
         No runs yet: Run now starts one.
       </p>
     )
@@ -412,7 +412,7 @@ function AutomationRow({
             >
               {automation.name}
             </span>
-            <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground/60">
+            <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
               {automation.id}
             </span>
             {automation.scope === 'project' && <Tag>project</Tag>}
@@ -435,7 +435,7 @@ function AutomationRow({
       >
         <Dot className="-ml-[12px]" look={look} />
         <span className={cn('shrink-0', looks[look].text)}>{looks[look].word}</span>
-        {line && <span className="text-muted-foreground/40">·</span>}
+        {line && <span className="text-muted-foreground">·</span>}
         <span className="truncate">{line}</span>
       </p>
       <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
@@ -465,7 +465,7 @@ function AutomationRow({
           {automation.runs.length} run{automation.runs.length === 1 ? '' : 's'}
           {running && <BusyDot className="ml-0.5" />}
         </Button>
-        <span className="min-w-0 truncate pl-1 font-mono text-[10.5px] text-muted-foreground/60">
+        <span className="min-w-0 truncate pl-1 font-mono text-[10.5px] text-muted-foreground">
           {actions(automation)}
         </span>
         {script ? (
@@ -697,7 +697,7 @@ export function AutomationsPanel() {
         <p className="px-3 py-2 font-mono text-[11.5px] text-muted-foreground">loading…</p>
       ) : automations.length === 0 ? (
         <div className="flex flex-col items-center px-6 pt-8 pb-6 text-center">
-          <TimerIcon className="size-5 text-muted-foreground/60" />
+          <TimerIcon className="size-5 text-muted-foreground" />
           <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
             Run a prompt on a schedule, or have a script watch for something and wake you when it
             happens.
@@ -788,7 +788,7 @@ function ScriptDetail({
             <ArrowLeftIcon className="size-3" />
             Automations
           </button>
-          <span className="ml-auto font-mono text-[11px] text-muted-foreground/70">
+          <span className="ml-auto font-mono text-[11px] text-muted-foreground">
             {automation.id}
           </span>
           <Toggle act={act} automation={automation} now={now} />
@@ -927,7 +927,7 @@ function Script({
       <div className="flex shrink-0 flex-col gap-0.5 border-b border-border/70 px-3 pb-2 text-[11px] text-muted-foreground">
         <span className="truncate tabular-nums">{facts.join(' · ')}</span>
         <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-muted-foreground/50">$</span>
+          <span className="shrink-0 text-muted-foreground">$</span>
           <span className="min-w-0 truncate text-foreground/90" title={path}>
             {path ? (home ? shortenPath(path, { home }) : path) : '…'}
           </span>
@@ -954,7 +954,7 @@ function Script({
             <Output text={output} />
           ) : (
             !log.error && (
-              <span className="text-muted-foreground/70">
+              <span className="text-muted-foreground">
                 {script.state === 'writing'
                   ? 'no output yet · the watcher is writing the script'
                   : 'no output'}
@@ -983,7 +983,7 @@ function Script({
             <p
               className={cn(
                 'px-3 py-2',
-                source.error ? 'text-destructive' : 'text-muted-foreground/70',
+                source.error ? 'text-destructive' : 'text-muted-foreground',
               )}
             >
               {source.error

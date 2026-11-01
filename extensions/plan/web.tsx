@@ -126,7 +126,7 @@ function Note({ note, clamp }: { note: Task['notes'][number]; clamp?: boolean })
   return (
     <p className="flex min-w-0 gap-1.5 font-sans text-[12px] leading-snug text-muted-foreground">
       <span
-        className="shrink-0 pt-px font-mono text-[10.5px] text-muted-foreground/60 tabular-nums"
+        className="shrink-0 pt-px font-mono text-[10.5px] text-muted-foreground tabular-nums"
         title={note.at}
       >
         {time(note.at)}
@@ -178,7 +178,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
         <Tag
           className={cn(
             isolate.state === 'removed'
-              ? 'text-muted-foreground/70'
+              ? 'text-muted-foreground'
               : isolate.landed
                 ? 'border-success/40 text-success'
                 : 'border-brand/40 text-brand',
@@ -190,7 +190,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
         </Tag>
         {isolate.ahead !== null && (
           <span
-            className="shrink-0 text-[10.5px] text-muted-foreground/80"
+            className="shrink-0 text-[10.5px] text-muted-foreground"
             title={`${isolate.ahead} commit${isolate.ahead === 1 ? '' : 's'} on the branch that the parent checkout does not have`}
           >
             ↑{isolate.ahead}
@@ -323,7 +323,7 @@ function TaskRow({
         >
           {task.title}
         </span>
-        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/task:rotate-90" />
+        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/task:rotate-90" />
       </CollapsibleTrigger>
       <div className="space-y-0.5 pr-3 pb-1.5 pl-8">
         <div className="flex h-5 min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
@@ -382,7 +382,7 @@ function TaskRow({
               </div>
               {task.notes.length > 1 && (
                 <button
-                  className="shrink-0 font-mono text-[10.5px] text-muted-foreground/70 hover:text-foreground"
+                  className="shrink-0 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
                   onClick={() => setOpen(true)}
                   type="button"
                 >
@@ -427,7 +427,7 @@ function EpicCard({
     >
       <Collapsible className="group/epic">
         <CollapsibleTrigger className="flex w-full min-w-0 items-center gap-1.5 px-3 py-2 text-left hover:bg-accent/40">
-          <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/epic:rotate-90" />
+          <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/epic:rotate-90" />
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{epic.key}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={epic.title}>
             {epic.title}
@@ -450,7 +450,7 @@ function EpicCard({
           <div
             className={cn(
               'pb-1 section-label',
-              approved ? 'text-success' : 'text-muted-foreground/80',
+              approved ? 'text-success' : 'text-muted-foreground',
             )}
           >
             Verdict
@@ -466,7 +466,7 @@ function EpicCard({
           </span>
         </div>
       ) : (
-        <p className="px-3 pb-2 font-sans text-[12px] text-muted-foreground/70">
+        <p className="px-3 pb-2 font-sans text-[12px] text-muted-foreground">
           Worked directly by the coordinator.
         </p>
       )}
@@ -519,7 +519,7 @@ export function PlanBody({
     />
   )
   if (epics.length === 0)
-    return <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground/70">No epics yet.</p>
+    return <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground">No epics yet.</p>
   return (
     <>
       {open.map(card)}
@@ -531,7 +531,7 @@ export function PlanBody({
           }
         >
           <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground hover:bg-accent/40">
-            <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/done:rotate-90" />
+            <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/done:rotate-90" />
             {done.length} done epic{done.length === 1 ? '' : 's'}
           </CollapsibleTrigger>
           <CollapsibleContent>{done.map(card)}</CollapsibleContent>
@@ -566,10 +566,10 @@ function Panel({
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border/70 px-3 font-mono text-[11px] text-muted-foreground">
         <ClipboardListIcon className="size-3.5" />
         Plan
-        <span className="text-muted-foreground/70">· #{coordinator}</span>
+        <span className="text-muted-foreground">· #{coordinator}</span>
         <button
           aria-label="Close the plan"
-          className="ml-auto text-muted-foreground/70 hover:text-foreground"
+          className="ml-auto text-muted-foreground hover:text-foreground"
           onClick={close}
           type="button"
         >
@@ -580,7 +580,7 @@ function Panel({
         {plan ? (
           <PlanBody coordinator={coordinator} focus={focus} own={own} plan={plan} />
         ) : (
-          <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground/70">Loading…</p>
+          <p className="px-3 py-2 font-sans text-[12px] text-muted-foreground">Loading…</p>
         )}
       </div>
     </div>
@@ -707,7 +707,7 @@ function CoordinatorPlan({
           <ClipboardListIcon className="size-3.5 shrink-0" />
           <span className="text-foreground/80">{shown.epic.key}</span>
           <span>· {progressLabel(shown.epic)}</span>
-          {shown.more > 0 && <span className="text-muted-foreground/70">+{shown.more}</span>}
+          {shown.more > 0 && <span className="text-muted-foreground">+{shown.more}</span>}
         </button>
       )}
     </>

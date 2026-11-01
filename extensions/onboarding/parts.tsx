@@ -94,7 +94,7 @@ export function Heading({
     <div className={cn('flex items-center gap-2 section-label', className)}>
       {children}
       {meta !== undefined && (
-        <span className="ml-auto truncate pl-2 text-muted-foreground/70">{meta}</span>
+        <span className="ml-auto truncate pl-2 text-muted-foreground">{meta}</span>
       )}
     </div>
   )

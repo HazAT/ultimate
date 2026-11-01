@@ -76,7 +76,7 @@ export function ConversationRef({
           {name}
         </span>
       )}
-      <span className="shrink-0 text-muted-foreground/70">#{id}</span>
+      <span className="shrink-0 text-muted-foreground">#{id}</span>
     </span>
   )
 }

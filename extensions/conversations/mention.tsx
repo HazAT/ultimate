@@ -37,7 +37,7 @@ export function MentionLink({
       title={`Open #${conversation.id}${entry !== undefined ? ` at entry ${entry}` : ''}${conversation.title ? `: ${conversation.title}` : ''}`}
     >
       <ConversationRef className="gap-1" id={conversation.id} />
-      {entry !== undefined && <span className="shrink-0 text-muted-foreground/70">/{entry}</span>}
+      {entry !== undefined && <span className="shrink-0 text-muted-foreground">/{entry}</span>}
     </a>
   )
 }

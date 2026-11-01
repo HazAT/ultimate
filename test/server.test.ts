@@ -1038,4 +1038,27 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
       (await reopened.harness.snapshot(Logins, 1 as ConversationId, context))?.flows.dead,
     ).toEqual({ provider: 'stub', type: 'api_key', status: 'cancel', events: [] })
   })
+
+  it('admits one message per requestId, so a resend after a lost response is not a second turn', async () => {
+    const { server } = await fixture(false, {})
+    const created = await post(server, '/api/conversations', { title: 'idempotency' })
+    const id = (created.data as { id: number }).id
+    const send = (requestId: string) =>
+      post(server, `/api/conversations/${id}/submit`, { text: `message ${requestId}`, requestId })
+    const first = await send('same-key')
+    const retry = await send('same-key')
+    // The retry answers with the original submission instead of admitting the text again.
+    expect((retry.data as { submissionId: number }).submissionId).toBe(
+      (first.data as { submissionId: number }).submissionId,
+    )
+    // A different key is a different message.
+    const other = await send('other-key')
+    expect((other.data as { submissionId: number }).submissionId).not.toBe(
+      (first.data as { submissionId: number }).submissionId,
+    )
+    // A request without a key still sends; the key is how a caller opts into deduplication.
+    expect((await post(server, `/api/conversations/${id}/submit`, { text: 'no key' })).status).toBe(
+      202,
+    )
+  })
 })

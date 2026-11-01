@@ -144,7 +144,7 @@ function status(task: TaskGraphNode): {
             {state.phase} · waiting on{' '}
             <span className="text-foreground/70">{state.on.map((id) => `#${id}`).join(' ')}</span>
             {state.on.length > 1 && (
-              <span className="text-muted-foreground/60"> ({state.policy})</span>
+              <span className="text-muted-foreground"> ({state.policy})</span>
             )}
           </>
         ),
@@ -244,7 +244,7 @@ function Clock({ task, tree, plain }: { task: TaskGraphNode; tree: Tree; plain?:
   if (until !== undefined)
     return (
       <span
-        className="shrink-0 text-[10.5px] text-muted-foreground/70 tabular-nums"
+        className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums"
         title={`Wakes ${new Date(until).toLocaleString()}`}
       >
         in {formatDuration(Math.max(0, until - tree.now))}
@@ -256,7 +256,7 @@ function Clock({ task, tree, plain }: { task: TaskGraphNode; tree: Tree; plain?:
     <span
       className={cn(
         'shrink-0 text-[10.5px] tabular-nums',
-        !plain && tree.now - started >= LONG ? 'text-warning' : 'text-muted-foreground/70',
+        !plain && tree.now - started >= LONG ? 'text-warning' : 'text-muted-foreground',
       )}
       title={`Running since ${new Date(started).toLocaleString()}`}
     >
@@ -284,11 +284,11 @@ export function TaskRow({ task, tree, ...place }: { task: TaskGraphNode; tree: T
             <span className="shrink-0">{named?.text ?? task.kind}</span>
             <Who who={named?.who} />
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted-foreground/60">
+          <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted-foreground">
             {named?.detail && !task.blocked ? (
               <>
                 {named.by !== undefined && (
-                  <span className="shrink-0 text-muted-foreground/80">
+                  <span className="shrink-0 text-muted-foreground">
                     <Address id={named.by} />
                   </span>
                 )}
@@ -375,7 +375,7 @@ function ConversationRow({ id, tree, ...place }: { id: number; tree: Tree } & Pl
               {summary?.title || summary?.label || 'Untitled conversation'}
             </span>
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted-foreground/60">
+          <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted-foreground">
             {tree.features.get(id) && <FeatureTag feature={tree.features.get(id)!} />}
             <span className="shrink-0">#{id}</span>
             {summary?.workspace && (
@@ -412,7 +412,7 @@ function Heading({ children, count }: { children: ReactNode; count?: number }) {
   return (
     <div className="flex items-center gap-2 px-3 pt-3 pb-1 section-label">
       {children}
-      {count !== undefined && <span className="text-muted-foreground/60">{count}</span>}
+      {count !== undefined && <span className="text-muted-foreground">{count}</span>}
     </div>
   )
 }
@@ -429,7 +429,7 @@ function Background({ tasks, tree }: { tasks: TaskGraphNode[]; tree: Tree }) {
       <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-1.5 px-3 pt-3 pb-1 section-label hover:text-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/bg:rotate-90" />
         Background
-        <span className="text-muted-foreground/60">{tasks.length}</span>
+        <span className="text-muted-foreground">{tasks.length}</span>
       </CollapsibleTrigger>
       {shown.map((task) => (
         <TaskRow depth={0} key={task.id} task={task} tree={tree} />
@@ -500,7 +500,7 @@ function TasksPanel() {
     <div className="py-2">
       <div className="flex items-center gap-2 px-3 pb-1 section-label">
         Task graph
-        <span className="ml-auto text-muted-foreground/70">
+        <span className="ml-auto text-muted-foreground">
           {tasks.length} live{busy > 0 && ` · ${busy} running`}
           {parked > 0 && <span className="text-warning"> · {parked} parked</span>}
         </span>
@@ -536,7 +536,7 @@ function TasksPanel() {
         )
       })}
       {tasks.length === 0 && (
-        <div className="px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground/70">
+        <div className="px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground">
           idle · no live tasks
         </div>
       )}

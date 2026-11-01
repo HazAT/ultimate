@@ -361,7 +361,7 @@ function Connection() {
       <span className={open ? undefined : 'text-warning'}>
         {open ? 'live' : connection.status === 'connecting' ? 'connecting…' : 'reconnecting…'}
       </span>
-      {system && <span className="text-muted-foreground/70">gen {system.process.generation}</span>}
+      {system && <span className="text-muted-foreground">gen {system.process.generation}</span>}
     </Item>
   )
 }

@@ -490,7 +490,7 @@ function Stage() {
                 relay to @ultimate
               </span>
               <span className="ml-auto flex items-center gap-2">
-                <span className="font-mono text-[10.5px] text-muted-foreground/70 pointer-coarse:hidden">
+                <span className="font-mono text-[10.5px] text-muted-foreground pointer-coarse:hidden">
                   <Kbd>{keyHint}</Kbd> back
                 </span>
                 <button
@@ -994,8 +994,8 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   if (line.role === 'live')
     return (
       <div className="mt-2 flex gap-2 first:mt-0" data-voice-line="live">
-        <AudioLinesIcon className="mt-[3px] size-3 shrink-0 text-muted-foreground/50" />
-        <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-muted-foreground/70">
+        <AudioLinesIcon className="mt-[3px] size-3 shrink-0 text-muted-foreground" />
+        <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-muted-foreground">
           {line.text}
         </p>
       </div>
@@ -1004,7 +1004,7 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   const source = line.source
   return (
     <div className="mt-2 flex gap-2 first:mt-0" data-voice-line="ultimate">
-      <Volume2Icon className="mt-[3px] size-3 shrink-0 text-muted-foreground/60" />
+      <Volume2Icon className="mt-[3px] size-3 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="text-[13px] leading-relaxed break-words text-muted-foreground">
           <Spoken entry={entry.id} text={line.text} />
@@ -1208,7 +1208,7 @@ function VoiceMark({ children, className }: { children: ReactNode; className?: s
   return (
     <span
       className={cn(
-        '-mt-1 flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground/70',
+        '-mt-1 flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground',
         className,
       )}
     >

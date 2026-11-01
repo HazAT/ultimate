@@ -65,7 +65,7 @@ const tone = {
   del: 'bg-diff-del/10',
   context: '',
   hunk: 'bg-muted/40 text-muted-foreground',
-  gap: 'text-muted-foreground/60',
+  gap: 'text-muted-foreground',
 } as const
 const sign = { add: '+', del: '−', context: ' ', hunk: '', gap: '' } as const
 
@@ -110,10 +110,10 @@ export function Diff({
           ) : (
             // oxlint-disable-next-line react/no-array-index-key -- Positional diff lines while the patch streams.
             <div className={cn('col-span-4 grid grid-cols-subgrid', tone[row.type])} key={index}>
-              <span className="pl-3 text-right text-muted-foreground/50 select-none">
+              <span className="pl-3 text-right text-muted-foreground select-none">
                 {numbered ? (row.old ?? '') : ''}
               </span>
-              <span className="pl-2 text-right text-muted-foreground/50 select-none">
+              <span className="pl-2 text-right text-muted-foreground select-none">
                 {numbered ? (row.new ?? '') : ''}
               </span>
               <span

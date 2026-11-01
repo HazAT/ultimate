@@ -37,7 +37,7 @@ function SkillRun({ name, location, body }: { name: string; location: string; bo
         title={
           <>
             <span className="text-brand">{name}</span>
-            <span className="text-muted-foreground/60" title={location}>
+            <span className="text-muted-foreground" title={location}>
               {' '}
               · run by you
             </span>

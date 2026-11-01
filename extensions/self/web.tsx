@@ -198,7 +198,7 @@ function Build() {
         <span
           className={cn(
             'transition-colors duration-700',
-            fresh ? 'text-brand' : 'text-muted-foreground/80',
+            fresh ? 'text-brand' : 'text-muted-foreground',
           )}
         >
           build {short(build.id)}

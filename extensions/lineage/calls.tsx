@@ -113,7 +113,7 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
               <span
                 className={cn(
                   'shrink-0 section-label',
-                  op.op === 'delete' ? 'text-error/80' : 'text-muted-foreground/80',
+                  op.op === 'delete' ? 'text-error/80' : 'text-muted-foreground',
                 )}
               >
                 {verbs[op.op]}
@@ -125,7 +125,7 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
               )}
               {op.kind && <span className="shrink-0 text-muted-foreground">{op.kind}</span>}
               {op.source && (
-                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/70">
+                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
                   {op.source}
                 </span>
               )}

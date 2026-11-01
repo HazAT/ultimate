@@ -627,7 +627,7 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
             origin.failed && <span className="shrink-0 text-destructive">· failed</span>
           )}
           {origin.delivery === 'note' && (
-            <span className="shrink-0 text-muted-foreground/60">· note</span>
+            <span className="shrink-0 text-muted-foreground">· note</span>
           )}
         </>
       }
@@ -697,7 +697,7 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
   if (question && asked) {
     return (
       <button
-        className="ml-auto flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+        className="ml-auto flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-muted-foreground"
         data-compact-answer-ref={id}
         onClick={() =>
           events.emit('ultimate:reveal-entry', {
@@ -835,7 +835,7 @@ function ScriptMessages({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Collapsible className="group/script">
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-muted-foreground">
           sent with codemode
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/script:rotate-90" />
         </CollapsibleTrigger>
@@ -875,7 +875,7 @@ function ReplyFold({
     )
   return (
     <Collapsible className="group/reply">
-      <CollapsibleTrigger className="flex cursor-pointer flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+      <CollapsibleTrigger className="flex cursor-pointer flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-muted-foreground">
         replied to
         {answered.map((m) => (
           <span className="flex min-w-0" key={m.id}>

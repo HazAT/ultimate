@@ -543,9 +543,9 @@ function Form({
           title={target}
         >
           {display(target)}
-          {overrides && <span className="text-muted-foreground/70"> · overrides {overrides}</span>}
+          {overrides && <span className="text-muted-foreground"> · overrides {overrides}</span>}
           {overlays.length > 0 && (
-            <span className="text-muted-foreground/70">
+            <span className="text-muted-foreground">
               {' '}
               · an overlay: only the changes, over {display(shown?.path ?? '')}
             </span>

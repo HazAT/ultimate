@@ -166,7 +166,7 @@ export function Subject({
       >
         {subject?.title ?? `#${from}`}
       </button>
-      {subject?.title && <span className="shrink-0 text-muted-foreground/70">#{from}</span>}
+      {subject?.title && <span className="shrink-0 text-muted-foreground">#{from}</span>}
     </span>
   )
 }

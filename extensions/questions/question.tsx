@@ -64,7 +64,7 @@ function Field({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKey}
-      className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] transition-colors outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
+      className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] transition-colors outline-none placeholder:text-muted-foreground focus:border-brand/60 max-md:min-h-11"
     />
   )
 }
@@ -104,7 +104,7 @@ function Option({
         aria-pressed={chosen}
         onClick={onSelect}
         onFocus={onActive}
-        className="group/option flex min-h-9 w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[0.995] max-md:min-h-11"
+        className="group/option flex min-h-9 w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-[0.995] max-md:min-h-11"
       >
         <Mark hint={hint} chosen={chosen} multi={multi} />
         <span className="min-w-0 flex-1 pt-px">
@@ -153,7 +153,7 @@ function Scale({
               onClick={() => onSelect(index)}
               style={{ transitionDelay: chosen || below ? `${index * 20}ms` : undefined }}
               className={cn(
-                'h-9 min-w-0 flex-1 cursor-pointer rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-95 max-md:h-11',
+                'h-9 min-w-0 flex-1 cursor-pointer rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-95 max-md:h-11',
                 chosen
                   ? 'border-brand bg-brand text-brand-foreground'
                   : below
@@ -287,7 +287,7 @@ export function QuestionItem({
         aria-expanded={current}
         onClick={onOpen}
         className={cn(
-          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring',
           current ? 'cursor-default' : 'cursor-pointer hover:bg-muted/40',
         )}
       >
@@ -315,7 +315,7 @@ export function QuestionItem({
           <span
             className={cn(
               'ml-auto flex min-w-0 shrink-[2] items-center gap-1.5 font-mono text-[11px]',
-              done ? 'text-muted-foreground' : 'text-muted-foreground/60',
+              done ? 'text-muted-foreground' : 'text-muted-foreground',
             )}
           >
             {done ? (

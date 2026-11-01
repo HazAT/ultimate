@@ -33,7 +33,7 @@ import type { FamiliesView, FamilyView, SaveFamilies } from './refs.ts'
 type Spec = SaveFamilies['families'][string]
 const label = 'section-label'
 const control =
-  'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50'
+  'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
 const specOf = (family: FamilyView): Spec => ({
   ...(family.model ? { model: family.model } : {}),

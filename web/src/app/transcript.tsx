@@ -629,7 +629,7 @@ function TranscriptEntries() {
     <TranscriptContext value={entries}>
       {!loading && entries.length > 0 && cursor !== undefined && (
         <div
-          className="flex min-h-5 items-center justify-center font-mono text-[11px] text-muted-foreground/70"
+          className="flex min-h-5 items-center justify-center font-mono text-[11px] text-muted-foreground"
           ref={sentinel}
         >
           {pending ? (
@@ -712,7 +712,7 @@ function TranscriptEntries() {
         }
         open={shown}
       >
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-muted-foreground">
           {item.steps} step{item.steps === 1 ? '' : 's'} set aside · {shown ? 'hide' : 'show'}
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/aside:rotate-90" />
         </CollapsibleTrigger>
@@ -791,7 +791,7 @@ function BetweenLine({
   return (
     <button
       aria-expanded={open}
-      className="my-1 flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground/60 transition-colors before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
+      className="my-1 flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground transition-colors before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
       data-between={rows.length}
       onClick={onOpen}
       type="button"
@@ -849,7 +849,7 @@ function WorkRow({
 }) {
   return (
     <Collapsible className="group/work" onOpenChange={onOpenChange} open={open}>
-      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-muted-foreground">
         {working ? 'working' : 'worked'} · {run.steps} step
         {run.steps === 1 ? '' : 's'}
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/work:rotate-90" />
@@ -922,7 +922,7 @@ function StepLines({
       type="button"
     >
       {calls.length > shown.length && (
-        <span className="text-muted-foreground/60">+{calls.length - shown.length} earlier</span>
+        <span className="text-muted-foreground">+{calls.length - shown.length} earlier</span>
       )}
       {shown.map(({ block, startedAt }) => {
         const call = toolCallView(block, {
@@ -1012,7 +1012,7 @@ function EmptyState() {
         <div className="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
           {rows.map(([label, value]) => (
             <Fragment key={label}>
-              <span className="text-muted-foreground/70">{label}</span>
+              <span className="text-muted-foreground">{label}</span>
               <span className="truncate text-foreground/85">{value}</span>
             </Fragment>
           ))}
@@ -1245,7 +1245,7 @@ function Divider({ children, className }: { children: ReactNode; className?: str
   return (
     <div
       className={cn(
-        'flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70',
+        'flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70',
         className,
       )}
     >
@@ -1286,7 +1286,7 @@ function UnknownEntry({ entry }: { entry: EntryRecord }) {
       <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-muted-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/unknown:rotate-90" />
         {entry.kind}
-        <span className="text-muted-foreground/60">#{entry.id}</span>
+        <span className="text-muted-foreground">#{entry.id}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-64 overflow-auto border-t border-dashed px-2.5 py-2 text-muted-foreground">
@@ -1386,9 +1386,7 @@ export function LiveLines({
         <span className="size-1.5 animate-pulse-dot rounded-full bg-brand" />
         <Shimmer>{thinking ? 'thinking…' : 'working…'}</Shimmer>
         {since !== undefined && now - since >= 2000 && (
-          <span className="text-muted-foreground/60 tabular-nums">
-            {formatDuration(now - since)}
-          </span>
+          <span className="text-muted-foreground tabular-nums">{formatDuration(now - since)}</span>
         )}
       </span>,
     )

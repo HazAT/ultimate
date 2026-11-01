@@ -136,14 +136,14 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
               This one stays on disk; you can come back any time.
             </p>
           </div>
-          <label className="flex max-w-full items-center rounded-md border border-border bg-background font-mono text-[12.5px] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:w-fit">
+          <label className="flex max-w-full items-center rounded-md border border-border bg-background font-mono text-[12.5px] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring sm:w-fit">
             <span className="shrink-0 border-r border-border/70 px-2 py-1 text-muted-foreground">
               Chapter {number} ·
             </span>
             <input
               aria-invalid={invalid || taken || undefined}
               aria-label="Name of the new chapter"
-              className="min-w-0 flex-1 bg-transparent px-2 py-1 text-foreground outline-none placeholder:text-muted-foreground/60 sm:w-56 sm:flex-none"
+              className="min-w-0 flex-1 bg-transparent px-2 py-1 text-foreground outline-none placeholder:text-muted-foreground sm:w-56 sm:flex-none"
               data-dream-chapter-name
               disabled={starting}
               maxLength={40}

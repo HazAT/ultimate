@@ -42,7 +42,7 @@ function StepIcon({ state }: { state: StepState }) {
     return <LoaderCircleIcon className="size-3 shrink-0 animate-spin text-brand" />
   if (state === 'done') return <CheckIcon className="size-3 shrink-0 text-success/70" />
   if (state === 'failed') return <XIcon className="size-3 shrink-0 text-error" />
-  return <CircleIcon className="size-2 shrink-0 text-muted-foreground/40" />
+  return <CircleIcon className="size-2 shrink-0 text-muted-foreground" />
 }
 
 /** The move card's step list, for the join's four steps. */
@@ -55,7 +55,7 @@ function Steps({ result }: { result: JoinResult | 'running' }) {
           className={cn(
             'flex min-w-0 items-center gap-2 leading-5',
             states[index] === 'running' ? 'text-brand' : 'text-muted-foreground',
-            states[index] === 'pending' && 'text-muted-foreground/60',
+            states[index] === 'pending' && 'text-muted-foreground',
           )}
           key={step.id}
         >
@@ -80,19 +80,19 @@ function Command({ value }: { value: string }) {
       title="Copy"
       type="button"
     >
-      <span className="text-muted-foreground/60 select-none">$</span>
+      <span className="text-muted-foreground select-none">$</span>
       <code className="min-w-0 flex-1 break-all">{value}</code>
       {copied ? (
         <CheckIcon className="size-3.5 shrink-0 text-success" />
       ) : (
-        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground/60 group-hover:text-foreground" />
+        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
       )}
     </button>
   )
 }
 
 const field =
-  'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60'
+  'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
 
 function Field({
   label,
@@ -107,7 +107,7 @@ function Field({
     <label className="block space-y-1">
       <span className="flex items-baseline gap-2 text-muted-foreground">
         {label}
-        {hint && <span className="text-muted-foreground/60">{hint}</span>}
+        {hint && <span className="text-muted-foreground">{hint}</span>}
       </span>
       {children}
     </label>
@@ -342,7 +342,7 @@ export function JoinCard() {
           {joined && !form ? (
             <>
               Joined as {joined.machine}
-              <span className="text-muted-foreground/60"> · {joined.host}</span>
+              <span className="text-muted-foreground"> · {joined.host}</span>
             </>
           ) : (
             'Join cloud backups'

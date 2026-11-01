@@ -85,7 +85,7 @@ const tones = {
   brand: 'text-brand',
   waiting: 'text-amber-700 dark:text-amber-300',
   paused: 'text-warning',
-  quiet: 'text-muted-foreground/70',
+  quiet: 'text-muted-foreground',
 }
 
 type FlightProps = {
@@ -214,7 +214,7 @@ function PhasedFlightRow({
             {feature && <FeatureTag feature={feature} />}
             <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
             {latest > 0 && (
-              <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
+              <span className="ml-auto shrink-0 pl-1 text-muted-foreground">
                 {formatAgo(latest, now)}
               </span>
             )}
@@ -238,7 +238,7 @@ function PhasedFlightRow({
       {work && (
         // Its own line under the row's button, so its links never nest in it.
         <span
-          className="flex min-w-0 items-center gap-2 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground/80"
+          className="flex min-w-0 items-center gap-2 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground"
           data-flight-work={conversation.id}
         >
           {work.commits && <CommitCount count={work.commits.count} range={work.commits.spec} />}
@@ -410,7 +410,7 @@ export function MemoryRow({
             </span>
             {tokens !== undefined && (
               <span
-                className="shrink-0 font-mono text-[10px] text-muted-foreground/70"
+                className="shrink-0 font-mono text-[10px] text-muted-foreground"
                 title="Tokens every new branch starts from"
               >
                 {formatTokens(tokens)}

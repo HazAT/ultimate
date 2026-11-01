@@ -121,7 +121,7 @@ function ValueInput({
         <input
           aria-label={`${replacing ? 'New value' : 'Value'} for ${name}`}
           autoComplete="one-time-code"
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
@@ -284,7 +284,7 @@ function Row({
         </p>
       )}
       <div className="mt-1 flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/75">
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
           {needed ? `needed by ${secret.declaredBy.join(', ')}` : 'no enabled extension needs it'}
         </span>
         {secret.url && (
@@ -353,7 +353,7 @@ function SecretsPanel() {
         {absent} missing
       </span>
     ) : data?.length ? (
-      <span className="text-muted-foreground/70">all set</span>
+      <span className="text-muted-foreground">all set</span>
     ) : undefined
   return (
     <section className="pt-3 pb-3.5">
@@ -381,7 +381,7 @@ function SecretsPanel() {
           ))}
         </ul>
       )}
-      <p className="mx-3 mt-3 text-[11.5px] leading-snug text-muted-foreground/80">
+      <p className="mx-3 mt-3 text-[11.5px] leading-snug text-muted-foreground">
         Plain text in <span className="font-mono">~/.ultimate/secrets.json</span>, readable only by
         your user, shared by every project.
       </p>

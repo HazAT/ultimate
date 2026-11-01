@@ -126,7 +126,7 @@ function FileList({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
         <div key={directory}>
           {directory && (
             <div
-              className="truncate px-3 pt-1.5 pb-0.5 font-mono text-[10.5px] text-muted-foreground/80"
+              className="truncate px-3 pt-1.5 pb-0.5 font-mono text-[10.5px] text-muted-foreground"
               title={directory}
             >
               {directory}/
@@ -466,7 +466,7 @@ function Sent({
       )}
       <button
         aria-label="Dismiss"
-        className="shrink-0 cursor-pointer text-muted-foreground/60 hover:text-foreground"
+        className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
         onClick={onClose}
         type="button"
       >

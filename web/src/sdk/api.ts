@@ -93,11 +93,15 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       whenBusy?: SubmitRequest['whenBusy'],
       id?: number,
       images?: SubmitRequest['images'],
+      requestId: string = crypto.randomUUID(),
     ) =>
       post<SubmitResponse>(conversation(id, 'submit'), {
         text,
         whenBusy,
         images,
+        // One id per message the user meant to send: the composer holds it across a failed send so the retry is
+        // deduplicated server-side instead of becoming a second turn.
+        requestId,
       } satisfies SubmitRequest),
     /** Stored entries of `id` below `before`, newest first; with `after`, only those from `after` on, in larger pages. */
     history: async (

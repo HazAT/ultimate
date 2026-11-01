@@ -157,7 +157,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
                 </span>
               )}
               {lanes.data?.more !== undefined && (
-                <span className="text-muted-foreground/70">+{lanes.data.more} more</span>
+                <span className="text-muted-foreground">+{lanes.data.more} more</span>
               )}
               <span className="ml-auto flex items-center gap-0.5">
                 {(Object.keys(windows) as WindowName[]).map((name) => (
@@ -184,7 +184,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
                 </div>
               </div>
               {list.length === 0 ? (
-                <p className="py-6 text-center font-mono text-[11.5px] text-muted-foreground/70">
+                <p className="py-6 text-center font-mono text-[11.5px] text-muted-foreground">
                   {lanes.error
                     ? `lanes failed: ${errorMessage(lanes.error)}`
                     : !lanes.data

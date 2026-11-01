@@ -431,7 +431,7 @@ function Late() {
       </div>
       <button
         aria-label="Dismiss"
-        className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+        className="shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => setDismissed(true)}
         type="button"
       >

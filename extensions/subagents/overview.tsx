@@ -150,7 +150,7 @@ export function AgentsOverview() {
           <div className="flex items-center gap-1.5 px-3 pb-0.5 font-mono text-[11.5px] text-muted-foreground">
             <PinIcon className="size-3" />
             Own model
-            <span className="text-[10.5px] text-muted-foreground/60">· no family</span>
+            <span className="text-[10.5px] text-muted-foreground">· no family</span>
           </div>
           {pinned.map((definition) => (
             <AgentRow
@@ -205,7 +205,7 @@ export function AgentsOverview() {
         </section>
       )}
       {definitions.length === 0 && errors.length === 0 && (
-        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
+        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground">
           No definitions yet: add one with Agent, or Markdown files in{' '}
           <code className="font-mono">.ultimate/agents/</code>
         </p>
@@ -241,9 +241,9 @@ function FamilyGroup({
           </span>
           <span className="min-w-0 truncate text-muted-foreground">
             {model ? short(model) : 'no model'}
-            {thinking && <span className="text-muted-foreground/70"> · {thinking}</span>}
+            {thinking && <span className="text-muted-foreground"> · {thinking}</span>}
           </span>
-          <span className="ml-auto shrink-0 pl-2 text-[10.5px] text-muted-foreground/60 opacity-0 transition-opacity group-hover/family:opacity-100">
+          <span className="ml-auto shrink-0 pl-2 text-[10.5px] text-muted-foreground opacity-0 transition-opacity group-hover/family:opacity-100">
             edit
           </span>
         </button>
@@ -254,7 +254,7 @@ function FamilyGroup({
       >
         {children}
         {empty && (
-          <p className="py-1 pl-2.5 font-mono text-[10.5px] text-muted-foreground/50">
+          <p className="py-1 pl-2.5 font-mono text-[10.5px] text-muted-foreground">
             nothing runs on it
           </p>
         )}
@@ -333,14 +333,14 @@ function Row({
   const body = (
     <>
       <div className="flex min-w-0 items-center gap-1.5 font-mono text-[11.5px]">
-        <Icon className="size-3 shrink-0 text-muted-foreground/70" />
+        <Icon className="size-3 shrink-0 text-muted-foreground" />
         <span className="shrink-0 text-foreground/85">{label}</span>
         {tags}
         {meta && (
-          <span className="min-w-0 truncate text-[10.5px] text-muted-foreground/70">{meta}</span>
+          <span className="min-w-0 truncate text-[10.5px] text-muted-foreground">{meta}</span>
         )}
       </div>
-      <p className="line-clamp-1 pl-4.5 font-sans text-[11.5px] leading-snug text-muted-foreground/80">
+      <p className="line-clamp-1 pl-4.5 font-sans text-[11.5px] leading-snug text-muted-foreground">
         {description}
       </p>
     </>

@@ -108,7 +108,7 @@ function Row({ row }: { row: SystemRow }) {
           title={row.summary}
           type="button"
         >
-          <time className="w-14 shrink-0 tabular-nums text-muted-foreground/60" dateTime={row.at}>
+          <time className="w-14 shrink-0 tabular-nums text-muted-foreground" dateTime={row.at}>
             {clock(row.at)}
           </time>
           <KindIcon kind={row.kind} ok={row.ok} />
@@ -120,7 +120,7 @@ function Row({ row }: { row: SystemRow }) {
           >
             {row.name}
           </span>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70 max-md:hidden">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground max-md:hidden">
             {row.error ?? row.summary}
           </span>
         </button>
@@ -199,7 +199,7 @@ function Filters({ view, setView }: { view: StreamView; setView: (view: StreamVi
       <label className="ml-auto flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-border/70 px-2 max-md:w-full md:w-56">
         <SearchIcon className="size-3 shrink-0 text-muted-foreground" />
         <input
-          className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground/60"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground"
           onChange={(event) => setView({ ...view, text: event.target.value })}
           placeholder="filter text"
           value={view.text}
@@ -262,10 +262,7 @@ export function Stream({
             <Row key={row.id} row={row} />
           ))}
       </ul>
-      <div
-        className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground/70"
-        ref={end}
-      >
+      <div className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground" ref={end}>
         {stream.error ? (
           <span className="text-error/90" data-stream-error>
             couldn’t load: {stream.error} · retrying

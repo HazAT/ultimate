@@ -150,7 +150,7 @@ function Row({
       )}
       {trailing}
       <time
-        className="w-7 shrink-0 text-right text-muted-foreground/60 tabular-nums"
+        className="w-7 shrink-0 text-right text-muted-foreground tabular-nums"
         dateTime={event.at}
         title={new Date(at).toLocaleString()}
       >
@@ -177,7 +177,7 @@ function Landing({ event, now }: Props<typeof SubmissionLanded>) {
       title={`Landed ${landing.sha.slice(0, 7)} on ${landing.target}${landing.title ? ` · ${landing.title}` : ''}`}
       trailing={
         <CommitCount
-          className="text-muted-foreground/80"
+          className="text-muted-foreground"
           count={landing.commitCount}
           href={github ? compareUrl(github, landing.base, landing.sha) : undefined}
           range={`${landing.base}...${landing.sha}`}
@@ -340,7 +340,7 @@ export function Feed({
 }) {
   if (list.length === 0)
     return (
-      <div className="px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground/70">
+      <div className="px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground">
         {empty}
       </div>
     )

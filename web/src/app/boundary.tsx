@@ -335,7 +335,7 @@ export function ExtensionErrors() {
             error={record.error ?? ''}
             extension={record.name}
           />
-          <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
+          <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground">
             <PuzzleIcon className="size-3" />
             {extensionPath(system, record.name, '/web.tsx')}
             {record.extension ? ' · previous version still running' : ' · not loaded'}

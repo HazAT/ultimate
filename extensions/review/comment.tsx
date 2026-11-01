@@ -10,7 +10,7 @@ export function Lines({ comment, className }: { comment: CommentLines; className
   return (
     <span className={cn('font-mono text-[11px] text-muted-foreground', className)}>
       {location(comment).slice(comment.file.length + 1)}
-      <span className="text-muted-foreground/60"> · {comment.side}</span>
+      <span className="text-muted-foreground"> · {comment.side}</span>
     </span>
   )
 }
@@ -54,7 +54,7 @@ export function Composer({
       </div>
       <textarea
         aria-label="Comment"
-        className="block max-h-60 min-h-16 w-full resize-y bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
+        className="block max-h-60 min-h-16 w-full resize-y bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') onCancel()

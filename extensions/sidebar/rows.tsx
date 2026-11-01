@@ -247,7 +247,7 @@ function PhasedRow({
               )}
               {latest > 0 && (
                 <span
-                  className="shrink-0 text-muted-foreground/80"
+                  className="shrink-0 text-muted-foreground"
                   title={new Date(latest).toLocaleString()}
                 >
                   {formatAgo(latest, now)}
@@ -256,7 +256,7 @@ function PhasedRow({
             </span>
           )}
           {hasActivity && (
-            <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
+            <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground">
               {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
               {displayPhase && activity && <span>·</span>}
               {activity && <span className="truncate">{activity}</span>}
@@ -418,7 +418,7 @@ export function StandingRow({
                 {agentTitle(name)}
               </span>
             )}
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">@{name}</span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">@{name}</span>
           </span>
           <span className="flex w-full min-w-0 items-center gap-2 pr-5 font-mono text-[10px] leading-4 text-muted-foreground">
             {children}
@@ -522,17 +522,17 @@ function TaskedSubagentLine({
         .join('\n')}
       type="button"
     >
-      <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+      <span className="w-2 shrink-0 text-muted-foreground">└</span>
       <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
       {task?.chip}
       <span className="min-w-0 flex-1 truncate text-foreground/75">
         {conversation.label ?? 'agent'}
-        <span className="text-muted-foreground/60"> #{conversation.id}</span>
+        <span className="text-muted-foreground"> #{conversation.id}</span>
       </span>
       <span
         className={cn(
           'shrink-0 text-[10px]',
-          working ? 'text-brand' : (known?.tone ?? 'text-muted-foreground/70'),
+          working ? 'text-brand' : (known?.tone ?? 'text-muted-foreground'),
         )}
       >
         {working ? 'working' : (known?.word.toLowerCase() ?? 'idle')}

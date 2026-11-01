@@ -19,7 +19,7 @@ export function Heading({ children, meta }: { children: ReactNode; meta: ReactNo
   return (
     <div className="flex items-center gap-2 px-3 pb-2 section-label">
       {children}
-      <span className="ml-auto flex items-center gap-2 text-muted-foreground/70">{meta}</span>
+      <span className="ml-auto flex items-center gap-2 text-muted-foreground">{meta}</span>
     </div>
   )
 }

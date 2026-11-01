@@ -70,7 +70,7 @@ function Branched({ entry }: { entry: EntryRecord }) {
   if (entry.model) return <Started entry={entry} />
   return (
     <button
-      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-foreground"
+      className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-foreground"
       data-lineage-branched={branch}
       onClick={() => switchConversation(branch)}
       title={`Open #${branch}`}
@@ -89,7 +89,7 @@ function Branched({ entry }: { entry: EntryRecord }) {
 function Woken() {
   return (
     <div
-      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
+      className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70"
       data-lineage-woken
     >
       <span className="flex items-center gap-1.5">
@@ -454,7 +454,7 @@ function MemorySource({ source }: { source: string }) {
   const { switchConversation, showSurface } = useUltimate()
   const [conversation, entry] = source.slice(1).split('/').map(Number)
   return (
-    <p className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] text-muted-foreground/70">
+    <p className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] text-muted-foreground">
       <span className="shrink-0">learned in</span>
       <button
         className="flex min-w-0 cursor-pointer items-center rounded-sm px-0.5 text-[11px] text-foreground hover:bg-accent"
@@ -468,7 +468,7 @@ function MemorySource({ source }: { source: string }) {
         type="button"
       >
         <ConversationRef className="gap-1" id={conversation} />
-        {entry !== undefined && <span className="shrink-0 text-muted-foreground/70">/{entry}</span>}
+        {entry !== undefined && <span className="shrink-0 text-muted-foreground">/{entry}</span>}
       </button>
     </p>
   )
@@ -510,7 +510,7 @@ function MemoryRow({
           <span className="flex w-full min-w-0 items-center gap-1.5 font-mono text-[10.5px] leading-4 text-muted-foreground">
             <span className="min-w-0 truncate">{slug}</span>
             <span
-              className="ml-auto shrink-0 pl-1 text-muted-foreground/60"
+              className="ml-auto shrink-0 pl-1 text-muted-foreground"
               title={new Date(item.updated).toLocaleString()}
             >
               {formatAgo(item.updated, now)}
@@ -529,7 +529,7 @@ function MemoryRow({
           <TooltipTrigger asChild>
             <button
               aria-label={`Forget ${slug}`}
-              className="invisible mt-1.5 mr-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground/70 outline-none group-focus-within/memory:visible group-hover/memory:visible pointer-coarse:visible hover:bg-muted hover:text-error focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+              className="invisible mt-1.5 mr-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within/memory:visible group-hover/memory:visible pointer-coarse:visible hover:bg-muted hover:text-error focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
               disabled={forgetting}
               onClick={() => {
                 setForgetting(true)
@@ -663,7 +663,7 @@ function RootMemory({
                 <SearchIcon className="size-3 shrink-0 text-muted-foreground" />
                 <input
                   aria-label="Filter memories"
-                  className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground/60"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-[11px] outline-none placeholder:text-muted-foreground"
                   onChange={(event) => setFilter(event.target.value)}
                   onKeyDown={(event) => event.key === 'Escape' && setFilter('')}
                   placeholder="filter"
@@ -673,7 +673,7 @@ function RootMemory({
             )}
           </div>
           {matches.length === 0 && (
-            <p className="py-8 font-mono text-[11.5px] text-muted-foreground/70">
+            <p className="py-8 font-mono text-[11.5px] text-muted-foreground">
               No memory mentions “{filter.trim()}”.
             </p>
           )}
@@ -685,7 +685,7 @@ function RootMemory({
                 <h3 className="flex items-center gap-1.5 border-b border-border/60 pb-1.5 section-label">
                   <span className={cn('size-1.5 rounded-full', kindDots[kind])} />
                   {title}
-                  <span className="text-muted-foreground/60">{shown.length}</span>
+                  <span className="text-muted-foreground">{shown.length}</span>
                 </h3>
                 <ul className="-mx-2 flex flex-col pt-1">
                   {shown.map((slug) => (

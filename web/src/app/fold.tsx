@@ -58,7 +58,7 @@ export function Fold({
     <div className="min-w-0" data-fold={open ? 'open' : 'closed'}>
       <button
         aria-expanded={open}
-        className="flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 hover:text-muted-foreground"
+        className="flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden font-mono text-[11px] whitespace-nowrap text-muted-foreground hover:text-muted-foreground"
         onClick={() => setOpen(!open)}
         type="button"
       >

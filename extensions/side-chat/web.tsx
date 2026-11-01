@@ -94,7 +94,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       <span
         className={cn(
           'relative z-10 w-[4.75rem] text-center whitespace-nowrap transition-colors',
-          on ? 'text-muted-foreground/70' : 'text-foreground',
+          on ? 'text-muted-foreground' : 'text-foreground',
         )}
       >
         Normal
@@ -102,7 +102,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       <span
         className={cn(
           'relative z-10 flex w-[4.75rem] items-center justify-center gap-1 whitespace-nowrap transition-colors',
-          on ? 'text-brand' : 'text-muted-foreground/70',
+          on ? 'text-brand' : 'text-muted-foreground',
         )}
       >
         <GitForkIcon className="size-2.5" />
@@ -146,7 +146,7 @@ function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
       <div data-main-composer inert={!!shown}>
         <div className="mx-auto flex w-full max-w-[46rem] items-center justify-between gap-2 px-3 pb-1.5 sm:px-6">
           <div
-            className="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70"
+            className="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground"
             data-ui="side-chat-hint"
           >
             {parked.map((item) => (

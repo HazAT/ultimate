@@ -124,7 +124,15 @@ async function runAction(
   [, name, key]: RegExpExecArray,
   data: Record<string, unknown>,
 ) {
-  if (request.headers['sec-fetch-site'] !== 'same-origin' && !request.headers.origin)
+  // Positive check: a browser request must say it is same-origin, and a client that sends no fetch metadata (curl,
+  // an agent) must at least carry an Origin. `admit()` already refuses these; this one keeps refusing if it is
+  // relaxed, instead of passing everything that carries an Origin.
+  if (
+    request.headers['sec-fetch-site'] !== 'same-origin' &&
+    request.headers['sec-fetch-site'] !== undefined
+  )
+    throw new HttpError(403, 'Extension actions require a same-origin request')
+  if (request.headers['sec-fetch-site'] === undefined && !request.headers.origin)
     throw new HttpError(403, 'Extension actions require a browser request')
   if (!extensions.action(name, key)) throw new HttpError(404, 'Unknown extension action')
   const id = data.conversationId
@@ -587,6 +595,11 @@ export async function createApi(
                 throw new HttpError(400, 'Invalid whenBusy')
               if (typeof data.text !== 'string') throw new HttpError(400, 'Expected text')
               const length = data.text.length
+              if (
+                data.requestId !== undefined &&
+                (typeof data.requestId !== 'string' || !data.requestId.trim())
+              )
+                throw new HttpError(400, 'Invalid requestId')
               const images = data.images === undefined ? [] : data.images
               if (!Array.isArray(images)) throw new HttpError(400, 'Expected images array')
               if (images.length > maxImages) throw new HttpError(413, `At most ${maxImages} images`)
@@ -623,8 +636,15 @@ export async function createApi(
                     ...blocks,
                   ]
                 : expanded
+              // A resend after a lost response carries the same id, so it answers with the original submission
+              // instead of admitting the message twice. Pi records the id in the admission transaction itself.
               const submission = await conversation.submit(
-                { type: 'input', content, whenBusy: data.whenBusy },
+                {
+                  type: 'input',
+                  content,
+                  whenBusy: data.whenBusy,
+                  ...(data.requestId === undefined ? {} : { requestId: data.requestId }),
+                },
                 context,
               )
               // Pi admits the input in a commit with no hook for steers and follow-ups, so the event commits right

@@ -23,7 +23,7 @@ export function Frame({ controls, children }: { controls?: ReactNode; children: 
 /** A quiet line in place of the diff: why there is none. */
 export function Notice({ children }: { children: ReactNode }) {
   return (
-    <p className="flex-1 py-10 text-center font-mono text-[11.5px] text-muted-foreground/70">
+    <p className="flex-1 py-10 text-center font-mono text-[11.5px] text-muted-foreground">
       {children}
     </p>
   )

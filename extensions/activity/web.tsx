@@ -66,7 +66,7 @@ function ActivityPanel() {
         {system && (
           <button
             className={cn(
-              'cursor-pointer text-muted-foreground/70 hover:text-foreground',
+              'cursor-pointer text-muted-foreground hover:text-foreground',
               !(problems > 0 && filter !== 'problems') && 'ml-auto',
             )}
             onClick={() => actions.showSurface('system')}
@@ -202,7 +202,7 @@ function Older({
         events={shown}
         now={now}
       />
-      <div className="flex min-h-7 items-center gap-2 px-3 pt-1.5 font-mono text-[10.5px] text-muted-foreground/60">
+      <div className="flex min-h-7 items-center gap-2 px-3 pt-1.5 font-mono text-[10.5px] text-muted-foreground">
         {done ? (
           shown.length > 0 && (
             <span>{since === undefined ? 'start of the log' : `start of ${where}`}</span>

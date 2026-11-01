@@ -206,7 +206,7 @@ function Control() {
           aria-label="Sounds"
           className={cn(
             '-mx-1 flex items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-            muted && 'text-muted-foreground/60',
+            muted && 'text-muted-foreground',
             playing && 'text-brand',
           )}
           type="button"

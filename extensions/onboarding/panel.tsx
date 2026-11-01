@@ -251,12 +251,12 @@ function SecretsLine({ secrets }: { secrets: readonly Secret[] | undefined }) {
         </span>
       ) : (
         secrets?.length !== undefined && (
-          <span className="font-mono text-[11px] text-muted-foreground/70">
+          <span className="font-mono text-[11px] text-muted-foreground">
             {secrets.length ? 'all set' : 'none needed'}
           </span>
         )
       )}
-      <ChevronRightIcon className="size-3 text-muted-foreground/60 group-hover:text-foreground" />
+      <ChevronRightIcon className="size-3 text-muted-foreground group-hover:text-foreground" />
     </button>
   )
 }
@@ -268,14 +268,14 @@ function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
     <ul className="mt-1 flex flex-col gap-0.5 pl-[18px]">
       {secrets.map((secret) => (
         <li className="flex items-center gap-1.5 font-mono text-[11px]" key={secret.name}>
-          <KeyRoundIcon className="size-3 shrink-0 text-muted-foreground/60" />
+          <KeyRoundIcon className="size-3 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate text-foreground/80" title={secret.description}>
             {secret.name}
           </span>
           <span
             className={cn(
               'flex shrink-0 items-center gap-1',
-              secret.set || secret.via ? 'text-muted-foreground/70' : 'text-warning',
+              secret.set || secret.via ? 'text-muted-foreground' : 'text-warning',
             )}
           >
             <span
@@ -303,7 +303,7 @@ function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <span className="w-16 shrink-0 text-muted-foreground/60">{label}</span>
+      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
       <div className="min-w-0 flex-1 break-words text-foreground/80">{children}</div>
     </div>
   )
@@ -368,7 +368,7 @@ function Details({ extension }: { extension: ExtensionInfo }) {
         </p>
       )}
       {!extension.enabled ? (
-        <p className="text-muted-foreground/70">off: tools load when it's on</p>
+        <p className="text-muted-foreground">off: tools load when it's on</p>
       ) : (
         tools.length > 0 && (
           <Field label={`tools ${tools.length}`}>
@@ -406,12 +406,12 @@ function Details({ extension }: { extension: ExtensionInfo }) {
           {(part) => part}
         </Provided>
       )}
-      {details.loading && !data && <p className="text-muted-foreground/60">loading…</p>}
+      {details.loading && !data && <p className="text-muted-foreground">loading…</p>}
       {details.error && <p className="text-error">{errorMessage(details.error)}</p>}
       {data && extension.enabled && empty.length > 0 && (
-        <p className="text-muted-foreground/50">no {empty.join(' · ')}</p>
+        <p className="text-muted-foreground">no {empty.join(' · ')}</p>
       )}
-      <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground/60" title={extension.path}>
+      <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground" title={extension.path}>
         {extension.path}
       </p>
     </div>
@@ -472,7 +472,7 @@ function Row({
           <span className="flex min-w-0 items-baseline gap-1.5 font-mono text-[11.5px]">
             <ChevronRightIcon
               className={cn(
-                'size-3 shrink-0 self-center text-muted-foreground/60 transition-transform group-hover:text-foreground group-focus-visible:text-foreground',
+                'size-3 shrink-0 self-center text-muted-foreground transition-transform group-hover:text-foreground group-focus-visible:text-foreground',
                 open && 'rotate-90',
               )}
             />
@@ -491,12 +491,12 @@ function Row({
             <span
               className={cn(
                 'truncate text-[10.5px]',
-                extension.source === 'builtin' ? 'text-muted-foreground/70' : 'text-brand',
+                extension.source === 'builtin' ? 'text-muted-foreground' : 'text-brand',
               )}
               title={`${extension.path}\n${reason}`}
             >
               {sources[extension.source]}
-              <span className="text-muted-foreground/60"> · {label}</span>
+              <span className="text-muted-foreground"> · {label}</span>
             </span>
             {secrets.some((secret) => !secret.set && !secret.via) && (
               <span className="flex shrink-0 items-center gap-1 self-center text-[10.5px] text-warning">
@@ -674,7 +674,7 @@ export function ExtensionsPanel() {
             value={scope}
           />
         </div>
-        <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground/70" title={file}>
+        <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground" title={file}>
           saved in {file}
         </p>
       </div>
@@ -718,7 +718,7 @@ export function ExtensionsPanel() {
             ))}
           </ul>
           {extensions.length === 0 && (
-            <p className="px-3 py-1 text-[12px] text-muted-foreground/70">
+            <p className="px-3 py-1 text-[12px] text-muted-foreground">
               {title === 'On' ? 'Nothing is on.' : 'Everything is on.'}
             </p>
           )}

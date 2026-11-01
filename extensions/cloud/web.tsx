@@ -222,7 +222,7 @@ function CloudStatus() {
   if (state.status === 'local')
     return (
       <span
-        className="flex items-center gap-1.5 text-muted-foreground/70"
+        className="flex items-center gap-1.5 text-muted-foreground"
         title="The project has no GitHub origin, so it is not backed up"
       >
         <CloudIcon className="size-3" />
@@ -232,7 +232,7 @@ function CloudStatus() {
   if (state.status === 'satellite')
     return (
       <span
-        className="flex items-center gap-1.5 text-muted-foreground/70"
+        className="flex items-center gap-1.5 text-muted-foreground"
         title="This machine is a satellite (cloud.satellite): it never backs up, so it cannot replace another machine's backups"
       >
         <CloudIcon className="size-3" />

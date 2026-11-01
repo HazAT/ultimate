@@ -450,7 +450,7 @@ function Update() {
           className={cn(
             statusButton,
             item === 'current'
-              ? 'text-muted-foreground/70 hover:text-foreground'
+              ? 'text-muted-foreground hover:text-foreground'
               : busy
                 ? 'text-brand'
                 : !state.behind || (state.refused && !state.merge)

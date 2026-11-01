@@ -29,7 +29,7 @@ export function Section({
         <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-[state=open]/section:rotate-90" />
         {title}
         {meta !== undefined && (
-          <span className="ml-auto truncate pl-2 text-muted-foreground/70">{meta}</span>
+          <span className="ml-auto truncate pl-2 text-muted-foreground">{meta}</span>
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="px-3 pb-3">{children}</CollapsibleContent>

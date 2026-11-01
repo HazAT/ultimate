@@ -37,7 +37,7 @@ export function Field({
         {aside && <span className="ml-auto">{aside}</span>}
       </div>
       {children}
-      {hint && <p className="text-[11.5px] leading-snug text-muted-foreground/80">{hint}</p>}
+      {hint && <p className="text-[11.5px] leading-snug text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -87,7 +87,7 @@ export function SummariesField({
 }
 
 export const inputClass =
-  'w-full rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground/50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 aria-invalid:border-error/70'
+  'w-full rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-error/70'
 
 /** Exclusive choices as one control; `value` null selects none. */
 export function Segmented<T extends string>({
@@ -193,7 +193,7 @@ export function ModelField({
             <>
               <span className="text-muted-foreground">inherit</span>
               {shown && (
-                <span className="min-w-0 truncate text-muted-foreground/70">· {shown.modelId}</span>
+                <span className="min-w-0 truncate text-muted-foreground">· {shown.modelId}</span>
               )}
             </>
           )}
@@ -274,7 +274,7 @@ function ModelRow({
       <CheckIcon className={cn('size-3.5', current ? 'text-brand' : 'opacity-0')} />
       <span className={cn('shrink-0', current ? 'text-brand' : 'text-foreground')}>{model.id}</span>
       {model.name !== model.id && (
-        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground/80">
+        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground">
           {model.name}
         </span>
       )}
@@ -285,7 +285,7 @@ function ModelRow({
             {model.thinkingLevels.filter((level) => level !== 'off').at(-1)}
           </>
         ) : (
-          <span className="text-muted-foreground/40">no thinking</span>
+          <span className="text-muted-foreground">no thinking</span>
         )}
       </span>
     </CommandItem>
@@ -405,14 +405,12 @@ export function InstructionsEditor({
             {name === 'write' ? 'Write' : name === 'preview' ? 'Preview' : 'File'}
           </button>
         ))}
-        <span className="ml-auto pr-1.5 text-muted-foreground/70">
-          Markdown · the system prompt
-        </span>
+        <span className="ml-auto pr-1.5 text-muted-foreground">Markdown · the system prompt</span>
       </div>
       {tab === 'write' ? (
         <textarea
           aria-label="Instructions"
-          className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
+          className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground"
           onChange={(event) => onChange(event.target.value)}
           placeholder="What this agent does and how it reports back…"
           spellCheck={false}
@@ -423,7 +421,7 @@ export function InstructionsEditor({
           {value.trim() ? (
             <MessageResponse>{value}</MessageResponse>
           ) : (
-            <p className="text-muted-foreground/70">Nothing to preview.</p>
+            <p className="text-muted-foreground">Nothing to preview.</p>
           )}
         </div>
       ) : (

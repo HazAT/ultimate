@@ -77,12 +77,12 @@ function Command({ value }: { value: string }) {
       title="Copy"
       type="button"
     >
-      <span className="text-muted-foreground/60 select-none">$</span>
+      <span className="text-muted-foreground select-none">$</span>
       <code className="min-w-0 flex-1 break-all">{value}</code>
       {copied ? (
         <CheckIcon className="size-3.5 shrink-0 text-success" />
       ) : (
-        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
+        <CopyIcon className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
       )}
     </button>
   )
@@ -149,7 +149,7 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
           Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
         </span>
       </p>
-      <p className="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground/80">
+      <p className="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground">
         Tailnet only, never on the public internet.
       </p>
     </>
@@ -249,7 +249,7 @@ function Details({ status }: { status: ReturnType<typeof useStatus> }) {
         reachable
       </span>
     ) : state === 'disabled' ? (
-      <span className="text-muted-foreground/70">off</span>
+      <span className="text-muted-foreground">off</span>
     ) : state === 'starting' || (!data && !error) ? (
       quiet('starting…')
     ) : state ? (

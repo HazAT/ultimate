@@ -47,7 +47,7 @@ function Toasts() {
             <span className="min-w-0 flex-1 break-words text-foreground/90">{notice.message}</span>
             <button
               aria-label="Dismiss"
-              className="shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/notice:opacity-100 pointer-coarse:opacity-100 hover:text-foreground"
+              className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notice:opacity-100 pointer-coarse:opacity-100 hover:text-foreground"
               onClick={() => setDismissed((previous) => new Set([...previous, notice.id]))}
               type="button"
             >

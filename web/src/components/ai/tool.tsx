@@ -107,7 +107,7 @@ const ToolTrigger = ({
         {meta}
       </span>
     )}
-    <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/tool:rotate-90" />
+    <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-90" />
   </CollapsibleTrigger>
 )
 

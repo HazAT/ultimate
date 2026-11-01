@@ -65,7 +65,7 @@ function Shot({ call, parsed }: { call: ToolCallView; parsed: ReturnType<typeof 
           </span>
         )}
         {parsed.png && (
-          <span className="truncate text-muted-foreground/70" title={parsed.png}>
+          <span className="truncate text-muted-foreground" title={parsed.png}>
             {parsed.png}
           </span>
         )}
@@ -198,7 +198,7 @@ function Browser({ call }: { call: ToolCallView }) {
                           ? 'text-error'
                           : state === 'running'
                             ? 'animate-pulse-dot text-brand'
-                            : 'text-muted-foreground/50',
+                            : 'text-muted-foreground',
                     )}
                   >
                     {state === 'ok'

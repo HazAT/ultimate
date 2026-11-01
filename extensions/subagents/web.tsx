@@ -60,7 +60,7 @@ function StateTag({ isolate }: { isolate: Isolate }) {
     <Tag
       className={cn(
         'font-mono',
-        isolate.state === 'failed' ? 'border-error/40 text-error' : 'text-muted-foreground/70',
+        isolate.state === 'failed' ? 'border-error/40 text-error' : 'text-muted-foreground',
       )}
     >
       <span title={isolate.landed ? `Last landed ${isolate.landed.slice(0, 7)}` : undefined}>
@@ -303,7 +303,7 @@ function ChildList({ output }: { output: string }) {
         >
           {row.busy ? <BusyDot /> : <span className="size-1.5" />}
           <span className="text-brand">{row.agent}</span>
-          <span className="text-muted-foreground/70">#{row.conversationId}</span>
+          <span className="text-muted-foreground">#{row.conversationId}</span>
           {row.background && <Tag>bg</Tag>}
         </button>
       ))}

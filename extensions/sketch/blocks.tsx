@@ -270,7 +270,7 @@ function Table({ block }: { block: Extract<Leaf, { type: 'table' }> }) {
 }
 
 const control =
-  'h-8 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 disabled:opacity-70 max-md:h-11'
+  'h-8 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus:border-brand/60 disabled:opacity-70 max-md:h-11'
 
 /** The value a field starts at: its default when it fits the field's kind, else the first option, off or empty. */
 const initial = (field: Field): Value => {

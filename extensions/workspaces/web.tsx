@@ -94,7 +94,7 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
             <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/state:rotate-90" />
               State at landing
-              <span className="text-muted-foreground/70">
+              <span className="text-muted-foreground">
                 · #{from}/{abstract.at}
               </span>
             </CollapsibleTrigger>

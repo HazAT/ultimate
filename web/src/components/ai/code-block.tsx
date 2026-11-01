@@ -97,7 +97,7 @@ const CodeBlockContent = memo(
             <span className="flex" key={index}>
               {showLineNumbers && (
                 <span
-                  className="sticky left-0 mr-3 shrink-0 bg-inherit pr-1 text-right text-muted-foreground/50 select-none"
+                  className="sticky left-0 mr-3 shrink-0 bg-inherit pr-1 text-right text-muted-foreground select-none"
                   style={{ width: `${width + 1}ch` }}
                 >
                   {startLine + index}

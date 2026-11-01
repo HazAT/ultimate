@@ -57,7 +57,7 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
       <div className="flex items-center gap-2 text-[12px]">
         <span className={cn('size-1.5 shrink-0 rounded-full', tone[server.state])} />
         <span className="min-w-0 truncate text-foreground/90">{server.name}</span>
-        <span className="shrink-0 text-[10.5px] text-muted-foreground/70">
+        <span className="shrink-0 text-[10.5px] text-muted-foreground">
           {server.transport}
           {server.source === 'project' && ' · project'}
         </span>
@@ -68,7 +68,7 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
         </span>
         <button
           aria-label={`Reconnect ${server.name}`}
-          className="-mr-1 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="-mr-1 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           disabled={busy || server.state === 'connecting'}
           onClick={() => void reconnect()}
           title="Reconnect"
@@ -85,7 +85,7 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
         <p className="mt-0.5 line-clamp-3 pl-3.5 text-[11px] leading-snug break-words text-error/85">
           {error ?? server.error}
           {retry !== undefined && !error && (
-            <span className="text-muted-foreground/70"> · retry in {retry}s</span>
+            <span className="text-muted-foreground"> · retry in {retry}s</span>
           )}
         </p>
       )}
@@ -131,7 +131,7 @@ function Chip() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-1" side="top">
         <Servers onChanged={refresh} servers={servers} />
-        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[11px] text-muted-foreground/70">
+        <p className="border-t border-border/70 px-2 pt-1.5 pb-1 font-mono text-[11px] text-muted-foreground">
           mcpServers in ~/.ultimate/settings.json or the project's .ultimate/settings.json
         </p>
       </PopoverContent>
@@ -144,7 +144,7 @@ function useDetails(name: string) {
   const { data: servers, refetch } = useServers(name === 'mcp')
   if (name !== 'mcp') return null
   if (!servers?.length)
-    return <p className="text-muted-foreground/70">no servers: add mcpServers to settings.json</p>
+    return <p className="text-muted-foreground">no servers: add mcpServers to settings.json</p>
   return <Servers onChanged={() => void refetch()} servers={servers} />
 }
 

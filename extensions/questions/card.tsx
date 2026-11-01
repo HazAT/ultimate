@@ -158,7 +158,7 @@ function Summary({
             {answer.words ? (
               <span className="min-w-0 text-foreground">{answer.words}</span>
             ) : (
-              <span className="text-muted-foreground/70">skipped</span>
+              <span className="text-muted-foreground">skipped</span>
             )}
           </li>
         )
@@ -216,10 +216,10 @@ function Note({
             event.currentTarget.blur()
           }
         }}
-        className="field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 pr-8 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/60 hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11"
+        className="field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 pr-8 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11"
       />
       {hint && !value && (
-        <Key className="pointer-events-none absolute top-2.5 right-2.5 bg-transparent text-muted-foreground/60">
+        <Key className="pointer-events-none absolute top-2.5 right-2.5 bg-transparent text-muted-foreground">
           /
         </Key>
       )}
@@ -473,7 +473,7 @@ function Card({
           value={text}
           disabled={busy}
           onChange={(event) => setText(event.target.value)}
-          className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
+          className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground focus:border-brand/60 max-md:min-h-11"
         />
         <Button
           variant="ghost"
@@ -577,7 +577,7 @@ function Card({
       </div>
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
         {hints && (
-          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground max-md:hidden">
             {shownKeys.length > 0 && (
               <span className="flex items-center gap-1">
                 {shownKeys.map((key) => (

@@ -70,7 +70,7 @@ export function ModelRow({
       <CheckIcon className={cn('size-3.5', current ? 'text-brand' : 'opacity-0')} />
       <span className={cn('shrink-0', current ? 'text-brand' : 'text-foreground')}>{model.id}</span>
       {model.name !== model.id && (
-        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground/80">
+        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground">
           {model.name}
         </span>
       )}
@@ -85,7 +85,7 @@ export function ModelRow({
             {model.thinkingLevels.filter((level) => level !== 'off').at(-1)}
           </span>
         ) : (
-          <span className="text-muted-foreground/40">no thinking</span>
+          <span className="text-muted-foreground">no thinking</span>
         )}
         <span className="w-11 text-right" title="context window">
           {formatWindow(model.contextWindow)}
@@ -307,7 +307,7 @@ function ProviderHeading({ id, provider }: { id: string; provider: ProviderInfo 
     <span className="flex items-center gap-2">
       {id}
       {provider && provider.name !== id && (
-        <span className="truncate text-muted-foreground/60">{provider.name}</span>
+        <span className="truncate text-muted-foreground">{provider.name}</span>
       )}
       {label ? (
         <span className="ml-auto text-success/80">

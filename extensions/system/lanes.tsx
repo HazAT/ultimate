@@ -36,7 +36,7 @@ const modelName = (model: string) => model.slice(model.indexOf('/') + 1)
 /** The window's time axis: faint grid lines at each tick, labelled underneath, `now` at the right edge. */
 export function Axis({ window }: { window: WindowName }) {
   return (
-    <div className="relative h-5 font-mono text-[10px] text-muted-foreground/70 tabular-nums">
+    <div className="relative h-5 font-mono text-[10px] text-muted-foreground tabular-nums">
       {ticks(window).map((tick) => (
         <span
           className={cn(
@@ -154,7 +154,7 @@ function Calls({ run }: { run: LaneRun }) {
             onClick={() => setOpen(open === index ? undefined : index)}
             type="button"
           >
-            <span className="w-14 shrink-0 tabular-nums text-muted-foreground/60">
+            <span className="w-14 shrink-0 tabular-nums text-muted-foreground">
               {clock(call.at)}
             </span>
             <KindIcon kind={call.kind} ok={call.ok} />
@@ -172,7 +172,7 @@ function Calls({ run }: { run: LaneRun }) {
         </li>
       ))}
       {run.more !== undefined && (
-        <li className="px-2 text-muted-foreground/60">+{run.more} newer calls not shown</li>
+        <li className="px-2 text-muted-foreground">+{run.more} newer calls not shown</li>
       )}
     </ul>
   )
@@ -299,7 +299,7 @@ export function LaneRow({
               {standing ? (
                 <span className="truncate text-[12.5px] leading-5 font-semibold text-foreground">
                   {agentTitle(standing)}
-                  <span className="ml-1.5 font-mono text-[10px] font-normal text-muted-foreground/70">
+                  <span className="ml-1.5 font-mono text-[10px] font-normal text-muted-foreground">
                     #{lane.conversation}
                   </span>
                 </span>
@@ -322,7 +322,7 @@ export function LaneRow({
           </button>
           <button
             aria-label={`Show only #${lane.conversation} in the stream`}
-            className="shrink-0 cursor-pointer rounded-sm p-1 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100"
+            className="shrink-0 cursor-pointer rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100"
             onClick={onFilter}
             title="Show only this conversation in the stream"
             type="button"
