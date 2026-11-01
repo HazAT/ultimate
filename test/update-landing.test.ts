@@ -57,3 +57,41 @@ it('asks for a restart when HEAD changed the core since boot, not for extensions
   ).toBe(true)
   expect(await coreChangedSince(cloneSince(['extensions/mcp/server.ts']), 'boot')).toBe(false)
 })
+
+/** The listener with a fake core: `stale` decides, restarts are counted, nothing restarted before. */
+function staleLoad(stale: boolean) {
+  const restarts: number[] = []
+  const notices: string[] = []
+  const pending: { current?: Promise<void> } = {}
+  let last: number | undefined
+  const listener = update.restartOnStaleLoad({
+    stale: async () => stale,
+    restart: async () => {
+      restarts.push(1)
+      return 'refused'
+    },
+    notice: (message) => notices.push(message),
+    last: { read: async () => last, write: async (at) => void (last = at) },
+    pending,
+  })
+  return { listener, restarts, notices, settled: () => pending.current }
+}
+
+// Commit ead6ed9 changed server/ with claude-code: it hot-reloaded against the old core ("useSpawn is not a function")
+// and stayed broken on every instance until someone restarted it by hand.
+it('restarts once when facets fail to load while the core is stale, never while it is current', async () => {
+  const stale = staleLoad(true)
+  stale.listener('claude-code')
+  stale.listener('mcp')
+  await stale.settled()
+  expect(stale.restarts).toHaveLength(1)
+  expect(stale.notices[0]).toBe('Restarting: claude-code failed to load after a core change')
+  stale.listener('claude-code')
+  await stale.settled()
+  expect(stale.restarts).toHaveLength(1)
+
+  const current = staleLoad(false)
+  current.listener('claude-code')
+  await current.settled()
+  expect(current.restarts).toHaveLength(0)
+})
