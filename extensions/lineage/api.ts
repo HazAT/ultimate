@@ -4,6 +4,7 @@
  */
 import type { Context } from '@earendil-works/chord'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { CompactionReason } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import { RootsDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
@@ -67,4 +68,13 @@ export { Branched, Rooted } from './refs.ts'
 
 /** Trees, branches and notes; core, so `need` it. */
 export const LineageApi = defineApi<LineageService>()('lineage')
+export type CompactionPointService = {
+  /** Whether lineage should decline Pi's summary compaction of `conversation` for `reason`, because it compacts otherwise. */
+  declines(conversation: number, reason: CompactionReason, caller: Context): Promise<boolean>
+}
+/**
+ * The extension point through which another extension takes over a conversation's compaction: lineage asks it before
+ * writing a summary. Compact provides it, declining @ultimate's threshold compactions.
+ */
+export const CompactionPoint = defineApi<CompactionPointService>()('lineage.compaction')
 export const tier = 'core'

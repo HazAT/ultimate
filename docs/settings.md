@@ -42,7 +42,8 @@ background compaction 32k below the blocking threshold), which suit a ~200k wind
 (500k) and the 1M-window Claude Code models, which keep more recent context and start compacting in the background
 earlier. `compaction.modelOverrides` in those settings files, keyed by exact `"provider/modelId"` (fields
 `reserveTokens`, `keepRecentTokens`, `backgroundTokens`, `enabled`), replaces them field by field. Pi's settings files
-are read when the server starts.
+are read when the server starts. @ultimate compacts in place instead (`extensions/compact/README.md`): its threshold
+compactions are declined, and `compactInPlace: { nudgeAt, nudgeEvery }` in Ultimate's settings sets when it is asked to.
 User config is independent of `ULTIMATE_HOME`. A project's `isolates.worktree` sets its checkouts' `setup` commands and, optionally, where they live (`path`) and
 how they are made and removed (`add`, `remove`); see `extensions/workspaces/README.md`.
 This repository's `.ultimate/settings.json` holds its isolate setup,

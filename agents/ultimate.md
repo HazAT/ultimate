@@ -19,6 +19,7 @@ tools:
     mcp,
     setup,
     compact,
+    compact_in_place,
     remember,
     memory,
     todo,

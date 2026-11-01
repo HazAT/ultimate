@@ -649,7 +649,8 @@ it.concurrent('wakes @ultimate once after its manual compaction, never after an 
         (await tx.scanTasks({ conversationId: ultimate.id, kind: 'lineage.woken' }, 10)).items,
       context,
     )
-  // An automatic compaction continues the run it interrupted, so it wakes nothing.
+  // A threshold compaction of @ultimate is declined: it compacts in place (extensions/compact). An automatic
+  // compaction continues the run it interrupted, so it wakes nothing.
   for (const reason of ['threshold', 'overflow'] as const) {
     const automatic = await server.harness.commit(
       (tx) =>
@@ -661,7 +662,7 @@ it.concurrent('wakes @ultimate once after its manual compaction, never after an 
       context,
     )
     await server.harness.waitForTask(automatic, context)
-    expect((await kinds())[0]).toBe('pi.compaction')
+    expect((await kinds())[0]).toBe(reason === 'threshold' ? 'pi.user' : 'pi.compaction')
     await fill(10)
   }
   expect(await wakeTasks()).toEqual([])

@@ -37,7 +37,7 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
-import { Branch, Branched, LineageApi, Rooted, Roots } from './api.ts'
+import { Branch, Branched, CompactionPoint, LineageApi, Rooted, Roots } from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
@@ -1283,6 +1283,7 @@ export default function lineageExtension(host: ExtensionHost) {
   }
   // Core, always on; resolved where it is called, declared here so the catalogue lists it.
   host.need(WorkspacesApi)
+  host.want(CompactionPoint)
   host.implement(LineageApi, {
     branch: (input, ctx) => startBranch(host, input, ctx),
     rootOf: (id, ctx) => rootOf(host, id, ctx),
@@ -1392,6 +1393,10 @@ export default function lineageExtension(host: ExtensionHost) {
       }),
       hook(CompactionTask, {
         beforeCompact: async (compaction, api, ctx) => {
+          if (
+            await host.want(CompactionPoint)?.declines(api.conversationId, compaction.reason, ctx)
+          )
+            return { decline: true }
           const record = await host
             .harness()
             .commit((tx) => tx.conversation(api.conversationId), ctx)
