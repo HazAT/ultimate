@@ -32,7 +32,7 @@ import type { OpenHost } from '../server/harness.ts'
 import subagents, { actions } from '../extensions/subagents/server.ts'
 import watchdog from '../extensions/watchdog/server.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
-import { Started, Subagents } from '../extensions/subagents/api.ts'
+import { Runs, Started, Subagents } from '../extensions/subagents/api.ts'
 import type { ActionContext } from '../server/actions.ts'
 import codemode from '../extensions/codemode/server.ts'
 import { Metadata } from '../server/metadata.ts'
@@ -397,6 +397,43 @@ it('names the definitions when start omits agent, for every argument shape seen 
     expect(result.text).toContain('Unknown agent: undefined. Pass agent: one of scout')
   }
   expect(await children(f.opened)).toHaveLength(0)
+})
+
+it('makes an agent on the fly from the call, read-only without a worktree, and refuses a model without a login', async () => {
+  const f = await fixture()
+  const noLogin = await call(f.opened, {
+    action: 'start',
+    label: 'dead-code scan',
+    family: 'review',
+    tools: ['read', 'bash'],
+    task: 'Scan',
+  })
+  expect(noLogin.text).toContain('No login for openai-codex/gpt-6-astra (family review)')
+  expect(await children(f.opened)).toHaveLength(0)
+  await call(f.opened, {
+    action: 'start',
+    label: 'dead-code scan',
+    model: 'faux/faux-1',
+    thinking: 'low',
+    tools: ['read', 'bash'],
+    instructions: 'List unused exports.',
+    task: 'Scan',
+  })
+  const [child] = await children(f.opened)
+  expect(child.agent).toBe('dead-code scan')
+  const agent = await (await f.opened.harness.conversation(child.conversationId, context))!.agent(
+    context,
+  )
+  expect(agent.tools.map((tool) => tool.name).toSorted()).toEqual(['bash', 'read'])
+  expect(agent.model).toEqual({ provider: 'faux', modelId: 'faux-1' })
+  expect(agent.instructions).toMatch(/^You were made for one task[\s\S]*List unused exports\.$/)
+  expect(agent.cwd).toBe((await f.opened.root.agent(context)).cwd)
+  expect(await f.opened.harness.snapshot(Runs, f.opened.root.id, context)).toEqual({
+    [child.conversationId]: { model: 'faux-1', adhoc: true },
+  })
+  expect(await f.opened.harness.snapshot(Metadata, child.conversationId, context)).toMatchObject({
+    label: 'dead-code scan',
+  })
 })
 
 it('routes asynchronous leaf reports only to their lead, not the root', async () => {

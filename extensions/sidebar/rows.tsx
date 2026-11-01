@@ -32,6 +32,7 @@ import {
 } from '../conversations/ui.tsx'
 import type { Presence } from '../conversations/ui.tsx'
 import { Review } from '../workspaces/ui.tsx'
+import { RunName } from '../subagents/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
 import type { OverviewRow } from '../conversations/types.ts'
 import type { ConversationState } from '../messages/ui.tsx'
@@ -529,7 +530,7 @@ function TaskedSubagentLine({
       <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
       {task?.chip}
       <span className="min-w-0 flex-1 truncate text-foreground/75">
-        {conversation.label ?? 'agent'}
+        <RunName id={conversation.id} label={conversation.label ?? 'agent'} />
         <span className="text-muted-foreground/60"> #{conversation.id}</span>
       </span>
       <span
@@ -593,7 +594,8 @@ function TaskedChildRow({
         <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
         {task?.chip}
         <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
-          {conversation.label ?? 'Agent'} · #{conversation.id}
+          <RunName id={conversation.id} label={conversation.label ?? 'Agent'} /> · #
+          {conversation.id}
         </span>
         {conversation.workspace && (
           <GitBranchIcon

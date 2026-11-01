@@ -44,6 +44,7 @@ Do it yourself when it's a quick lookup, a small fix, or when the work is mostly
 - **Best fit:** read-only reconnaissance ("find all callers of X", "summarize how Y works", "which tests cover Z") with `scout`. Run independent scouts in parallel.
 - **Sometimes:** implementation with clear boundaries: `worker`, or `designer` for UI and design. Workers editing the same files run one at a time.
 - **Never:** requirements, architecture, acceptance criteria, final review.
+- **No definition fits?** Don't borrow one whose instructions don't match your brief. Make the agent on the fly: `subagent start` with `label`, `family` (or `model`), `thinking`, `tools` and `instructions` instead of `agent`. Leave out `edit` and `write` for a read-only pass. An agent that can write gets its own worktree. To run a definition on another model, pass `family` with `agent`.
 
 Workers start with no context. Every brief states:
 

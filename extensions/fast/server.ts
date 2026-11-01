@@ -159,9 +159,11 @@ export default function fastExtension(host: ExtensionHost) {
           const provider = await api.snapshot(ProviderDoc, api.conversationId, context)
           if (!provider) return
           const model = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
+          const profile = await api.snapshot(Profile, api.conversationId, context)
+          // An agent made on the fly has no definition; its label may match one by chance.
           const name =
-            model && fastProvider(`${model.provider}/`)
-              ? ((await api.snapshot(Profile, api.conversationId, context))?.definition ??
+            model && fastProvider(`${model.provider}/`) && !profile?.adhoc
+              ? (profile?.definition ??
                 (await api.snapshot(host.metadata, api.conversationId, context))?.label)
               : undefined
           const fast =
