@@ -97,12 +97,21 @@ export default function compact(host: CompactHost) {
               await host.harness().commit(async (tx) => {
                 ;(await tx.doc(Compact, id)).level = level
               }, ctx)
-            // A request resent after a restart has the cutoff it had before its nudge was placed: add it again, only
-            // while the nudge is the newest entry, so it lands exactly where it is stored.
-            const newest = view.entries.at(-1)
-            if (newest?.kind !== NUDGE_ENTRY || request.messages.length >= view.messages.length)
+            // A request resent after a restart has the cutoff it had before its nudge was placed: add it again. Only
+            // hooks that run after this one (recall) append after it, so it lands where it is stored.
+            const nudge = view.entries.findLast((entry) => entry.kind === NUDGE_ENTRY)?.model?.[0]
+            const sent = (message: Message) =>
+              message.role === 'user' &&
+              message.timestamp === nudge?.timestamp &&
+              message.content === nudge.content
+            if (
+              !nudge ||
+              request.messages.length >= view.messages.length ||
+              request.messages.some(sent) ||
+              !view.messages.some(sent)
+            )
               return undefined
-            return { messages: [...request.messages, ...newest.model!] }
+            return { messages: [...request.messages, nudge] }
           }
           const message: Message = {
             role: 'user',

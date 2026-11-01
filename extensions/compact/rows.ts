@@ -276,19 +276,18 @@ export function plan(view: ContextView, conversation: number, request: Request, 
       )
       continue
     }
-    if (Math.ceil(note.length / 4) >= size) {
+    const range = from === to ? `#${conversation}/${from}` : `#${conversation}/${from}-${to}`
+    const replacement: Message = {
+      role: 'user',
+      content: `[Compacted ${range}] ${note.trim()}`,
+      timestamp: Date.now(),
+    }
+    if (estimateMessageTokens(replacement) >= size) {
       problem(`note is not shorter than the ~${size} tokens it replaces`)
       continue
     }
     const entries = covered.flatMap((row) => row.entries)
-    const range = from === to ? `#${conversation}/${from}` : `#${conversation}/${from}-${to}`
-    edits.push({
-      target: entries[0].id,
-      action: 'replace',
-      messages: [
-        { role: 'user', content: `[Compacted ${range}] ${note.trim()}`, timestamp: Date.now() },
-      ],
-    })
+    edits.push({ target: entries[0].id, action: 'replace', messages: [replacement] })
     for (const entry of entries.slice(1)) edits.push({ target: entry.id, action: 'omit' })
     collapsed.push({ from, to, tokens: size, note: note.trim() })
   }
