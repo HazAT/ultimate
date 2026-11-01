@@ -18,6 +18,7 @@ export type SlotName =
   | 'composer.status'
   | 'composer.actions'
   | 'conversation.overlay'
+  | 'transcript.top'
   | 'transcript.start'
   | 'transcript.end'
   | 'overlay'

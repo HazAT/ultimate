@@ -80,6 +80,15 @@ import type { ToolResult } from './model.ts'
 import { ToolCallBlock } from './tool-call.tsx'
 import { TranscriptSkeleton } from './transcript-skeleton.tsx'
 
+/**
+ * The transcript around a contribution: its scroller, the element holding its rows (each top-level row carries
+ * `data-entry-id`), and whether it follows its newest row. For `transcript.*` slots.
+ */
+export function useTranscriptScroll() {
+  const { scrollRef, contentRef, isAtBottom } = useStickToBottomContext()
+  return { scrollRef, contentRef, atBottom: isAtBottom }
+}
+
 /** The shown conversation; `dock` fits it into a narrow side region. */
 export function Transcript({ dock }: { dock?: boolean }) {
   const { id, loading } = useConversation()
@@ -627,6 +636,10 @@ function TranscriptEntries() {
     )
   return (
     <TranscriptContext value={entries}>
+      {/* At the top of the view as it scrolls, taking no room: its margin cancels the gap after it. */}
+      <div className="pointer-events-none sticky top-0 z-10 -mb-3 h-0 [overflow-anchor:none]">
+        <Slot name="transcript.top" />
+      </div>
       {!loading && entries.length > 0 && cursor !== undefined && (
         <div
           className="flex min-h-5 items-center justify-center font-mono text-[11px] text-muted-foreground/70"

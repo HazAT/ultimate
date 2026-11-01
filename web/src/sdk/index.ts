@@ -66,6 +66,7 @@ export { setAsideIds } from '../app/compact.ts'
 export { MessageActions } from '../app/message-actions.tsx'
 /** A turn of the user's as the transcript shows a typed one; `text` gives the words a delivered message carries. */
 export { UserText, UserView } from '../app/user-turn.tsx'
+export { useTranscriptScroll } from '../app/transcript.tsx'
 /** Renders with the value another extension provides for your point; see `definePoint`. */
 export { AllProvided, Provided } from '../app/boundary.tsx'
 export { ConversationScope } from './conversation-scope.tsx'
