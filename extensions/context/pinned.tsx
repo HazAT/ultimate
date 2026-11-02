@@ -117,7 +117,7 @@ function Pinned({ id }: { id: number }) {
         className={changed ? 'border-brand/50 bg-card shadow-sm' : 'bg-card shadow-sm'}
         notice={
           changed && (
-            <span className="text-brand" data-pinned-notice>
+            <span className="min-w-0 truncate text-brand" data-pinned-notice>
               {[
                 changed.sections.length > 0 && plural(changed.sections.length, 'section'),
                 changed.tools.length > 0 && plural(changed.tools.length, 'tool'),

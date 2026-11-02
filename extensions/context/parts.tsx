@@ -289,19 +289,21 @@ export function Header({
         <AgentMark name={identity.mark} size="sm" />
         <span className="shrink-0 text-foreground/90">{identity.name}</span>
         {model && (
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 flex-1 truncate">
             · {model}
             {breakdown.model?.thinking && ` · ${breakdown.model.thinking}`}
           </span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2.5 pl-2">
+        <span className="ml-auto flex min-w-0 items-center gap-2.5 pl-2">
           {notice}
-          <span className={cn('max-sm:hidden', notice && 'max-lg:hidden')}>
+          <span className={cn('shrink-0 max-sm:hidden', notice && 'max-lg:hidden')}>
             {sections.length} sections · {tools.length} tools
             {breakdown.injected && ` · ${breakdown.injected.label.split(' · ')[0]}`}
           </span>
-          <BudgetBar breakdown={breakdown} className="w-20 max-sm:w-12" />
-          <span className="text-foreground/85 tabular-nums">{formatTokens(tokens.total)}</span>
+          <BudgetBar breakdown={breakdown} className="w-20 min-w-6 shrink-[100] max-sm:w-12" />
+          <span className="shrink-0 text-foreground/85 tabular-nums">
+            {formatTokens(tokens.total)}
+          </span>
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className={cn('border-t border-border/70 pb-2', bodyClassName)}>
