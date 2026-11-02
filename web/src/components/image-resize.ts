@@ -34,11 +34,12 @@ export async function fitImage(file: File): Promise<FittedImage> {
         if (blob.type !== 'image/webp' && file.type === 'image/jpeg')
           blob = await canvas.convertToBlob({ type: 'image/jpeg', quality })
         if (blob.size <= maxImageBytes) {
-          const frame = file.type === 'image/gif' ? ' · first frame only' : ''
-          return {
-            blob,
-            note: `Resized ${megabytes(file.size)} · ${width}×${height} → ${w}×${h}${frame}`,
-          }
+          const parts = [
+            `Resized ${megabytes(file.size)}`,
+            ...(w === width ? [] : [`${width}×${height} → ${w}×${h}`]),
+            ...(file.type === 'image/gif' ? ['first frame only'] : []),
+          ]
+          return { blob, note: parts.join(' · ') }
         }
         if (blob.type === 'image/png') break
       }
