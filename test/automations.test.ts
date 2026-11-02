@@ -159,13 +159,12 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
   for (const run of runs) {
     expect(run.answer).toBe('Answer: Scheduled report')
     const child = (await f.opened.harness.conversation(run.conversationId!, context))!
-    const view = await child.viewState(context)
+    const view = await child.context(context)
     expect(
-      view.value.entries.some(
+      view.entries.some(
         (e) => e.model?.[0]?.role === 'user' && e.model[0].content === 'Scheduled report',
       ),
     ).toBe(true)
-    view.dispose()
     expect((await child.agent(context)).tools.map((t) => t.name)).not.toContain('automation')
     expect((await f.opened.harness.snapshot(Metadata, child.id, context))?.label).toBe('automation')
   }

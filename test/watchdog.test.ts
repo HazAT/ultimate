@@ -849,7 +849,7 @@ it('checks all siblings of a dense owner and times idleNote with 1500 conversati
     let child = branch
     for (let i = 0; i < 1497; i++)
       child = (await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })).id
-    ;(await tx.doc(LiveDoc, child)).run = { taskId: anchor, inputs: [] }
+    ;(await tx.doc(LiveDoc, child)).run = { taskId: anchor, inputs: [], turns: 0 }
     return child
   }, context)
   let started = performance.now()
@@ -894,7 +894,7 @@ it('includes only idle open branches, does not repeat unchanged IDs, clears the 
   await f.harness.commit(async (tx) => {
     ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [ids.concluded]
     for (const id of [ids.running, child])
-      (await tx.doc(LiveDoc, id)).run = { taskId: 999 as TaskId, inputs: [] }
+      (await tx.doc(LiveDoc, id)).run = { taskId: 999 as TaskId, inputs: [], turns: 0 }
     ;(await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.push({
       id: 1,
       from: ids.question,

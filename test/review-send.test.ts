@@ -50,7 +50,7 @@ it('sends one review input to a conversation, refuses bad reviews, and is user-o
     expect(sent.status).toBe(200)
     expect(sent.data.result).toEqual({ conversation: target })
     await server.harness.waitForIdle(context)
-    const entries = (await conversation.viewState(context)).value.entries
+    const entries = (await conversation.context(context)).entries
     const reviews = entries.filter((entry) => entry.kind === 'review.comments')
     expect(reviews).toHaveLength(1)
     expect(reviews[0].data).toMatchObject({ spec: 'abc1234', note: 'Mostly naming.' })
@@ -106,7 +106,7 @@ it('sends one review input to a conversation, refuses bad reviews, and is user-o
       expect(JSON.stringify(response.data)).toContain(error)
     }
     expect(
-      (await conversation.viewState(context)).value.entries.filter(
+      (await conversation.context(context)).entries.filter(
         (entry) => entry.kind === 'review.comments',
       ),
     ).toHaveLength(1)
@@ -138,7 +138,7 @@ it('sends one review input to a conversation, refuses bad reviews, and is user-o
     server.host.faux!.setResponses([route, route])
     await server.root.submit({ type: 'input', content: 'send a review' }, context)
     await server.harness.waitForIdle(context)
-    const result = (await server.root.viewState(context)).value.entries.findLast(
+    const result = (await server.root.context(context)).entries.findLast(
       (entry) => entry.kind === 'pi.tool-result',
     )
     expect(JSON.stringify(result?.model)).toContain('review/send is a user-only action')

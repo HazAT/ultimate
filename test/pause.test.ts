@@ -177,14 +177,14 @@ it('lets a running tool finish, starts no generation after it while paused, and 
   expect(f.paused()).toBe(true)
   expect((await harness.inspect(context)).scheduling).toBe('paused')
 
-  // The tool finishes on its own; the generation that waited for it parks instead of asking for the next response.
+  // The tool finishes on its own; the generation that waited for it stays pending instead of asking for the next response.
   f.finish!()
   await until(async () => (await f.action('state')).running.length === 0)
   expect(f.finished()).toBe(1)
   expect(responses).toBe(1)
-  // Its tool ended, so the generation could take its next step; held, it is only ready.
+  // Its tool ended, so the generation could take its next step; held, it stays pending.
   const [generation] = await generations(harness)
-  expect(generation.state.kind).toBe('ready')
+  expect(generation.state.kind).toBe('pending')
   // A submit or wait asks Pi to resume scheduling; the hold wins.
   await root.submit({ type: 'input', content: 'queued meanwhile' }, context)
   harness.resume()
@@ -223,7 +223,7 @@ it('reopens paused: nothing starts until play', async () => {
   expect(responses).toBe(0)
   const [generation] = await generations(reopened.harness)
   expect(generation.record.state.status).toBe('pending')
-  expect(generation.state.kind).toBe('ready')
+  expect(generation.state.kind).toBe('pending')
 
   await f.action('play')
   await submission.wait(context)

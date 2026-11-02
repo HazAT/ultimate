@@ -179,25 +179,21 @@ async function run(
   ])
   await server.root.submit({ type: 'input', content: prompt }, context)
   await server.harness.waitForIdle(context)
-  const state = await server.root.viewState(context)
-  try {
-    const entry = state.value.entries.findLast((item) => item.kind === 'pi.tool-result')!
-    return {
-      text: JSON.stringify(entry.model?.[0]?.role === 'toolResult' ? entry.model[0].content : []),
-      data: entry.model![0] as unknown as {
-        details: {
-          calls: { name: string; status: string; ms: number }[]
-          value?: unknown
-          error?: string
-          yielded?: boolean
-          pendingSubagents?: { conversationId: number; background?: boolean }[]
-          subagentAnswers?: number[]
-        }
-        isError: boolean
-      },
-    }
-  } finally {
-    state.dispose()
+  const state = await server.root.context(context)
+  const entry = state.entries.findLast((item) => item.kind === 'pi.tool-result')!
+  return {
+    text: JSON.stringify(entry.model?.[0]?.role === 'toolResult' ? entry.model[0].content : []),
+    data: entry.model![0] as unknown as {
+      details: {
+        calls: { name: string; status: string; ms: number }[]
+        value?: unknown
+        error?: string
+        yielded?: boolean
+        pendingSubagents?: { conversationId: number; background?: boolean }[]
+        subagentAnswers?: number[]
+      }
+      isError: boolean
+    },
   }
 }
 
@@ -490,10 +486,9 @@ it('logs ultimate helper calls and labels a one-call script by its call id, with
   expect(result.data.details.calls.map((call) => [call.name, call.status])).toEqual([
     ['ultimate.conversations', 'ok'],
   ])
-  const view = await server.root.viewState(context)
-  const call = view.value.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
+  const view = await server.root.context(context)
+  const call = view.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
   const callId = call.model?.[0]?.role === 'toolResult' ? call.model[0].toolCallId : ''
-  view.dispose()
   expect(await server.harness.snapshot(SummaryDoc, server.root.id, context)).toEqual({
     calls: { [callId]: { line: 'Listed the conversations' } },
   })
@@ -525,9 +520,8 @@ it('composes read and bash with private nested results and final JSON details', 
     ['bash', 'ok'],
   ])
   expect(result.data.details.value).toEqual({ length: 15 })
-  const view = await server.root.viewState(context)
-  expect(view.value.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(1)
-  view.dispose()
+  const view = await server.root.context(context)
+  expect(view.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(1)
   server.host.registry.install(
     defineExtension({
       name: 'structured',
@@ -795,21 +789,20 @@ it('aborts nested work without committing store writes', async () => {
   ])
   await server.root.submit({ type: 'input', content: 'abort this' }, context)
   await until(async () => {
-    const state = await server.root.viewState(context)
+    const state = await server.root.watch(context)
     try {
       return JSON.stringify(state.value.docs['pi.live']).includes('✓ tools.read')
     } finally {
-      state.dispose()
+      await state.stop()
     }
   })
   await server.root.abort(context)
   await server.harness.waitForIdle(context)
   expect(await server.harness.snapshot(Store, server.root.id, context)).toBeUndefined()
-  const view = await server.root.viewState(context)
-  expect(
-    JSON.stringify(view.value.entries.findLast((entry) => entry.kind === 'pi.tool-result')),
-  ).toMatch(/aborted|interrupted/)
-  view.dispose()
+  const view = await server.root.context(context)
+  expect(JSON.stringify(view.entries.findLast((entry) => entry.kind === 'pi.tool-result'))).toMatch(
+    /aborted|interrupted/,
+  )
 })
 
 it.each([
@@ -995,11 +988,11 @@ it('recovers an unsafe interrupted script with its committed nested-call log', a
   ])
   await server.root.submit({ type: 'input', content: 'interrupt this' }, context)
   await until(async () => {
-    const state = await server.root.viewState(context)
+    const state = await server.root.watch(context)
     try {
       return JSON.stringify(state.value.docs['pi.live']).includes('✓ tools.read')
     } finally {
-      state.dispose()
+      await state.stop()
     }
   })
   await server.vite.watcher.close()
@@ -1008,13 +1001,9 @@ it('recovers an unsafe interrupted script with its committed nested-call log', a
   const reopened = await createServer(options)
   servers.push(reopened)
   await reopened.harness.waitForIdle(context)
-  const state = await reopened.root.viewState(context)
-  try {
-    const result = state.value.entries.find((entry) => entry.kind === 'pi.tool-result')
-    expect(JSON.stringify(result)).toContain('interrupted')
-    expect(JSON.stringify(result)).toContain('✓ tools.read')
-    expect(await reopened.harness.snapshot(Store, reopened.root.id, context)).toBeUndefined()
-  } finally {
-    state.dispose()
-  }
+  const state = await reopened.root.context(context)
+  const result = state.entries.find((entry) => entry.kind === 'pi.tool-result')
+  expect(JSON.stringify(result)).toContain('interrupted')
+  expect(JSON.stringify(result)).toContain('✓ tools.read')
+  expect(await reopened.harness.snapshot(Store, reopened.root.id, context)).toBeUndefined()
 })

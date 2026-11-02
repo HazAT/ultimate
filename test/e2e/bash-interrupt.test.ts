@@ -75,20 +75,15 @@ async function run(args: Record<string, unknown>, input?: 'steer' | 'followUp' |
   if (callId) cancels.push(await cancel(callId))
   const ms = performance.now() - begin
   await Promise.all(queued.map((handle) => handle.wait(context)))
-  const view = await server.root.viewState(context)
-  try {
-    const result = view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
-      ?.model?.[0]
-    const messages = (await server.root.context(context)).messages
-    return {
-      result: JSON.stringify(result),
-      isError: result?.role === 'toolResult' && result.isError,
-      users: messages.filter((m) => m.role === 'user').map((m) => m.content),
-      ms,
-      cancels,
-    }
-  } finally {
-    view.dispose()
+  const view = await server.root.context(context)
+  const result = view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)?.model?.[0]
+  const messages = (await server.root.context(context)).messages
+  return {
+    result: JSON.stringify(result),
+    isError: result?.role === 'toolResult' && result.isError,
+    users: messages.filter((m) => m.role === 'user').map((m) => m.content),
+    ms,
+    cancels,
   }
 }
 

@@ -254,14 +254,13 @@ async function call(opened: OpenHost, args: Record<string, unknown>) {
   await (
     await opened.root.submit({ type: 'input', content: `CALL ${JSON.stringify(args)}` }, context)
   ).wait(context)
-  const view = await opened.root.viewState(context)
-  const tool = view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)!
+  const view = await opened.root.context(context)
+  const tool = view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)!
   const result = tool.model?.[0]
   const text =
     result?.role === 'toolResult'
       ? result.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
       : ''
-  view.dispose()
   return { tool, text }
 }
 it('runs root -> forked review lead -> parallel leaves -> lead -> root with scoped ownership', async () => {
@@ -452,15 +451,13 @@ it('routes asynchronous leaf reports only to their lead, not the root', async ()
   })
   const lead = (await f.opened.harness.conversation(leadId, context))!
   await until(async () => {
-    const view = await lead.viewState(context)
-    const delivered = view.value.entries.some((entry) => entry.kind === 'subagents.report')
-    view.dispose()
+    const view = await lead.context(context)
+    const delivered = view.entries.some((entry) => entry.kind === 'subagents.report')
     return delivered
   })
   await lead.waitForIdle(context)
-  const view = await lead.viewState(context)
-  const report = view.value.entries.find((entry) => entry.kind === 'subagents.report')!
-  view.dispose()
+  const view = await lead.context(context)
+  const report = view.entries.find((entry) => entry.kind === 'subagents.report')!
   expect(report).toBeDefined()
   const leafId = Object.values(
     (await f.opened.harness.snapshot(Subagents, leadId, context))!.agents,
@@ -535,11 +532,8 @@ it('attributes durable instructions and reports across reopen and forks, never h
   const report = (await reports(f.opened))[0]
   const [child] = await children(f.opened)
   const conversation = (await f.opened.harness.conversation(child.conversationId, context))!
-  const childView = await conversation.viewState(context)
-  const instruction = childView.value.entries.find(
-    (entry) => entry.kind === 'subagents.instruction',
-  )!
-  childView.dispose()
+  const childView = await conversation.context(context)
+  const instruction = childView.entries.find((entry) => entry.kind === 'subagents.instruction')!
   expect(instruction.data).toMatchObject({
     sender: f.opened.root.id,
     kind: 'instruction',
@@ -565,9 +559,8 @@ it('attributes durable instructions and reports across reopen and forks, never h
   await f.opened.close()
   hosts.splice(hosts.indexOf(f.opened), 1)
   const reopened = await f.reopen()
-  const forkView = await (await reopened.harness.conversation(fork.id, context))!.viewState(context)
-  expect(forkView.value.entries.find((entry) => entry.id === report.id)?.data).toEqual(report.data)
-  forkView.dispose()
+  const forkView = await (await reopened.harness.conversation(fork.id, context))!.context(context)
+  expect(forkView.entries.find((entry) => entry.id === report.id)?.data).toEqual(report.data)
 })
 
 async function children(opened: OpenHost) {
@@ -576,9 +569,8 @@ async function children(opened: OpenHost) {
   )
 }
 async function reports(opened: OpenHost) {
-  const view = await opened.root.viewState(context)
-  const entries = view.value.entries.filter((entry) => entry.kind === 'subagents.report')
-  view.dispose()
+  const view = await opened.root.context(context)
+  const entries = view.entries.filter((entry) => entry.kind === 'subagents.report')
   return entries
 }
 
@@ -673,7 +665,7 @@ describe('provider error recovery', () => {
     )
     await call(f.opened, { action: 'start', agent: 'scout', task: 'fail', background: true })
     const failures = async () =>
-      (await f.opened.root.viewState(context)).value.entries.filter(
+      (await f.opened.root.context(context)).entries.filter(
         (entry) => entry.kind === 'watchdog.failure',
       )
     await until(async () => (await failures()).length === 1)
@@ -848,12 +840,8 @@ async function startCall(opened: OpenHost, args: Record<string, unknown>) {
   return opened.root.submit({ type: 'input', content: `CALL ${JSON.stringify(args)}` }, context)
 }
 async function latestResult(opened: OpenHost) {
-  const view = await opened.root.viewState(context)
-  try {
-    return view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)?.model?.[0]
-  } finally {
-    view.dispose()
-  }
+  const view = await opened.root.context(context)
+  return view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)?.model?.[0]
 }
 
 it('attributes real queued instructions and reports by submission identity and drops cancellations', async () => {
@@ -972,9 +960,8 @@ describe('turns without an answer', () => {
     })
     // The report started a parent run, which answered it.
     await f.opened.harness.waitForIdle(context)
-    const view = await f.opened.root.viewState(context)
-    const last = view.value.entries.at(-1)!
-    view.dispose()
+    const view = await f.opened.root.context(context)
+    const last = view.entries.at(-1)!
     expect(last.model?.[0]).toMatchObject({ role: 'assistant' })
     expect(JSON.stringify(last.model)).toContain('Report received')
   })
@@ -1323,14 +1310,8 @@ describe('subagents', () => {
     const view = await (await f.opened.harness.conversation(
       child.conversationId,
       context,
-    ))!.viewState(context)
-    try {
-      expect(view.value.entries.filter((entry) => entry.model?.[0]?.role === 'user')).toHaveLength(
-        0,
-      )
-    } finally {
-      view.dispose()
-    }
+    ))!.context(context)
+    expect(view.entries.filter((entry) => entry.model?.[0]?.role === 'user')).toHaveLength(0)
     expect(await reports(f.opened)).toHaveLength(0)
     await call(f.opened, { action: 'message', id: child.conversationId, text: 'fresh reuse' })
     await until(async () => (await reports(f.opened)).length === 1)
@@ -1365,14 +1346,8 @@ describe('subagents', () => {
     const view = await (await f.opened.harness.conversation(
       child.conversationId,
       context,
-    ))!.viewState(context)
-    try {
-      expect(view.value.entries.filter((entry) => entry.model?.[0]?.role === 'user')).toHaveLength(
-        1,
-      )
-    } finally {
-      view.dispose()
-    }
+    ))!.context(context)
+    expect(view.entries.filter((entry) => entry.model?.[0]?.role === 'user')).toHaveLength(1)
     expect(await reports(f.opened)).toHaveLength(0)
     await call(f.opened, { action: 'message', id: child.conversationId, text: 'fresh reuse' })
     await until(async () => (await reports(f.opened)).length === 1)
@@ -1601,10 +1576,9 @@ describe('subagents', () => {
     const agents = await children(opened)
     expect(agents).toHaveLength(2)
     expect(new Set(agents.map((agent) => agent.conversationId)).size).toBe(2)
-    let view = await opened.root.viewState(context)
-    expect(JSON.stringify(view.value.entries)).toContain('Child: first')
-    expect(JSON.stringify(view.value.entries)).toContain('Child: second')
-    view.dispose()
+    let view = await opened.root.context(context)
+    expect(JSON.stringify(view.entries)).toContain('Child: first')
+    expect(JSON.stringify(view.entries)).toContain('Child: second')
     await (
       await opened.root.submit(
         {
@@ -1614,9 +1588,8 @@ describe('subagents', () => {
         context,
       )
     ).wait(context)
-    view = await opened.root.viewState(context)
-    expect(JSON.stringify(view.value.entries)).toContain('Child: follow-up')
-    view.dispose()
+    view = await opened.root.context(context)
+    expect(JSON.stringify(view.entries)).toContain('Child: follow-up')
   })
   it('extends an earlier definition with an addTools overlay and refuses a tools list', async () => {
     const repo = await directory(),
@@ -2051,9 +2024,9 @@ describe('subagents', () => {
     await resumed.harness.waitForIdle(context)
     expect(await children(resumed)).toHaveLength(1)
     expect(await reports(resumed)).toHaveLength(1)
-    const view = await resumed.root.viewState(context)
+    const view = await resumed.root.context(context)
     expect(
-      view.value.entries.some(
+      view.entries.some(
         (entry) =>
           entry.model?.[0]?.role === 'assistant' &&
           entry.model[0].content.some(
@@ -2061,7 +2034,6 @@ describe('subagents', () => {
           ),
       ),
     ).toBe(true)
-    view.dispose()
     await call(resumed, { action: 'message', id: child.conversationId, text: 'another' })
     await until(async () => (await reports(resumed)).length === 2)
     await resumed.root.waitForIdle(context)
@@ -2178,14 +2150,13 @@ describe('subagents', () => {
       )
       releaseParent()
       await opened.root.waitForIdle(context)
-      const view = await opened.root.viewState(context)
-      const results = view.value.entries.flatMap((entry) => {
+      const view = await opened.root.context(context)
+      const results = view.entries.flatMap((entry) => {
         const message = entry.model?.[0]
         return message?.role === 'toolResult' && message.toolName === 'subagent'
           ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
           : []
       })
-      view.dispose()
       expect(results.at(-1)).toBe('Returned model: faux/faux-1\nResult: released')
       expect(await reports(opened)).toHaveLength(0)
       expect((await opened.harness.snapshot(InboxDoc, opened.root.id, context))?.items).toEqual([])
@@ -2206,15 +2177,14 @@ describe('subagents', () => {
     await resumed.root.waitForIdle(context)
     expect(await children(resumed)).toHaveLength(1)
     expect((await children(resumed))[0].conversationId).toBe(before.conversationId)
-    const view = await resumed.root.viewState(context)
-    const results = view.value.entries.filter((entry) => entry.kind === 'pi.tool-result')
+    const view = await resumed.root.context(context)
+    const results = view.entries.filter((entry) => entry.kind === 'pi.tool-result')
     expect(results).toHaveLength(1)
     expect(results[0].model?.[0]).toMatchObject({
       content: [{ type: 'text', text: 'Returned model: faux/faux-1\nResult: released' }],
       details: { conversationId: before.conversationId },
       isError: false,
     })
-    view.dispose()
   })
   it('stops a background child, suppresses its aborted report, and leaves it reusable', async () => {
     const { opened } = await gatedFixture()
