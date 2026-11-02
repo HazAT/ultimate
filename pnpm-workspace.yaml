@@ -4,15 +4,15 @@ allowBuilds:
   protobufjs: false
   workerd: set this to true or false
 minimumReleaseAgeExclude:
-  - '@earendil-works/chord@1.4.0'
-  - '@earendil-works/pi-agent-core@1.4.0'
-  - '@earendil-works/pi-ai@1.4.0'
-  - '@earendil-works/pi-codemode@1.4.0'
-  - '@earendil-works/pi-coding-agent@1.4.0'
-  - '@earendil-works/pi-durable@1.4.0'
-  - '@earendil-works/pi-mcp@1.4.0'
-  - '@earendil-works/pi-telemetry@1.4.0'
-  - '@earendil-works/pi-tui@1.4.0'
+  - '@earendil-works/chord@1.5.0'
+  - '@earendil-works/pi-agent-core@1.5.0'
+  - '@earendil-works/pi-ai@1.5.0'
+  - '@earendil-works/pi-codemode@1.5.0'
+  - '@earendil-works/pi-coding-agent@1.5.0'
+  - '@earendil-works/pi-durable@1.5.0'
+  - '@earendil-works/pi-mcp@1.5.0'
+  - '@earendil-works/pi-telemetry@1.5.0'
+  - '@earendil-works/pi-tui@1.5.0'
   - '@voidzero-dev/vite-plus-darwin-arm64@1.4.0'
   - '@voidzero-dev/vite-plus-darwin-x64@1.4.0'
   - '@voidzero-dev/vite-plus-linux-arm64-gnu@1.4.0'
@@ -22,6 +22,7 @@ minimumReleaseAgeExclude:
   - '@voidzero-dev/vite-plus-win32-arm64-msvc@1.4.0'
   - '@voidzero-dev/vite-plus-win32-x64-msvc@1.4.0'
   - vite-plus@1.4.0
+  - '@earendil-works/pi-schema@1.5.0'
 # Pi upstream: @earendil-works/chord@1.4.0 dist/output.js — patched sanitizeOutput to remove whole CSI/OSC/control strings while keeping numeric SGR. Drop when Pi ships equivalent sanitization.
 # Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/inbox.js — transactional beforeInput hook places entries before a new run’s first input. Drop when Pi ships input-placement hooks.
 # Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/inbox.js, dist/types.d.ts — mark entries placed from input submissions. Drop when Pi ships input provenance.
@@ -35,6 +36,6 @@ minimumReleaseAgeExclude:
 overrides:
   vite: 8.3.5
 patchedDependencies:
-  '@earendil-works/chord@1.4.0': patches/@earendil-works__chord@1.4.0.patch
+  '@earendil-works/chord@1.5.0': patches/@earendil-works__chord@1.5.0.patch
   '@earendil-works/pi-claude-code@0.1.0': patches/@earendil-works__pi-claude-code@0.1.0.patch
-  '@earendil-works/pi-durable@1.4.0': patches/@earendil-works__pi-durable@1.4.0.patch
+  '@earendil-works/pi-durable@1.5.0': patches/@earendil-works__pi-durable@1.5.0.patch
