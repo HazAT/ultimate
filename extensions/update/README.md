@@ -1,6 +1,6 @@
 # Update
 
-Keeps the Ultimate clone the host runs from (`host.ultimateRoot`, the `<self>` block's "Ultimate (running host)") current with its `origin`, by fast-forward only. On by default, so everyone hears about upstream changes; `extensions.disable: ["update"]` turns it off.
+Keeps the Ultimate clone the host runs from (`host.ultimateRoot`, the `<self>` block's "Ultimate (running host)") current with its `origin`: a fast-forward where it can, and where the branch has commits of its own, a merge that stops on conflicts. On by default, so everyone hears about upstream changes; `extensions.disable: ["update"]` turns it off.
 
 ## Checking
 
@@ -12,10 +12,10 @@ When a check finds a new range, the summary model is asked once (`ConversationsA
 
 The item is always there (except on previews). While the clone is current it is a quiet, muted `✓ up to date` (just the ✓ on a phone); its popover says so, names the clone and when it was last checked, and offers **Check now**. Check now (`check`) fetches origin at once, bypassing the hourly gate but under the clone-wide lock, then recounts and summarizes as a background check does; the item spins meanwhile. When it finds commits the popover switches to the behind view, and updating stays a click on **Update now**. Check now also sits in the behind and refused popovers, so a clone can be re-checked after fixing it.
 
-While the clone is behind, the status line shows `↓ 5 new · update` (`↓ 5 new` on a phone). It is amber with a warning icon when an update would be refused. The popover shows:
+While the clone is behind, the status line shows `↓ 5 new · update` (`↓ 5 new` on a phone). It is amber with a warning icon when an update would be refused: a dirty or switched clone, a diverged branch whose merge would conflict with no @ultimate to ask, or a failing fetch. The popover shows:
 
 - the clone's path;
-- how far `main` is behind;
+- how far `main` is behind — a diverged clone adds how many commits it has of its own, and what `git merge-tree` predicts for merging them ("no conflicts expected", or that it would conflict);
 - the summary, when there is one;
 - the newest commits (3 under a summary, else 5) and a DiffsHub ↗ link to the range (GitHub origins);
 - what the range touches: extensions and web, server, lockfile, bin;
@@ -34,24 +34,25 @@ One case restarts by itself: an extension's server facet that fails to load (`ho
 `update` (the popover's Update now; agents may call it too):
 
 1. Fetches origin.
-2. Fast-forwards the default branch with `git merge --ff-only`.
+2. Fast-forwards the default branch with `git merge --ff-only` — or, when the branch has commits of its own besides origin's new ones, merges them: a restore ref first (`refs/ultimate-update/pre-<timestamp>-<sha>`, so `git reset --hard <ref>` undoes the merge; pruned once older than 30 days, and never a tag, so `git push --tags` cannot publish it), then `git merge --no-edit`, which on a conflict is aborted back to where the branch stood. Before merging, `git merge-tree --write-tree` predicts the merge without touching the worktree: a predicted conflict refuses without changing anything (on git before 2.38 nothing can be predicted, and the merge is tried and stopped instead).
 3. Runs `pnpm install --frozen-lockfile` when `pnpm-lock.yaml` differs from the installed `node_modules/.pnpm/lock.yaml`. A failed install is retried by the next update.
+4. After a merge, runs `pnpm check` on the result. A failed check keeps the merge — nothing resets by itself — and the popover shows the check's output, the restore ref's undo command, and (where the clone is the project) **Fix with @ultimate**.
 
 It refuses, and changes nothing, when:
 
 - the clone has uncommitted changes to tracked files;
 - it is on another branch or detached;
-- it has diverged from origin;
-- the lander is landing into the clone: on a machine where the clone is also the project, landings fast-forward the same branch. It is checked after the fetch, right before the merge; a landing that starts after that sees the moved branch and retries;
+- the merge would conflict, or conflicted while merging (then `Update with @ultimate` takes over, where the clone is the project);
+- the lander is landing into the clone: on a machine where the clone is also the project, landings fast-forward the same branch. It is checked after the fetch, right before either move; a landing that starts after that sees the moved branch and retries;
 - another Ultimate holds the clone's lock.
 
-It never stashes, rebases or resets.
+It never stashes, rebases or resets. A restore ref is written before a merge only: a fast-forward is undone with the reflog, a merge with the ref the popover names.
 
 ## Updating with @ultimate
 
-When the clone's only refusal is a diverged branch (commits of its own plus new ones on origin) and the clone is the project this Ultimate serves, the state carries `merge` and the popover offers **Update with @ultimate** instead of the refusal. The item stays brand-coloured, not amber. `merge` (user-only) checks the state again, sends @ultimate an input naming the branch, the clone and both counts, asking for a coordinator branch that merges `origin/<branch>` with a normal merge (never a rebase, reset or force push), resolves the conflicts it safely can, asks about the rest, runs the checks and lands with `workspace submit`. It then opens @ultimate's conversation. The input is deduplicated per `<head>..<origin head>`, so a second click adds nothing.
+When the clone is the project this Ultimate serves, the diverged popover offers **Update with @ultimate** where Update now cannot run: the merge is predicted to conflict (it may still have merged cleanly — but the conflicts are for a branch to resolve, not for a click), or a merged update's `pnpm check` failed (then the ask is to fix the failing check where it landed). `merge` (user-only) checks the state again and sends @ultimate an input naming the clone, the branch, both counts or the check's failure, asking for a coordinator branch that merges `origin/<branch>` with a normal merge (never a rebase, reset or force push), resolves the conflicts it safely can, asks about the rest, runs the checks and lands with `workspace submit`. It then opens @ultimate's conversation. Each input is deduplicated, per `<head>..<origin head>` for a merge or per merged commit for a fix, so a second click adds nothing.
 
-Where the clone is not the project (a project run from a separate Ultimate clone), nothing is offered: a branch lives in the project's repository and the lander lands into the project, so it cannot merge into the clone. That clone keeps the plain refusal; merge it by hand.
+Where the clone is not the project (a project run from a separate Ultimate clone), nothing is offered: a branch lives in the project's repository and the lander lands into the project, so it cannot merge into the clone. That clone keeps the refusal; merge it by hand.
 
 ## After a landing
 
@@ -61,5 +62,5 @@ The lander fast-forwards the host's checkout itself, so a landing that changes p
 
 Each update records a durable event, emitted in its own commit right after the change, because the clone lives outside storage. A crash in between loses the event, not the update.
 
-- `update.applied`: `{ root, from, to, commits, layers, install }`, for an update that moved the clone.
+- `update.applied`: `{ root, from, to, commits, layers, install, merged?, restore?, check? }`, for an update that moved the clone — a merge adds its restore ref and how `pnpm check` fared.
 - `update.refused`: `{ root, reason }`.
