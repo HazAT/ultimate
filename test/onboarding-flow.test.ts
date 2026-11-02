@@ -108,7 +108,7 @@ it('onboards once per root with facts, choices, reading, first memories and a co
     expect(b.data.result).toEqual(a.data.result)
     const id = a.data.result.id as ConversationId
     const conversation = (await server.harness.conversation(id, context))!
-    const entries = async () => (await conversation.viewState(context)).value.entries
+    const entries = async () => (await conversation.context(context)).entries
     await server.harness.waitForIdle(context)
     const starts = (await entries()).filter((entry) => entry.kind === 'onboarding.start')
     expect(starts).toHaveLength(1)
@@ -153,7 +153,7 @@ it('onboards once per root with facts, choices, reading, first memories and a co
       .memories
     expect(Object.keys(memories).toSorted()).toEqual(['project-overview', 'user-instructions'])
     expect(memories['user-instructions'].body).toBe(instructions)
-    expect((await server.root.viewState(context)).value.entries).toEqual([])
+    expect((await server.root.context(context)).entries).toEqual([])
     expect((await start()).data.result).toEqual({ id })
     await (await server.harness.conversation(id, context))!.submit(
       { type: 'input', content: 'Explore a first feature' },

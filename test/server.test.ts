@@ -346,16 +346,12 @@ export default host => { host.resource('cleanup.process',()=>{
     const submitted = await server.root.submit({ type: 'input', content: 'hello' }, context)
     await submitted.wait(context)
     await server.harness.waitForIdle(context)
-    const view = await server.root.viewState(context)
-    try {
-      const messages = view.value.entries.flatMap((entry) => entry.model ?? [])
-      expect(
-        messages.some((message) => message.role === 'assistant' && message.stopReason === 'stop'),
-      ).toBe(true)
-      expect(messages.some((message) => message.role === 'toolResult')).toBe(false)
-    } finally {
-      view.dispose()
-    }
+    const view = await server.root.context(context)
+    const messages = view.entries.flatMap((entry) => entry.model ?? [])
+    expect(
+      messages.some((message) => message.role === 'assistant' && message.stopReason === 'stop'),
+    ).toBe(true)
+    expect(messages.some((message) => message.role === 'toolResult')).toBe(false)
   })
   it('scans committed submissions newest first, filtered and paged', async () => {
     const { server } = await fixture(false, undefined, true)
@@ -394,15 +390,11 @@ export default host => { host.resource('cleanup.process',()=>{
       await (
         await server.root.submit({ type: 'input', content: 'self URL' }, context)
       ).wait(context)
-      const view = await server.root.viewState(context)
-      try {
-        const system = view.value.entries.find((entry) => entry.kind === 'pi.system')?.model?.[0]
-        expect(system?.role === 'system' ? system.sections?.environment : undefined).toContain(
-          `UI: ${server.url}`,
-        )
-      } finally {
-        view.dispose()
-      }
+      const view = await server.root.context(context)
+      const system = view.entries.find((entry) => entry.kind === 'pi.system')?.model?.[0]
+      expect(system?.role === 'system' ? system.sections?.environment : undefined).toContain(
+        `UI: ${server.url}`,
+      )
       await server.root.abort(context)
     } finally {
       vi.unstubAllEnvs()
@@ -452,19 +444,15 @@ export default host => { host.resource('cleanup.process',()=>{
     ).toEqual(['queued'])
     await post(server, '/api/conversations/1/submit', { text: 'next' })
     expect((await server.harness.snapshot(InboxDoc, server.root.id, context))?.items).toEqual([])
-    const view = await server.root.viewState(context)
-    try {
-      const users = view.value.entries.flatMap((entry) =>
-        entry.model?.[0]?.role === 'user' ? [JSON.stringify(entry.model[0].content)] : [],
-      )
-      expect(users.slice(-3).map((text) => /start|queued|next/.exec(text)?.[0])).toEqual([
-        'start',
-        'queued',
-        'next',
-      ])
-    } finally {
-      view.dispose()
-    }
+    const view = await server.root.context(context)
+    const users = view.entries.flatMap((entry) =>
+      entry.model?.[0]?.role === 'user' ? [JSON.stringify(entry.model[0].content)] : [],
+    )
+    expect(users.slice(-3).map((text) => /start|queued|next/.exec(text)?.[0])).toEqual([
+      'start',
+      'queued',
+      'next',
+    ])
     await server.root.abort(context)
   })
   it('records each typed input as one user.input event with its device and never its text', async () => {
@@ -524,15 +512,14 @@ export default host => { host.resource('cleanup.process',()=>{
     ).toBeUndefined()
     await post(server, '/api/conversations/1/submit', { text: 'Return the word DONE.' })
     await server.harness.waitForIdle(context)
-    const view = await server.root.viewState(context)
-    const systems = view.value.entries.filter((entry) => entry.kind === 'pi.system')
+    const view = await server.root.context(context)
+    const systems = view.entries.filter((entry) => entry.kind === 'pi.system')
     const message = systems.at(-1)!.model![0]
     expect(message.role).toBe('system')
     if (message.role !== 'system') throw new Error('Expected system message')
     expect(Object.keys(message.sections!)).toEqual(['prompt', 'new', 'a'])
     expect(message.toolsAdded!.map((tool) => tool.name)).toEqual(['prompt', 'new', 'a'])
     const lastId = systems.at(-1)!.id
-    view.dispose()
     await server.vite.watcher.close()
     await server.close()
     servers.splice(servers.indexOf(server), 1)
@@ -540,11 +527,10 @@ export default host => { host.resource('cleanup.process',()=>{
     servers.push(reopened)
     await post(reopened, '/api/conversations/1/submit', { text: 'Return the word DONE.' })
     await reopened.harness.waitForIdle(context)
-    const next = await reopened.root.viewState(context)
-    expect(
-      next.value.entries.filter((entry) => entry.kind === 'pi.system' && entry.id > lastId),
-    ).toEqual([])
-    next.dispose()
+    const next = await reopened.root.context(context)
+    expect(next.entries.filter((entry) => entry.kind === 'pi.system' && entry.id > lastId)).toEqual(
+      [],
+    )
   })
 
   it('shares root UI snapshots and set/delete deltas across conversations and reopen', async () => {
@@ -657,7 +643,7 @@ export default host => { host.resource('cleanup.process',()=>{
     const result = await post(server, '/api/conversations/1/submit', { text: 'edit the file' })
     expect(result.status).toBe(202)
     await server.harness.waitForIdle(context)
-    const state = await server.root.viewState(context)
+    const state = await server.root.watch(context)
     let replica!: ConversationView
     await until(() => {
       replica = stream.events.find((event) => event.name === 'view')!.data as ConversationView
@@ -666,7 +652,7 @@ export default host => { host.resource('cleanup.process',()=>{
       return JSON.stringify(replica) === JSON.stringify(state.value)
     })
     expect(replica).toEqual(state.value)
-    state.dispose()
+    await state.stop()
     expect(replica.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(2)
     expect(await readFile(file, 'utf8')).toBe('after\n')
     await stream.close()

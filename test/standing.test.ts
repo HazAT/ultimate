@@ -84,7 +84,12 @@ async function fixture() {
   const reopen = async () => {
     for (const callback of openers) await callback()
   }
-  return { path, prepared, host, service, file, reopen }
+  const open = async () => {
+    host = await prepared.open()
+    opened.push(host)
+    return host
+  }
+  return { path, prepared, host, service, file, reopen, open }
 }
 
 it('lists definitions only to agents that can use them', async () => {
@@ -161,7 +166,7 @@ it('reads, saves and publishes a standing agent mark', async () => {
 })
 
 it('keeps one ownerless standing conversation, refreshes its definition and recreates deleted records', async () => {
-  const { service, host, prepared, path, file } = await fixture()
+  const { service, host, prepared, path, file, open } = await fixture()
   expect(await service.residents(ctx)).toEqual([{ name: 'x', description: 'Test' }])
   const ids = await Promise.all([service.standing('x', ctx), service.standing('x', ctx)])
   expect(ids[0]).toBe(ids[1])
@@ -189,14 +194,17 @@ it('keeps one ownerless standing conversation, refreshes its definition and recr
     '---\nname: ordinary\ndescription: Ordinary\n---\nInstructions',
   )
   await expect(service.standing('ordinary', ctx)).rejects.toThrow('Standing agents: @x')
-  // No public delete API: remove the record to exercise a stale standing index.
+  // No public delete API: remove the record between sessions, outside Pi's live record cache.
+  await host.close()
+  opened.splice(opened.indexOf(host), 1)
   const database = new DatabaseSync(prepared.database)
   database.prepare('DELETE FROM conversations WHERE id = ?').run(id)
   database.close()
+  const restored = await open()
   const recreated = await service.standing('x', ctx)
   expect(recreated).not.toBe(id)
   // Each new conversation starts once; repeats and refreshes start nothing.
-  const log = eventHost(() => host.harness, 'test').eventLog
+  const log = eventHost(() => restored.harness, 'test').eventLog
   expect((await log.recent({ events: [Started] })).map((event) => event.data)).toEqual([
     {
       id: recreated,

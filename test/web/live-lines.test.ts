@@ -24,7 +24,7 @@ const render = (live: LiveState, parked: boolean) =>
   renderToStaticMarkup(createElement(LiveLines, { live, busy: true, partial: undefined, parked }))
 
 const retrying = {
-  run: { taskId: 5, inputs: [9] },
+  run: { taskId: 5, inputs: [9], turns: 0 },
   generation: { attempt: 2, retry: { at: 999_000, error: 'overloaded' }, deferred: { pollAt: 2 } },
 } as unknown as LiveState
 
@@ -44,7 +44,7 @@ it('shows the retry and ticks its clock while not paused', () => {
 })
 
 it('counts the working clock from the run’s saved start, also for a run first seen mid-way', () => {
-  const working = { run: { taskId: 5, inputs: [9] } } as unknown as LiveState
+  const working = { run: { taskId: 5, inputs: [9], turns: 0 } } as unknown as LiveState
   const since = 1_000_000 - 95_000
   const html = renderToStaticMarkup(
     createElement(LiveLines, {
