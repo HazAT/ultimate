@@ -30,6 +30,8 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
     harness: () => opened.harness,
     conversations: () => [],
     uiState: async () => ({}),
+    metadata: Metadata,
+    doc: (kind: string) => (kind === UiState.definition.kind ? UiState : undefined),
   } as unknown as ExtensionHost
   const ctx = { host, signal: new AbortController().signal } as ActionContext
   const read = (op: string, args: JsonValue[]) => actions.read({ op, args }, ctx)
