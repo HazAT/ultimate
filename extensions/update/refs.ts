@@ -40,9 +40,9 @@ export type UpdateState = {
   /** Why Update refuses: uncommitted changes, another branch, diverged, the lander landing. */
   refused?: string
   /**
-   * The only refusal is a diverged branch, and the clone is the project this Ultimate serves: `merge` asks @ultimate to
-   * merge origin into it through a branch the lander lands. Offered when conflicts are predicted, so Update now does
-   * not run, or after a merged update whose check failed, so @ultimate fixes it.
+   * The only refusal is a diverged branch, and the clone is the project this Ultimate serves: @ultimate can
+   * merge origin into it through a branch the lander lands. The popover offers that ask when conflicts are
+   * predicted (so Update now does not run), or after a merged update whose check failed, so @ultimate fixes it.
    */
   merge?: true
   /** Why the last fetch failed; the counts are from the fetch before. */

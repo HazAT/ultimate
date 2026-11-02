@@ -491,7 +491,7 @@ function Update() {
       <>
         {busy || checking ? (
           <LoaderCircleIcon className="size-3 animate-spin" />
-        ) : state.refused && !state.merge ? (
+        ) : state.refused && !state.merge && !mergeOffered(state) ? (
           <TriangleAlertIcon className="size-3" />
         ) : (
           <ArrowDownIcon className="size-3" />

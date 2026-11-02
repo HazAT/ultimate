@@ -480,7 +480,10 @@ async function apply(
   const layers = layersOf(files.split('\n').filter(Boolean))
   // Owed while the lockfile differs from the installed one: a failed install is retried by the next update.
   const { install, installError } = await installPackages(root)
-  const checked = merged ? await checkAfterMerge(root) : undefined
+  // A merge is trusted less than a fast-forward: check it before the user is told it's done, unless the
+  // install failed — a check against stale packages answers nothing. A failed check keeps the merge —
+  // nothing resets by itself — and offers @ultimate to fix it.
+  const checked = merged && install !== 'failed' ? await checkAfterMerge(root) : undefined
   const result = {
     ok: true as const,
     from: moved.before.slice(0, 7),
@@ -555,12 +558,13 @@ export const actions = {
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
+        // The fix names the tip as it is now, not as the failed check left it in memory.
         type: 'input',
         content: failed?.fixable
-          ? fixInput(latest.root, latest.branch ?? 'main', failed.to, failed.checkError)
+          ? fixInput(latest.root, latest.branch ?? 'main', head, failed.checkError)
           : mergeInput(latest.branch!, latest.root, latest.ahead ?? 0, latest.behind),
-        // One ask per range, or per merged commit: a second click while @ultimate is on it adds nothing.
-        requestId: failed ? `update-fix:${failed.to}` : `update-merge:${head}..${remoteHead}`,
+        // One ask per range, or per tip: a second click while @ultimate is on it adds nothing.
+        requestId: failed ? `update-fix:${head}` : `update-merge:${head}..${remoteHead}`,
         whenBusy: 'followUp',
       },
       context,

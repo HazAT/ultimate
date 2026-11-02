@@ -58,7 +58,7 @@ it('merges when git cannot predict (before 2.38): a restore ref first, stale one
   expect(calls.at(-1)).toBe(`diff --name-only ${HEAD} origin/main -- pnpm-lock.yaml`)
 })
 
-it('aborts a conflicting merge, refusing with nothing changed', async () => {
+it('aborts a conflicting merge, refusing with nothing changed and no restore ref', async () => {
   const { git, calls } = stub({
     'rev-parse HEAD': HEAD,
     'merge --no-edit origin/main': new Error('git merge failed: conflict'),
@@ -70,4 +70,18 @@ it('aborts a conflicting merge, refusing with nothing changed', async () => {
     'merge --no-edit origin/main',
     'merge --abort',
   ])
+  // Nothing changed, so there is nothing to restore: the ref the merge wrote is gone again.
+  expect(calls.some((call) => call.startsWith(`update-ref -d ${RESTORE_PREFIX}`))).toBe(true)
+})
+
+it("keeps the restore ref when a conflicting merge's abort fails too", async () => {
+  const { git, calls } = stub({
+    'rev-parse HEAD': HEAD,
+    'merge --no-edit origin/main': new Error('git merge failed: conflict'),
+    'merge --abort': new Error('git merge failed: abort'),
+  })
+  await expect(mergeUpstream(git, false, standing)).rejects.toThrow(
+    /conflicted; nothing was changed/,
+  )
+  expect(calls.some((call) => call.startsWith(`update-ref -d ${RESTORE_PREFIX}`))).toBe(false)
 })

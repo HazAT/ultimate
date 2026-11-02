@@ -36,7 +36,7 @@ One case restarts by itself: an extension's server facet that fails to load (`ho
 1. Fetches origin.
 2. Fast-forwards the default branch with `git merge --ff-only` — or, when the branch has commits of its own besides origin's new ones, merges them: a restore ref first (`refs/ultimate-update/pre-<timestamp>-<sha>`, so `git reset --hard <ref>` undoes the merge; pruned once older than 30 days, and never a tag, so `git push --tags` cannot publish it), then `git merge --no-edit`, which on a conflict is aborted back to where the branch stood. Before merging, `git merge-tree --write-tree` predicts the merge without touching the worktree: a predicted conflict refuses without changing anything (on git before 2.38 nothing can be predicted, and the merge is tried and stopped instead).
 3. Runs `pnpm install --frozen-lockfile` when `pnpm-lock.yaml` differs from the installed `node_modules/.pnpm/lock.yaml`. A failed install is retried by the next update.
-4. After a merge, runs `pnpm check` on the result. A failed check keeps the merge — nothing resets by itself — and the popover shows the check's output, the restore ref's undo command, and (where the clone is the project) **Fix with @ultimate**.
+4. After a merge, runs `pnpm check` on the result (skipped when the install failed: a check against stale packages says nothing). A failed check keeps the merge — nothing resets by itself — and the popover shows the check's output, the restore ref's undo command, and (where the clone is the project) **Fix with @ultimate**.
 
 It refuses, and changes nothing, when:
 

@@ -90,9 +90,17 @@ export async function mergeUpstream(
   try {
     await git('merge', '--no-edit', state.remote)
   } catch {
-    // Back where the merge started: nothing changed. The restore ref stays for a redo by hand; a failed
-    // abort leaves the tree torn but checked, and the next update refuses the dirty clone instead.
-    await git('merge', '--abort').catch(() => undefined)
+    // Back where the merge started: nothing changed, and the restore ref with it — unless the abort
+    // itself failed, when the tree is torn and the ref stays as the way back to where it stood.
+    let undone = true
+    try {
+      await git('merge', '--abort')
+    } catch {
+      undone = false
+    }
+    if (undone)
+      // A ref that cannot be deleted only outlives its aborted merge.
+      await git('update-ref', '-d', restore).catch(() => undefined)
     throw new Refusal(
       `the merge of ${state.remote} conflicted; nothing was changed. Redo it by hand, or ask @ultimate to merge it on a branch`,
     )
