@@ -83,7 +83,7 @@ export function useImagePaste({
     }
   }
 
-  return { paste, drop, reading, pending }
+  return { paste, drop, attach: add, reading, pending }
 }
 
 /** `file` fitted to the attachment limits, as base64. */

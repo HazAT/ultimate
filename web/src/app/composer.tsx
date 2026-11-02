@@ -1,6 +1,12 @@
 import type { AgentState, InboxItem } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
-import { CornerDownRightIcon, ListPlusIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
+import {
+  CornerDownRightIcon,
+  ListPlusIcon,
+  LoaderCircleIcon,
+  PaperclipIcon,
+  XIcon,
+} from 'lucide-react'
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePreviews, useImagePaste } from '@/components/image-paste'
 import type { KeyboardEvent, ReactNode } from 'react'
@@ -25,7 +31,7 @@ import {
 } from '../sdk/hooks.ts'
 import { isMac } from '../sdk/keys.ts'
 import { touchKeyboard } from '../sdk/viewport.ts'
-import type { ModelsResponse } from '../../../shared/protocol.ts'
+import { imageMimeTypes, type ModelsResponse } from '../../../shared/protocol.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
 import { column } from './layout.ts'
@@ -262,7 +268,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
-  const { paste, drop, reading, pending } = useImagePaste({
+  const { paste, drop, attach, reading, pending } = useImagePaste({
     images,
     setImages,
     setError,
@@ -417,6 +423,9 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
+          // Chrome on Android offers a keyboard's images (Gboard's screenshot chip, clipboard bar) only to a rich editor
+          // and delivers them as a paste with the file; a plain textarea gets nothing.
+          style={touchKeyboard() ? { WebkitUserModify: 'read-write' } : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}
@@ -447,6 +456,30 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
                   </span>
                 ) : null)}
             </span>
+            <label
+              aria-label="Attach images"
+              className={cn(
+                'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
+                (loading || sending || reading) &&
+                  'pointer-events-none opacity-50 hover:bg-transparent',
+              )}
+              title="Attach images"
+            >
+              <PaperclipIcon className="size-4" />
+              <input
+                accept={imageMimeTypes.join(',')}
+                className="sr-only"
+                disabled={loading || sending || reading}
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? [])
+                  event.target.value = ''
+                  // oxlint-disable-next-line typescript/no-floating-promises -- attach reports failures in the draft's error state.
+                  void attach(files)
+                }}
+                type="file"
+              />
+            </label>
             {!target && <Slot name="composer.actions" variant="inline" />}
             {busy && (
               <PromptInputSubmit
