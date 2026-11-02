@@ -1,7 +1,7 @@
 import type { AgentState, InboxItem } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import { CornerDownRightIcon, ListPlusIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePreviews, useImagePaste } from '@/components/image-paste'
 import type { KeyboardEvent, ReactNode } from 'react'
 import {
@@ -268,6 +268,39 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     setError,
     disabled: () => loading || draft.get().sending,
   })
+  // The shown conversation's composer also takes images dropped anywhere else on the page, and lights up while a file is
+  // dragged over it.
+  const [dragging, setDragging] = useState(false)
+  const dropRef = useRef(drop)
+  dropRef.current = drop
+  useEffect(() => {
+    if (scoped !== undefined) return undefined
+    let depth = 0
+    const files = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
+    const enter = (event: DragEvent) => {
+      if (files(event)) setDragging(++depth > 0)
+    }
+    const leave = (event: DragEvent) => {
+      if (files(event)) setDragging(--depth > 0)
+    }
+    const dropped = (event: DragEvent) => {
+      depth = 0
+      setDragging(false)
+      const on = event.target instanceof Element ? event.target : null
+      // Every composer's editor takes its own drops, a side chat's too.
+      if (!files(event) || on?.closest('[data-ui="composer"] textarea')) return
+      // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
+      void dropRef.current(event)
+    }
+    document.addEventListener('dragenter', enter)
+    document.addEventListener('dragleave', leave)
+    document.addEventListener('drop', dropped)
+    return () => {
+      document.removeEventListener('dragenter', enter)
+      document.removeEventListener('dragleave', leave)
+      document.removeEventListener('drop', dropped)
+    }
+  }, [scoped])
   const models = useModels()
   const key = draft.key
   useEffect(() => {
@@ -367,6 +400,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     >
       <Inbox items={inbox} />
       <PromptInput
+        className={cn(dragging && 'ring-2 ring-brand/60')}
         onSubmit={(event) => {
           event.preventDefault()
           // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.

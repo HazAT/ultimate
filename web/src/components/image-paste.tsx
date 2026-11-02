@@ -47,8 +47,8 @@ export function useImagePaste({
   }
 
   /** Attach the images dropped on the editor; the page itself never navigates to a dropped file (`main.tsx`). */
-  async function drop(event: DragEvent<HTMLTextAreaElement>) {
-    const files = Array.from(event.dataTransfer.files).filter((file) =>
+  async function drop(event: DragEvent<HTMLElement> | globalThis.DragEvent) {
+    const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
       file.type.startsWith('image/'),
     )
     if (files.length) await add(files)
@@ -116,17 +116,23 @@ export function ImagePreviews({
   return images.length > 0 ? (
     <div className={cn('flex flex-wrap gap-2 px-3 pt-3', className)}>
       {images.map((image, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Pasted images have no id and may repeat.
-        <div className="relative max-w-36" key={index}>
+        <div
+          className="relative w-38 rounded-md border border-border/80 bg-terminal p-1"
+          // oxlint-disable-next-line react/no-array-index-key -- Pasted images have no id and may repeat.
+          key={index}
+        >
           <ToolImage
             alt={`Pasted image ${index + 1}`}
-            className="max-w-36 [&_img]:max-h-24"
+            className="flex h-24 w-full items-center justify-center border-0 [&_img]:max-h-24"
             image={image}
           />
           {image.note && (
-            <p className="mt-1 text-[11px] leading-4 text-muted-foreground" title={image.note}>
+            <p
+              className="mt-1 pb-0.5 text-center text-[11px] leading-4 text-muted-foreground"
+              title={image.note}
+            >
               {image.note.split(' · ').map((line) => (
-                <span className="block" key={line}>
+                <span className="block whitespace-nowrap" key={line}>
                   {line}
                 </span>
               ))}
