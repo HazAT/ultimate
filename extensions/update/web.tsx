@@ -20,7 +20,7 @@ import {
   useSystem,
   useUltimate,
 } from '@/sdk'
-import { itemOf } from './item.ts'
+import { itemOf, mergeOffered } from './item.ts'
 import { CheckAction, MergeAction, StateAction, UpdateAction } from './refs.ts'
 import type { Layers, UpdateResult, UpdateState } from './refs.ts'
 
@@ -118,6 +118,24 @@ function CheckNow({ checking, onClick }: { checking: boolean; onClick: () => voi
   )
 }
 
+/** The popover's verdict on a diverged clone, by what merge-tree predicted. */
+function Diverged({ state }: { state: UpdateState }) {
+  const ahead = state.ahead ?? 0
+  return (
+    <div data-update-diverged>
+      {state.branch ?? 'main'} has {ahead} {ahead === 1 ? 'commit' : 'commits'} of its own and{' '}
+      {state.behind} new upstream.{' '}
+      {state.conflicts === true
+        ? state.merge
+          ? 'Merging them would conflict: @ultimate can merge origin into them on a branch and land it once the checks pass.'
+          : 'Merging them would conflict; merge them by hand.'
+        : state.conflicts === false
+          ? 'Update now merges them; no conflicts expected.'
+          : 'Update now merges them and stops on any conflict.'}
+    </div>
+  )
+}
+
 function Popup({
   state,
   busy,
@@ -165,7 +183,8 @@ function Popup({
         ) : updated ? (
           <>
             <div>
-              <span className="text-success">Updated</span> {updated.from}..
+              <span className="text-success">{updated.merged ? 'Merged' : 'Updated'}</span>{' '}
+              {updated.from}..
               {updated.to} · {updated.commits} {updated.commits === 1 ? 'commit' : 'commits'}
               {updated.install === 'done' && ' · pnpm install done'}
             </div>
@@ -174,6 +193,35 @@ function Popup({
               <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-error">
                 {updated.installError}
               </pre>
+            )}
+            {updated.check === 'failed' && (
+              <div className="space-y-2">
+                <div className="text-warning">
+                  pnpm check failed after the merge — nothing was reset; undo it or fix it:
+                </div>
+                {updated.checkError && (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-error">
+                    {updated.checkError}
+                  </pre>
+                )}
+                {updated.fixable && (
+                  <Button
+                    className="h-7 font-sans text-[12px]"
+                    data-update-fix
+                    disabled={busy}
+                    onClick={merge}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {busy ? 'Asking…' : 'Fix with @ultimate'}
+                  </Button>
+                )}
+              </div>
+            )}
+            {updated.restore && (
+              <div className="break-all text-muted-foreground">
+                Undo: git reset --hard {updated.restore}
+              </div>
             )}
           </>
         ) : (
@@ -233,14 +281,11 @@ function Popup({
               : 'Packages or server code changed after this Ultimate started: restart it to load them.'}
           </div>
         )}
-        {state.merge && !updated ? (
-          <div data-update-diverged>
-            {state.branch ?? 'main'} also has {state.ahead}{' '}
-            {state.ahead === 1 ? 'commit' : 'commits'} of its own, so it can't fast-forward.
-            @ultimate can merge origin into them on a branch and land it once the checks pass.
-          </div>
+        {state.diverged && !updated ? (
+          <Diverged state={state} />
         ) : (
           state.refused &&
+          !state.diverged &&
           !updated && (
             <div className="flex items-start gap-1.5 text-warning">
               <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
@@ -321,6 +366,17 @@ function Action({
             {restart.busy ? 'Restarting…' : 'Restart now'}
           </Button>
         )
+      ) : mergeOffered(state) ? (
+        <Button
+          className="h-7 font-sans text-[12px]"
+          data-update-now
+          disabled={busy}
+          onClick={run}
+          size="sm"
+          variant="outline"
+        >
+          {busy ? 'Updating…' : 'Update now'}
+        </Button>
       ) : state.merge ? (
         <Button
           className="h-7 font-sans text-[12px]"
@@ -453,7 +509,7 @@ function Update() {
               ? 'text-muted-foreground/70 hover:text-foreground'
               : busy
                 ? 'text-brand'
-                : !state.behind || (state.refused && !state.merge)
+                : !state.behind || (state.refused && !state.merge && !mergeOffered(state))
                   ? 'text-warning'
                   : 'text-brand',
           )}
