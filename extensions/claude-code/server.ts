@@ -79,15 +79,20 @@ export default function claudeCode(host: ExtensionHost) {
   const withEnv = <O extends { env?: Record<string, string | undefined>; sessionId?: string }>(
     options: O | undefined,
   ) => {
+    let extra: Record<string, string> | undefined
     try {
       const sessionId = options?.sessionId
       const env: ClaudeCodeEnvService | undefined = host.want(ClaudeCodeEnv)
-      const extra = env?.env(sessionId === undefined ? undefined : shared.sessions.get(sessionId))
-      return extra ? ({ ...options, env: { ...options?.env, ...extra } } as O) : options
+      extra = env?.env(sessionId === undefined ? undefined : shared.sessions.get(sessionId))
     } catch (error) {
       host.notice(`Claude Code environment lookup failed, using the default: ${String(error)}`)
-      return options
     }
+    const env: Record<string, string | undefined> = {
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY ?? '1',
+      ...options?.env,
+      ...extra,
+    }
+    return { ...options, env } as O
   }
   const track = (response: ReturnType<typeof upstream.streamSimple>) => {
     try {
