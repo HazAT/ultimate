@@ -1,6 +1,6 @@
 // Adapted from vercel/ai-elements packages/elements/src/message.tsx (Apache-2.0, see LICENSE).
-// Changes: `from` is a plain role, no branches or actions; only the code plugin; denser typography; links go through
-// the extensions' `link` renderers.
+// Changes: `from` is a plain role, no branches or actions; the code and Mermaid plugins; denser typography; links go
+// through the extensions' `link` renderers.
 import { cn } from 'cn'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
 import { memo, useMemo } from 'react'
@@ -13,10 +13,11 @@ import {
 } from 'streamdown'
 import type { CustomRendererProps, ExtraProps } from 'streamdown'
 import { ExtensionBoundary } from '../../app/boundary.tsx'
-import { useExtensions } from '../../sdk/hooks.ts'
+import { useExtensions, useStore } from '../../sdk/hooks.ts'
 import { codeBlockLanguages, codeBlockRenderers, linkRenderers } from '../../sdk/registry.ts'
 import { codePlugin } from './code-block.tsx'
 import { mentionHref, parseMention, remarkMentions, splitMentions } from './mentions.ts'
+import { diagramPlugin, MermaidSource } from './mermaid.tsx'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & { from: 'user' | 'assistant' }
 
@@ -108,20 +109,28 @@ function ExtensionCodeBlock({ code, language, isIncomplete }: CustomRendererProp
     core,
   )
 }
-const controls = { code: { copy: true, download: false }, table: false, mermaid: false } as const
+const diagramOptions = { errorComponent: MermaidSource }
+const controls = {
+  code: { copy: true, download: false },
+  table: false,
+  mermaid: { copy: true, download: false, fullscreen: true, panZoom: false },
+} as const
 
 /** Markdown that may still be streaming. */
 export const MessageResponse = memo(
   ({ className, ...props }: ComponentProps<typeof Streamdown>) => {
     const languages = codeBlockLanguages(useExtensions()).join(' ')
+    const theme = useStore((state) => state.ui.theme)
+    // A new diagram plugin renders every diagram again, in the theme's colours.
     const plugins = useMemo(
       () => ({
         code: codePlugin,
+        mermaid: diagramPlugin(theme),
         renderers: languages
           ? [{ language: languages.split(' '), component: ExtensionCodeBlock }]
           : [],
       }),
-      [languages],
+      [languages, theme],
     )
     return (
       <Streamdown
@@ -129,6 +138,7 @@ export const MessageResponse = memo(
         components={components}
         controls={controls}
         lineNumbers={false}
+        mermaid={diagramOptions}
         plugins={plugins}
         remarkPlugins={remarkPlugins}
         shikiTheme={codePlugin.getThemes()}
