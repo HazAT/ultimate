@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import mcp, { actions, secrets } from '../extensions/mcp/server.ts'
 import { actions as secretActions } from '../extensions/secrets/server.ts'
 import { writeSecret } from '../extensions/secrets/store.ts'
+import type { McpService } from '../extensions/mcp/api.ts'
 import type { McpServerStatus } from '../extensions/mcp/refs.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import { removeTemp, temp, until } from './helpers.ts'
@@ -86,12 +87,14 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     }),
   )
   const closers: (() => Promise<void>)[] = []
+  let service: McpService | undefined
   const host = {
     userHome: root,
     projectRoot: root,
     projectSettings: async () => ({}),
     onOpen: (callback: () => Promise<void>) => void callback(),
     onClose: (callback: () => Promise<void>) => closers.push(callback),
+    implement: (_token: unknown, value: McpService) => (service = value),
   } as unknown as ExtensionHost
   const [tool] = (await mcp(host)).tools!
   cleanup.push(async () => {
@@ -117,6 +120,14 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: true,
     output: [{ text: expect.stringContaining('MCP server locked is failed') }],
   })
+
+  // Other extensions call through the Mcp service and get the raw result.
+  expect(await service!.call('echo', 'echo', { text: 'raw' })).toEqual({
+    content: [{ type: 'text', text: 'echo: raw' }],
+    isError: false,
+  })
+  await expect(service!.call('locked', 'echo')).rejects.toThrow('MCP server locked is failed')
+  await expect(service!.call('nope', 'echo')).rejects.toThrow('No MCP server named nope')
 })
 
 it('declares each ${NAME} of the configured servers as a secret, missing until it is written', async () => {
@@ -143,6 +154,7 @@ it('declares each ${NAME} of the configured servers as a secret, missing until i
     }),
     onOpen: (callback: () => Promise<void>) => void callback(),
     onClose: (callback: () => Promise<void>) => closers.push(callback),
+    implement: () => {},
     modelRuntime: { getProviderAuthStatus: () => ({ configured: false }) },
   } as unknown as ExtensionHost
   await mcp(host)

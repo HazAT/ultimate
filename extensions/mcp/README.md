@@ -36,6 +36,19 @@ Every agent that inherits tools gets `mcp`, and @ultimate lists it in `agents/ul
 
 Calls are `replay: 'unsafe'`: a call interrupted by a restart is reported as interrupted, never sent again. A call times out after 10 minutes without progress from the server.
 
+## Service
+
+Other extensions call MCP tools through the `Mcp` service in `api.ts`, without an agent: `want` it (the extension may be disabled), then `call(server, tool, args?, { signal }?)` returns the server's raw `CallToolResult` (`content`, `structuredContent`, `isError`).
+
+```ts
+import { Mcp } from '../mcp/api.ts'
+
+const mcp = host.want(Mcp)
+const result = await mcp?.call('jira', 'search_issues', { jql: 'assignee = currentUser()' })
+```
+
+It shares the tool's call path: it waits for a connect in progress, times out the same way and reconnects a broken connection. It throws when the server is unknown or not connected, or the call fails; a tool error is a result with `isError: true`.
+
 ## Lifecycle
 
 Servers connect when the server opens, each on its own: a failing one never blocks another or a turn. A failure or a dropped connection retries after 5 s, doubling up to 5 minutes. The servers close (stdio: the whole process group) when the extension reloads or Ultimate stops. A server's `tools/list_changed` notification refreshes its tool list.

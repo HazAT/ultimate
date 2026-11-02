@@ -22,6 +22,7 @@ import { readSecret } from '../../lib/secrets.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { Mcp } from './api.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 
@@ -338,6 +339,52 @@ export default async function mcp(host: ExtensionHost) {
   })
 
   const names = [...servers.keys()]
+
+  /** The server once its current connect settles; throws when it is unknown or not connected. */
+  async function connected(name: string) {
+    const server = servers.get(name)
+    if (!server) throw new Error(`No MCP server named ${name}. Configured: ${names.join(', ')}`)
+    await server.connecting
+    if (server.state !== 'connected' || !server.client)
+      throw new Error(`MCP server ${name} is ${server.state}: ${server.error ?? 'not connected'}`)
+    return server
+  }
+
+  /** Calls one tool for the `mcp` tool and the Mcp service; throws when the call fails. */
+  async function call(
+    name: string,
+    tool: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+  ) {
+    const server = await connected(name)
+    const client = server.client!
+    try {
+      return await client.callTool(tool, args, {
+        ...(signal ? { signal } : {}),
+        timeoutMs: CALL_TIMEOUT,
+        // Asking for progress lets each notification renew the timeout.
+        onProgress: () => {},
+      })
+    } catch (error) {
+      // A JSON-RPC error, a timeout or a cancel leaves the connection usable. Anything else (an HTTP
+      // failure, an expired session, a closed transport) does not: connect again, never resend the call.
+      const broken = !(
+        error instanceof McpError ||
+        error instanceof McpTimeoutError ||
+        error instanceof McpAbortError
+      )
+      // restart never rejects; the server's state shows how it went.
+      // oxlint-disable-next-line typescript/no-floating-promises -- see above.
+      if (broken && server.client === client) void restart(server)
+      throw new Error(`MCP ${name}/${tool} failed: ${redact(server, error)}`, { cause: error })
+    }
+  }
+
+  host.implement(Mcp, {
+    call: (server, tool, args, options) => call(server, tool, args ?? {}, options?.signal),
+  })
+
   return defineExtension({
     name: 'mcp',
     tools: names.length
@@ -358,36 +405,13 @@ export default async function mcp(host: ExtensionHost) {
               ),
             }),
             async execute({ server: name, tool, args }, _api, context) {
-              const server = servers.get(name)
-              if (!server)
-                return failure(`No MCP server named ${name}. Configured: ${names.join(', ')}`)
-              await server.connecting
-              if (server.state !== 'connected' || !server.client)
-                return failure(
-                  `MCP server ${name} is ${server.state}: ${server.error ?? 'not connected'}`,
-                )
-              if (!tool) return { output: [{ type: 'text', text: listing(server) }] }
-              const client = server.client
               try {
-                const result = await client.callTool(tool, args ?? {}, {
-                  signal: context.abortSignal,
-                  timeoutMs: CALL_TIMEOUT,
-                  // Asking for progress lets each notification renew the timeout.
-                  onProgress: () => {},
-                })
+                if (!tool)
+                  return { output: [{ type: 'text', text: listing(await connected(name)) }] }
+                const result = await call(name, tool, args ?? {}, context.abortSignal)
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
-                // A JSON-RPC error, a timeout or a cancel leaves the connection usable. Anything else (an HTTP
-                // failure, an expired session, a closed transport) does: connect again, never resend the call.
-                const broken = !(
-                  error instanceof McpError ||
-                  error instanceof McpTimeoutError ||
-                  error instanceof McpAbortError
-                )
-                // restart never rejects; the server's state shows how it went.
-                // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-                if (broken && server.client === client) void restart(server)
-                return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
+                return failure(error instanceof Error ? error.message : String(error))
               }
             },
           }),
