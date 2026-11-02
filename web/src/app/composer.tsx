@@ -303,7 +303,12 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         if (previous) input = mergedSteer(previous, input)
         // Sending means following the run from here, wherever the reader had scrolled to.
         events.emit('ultimate:sent', { conversationId: id })
-        await api.submit(input.text, mode, id, input.images)
+        await api.submit(
+          input.text,
+          mode,
+          id,
+          input.images.map(({ data, mimeType }) => ({ data, mimeType })),
+        )
       }
       clearDraft(draft, submitted)
       if (draft.get().images === submitted.images) draft.set({ images: [] })
