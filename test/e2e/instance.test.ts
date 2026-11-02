@@ -420,7 +420,9 @@ it('lands a preview submission on its own branch, never the previewed branch or 
     expect(await git(f.source, 'rev-parse', target)).toBe(landed)
     expect(await git(f.source, 'rev-parse', main.workspace.branch)).toBe(before)
     expect(await git(remote, 'for-each-ref')).toBe('')
-    await f.run({ action: 'stop', id: preview.id })
+    expect(await f.run({ action: 'stop', id: preview.id })).toBe(
+      JSON.stringify({ stopped: preview.id }),
+    )
     expect(await git(f.source, 'branch', '--list', target)).toBe('')
   } finally {
     await model.close()
