@@ -355,7 +355,8 @@ export default function prompt(host: ExtensionHost) {
       }),
       section('environment', (input) => {
         const cwd = input.env?.cwd ?? input.agent.cwd ?? host.projectRoot
-        return `Work checkout (effective cwd): ${cwd}\nHost project: ${host.projectRoot}\nRunning Ultimate host: ${host.ultimateRoot}\nUI: ${host.system().process.url} (shared host)\nDirect project edits to the effective cwd. Host-scoped config and extensions remain loaded from the host project and Ultimate clone; edits in a separate checkout do not hot-reload the running host.`
+        const os = process.platform === 'darwin' ? 'macOS' : process.platform
+        return `OS: ${os} ${process.arch}\nWork checkout (effective cwd): ${cwd}\nHost project: ${host.projectRoot}\nRunning Ultimate host: ${host.ultimateRoot}\nUI: ${host.system().process.url} (shared host)\nDirect project edits to the effective cwd. Host-scoped config and extensions remain loaded from the host project and Ultimate clone; edits in a separate checkout do not hot-reload the running host.`
       }),
       section('cwd', (input) => input.env?.cwd ?? input.agent.cwd ?? host.projectRoot),
     ],
