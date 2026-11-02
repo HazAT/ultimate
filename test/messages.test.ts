@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
@@ -225,7 +225,7 @@ async function fixture(
         defineTool({
           name: 'hold',
           description: 'Hold the current run',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           // Waiting has no side effects; replay simply waits on the same test gate.
           replay: 'safe',
           async execute(_input, _api, ctx) {

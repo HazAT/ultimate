@@ -1,4 +1,4 @@
-import { Type } from 'typebox'
+import { arr, int, obj, opt, str, unknown } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -53,30 +53,30 @@ export default function parallel(host: ExtensionHost) {
         replay: 'safe',
         description:
           "Search the public web with Parallel's Search API. Returns ranked pages with titles, URLs, publication dates, and LLM-optimized excerpts. Use this to discover sources or find current information. For a known public webpage, use web_fetch instead. Output is limited to 50KB or 2,000 lines.",
-        parameters: Type.Object({
-          query: Type.String({
+        parameters: obj({
+          query: str({
             minLength: 1,
             maxLength: 5000,
             description:
               'A self-contained description of what to find on the web. Include the key topic, desired facts, and any source or freshness preferences.',
           }),
-          searchQueries: Type.Optional(
-            Type.Array(Type.String({ minLength: 1, maxLength: 200 }), {
+          searchQueries: opt(
+            arr(str({ minLength: 1, maxLength: 200 }), {
               minItems: 1,
               maxItems: 5,
               description:
                 'Optional concise keyword queries (2-3 is best). Use diverse terms and angles rather than full sentences.',
             }),
           ),
-          maxResults: Type.Optional(
-            Type.Integer({
+          maxResults: opt(
+            int({
               minimum: 1,
               maximum: 20,
               description: 'Maximum number of results. Defaults to 10.',
             }),
           ),
-          afterDate: Type.Optional(
-            Type.String({
+          afterDate: opt(
+            str({
               pattern: '^\\d{4}-\\d{2}-\\d{2}$',
               description: 'Only include content published on or after this date (YYYY-MM-DD).',
             }),
@@ -143,12 +143,12 @@ export default function parallel(host: ExtensionHost) {
         },
         description:
           "Fetch one or more known public webpages with Parallel's Extract API and return clean, LLM-optimized markdown. Handles JavaScript-rendered pages and PDFs. Use an objective to focus the returned excerpts. Do not use for raw files, APIs, JSON feeds, or localhost; fetch those directly with curl. Output is limited to 50KB or 2,000 lines.",
-        parameters: Type.Object({
-          url: Type.Any({
+        parameters: obj({
+          url: unknown({
             description: 'A public webpage URL or an array of up to 20 public webpage URLs.',
           }),
-          objective: Type.Optional(
-            Type.String({
+          objective: opt(
+            str({
               minLength: 1,
               maxLength: 5000,
               description: 'What information to prioritize. Omit to retrieve general page content.',

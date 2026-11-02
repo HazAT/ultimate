@@ -66,7 +66,7 @@ export default (host) => {
   return defineExtension({ name: 'delta' })
 }`,
   tooler: `${tokens}
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 export default (host) => {
   const delta = host.need(Delta)
   return defineExtension({
@@ -74,7 +74,7 @@ export default (host) => {
     tools: [defineTool({
       name: 'probe',
       description: 'Calls delta',
-      parameters: Type.Object({}),
+      parameters: obj({}),
       execute: async (_args, api, ctx) => {
         await api.commit(async () => delta.note({ tool: true }), ctx)
         return { output: [{ type: 'text', text: 'probed' }] }

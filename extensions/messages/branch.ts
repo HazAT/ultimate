@@ -1,5 +1,5 @@
 /** The `branch` tool: start a lineage branch and send it its first message. */
-import { Type } from 'typebox'
+import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -16,12 +16,12 @@ export const branchTool = (host: ExtensionHost) =>
     deferred: true,
     description:
       "Start a lineage branch. Its answer returns to you as a reply. Give it a title: one short line naming the work (at most 60 characters), shown in the sidebar and the tally until its summary renames it; without one, the prompt's first 80 characters name it.",
-    parameters: Type.Object({
-      prompt: Type.String({ minLength: 1 }),
-      title: Type.Optional(Type.String({ minLength: 1, maxLength: 60 })),
-      root: Type.Optional(Type.Number()),
-      isolated: Type.Optional(Type.Boolean()),
-      images: Type.Optional(imagesParameter),
+    parameters: obj({
+      prompt: str({ minLength: 1 }),
+      title: opt(str({ minLength: 1, maxLength: 60 })),
+      root: opt(num()),
+      isolated: opt(bool()),
+      images: opt(imagesParameter),
     }),
     // Lineage atomically deduplicates the fork; Sent deduplicates its first message.
     replay: 'safe',

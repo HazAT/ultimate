@@ -1,7 +1,7 @@
 import type { JsonValue } from '@earendil-works/chord'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type } from 'typebox'
+import { obj, oneOf, opt, str } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
@@ -228,10 +228,10 @@ export default function workspaceExtension(host: ExtensionHost) {
         name: 'workspace',
         description:
           'Inspect your workspace and source tips, or submit your clean, verified tip to the lander (submit requires divergence from the original request).',
-        parameters: Type.Object({
-          action: Type.Union([Type.Literal('status'), Type.Literal('submit')]),
-          divergence: Type.Optional(
-            Type.String({
+        parameters: obj({
+          action: oneOf(['status', 'submit']),
+          divergence: opt(
+            str({
               description:
                 "Required for submit. How the delivered result differs from what was originally asked: new agreements, a different approach or library, changed scope. Say 'None' when it matches.",
             }),

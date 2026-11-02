@@ -1,7 +1,7 @@
 import { until } from './helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import { createModels } from '@earendil-works/pi-ai/models'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -171,7 +171,7 @@ async function fixture(
         defineTool({
           name: 'hold',
           description: 'Hold a run',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async (_args, _api, ctx) => {
             entered = true
             await awaitWithContext(hold.promise, ctx)

@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { awaitWithContext } from '@earendil-works/chord/context'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -36,7 +36,7 @@ export default function self(host: ExtensionHost) {
         name: 'restart',
         description:
           'Restart the shared Ultimate host after authorized changes to server/ or shared/. Land an isolated workspace into the running clone first.',
-        parameters: Type.Object({}),
+        parameters: obj({}),
         // The target generation is memoized before the swap, so replay reports it without restarting again.
         replay: 'safe',
         async execute(_args, api, context): Promise<ToolExecutionResult> {

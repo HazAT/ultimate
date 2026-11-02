@@ -5,7 +5,7 @@ import {
   fauxToolCall,
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
-import { Type } from 'typebox'
+import { num, obj, opt, str } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId, ToolExecutionResult } from '@earendil-works/pi-durable'
@@ -217,19 +217,19 @@ it('traces a tool a codemode script calls, and its service call, inside the code
     [
       'trace-probe',
       `import { defineTool } from '@earendil-works/pi-durable'
-      import { Type } from 'typebox'
+      import { obj } from '@earendil-works/pi-schema'
       ${token}
       export default (host) => {
         const echo = host.need(Echo)
         return { name: 'trace-probe', tools: [defineTool({
           name: 'probe',
           description: 'Echoes through a service',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async () => ({ output: [{ type: 'text', text: echo.echo('probed') }] }),
         }), defineTool({
           name: 'outer',
           description: 'Runs a codemode script as a Pi nested call',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async (_args, api, ctx) => {
             const result = await api.executeTool('codemode', { code: 'return await tools.probe({})' }, ctx)
             return { output: [{ type: 'text', text: JSON.stringify(result.details?.value ?? result) }] }
@@ -530,7 +530,7 @@ it('composes read and bash with private nested results and final JSON details', 
           ...defineTool({
             name: 'structured',
             description: 'Structured test',
-            parameters: Type.Object({ answer: Type.Number() }),
+            parameters: obj({ answer: num() }),
             execute: async ({ answer }) => ({
               structuredContent: { answer },
               output: [{ type: 'text', text: 'private fallback' }],
@@ -580,7 +580,7 @@ it('composes read and bash with private nested results and final JSON details', 
         defineTool({
           name: 'rendezvous',
           description: 'Wait for both calls',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async () => {
             if (++entered === 2) release()
             await barrier
@@ -826,7 +826,7 @@ it.each([
         defineTool({
           name: 'subagent',
           description: 'Fake child wait',
-          parameters: Type.Object({ action: Type.String(), id: Type.Optional(Type.Number()) }),
+          parameters: obj({ action: str(), id: opt(num()) }),
           execute: async ({ id }): Promise<ToolExecutionResult> =>
             id === 1
               ? {
@@ -841,7 +841,7 @@ it.each([
         defineTool({
           name: 'effect',
           description: 'Record a side effect',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async () => {
             effects++
             return { output: [{ type: 'text', text: 'effect' }] }
@@ -905,7 +905,7 @@ it('yields Promise.all, cancels pending host work, and preserves other waiting c
         defineTool({
           name: 'subagent',
           description: 'Fake parallel wait',
-          parameters: Type.Object({ action: Type.String(), id: Type.Number() }),
+          parameters: obj({ action: str(), id: num() }),
           execute: async ({ id }, _api, nestedContext) => {
             rendezvous()
             if (id === 41) {
@@ -931,7 +931,7 @@ it('yields Promise.all, cancels pending host work, and preserves other waiting c
         defineTool({
           name: 'effect',
           description: 'Normal cancellable tool',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           execute: async (_args, _api, nestedContext) => {
             rendezvous()
             await new Promise<void>((_resolve, reject) => {

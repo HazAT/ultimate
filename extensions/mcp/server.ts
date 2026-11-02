@@ -4,7 +4,7 @@
  */
 import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Type } from 'typebox'
+import { map, obj, opt, str, unknown } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import {
@@ -128,10 +128,10 @@ async function configured(host: ExtensionHost) {
   ]
   const servers = new Map<string, Server>()
   for (const [source, settings] of layers) {
-    const map = settings.mcpServers
-    if (map === undefined) continue
-    if (!isObject(map)) throw new Error(`mcpServers in ${source} settings must be an object`)
-    for (const [name, value] of Object.entries(map)) {
+    const entries = settings.mcpServers
+    if (entries === undefined) continue
+    if (!isObject(entries)) throw new Error(`mcpServers in ${source} settings must be an object`)
+    for (const [name, value] of Object.entries(entries)) {
       servers.delete(name)
       if (isObject(value) && value.disabled === true) continue
       const entry = entryOf(value)
@@ -348,13 +348,11 @@ export default async function mcp(host: ExtensionHost) {
               `Use the tools of the configured MCP servers: ${names.join(', ')}. ` +
               "mcp {server} lists a server's tools with their input schemas; mcp {server, tool, args} calls one. " +
               'In codemode, tools.mcp(...) runs many calls and filters their results.',
-            parameters: Type.Object({
-              server: Type.String({ description: `One of: ${names.join(', ')}` }),
-              tool: Type.Optional(
-                Type.String({ description: "The tool to call; omit to list the server's tools" }),
-              ),
-              args: Type.Optional(
-                Type.Record(Type.String(), Type.Unknown(), {
+            parameters: obj({
+              server: str({ description: `One of: ${names.join(', ')}` }),
+              tool: opt(str({ description: "The tool to call; omit to list the server's tools" })),
+              args: opt(
+                map(unknown(), {
                   description: "The tool's arguments, matching its input schema",
                 }),
               ),

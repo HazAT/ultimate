@@ -1,6 +1,6 @@
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { Type } from 'typebox'
+import { obj, str } from '@earendil-works/pi-schema'
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {
   CodemodeSandbox,
@@ -486,7 +486,7 @@ export default function codemode(host: ExtensionHost) {
     description:
       'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context. Nested tool hooks do not run. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
       renderDeclarations({ globals: globalDeclarations }),
-    parameters: Type.Object({ code: Type.String() }),
+    parameters: obj({ code: str() }),
     async execute({ code: source }, api, context) {
       const calls: {
         name: string

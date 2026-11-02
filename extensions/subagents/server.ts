@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord'
 import type { JsonValue } from '@earendil-works/chord'
-import { Type } from 'typebox'
+import { arr, bool, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
 import type { AssistantMessage, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import {
   AgentDoc,
@@ -959,60 +959,44 @@ export default function subagents(
           'Delegate to a named agent. start returns its answer (foreground) or id (background). Foreground start/message and wait yield on queued steering with details.yielded:true; work continues independently. Stop children explicitly; stopping the parent does not stop them; stop lists files left uncommitted in the child worktree. message steers a busy child (steer false queues a follow-up instead); wait returns the latest answer; stop stops current work; list shows your children; land verifies and fast-forwards a finished worktree child; discard removes its worktree but keeps its branch. start accepts isolate none or worktree, and fork true to inherit parent history before this call (more context cost; prompt caching usually covers the shared prefix). Background answers join the current run after its tool round, or wake you when idle.',
         // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
         replay: 'safe',
-        parameters: Type.Object({
-          action: Type.Union([
-            Type.Literal('start'),
-            Type.Literal('message'),
-            Type.Literal('wait'),
-            Type.Literal('stop'),
-            Type.Literal('list'),
-            Type.Literal('land'),
-            Type.Literal('discard'),
-          ]),
-          agent: Type.Optional(
-            Type.String({
+        parameters: obj({
+          action: oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          agent: opt(
+            str({
               description:
                 'For start: an Available definitions name. Leave it out to make an agent on the fly from label, family or model, thinking, tools and instructions.',
             }),
           ),
-          label: Type.Optional(
-            Type.String({
+          label: opt(
+            str({
               description:
                 'For start: what the child does, a few words ("dead-code scan"); the sidebar shows it. Required without agent.',
             }),
           ),
-          family: Type.Optional(
-            Type.String({ description: 'For start: the model family to run on (fast, review…).' }),
+          family: opt(
+            str({ description: 'For start: the model family to run on (fast, review…).' }),
           ),
-          model: Type.Optional(
-            Type.String({ description: 'For start: provider/modelId, instead of a family.' }),
-          ),
-          thinking: Type.Optional(
-            Type.Union(
-              ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) =>
-                Type.Literal(level as ModelThinkingLevel),
-              ),
-            ),
-          ),
-          tools: Type.Optional(
-            Type.Array(Type.String(), {
+          model: opt(str({ description: 'For start: provider/modelId, instead of a family.' })),
+          thinking: opt(oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
+          tools: opt(
+            arr(str(), {
               description:
                 'Without agent: a subset of your tools (default: all but subagent). Leave out edit and write for a read-only agent; it runs in a worktree when it has either.',
             }),
           ),
-          instructions: Type.Optional(
-            Type.String({
+          instructions: opt(
+            str({
               description:
                 'Without agent: its standing instructions, after a short neutral base; the task stays its first input.',
             }),
           ),
-          task: Type.Optional(Type.String()),
-          background: Type.Optional(Type.Boolean()),
-          fork: Type.Optional(Type.Boolean()),
-          id: Type.Optional(Type.Integer({ minimum: 1 })),
-          text: Type.Optional(Type.String()),
-          steer: Type.Optional(Type.Boolean()),
-          isolate: Type.Optional(Type.Union([Type.Literal('none'), Type.Literal('worktree')])),
+          task: opt(str()),
+          background: opt(bool()),
+          fork: opt(bool()),
+          id: opt(int({ minimum: 1 })),
+          text: opt(str()),
+          steer: opt(bool()),
+          isolate: opt(oneOf(['none', 'worktree'])),
         }),
         execute: async (args, api, context) => {
           const cached = await api.memo<ReturnType<typeof reply>>('result', context)

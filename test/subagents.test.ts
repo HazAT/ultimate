@@ -22,7 +22,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Extension, Task, ToolRegistration } from '@earendil-works/pi-durable'
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -816,7 +816,7 @@ async function gatedFixture(reportGate?: { promise: Promise<void>; entered: bool
         defineTool({
           name: 'hold',
           description: 'Deterministic completion gate',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           replay: 'safe',
           execute: async (_args, api, toolContext) => {
             holding.add(api.conversationId)
@@ -2057,7 +2057,7 @@ describe('subagents', () => {
           defineTool({
             name: 'hold',
             description: 'Hold the current tool round',
-            parameters: Type.Object({}),
+            parameters: obj({}),
             execute: async (_args, api) => {
               if (api.conversationId === 1) {
                 parentHolding = true
@@ -2113,7 +2113,7 @@ describe('subagents', () => {
           defineTool({
             name: 'hold',
             description: 'Hold the current tool round',
-            parameters: Type.Object({}),
+            parameters: obj({}),
             execute: async (_args, api) => {
               if (api.conversationId === 1) {
                 parentHolding = true

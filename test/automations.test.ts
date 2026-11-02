@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { afterEach, expect, it, vi } from 'vitest'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
 import type { JsonObject, TaskId } from '@earendil-works/pi-durable'
 import { context, prepareHarness } from '../server/harness.ts'
@@ -55,7 +55,7 @@ async function fixture() {
         defineTool({
           name: 'hold',
           description: 'Wait',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           replay: 'safe',
           execute: async (_args, _api, ctx) => {
             await awaitWithContext(

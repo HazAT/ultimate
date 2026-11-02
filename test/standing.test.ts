@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it } from 'vitest'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
@@ -51,7 +51,7 @@ async function fixture() {
     name: 't',
     description: 'Owned tool',
     deferred: true,
-    parameters: Type.Object({}),
+    parameters: obj({}),
     execute: async () => ({ output: [] }),
   })
   prepared.registry.install(CodingTools)

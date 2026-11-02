@@ -48,10 +48,10 @@ it.concurrent('orders facets by source so a project bash tool and renderer win r
     await writeFile(
       join(folder, 'server.ts'),
       `
-      import { Type } from 'typebox'
+      import { obj } from '@earendil-works/pi-schema'
       import { defineExtension, defineTool } from '@earendil-works/pi-durable'
       export default defineExtension({ name: '${name}', tools: [defineTool({
-        name: 'bash', description: '${name}', parameters: Type.Object({}),
+        name: 'bash', description: '${name}', parameters: obj({}),
         execute: async () => ({})
       })] })
     `,
@@ -199,10 +199,10 @@ it.concurrent('keeps the replacement provider available while the old cleanup is
 it.concurrent('refuses a tool name another extension of the same layer already provides', async () => {
   const { home, projectRoot, server } = await fixture('{}')
   const facet = (name: string, version = '') => `
-    import { Type } from 'typebox'
+    import { obj } from '@earendil-works/pi-schema'
     import { defineExtension, defineTool } from '@earendil-works/pi-durable'
     export default defineExtension({ name: '${name}', tools: [defineTool({
-      name: 'clash_tool', description: '${name}${version}', parameters: Type.Object({}),
+      name: 'clash_tool', description: '${name}${version}', parameters: obj({}),
       execute: async () => ({})
     })] })`
   const files: Record<string, string> = {}

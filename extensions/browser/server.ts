@@ -2,7 +2,20 @@ import { access, mkdir, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { Type } from 'typebox'
+import {
+  arr,
+  bool,
+  int,
+  lit,
+  map,
+  num,
+  obj,
+  oneOf,
+  opt,
+  str,
+  union,
+  unknown,
+} from '@earendil-works/pi-schema'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
@@ -108,17 +121,15 @@ export default function browserExtension(host: ExtensionHost) {
     return resource
   })
   const base = {
-    url: Type.Optional(
-      Type.String({ description: 'Page to load; relative URLs resolve against this UI.' }),
-    ),
-    path: Type.Optional(
-      Type.String({
+    url: opt(str({ description: 'Page to load; relative URLs resolve against this UI.' })),
+    path: opt(
+      str({
         description:
           'Where to save the PNG, relative to your cwd; default: a new file in the home.',
       }),
     ),
-    timeoutMs: Type.Optional(
-      Type.Integer({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
+    timeoutMs: opt(
+      int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
   }
   return defineExtension({
@@ -137,14 +148,14 @@ export default function browserExtension(host: ExtensionHost) {
           'Look at a browser page; save a full-resolution PNG and return a compact image with loading errors. Loading and capturing each time out after 30 s.',
         // A fresh isolated page only observes the UI and writes the screenshot again; it performs no interactions.
         replay: 'safe',
-        parameters: Type.Object({
+        parameters: obj({
           ...base,
-          width: Type.Optional(Type.Integer({ minimum: 1 })),
-          height: Type.Optional(Type.Integer({ minimum: 1 })),
-          fullPage: Type.Optional(Type.Boolean()),
-          selector: Type.Optional(Type.String()),
-          waitMs: Type.Optional(Type.Integer({ minimum: 0 })),
-          theme: Type.Optional(Type.Union([Type.Literal('light'), Type.Literal('dark')])),
+          width: opt(int({ minimum: 1 })),
+          height: opt(int({ minimum: 1 })),
+          fullPage: opt(bool()),
+          selector: opt(str()),
+          waitMs: opt(int({ minimum: 0 })),
+          theme: opt(oneOf(['light', 'dark'])),
         }),
         async execute(args, api, context) {
           const waitMs = args.waitMs ?? 1500
@@ -158,46 +169,46 @@ export default function browserExtension(host: ExtensionHost) {
         name: 'browser',
         description:
           "Drive a fresh browser page with clicks, fills, keys, waits and JavaScript; report outcomes and optionally an image. Each step times out after 30 s. On an Ultimate page (this UI or a preview), `send` submits a prompt without the composer and `until` waits on Ultimate's state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind} or {event: name, where}; until defaults to 5 min (timeoutMs) and on timeout says what was still busy. Click and fill only to test the interaction itself. Scope selectors to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")', not 'button:has-text(\"Retry\")', which hits the first match on the page).",
-        parameters: Type.Object({
+        parameters: obj({
           ...base,
-          steps: Type.Array(
-            Type.Union([
-              Type.Object({ click: Type.String() }),
-              Type.Object({
-                fill: Type.Array(Type.String(), {
+          steps: arr(
+            union([
+              obj({ click: str() }),
+              obj({
+                fill: arr(str(), {
                   minItems: 2,
                   maxItems: 2,
                   description: '[selector, value]',
                 }),
               }),
-              Type.Object({ press: Type.String() }),
-              Type.Object({ wait: Type.Union([Type.Number({ minimum: 0 }), Type.String()]) }),
-              Type.Object({
-                eval: Type.String({
+              obj({ press: str() }),
+              obj({ wait: union([num({ minimum: 0 }), str()]) }),
+              obj({
+                eval: str({
                   description:
                     "One expression, its value returned: 'document.title'. For statements or await, an async IIFE: '(async () => { const r = await fetch(\"/api/x\"); return r.status })()'. A bare 'const x = …; return x' fails.",
                 }),
               }),
-              Type.Object({
-                send: Type.String(),
-                conversation: Type.Optional(Type.Integer({ minimum: 1 })),
+              obj({
+                send: str(),
+                conversation: opt(int({ minimum: 1 })),
               }),
-              Type.Object({
-                until: Type.Union([
-                  Type.Literal('idle'),
-                  Type.Literal('quiet'),
-                  Type.Object({ entry: Type.String() }),
-                  Type.Object({
-                    event: Type.String(),
-                    where: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+              obj({
+                until: union([
+                  lit('idle'),
+                  lit('quiet'),
+                  obj({ entry: str() }),
+                  obj({
+                    event: str(),
+                    where: opt(map(unknown())),
                   }),
                 ]),
-                conversation: Type.Optional(Type.Integer({ minimum: 1 })),
-                timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
+                conversation: opt(int({ minimum: 1 })),
+                timeoutMs: opt(int({ minimum: 1 })),
               }),
             ]),
           ),
-          screenshot: Type.Optional(Type.Boolean()),
+          screenshot: opt(bool()),
         }),
         async execute(args, api, context) {
           const waits = args.steps.reduce(

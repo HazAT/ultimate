@@ -3,7 +3,7 @@
  * the schema cannot express. Rejected questions come back to the agent as the tool's error, so a card never shows a
  * question it cannot answer.
  */
-import { Type } from 'typebox'
+import { arr, bool, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { formatAgo } from '../../lib/ago.ts'
@@ -12,38 +12,32 @@ import { Standing } from '../subagents/api.ts'
 import type { Message } from './api.ts'
 import type { Question } from './refs.ts'
 
-const optionSchema = Type.Object({
-  label: Type.String({
+const optionSchema = obj({
+  label: str({
     minLength: 1,
     description: 'A few words; the reasoning goes in detail.',
   }),
-  key: Type.Optional(Type.String({ pattern: '^[a-z]$', description: 'Its letter, "a".' })),
-  detail: Type.Optional(Type.String()),
-  recommended: Type.Optional(Type.Boolean({ description: 'Your pick.' })),
-  preview: Type.Optional(Type.String({ description: 'Markdown shown beside the option.' })),
+  key: opt(str({ pattern: '^[a-z]$', description: 'Its letter, "a".' })),
+  detail: opt(str()),
+  recommended: opt(bool({ description: 'Your pick.' })),
+  preview: opt(str({ description: 'Markdown shown beside the option.' })),
 })
 /** The `questions` parameter of the `message` tool. */
-export const questionsParameter = Type.Array(
-  Type.Object({
-    text: Type.String({ minLength: 1 }),
-    kind: Type.Union([
-      Type.Literal('choice'),
-      Type.Literal('multi'),
-      Type.Literal('confirm'),
-      Type.Literal('text'),
-      Type.Literal('scale'),
-    ]),
-    ref: Type.Optional(Type.String({ pattern: '^\\d+$', description: 'Its number, "2".' })),
-    options: Type.Optional(Type.Array(optionSchema)),
-    scale: Type.Optional(
-      Type.Object({
-        min: Type.Integer(),
-        max: Type.Integer(),
-        low: Type.Optional(Type.String()),
-        high: Type.Optional(Type.String()),
+export const questionsParameter = arr(
+  obj({
+    text: str({ minLength: 1 }),
+    kind: oneOf(['choice', 'multi', 'confirm', 'text', 'scale']),
+    ref: opt(str({ pattern: '^\\d+$', description: 'Its number, "2".' })),
+    options: opt(arr(optionSchema)),
+    scale: opt(
+      obj({
+        min: int(),
+        max: int(),
+        low: opt(str()),
+        high: opt(str()),
       }),
     ),
-    placeholder: Type.Optional(Type.String()),
+    placeholder: opt(str()),
   }),
   {
     description:

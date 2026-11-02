@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
-import { Type } from 'typebox'
+import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import {
   type ConversationId,
   defineDoc,
@@ -279,16 +279,16 @@ async function madeCommits(path: string, conversation: number) {
 
 export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
   const shell = createBashTool()
-  const parameters = Type.Object({
-    command: Type.String({ description: 'Bash command to execute' }),
-    timeout: Type.Optional(
-      Type.Number({
+  const parameters = obj({
+    command: str({ description: 'Bash command to execute' }),
+    timeout: opt(
+      num({
         description:
           'Timeout in seconds (optional; without it a default tripwire, 600 s unless configured, stops the command)',
       }),
     ),
-    interruptible: Type.Optional(
-      Type.Boolean({
+    interruptible: opt(
+      bool({
         description:
           'Only for commands that just wait or poll (CI checks, deploys, a file appearing): a steering message ends the command early. Never combine with commands that change things.',
       }),

@@ -1,7 +1,7 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { cp, mkdir, readdir, readFile, writeFile, access, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Type } from 'typebox'
+import { obj } from '@earendil-works/pi-schema'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import {
@@ -169,7 +169,7 @@ async function fixture(
         defineTool({
           name: 'write_commit',
           description: 'Write and commit a change',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           async execute(_args, api) {
             writes++
             const cwd = api.env!.cwd
