@@ -1,14 +1,11 @@
 import type { Agent } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
-import { afterEach, expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import { defaultModel, definitionAgent } from '../lib/agents.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 
-afterEach(() => vi.unstubAllEnvs())
-
 it('starts a branch on the configured default whose login is gone, never on the first model with a login', () => {
-  vi.stubEnv('ULTIMATE_MODEL', undefined)
   // omarchy-config, 2026-10-29: Claude Code's default login logged out while a paid Anthropic key stayed; the dream
   // branch @ultimate started then ran on anthropic/claude-fable-5, the first model in the available list.
   const available = [
