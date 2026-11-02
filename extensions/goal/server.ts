@@ -297,7 +297,7 @@ export default function goalExtension(host: ExtensionHost) {
     tasks: [deliverTask(host), reminderTask(host, Goals)],
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
         // A per-run note while a goal is open, never a system-prompt section, keeps the prompt cached.
         beforeInput: async (input, { tx, conversationId }) => {
           if ((await ultimateOf(tx)) !== conversationId) return undefined

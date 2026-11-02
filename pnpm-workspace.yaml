@@ -23,13 +23,12 @@ minimumReleaseAgeExclude:
   - '@voidzero-dev/vite-plus-win32-x64-msvc@1.4.0'
   - vite-plus@1.4.0
   - '@earendil-works/pi-schema@1.5.0'
-# Pi upstream: @earendil-works/chord@1.4.0 dist/output.js — patched sanitizeOutput to remove whole CSI/OSC/control strings while keeping numeric SGR. Drop when Pi ships equivalent sanitization.
-# Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/inbox.js — transactional beforeInput hook places entries before a new run’s first input. Drop when Pi ships input-placement hooks.
-# Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/inbox.js, dist/types.d.ts — mark entries placed from input submissions. Drop when Pi ships input provenance.
-# Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/generation.js — record the requested thinkingLevel on each response, as pi-agent-core does. Drop when Pi Durable records it.
-# Pi upstream: @earendil-works/pi-durable@1.4.0 dist/harness/scheduler.js, dist/harness/harness.js — Harness.hold()/release() keep the scheduler from starting task runs. Drop when Pi Durable ships a scheduler hold.
-# Pi upstream: @earendil-works/pi-durable@1.4.0 dist/env/node.js — NodeExecutionEnv takes a spawn option (lib/spawn.ts starts processes from a small helper). Drop when Pi Durable lets an environment choose how it starts processes.
-# patches/@earendil-works__chord@1.4.0.patch and patches/@earendil-works__pi-durable@1.4.0.patch: pnpm errors when a versioned patch no longer matches.
+# Pi upstream: @earendil-works/chord@1.5.0 dist/output.js — sanitizeOutput keeps numeric SGR colours, which 1.5.0 strips with the other escape sequences. Drop when Pi keeps SGR.
+# Pi upstream: @earendil-works/pi-durable@1.5.0 dist/harness/inbox.js — transactional beforeInput hook places entries before a new run’s first input. Drop when Pi ships input-placement hooks.
+# Pi upstream: @earendil-works/pi-durable@1.5.0 dist/harness/inbox.js, dist/types.d.ts — mark entries placed from input submissions. Drop when Pi ships input provenance.
+# Pi upstream: @earendil-works/pi-durable@1.5.0 dist/harness/scheduler.js, dist/harness/harness.js — Harness.hold()/release() keep the scheduler from starting task runs. Drop when Pi Durable ships a scheduler hold.
+# Pi upstream: @earendil-works/pi-durable@1.5.0 dist/env/node.js — NodeExecutionEnv takes a spawn option (lib/spawn.ts starts processes from a small helper). Drop when Pi Durable lets an environment choose how it starts processes.
+# patches/@earendil-works__chord@1.5.0.patch and patches/@earendil-works__pi-durable@1.5.0.patch: pnpm errors when a versioned patch no longer matches.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts (70abb65186592ca788b29b3db22c3160d629c41f) — rebuild replay cache markers within Claude's four-block limit; word an incomplete response without stderr so pi-ai retries it; src/stream.ts — resolve a tool named without its MCP prefix instead of ending the turn; src/transcript.ts — define later tools inline (inline-tools beta) instead of falling back to one merged system prompt after a tool redefinition. Drop when upstream fixes this.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — useSpawn() sets how Claude Code's processes start (lib/spawn.ts). Drop when upstream accepts a spawn function.
 # Dependabot GHSA-587h-7wmj-h5pm and siblings: @tailwindcss/vite and @vitejs/plugin-react resolve vite 8.3.1 on their own. Drop when they peer on >= 8.3.3.
