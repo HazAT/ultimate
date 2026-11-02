@@ -140,7 +140,7 @@ function view(id: number, text: string, busy = false): StreamedView {
     ],
     docs: {
       'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } },
-      'pi.live': busy ? { run: { taskId: 2, inputs: [] } } : {},
+      'pi.live': busy ? { run: { taskId: 2, inputs: [], turns: 0 } } : {},
       'pi.inbox': { items: [{ id: id * 100, mode: 'steer', content: `queued ${id}` }] },
     },
   } as unknown as StreamedView

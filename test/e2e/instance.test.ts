@@ -146,10 +146,9 @@ async function fixture({ foreign = false } = {}) {
         context,
       )
     ).wait(context)
-    const view = await conversation.viewState(context)
-    const result = view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
+    const view = await conversation.context(context)
+    const result = view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
       ?.model?.[0]
-    view.dispose()
     if (result?.role !== 'toolResult') throw new Error('Missing tool result')
     return result.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
   }

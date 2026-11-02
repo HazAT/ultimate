@@ -120,15 +120,10 @@ it('shares the root ledger read-only with descendants, saves verdicts, and repla
       await conversation.submit({ type: 'input', content: 'Update plan' }, context)
     ).wait(context)
     await opened.harness.waitForIdle(context)
-    const view = await conversation.viewState(context)
-    try {
-      const result = view.value.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
-        .model![0]
-      if (result.role !== 'toolResult') throw new Error('Missing tool result')
-      return result
-    } finally {
-      view.dispose()
-    }
+    const view = await conversation.context(context)
+    const result = view.entries.findLast((entry) => entry.kind === 'pi.tool-result')!.model![0]
+    if (result.role !== 'toolResult') throw new Error('Missing tool result')
+    return result
   }
   try {
     await call({

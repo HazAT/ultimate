@@ -67,8 +67,6 @@ import {
   partsOf,
   runOf,
   setAsideIds,
-  windowGaps,
-  windowKey,
 } from './compact.ts'
 import type { AsideGroup, BetweenGroup, CompactPart, WorkRun } from './compact.ts'
 import { foldKey, readFold, writeFold } from './fold.tsx'
@@ -187,25 +185,16 @@ function TranscriptEntries() {
   const { id, entries: active, older, live, busy, loading } = useConversation()
   const [history, setHistory] = useState<EntryRecord[]>([])
   const previousActive = useRef(active)
-  const previousWindow = useRef('')
+  const previousOlder = useRef<number>(undefined)
   const [tailSpace, setTailSpace] = useState(0)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [exhausted, setExhausted] = useState(false)
   const [before, setBefore] = useState<number>()
-  // A windowed stream pages on from its oldest entry. A whole one after a head marker scans from its newest: retained
-  // suffixes can precede discarded compaction markers, which a minimum-active-ID cursor would skip. A whole one without
-  // a marker is the whole history.
+  // A windowed stream pages on from its oldest entry; a whole one is the whole history.
   // A fork's history before its own first entry is its source's and stays hidden: paging stops at the fork point.
-  const forked = reachedFork(
-    [...active, ...history],
-    id,
-    older !== undefined && active[0]?.head !== undefined ? active[0].id : undefined,
-  )
-  const cursor =
-    exhausted || forked
-      ? undefined
-      : (before ?? older ?? (active[0]?.head === undefined ? undefined : active.at(-1)?.id))
+  const forked = reachedFork([...active, ...history], id)
+  const cursor = exhausted || forked ? undefined : (before ?? older)
   const request = useRef<AbortController | null>(null)
   const anchor = useRef<{
     entryId: number
@@ -304,33 +293,22 @@ function TranscriptEntries() {
   useLayoutEffect(() => {
     const current = new Set(active.map((entry) => entry.id))
     const dropped = previousActive.current.filter((entry) => !current.has(entry.id))
-    if (
-      active.some(
-        (entry) =>
-          (entry.kind === 'pi.compaction' || entry.kind === 'pi.reset') &&
-          !previousActive.current.some((old) => old.id === entry.id),
-      )
-    ) {
-      request.current?.abort()
-      request.current = null
-      anchor.current = null
-      setPending(false)
-      setError('')
-      setBefore(older ?? Math.max(...active.map((entry) => entry.id)))
-      setExhausted(false)
-    }
     if (dropped.length)
       setHistory((previous) => {
         const rows = new Map(previous.map((entry) => [entry.id, entry]))
         for (const entry of dropped) rows.set(entry.id, entry)
         return [...rows.values()]
       })
-    // A fresh window (a new `older`; appends keep it) can leave stored history uncovered.
-    const window = windowKey(active, older)
-    const fresh = window !== previousWindow.current
-    previousWindow.current = window
-    if (older !== undefined && fresh && active.length)
-      for (const [after, upTo] of windowGaps(active, older, loadedBelow(dropped))) fill(after, upTo)
+    // A fresh window (a new `older`; appends keep it) can leave stored history between it and the rows kept below it.
+    const fresh = older !== previousOlder.current
+    previousOlder.current = older
+    if (older !== undefined && fresh) {
+      const below = Math.max(
+        0,
+        ...loadedBelow(dropped).flatMap((e) => (e.id < older ? [e.id] : [])),
+      )
+      if (below) fill(below + 1, older)
+    }
     previousActive.current = active
   }, [active, older])
   useEffect(() => () => request.current?.abort(), [])
@@ -1389,7 +1367,7 @@ export function LiveLines({
   for (const compaction of live.compactions ?? [])
     lines.push(
       <Shimmer key={`compaction-${compaction.taskId}`}>
-        {`compacting context · ${compaction.reason}${compaction.attempt > 1 ? ` · attempt ${compaction.attempt}` : ''}…`}
+        {`compacting context · ${compaction.trigger}${compaction.attempt > 1 ? ` · attempt ${compaction.attempt}` : ''}…`}
       </Shimmer>,
     )
   if (idle && lines.length === 0) {

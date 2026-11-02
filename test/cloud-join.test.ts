@@ -241,8 +241,8 @@ it.concurrent('runs cloud.join for the UI and refuses it to agents', async () =>
     ])
     await server.root.submit({ type: 'input', content: 'join the fleet' }, context)
     await server.harness.waitForIdle(context)
-    const view = await server.root.viewState(context)
-    const result = view.value.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
+    const view = await server.root.context(context)
+    const result = view.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
     expect(JSON.stringify(result.model)).toContain('cloud/join is a user-only action')
     expect(
       JSON.parse(await readFile(path(userHome, '.ultimate/settings.json'), 'utf8')).cloud.machine,

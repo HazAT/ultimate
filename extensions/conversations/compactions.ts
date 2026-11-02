@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { CompactionEntry } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Compacted } from './refs.ts'
@@ -17,7 +18,7 @@ export function compactionEvents(
   host.onOpen(async () => {
     stop?.()
     // Not a reactor: compaction entries are Pi's own records, not domain events.
-    stop = host.harness().subscribeCommits((publication) => {
+    stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type !== 'entry' || change.value.kind !== CompactionEntry.kind) continue
         const entry = change.value

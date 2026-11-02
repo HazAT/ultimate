@@ -1,5 +1,5 @@
 /** The `branch` tool: start a lineage branch and send it its first message. */
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'

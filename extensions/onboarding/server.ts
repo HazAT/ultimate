@@ -9,7 +9,7 @@ import {
   defineTool,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'

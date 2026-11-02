@@ -1,6 +1,6 @@
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {
   CodemodeSandbox,
@@ -395,12 +395,9 @@ function globals(
       description: 'Live durable tasks and ownership graph.',
       signature: '(): Promise<unknown>',
       execute: async () => {
-        const state = await host.harness().taskGraph(context)
-        try {
-          return JSON.parse(JSON.stringify(state.value))
-        } finally {
-          state.dispose()
-        }
+        const graph = await host.harness().watchTaskGraph(context)
+        await graph.stop()
+        return JSON.parse(JSON.stringify(graph.value))
       },
     },
     {

@@ -206,7 +206,7 @@ async function restartChapter(
     throw new Error(
       await host.restart(async () => {
         idle(host)
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched Harness.hold() keeps the scheduler from starting tasks.
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
       }),
     )

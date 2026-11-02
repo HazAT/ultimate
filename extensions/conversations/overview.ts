@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, SubmissionRecord } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -127,7 +128,7 @@ export function overviewBehavior(
   host.onOpen(async () => {
     closed = false
     // Not a reactor: the overview follows Pi's records, entries and live documents, not domain events.
-    stop = host.harness().subscribeCommits((publication) => {
+    stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'conversation') pending.add(change.value.id)
         if (change.type === 'submission') pending.add(change.value.conversationId)
@@ -141,7 +142,8 @@ export function overviewBehavior(
           change.conversationId !== undefined &&
           (change.record.kind === Summaries.definition.kind ||
             (change.record.kind === LiveDoc.definition.kind &&
-              change.ops.some((op) => op[0] === 'r' || op[1][0] === 'run')) ||
+              (change.kind === 'retire' ||
+                change.ops.some((op) => op[0] === 'r' || op[1][0] === 'run'))) ||
             change.record.kind === InboxDoc.definition.kind)
         )
           pending.add(change.conversationId)

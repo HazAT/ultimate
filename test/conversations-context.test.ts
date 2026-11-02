@@ -6,6 +6,7 @@ import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
+import { onCommit } from '../lib/commits.ts'
 import { ContextUsageDoc } from '../extensions/conversations/api.ts'
 import { contextBehavior } from '../extensions/conversations/context.ts'
 import {
@@ -245,7 +246,7 @@ it('updates the model window, clears unknown windows, and does not write for unr
   await until(async () => (await f.read())?.window === 1000000)
   expect(await f.read()).toEqual({ ...measured, window: 1000000, percent: (360 / 1000000) * 100 })
   let writes = 0
-  const stop = f.harness.subscribeCommits((publication) => {
+  const stop = onCommit(f.harness, (publication) => {
     writes += publication.changes.filter(
       (change) =>
         change.type === 'document' && change.record.kind === ContextUsageDoc.definition.kind,
@@ -355,7 +356,7 @@ it('backfills missing and stale docs in bounded pages, in the background, and sk
   expect((await f.read())?.tokens).toBe(900)
   await f.close()
   let writes = 0
-  const stop = f.harness.subscribeCommits((publication) => {
+  const stop = onCommit(f.harness, (publication) => {
     writes += publication.changes.filter(
       (change) =>
         change.type === 'document' && change.record.kind === ContextUsageDoc.definition.kind,

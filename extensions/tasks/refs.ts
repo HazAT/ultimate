@@ -38,6 +38,3 @@ export const DescribeAction = actionRef<{ ids: number[] }, Record<string, TaskFa
   'tasks',
   'describe',
 )
-
-/** `{ id }`: run a task the crash-loop guard parked again (`Harness.retryTask`). User-only. */
-export const RetryAction = actionRef<{ id: number }, null>('tasks', 'retry')

@@ -2,7 +2,7 @@
  * To-dos: one short list per project on the root conversation, each item owned by the user or @ultimate. @ultimate
  * keeps it with its `todo` tool and hears about it when it changed; the user adds and ticks in the To-dos panel.
  */
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   defineDoc,
   defineExtension,
@@ -149,7 +149,7 @@ export default function todosExtension(host: ExtensionHost) {
     name: 'todos',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
         // A per-input note when the list changed, never a system-prompt section, keeps the prompt cached.
         beforeInput: async (_input, { tx, conversationId }) =>
           (await standing(tx, conversationId))

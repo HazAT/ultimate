@@ -4,7 +4,7 @@
  */
 import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import {

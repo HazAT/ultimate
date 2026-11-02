@@ -18,7 +18,7 @@ export async function compacting(tx: Tx, id: ConversationId) {
  */
 export async function admitCompaction(tx: Tx, id: ConversationId, instructions?: string) {
   if (await compacting(tx, id)) throw new Error(`#${id} is already compacting`)
-  // Pi upstream: @earendil-works/pi-durable@1.4.0 src/harness/compaction.ts — inline unexported createCompaction for atomic admission.
+  // Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/compaction.ts — inline unexported createCompaction for atomic admission.
   const created = await tx.createTask(
     CompactionTask,
     { reason: 'manual', instructions },
@@ -26,7 +26,7 @@ export async function admitCompaction(tx: Tx, id: ConversationId, instructions?:
   )
   ;((await tx.doc(LiveDoc, id)).compactions ??= []).push({
     taskId: created,
-    reason: 'manual',
+    trigger: 'manual',
     blocking: false,
     attempt: 1,
   })

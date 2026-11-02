@@ -58,7 +58,7 @@ describe('web replica store', () => {
 
     main.send('view', view([user(1, 'hello')], { 'pi.live': {} }))
     const ops: Op[] = [
-      ['s', ['docs', 'pi.live', 'run'], { taskId: 2, inputs: [1] }],
+      ['s', ['docs', 'pi.live', 'run'], { taskId: 2, inputs: [1], turns: 0 }],
       ['p', ['entries'], 1, 0, [user(3, 'steer')]],
     ]
     main.send('ops', ops)
@@ -69,7 +69,7 @@ describe('web replica store', () => {
       content: 'steer now',
     })
     expect(replica.docs['pi.live']).toEqual({
-      run: { taskId: 2, inputs: [1] },
+      run: { taskId: 2, inputs: [1], turns: 0 },
     })
     // Unchanged entries keep their identity, so the transcript re-renders only what changed.
     main.send('ops', [['d', ['docs', 'pi.live', 'run']]])

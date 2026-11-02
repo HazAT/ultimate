@@ -258,7 +258,7 @@ export default function models(host: ExtensionHost) {
     name: 'models',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook. Every run's first
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook. Every run's first
         // input is placed through it (a typed input, a delivery, a queued follow-up), before the run reads its agent.
         beforeInput: (_input, { tx, conversationId }) => fallback(host, tx, conversationId),
       }),

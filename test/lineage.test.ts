@@ -1,6 +1,7 @@
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
+import { onCommit } from '../lib/commits.ts'
 import { compareLinks, leaveNote, rootOf, Tally } from '../extensions/lineage/server.ts'
 import { Branch, Branched, Roots } from '../extensions/lineage/api.ts'
 import { Plan, Started } from '../extensions/plan/server.ts'
@@ -189,7 +190,7 @@ it.concurrent('branches from a tally: the root gets the prompt node, the branch 
     }
   }, context)
   const publications: import('@earendil-works/pi-durable').CommitPublication[] = []
-  const stop = server.harness.subscribeCommits((publication) => publications.push(publication))
+  const stop = onCommit(server.harness, (publication) => publications.push(publication))
   const first = await branchFrom(server, { from: 1, prompt: 'Add notes between conversations' })
   stop()
   const creation = publications.find((publication) =>

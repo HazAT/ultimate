@@ -29,7 +29,7 @@ import type {
   Extension,
   HarnessSettings,
   ModelRef,
-  ReportInfo,
+  Report,
   CompactionPolicy,
   Page,
   SubmissionQuery,
@@ -45,17 +45,17 @@ import type { Notice } from '../shared/protocol.ts'
 export { context }
 
 /** A notice of a Pi Durable report, led by what failed: the task and conversation, extension or host callback. */
-export function reportMessage(error: unknown, info: ReportInfo): string {
+export function reportMessage({ error, ...info }: Report): string {
   const parts: string[] = []
   if ('task' in info && info.task)
     parts.push(`task #${info.task.id} (${info.task.kind}) in #${info.task.conversationId}`)
   else if ('conversationId' in info && info.conversationId !== undefined)
     parts.push(`#${info.conversationId}`)
   if ('extension' in info && info.extension) parts.push(`extension ${info.extension}`)
-  if (info.type === 'host_error') parts.push(`host callback ${info.callback}`)
+  if (info.kind === 'host_error') parts.push(`host callback ${info.callback}`)
   const reason = 'reason' in info ? ` (${info.reason.replaceAll('_', ' ')})` : ''
   const about = parts.length > 0 ? `: ${parts.join(', ')}` : ''
-  return `${info.type.replaceAll('_', ' ')}${reason}${about}. ${String(error)}`
+  return `${info.kind.replaceAll('_', ' ')}${reason}${about}. ${String(error)}`
 }
 
 /**
@@ -266,8 +266,8 @@ export async function prepareHarness(options: HostOptions) {
                 ),
             ),
             env,
-            onReport: (error, info) =>
-              options.report?.({ level: 'error', message: reportMessage(error, info) }),
+            onReport: (report) =>
+              options.report?.({ level: 'error', message: reportMessage(report) }),
           },
           context,
         )

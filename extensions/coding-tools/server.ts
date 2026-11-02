@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   type ConversationId,
   defineDoc,
@@ -151,8 +151,12 @@ async function untilStopped(
     if (value?.items.some((item) => item.mode === 'steer'))
       stop('Interrupted by a steering message')
   }
-  cancelled.start(async (value) => inspectCancelled(value))
-  inbox?.start(async (value) => inspectInbox(value))
+  cancelled.start(async (call) => {
+    if (call.kind === 'value') inspectCancelled(call.value)
+  })
+  inbox?.start(async (call) => {
+    if (call.kind === 'value') inspectInbox(call.value)
+  })
   try {
     inspectCancelled(cancelled.value)
     if (inbox) inspectInbox(inbox.value)
@@ -276,7 +280,7 @@ async function madeCommits(path: string, conversation: number) {
 export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
   const shell = createBashTool()
   const parameters = Type.Object({
-    ...shell.parameters.properties,
+    command: Type.String({ description: 'Bash command to execute' }),
     timeout: Type.Optional(
       Type.Number({
         description:
