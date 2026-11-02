@@ -178,7 +178,7 @@ function localReads(host: ExtensionHost, context: Context) {
     (op: HistoryRead, at: number, live: (args: unknown[]) => unknown) =>
     async (args: unknown[]) => {
       const database = await closedChapter(host.home, host.chapter.name, args[at])
-      return database ? readChapter(host, database, op, args) : live(args)
+      return database ? readChapter(database, op, args) : live(args)
     }
   return {
     conversations: history('conversations', 0, () => listed()),

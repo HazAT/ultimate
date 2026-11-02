@@ -7,6 +7,7 @@ import type {
   EntryId,
   JsonObject,
   SubmissionId,
+  TaskGraph,
 } from '@earendil-works/pi-durable'
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
@@ -173,18 +174,21 @@ export async function createApi(
   const connections = new Map<string, Connection>()
   // The live task graph, kept current synchronously as commits are adopted; its changes are sent at most every 100 ms.
   let onGraph = () => {}
+  // A change can arrive before the observation resolves; it is newer than the observation's value.
+  const latest: { tasks?: TaskGraph } = {}
   const graph = await harness.observeTaskGraph(
     {
       advance: (call) => {
         if (call.kind !== 'value') return
-        tasks = call.value
+        latest.tasks = call.value
         onGraph()
       },
       end: () => {},
     },
     context,
   )
-  let tasks = graph.value
+  latest.tasks ??= graph.value
+  const tasks = () => latest.tasks!
   let timer: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let summaries: ConversationSummary[] = []
@@ -237,7 +241,7 @@ export async function createApi(
     for (const fresh of refreshed) {
       const summary = {
         ...fresh,
-        busy: Object.values(tasks.tasks).some(
+        busy: Object.values(tasks().tasks).some(
           (task) => task.conversationId === fresh.id && !task.background,
         ),
       }
@@ -252,18 +256,18 @@ export async function createApi(
   }
   await refreshConversations()
   projectIndex.update(summaries)
-  let lastGraph = JSON.stringify(tasks)
+  let lastGraph = JSON.stringify(tasks())
   onGraph = () => {
     if (closed || timer) return
     timer = setTimeout(() => {
       timer = undefined
-      const current = JSON.stringify(tasks)
-      if (current !== lastGraph) {
-        lastGraph = current
-        events.emit('tasks', tasks)
+      const graphJson = JSON.stringify(tasks())
+      if (graphJson !== lastGraph) {
+        lastGraph = graphJson
+        events.emit('tasks', tasks())
         const next = summaries.map((summary) => ({
           ...summary,
-          busy: Object.values(tasks.tasks).some(
+          busy: Object.values(tasks().tasks).some(
             (task) => task.conversationId === summary.id && !task.background,
           ),
         }))
@@ -316,7 +320,7 @@ export async function createApi(
     ui!.start(async (call) => {
       if (call.kind === 'value') send('uiOps', { ops: call.ops })
     })
-    send('tasks', tasks)
+    send('tasks', tasks())
     events.listeners.add(send)
     const stop = async () => {
       if (connection.ended) return

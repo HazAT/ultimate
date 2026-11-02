@@ -1,16 +1,12 @@
-/** Read a closed chapter without resuming its tasks. */
-import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { createModels } from '@earendil-works/pi-ai'
-import { AgentDoc, createRegistry, Harness } from '@earendil-works/pi-durable'
+/** Read a closed chapter without opening a harness, migrating its schema, or resuming its tasks. */
+import { apply } from '@earendil-works/chord/delta'
 import type {
   ConversationId,
   ConversationRecord,
-  Cursor,
-  EntryId,
   EntryRecord,
+  JsonObject,
 } from '@earendil-works/pi-durable'
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
-import type { ExtensionHost } from '../../server/extensions.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { chapterFiles, readChapters } from '../../lib/chapters.ts'
 import { shortTitle } from '../../lib/title.ts'
 
@@ -49,79 +45,90 @@ export async function closedChapter(home: string, active: string, options: unkno
   return chapter === active ? undefined : chapterFiles(home, chapter).database
 }
 
-/** Read history from a closed chapter's database through a read-only Harness: it recovers nothing and writes nothing. */
-export async function readChapter(
-  host: Pick<ExtensionHost, 'metadata' | 'doc'>,
-  database: string,
-  op: HistoryRead,
-  args: unknown[],
-) {
-  const ui = host.doc('ultimate.ui')
-  const storage = await openNodeSqliteStorage(database)
-  const harness = await Harness.open(
-    storage,
-    { models: createModels(), registry: createRegistry(), readOnly: true },
-    context,
-  )
+// Pi upstream: @earendil-works/pi-durable@1.5.0 src/storage/sqlite/migrations.ts — conversation/entry JSON records and document revisions; fork cutoffs follow src/storage/sqlite/storage.ts. Drop when Pi's SQLite storage opens over a read-only connection: 1.5.0's readOnly Harness still sets WAL mode, runs migrations and checkpoints the file on close.
+export function readChapter(database: string, op: HistoryRead, args: unknown[]) {
+  const db = new DatabaseSync(database, { readOnly: true })
   try {
     const conversations = () =>
-      harness.commit(async (tx) => {
-        const records: ConversationRecord[] = []
-        let cursor: Cursor | undefined
-        do {
-          const page = await tx.scanConversations({}, 256, cursor)
-          records.push(...page.items)
-          cursor = page.next
-        } while (cursor !== undefined)
-        return records
-      }, context)
-    /** Fork-aware history, newest first, from before `before` (exclusive). */
-    async function* entries(value: unknown, before?: number): AsyncGenerator<EntryRecord> {
-      const conversation = await harness.conversation(id(value), context)
-      if (!conversation) throw new Error('Unknown conversation')
-      const query = before === undefined ? {} : { maxEntryId: (before - 1) as EntryId }
-      let cursor: Cursor | undefined
-      do {
-        const page = await conversation.entries(query, 256, cursor, context)
-        yield* page.items
-        cursor = page.next
-      } while (cursor !== undefined)
+      db
+        .prepare('SELECT record FROM conversations ORDER BY id')
+        .all()
+        .map((row) => JSON.parse(String(row.record)) as ConversationRecord)
+    const conversation = (value: unknown) => {
+      const row = db.prepare('SELECT record FROM conversations WHERE id = ?').get(id(value))
+      if (!row) throw new Error('Unknown conversation')
+      return JSON.parse(String(row.record)) as ConversationRecord
+    }
+    function* entries(value: unknown, before?: number): Generator<EntryRecord> {
+      let record = conversation(value)
+      let upper = before === undefined ? Number.MAX_SAFE_INTEGER : before - 1
+      while (true) {
+        for (const row of db
+          .prepare(
+            'SELECT record FROM entries WHERE conversation_id = ? AND id <= ? ORDER BY id DESC',
+          )
+          .iterate(record.id, upper))
+          yield JSON.parse(String(row.record)) as EntryRecord
+        if (!record.parent) return
+        upper = Math.min(upper, record.parent.at)
+        record = conversation(record.parent.conversationId)
+      }
+    }
+    /** The latest value of conversation document `kind` on `owner`: its last base with later deltas applied. */
+    const doc = (kind: string, owner: number) => {
+      const document = db
+        .prepare(
+          "SELECT id FROM documents WHERE kind = ? AND scope_kind = 'conversation' AND owner_id = ? AND family = 0 AND retired_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(JSON.stringify(kind), owner)
+      if (!document) return undefined
+      const base = db
+        .prepare(
+          "SELECT seq, content FROM document_revisions WHERE document_id = ? AND kind = 'base' ORDER BY seq DESC LIMIT 1",
+        )
+        .get(document.id)
+      if (!base) throw new Error(`Document ${String(document.id)} is missing a required base`)
+      let value = JSON.parse(String(base.content)) as JsonObject
+      for (const revision of db
+        .prepare(
+          'SELECT content FROM document_revisions WHERE document_id = ? AND seq > ? ORDER BY seq',
+        )
+        .iterate(document.id, base.seq))
+        value = apply(value, JSON.parse(String(revision.content)))
+      return value
     }
     if (op === 'conversations') {
       // The same listing as the live read: summary fields with short titles, busy from live foreground tasks, concluded from the UI state.
-      const concluded = (ui && (await harness.snapshot(ui, 1 as ConversationId, context)))?.[
-        'ext.conversations.concluded'
-      ]
+      const concluded = doc('ultimate.ui', 1)?.['ext.conversations.concluded']
       const done = new Set(Array.isArray(concluded) ? concluded : [])
-      const graph = await harness.watchTaskGraph(context)
-      await graph.stop()
       const busy = new Set(
-        Object.values(graph.value.tasks)
-          .filter((task) => !task.background)
-          .map((task) => task.conversationId as number),
+        db
+          .prepare(
+            "SELECT DISTINCT conversation_id AS id FROM tasks WHERE status != 'terminal' AND background = 0",
+          )
+          .all()
+          .map((row) => Number(row.id)),
       )
-      return await Promise.all(
-        (await conversations()).map(async (record) => {
-          const metadata = (await harness.snapshot(host.metadata, record.id, context)) ?? {}
-          const cwd = (await harness.snapshot(AgentDoc, record.id, context))?.cwd
-          const title = metadata.title ?? metadata.inputTitle
-          return {
-            ...record,
-            ...(typeof title === 'string' && { title: shortTitle(title) }),
-            ...(metadata.label !== undefined && { label: metadata.label }),
-            ...(cwd !== undefined && { cwd }),
-            busy: busy.has(record.id),
-            ...(metadata.inputAt !== undefined && { inputAt: metadata.inputAt }),
-            ...(done.has(record.id) && { concluded: true }),
-          }
-        }),
-      )
+      return conversations().map((record) => {
+        const metadata = doc('ultimate.metadata', record.id) ?? {}
+        const cwd = doc('pi.agent', record.id)?.cwd
+        const title = metadata.title ?? metadata.inputTitle
+        return {
+          ...record,
+          ...(typeof title === 'string' && { title: shortTitle(title) }),
+          ...(metadata.label !== undefined && { label: metadata.label }),
+          ...(cwd !== undefined && { cwd }),
+          busy: busy.has(record.id),
+          ...(metadata.inputAt !== undefined && { inputAt: metadata.inputAt }),
+          ...(done.has(record.id) && { concluded: true }),
+        }
+      })
     }
     const matches: EntryRecord[] = []
     if (op === 'entries') {
       const options = (args[1] ?? {}) as { kinds?: string[]; limit?: number; before?: number }
       const count = limit(options.limit)
-      for await (const entry of entries(args[0], options.before)) {
+      for (const entry of entries(args[0], options.before)) {
         if (!options.kinds || options.kinds.includes(entry.kind)) matches.push(entry)
         if (matches.length === count) break
       }
@@ -132,10 +139,10 @@ export async function readChapter(
       const count = limit(options.limit)
       const records =
         options.conversationId === undefined
-          ? await conversations()
+          ? conversations()
           : [{ id: id(options.conversationId) }]
       for (const record of records) {
-        for await (const entry of entries(record.id)) {
+        for (const entry of entries(record.id)) {
           if (JSON.stringify(entry).includes(text)) matches.push(entry)
           if (matches.length === count) return matches
         }
@@ -143,6 +150,6 @@ export async function readChapter(
     }
     return matches
   } finally {
-    await harness.close(context)
+    db.close()
   }
 }

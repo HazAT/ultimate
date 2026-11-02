@@ -101,7 +101,7 @@ index ac42dfe741b20726ab8eb3d8139b1296d664210d..1e7f1ac26d17b83cb15bf00408fa70b0
              await addTools(tx, conversationId, added);
          const live = await tx.doc(LiveDoc, conversationId);
 diff --git a/dist/harness/harness.js b/dist/harness/harness.js
-index e286f00f872ebec79367a594938040c6a37a879f..1b2ae77dce31caa5fc11d7c4618d10267293ab8f 100644
+index e286f00f872ebec79367a594938040c6a37a879f..44979b05c2bcf30580841797175c099c8c621462 100644
 --- a/dist/harness/harness.js
 +++ b/dist/harness/harness.js
 @@ -5,7 +5,7 @@ import { ResetEntry } from "../entries.js";
@@ -118,7 +118,7 @@ index e286f00f872ebec79367a594938040c6a37a879f..1b2ae77dce31caa5fc11d7c4618d1026
          };
      }
 +    async beforeInput(tx, conversationId, input, context) {
-+        const agent = resolveAgent(await tx.doc(AgentDoc, conversationId), this.#options.registry.snapshot(), resolveSettings(this.#hostSettings()), (error, extension) => this.#report(error, { type: "extension_error", conversationId, extension }, context));
++        const agent = resolveAgent(await tx.doc(AgentDoc, conversationId), this.#options.registry.snapshot(), resolveSettings(this.#hostSettings()), (error, extension) => this.#report(error, { kind: "extension_error", conversationId, extension }, context));
 +        const entries = [];
 +        for (const { handlers } of agentHooks(agent, "pi.generation")) {
 +            const result = await handlers.beforeInput?.(input, { conversationId, tx }, context);

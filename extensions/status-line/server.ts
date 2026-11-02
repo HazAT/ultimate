@@ -92,7 +92,9 @@ export default function statusLine(host: Host) {
         sample(performance.now(), total)
         // Subscribe while this atomic seed still holds the commit boundary. Its own publication
         // is safe to adopt again (absolute counters); no following commit can slip past the seed.
-        // Not a reactor: token rates follow Pi's usage and live documents, not domain events.
+        // Not a reactor: token rates follow Pi's usage and live documents, not domain events. Pi stores streamed partials
+        // up to persistWithinMs (1 s) late; a 30 s rate window absorbs that, and the commit that settles an answer reads
+        // pi.live, so its held partials are stored first and settled and partial never count the same tokens twice.
         unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
