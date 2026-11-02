@@ -29,7 +29,7 @@ export type ReviewFile = {
 }
 
 export type ReviewDiff = {
-  /** The spec as asked. */
+  /** The spec shown: as asked, or where a gone `branch:<name>` moved (its landing's range, else `uncommitted`). */
   spec: string
   kind: ReviewKind
   /** One line naming what is shown: `Uncommitted changes`, a commit's subject, `main...feature`. */
@@ -58,7 +58,8 @@ export type ReviewRange = {
 
 /**
  * `{ spec, conversation? }` → the diff of `spec` in the project's checkout, or in conversation `conversation`'s
- * worktree while it has one. Throws on a spec or ref Git does not know as a commit, and on any part starting with `-`.
+ * worktree while it has one. A `branch:<name>` whose ref is gone shows its latest landing, else `uncommitted`, and says
+ * so in `spec`. Throws on a spec or ref Git does not know as a commit, and on any part starting with `-`.
  */
 export const DiffAction = actionRef<{ spec: string; conversation?: number }, ReviewDiff>(
   'review',
