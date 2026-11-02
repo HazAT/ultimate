@@ -112,6 +112,22 @@ export function restartOnStaleLoad(options: {
   }
 }
 
+/**
+ * Check failed facets again once packages are installed: one that failed before the install linked a landing's new
+ * package found nothing stale then. `failed` names a facet that still has a load error.
+ */
+export async function retryStaleLoad(
+  listener: (name: string) => void,
+  pending: { current?: Promise<void> },
+  failed: () => string | undefined,
+) {
+  await pending.current
+  const name = failed()
+  if (!name) return
+  listener(name)
+  await pending.current
+}
+
 /** Install the lockfile's packages when they differ from the installed ones; the install's last lines when it fails. */
 async function installPackages(
   root: string,
@@ -173,26 +189,26 @@ export default function update(host: ExtensionHost) {
   // A preview never fetches: it must not race the host on the same clone.
   if (preview()) return defineExtension({ name: 'update' })
   const lastFile = join(host.home, 'update-auto-restart.json')
-  host.onLoadError(
-    restartOnStaleLoad({
-      stale: async () =>
-        (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
-        (await coreChangedSince(gitIn(host.ultimateRoot), await boot(host).head)),
-      // A successful restart never returns: this process is released and the new core resumes its work.
-      restart: () => host.restart(async () => {}),
-      notice: (message) => host.notice(message),
-      last: {
-        read: () =>
-          readFile(lastFile, 'utf8').then(
-            (text) => (JSON.parse(text) as { at: number }).at,
-            // No automatic restart recorded yet.
-            () => undefined,
-          ),
-        write: (at) => writeFile(lastFile, JSON.stringify({ at })),
-      },
-      pending: host.resource('update.auto-restart', () => ({})),
-    }),
-  )
+  const pending = host.resource<{ current?: Promise<void> }>('update.auto-restart', () => ({}))
+  const onLoadError = restartOnStaleLoad({
+    stale: async () =>
+      (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
+      (await coreChangedSince(gitIn(host.ultimateRoot), await boot(host).head)),
+    // A successful restart never returns: this process is released and the new core resumes its work.
+    restart: () => host.restart(async () => {}),
+    notice: (message) => host.notice(message),
+    last: {
+      read: () =>
+        readFile(lastFile, 'utf8').then(
+          (text) => (JSON.parse(text) as { at: number }).at,
+          // No automatic restart recorded yet.
+          () => undefined,
+        ),
+      write: (at) => writeFile(lastFile, JSON.stringify({ at })),
+    },
+    pending,
+  })
+  host.onLoadError(onLoadError)
   const tick = () => {
     // Paused: no fetch starts until Play; the next tick after it catches up.
     if (host.want(PauseApi)?.paused()) return
@@ -211,6 +227,13 @@ export default function update(host: ExtensionHost) {
       const root = host.ultimateRoot
       if (!(await landingInstalls(gitIn(root), data))) return
       shared.installing ??= withLock(await lockOf(root), () => installPackages(root))
+        .then(() =>
+          retryStaleLoad(
+            onLoadError,
+            pending,
+            () => host.extensions().find((extension) => extension.server?.error)?.name,
+          ),
+        )
         .then(() => refresh(host, false))
         .catch((error: unknown) => host.notice(`Install after landing: ${String(error)}`))
         .finally(() => {

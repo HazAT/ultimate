@@ -59,7 +59,8 @@ it('asks for a restart when HEAD changed the core since boot, not for extensions
 })
 
 /** The listener with a fake core: `stale` decides, restarts are counted, nothing restarted before. */
-function staleLoad(stale: boolean) {
+function staleLoad(initial: boolean) {
+  let stale = initial
   const restarts: number[] = []
   const notices: string[] = []
   const pending: { current?: Promise<void> } = {}
@@ -74,7 +75,14 @@ function staleLoad(stale: boolean) {
     last: { read: async () => last, write: async (at) => void (last = at) },
     pending,
   })
-  return { listener, restarts, notices, settled: () => pending.current }
+  return {
+    listener,
+    restarts,
+    notices,
+    pending,
+    settled: () => pending.current,
+    install: () => void (stale = true),
+  }
 }
 
 // Commit ead6ed9 changed server/ with claude-code: it hot-reloaded against the old core ("useSpawn is not a function")
@@ -94,4 +102,22 @@ it('restarts once when facets fail to load while the core is stale, never while 
   current.listener('claude-code')
   await current.settled()
   expect(current.restarts).toHaveLength(0)
+})
+
+// Commit 0bb0535 added @earendil-works/pi-schema: 18 facets hot-reloaded before the landing's install linked it, found
+// nothing stale, and stayed broken until someone restarted by hand once the install had finished.
+it('restarts once when facets still fail after the landing’s install completes', async () => {
+  const load = staleLoad(false)
+  load.listener('coding-tools')
+  load.listener('mcp')
+  await load.settled()
+  expect(load.restarts).toHaveLength(0)
+  load.install()
+  await update.retryStaleLoad(load.listener, load.pending, () => 'coding-tools')
+  expect(load.restarts).toHaveLength(1)
+
+  const healthy = staleLoad(false)
+  healthy.install()
+  await update.retryStaleLoad(healthy.listener, healthy.pending, () => undefined)
+  expect(healthy.restarts).toHaveLength(0)
 })
