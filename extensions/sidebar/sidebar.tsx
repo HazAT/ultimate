@@ -35,7 +35,7 @@ import {
   useWorkspaceConversations as useConversations,
   useWorkspaceIndex,
 } from '../workspaces/ui.tsx'
-import { Row, ChildRow, StandingRow, SubagentLine } from './rows.tsx'
+import { Row, ChildRow, EpicLine, StandingRow, SubagentLine } from './rows.tsx'
 import {
   MessagesDoc,
   conversationState,
@@ -540,7 +540,10 @@ function Tree({
     conversation: branch,
     working: working.has(branch.id),
     parked: parked.has(branch.id),
-    subagents: subagentLines(branch.id),
+    subagents: [
+      <EpicLine id={branch.id} key="epic" working={working.get(branch.id) === 'self'} />,
+      ...subagentLines(branch.id),
+    ],
   }))
 
   return (

@@ -71,7 +71,10 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   its target, opening `branch:<name>` in Review, and `+ N edits` (uncommitted changed paths), opening
   `uncommitted:<id>`. A fresh worktree, or a branch without one, shows nothing. All rows are read in one call, again
   only when an agent commits (`coding-tools.committed`), a worktree's state changes or a branch's run starts or ends;
-  never on a timer. Its subagents follow, one line each at any depth (`SubagentLine`, `rows.tsx`): their mark, plan
+  never on a timer. When its coordinator works its current epic itself (no task linked to a subagent), a line
+  `E1 · <title>` comes first (`EpicLine`, `rows.tsx`, from plan's `conversations.epic` point): its dot pulses while
+  the coordinator runs, it reads `idle` between runs and `done` with a check once the epic is, and a click opens the
+  epic in the plan panel. Its subagents follow, one line each at any depth (`SubagentLine`, `rows.tsx`): their mark, plan
   chip, role and `#id`, and their state word, with the latest activity or plan task on hover.
 
 Landed branches and older conversations that are neither roots nor branches live in the collapsed "Earlier · N" group,
