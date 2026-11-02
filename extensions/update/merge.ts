@@ -11,7 +11,10 @@ import { Refusal } from '../../lib/fast-forward.ts'
  * touching the worktree; undefined when git cannot say (before 2.38, or a failing command). Its exit codes:
  * 0 merges clean, 1 conflicts, anything else unknown.
  */
-export async function conflictsPredicted(root: string, remote: string): Promise<boolean | undefined> {
+export async function conflictsPredicted(
+  root: string,
+  remote: string,
+): Promise<boolean | undefined> {
   try {
     await exec('git', ['merge-tree', '--write-tree', 'HEAD', remote], {
       cwd: root,
@@ -61,11 +64,9 @@ async function saveRestore(git: Git, head: string): Promise<string> {
     .filter(Boolean)
   for (const other of others) {
     const stamp = stamped(other)
-    // Pruning is best-effort: a ref whose stamp cannot be read or deleted stays, never the other way round.
-    if (stamp && stamp.getTime() < cutoff)
-      await git('update-ref', '-d', other).catch(
-        () => undefined, // a stale ref that cannot be deleted only outlives its pruning.
-      )
+    if (!stamp || stamp.getTime() >= cutoff) continue
+    // Pruning is best-effort: a ref that cannot be deleted only outlives its pruning.
+    await git('update-ref', '-d', other).catch(() => undefined)
   }
   return ref
 }
@@ -83,17 +84,15 @@ export async function mergeUpstream(
   predicted: boolean | undefined,
   state: Standing,
 ): Promise<Merged> {
-  if (predicted)
-    throw new Refusal(`merging ${state.remote} into ${state.branch} would conflict`)
+  if (predicted) throw new Refusal(`merging ${state.remote} into ${state.branch} would conflict`)
   const before = await git('rev-parse', 'HEAD')
   const restore = await saveRestore(git, before)
   try {
     await git('merge', '--no-edit', state.remote)
   } catch {
-    // Back where the merge started: nothing changed. The restore ref stays for a redo by hand.
-    await git('merge', '--abort').catch(
-      () => undefined, // the next update retries from the same clean state; the tree is checked before it.
-    )
+    // Back where the merge started: nothing changed. The restore ref stays for a redo by hand; a failed
+    // abort leaves the tree torn but checked, and the next update refuses the dirty clone instead.
+    await git('merge', '--abort').catch(() => undefined)
     throw new Refusal(
       `the merge of ${state.remote} conflicted; nothing was changed. Redo it by hand, or ask @ultimate to merge it on a branch`,
     )

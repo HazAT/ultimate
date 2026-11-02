@@ -44,11 +44,15 @@ it('merges when git cannot predict (before 2.38): a restore ref first, stale one
   expect(merged).toMatchObject({
     before: HEAD,
     after: HEAD,
-    restore: expect.stringMatching(new RegExp(`^${RESTORE_PREFIX}\\d{8}-\\d{6}-${HEAD.slice(0, 12)}$`)),
+    restore: expect.stringMatching(
+      new RegExp(`^${RESTORE_PREFIX}\\d{8}-\\d{6}-${HEAD.slice(0, 12)}$`),
+    ),
     lockfile: false,
   })
   // The restore ref is written before the merge, and pruning is part of writing it.
-  const restore = calls.find((call) => call.startsWith('update-ref ') && !call.startsWith('update-ref -d'))
+  const restore = calls.find(
+    (call) => call.startsWith('update-ref ') && !call.startsWith('update-ref -d'),
+  )
   expect(calls.indexOf(restore!)).toBeLessThan(calls.indexOf('merge --no-edit origin/main'))
   expect(calls).toContain(`update-ref -d ${old}`)
   expect(calls.at(-1)).toBe(`diff --name-only ${HEAD} origin/main -- pnpm-lock.yaml`)

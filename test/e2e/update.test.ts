@@ -25,7 +25,7 @@ async function push(files: Record<string, string>, message = 'change') {
 }
 
 /** Commit `files` in the clone, so it has a commit of its own; returns its sha. */
-async function local(files: Record<string, string>, message = 'local') {
+async function localCommit(files: Record<string, string>, message = 'local') {
   for (const [name, body] of Object.entries(files)) {
     const path = join(clone, name)
     await mkdir(dirname(path), { recursive: true })
@@ -166,10 +166,14 @@ it('refuses a dirty, switched or diverged clone and leaves it alone', async () =
 it('merges a diverged clone with a restore ref, predicting conflicts first', async () => {
   const run = gitIn(clone)
   await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
-  const mine = await local({ 'local.txt': 'mine\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
   // A clean pair: merge-tree says no conflict, and the merge brings both sides together.
   expect(await conflictsPredicted(clone, 'origin/main')).toBe(false)
-  const merged = await mergeUpstream(run, await conflictsPredicted(clone, 'origin/main'), await standing(run))
+  const merged = await mergeUpstream(
+    run,
+    await conflictsPredicted(clone, 'origin/main'),
+    await standing(run),
+  )
   expect((await git(clone, 'cat-file', '-p', 'HEAD')).match(/^parent /gm)).toHaveLength(2)
   expect(merged).toMatchObject({ before: mine, lockfile: false })
   expect(merged.restore.startsWith(RESTORE_PREFIX)).toBe(true)
@@ -177,10 +181,10 @@ it('merges a diverged clone with a restore ref, predicting conflicts first', asy
   expect(await git(clone, 'merge-base', '--is-ancestor', 'origin/main', 'HEAD')).toBe('')
 })
 
-it("refuses a predicted conflict without touching the clone, and leaves no restore ref", async () => {
+it('refuses a predicted conflict without touching the clone, and leaves no restore ref', async () => {
   const run = gitIn(clone)
   await upstreamChange({ 'README.md': 'upstream\n' })
-  const mine = await local({ 'README.md': 'local\n' })
+  const mine = await localCommit({ 'README.md': 'local\n' })
   expect(await conflictsPredicted(clone, 'origin/main')).toBe(true)
   await expect(
     mergeUpstream(run, await conflictsPredicted(clone, 'origin/main'), await standing(run)),
@@ -193,18 +197,19 @@ it("refuses a predicted conflict without touching the clone, and leaves no resto
 it('prunes restore refs older than 30 days when writing a new one', async () => {
   const run = gitIn(clone)
   await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
-  const mine = await local({ 'local.txt': 'mine\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
   const old = `${RESTORE_PREFIX}20200101-000000-${mine.slice(0, 12)}`
   await git(clone, 'update-ref', old, mine)
   const merged = await mergeUpstream(run, false, await standing(run))
-  await expect(git(clone, 'rev-parse', '--verify', '--quiet', old)).rejects.toThrow()
+  // The stale ref is gone; the one this merge wrote stays.
+  expect(await git(clone, 'rev-parse', '--verify', '--quiet', old).catch(() => 'gone')).toBe('gone')
   expect(await git(clone, 'rev-parse', merged.restore)).toBe(mine)
 })
 
 it('hands a diverged clone to the diverged callback instead of refusing', async () => {
   const run = gitIn(clone)
   await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
-  const mine = await local({ 'local.txt': 'mine\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
   const seen: Standing[] = []
   const moved = await fastForward(run, undefined, undefined, async (state) => {
     seen.push(state)
