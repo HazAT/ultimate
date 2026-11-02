@@ -33,15 +33,15 @@ you ⇄ @ultimate
         └─ coordinator (one branch per feature, in its own git worktree)
              ├─ scouts · workers · designers
              └─ reviewer
-        └─ lander → checks → main → push
+        └─ lander → configured checks → main → push (if configured)
 ```
 
 - For each feature I start a **coordinator** branch. It plans, delegates to scouts (read), workers (code) and designers
   (UI), and has a reviewer check the result.
 - Bigger work starts with an assessment: you get a short proposal with numbered decisions and nothing is built
   before your go.
-- The **lander** runs every check, merges into main and usually pushes. UI polish lands only after you approve a
-  running preview.
+- The **lander** runs the project's configured checks, merges into main and pushes only when configured. UI polish
+  lands only after you approve a running preview.
 - Branches show in the sidebar under the project; open one any time to watch or steer it.
 - Ultimate itself gets updates too: the status line says when there are new ones, and one click pulls them in (or
   @ultimate merges them with your own changes on a branch).
