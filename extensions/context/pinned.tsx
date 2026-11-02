@@ -43,8 +43,14 @@ function useStartInView() {
  */
 export function PinnedPrompt() {
   const id = useConversation((conversation) => conversation.id)
-  const agent = useConversation((conversation) => conversation.agent)
   const owned = useConversationSummary(id)?.parentConversationId
+  // Nothing while a conversation loads: its id is unknown, and the action would answer for whichever one is requested.
+  // Keyed, so a conversation never starts from another's baseline or answer.
+  return id === undefined || owned !== undefined ? null : <Pinned id={id} key={id} />
+}
+
+function Pinned({ id }: { id: number }) {
+  const agent = useConversation((conversation) => conversation.agent)
   const entries = useTranscript()
   const startInView = useStartInView()
   // A new `pi.system` entry in the stream means the prompt changed: ask for it again.
@@ -54,7 +60,7 @@ export function PinnedPrompt() {
     CurrentPromptAction,
     seen === null ? {} : { since: seen },
     // Without a prompt there is nothing to pin; a failure leaves the pin out rather than raising a notice.
-    { enabled: id !== undefined && owned === undefined, onError: () => {} },
+    { onError: () => {} },
   )
   const { refetch } = shown
   // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
