@@ -3,7 +3,7 @@
  * otherwise ask them, records each decision with its reason, and ends the goal with a report. Only the user starts or
  * ends a goal early; @ultimate hears it on every run through a per-input note.
  */
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   defineDoc,
   defineExtension,

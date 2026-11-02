@@ -26,7 +26,7 @@ export async function admitCompaction(tx: Tx, id: ConversationId, instructions?:
   )
   ;((await tx.doc(LiveDoc, id)).compactions ??= []).push({
     taskId: created,
-    reason: 'manual',
+    trigger: 'manual',
     blocking: false,
     attempt: 1,
   })

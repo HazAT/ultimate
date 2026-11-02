@@ -5,7 +5,7 @@ import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
 import type { Message } from '../messages/api.ts'
-import { DescribeAction, RetryAction, StartedAction } from './refs.ts'
+import { DescribeAction, StartedAction } from './refs.ts'
 import type { TaskFacts } from './refs.ts'
 
 type Input = Record<string, unknown> | null | undefined
@@ -70,9 +70,6 @@ async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): P
 
 export default { name: 'tasks' }
 
-// A parked task crashed the process five times in a row; only the user decides to risk a sixth.
-export const userActions = ['retry']
-
 export const actions = {
   /** When each of `ids` first ran, in wall-clock milliseconds; tasks not yet started or gone are left out. */
   started: implementAction(StartedAction, async (args, { host }) => {
@@ -101,12 +98,5 @@ export const actions = {
       }
       return described
     }, context)
-  }),
-  /** Run a task parked by the crash-loop guard again; does nothing for a task that is not parked. */
-  retry: implementAction(RetryAction, async (args, { host }) => {
-    const id = (args as { id?: unknown } | null)?.id
-    if (!Number.isSafeInteger(id)) throw new Error('Expected a task id')
-    await host.harness().retryTask(id as TaskId, context)
-    return null
   }),
 }

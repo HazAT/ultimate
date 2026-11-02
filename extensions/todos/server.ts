@@ -2,7 +2,7 @@
  * To-dos: one short list per project on the root conversation, each item owned by the user or @ultimate. @ultimate
  * keeps it with its `todo` tool and hears about it when it changed; the user adds and ticks in the To-dos panel.
  */
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   defineDoc,
   defineExtension,

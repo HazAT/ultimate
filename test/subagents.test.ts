@@ -22,7 +22,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Extension, Task, ToolRegistration } from '@earendil-works/pi-durable'
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { afterEach, describe, expect, it } from 'vitest'

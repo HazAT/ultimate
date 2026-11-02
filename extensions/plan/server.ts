@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   defineDoc,
   defineExtension,
@@ -186,14 +186,16 @@ export default (host: ExtensionHost) => {
         replay: 'safe',
         parameters: Type.Object({
           action: Type.Union(
-            ['create', 'add', 'update', 'note', 'show'].map((v) => Type.Literal(v)),
+            (['create', 'add', 'update', 'note', 'show'] as const).map((v) => Type.Literal(v)),
           ),
           title: Type.Optional(Type.String()),
           body: Type.Optional(Type.String()),
           epic: Type.Optional(
             Type.String({ description: 'Epic key returned by create, e.g. E1.' }),
           ),
-          role: Type.Optional(Type.Union(['worker', 'reviewer'].map((v) => Type.Literal(v)))),
+          role: Type.Optional(
+            Type.Union((['worker', 'reviewer'] as const).map((v) => Type.Literal(v))),
+          ),
           description: Type.Optional(Type.String()),
           deps: Type.Optional(
             Type.Array(Type.String(), {

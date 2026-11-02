@@ -97,6 +97,9 @@ importers:
       tone:
         specifier: 15.1.22
         version: 15.1.22
+      typebox:
+        specifier: 1.3.27
+        version: 1.3.27
       unbash:
         specifier: 5.1.0
         version: 5.1.0

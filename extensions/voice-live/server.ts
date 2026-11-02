@@ -10,7 +10,7 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, ToolTaskInput, Tx } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -153,7 +153,8 @@ async function write(
   const settled = await (
     await conversation.submit({ type: 'write', requestId, entry: { kind, data } }, context)
   ).wait(context)
-  if (settled.status !== 'done') throw new Error(`Voice write failed: ${settled.reason}`)
+  if (settled.status !== 'done' || settled.type !== 'write')
+    throw new Error(`Voice write failed: ${settled.reason}`)
   return settled.entry
 }
 
@@ -277,8 +278,8 @@ export function answerTask(host: ExtensionHost) {
             else if (m && ['failed', 'stopped'].includes(m.state))
               placed.reject(new Error(m.error ?? 'Voice reply was not delivered'))
           }
-          watch.start(async (value) => {
-            inspect(value)
+          watch.start(async (call) => {
+            if (call.kind === 'value') inspect(call.value)
           })
           try {
             inspect(watch.value)

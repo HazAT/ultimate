@@ -66,7 +66,7 @@ export default (host) => {
   return defineExtension({ name: 'delta' })
 }`,
   tooler: `${tokens}
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 export default (host) => {
   const delta = host.need(Delta)
   return defineExtension({

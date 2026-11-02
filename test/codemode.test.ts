@@ -5,7 +5,7 @@ import {
   fauxToolCall,
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId, ToolExecutionResult } from '@earendil-works/pi-durable'
@@ -221,7 +221,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
     [
       'trace-probe',
       `import { defineTool } from '@earendil-works/pi-durable'
-      import { Type } from '@earendil-works/pi-ai'
+      import { Type } from 'typebox'
       ${token}
       export default (host) => {
         const echo = host.need(Echo)

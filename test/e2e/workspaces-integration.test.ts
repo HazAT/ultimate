@@ -1,7 +1,7 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { cp, mkdir, readdir, readFile, writeFile, access, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import {

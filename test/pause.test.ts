@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   fauxAssistantMessage,
   fauxText,

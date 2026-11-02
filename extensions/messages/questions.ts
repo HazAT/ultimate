@@ -3,7 +3,7 @@
  * the schema cannot express. Rejected questions come back to the agent as the tool's error, so a card never shows a
  * question it cannot answer.
  */
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { formatAgo } from '../../lib/ago.ts'

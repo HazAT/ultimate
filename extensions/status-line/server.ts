@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { defineExtension, LiveDoc, UsageDoc } from '@earendil-works/pi-durable'
 import type { Cursor, LiveState, UsageState } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
@@ -92,16 +93,20 @@ export default function statusLine(host: Host) {
         // Subscribe while this atomic seed still holds the commit boundary. Its own publication
         // is safe to adopt again (absolute counters); no following commit can slip past the seed.
         // Not a reactor: token rates follow Pi's usage and live documents, not domain events.
-        unsubscribe = harness.subscribeCommits((publication) => {
+        unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
             if (change.record.kind === UsageDoc.definition.kind) {
-              const usage = change.value as UsageState | null
+              const usage = change.kind === 'change' ? (change.value as UsageState) : null
               replace(change.conversationId, 'settled', settled(usage))
               replaceSpend(change.conversationId, usage)
             }
             if (change.record.kind === LiveDoc.definition.kind)
-              replace(change.conversationId, 'partial', partial(change.value))
+              replace(
+                change.conversationId,
+                'partial',
+                partial(change.kind === 'change' ? change.value : null),
+              )
           }
           // Do not sample here: settled + partial must be adopted from the whole publication.
         })

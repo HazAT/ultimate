@@ -1,4 +1,4 @@
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'

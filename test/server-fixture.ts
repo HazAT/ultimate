@@ -94,7 +94,7 @@ export async function fixture(extra = false, sources?: Record<string, string>, e
   servers.push(server)
   return { server, options }
 }
-const counterSource = `import { Type } from '@earendil-works/pi-ai'
+const counterSource = `import { Type } from 'typebox'
 import { defineDoc, defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { value } from './value.ts'
 export const Counter = defineDoc({ kind: 'test.counter', checkpointWhen: () => false, version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ count: 0 }) })
@@ -102,7 +102,7 @@ export const docs = [Counter]
 export default defineExtension({ name: 'counter', sections: [section('counter', () => value)], tools: [defineTool({ name: 'increment', description: 'Increment', parameters: Type.Object({}), execute: async (_args, api, context) => { await api.commit(async tx => { (await tx.doc(Counter, api.conversationId)).count++ }, context); return {} } })] })`
 
 export const orderedSource = (name: string, order = 0) => `
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 export const order = ${order}
 export default defineExtension({ name: '${name}', sections: [section('${name === '0-new' ? 'new' : name}', () => '${name}')], tools: [defineTool({ name: '${name === '0-new' ? 'new' : name}', description: '${name}', parameters: Type.Object({}), execute: async () => ({}) })] })`

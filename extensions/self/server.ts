@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { awaitWithContext } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'

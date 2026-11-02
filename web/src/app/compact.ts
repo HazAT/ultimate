@@ -88,34 +88,6 @@ export function compactRows(
 }
 
 /**
- * What makes a streamed window fresh: its `older` and its head marker. Appends keep both; a resync after consecutive
- * compactions can keep `older` but brings a new head marker.
- */
-export const windowKey = (window: readonly EntryRecord[], older: number | undefined) =>
-  `${older}:${window[0]?.head === undefined ? '' : window[0].id}`
-
-/**
- * Ranges `[after, before)` of stored history a fresh window starting at `older` does not cover, with `loaded` the rows
- * already shown below it:
- * - after a head marker, the window skips superseded markers newer than `older`; it is not in id order, the marker
- *   coming first, so the range reaches past its newest entry;
- * - rows kept from before a resync can end well below the new window.
- */
-export function windowGaps(
-  window: readonly EntryRecord[],
-  older: number,
-  loaded: readonly EntryRecord[],
-): [number, number][] {
-  const gaps: [number, number][] = []
-  if (window[0]?.head !== undefined)
-    gaps.push([older, Math.max(...window.map((entry) => entry.id)) + 1])
-  let below = 0
-  for (const entry of loaded) if (entry.id < older) below = Math.max(below, entry.id)
-  if (below && below + 1 < older) gaps.push([below + 1, older])
-  return gaps
-}
-
-/**
  * The entries a go-back set aside, as the model's context leaves them out. An entry whose `data.setAside` is an entry id
  * went back to it: the newest go-back after an entry decides. The entry is set aside when it came after that go-back's
  * point; otherwise the context returned to how it was at the point, where the go-backs before the point decide.

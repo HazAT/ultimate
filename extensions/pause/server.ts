@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -424,7 +425,7 @@ export default function pauseExtension(host: Host) {
       await card(host, doc)
     })
     // Every model answer Pi records lands in a commit; the first rate-limited one pauses.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       // Pi commits a retried answer with its generation sleeping until the retry. The answer that spent the last retry
       // ends the run in the same commit instead: holding then continues nothing and only delays the failure's report.
       const retrying = new Set(

@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   configure,
   defineExtension,

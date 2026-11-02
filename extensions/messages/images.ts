@@ -1,4 +1,4 @@
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { ConversationId, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'

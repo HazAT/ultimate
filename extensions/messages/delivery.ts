@@ -124,8 +124,8 @@ export function delivery(host: ExtensionHost) {
           const inspect = (value: typeof inbox.value) => {
             if (!value?.items.some((item) => item.id === receipt.id)) wake()
           }
-          inbox.start(async (value) => {
-            inspect(value)
+          inbox.start(async (call) => {
+            if (call.kind === 'value') inspect(call.value)
           })
           try {
             inspect(inbox.value)

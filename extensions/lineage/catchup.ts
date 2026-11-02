@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path'
+import { onCommit } from '../../lib/commits.ts'
 import type { Context } from '@earendil-works/chord'
 import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
@@ -81,7 +82,7 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
   host.onOpen(async () => {
     const harness = host.harness()
     // Not a reactor: it seeds every new top-level conversation, a Pi record, not only lineage's branches and roots.
-    unsubscribe = harness.subscribeCommits((publication) => {
+    unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
           void seed(change.value.id).catch((error: unknown) => {

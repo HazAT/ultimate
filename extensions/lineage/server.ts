@@ -1,6 +1,7 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
+import { onCommit } from '../../lib/commits.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { Message, Models, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { estimateMessageTokens, estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import {
@@ -359,10 +360,12 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   host.onOpen(async () => {
     roots = new Set(await rootsOf(host, ctx))
     // Not a reactor: any entry a root gets (Pi's own resets and compactions too) changes its count, no domain event.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes)
         if (change.type === 'document' && change.record.kind === Roots.definition.kind)
-          roots = new Set((change.value as { roots?: number[] } | null)?.roots ?? [])
+          roots = new Set(
+            change.kind === 'change' ? ((change.value as { roots?: number[] }).roots ?? []) : [],
+          )
       const before = dirty.size
       for (const change of publication.changes)
         if (change.type === 'entry' && roots.has(change.value.conversationId))
@@ -432,7 +435,7 @@ function lineage(host: ExtensionHost) {
           // Subscribed before reading, so an entry the target writes after the read still ends the wait below.
           const written = Promise.withResolvers<void>()
           // Not a reactor: a short wait inside this task for any entry of the target, a Pi record.
-          const unsubscribe = host.harness().subscribeCommits((publication) => {
+          const unsubscribe = onCommit(host.harness(), (publication) => {
             if (
               publication.changes.some(
                 (change) => change.type === 'entry' && change.value.conversationId === target,

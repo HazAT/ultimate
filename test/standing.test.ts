@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it } from 'vitest'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   configure,
   defineExtension,

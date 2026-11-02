@@ -64,11 +64,11 @@ export interface ConversationState {
   /** True until this conversation's snapshot arrived. */
   loading: boolean
   /**
-   * The streamed active entries, oldest first: the head marker and the newest entries of a long context, all of a short
-   * one. Whole-transcript readers use `useTranscript()`, which grows as the reader pages in earlier history.
+   * The streamed entries, oldest first: the newest of a long transcript, all of a short one, head markers in place.
+   * Whole-transcript readers use `useTranscript()`, which grows as the reader pages in earlier history.
    */
   entries: readonly EntryRecord[]
-  /** The exclusive `api.history` cursor for active entries the stream left out; absent when it sent them all. */
+  /** The exclusive `api.history` cursor for entries the stream left out; absent when it sent them all. */
   older?: number
   /** `pi.agent`: model, thinking level, cwd, extensions, tools. */
   agent: AgentState
@@ -103,7 +103,7 @@ function derive(view: StreamedView | undefined): ConversationState {
       id: view.conversation.id,
       loading: false,
       entries: view.entries,
-      older: view.older,
+      older: view.before === undefined ? undefined : view.before + 1,
       agent: docs['pi.agent'] ?? {},
       usage: (docs['pi.usage'] ?? empty.usage) as UsageState,
       live,
