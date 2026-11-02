@@ -18,10 +18,14 @@ it('finds Playwright Chromium in the macOS cache, newest build first', async () 
     await mkdir(join(cache, name), { recursive: true })
   const app =
     'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+  const legacy = 'chrome-mac/Chromium.app/Contents/MacOS/Chromium'
   expect(await playwrightChromiums(home, 'darwin', 'arm64')).toEqual([
     join(cache, 'chromium-1248', app),
+    join(cache, 'chromium-1248', legacy),
     join(cache, 'chromium-1208', app),
+    join(cache, 'chromium-1208', legacy),
     join(cache, 'chromium-998', app),
+    join(cache, 'chromium-998', legacy),
   ])
   expect(await playwrightChromiums(home, 'linux', 'x64')).toEqual([])
 })

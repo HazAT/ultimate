@@ -27,17 +27,21 @@ export async function playwrightChromiums(
   platform = process.platform,
   arch = process.arch,
 ) {
-  const [cache, executable] =
+  const [cache, executables] =
     platform === 'darwin'
       ? [
           join(home, 'Library/Caches/ms-playwright'),
-          `chrome-mac-${arch}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+          [
+            `chrome-mac-${arch}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+            // Older Playwright releases installed their own Chromium build.
+            'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+          ],
         ]
-      : [join(home, '.cache/ms-playwright'), 'chrome-linux64/chrome']
+      : [join(home, '.cache/ms-playwright'), ['chrome-linux64/chrome']]
   return (await readdir(cache).catch(() => []))
     .filter((name) => name.startsWith('chromium-'))
     .toSorted((a, b) => b.localeCompare(a, 'en', { numeric: true }))
-    .map((name) => join(cache, name, executable))
+    .flatMap((name) => executables.map((executable) => join(cache, name, executable)))
 }
 
 export async function browserBinary() {
@@ -45,6 +49,7 @@ export async function browserBinary() {
     process.env.ULTIMATE_CHROMIUM,
     '/usr/bin/chromium',
     '/usr/bin/google-chrome-stable',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     ...(await playwrightChromiums(homedir())),
   ].filter((path): path is string => !!path)
   for (const path of candidates) {
@@ -56,7 +61,7 @@ export async function browserBinary() {
     }
   }
   throw new Error(
-    'No Chromium found. Set ULTIMATE_CHROMIUM, install /usr/bin/chromium or /usr/bin/google-chrome-stable, or run `npx playwright install chromium` (~/.cache/ms-playwright on Linux, ~/Library/Caches/ms-playwright on macOS).',
+    'No Chromium found. Set ULTIMATE_CHROMIUM, install /usr/bin/chromium or /usr/bin/google-chrome-stable (Google Chrome in /Applications on macOS), or run `npx playwright install chromium` (~/.cache/ms-playwright on Linux, ~/Library/Caches/ms-playwright on macOS).',
   )
 }
 
