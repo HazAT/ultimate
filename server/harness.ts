@@ -59,31 +59,24 @@ export function reportMessage({ error, ...info }: Report): string {
 }
 
 /**
- * Compaction per model, from its context window and answer size, over Pi's defaults (reserve 16k, keep 20k, background
- * 32k), which suit a ~200k window. Larger windows keep more room for the answer, more recent context verbatim, and
- * start the background compaction earlier, so a long turn rarely waits on a blocking one. A `compaction.modelOverrides`
- * entry in Pi's settings files replaces these field by field.
+ * Compaction for a model's context window, over Pi's defaults (reserve 16k, keep 20k, background 32k), which suit a
+ * ~200k window. Larger windows keep more room for the answer, more recent context verbatim, and start the background
+ * compaction earlier, so a long turn rarely waits on a blocking one. A `compaction.modelOverrides` entry in Pi's
+ * settings files replaces these field by field.
  */
-const large = { reserveTokens: 32768, keepRecentTokens: 60000, backgroundTokens: 131072 }
-export const compactionOverrides: Record<string, Partial<CompactionPolicy>> = {
-  // 500k window, 128k answers: blocking at ~467k, background from ~400k.
-  'openai-codex/gpt-6.1-sol': {
-    reserveTokens: 32768,
-    keepRecentTokens: 40000,
-    backgroundTokens: 65536,
-  },
-  // 1M windows, 128k answers: blocking at ~967k, background from ~836k.
-  'claude-code/default': large,
-  'claude-code/claude-opus-5-5': large,
-  'claude-code/claude-fable-5-1': large,
-  'claude-code/claude-sonnet-5': large,
-  'claude-code/claude-sonnet-5-5': large,
-  'claude-code/claude-haiku-5-5': large,
-  // claude-code/claude-haiku-4-5-20251001 has a 200k window: Pi's defaults fit.
+export function compactionProfile(contextWindow: number): Partial<CompactionPolicy> {
+  // 1M windows: blocking at ~967k, background from ~836k.
+  if (contextWindow >= 1_000_000)
+    return { reserveTokens: 32768, keepRecentTokens: 60000, backgroundTokens: 131072 }
+  // 500k windows: blocking at ~467k, background from ~400k.
+  if (contextWindow >= 500_000)
+    return { reserveTokens: 32768, keepRecentTokens: 40000, backgroundTokens: 65536 }
+  return {}
 }
 
 export function createHarnessSettings(
   settings: SettingsManager,
+  contextWindow: (provider: string, modelId: string) => number | undefined,
   extensions: () => Extension[],
 ): HarnessSettings {
   return {
@@ -101,9 +94,16 @@ export function createHarnessSettings(
     },
     get compaction() {
       const configured = settings.getSettings().compaction?.modelOverrides ?? {}
-      const modelOverrides = { ...compactionOverrides }
-      for (const [model, entry] of Object.entries(configured))
-        modelOverrides[model] = { ...modelOverrides[model], ...entry }
+      // Pi Durable reads settings many times a turn and looks up one "provider/modelId" at a time: resolve that model
+      // instead of listing every registered one.
+      const modelOverrides = new Proxy(configured, {
+        get(entries, key) {
+          if (typeof key !== 'string' || !key.includes('/')) return Reflect.get(entries, key)
+          const slash = key.indexOf('/')
+          const window = contextWindow(key.slice(0, slash), key.slice(slash + 1)) ?? 0
+          return { ...compactionProfile(window), ...entries[key] }
+        },
+      })
       return { ...settings.getCompactionSettings(), modelOverrides }
     },
     get retry() {
@@ -158,6 +158,8 @@ export async function prepareHarness(options: HostOptions) {
   const modelCalls = modelTrace(trace)
   registry.install(modelCalls.extension)
   const modelRuntime = guardToolArguments(runtime, modelCalls)
+  const contextWindow = (provider: string, modelId: string) =>
+    modelRuntime.getModel(provider, modelId)?.contextWindow
   const { faux } = options
   if (faux) {
     runtime.registerNativeProvider(faux.provider)
@@ -246,7 +248,7 @@ export async function prepareHarness(options: HostOptions) {
           {
             models: modelRuntime,
             registry,
-            settings: createHarnessSettings(settings, () =>
+            settings: createHarnessSettings(settings, contextWindow, () =>
               registry
                 .snapshot()
                 .installed()
