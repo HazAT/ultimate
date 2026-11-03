@@ -13,7 +13,7 @@ Actions (contracts in `refs.ts`):
 - `polls` → `{ polls }`: the poll counter from `host.trace.polls()`, the successful action and service calls the trace counted instead of writing because they repeated one written within the last minute, `{ name, count, since }` most first.
 
 The **System** surface (⌘K "Open System", or "System ↗" in the Activity panel) shows both. **Agent Lanes** on top:
-one row per lane with its agent's mark, model and state (running, waits on you — only @ultimate —, awaiting @ultimate, done, failed, idle: the sidebar's conversation state) and its runs as blocks on a
+one row per lane with its agent's mark, model and state (running, waits on you, awaiting @ultimate, done, failed, idle: the sidebar's conversation state) and its runs as blocks on a
 30 m / 2 h / 24 h timeline, labelled by their main tool, with calls as ticks (failed ones red). Lanes form a tree:
 children indented under the lane that started them, with a dotted guide, in the order they started; a parent with more
 than three finished children folds them into a "+N finished" row (unfolding is remembered in the browser). A dotted

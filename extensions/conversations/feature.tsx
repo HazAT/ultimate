@@ -1,4 +1,4 @@
-import { cn, useConversations, useDocOf } from '@/sdk'
+import { cn, useConversationSummary, useDocOf } from '@/sdk'
 import { OverviewDoc } from './refs.ts'
 import type { OverviewRow } from './types.ts'
 
@@ -40,7 +40,7 @@ export function FeatureTag({ feature, className }: { feature: string; className?
 
 /** A standing agent's `@name`, the only name it goes by: titles and feature tags passed along with it go stale. */
 export function useStandingName(id: number) {
-  const live = useConversations().find((conversation) => conversation.id === id)
+  const live = useConversationSummary(id)
   return live?.label === 'agent' ? live.title : undefined
 }
 
@@ -60,7 +60,7 @@ export function ConversationRef({
   className?: string
 }) {
   const overview = useOverview()
-  const live = useConversations().find((conversation) => conversation.id === id)?.title
+  const live = useConversationSummary(id)?.title
   // A standing agent is always itself: a feature tag would be stale, the work of whichever branch named it last.
   const agent = useStandingName(id)
   const feature = agent ? undefined : overview[id]?.feature

@@ -261,7 +261,8 @@ export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promi
     throw new Error('lander.push must be a remote name')
   return {
     checks: checks as Settings['checks'],
-    ...(lander?.push ? { push: lander.push } : {}),
+    // A preview never pushes; its git hooks refuse it too (extensions/instance).
+    ...(lander?.push && !process.env.ULTIMATE_PREVIEW_BRANCH ? { push: lander.push } : {}),
   }
 }
 export const contains = (cwd: string, ancestor: string, descendant: string) =>

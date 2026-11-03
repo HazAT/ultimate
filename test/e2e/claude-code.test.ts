@@ -270,7 +270,7 @@ if (process.argv.includes('status')) {
       emit({ type: 'result', subtype: 'success', num_turns: 0 })
       continue
     }
-    appendFileSync(${JSON.stringify(requests)}, process.pid + ' ' + (process.env.CLAUDE_CONFIG_DIR || '-') + '\\n')
+    appendFileSync(${JSON.stringify(requests)}, process.pid + ' ' + (process.env.CLAUDE_CONFIG_DIR || '-') + ' ' + process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY + '\\n')
     const message = { id: 'msg_env', role: 'assistant', content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }
     emit({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: 'ok' } } })
     emit({ type: 'stream_event', event: { type: 'content_block_stop', index: 0 } })
@@ -285,6 +285,7 @@ if (process.argv.includes('status')) {
   vi.stubEnv('PI_CLAUDE_CODE_COMMAND', cli)
   vi.stubEnv('PI_CLAUDE_CODE_CONFIG_DIR', '')
   vi.stubEnv('CLAUDE_CONFIG_DIR', '')
+  vi.stubEnv('CLAUDE_CODE_DISABLE_AUTO_MEMORY', undefined)
   const projectRoot = join(home, 'project')
   await mkdir(join(projectRoot, '.ultimate'), { recursive: true })
   await writeFile(
@@ -315,9 +316,14 @@ if (process.argv.includes('status')) {
     }
     const [a, b] = [await conversation(), await conversation()]
 
-    // Without a provider the request runs in the ambient environment.
+    // Without a provider the request uses ambient config, with auto-memory off by default.
     await a()
-    expect((await lines()).map((line) => line.split(' ')[1])).toEqual(['-'])
+    expect((await lines()).map((line) => line.split(' ').slice(1))).toEqual([['-', '1']])
+
+    vi.stubEnv('CLAUDE_CODE_DISABLE_AUTO_MEMORY', '0')
+    await a()
+    expect((await lines()).at(-1)?.split(' ').slice(1)).toEqual(['-', '0'])
+    vi.stubEnv('CLAUDE_CODE_DISABLE_AUTO_MEMORY', undefined)
 
     const folder = join(projectRoot, '.ultimate/extensions/claude-env')
     await mkdir(folder, { recursive: true })
@@ -326,7 +332,7 @@ if (process.argv.includes('status')) {
       `import { defineExtension } from '@earendil-works/pi-durable'
 export default function (host) {
   host.implement({ name: 'claude-code.env' }, {
-    env: (conversationId) => ({ PI_CLAUDE_CODE_CONFIG_DIR: '/config/' + conversationId }),
+    env: (conversationId) => ({ PI_CLAUDE_CODE_CONFIG_DIR: '/config/' + conversationId, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0' }),
   })
   return defineExtension({ name: 'claude-env' })
 }
@@ -341,12 +347,13 @@ export default function (host) {
     await a()
     await b()
     await a()
-    const [, first, second, third] = (await lines()).map((line) => line.split(' '))
+    const [, , first, second, third] = (await lines()).map((line) => line.split(' '))
     expect([first[1], second[1], third[1]]).toEqual([
       `/config/${a.id}`,
       `/config/${b.id}`,
       `/config/${a.id}`,
     ])
+    expect([first[2], second[2], third[2]]).toEqual(['0', '0', '0'])
     // A distinct environment gets its own warm process; the same one reuses it.
     expect(second[0]).not.toBe(first[0])
     expect(third[0]).toBe(first[0])

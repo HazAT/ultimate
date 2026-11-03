@@ -37,10 +37,11 @@ export interface ConfigureRequest {
   thinkingLevel?: ModelThinkingLevel
 }
 /**
- * A conversation's view as `/api/events` streams it. A long active context arrives windowed: its head marker and newest
- * entries, with `older` the exclusive `/history` cursor for the active entries left out. Absent when nothing was left out.
+ * A conversation's view as `/api/events` streams it: Pi's window over its newest entries in id order, head markers
+ * where they were written, with `before` the entry just before the window (absent when the window starts the
+ * transcript), so `/history` pages on from `before + 1`.
  */
-export type StreamedView = ConversationView & { older?: number }
+export type StreamedView = ConversationView
 /** Stored history, newest first; `before` is the exclusive cursor for the next page. */
 export interface HistoryResponse {
   entries: EntryRecord[]

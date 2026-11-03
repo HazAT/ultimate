@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-durable@1.4.0 src/tools/edit.ts and src/tools/edit-diff.ts — internal untyped details.patch/details.diff formats drive the diff renderer. Drop when Pi exports structured diff rows for rendering.
+// Pi upstream: @earendil-works/pi-durable@1.5.0 src/tools/edit.ts and src/tools/edit-diff.ts — internal untyped details.patch/details.diff formats drive the diff renderer. Drop when Pi exports structured diff rows for rendering.
 import type { Ref } from 'react'
 import { cn } from '@/sdk'
 

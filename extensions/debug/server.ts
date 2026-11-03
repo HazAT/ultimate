@@ -1,4 +1,4 @@
-import { Type } from '@earendil-works/pi-ai'
+import { arr, int, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -179,31 +179,22 @@ export default function debug(host: ExtensionHost) {
           '`trace` lists recorded service, action, reactor, tool and model calls newest first (filter by `conversation` or ISO `since`), or with `trace` set the whole call tree of that trace id, indented; ' +
           "`apis` lists extension contracts (api.ts, refs.ts) with summaries and `api` returns one extension's by `name`, each file under a header. " +
           'Start from an event or a call, take its trace id and read the tree. Read-only; one line per row, ages relative; `limit` defaults to 20 events or 50 rows.',
-        parameters: Type.Object({
-          call: Type.Union([
-            Type.Literal('events'),
-            Type.Literal('reactors'),
-            Type.Literal('catalogue'),
-            Type.Literal('trace'),
-            Type.Literal('apis'),
-            Type.Literal('api'),
-          ]),
-          events: Type.Optional(
-            Type.Array(Type.String({ minLength: 1 }), {
+        parameters: obj({
+          call: oneOf(['events', 'reactors', 'catalogue', 'trace', 'apis', 'api']),
+          events: opt(
+            arr(str({ minLength: 1 }), {
               description: 'events: event names to keep.',
             }),
           ),
-          since: Type.Optional(
-            Type.Union([Type.Integer({ minimum: 0 }), Type.String({ minLength: 1 })], {
+          since: opt(
+            union([int({ minimum: 0 }), str({ minLength: 1 })], {
               description: 'events: an event id to read after; trace: an ISO time.',
             }),
           ),
-          trace: Type.Optional(Type.String({ minLength: 1, description: 'trace: a trace id.' })),
-          conversation: Type.Optional(
-            Type.Integer({ minimum: 1, description: 'trace: calls of this conversation.' }),
-          ),
-          name: Type.Optional(Type.String({ minLength: 1, description: 'api: extension name.' })),
-          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+          trace: opt(str({ minLength: 1, description: 'trace: a trace id.' })),
+          conversation: opt(int({ minimum: 1, description: 'trace: calls of this conversation.' })),
+          name: opt(str({ minLength: 1, description: 'api: extension name.' })),
+          limit: opt(int({ minimum: 1, maximum: 1000 })),
         }),
         async execute(args) {
           return { output: [{ type: 'text', text: await run(args) }] }

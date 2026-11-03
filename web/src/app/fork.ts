@@ -5,13 +5,11 @@ const startsContext = (entry: EntryRecord) =>
 
 /**
  * Whether the loaded rows of conversation `id` hold everything its first context shows, so paging can stop: its oldest
- * own entry, the source's entry right before it (a windowed stream's head marker, `head`, sits apart from the window,
- * next to only its newest entries, so it does not count as that entry), and, unless the fork starts its own context,
- * the source's context the fork carries in: its last context start before the fork, and for a compaction the entries
- * it kept from its `head` on.
+ * own entry, the source's entry right before it, and, unless the fork starts its own context, the source's context the
+ * fork carries in: its last context start before the fork, and for a compaction the entries it kept from its `head` on.
  */
-export function reachedFork(loaded: readonly EntryRecord[], id: number | undefined, head?: number) {
-  const rows = loaded.filter((entry) => entry.id !== head).toSorted((a, b) => a.id - b.id)
+export function reachedFork(loaded: readonly EntryRecord[], id: number | undefined) {
+  const rows = loaded.toSorted((a, b) => a.id - b.id)
   const own = rows.findIndex((entry) => entry.conversationId === id)
   if (own <= 0 || rows[own - 1].conversationId === id) return false
   if (startsContext(rows[own])) return true

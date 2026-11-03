@@ -32,7 +32,7 @@ import {
   Provided,
   useAction,
   useConversation,
-  useConversations,
+  useConversationSummary,
   useDocOf,
   useEvent,
   useNow,
@@ -698,7 +698,7 @@ function useStep(mode: VoiceMode): Step {
 /** The step in large words and one quiet line under it, readable from across the room. */
 function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
   const { main } = useIds()
-  const busy = useConversations().find((conversation) => conversation.id === main)?.busy
+  const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, step.step === 'working' || mode.phase === 'live')
   const session =
     mode.phase === 'live' && mode.since !== undefined ? clock(now - mode.since) : undefined
@@ -1100,7 +1100,7 @@ function Asked({ text }: { text: string }) {
 
 /** @ultimate on it: the phase the sidebar shows for it (else working, or waiting its turn) and the time so far. */
 function Working({ main, since }: { main: number; since?: number }) {
-  const busy = useConversations().find((conversation) => conversation.id === main)?.busy
+  const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, since !== undefined)
   return (
     <div

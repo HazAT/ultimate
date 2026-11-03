@@ -17,7 +17,20 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * After a billing (402) or auth (401/403) failure, no request goes out for this long: neither fixes itself between
+ * tool rounds, and callers like phase ask on every round. 15 minutes caps a stuck account at four calls an hour and
+ * still recovers soon after a top-up without a restart; a changed key retries at once.
+ */
+export const cooldownMs = 15 * 60_000
+const rejected: Record<number, string> = {
+  401: 'TypeSafe: API key rejected',
+  402: 'TypeSafe: out of credits',
+  403: 'TypeSafe: API key not allowed',
+}
+
 export default function classify(host: ExtensionHost) {
+  let paused: { key: string; until: number; error: string } | undefined
   const service: ClassifyService = {
     async ask(request, signal) {
       // Pi's `typesafe` provider auth (models.json, auth.json or its env key) wins over the stored secret. An
@@ -30,6 +43,7 @@ export default function classify(host: ExtensionHost) {
           'Missing TYPESAFE_API_KEY. Enable secrets and add TYPESAFE_API_KEY in the Secrets panel (⌘K → Secrets).',
         )
       }
+      if (paused?.key === key && Date.now() < paused.until) throw new Error(paused.error)
       const base =
         host.modelRuntime.getProvider('typesafe')?.baseUrl ?? 'https://api.typesafe.ai/v1'
       const response = await fetch(`${base.replace(/\/+$/, '')}/systemone`, {
@@ -39,7 +53,13 @@ export default function classify(host: ExtensionHost) {
         signal,
       })
       if (!response.ok) {
-        throw new Error(`TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`)
+        const error = `TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`
+        const status = rejected[response.status]
+        if (status) {
+          paused = { key, until: Date.now() + cooldownMs, error }
+          host.notice(`${status}; classification paused for ${cooldownMs / 60_000} minutes`)
+        }
+        throw new Error(error)
       }
       const body: unknown = await response.json()
       if (

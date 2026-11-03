@@ -35,9 +35,8 @@ describe('server reload', () => {
     await post(server, '/api/conversations/1/submit', { text: 'after' })
     await server.harness.waitForIdle(context)
     const entries = async () => {
-      const view = await server.root.viewState(context)
-      const all = view.value.entries
-      view.dispose()
+      const view = await server.root.context(context)
+      const all = view.entries
       return all
     }
     const afterChange = await entries()

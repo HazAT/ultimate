@@ -29,7 +29,7 @@ async function fixture(enabled = true) {
   const run = async (name: string, args: unknown, signal?: AbortSignal) => {
     const tool = tools.find((candidate) => candidate.name === name)!
     const prepared = tool.prepareArguments ? tool.prepareArguments(args) : args
-    return tool.execute(prepared, api as never, { abortSignal: signal } as never)
+    return tool.execute(prepared as never, api as never, { abortSignal: signal } as never)
   }
   return { root, run, details, notice }
 }

@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { parseMention } from '@/components/ai/mentions'
-import { events, useConversations, useUltimate } from '@/sdk'
+import { events, useConversationSummary, useUltimate } from '@/sdk'
 import { ConversationRef } from './feature.tsx'
 
 /**
@@ -18,7 +18,7 @@ export function MentionLink({
 }) {
   const mention = parseMention(href)
   const { switchConversation, showSurface } = useUltimate()
-  const conversation = useConversations().find((item) => item.id === mention?.conversation)
+  const conversation = useConversationSummary(mention?.conversation)
   if (!mention || !conversation) return core
   const { entry } = mention
   const open = (event: MouseEvent) => {

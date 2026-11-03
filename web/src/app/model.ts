@@ -30,7 +30,7 @@ export function slotsOf(tools: LiveState['tools']): Map<string, ToolSlot> {
   return new Map((tools ?? []).map((slot) => [slot.callId, slot]))
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.4.0 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
+// Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
 /** The result's text, without the `<harness>` block that repeats its diagnostics for the model. */
 export function resultText(result: ToolResult): string {
   const texts = result.message.content.flatMap((block) =>

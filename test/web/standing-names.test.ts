@@ -21,6 +21,8 @@ vi.mock('@/sdk', async () => ({
   Provided: () => null,
   useConversation: () => 1,
   useConversations: () => conversations,
+  useConversationSummary: (id?: number) =>
+    conversations.find((item: { id: number }) => item.id === id),
   useDocOf: () => ({ conversations: { '43': { feature: 'Chat Cards' } } }),
   useEvent: () => {},
   useUltimate: () => ({ switchConversation: () => {} }),

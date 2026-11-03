@@ -5,7 +5,19 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
+import {
+  arr,
+  bool,
+  int,
+  lit,
+  map,
+  num,
+  obj,
+  oneOf,
+  opt,
+  str,
+  union,
+} from '@earendil-works/pi-schema'
 import {
   AgentDoc,
   defineDoc,
@@ -428,7 +440,7 @@ function backend(host: ExtensionHost) {
     if (args.agent) {
       const found = (
         await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
-      ).definitions.some((d) => d.name === args.agent && d.subagent !== false)
+      ).definitions.some((d) => d.name === args.agent)
       if (!found) throw new Error(`Unknown agent: ${args.agent}`)
     }
     if (args.model && !host.modelRuntime.getModel(args.model.provider, args.model.modelId))
@@ -863,54 +875,43 @@ export default function automations(host: ExtensionHost) {
         executionMode: 'sequential',
         description:
           'Automate background work with one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers). create {name,schedule?|ask?|event?|condition?,once?,secrets?,prompt?,agent?,model?,thinking?,subscribers?: (#id|@name)[],scope?,slug?,to?,key?}. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run. @name subscribers follow that standing agent across chapters. key makes create idempotent: a repeated key returns the automation it made. ask starts a watcher that writes a supervised script: stdout FIRE wakes subscribers and/or starts a prompt run; DONE then exit 0 stops recurring scripts. event {name,where?} watches domain events; events lists names and fields. condition {metric:"context",of:"@name"|"#id",above:1-99,cooldownMs?,idleFor?} watches context fill; idleFor (ms) waits until the user gave it no input for that long. Scripts spend tokens only on setup and repair; prompt runs spend tokens every fire. Schedules: cron "0 9 * * 1-5" Europe/Vienna, at 2026-12-01T09:00:00Z, in 30m, every 15m. IDs A<n>, or lowercase slugs for project scripts in <project>/.ultimate/automations/<slug>/; the to (@name, default @ultimate) in their automation.json is woken on every machine. Project scripts never start themselves. list; update; pause/resume; run (fire trigger now or relaunch script); runs; log {id,lines?}; abort {id,runId}; escalate {id,reason}; subscribe/unsubscribe {id,to?: "#id"|"@name"} (default caller); delete (keeps files and conversations). Without prompt or subscribers, caller subscribes. Optional agent selects an existing definition (isolates ignored), model {provider,modelId} and thinking override it; otherwise runs copy the root agent. Failures wake only the watcher; the third in a row, or a watcher ending its turn mid-repair, escalates: subscribers and @ultimate are notified.',
-        parameters: Type.Object({
-          action: Type.Union(operations.map((v) => Type.Literal(v))),
-          id: Type.Optional(Type.String()),
-          name: Type.Optional(Type.String()),
-          schedule: Type.Optional(Type.String()),
-          ask: Type.Optional(Type.String()),
-          event: Type.Optional(
-            Type.Object({
-              name: Type.String(),
-              where: Type.Optional(
-                Type.Record(
-                  Type.String(),
-                  Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
-                ),
-              ),
+        parameters: obj({
+          action: oneOf(operations),
+          id: opt(str()),
+          name: opt(str()),
+          schedule: opt(str()),
+          ask: opt(str()),
+          event: opt(
+            obj({
+              name: str(),
+              where: opt(map(union([str(), num(), bool()]))),
             }),
           ),
-          condition: Type.Optional(
-            Type.Object({
-              metric: Type.Literal('context'),
-              of: Type.String(),
-              above: Type.Integer({ minimum: 1, maximum: 99 }),
-              cooldownMs: Type.Optional(Type.Number({ minimum: 0 })),
-              idleFor: Type.Optional(Type.Number({ minimum: 0 })),
+          condition: opt(
+            obj({
+              metric: lit('context'),
+              of: str(),
+              above: int({ minimum: 1, maximum: 99 }),
+              cooldownMs: opt(num({ minimum: 0 })),
+              idleFor: opt(num({ minimum: 0 })),
             }),
           ),
-          once: Type.Optional(Type.Boolean()),
-          secrets: Type.Optional(Type.Array(Type.String())),
-          prompt: Type.Optional(Type.String()),
-          agent: Type.Optional(Type.String()),
-          model: Type.Optional(Type.Object({ provider: Type.String(), modelId: Type.String() })),
-          thinking: Type.Optional(
-            Type.Union(
-              ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((v) =>
-                Type.Literal(v),
-              ),
-            ),
+          once: opt(bool()),
+          secrets: opt(arr(str())),
+          prompt: opt(str()),
+          agent: opt(str()),
+          model: opt(obj({ provider: str(), modelId: str() })),
+          thinking: opt(
+            oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const),
           ),
-          subscribers: Type.Optional(
-            Type.Array(Type.Union([Type.Integer({ minimum: 1 }), Type.String()])),
-          ),
-          scope: Type.Optional(Type.Union([Type.Literal('user'), Type.Literal('project')])),
-          slug: Type.Optional(Type.String()),
-          key: Type.Optional(Type.String()),
-          runId: Type.Optional(Type.String()),
-          to: Type.Optional(Type.String()),
-          lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
-          reason: Type.Optional(Type.String()),
+          subscribers: opt(arr(union([int({ minimum: 1 }), str()]))),
+          scope: opt(oneOf(['user', 'project'])),
+          slug: opt(str()),
+          key: opt(str()),
+          runId: opt(str()),
+          to: opt(str()),
+          lines: opt(int({ minimum: 1, maximum: 2000 })),
+          reason: opt(str()),
         }),
         execute: async (args, tool, context) => {
           const cached = await tool.memo<{ output: { type: 'text'; text: string }[] }>(

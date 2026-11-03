@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import tailscale, { actions } from '../extensions/tailscale/server.ts'
 import type { Status } from '../extensions/tailscale/api.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
-import { createAccess } from '../server/request-security.ts'
+import { admit, createAccess } from '../server/request-security.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { createServer } from '../server/main.ts'
 import { projectHome } from '../server/project.ts'
@@ -313,23 +313,39 @@ it('skips foreign ports for new projects and refuses foreign targets on existing
   await app.close()
   expect((await f.invocations()).filter((args) => args.includes('--https=4747'))).toEqual([])
 })
-it.each([
-  { field: 'DNS name', status: { ...node, Self: { UserID: 7 } }, hint: 'MagicDNS' },
-  { field: 'owner login', status: { ...node, User: {} }, hint: 'Self.UserID and User' },
-  {
-    field: 'owner ID',
-    status: { ...node, Self: { DNSName: node.Self.DNSName } },
-    hint: 'Self.UserID and User',
-  },
-])('reports missing $field on a running daemon as a metadata error', async ({ status, hint }) => {
-  const f = await fixture({ node: status })
+it('reports a missing DNS name on a running daemon as a metadata error', async () => {
+  const f = await fixture({ node: { ...node, Self: { UserID: 7 } } })
   const app = await f.instance()
   expect(await app.status()).toMatchObject({
     state: 'error',
-    hint: expect.stringContaining(hint),
+    hint: expect.stringContaining('MagicDNS'),
   })
   expect(app.access.origins()).toEqual([])
   expect(await f.invocations()).toEqual([['status', '--json']])
+})
+// Seen after a reboot: tailscaled reported Running before its status listed the owner's login.
+it('admits the owner once status reports the login it lacked at start', async () => {
+  const f = await fixture({ node: { ...node, User: {} } })
+  const app = await f.instance()
+  const request = {
+    method: 'GET',
+    url: '/',
+    headers: {
+      host: 'rog.example.ts.net:4747',
+      'x-forwarded-for': '100.64.0.1',
+      'tailscale-user-login': 'owner@example.com',
+    },
+  }
+  expect(await app.status()).toMatchObject({ state: 'ready', allow: [], hint: /owner login/ })
+  expect(await admit(request, '4747', app.access.rules)).toBe(false)
+  const config = JSON.parse(await readFile(f.config, 'utf8'))
+  await writeFile(f.config, JSON.stringify({ ...config, node }))
+  expect(await admit(request, '4747', app.access.rules)).toBe(true)
+  expect(await app.status()).toEqual({
+    state: 'ready',
+    url: 'https://rog.example.ts.net:4747',
+    allow: ['owner@example.com'],
+  })
 })
 it.each([
   [{ node: { ...node, CertDomains: [] } }, 'https-disabled', 'admin console'],

@@ -24,7 +24,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationsService } from '../../extensions/conversations/api.ts'
 import { setAutomaticSummaries } from '../../extensions/conversations/summary.ts'
 import { setStanding } from '../../extensions/conversations/server.ts'
-import { apis, attach, temp, removeTemp, until } from '../helpers.ts'
+import { apis, attach, post, temp, removeTemp, until } from '../helpers.ts'
+import { scriptedModel } from './scripted-model.ts'
 
 type Preview = { id: string; url: string; home: string; pid: number }
 async function assertProject(
@@ -53,9 +54,9 @@ async function fixture({ foreign = false } = {}) {
   const source = join(root, 'source')
   await git(root, 'clone', '--no-hardlinks', checkout, source)
   await git(source, 'switch', '-c', 'preview-source')
-  await cp(join(checkout, 'extensions/instance'), join(source, 'extensions/instance'), {
-    recursive: true,
-  })
+  // The preview runs the clone's committed code: give it this checkout's preview and landing code.
+  for (const path of ['extensions/instance', 'extensions/workspaces', 'lib'])
+    await cp(join(checkout, path), join(source, path), { recursive: true })
   await symlink(join(checkout, 'node_modules'), join(source, 'node_modules'))
   await writeFile(
     join(source, '.ultimate/settings.json'),
@@ -67,7 +68,15 @@ async function fixture({ foreign = false } = {}) {
     join(source, '.gitignore'),
     (await readFile(join(source, '.gitignore'), 'utf8')) + '\n/node_modules\n',
   )
-  await git(source, 'add', '.ultimate/settings.json', '.gitignore', 'extensions/instance')
+  await git(
+    source,
+    'add',
+    '.ultimate/settings.json',
+    '.gitignore',
+    'extensions/instance',
+    'extensions/workspaces',
+    'lib',
+  )
   await git(source, 'commit', '-m', 'Configure preview setup')
   const project = foreign ? join(root, 'app') : source
   if (foreign) {
@@ -146,10 +155,9 @@ async function fixture({ foreign = false } = {}) {
         context,
       )
     ).wait(context)
-    const view = await conversation.viewState(context)
-    const result = view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
+    const view = await conversation.context(context)
+    const result = view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
       ?.model?.[0]
-    view.dispose()
     if (result?.role !== 'toolResult') throw new Error('Missing tool result')
     return result.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
   }
@@ -348,6 +356,76 @@ it('cleans up a failed or aborted preview and allows its home to be reused', asy
       { id: preview.id, running: false },
     ])
   } finally {
+    await f.close()
+  }
+}, 120000)
+
+// A preview of a branch landed its own submissions onto that branch and pushed it to origin.
+it('lands a preview submission on its own branch, never the previewed branch or a remote', async () => {
+  const f = await fixture()
+  const model = await scriptedModel(({ role, text }) =>
+    role === 'user' && text === 'submit'
+      ? { tool: { name: 'workspace', args: { action: 'submit', divergence: 'None' } } }
+      : { text: 'Done.' },
+  )
+  try {
+    const remote = join(f.root, 'remote.git')
+    await git(f.root, 'init', '-q', '--bare', remote)
+    await git(f.source, 'remote', 'set-url', 'origin', remote)
+    const settings = join(f.source, '.ultimate/settings.json')
+    await writeFile(
+      settings,
+      JSON.stringify({
+        ...JSON.parse(await readFile(settings, 'utf8')),
+        lander: { push: 'origin' },
+      }),
+    )
+    await git(f.source, 'commit', '-qam', 'Push landings')
+    await writeFile(
+      join(f.root, '.ultimate/settings.json'),
+      JSON.stringify({
+        extensions: { disable: ['tailscale'] },
+        instance: { model: 'scripted/scripted-1' },
+      }),
+    )
+    vi.stubEnv('PI_CODING_AGENT_DIR', model.env.PI_CODING_AGENT_DIR)
+    const main = await f.main()
+    const before = await git(f.source, 'rev-parse', main.workspace.branch)
+    const preview = JSON.parse(await f.run({ action: 'start' }, main.id)) as Preview
+    const action = async (name: string, args: object) => {
+      const { status, data } = await post(preview, `/api/extensions/workspaces/actions/${name}`, {
+        args,
+      })
+      if (status !== 200) throw new Error(`${name}: ${status} ${JSON.stringify(data)}`)
+      return (data as { result: unknown }).result as {
+        id: number
+        path: string
+        state: string
+        target: string
+        landed?: string
+      }
+    }
+    const { id } = await action('create', {})
+    await until(async () => (await action('info', { id })).state === 'ready')
+    const workspace = await action('info', { id })
+    await writeFile(join(workspace.path, 'preview.txt'), 'preview')
+    await git(workspace.path, 'add', 'preview.txt')
+    await git(workspace.path, 'commit', '-qm', 'Preview change')
+    expect(
+      (await post(preview, `/api/conversations/${id}/submit`, { text: 'submit' })).status,
+    ).toBe(202)
+    await until(async () => (await action('info', { id })).landed !== undefined)
+    const { landed, target } = await action('info', { id })
+    expect(target).not.toBe(main.workspace.branch)
+    expect(await git(f.source, 'rev-parse', target)).toBe(landed)
+    expect(await git(f.source, 'rev-parse', main.workspace.branch)).toBe(before)
+    expect(await git(remote, 'for-each-ref')).toBe('')
+    expect(await f.run({ action: 'stop', id: preview.id })).toBe(
+      JSON.stringify({ stopped: preview.id }),
+    )
+    expect(await git(f.source, 'branch', '--list', target)).toBe('')
+  } finally {
+    await model.close()
     await f.close()
   }
 }, 120000)

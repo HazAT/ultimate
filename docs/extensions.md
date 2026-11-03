@@ -61,15 +61,16 @@ and runs for queued inputs too, so record the device from a UI action instead. A
 right after Pi admits them, which has no hook for queued inputs; answers commit with their reply. Something the user must see
 exactly once and that feeds the result the owner reports, like the lander waking a landed branch's starter, stays a
 call, idempotent by request id; when it calls up the layering, it goes through an extension point (below).
-`host.harness().subscribeCommits` remains for watching Pi's own records (entries, tasks, submissions, conversation
-records, usage and live documents), which are no domain events; each such watcher says so in a comment above it. Do
-not invent an event only to replace one.
+`onCommit(host.harness(), …)` (`lib/commits.ts`, over Pi Durable's `Session.observeCommits`) remains for watching Pi's
+own records (entries, tasks, submissions, conversation records, usage and live documents), which are no domain events;
+each such watcher says so in a comment above it. Do not invent an event only to replace one.
 
 ## Core tier
 
 The core tier is the fixed heart of Ultimate that every other extension may rely on. An extension joins it with one
 line in its `api.ts`, `export const tier = 'core'` (`coreTier` in `shared/extension-api.ts`); nothing in `server/`
-names them. Discovery reads the line: a core-tier extension stays enabled whatever `extensions.disable` says (the
+names them. A user or project folder is core only when it replaces a core built-in of the same name. Discovery reads
+the line: a core-tier extension stays enabled whatever `extensions.disable` says (the
 ignored entry becomes an extension diagnostic), and `ExtensionInfo.core` marks it, so the first-run choices and the
 Extensions panel show it as `core` with a locked switch. Being always on, a core-tier service is there for every
 extension: consumers `need` it. `want` is for optional extensions' services and for extension points, which another

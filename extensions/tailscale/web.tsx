@@ -107,7 +107,7 @@ function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) 
 
 const dot = (tone: string) => <span className={cn('size-1.5 rounded-full', tone)} />
 
-function Ready({ url, allow }: { url: string; allow: string[] }) {
+function Ready({ url, allow, hint }: { url: string; allow: string[]; hint?: string }) {
   const { copied, copy } = useCopy()
   return (
     <>
@@ -146,7 +146,13 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
       <p className="mt-3 flex items-start gap-1.5 text-[0.75rem] leading-snug text-muted-foreground">
         <ShieldCheckIcon className="mt-px size-3.5 shrink-0 text-success" />
         <span className="min-w-0 break-words">
-          Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
+          {allow.length ? (
+            <>
+              Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
+            </>
+          ) : (
+            hint
+          )}
         </span>
       </p>
       <p className="mt-1 pl-5 text-[0.75rem] leading-snug text-muted-foreground">
@@ -266,7 +272,9 @@ function Details({ status }: { status: ReturnType<typeof useStatus> }) {
           {errorMessage(error)}
         </p>
       )}
-      {state === 'ready' && data?.url && <Ready allow={data.allow} url={data.url} />}
+      {state === 'ready' && data?.url && (
+        <Ready allow={data.allow} hint={data.hint} url={data.url} />
+      )}
       {state && state in problems && <Trouble hint={data?.hint} state={state as Problem} />}
       {/* Ready too: it serves the mapping again if something removed it behind this server's back. */}
       {(state === 'ready' || (state && state in problems)) && <CheckAgain onChecked={refetch} />}

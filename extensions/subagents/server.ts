@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
+import { onCommit } from '../../lib/commits.ts'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord'
 import type { JsonValue } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { arr, bool, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import type { AssistantMessage, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import {
   AgentDoc,
   AssistantEntry,
@@ -38,7 +39,9 @@ import {
   definitionAgent,
   deleteDefinition,
   discoverAgents,
+  hasLogin,
   hostDefaultModel,
+  previewModel,
   saveDefinition,
   saveOverlay,
 } from '../../lib/agents.ts'
@@ -51,7 +54,9 @@ import { WorkspacesApi } from '../workspaces/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
-import { Profile, Standing, Subagents, SubagentsApi } from './api.ts'
+import { Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
+import { definitionRuns, refName, refOf } from '../../lib/families.ts'
+import { readFamilies } from '../../lib/families-settings.ts'
 import {
   DefinitionAction,
   DefinitionsAction,
@@ -60,7 +65,11 @@ import {
   StandingAction,
 } from './refs.ts'
 
-export const docs = [Subagents, Standing, Profile]
+export const docs = [Subagents, Standing, Profile, Runs]
+
+/** The instructions of an agent `subagent start` makes on the fly, before the caller's own. */
+const ADHOC = `You were made for one task: do what your brief asks, and only that. Read the code and the repository instructions it touches first. Never delegate or push. Report problems instead of working around them. Answer with conclusions and their evidence (\`path:line\`, commands with their output), not dumps; say what you could not confirm.`
+const WRITE_TOOLS = ['edit', 'write']
 
 /** Record how standing agent `definition`'s mark looks in conversations' marks doc, or that it asks for nothing. */
 const setMark = (marks: Record<string, AgentMarkStyle>, { name, icon, tint }: AgentDefinition) => {
@@ -317,8 +326,8 @@ async function waitInterruptibly(
   const inspect = (value: typeof inbox.value) => {
     if (value?.items.some((item) => item.mode === 'steer')) wake()
   }
-  inbox.start(async (value) => {
-    inspect(value)
+  inbox.start(async (call) => {
+    if (call.kind === 'value') inspect(call.value)
   })
   inspect(inbox.value)
   const child = (await api.conversation(id, context))!
@@ -496,7 +505,6 @@ export const actions = {
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
       // The form has no control for these: a save keeps them as discovery read them.
-      ...(existing?.subagent === false ? { subagent: false } : {}),
       ...(existing?.icon ? { icon: existing.icon } : {}),
       ...(existing?.tint ? { tint: existing.tint } : {}),
     }
@@ -598,7 +606,10 @@ export default function subagents(
   // as a label. Its pin, read fresh, is what a conversation whose model lost its login switches to first.
   host.implement(Pin, {
     async pin(tx, id) {
-      const name = (await tx.doc(Profile, id)).definition ?? (await tx.doc(host.metadata, id)).label
+      const profile = await tx.doc(Profile, id)
+      // Made on the fly: its label names no definition, and its model is the one it was started on.
+      if (profile.adhoc) return undefined
+      const name = profile.definition ?? (await tx.doc(host.metadata, id)).label
       if (!name) return undefined
       const { definitions } = await discoverAgents(
         host.ultimateRoot,
@@ -663,6 +674,77 @@ export default function subagents(
       }, ctx)
     },
   })
+  /**
+   * The definition a `start` runs: the named one with the call's family, model and thinking over its own, or, without
+   * `agent`, one made on the fly from the call (`label`, neutral instructions plus the caller's, the parent's tools or a
+   * subset, a worktree when it can edit or write). A family or model the call names must have a login here: unlike a
+   * definition's pin, it is the point of the spawn, so it never falls back to the parent's model.
+   */
+  const spawnDefinition = async (
+    args: {
+      agent?: string
+      label?: string
+      family?: string
+      model?: string
+      thinking?: ModelThinkingLevel
+      tools?: string[]
+      instructions?: string
+    },
+    definitions: AgentDefinition[],
+  ): Promise<AgentDefinition> => {
+    const named =
+      args.agent === undefined ? undefined : definitions.find((d) => d.name === args.agent)
+    if (!named && (args.agent !== undefined || !args.label?.trim()))
+      throw new Error(
+        `Unknown agent: ${args.agent}. Pass agent: one of ${definitions.map((agent) => agent.name).join(', ')}; or, for an agent made on the fly, label with family or model, tools and instructions`,
+      )
+    if (named && (args.tools || args.instructions))
+      throw new Error('tools and instructions make an agent on the fly: leave out agent')
+    const families = await readFamilies(host.userHome, host.projectRoot)
+    if (args.family !== undefined && !Object.hasOwn(families.families, args.family))
+      throw new Error(
+        `Unknown family: ${args.family}. Families: ${Object.keys(families.families).join(', ')}`,
+      )
+    const pinned = args.model === undefined ? undefined : refOf(args.model)
+    if (args.model !== undefined && !pinned?.modelId)
+      throw new Error(`model must be provider/modelId, not ${args.model}`)
+    const base: AgentDefinition = named ?? {
+      name: args.label!.trim(),
+      description: 'Made on the fly by subagent start',
+      path: '',
+      instructions: [ADHOC, args.instructions?.trim()].filter(Boolean).join('\n\n'),
+      family: 'default',
+      ...(args.tools ? { tools: args.tools } : {}),
+      isolate: WRITE_TOOLS.some((tool) => !args.tools || args.tools.includes(tool))
+        ? 'worktree'
+        : 'none',
+      summaries: false,
+    }
+    const chosen = args.family !== undefined || pinned !== undefined || !named
+    const definition = {
+      ...base,
+      ...(pinned ? { model: pinned } : args.family !== undefined ? { family: args.family } : {}),
+      ...(args.thinking ? { thinking: args.thinking } : {}),
+    }
+    if (args.family !== undefined && !pinned) delete definition.model
+    const runs = definitionRuns(definition, families)
+    // A preview runs every agent on its one model, whatever the call names.
+    if (chosen && runs.model && !previewModel()) {
+      const available = host.modelRuntime.getAvailableSnapshot()
+      if (!hasLogin(available, runs.model)) {
+        const usable = Object.entries(families.families).flatMap(([name, spec]) => {
+          const ref = refOf(spec.model)
+          return !ref || hasLogin(available, ref)
+            ? [`${name} (${spec.model ?? 'parent model'})`]
+            : []
+        })
+        throw new Error(
+          `No login for ${refName(runs.model)}${runs.via === 'family' ? ` (family ${runs.family})` : ''}. Usable families: ${usable.join(', ')}`,
+        )
+      }
+    }
+    return { ...definition, runs }
+  }
   const Reporter = createReporter()
   let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
@@ -754,7 +836,7 @@ export default function subagents(
     await pruneRetired(BACKGROUND_CONTEXT)
     unsubscribe?.()
     // Not a reactor: subagent answers settle as Pi submission records, not domain events.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type !== 'submission') continue
         recovery = recovery
@@ -862,7 +944,6 @@ export default function subagents(
           host.modelRuntime,
         )
         const definitions = discovered.definitions
-          .filter((agent) => agent.subagent !== false)
           .map((agent) => {
             const runs = runsLabel(agent.runs)
             return `${agent.name}${runs ? ` (${runs})` : ''}: ${agent.description}`
@@ -878,26 +959,44 @@ export default function subagents(
           'Delegate to a named agent. start returns its answer (foreground) or id (background). Foreground start/message and wait yield on queued steering with details.yielded:true; work continues independently. Stop children explicitly; stopping the parent does not stop them; stop lists files left uncommitted in the child worktree. message steers a busy child (steer false queues a follow-up instead); wait returns the latest answer; stop stops current work; list shows your children; land verifies and fast-forwards a finished worktree child; discard removes its worktree but keeps its branch. start accepts isolate none or worktree, and fork true to inherit parent history before this call (more context cost; prompt caching usually covers the shared prefix). Background answers join the current run after its tool round, or wake you when idle.',
         // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
         replay: 'safe',
-        parameters: Type.Object({
-          action: Type.Union([
-            Type.Literal('start'),
-            Type.Literal('message'),
-            Type.Literal('wait'),
-            Type.Literal('stop'),
-            Type.Literal('list'),
-            Type.Literal('land'),
-            Type.Literal('discard'),
-          ]),
-          agent: Type.Optional(
-            Type.String({ description: 'Required for start: an Available definitions name.' }),
+        parameters: obj({
+          action: oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          agent: opt(
+            str({
+              description:
+                'For start: an Available definitions name. Leave it out to make an agent on the fly from label, family or model, thinking, tools and instructions.',
+            }),
           ),
-          task: Type.Optional(Type.String()),
-          background: Type.Optional(Type.Boolean()),
-          fork: Type.Optional(Type.Boolean()),
-          id: Type.Optional(Type.Integer({ minimum: 1 })),
-          text: Type.Optional(Type.String()),
-          steer: Type.Optional(Type.Boolean()),
-          isolate: Type.Optional(Type.Union([Type.Literal('none'), Type.Literal('worktree')])),
+          label: opt(
+            str({
+              description:
+                'For start: what the child does, a few words ("dead-code scan"); the sidebar shows it. Required without agent.',
+            }),
+          ),
+          family: opt(
+            str({ description: 'For start: the model family to run on (fast, review…).' }),
+          ),
+          model: opt(str({ description: 'For start: provider/modelId, instead of a family.' })),
+          thinking: opt(oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
+          tools: opt(
+            arr(str(), {
+              description:
+                'Without agent: a subset of your tools (default: all but subagent). Leave out edit and write for a read-only agent; it runs in a worktree when it has either.',
+            }),
+          ),
+          instructions: opt(
+            str({
+              description:
+                'Without agent: its standing instructions, after a short neutral base; the task stays its first input.',
+            }),
+          ),
+          task: opt(str()),
+          background: opt(bool()),
+          fork: opt(bool()),
+          id: opt(int({ minimum: 1 })),
+          text: opt(str()),
+          steer: opt(bool()),
+          isolate: opt(oneOf(['none', 'worktree'])),
         }),
         execute: async (args, api, context) => {
           const cached = await api.memo<ReturnType<typeof reply>>('result', context)
@@ -950,15 +1049,12 @@ export default function subagents(
                       host.userHome,
                       host.modelRuntime,
                     )
-                  ).definitions.filter((agent) => agent.subagent !== false)
+                  ).definitions
                 : undefined
-            const definition = definitions?.find((agent) => agent.name === args.agent)
-            if (definitions && !definition)
-              throw new Error(
-                `Unknown agent: ${args.agent}. Pass agent: one of ${definitions.map((agent) => agent.name).join(', ')}`,
-              )
+            const definition = definitions && (await spawnDefinition(args, definitions))
             if (definition?.tools?.some((name) => !parent.tools.some((tool) => tool.name === name)))
               throw new Error('Definition tools must be a subset of parent tools')
+            const label = definition && (args.agent ? (args.label ?? definition.name) : args.label!)
             const isolated =
               definition && (args.isolate ?? definition.isolate ?? 'none') === 'worktree'
             const warning =
@@ -967,19 +1063,14 @@ export default function subagents(
                 ? '\nWarning: parent has uncommitted changes; they are not in the worktree.'
                 : ''
             const task = await api.getTask(api.taskId, context)
-            // Pi upstream: @earendil-works/pi-durable@1.4.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
+            // Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
             const assistant = (task?.input as { assistant: EntryId } | undefined)?.assistant
             let forkAt: EntryId | undefined
             if (definition && args.fork) {
               const conversation = (await host.harness().conversation(api.conversationId, context))!
-              const view = await conversation.viewState(context)
-              try {
-                const position = view.value.entries.findIndex((entry) => entry.id === assistant)
-                forkAt = view.value.entries[position - 1]?.id
-                if (forkAt === undefined) throw new Error('No parent history before this call')
-              } finally {
-                view.dispose()
-              }
+              const { entries } = await conversation.context(context)
+              forkAt = entries[entries.findIndex((entry) => entry.id === assistant) - 1]?.id
+              if (forkAt === undefined) throw new Error('No parent history before this call')
             }
             const model = definition ? await conversations.summaryModel() : undefined
             const action = await api.commit(async (tx) => {
@@ -990,7 +1081,7 @@ export default function subagents(
                 await conversations.requestSummary(
                   tx,
                   api.conversationId,
-                  { reason: 'spawn', answer: assistant!, agent: definition.name, task: text },
+                  { reason: 'spawn', answer: assistant!, agent: label!, task: text },
                   model,
                 )
                 const owner = await tx.createTask(Anchor, null, {
@@ -1003,8 +1094,9 @@ export default function subagents(
                   parentAgent: parent,
                   modelRuntime: host.modelRuntime,
                   metadata: host.metadata,
-                  label: definition.name,
+                  label: label!,
                   title: shortTitle(text),
+                  ...(args.agent ? {} : { adhoc: true as const }),
                   excludeTools: definition.tools?.includes('subagent') ? [] : ['subagent'],
                   excludeExtensions: definition.tools?.includes('subagent') ? [] : ['subagents'],
                   ...(forkAt === undefined
@@ -1013,10 +1105,16 @@ export default function subagents(
                   cwd: parent.cwd ?? host.projectRoot,
                 })
                 conversationId = child.id
-                await started(host, tx, child, definition.name, 'child')
+                await started(host, tx, child, label!, 'child')
+                const runs = await tx.doc(Runs, ROOT_CONVERSATION_ID)
+                const { model: ran } = await tx.doc(AgentDoc, child.id)
+                runs[String(child.id)] = {
+                  ...(ran ? { model: ran.modelId } : {}),
+                  ...(args.agent ? {} : { adhoc: true as const }),
+                }
                 state.agents[String(child.id)] = {
                   conversationId,
-                  agent: definition.name,
+                  agent: label!,
                   background: args.background === true,
                   reported: [],
                 }

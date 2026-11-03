@@ -9,6 +9,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { EntryRecord, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
+import { onCommit } from '../lib/commits.ts'
 import { context } from '../server/harness.ts'
 import phase, { Phases } from '../extensions/phase/server.ts'
 import { phaseState } from '../extensions/phase/state.ts'
@@ -103,7 +104,7 @@ async function fixture(service?: ClassifyService) {
     api = { ...api, taskId: api.taskId + 1 } as HookApi
     await harness.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, root.id)
-      live.run = { taskId: api.taskId, inputs: [run] } as never
+      live.run = { taskId: api.taskId, inputs: [run], turns: 0 } as never
     }, context)
     await hooks.beforeRequest({} as never, api, context)
   }
@@ -269,7 +270,7 @@ it('settles provider errors quietly and clears pending', async () => {
   await f.round()
   await until(async () => (await f.snapshot())?.conversations[f.root.id]?.phase === 'editing')
   let taskId: number | undefined
-  const stop = f.harness.subscribeCommits((publication) => {
+  const stop = onCommit(f.harness, (publication) => {
     for (const change of publication.changes) {
       if (change.type === 'task') taskId = change.value.id
     }

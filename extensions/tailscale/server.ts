@@ -78,6 +78,20 @@ export default function tailscale(host: ExtensionHost) {
     statuses.set(host, next)
   }
   const command = (args: string[]) => exec(cli, args, { timeout: 15000, maxBuffer: 1024 * 1024 })
+  // Tailscale user IDs can exceed Number.MAX_SAFE_INTEGER; preserve the original numeric token.
+  const parse = (output: string) =>
+    JSON.parse(output, (property: string, value: unknown, context?: { source?: string }) =>
+      property === 'UserID' && typeof value === 'number' ? context?.source : value,
+    ) as {
+      BackendState?: string
+      Self?: { DNSName?: string; UserID?: string }
+      User?: Record<string, { LoginName?: string }>
+      CertDomains?: string[]
+    }
+  const ownerOf = (node: ReturnType<typeof parse>) => {
+    const login = node.Self?.UserID ? node.User?.[node.Self.UserID]?.LoginName : undefined
+    return login ? [login] : undefined
+  }
   const fail = (state: Status['state'], hint: string) => {
     set({ state, allow: status.allow, hint })
     host.notice(`Tailscale: ${hint}`)
@@ -119,6 +133,7 @@ export default function tailscale(host: ExtensionHost) {
     }
   }
   let ready: Status | undefined
+  let reading: ReturnType<typeof command> | undefined
   /** Whether this server's mapping still stands (`own`), a live successor took it over, or it is gone. */
   const intact = () =>
     withRegistry(async (registry) => {
@@ -167,17 +182,7 @@ export default function tailscale(host: ExtensionHost) {
         }
         output = (await command(['status', '--json'])).stdout
       }
-      // Tailscale user IDs can exceed Number.MAX_SAFE_INTEGER; preserve the original numeric token.
-      const node = JSON.parse(
-        output,
-        (property: string, value: unknown, context?: { source?: string }) =>
-          property === 'UserID' && typeof value === 'number' ? context?.source : value,
-      ) as {
-        BackendState?: string
-        Self?: { DNSName?: string; UserID?: string }
-        User?: Record<string, { LoginName?: string }>
-        CertDomains?: string[]
-      }
+      const node = parse(output)
       if (node.BackendState !== 'Running') {
         fail('not-running', 'Start Tailscale and log in (tailscale up).')
         return
@@ -190,18 +195,13 @@ export default function tailscale(host: ExtensionHost) {
         )
         return
       }
-      const owner = node.Self?.UserID ? node.User?.[node.Self.UserID]?.LoginName : undefined
-      if (!owner) {
-        fail(
-          'error',
-          'Tailscale is running but its owner login is missing from status; check Self.UserID and User in tailscale status --json.',
-        )
-        return
-      }
-      const allow = settings.tailscale?.allow ?? [owner]
-      if (!Array.isArray(allow) || allow.some((login) => typeof login !== 'string' || !login))
+      let allow = settings.tailscale?.allow ?? ownerOf(node)
+      if (
+        allow &&
+        (!Array.isArray(allow) || allow.some((login) => typeof login !== 'string' || !login))
+      )
         throw new Error('tailscale.allow must be an array of login names')
-      set({ state: 'starting', allow })
+      set({ state: 'starting', allow: allow ?? [] })
       if (!node.CertDomains?.includes(dns)) {
         fail('https-disabled', 'Enable HTTPS certificates in the Tailscale admin console.')
         return
@@ -281,12 +281,28 @@ export default function tailscale(host: ExtensionHost) {
         const url = `https://${dns}:${port}`
         remove = host.access.allow({
           origin: url,
-          verify: ({ headers }) => {
+          verify: async ({ headers }) => {
             const login = headers['tailscale-user-login']
-            return typeof login === 'string' && allow.includes(login) ? { login } : undefined
+            if (typeof login !== 'string') return undefined
+            // Right after boot, status can lack the owner's login: read it again until it lists it,
+            // one read at a time, since a page load sends many requests at once.
+            if (!allow) {
+              reading ??= command(['status', '--json']).finally(() => (reading = undefined))
+              allow ??= ownerOf(parse((await reading).stdout))
+              if (allow) ready = { state: 'ready', url, allow }
+              if (allow && status.state === 'ready') set(ready!)
+            }
+            return allow?.includes(login) ? { login } : undefined
           },
         })
-        ready = { state: 'ready', url, allow }
+        ready = allow
+          ? { state: 'ready', url, allow }
+          : {
+              state: 'ready',
+              url,
+              allow: [],
+              hint: 'No one can open it yet: tailscale status --json does not list the owner login (Self.UserID in User). It is read again on the next tailnet request.',
+            }
         set(ready)
       })
     } catch (error) {

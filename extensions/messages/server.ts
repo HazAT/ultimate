@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { bool, obj, opt, str } from '@earendil-works/pi-schema'
 import {
   defineExtension,
   defineTool,
@@ -200,7 +200,7 @@ export default function messages(host: ExtensionHost) {
     tasks: [delivery(host), route(host), notice(host)],
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
         onYield: async (_answer, api, ctx) => {
           // A branch's answers go up to its starter; the primary agent's answers to a branch go down to it.
@@ -261,14 +261,14 @@ export default function messages(host: ExtensionHost) {
       defineTool({
         name: 'message',
         description:
-          'Send a message to #id or @name (@ultimate and branches may send to user). Returns immediately; the answer comes back as a reply. A busy recipient gets it after its current run, or during it with steer: true (the default for @ultimate). images forwards screenshots or other images from your conversation, to an agent or to the user. To an agent or the user whose message you owe an answer, it is that answer (with its images and questions) and ends your run.',
-        parameters: Type.Object({
-          to: Type.String(),
-          text: Type.String({ minLength: 1 }),
-          reply: Type.Optional(Type.Boolean()),
-          steer: Type.Optional(Type.Boolean()),
-          images: Type.Optional(imagesParameter),
-          questions: Type.Optional(questionsParameter),
+          'Send a message to #id or @name; it returns immediately. A busy recipient gets it after its current run, or during it with steer: true (the default for @ultimate). images forwards screenshots or other images from your conversation, to an agent or to the user. To an agent or the user whose message you owe an answer, it is that answer (with its images and questions) and ends your run.',
+        parameters: obj({
+          to: str(),
+          text: str({ minLength: 1 }),
+          reply: opt(bool()),
+          steer: opt(bool()),
+          images: opt(imagesParameter),
+          questions: opt(questionsParameter),
         }),
         // The task-scoped receipt deduplicates admission; the memo returns the same id on replay.
         replay: 'safe',

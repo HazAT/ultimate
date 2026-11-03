@@ -10,7 +10,7 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, ToolTaskInput, Tx } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { obj, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -153,7 +153,8 @@ async function write(
   const settled = await (
     await conversation.submit({ type: 'write', requestId, entry: { kind, data } }, context)
   ).wait(context)
-  if (settled.status !== 'done') throw new Error(`Voice write failed: ${settled.reason}`)
+  if (settled.status !== 'done' || settled.type !== 'write')
+    throw new Error(`Voice write failed: ${settled.reason}`)
   return settled.entry
 }
 
@@ -277,8 +278,8 @@ export function answerTask(host: ExtensionHost) {
             else if (m && ['failed', 'stopped'].includes(m.state))
               placed.reject(new Error(m.error ?? 'Voice reply was not delivered'))
           }
-          watch.start(async (value) => {
-            inspect(value)
+          watch.start(async (call) => {
+            if (call.kind === 'value') inspect(call.value)
           })
           try {
             inspect(watch.value)
@@ -583,7 +584,7 @@ export default (host: ExtensionHost) => {
         deferred: true,
         description:
           'Speak text to the user through GPT-Live. Use for your answer, clarification or brief acknowledgement.',
-        parameters: Type.Object({ text: Type.String({ minLength: 1 }) }),
+        parameters: obj({ text: str({ minLength: 1 }) }),
         // The tool task's request id writes the spoken line once; correlation is memoized.
         replay: 'safe',
         async execute({ text }, api, ctx) {
@@ -640,7 +641,7 @@ export default (host: ExtensionHost) => {
         deferred: true,
         description:
           'Pass a clear, self-contained request in the user’s words to @ultimate. Its answer returns as input; do not wait here.',
-        parameters: Type.Object({ request: Type.String({ minLength: 1 }) }),
+        parameters: obj({ request: str({ minLength: 1 }) }),
         // A transactional receipt schedules once; the forwarded line has a stable write request id.
         replay: 'safe',
         async execute({ request }, api, ctx) {
@@ -692,7 +693,7 @@ export default (host: ExtensionHost) => {
         name: 'voice_note',
         deferred: true,
         description: 'Give GPT-Live quiet context, without speaking it.',
-        parameters: Type.Object({ text: Type.String({ minLength: 1 }) }),
+        parameters: obj({ text: str({ minLength: 1 }) }),
         // The tool task's stable request id writes the context note once.
         replay: 'safe',
         async execute({ text }, api) {

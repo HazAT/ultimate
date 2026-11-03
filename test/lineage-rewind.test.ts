@@ -352,7 +352,7 @@ it('refuses while a compaction runs, at admission and when one starts before the
       const live = await tx.doc(LiveDoc, f.conversation.id)
       if (on)
         live.compactions = [
-          { taskId: 1 as TaskId<CompactionResult>, reason: 'manual', blocking: false, attempt: 1 },
+          { taskId: 1 as TaskId<CompactionResult>, trigger: 'manual', blocking: false, attempt: 1 },
         ]
       else delete live.compactions
     }, context)

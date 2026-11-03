@@ -1,7 +1,13 @@
 import type { AgentState, InboxItem } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
-import { CornerDownRightIcon, ListPlusIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  CornerDownRightIcon,
+  ListPlusIcon,
+  LoaderCircleIcon,
+  PaperclipIcon,
+  XIcon,
+} from 'lucide-react'
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePreviews, useImagePaste } from '@/components/image-paste'
 import type { KeyboardEvent, ReactNode } from 'react'
 import {
@@ -25,7 +31,7 @@ import {
 } from '../sdk/hooks.ts'
 import { isMac } from '../sdk/keys.ts'
 import { touchKeyboard } from '../sdk/viewport.ts'
-import type { ModelsResponse } from '../../../shared/protocol.ts'
+import { imageMimeTypes, type ModelsResponse } from '../../../shared/protocol.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
 import { column } from './layout.ts'
@@ -273,12 +279,45 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
-  const { paste, drop, reading, pending } = useImagePaste({
+  const { paste, drop, attach, reading, pending } = useImagePaste({
     images,
     setImages,
     setError,
     disabled: () => loading || draft.get().sending,
   })
+  // The shown conversation's composer also takes images dropped anywhere else on the page, and lights up while a file is
+  // dragged over it.
+  const [dragging, setDragging] = useState(false)
+  const dropRef = useRef(drop)
+  dropRef.current = drop
+  useEffect(() => {
+    if (scoped !== undefined) return undefined
+    let depth = 0
+    const files = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
+    const enter = (event: DragEvent) => {
+      if (files(event)) setDragging(++depth > 0)
+    }
+    const leave = (event: DragEvent) => {
+      if (files(event)) setDragging(--depth > 0)
+    }
+    const dropped = (event: DragEvent) => {
+      depth = 0
+      setDragging(false)
+      const on = event.target instanceof Element ? event.target : null
+      // Every composer's editor takes its own drops, a side chat's too.
+      if (!files(event) || on?.closest('[data-ui="composer"] textarea')) return
+      // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
+      void dropRef.current(event)
+    }
+    document.addEventListener('dragenter', enter)
+    document.addEventListener('dragleave', leave)
+    document.addEventListener('drop', dropped)
+    return () => {
+      document.removeEventListener('dragenter', enter)
+      document.removeEventListener('dragleave', leave)
+      document.removeEventListener('drop', dropped)
+    }
+  }, [scoped])
   const models = useModels()
   const key = draft.key
   useEffect(() => {
@@ -325,7 +364,13 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         }
         // Sending means following the run from here, wherever the reader had scrolled to.
         events.emit('ultimate:sent', { conversationId: id })
-        await api.submit(input.text, mode, id, input.images, requestId)
+        await api.submit(
+          input.text,
+          mode,
+          id,
+          input.images.map(({ data, mimeType }) => ({ data, mimeType })),
+          requestId,
+        )
       }
       clearDraft(draft, submitted)
       if (draft.get().images === submitted.images) draft.set({ images: [] })
@@ -367,8 +412,9 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       return
     }
     if (event.key !== 'Enter' || event.shiftKey) return
-    // A touch keyboard's return key writes a new line; the send button sends.
-    if (touchKeyboard()) return
+    // A touch keyboard's return key writes a new line; the send button, or a
+    // hardware keyboard's Cmd/Ctrl+Enter (iPad with Magic Keyboard), sends.
+    if (touchKeyboard() && !event.metaKey && !event.ctrlKey) return
     event.preventDefault()
     // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
     void send(event.altKey ? 'followUp' : 'steer')
@@ -383,6 +429,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     >
       <Inbox items={inbox} />
       <PromptInput
+        className={cn(dragging && 'ring-2 ring-brand/60')}
         onSubmit={(event) => {
           event.preventDefault()
           // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
@@ -399,6 +446,9 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
+          // Chrome on Android offers a keyboard's images (Gboard's screenshot chip, clipboard bar) only to a rich editor
+          // and delivers them as a paste with the file; a plain textarea gets nothing.
+          style={touchKeyboard() ? { WebkitUserModify: 'read-write' } : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}
@@ -429,6 +479,30 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
                   </span>
                 ) : null)}
             </span>
+            <label
+              aria-label="Attach images"
+              className={cn(
+                'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
+                (loading || sending || reading) &&
+                  'pointer-events-none opacity-50 hover:bg-transparent',
+              )}
+              title="Attach images"
+            >
+              <PaperclipIcon className="size-4" />
+              <input
+                accept={imageMimeTypes.join(',')}
+                className="sr-only"
+                disabled={loading || sending || reading}
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? [])
+                  event.target.value = ''
+                  // oxlint-disable-next-line typescript/no-floating-promises -- attach reports failures in the draft's error state.
+                  void attach(files)
+                }}
+                type="file"
+              />
+            </label>
             {!target && <Slot name="composer.actions" variant="inline" />}
             {busy && (
               <PromptInputSubmit

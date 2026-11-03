@@ -4,7 +4,7 @@
  */
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
-import type { KeptWork, OverviewState } from './types.ts'
+import type { KeptWork, OverviewState, SummaryRecord } from './types.ts'
 
 /**
  * Pi compacted conversation `conversation`: its summary is entry `entry`; `reason` is Pi's (`threshold`, `overflow`,
@@ -71,6 +71,11 @@ export const ConcludeAction = actionRef<
 export const ResumeAction = actionRef<{ ids: number[] }, { resumed: number[] }>(
   'conversations',
   'resume',
+)
+/** `{ id }` → conversation `id`'s summaries, newest first, at most 50: what the sidebar's history popover shows. */
+export const SummariesAction = actionRef<{ id: number }, SummaryRecord[]>(
+  'conversations',
+  'summaries',
 )
 /** No arguments → the effective summary model setting. */
 export const SummaryModelAction = actionRef<null, SummaryModelSetting>(

@@ -21,6 +21,7 @@ import {
   setAutomaticSummaries,
   Summaries,
   summaryBehavior,
+  summaryHistory,
 } from './summary.ts'
 import { summaryModel, summaryModelSetting, summaryModelStatus } from './summary-model.ts'
 import { parseSummaryModel } from './summary-model-ref.ts'
@@ -37,6 +38,7 @@ import {
   RenameAction,
   ResumeAction,
   SetSummaryModelAction,
+  SummariesAction,
   SummaryModelAction,
 } from './refs.ts'
 
@@ -153,6 +155,10 @@ export const actions = {
       else delete metadata.title
     }, context)
     return { ok: true }
+  }),
+  summaries: implementAction(SummariesAction, async (args, { host }) => {
+    const id = await topLevelId(host, args)
+    return host.harness().commit((tx) => summaryHistory(tx, id), context)
   }),
   /**
    * The effective `summaryModel` setting: `{ value, source: 'default' | 'user' | 'project', default, path? }`, with the
@@ -355,7 +361,7 @@ export default (host: ExtensionHost) => {
     ...summaries,
     hooks: [
       ...summaries.hooks,
-      // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
+      // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
       // Any input that starts a run (typed, message or reply, report, automation) brings the conversation and its
       // concluded ancestors back, in the commit that places it. Writes (notes) start no run and never get here.
       hook(GenerationTask, {

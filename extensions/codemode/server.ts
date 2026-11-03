@@ -1,6 +1,6 @@
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
+import { obj, str } from '@earendil-works/pi-schema'
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {
   CodemodeSandbox,
@@ -40,8 +40,8 @@ import type { ActionContext } from '../../server/actions.ts'
 import { READS, readProject } from './projects.ts'
 import { REMOTE_BYTES } from '../../lib/remote.ts'
 import type { Read } from './projects.ts'
-import { closedChapter, id, limit, readChapter } from './chapters.ts'
-import type { HistoryRead } from './chapters.ts'
+import { closedChapter, id, limit, readChapter, searchHit } from './chapters.ts'
+import type { HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
@@ -125,17 +125,14 @@ function localReads(host: ExtensionHost, context: Context) {
     } while (cursor)
     return items
   }
-  const search = async (
-    text: unknown,
-    options: { conversationId?: number; limit?: number } = {},
-  ) => {
+  const search = async (text: unknown, options: SearchOptions = {}) => {
     if (typeof text !== 'string' || !text) throw new Error('search text must be nonempty')
     const count = limit(options.limit)
     const records =
       options.conversationId === undefined
         ? await conversations()
         : [{ id: id(options.conversationId) }]
-    const matches: EntryRecord[] = []
+    const matches: unknown[] = []
     for (const conversation of records) {
       let cursor: Cursor | undefined
       do {
@@ -143,7 +140,8 @@ function localReads(host: ExtensionHost, context: Context) {
         if (!found) throw new Error('Unknown conversation')
         const page = await found.entries({}, 100, cursor, context)
         for (const entry of page.items) {
-          if (JSON.stringify(entry).includes(text)) matches.push(entry)
+          const hit = searchHit(entry, text, options)
+          if (hit) matches.push(hit)
           if (matches.length === count) return matches
         }
         cursor = page.next
@@ -185,9 +183,7 @@ function localReads(host: ExtensionHost, context: Context) {
     entries: history('entries', 1, ([conversation, options]) =>
       entries(conversation, options as Parameters<typeof entries>[1]),
     ),
-    search: history('search', 1, ([text, options]) =>
-      search(text, options as { conversationId?: number; limit?: number }),
-    ),
+    search: history('search', 1, ([text, options]) => search(text, options as SearchOptions)),
     trace: ([query]) => host.trace.query(query ?? {}),
     traceTree: ([traceId]) => {
       if (typeof traceId !== 'string' || !traceId) throw new Error('traceId must be nonempty')
@@ -385,9 +381,9 @@ function globals(
     {
       name: 'search',
       description:
-        'Case-sensitive substring search over all stored entry JSON, including history before resets and compactions.',
+        'Case-sensitive substring search over all stored entry JSON, including history before resets and compactions. kinds keeps only those entry kinds. Hits are compact, about 200 characters of the entry JSON around the match; full returns whole entries, or read one with entries(conversation, {before: id + 1, limit: 1}).',
       signature:
-        '(text: string, options?: { conversationId?: number; limit?: number; project?: string; machine?: string; chapter?: string }): Promise<unknown[]>',
+        '(text: string, options?: { conversationId?: number; kinds?: string[]; limit?: number; full?: boolean; project?: string; machine?: string; chapter?: string }): Promise<{ conversation: number; id: number; kind: string; at?: string; excerpt: string }[]>',
       execute: read('search', 1),
     },
     {
@@ -395,12 +391,9 @@ function globals(
       description: 'Live durable tasks and ownership graph.',
       signature: '(): Promise<unknown>',
       execute: async () => {
-        const state = await host.harness().taskGraph(context)
-        try {
-          return JSON.parse(JSON.stringify(state.value))
-        } finally {
-          state.dispose()
-        }
+        const graph = await host.harness().watchTaskGraph(context)
+        await graph.stop()
+        return JSON.parse(JSON.stringify(graph.value))
       },
     },
     {
@@ -489,7 +482,7 @@ export default function codemode(host: ExtensionHost) {
     description:
       'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context. Nested tool hooks do not run. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
       renderDeclarations({ globals: globalDeclarations }),
-    parameters: Type.Object({ code: Type.String() }),
+    parameters: obj({ code: str() }),
     async execute({ code: source }, api, context) {
       const calls: {
         name: string
