@@ -10,6 +10,7 @@ import {
   useConversation,
   useDocOf,
   useEvent,
+  useReady,
   useUltimate,
 } from '@/sdk'
 import {
@@ -53,15 +54,58 @@ function MessageAnswerLabel({ entry }: { entry: EntryRecord }) {
 /**
  * Stay mounted across surfaces so an Open click can reveal after Agent mounts and loads. `messages:open` names the entry,
  * or the tool call that sent a message (`call`): the response that made it, found in the loaded entries or else in the
- * stored history, which the transcript then pages in.
+ * stored history, which the transcript then pages in. It may name a question to the user instead (`message`, its id in
+ * the log), as a link `?conversation=<c>&message=<m>` does once on load.
  */
 function MessageNavigation() {
   const { id, entries, loading } = useConversation()
-  const { surface } = useUltimate()
-  const [target, setTarget] = useState<{ conversation: number; entry?: number; call?: string }>()
+  const { surface, showSurface } = useUltimate()
+  // A cold load mounts the overlays first: the transcript that reveals comes with the page.
+  const { ready } = useReady()
+  const log = useDocOf(1, MessagesDoc)
+  const [target, setTarget] = useState<{
+    conversation: number
+    entry?: number
+    call?: string
+    message?: number
+  }>()
   useEvent('messages:open', (value) => setTarget(value as NonNullable<typeof target>))
+  // `?conversation=` stays the shell's; `?message=` leaves the address, so a reload does not jump again.
   useEffect(() => {
-    if (!target || surface !== 'agent' || id !== target.conversation || loading) return undefined
+    const url = new URL(location.href)
+    const message = Number(url.searchParams.get('message'))
+    const conversation = Number(url.searchParams.get('conversation'))
+    if (!url.searchParams.has('message')) return
+    url.searchParams.delete('message')
+    history.replaceState(history.state, '', url)
+    if (Number.isSafeInteger(message) && Number.isSafeInteger(conversation) && conversation > 0)
+      setTarget({ conversation, message })
+  }, [])
+  // Only a question still waiting on the user, asked in that conversation: otherwise the conversation just opens.
+  useEffect(() => {
+    if (target?.message === undefined || !log) return
+    const asked = log.messages.find((m) => m.id === target.message)
+    if (
+      asked?.call &&
+      asked.from === target.conversation &&
+      asked.to === 'user' &&
+      asked.reply &&
+      asked.state === 'delivered'
+    ) {
+      showSurface('agent')
+      setTarget({ conversation: target.conversation, call: asked.call })
+    } else setTarget(undefined)
+  }, [target, log, showSurface])
+  useEffect(() => {
+    if (
+      !target ||
+      target.message !== undefined ||
+      !ready ||
+      surface !== 'agent' ||
+      id !== target.conversation ||
+      loading
+    )
+      return undefined
     const { call } = target
     // The call that sent the message, where its card shows: the response's top may be text before it.
     const toolCallId = call?.split('/')[0]
@@ -84,7 +128,7 @@ function MessageNavigation() {
         () => undefined,
       )
     return undefined
-  }, [surface, id, entries, loading, target])
+  }, [surface, id, entries, loading, target, ready])
   return null
 }
 
