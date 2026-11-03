@@ -56,6 +56,8 @@ export type FamilyView = {
   follows?: string
   followsThinking?: ModelThinkingLevel
   builtin: boolean
+  /** The model the person chose for it (`provider/id`); the effective `model` may be the project's suggestion or pin. */
+  own?: string
   /** The project's model for it (`provider/id`), shown as its suggestion; `Use` in the popover adopts it. */
   suggested?: string
   /** The project pins its model (`enforce: true`), over the person's choice. */

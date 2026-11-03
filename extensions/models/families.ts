@@ -75,10 +75,12 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
   const families = Object.entries(config.families).map(([name, spec]) => {
     const follows = name === DEFAULT_FAMILY && !spec.model && pi.model
     const projectSpec = layers.project.families[name]
+    const own = layers.base.families[name]?.model
     return {
       name,
       color: spec.color,
       ...(spec.model ? { model: spec.model } : {}),
+      ...(own ? { own } : {}),
       ...(spec.suggested ? { suggested: spec.suggested } : {}),
       ...(spec.thinking ? { thinking: spec.thinking } : {}),
       ...(follows ? { follows: refName(pi.model!), followsThinking: pi.thinking } : {}),
