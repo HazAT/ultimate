@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450b9194bc3 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a8bba6c62 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -19,7 +19,7 @@ import type {
@@ -103,7 +103,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
  function spawnCommand(
    command: string,
    args: string[],
-@@ -324,9 +343,9 @@ function spawnCommand(
+@@ -324,23 +343,31 @@ function spawnCommand(
    if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
      const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
      const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
@@ -115,7 +115,19 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
  }
  
  function childExit(child: ChildProcess): Promise<number> {
-@@ -340,7 +359,12 @@ function childExit(child: ChildProcess): Promise<number> {
+   return new Promise((resolve, reject) => {
+-    child.once("error", reject);
+-    child.once("exit", (code, signal) => {
++    const exited = (code: number | null, signal: NodeJS.Signals | null) => {
+       if (code !== null) resolve(code);
+       else reject(new Error(`Claude Code exited from signal ${signal ?? "unknown"}`));
+-    });
++    };
++    // 'exit' can come before stdout ends, so a caller that read its output first may have missed it.
++    if (child.exitCode !== null || child.signalCode !== null) return exited(child.exitCode, child.signalCode);
++    child.once("error", reject);
++    child.once("exit", exited);
+   });
  }
  
  export function killProcessTree(child: ChildProcess): void {
@@ -129,7 +141,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -544,15 +568,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -544,15 +571,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -160,7 +172,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +674,11 @@ export function rewriteInitialRequest(
+@@ -642,6 +677,11 @@ export function rewriteInitialRequest(
    };
    let messages = payload.messages;
    const first = messages?.[0];
@@ -172,7 +184,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +703,11 @@ export function rewriteInitialRequest(
+@@ -666,9 +706,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -185,7 +197,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +765,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +768,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -206,7 +218,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -976,11 +1029,7 @@ class ClaudeProcess {
+@@ -976,11 +1032,7 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -219,7 +231,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..00cf5280ef3e8193a6213bb09b0da450
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1039,6 @@ class ClaudeProcess {
+@@ -990,13 +1042,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
