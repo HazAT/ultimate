@@ -96,8 +96,17 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 - `models()`: model descriptors, including availability.
 - `skills(cwd)`: merged clone, user and project skills for a working directory, each with its `scope` and `overrides`.
 - `restart(approved)`: request a verified core swap; the async callback records the approved generation before activation.
+- `scanSubmissions(query, limit, cursor, caller)`: a page of committed submission records; it exists until Pi Durable exposes submission scans publicly.
+- `chapter`: the active chapter: its name, number, the newest chapter's name and its files.
 - `build()`, `system()`, `extensions()`: current build, system and extension inspection.
 - `conversations()`: every conversation's summary, as `useConversations()` gives the web; empty until the harness is open.
+- `projects()`: the user's central project homes read from their JSON manifests, never another project's SQLite; includes this home and live supervisor URLs.
+- `projectSetup()`: whether the project has `.ultimate/` setup, the decision of its root (a linked worktree's main checkout) and its capped README.
+- `projectSettings()`: the project's parsed settings, only after a local decision; otherwise empty.
+- `projectExtensions()`: a read-only inventory of the project's extension folders, including replacements of active extensions.
+- `setProjectDecision(local)`: remember the local/global choice and apply it through the live settings reload.
+- `reloadExtensions()`: apply settings writes to the registry, browser facets and styles before returning.
+- `invoke(name, action, args, signal, conversationId?)`: call an installed extension action on behalf of a conversation; rejects user-only actions.
 - `harness()`, `uiState(context)`, `doc(kind)`: durable harness, root UI snapshot and exported conversation document token.
 - `implement(api, value)`, `need(api)`, `want(api)`, `catalogue()`: publish and use typed process-local services; see [Extension APIs](#extension-apis). Registrations are staged until installation succeeds, replaced on reload, and removed when the facet is disabled, removed or closed; a failed replacement keeps the old provider.
 - `metadata`: the core's `ultimate.metadata` conversation document, `{ title?, label? }`; the shell names a conversation
@@ -110,6 +119,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
   time the harness opens (at once if it is open; the server serves once it settles), async work each time before it closes while the process stays (a core swap; drop commit subscriptions there), and async cleanup. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
+- `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.
 
 ## Extension APIs
 
