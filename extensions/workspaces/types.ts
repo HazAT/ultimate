@@ -20,6 +20,8 @@ export type QueueEntry = {
   /** Latest submitting conversation entry when submit was called. */
   at: number
   divergence: string
+  /** The work continues after landing: the branch stays open, fast-forwards and wakes with the card. */
+  keepOpen?: boolean
   state: 'queued' | 'landing'
   subject?: ConversationSubject
   step?: string
@@ -100,6 +102,7 @@ export type WorkspaceIndex = {
       subject?: ConversationSubject
       at: number
       divergence: string
+      keepOpen?: boolean
     }
   >
 }

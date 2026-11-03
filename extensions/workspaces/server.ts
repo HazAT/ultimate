@@ -226,7 +226,7 @@ export default function workspaceExtension(host: ExtensionHost) {
       defineTool({
         name: 'workspace',
         description:
-          'Inspect your workspace and source tips, or submit your clean, verified tip to the lander, which merges it into the target branch, runs the configured checks, fast-forwards the target and pushes when configured (submit requires divergence from the original request). A failure comes back to you to fix and submit again; a landing reaches whoever started you, and concludes you when nothing else is under way.',
+          'Inspect your workspace and source tips, or submit your clean, verified tip to the lander, which merges it into the target branch, runs the configured checks, fast-forwards the target and pushes when configured (submit requires divergence from the original request). A failure comes back to you to fix and submit again; a landing reaches whoever started you, and concludes you when nothing else is under way, unless you submit with keepOpen.',
         parameters: Type.Object({
           action: Type.Union([Type.Literal('status'), Type.Literal('submit')]),
           divergence: Type.Optional(
@@ -235,8 +235,14 @@ export default function workspaceExtension(host: ExtensionHost) {
                 "Required for submit. How the delivered result differs from what was originally asked: new agreements, a different approach or library, changed scope. Say 'None' when it matches.",
             }),
           ),
+          keepOpen: Type.Optional(
+            Type.Boolean({
+              description:
+                'For submit: the work continues after this landing (another round, a standing agent). The branch stays open, its workspace fast-forwards to the landed target, and the landing card wakes it instead of concluding it.',
+            }),
+          ),
         }),
-        async execute({ action, divergence }, api, caller) {
+        async execute({ action, divergence, keepOpen }, api, caller) {
           if (action === 'status')
             return finish({
               conversationId: api.conversationId,
@@ -253,7 +259,9 @@ export default function workspaceExtension(host: ExtensionHost) {
             )
               throw new Error(`Only a top-level main conversation can ${action} its own workspace`)
           }, caller)
-          return finish(await service.submit(api.conversationId, divergence ?? '', caller))
+          return finish(
+            await service.submit(api.conversationId, divergence ?? '', caller, keepOpen === true),
+          )
         },
       }),
     ],

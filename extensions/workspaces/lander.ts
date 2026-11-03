@@ -406,6 +406,7 @@ export function createLander(
               ...outcome,
               at: entry.at,
               divergence: entry.divergence,
+              ...(entry.keepOpen ? { keepOpen: true } : {}),
               target: entry.target,
               tip: entry.tip,
               lander: runtime.conversationId,
@@ -799,6 +800,51 @@ export function createLander(
           await runtime.commit(() => next, context)
           return
         }
+        if (outcome.keepOpen) {
+          // The work continues: bring the workspace to the landed target (a replay finds it there), then wake it.
+          const workspace = (
+            await host.harness().snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
+          )?.items[String(conversationId)]
+          const sha = outcome.sha
+          let fresh = 'Your workspace stays as it was.'
+          if (workspace?.state === 'ready' && sha)
+            try {
+              await git(workspace.path, 'merge', '-q', '--ff-only', sha)
+              fresh = `Your workspace is fast-forwarded to ${sha.slice(0, 7)}.`
+            } catch (error) {
+              fresh = `Your workspace could not fast-forward to ${sha.slice(0, 7)}: ${String(error).split('\n')[0]}`
+            }
+          const card = `${text}\nYou stay open (keepOpen). ${fresh}`
+          await (
+            await runtime.conversation(branch, context)
+          )?.submit(
+            {
+              type: 'input',
+              content: card,
+              entry,
+              whenBusy: 'followUp',
+              requestId: `lander:${id}`,
+            },
+            context,
+          )
+          const starter = await after.starter(branch, context)
+          await runtime.commit(
+            () => ({
+              status: 'running',
+              checkpoint: {
+                phase: 'deliver',
+                id,
+                conversationId,
+                text,
+                outcome,
+                concluded: false,
+                ...(starter !== undefined && starter !== branch ? { starter } : {}),
+              },
+            }),
+            context,
+          )
+          return
+        }
         await (
           await host.harness().conversation(branch, context)
         )?.submit(
@@ -842,7 +888,7 @@ export function createLander(
       deliver: async (task, runtime, context) => {
         const { id, conversationId, text, outcome, concluded, starter } = task.state.checkpoint
         const entry = { kind: LanderReportEntry, data: { id, outcome } }
-        const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
+        const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : outcome.keepOpen ? `#${conversationId} stays open (keepOpen); it reports when it stops.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
             await host.harness().conversation(starter as ConversationId, context)

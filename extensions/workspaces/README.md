@@ -182,6 +182,10 @@ lander's sidebar row shows the feature it lands or landed last.
      still has work under way (which then reports when it stops, as any branch does). Last, a concluded branch's
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.
+   - A submission with `keepOpen` says the work continues (another round, a standing agent). Its landing never
+     concludes the branch: the lander fast-forwards the branch's checkout to the landed commit (or says why it could
+     not, such as uncommitted changes), wakes the branch with the card as input, and gives the starter the card as a
+     note saying the branch stays open; the branch reports when it stops.
 
 Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin" }`;
 both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the

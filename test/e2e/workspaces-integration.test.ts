@@ -1174,6 +1174,37 @@ it.concurrent('keeps a landed branch and its checkout while a reply is under way
     `#${id} still has work under way; it reports when it stops.`,
   )
 })
+it.concurrent('keepOpen keeps a landed branch open, fast-forwards its workspace and wakes it with the card', async () => {
+  const { f, id } = await concluding()
+  const { id: submission } = await f.service.submit(id, 'None', context, true)
+  await submitted(f, id)
+  await f.opened.root.waitForIdle(context)
+  expect(await concludedIds(f)).not.toContain(id)
+  const workspace = (await f.service.get(id, context))!
+  expect(workspace.state).toBe('ready')
+  expect(await git(workspace.path, 'rev-parse', 'HEAD')).toBe(
+    await git(f.projectRoot, 'rev-parse', 'main'),
+  )
+  const requests = await f.opened.harness.commit(
+    async (tx) => ({
+      branch: await tx.submissionByRequest(id, `lander:${submission}`),
+      starter: await tx.submissionByRequest(ROOT_CONVERSATION_ID, `lander:${submission}`),
+    }),
+    context,
+  )
+  expect(requests.branch).toMatchObject({ type: 'input' })
+  const card = (
+    await (await f.opened.harness.conversation(id, context))!.context(context)
+  ).entries.find((entry) => entry.kind === 'workspaces.lander-report')
+  expect(JSON.stringify(card)).toContain(
+    'You stay open (keepOpen). Your workspace is fast-forwarded',
+  )
+  expect(requests.starter).toMatchObject({ type: 'write' })
+  const reports = (await f.opened.root.context(context)).entries.filter(
+    (entry) => entry.kind === 'workspaces.lander-report',
+  )
+  expect(JSON.stringify(reports[0].model)).toContain(`#${id} stays open (keepOpen)`)
+})
 it.concurrent('wakes only the submitter on a failed landing and leaves it open', async () => {
   const { f, id } = await concluding()
   f.host.projectSettings = async () => ({ lander: { checks: ['exit 1'] } })

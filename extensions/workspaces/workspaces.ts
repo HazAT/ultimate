@@ -776,6 +776,7 @@ export function workspaces(host: Host) {
     id: ConversationId,
     divergence: string,
     context: Context,
+    keepOpen = false,
   ): Promise<SubmitResult> {
     if (!divergence?.trim())
       throw new Error(
@@ -815,6 +816,7 @@ export function workspaces(host: Host) {
         tip,
         at,
         divergence,
+        ...(keepOpen ? { keepOpen } : {}),
         state: 'queued' as const,
         ...(subject ? { subject } : {}),
         steps: [],
@@ -831,7 +833,7 @@ export function workspaces(host: Host) {
         id: entry.id,
         position: position + 1,
         lander,
-        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
+        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; ${keepOpen ? 'a landing wakes you with its card and fast-forwards your workspace; you stay open' : 'a landing reaches whoever started you and concludes you unless work is still under way'}. Log: lander conversation #${lander}.`,
       }
     }, context)
     host.harness().resume()
