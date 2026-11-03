@@ -63,14 +63,20 @@ function MessageNavigation() {
   useEffect(() => {
     if (!target || surface !== 'agent' || id !== target.conversation || loading) return undefined
     const { call } = target
+    // The call that sent the message, where its card shows: the response's top may be text before it.
+    const toolCallId = call?.split('/')[0]
     const reveal = (entry: number) =>
-      events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry })
-    const loaded = target.entry ?? (call && callerOf(entries, call.split('/')[0])?.id)
-    setTarget(undefined)
+      events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry, toolCallId })
+    const loaded = target.entry ?? (toolCallId && callerOf(entries, toolCallId)?.id)
     if (loaded) {
-      const frame = requestAnimationFrame(() => reveal(loaded))
+      // Cleared in the frame: clearing it first re-runs this effect, whose cleanup cancelled the frame before it revealed.
+      const frame = requestAnimationFrame(() => {
+        setTarget(undefined)
+        reveal(loaded)
+      })
       return () => cancelAnimationFrame(frame)
     }
+    setTarget(undefined)
     if (call)
       api.action(CallerAction, { conversation: id, call }).then(
         ({ entry }) => entry !== undefined && reveal(entry),

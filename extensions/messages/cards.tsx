@@ -710,6 +710,7 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
           events.emit('ultimate:reveal-entry', {
             conversationId: asked.conversationId,
             entryId: asked.id,
+            toolCallId: question.call?.split('/')[0],
           })
         }
         title="Show the question and your answer"
