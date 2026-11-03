@@ -89,14 +89,20 @@ function serve() {
     }
   }
 
-  /** Write to a child's input; the host writes its next chunk only once this one was taken, or failed. */
+  /**
+   * Write to a child's input; the host writes its next chunk only once this one was taken, or failed. Every chunk was
+   * already taken, so closing it is done once asked, as `end()` on a ChildProcess's own stdin is: Node destroys the
+   * input of a child that exits, which fails an end still under way, but the input is closed all the same.
+   */
   function input({ id, data: chunk, end }: Extract<Request, { op: 'stdin' }>) {
     const stdin = children.get(id)?.stdin
     const written = (error?: Error | null) =>
       send({ id, event: 'written', ...(error && { error: data(error) }) })
     if (!stdin) written(new Error('The process has no input open'))
-    else if (end) stdin.end(written)
-    else stdin.write(chunk!, written)
+    else if (end) {
+      stdin.end()
+      written()
+    } else stdin.write(chunk!, written)
   }
 
   process.on('message', (request: Request) => {
