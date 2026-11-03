@@ -45,6 +45,7 @@
     "extensions/sounds/narration.ts",
     "extensions/instance/links.ts",
     "extensions/update/item.ts",
+    "extensions/attachments/limits.ts",
     "extensions/pause/lasted.ts",
     "extensions/pause/parked.ts",
     "extensions/sidebar/work.ts",
