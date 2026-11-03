@@ -28,15 +28,26 @@ it('a report notice names what failed', () => {
   )
 })
 
-it('compaction overrides per model, with Pi settings replacing them field by field', () => {
+it('compaction by context window, with Pi settings replacing it field by field', () => {
   const settings = SettingsManager.inMemory({
     compaction: { modelOverrides: { 'openai-codex/gpt-6.1-sol': { keepRecentTokens: 9000 } } },
   })
-  const { modelOverrides } = createHarnessSettings(settings, () => []).compaction!
+  const windows: Record<string, number> = {
+    'openai-codex/gpt-6.1-sol': 500_000,
+    'anthropic/claude-opus-5-5': 1_000_000,
+    'anthropic/claude-haiku-4-5': 200_000,
+  }
+  const { modelOverrides } = createHarnessSettings(
+    settings,
+    (provider, modelId) => windows[`${provider}/${modelId}`],
+    () => [],
+  ).compaction!
   expect(modelOverrides?.['openai-codex/gpt-6.1-sol']).toEqual({
     reserveTokens: 32768,
     keepRecentTokens: 9000,
     backgroundTokens: 65536,
   })
-  expect(modelOverrides?.['claude-code/claude-opus-5-5']?.backgroundTokens).toBe(131072)
+  // Named by its API provider, not claude-code/: it had Pi's 200k settings on a 1M window.
+  expect(modelOverrides?.['anthropic/claude-opus-5-5']?.backgroundTokens).toBe(131072)
+  expect(modelOverrides?.['anthropic/claude-haiku-4-5']).toEqual({})
 })
