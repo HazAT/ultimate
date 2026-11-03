@@ -28,7 +28,9 @@ blocking startup. The status line reads this same document, independent of which
 
 `compactions.ts` emits `conversations.compacted` `{ conversation, entry, reason? }` (`Compacted` in `refs.ts`) for
 each compaction summary Pi places. Pi appends it in its compaction task with no hook in that commit, so a commit
-watcher emits it in a commit of its own: a crash between the two loses the event, nothing repeats it.
+watcher emits it in a commit of its own: a crash between the two loses the event, nothing repeats it. The same
+watcher raises a notice when a compaction its conversation owns (background or manual) fails; a blocking one's failure
+ends the run waiting on it, which reports itself.
 
 `activity.ts` maintains `ultimate.metadata`'s `inputTitle`, `inputAt`, and `answerAt` from committed
 history; core only serves those fields, preferring an explicit `title` over the input title. Reset and
