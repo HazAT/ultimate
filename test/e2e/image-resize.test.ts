@@ -41,7 +41,9 @@ it('resizes a pasted image over the limit and sends it', async () => {
   cleanup.push(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(server.url)
-  const editor = page.locator('[data-ui="composer"] textarea')
+  // After a reload the page repaints the previous view as an inert copy with a composer of its own, until the app has
+  // rendered again; a paste there is lost.
+  const editor = page.locator('#app [data-ui="composer"] textarea')
   await editor.waitFor()
   // A 3000×2400 PNG of noise: far over 2 MiB, as a phone photo or 5K screenshot would be.
   const size = await editor.evaluate(async (target) => {
