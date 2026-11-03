@@ -39,6 +39,7 @@ export async function discoverExtensions(
       error?: string
     }
   >()
+  const builtinCore = new Set<string>()
   for (const root of discoveryRoots(ultimateRoot, projectRoot, userHome)) {
     if (root.source === 'project' && !includeProject && !useProjectSetup(projectRoot, userHome))
       continue
@@ -55,8 +56,12 @@ export async function discoverExtensions(
       try {
         if (!(await stat(path)).isDirectory()) continue
         const files = await readdir(path)
+        // Core belongs to a built-in's name: an outside folder keeps it only when it replaces a core built-in.
         const core =
-          files.includes('api.ts') && coreTier.test(await readFile(join(path, 'api.ts'), 'utf8'))
+          (root.source === 'builtin' || builtinCore.has(entry.name)) &&
+          files.includes('api.ts') &&
+          coreTier.test(await readFile(join(path, 'api.ts'), 'utf8'))
+        if (core && root.source === 'builtin') builtinCore.add(entry.name)
         winners.set(entry.name, {
           name: entry.name,
           path,

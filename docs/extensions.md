@@ -69,7 +69,8 @@ not invent an event only to replace one.
 
 The core tier is the fixed heart of Ultimate that every other extension may rely on. An extension joins it with one
 line in its `api.ts`, `export const tier = 'core'` (`coreTier` in `shared/extension-api.ts`); nothing in `server/`
-names them. Discovery reads the line: a core-tier extension stays enabled whatever `extensions.disable` says (the
+names them. A user or project folder is core only when it replaces a core built-in of the same name. Discovery reads
+the line: a core-tier extension stays enabled whatever `extensions.disable` says (the
 ignored entry becomes an extension diagnostic), and `ExtensionInfo.core` marks it, so the first-run choices and the
 Extensions panel show it as `core` with a locked switch. Being always on, a core-tier service is there for every
 extension: consumers `need` it. `want` is for optional extensions' services and for extension points, which another

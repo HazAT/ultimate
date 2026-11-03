@@ -398,6 +398,45 @@ it.concurrent('keeps a core-tier extension enabled over extensions.disable, with
   })
 })
 
+/** Discovery with every claim disabled in the user's settings; each [source, name] folder declares the core tier. */
+async function discoverCoreClaims(claims: ['user' | 'project', string][]) {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(join(projectRoot, '.ultimate'), { recursive: true })
+  await mkdir(join(home, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(home, '.ultimate/settings.json'),
+    JSON.stringify({ extensions: { disable: claims.map(([, name]) => name) } }),
+  )
+  new ProjectTrustStore(join(home, '.ultimate')).set(projectRoot, true)
+  for (const [source, name] of claims) {
+    const folder = join(source === 'user' ? home : projectRoot, '.ultimate/extensions', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'api.ts'), "export const tier = 'core'\n")
+  }
+  const discovered = await discoverExtensions(resolve('.'), projectRoot, home)
+  return (name: string) => discovered.find((entry) => entry.name === name)
+}
+
+it.concurrent('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
+  const find = await discoverCoreClaims([
+    ['user', 'user-core-claim'],
+    ['project', 'project-core-claim'],
+  ])
+  expect(find('user-core-claim')).toMatchObject({ source: 'user', enabled: false })
+  expect(find('project-core-claim')).toMatchObject({ source: 'project', enabled: false })
+})
+
+it.concurrent('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
+  const find = await discoverCoreClaims([
+    ['user', 'subagents'],
+    ['project', 'lineage'],
+  ])
+  expect(find('subagents')).toMatchObject({ source: 'user', core: true, enabled: true })
+  expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
+})
+
 it.concurrent('enables every built-in by default except the default-off ones', async () => {
   const home = await temp()
   homes.push(home)
