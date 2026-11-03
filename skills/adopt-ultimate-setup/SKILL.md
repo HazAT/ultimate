@@ -1,6 +1,6 @@
 ---
 name: adopt-ultimate-setup
-description: Tour how Ultimate's own repository configures itself (project model families, a coordinator family, a review team of three models, a lander that runs checks and pushes, worktree setup) and adopt the chosen pieces into the current project's .ultimate/, adapted. Use in onboarding step 5, or when someone asks how Ultimate is set up, wants a review team "like Ultimate's", or wants to copy its setup.
+description: Tour how Ultimate's own repository configures itself (project model families, a coordinator family, a review team of three reviewers, a lander that runs checks and pushes, worktree setup) and adopt the chosen pieces into the current project's .ultimate/, adapted. Use in onboarding step 5, or when someone asks how Ultimate is set up, wants a review team "like Ultimate's", or wants to copy its setup.
 ---
 
 # Adopt Ultimate's own setup
@@ -16,13 +16,13 @@ Read `.ultimate/settings.json` and every file in `.ultimate/agents/`. In one `me
 explain each piece in one or two plain lines: what it is, why Ultimate has it, and what it would be here. End with one
 multi-select question listing the pieces below, plus **None, thanks**.
 
-| Piece             | Ultimate's files                                                                       | Why it exists                                                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model families    | `settings.json` `modelFamilies` (`lead`, `review`, `fast`; `assign.preview`)           | Committed families name each model, so every clone runs the team on the same models whatever its own families say; agents name a family, not a model.       |
-| Review team       | `agents/reviewer-correctness.md`, `reviewer-simplicity.md`, `reviewer-architecture.md` | The shipped `reviewer` starts every `reviewer-*` in parallel and merges one verdict; each runs on a different model, so one model's blind spots get caught. |
-| Coordinator model | `agents/coordinator.md` (an overlay: `addTools: []`, `family: lead`)                   | Branches plan, decide and verify; the strongest model pays off there.                                                                                       |
-| Lander            | `settings.json` `lander.checks` and `lander.push`                                      | Every landing runs the project's checks on the merged result and pushes; a failure goes back to the submitting branch to fix.                               |
-| Worktree setup    | `settings.json` `isolates.worktree.setup`                                              | Each branch works in a fresh worktree without dependencies; setup installs them before the first tool call.                                                 |
+| Piece             | Ultimate's files                                                                       | Why it exists                                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model families    | `settings.json` `modelFamilies` (`lead`, `review`, `fast`; `assign.preview`)           | Committed families name each model, so every clone runs the team on the same models whatever its own families say; agents name a family, not a model.                       |
+| Review team       | `agents/reviewer-correctness.md`, `reviewer-simplicity.md`, `reviewer-architecture.md` | The shipped `reviewer` starts every `reviewer-*` in parallel and merges one verdict; each has its own focus, on more than one model, so one model's blind spots get caught. |
+| Coordinator model | `agents/coordinator.md` (an overlay: `addTools: []`, `family: lead`)                   | Branches plan, decide and verify; the strongest model pays off there.                                                                                                       |
+| Lander            | `settings.json` `lander.checks` and `lander.push`                                      | Every landing runs the project's checks on the merged result and pushes; a failure goes back to the submitting branch to fix.                                               |
+| Worktree setup    | `settings.json` `isolates.worktree.setup`                                              | Each branch works in a fresh worktree without dependencies; setup installs them before the first tool call.                                                                 |
 
 Not part of the tour, never copied: `extensions.enable` (`voice-live` is a personal choice), `assign.preview` (only for
 projects that preview their own extensions), `skills/ultimate-provider-smoke` and `README.md` (both about Ultimate

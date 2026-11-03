@@ -3,9 +3,17 @@ import { ArrowLeftIcon, BotIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MessageResponse } from '@/components/ai/message'
-import { Card, events, Fold, Provided, useEvent, useConversation, useUltimate } from '@/sdk'
+import {
+  Card,
+  events,
+  Fold,
+  Provided,
+  useEvent,
+  useConversation,
+  useConversationSummary,
+  useUltimate,
+} from '@/sdk'
 import { ConversationRef, ConversationTask } from '../conversations/ui.tsx'
-import { useWorkspaceConversations } from '../workspaces/ui.tsx'
 import type { AgentOrigin } from './message-types.ts'
 import { openAgentSource } from './ui.tsx'
 
@@ -56,8 +64,7 @@ export function AgentInput({ entry }: { entry: EntryRecord }) {
   const origin = entry.data as AgentOrigin
   const id = useConversation((conversation) => conversation.id)
   const { switchConversation } = useUltimate()
-  const conversations = useWorkspaceConversations()
-  const sender = conversations.find((conversation) => conversation.id === origin.sender)
+  const sender = useConversationSummary(origin.sender)
   const body = origin.body
   return (
     <Fold
@@ -124,14 +131,13 @@ export function AgentInbox({
 }) {
   const { id } = useConversation()
   const { switchConversation } = useUltimate()
-  const conversations = useWorkspaceConversations()
+  const sender = useConversationSummary((item.entry?.data as AgentOrigin | undefined)?.sender)
   if (
     item.mode === 'write' ||
     !['subagents.instruction', 'subagents.report'].includes(item.entry?.kind ?? '')
   )
     return core
   const origin = item.entry!.data as AgentOrigin
-  const sender = conversations.find((conversation) => conversation.id === origin.sender)
   const body = origin.body
   return (
     <Card

@@ -77,44 +77,25 @@ export function delivery(host: ExtensionHost) {
           : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}`
         const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
         const requestId = `board:${m.id}`
-        // A delivery started before triage was removed may have written the message as context already. That write
-        // stands; one short input after it wakes the recipient, as triage would have.
-        const written =
-          !task.input.note &&
-          (
-            await host
-              .harness()
-              .commit((tx) => tx.submissionByRequest(recipient.id, requestId), ctx)
-          )?.type === 'write'
-        const placing = written
+        const placing = task.input.note
           ? recipient.submit(
               {
-                type: 'input',
-                requestId: `board-wake:${m.id}`,
-                whenBusy: task.input.steer ? 'steer' : 'followUp',
-                content: `The message from ${task.input.fromLabel} above needs you now.`,
+                type: 'write',
+                requestId,
+                entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
               },
               ctx,
             )
-          : task.input.note
-            ? recipient.submit(
-                {
-                  type: 'write',
-                  requestId,
-                  entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
-                },
-                ctx,
-              )
-            : recipient.submit(
-                {
-                  type: 'input',
-                  requestId,
-                  whenBusy: task.input.steer ? 'steer' : 'followUp',
-                  entry,
-                  content,
-                },
-                ctx,
-              )
+          : recipient.submit(
+              {
+                type: 'input',
+                requestId,
+                whenBusy: task.input.steer ? 'steer' : 'followUp',
+                entry,
+                content,
+              },
+              ctx,
+            )
         // A recipient's input hook can refuse the input; its placement rolled back, so the message failed, with why.
         const receipt = await placing.catch(async (cause: unknown) => {
           if (runtime.signal.aborted) throw cause
@@ -143,8 +124,8 @@ export function delivery(host: ExtensionHost) {
           const inspect = (value: typeof inbox.value) => {
             if (!value?.items.some((item) => item.id === receipt.id)) wake()
           }
-          inbox.start(async (value) => {
-            inspect(value)
+          inbox.start(async (call) => {
+            if (call.kind === 'value') inspect(call.value)
           })
           try {
             inspect(inbox.value)
@@ -301,21 +282,14 @@ export function delivery(host: ExtensionHost) {
           }
           const body = `Reply from ${task.input.toLabel} to your message ${m.re}${stopped ? ' (stopped)' : failed ? ' (failed)' : ''}:\n${m.text}`
           const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
-          const requestId = `board-reply:${m.id}`
-          // A reply that triage, before its removal, wrote as context stands; a short input after it wakes the sender.
-          const written =
-            sender &&
-            (await host.harness().commit((tx) => tx.submissionByRequest(sender.id, requestId), ctx))
-              ?.type === 'write'
           await sender?.submit(
-            written
-              ? {
-                  type: 'input',
-                  requestId: `board-wake:${m.id}`,
-                  whenBusy: 'steer',
-                  content: `The reply from ${task.input.toLabel} above needs you now.`,
-                }
-              : { type: 'input', requestId, whenBusy: 'steer', entry, content },
+            {
+              type: 'input',
+              requestId: `board-reply:${m.id}`,
+              whenBusy: 'steer',
+              entry,
+              content,
+            },
             ctx,
           )
         }

@@ -1,6 +1,7 @@
 import type { JsonValue } from '@earendil-works/chord'
+import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { obj, oneOf, opt, str } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
@@ -172,7 +173,7 @@ export default function workspaceExtension(host: ExtensionHost) {
       })
     unsubscribe?.()
     // Not a reactor: a lander task's fault is a Pi task record, not a domain event.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (
           change.type !== 'task' ||
@@ -226,11 +227,11 @@ export default function workspaceExtension(host: ExtensionHost) {
       defineTool({
         name: 'workspace',
         description:
-          'Inspect your workspace and source tips, or submit your clean, verified tip to the lander, which merges it into the target branch, runs the configured checks, fast-forwards the target and pushes when configured (submit requires divergence from the original request). A failure comes back to you to fix and submit again; a landing reaches whoever started you, and concludes you when nothing else is under way.',
-        parameters: Type.Object({
-          action: Type.Union([Type.Literal('status'), Type.Literal('submit')]),
-          divergence: Type.Optional(
-            Type.String({
+          'Inspect your workspace and source tips, or submit your clean, verified tip to the lander (submit requires divergence from the original request).',
+        parameters: obj({
+          action: oneOf(['status', 'submit']),
+          divergence: opt(
+            str({
               description:
                 "Required for submit. How the delivered result differs from what was originally asked: new agreements, a different approach or library, changed scope. Say 'None' when it matches.",
             }),

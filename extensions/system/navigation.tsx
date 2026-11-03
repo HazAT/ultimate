@@ -13,7 +13,8 @@ const subscribe = (listener: () => void) => {
 /**
  * Reports what the user looks at, for `ui.navigated`: the surface, and on Agent the open conversation. Only a view
  * that stays a second in a visible tab and differs from the last one this tab reported; the server drops repeats of
- * other tabs. A tab opened in the background reports once it is shown.
+ * other tabs. A tab opened in the background reports once it is shown. An automated browser (an agent's screenshot or
+ * script) is not the user and reports nothing.
  */
 export function NavigationReporter() {
   const { surface, conversationId } = useUltimate()
@@ -22,7 +23,7 @@ export function NavigationReporter() {
   const reported = useRef<string | undefined>(undefined)
   useEffect(() => {
     const key = `${surface}:${conversation ?? ''}`
-    if (!visible || key === reported.current) return undefined
+    if (navigator.webdriver || !visible || key === reported.current) return undefined
     const timer = setTimeout(() => {
       reported.current = key
       // A missed report only leaves a gap in the debug log; it never needs the user's attention.

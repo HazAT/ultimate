@@ -9,7 +9,7 @@ import {
   defineTool,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { obj, oneOf } from '@earendil-works/pi-schema'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -531,12 +531,8 @@ export default function onboarding(host: ExtensionHost) {
         deferred: true,
         description:
           'Show an inline setup card for the user to choose. Wait for the onboarding.choice input; only the user can apply choices.',
-        parameters: Type.Object({
-          card: Type.Union([
-            Type.Literal('extensions'),
-            Type.Literal('project'),
-            Type.Literal('git'),
-          ]),
+        parameters: obj({
+          card: oneOf(['extensions', 'project', 'git']),
         }),
         // Read-only inspection: repeating a card changes no state.
         replay: 'safe',

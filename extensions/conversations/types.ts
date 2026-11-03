@@ -5,19 +5,28 @@ export type IntentSummary = { summary: string; model?: string; at: number }
 
 export type TitleChange = { title: string; model?: string; at: number }
 
-/** An accepted spawn refresh, recorded even when the title stays. */
+/** An accepted change of the feature tag from `from`; a conversation's first tag is not a change. */
+export type FeatureChange = { feature: string; from: string; model?: string; at: number }
+
+/** An accepted spawn or steer refresh, recorded even when the title stays. */
 export type SpawnSummary = { summary: string; model?: string; at: number }
 
 /** `stale`: newer work or a reset superseded the result; `error`: the request failed. */
 export type SummaryStatus = 'pending' | 'ready' | 'stale' | 'error'
-/** What the latest final reply did, in one line, for the exchange `inputId` → `answerId`. */
+/**
+ * What the latest final reply did, in one line, for the exchange `inputId` → `answerId`; `summary` when this reply also
+ * refreshed the conversation's summary.
+ */
 export type ReplySummary = {
   inputId: EntryId
   answerId: EntryId
   activity: string
+  summary?: string
   model?: string
   at: number
 }
+/** One summary a conversation had: `at` is when it was written, absent when no entry recorded it. */
+export type SummaryRecord = { summary: string; at?: number }
 export type SummaryDiscard = {
   reason: 'stale' | 'error'
   cause: string

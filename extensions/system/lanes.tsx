@@ -2,7 +2,7 @@ import { ListFilterIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn, formatDuration, useConversations, useUltimate } from '@/sdk'
+import { cn, formatDuration, useConversationSummary, useUltimate } from '@/sdk'
 import type { ConversationSummary } from '@/sdk'
 import { stateTone, stateWord } from '../messages/ui.tsx'
 import type { ConversationState } from '../messages/ui.tsx'
@@ -262,7 +262,7 @@ export function LaneRow({
 }) {
   const { lane } = row
   const actions = useUltimate()
-  const summary = useConversations().find((item) => item.id === lane.conversation)
+  const summary = useConversationSummary(lane.conversation)
   const standing = standingName(lane, summary)
   const [selected, setSelected] = useState<string>()
   const run = lane.runs.find((item) => item.start === selected)

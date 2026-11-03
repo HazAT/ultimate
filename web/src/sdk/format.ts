@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-coding-agent@1.4.0 src/modes/interactive/components/footer.ts — copied formatTokens helper, not exported. Drop when Pi exports formatTokens.
+// Pi upstream: @earendil-works/pi-coding-agent@1.5.0 src/modes/interactive/components/footer.ts — copied formatTokens helper, not exported. Drop when Pi exports formatTokens.
 /** Compact token counts, as Pi's footer prints them: 950, 1.2k, 18k, 1.4M. */
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString()

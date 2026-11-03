@@ -70,7 +70,11 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => (
   <Button
     aria-label={mode === 'stop' ? 'Stop' : 'Send'}
-    className={cn('size-7 rounded-lg', className)}
+    // On touch devices the button grows and gains an invisible hit area toward the 44pt guideline.
+    className={cn(
+      'size-7 rounded-lg pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1',
+      className,
+    )}
     size="icon"
     type={mode === 'stop' ? 'button' : 'submit'}
     variant={mode === 'stop' ? 'secondary' : 'default'}

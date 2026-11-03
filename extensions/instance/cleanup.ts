@@ -66,12 +66,23 @@ export async function cleanPreview(home: string) {
         const inside = relative(resolve(home), path)
         if (!inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside))
           continue
-        const branch = fields.find((field) => field.startsWith('branch refs/heads/'))?.slice(18)
-        await git(common, '--git-dir', common, 'worktree', 'remove', '--force', path)
-        if (branch?.startsWith(branchPrefix))
-          await git(common, '--git-dir', common, 'branch', '-D', '--', branch)
+        // The preview's own checkout, possibly half removed (no `.git`) by a release its stop interrupted, which `git
+        // worktree remove` refuses while the folder exists: delete it first, then unregister it, locked or not.
+        await rm(path, { recursive: true, force: true })
+        await git(common, '--git-dir', common, 'worktree', 'remove', '--force', '--force', path)
       }
       await git(common, '--git-dir', common, 'worktree', 'prune')
+      // The branch it landed on and its workspace branches, now that no checkout holds them.
+      const left = await git(
+        common,
+        '--git-dir',
+        common,
+        'for-each-ref',
+        '--format=%(refname:short)',
+        `refs/heads/${branchPrefix}*`,
+      )
+      for (const branch of left.split('\n').filter(Boolean))
+        await git(common, '--git-dir', common, 'branch', '-D', '--', branch)
     }
     await rm(home, { recursive: true, force: true })
     return true

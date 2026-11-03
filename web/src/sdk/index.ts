@@ -90,6 +90,7 @@ export {
   useConnection,
   useConversation,
   useConversations,
+  useConversationSummary,
   useDialog,
   useDoc,
   useDocKind,

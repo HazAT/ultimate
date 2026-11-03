@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -125,7 +126,7 @@ async function state(host: Host): Promise<PauseState> {
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.4.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
+// Pi upstream: @earendil-works/pi-durable@1.5.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 /**
  * Hold the scheduler, then record the pause and each run mid-turn now (its task and first input), which Play notes;
  * `limit` when a rate limit pauses it, also into a pause already recorded, so the limit shows.
@@ -424,7 +425,7 @@ export default function pauseExtension(host: Host) {
       await card(host, doc)
     })
     // Every model answer Pi records lands in a commit; the first rate-limited one pauses.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       // Pi commits a retried answer with its generation sleeping until the retry. The answer that spent the last retry
       // ends the run in the same commit instead: holding then continues nothing and only delays the failure's report.
       const retrying = new Set(

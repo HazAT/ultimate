@@ -6,6 +6,77 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 export const promptTokens = (usage: Pick<Usage, 'input' | 'cacheRead' | 'cacheWrite'>) =>
   usage.input + usage.cacheRead + usage.cacheWrite
 
+/**
+ * A response that rebuilt the prompt cache: it read under half of the previous response's prompt from the cache and
+ * sent at least 5k tokens fresh (written to the cache, or uncached where a provider reports no writes). `cause` is
+ * what came between: a system prompt change (`system`, that `pi.system` entry's ID), a model switch, a gap longer than
+ * the cache lives (`expired`), or else an earlier part of the context that changed (`prefix`).
+ */
+export interface CacheBust {
+  written: number
+  read: number
+  /** The previous response's prompt. */
+  before: number
+  /** Milliseconds since the previous response. */
+  gap: number
+  cause: 'system' | 'model' | 'expired' | 'prefix'
+  system?: number
+}
+
+const FRESH = 5000
+
+/**
+ * The cache rebuilds in `entries`, by the ID of the `pi.assistant` entry that paid for them. A compaction or reset
+ * rebuilds on purpose and shows its own card, so a rebuild right after one is left out.
+ */
+export function cacheBusts(entries: readonly EntryRecord[]): Map<number, CacheBust> {
+  const known = found.get(entries)
+  if (known) return known
+  const busts = new Map<number, CacheBust>()
+  let previous: AssistantMessage | undefined
+  let system: number | undefined
+  for (const entry of entries) {
+    if (entry.kind === 'pi.compaction' || entry.kind === 'pi.reset') previous = undefined
+    if (entry.kind === 'pi.system') system = entry.id
+    const message = entry.model?.[0]
+    if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') continue
+    const { usage } = message
+    if (promptTokens(usage) === 0) continue
+    if (previous) {
+      const before = promptTokens(previous.usage)
+      const written = usage.input + usage.cacheWrite
+      if (usage.cacheRead < before / 2 && written >= FRESH) {
+        const gap = message.timestamp - previous.timestamp
+        // Claude Code writes the 1-hour cache; other providers keep about five minutes.
+        const ttl = (previous.usage.cacheWrite1h ?? 0) > 0 ? 3600_000 : 300_000
+        const cause =
+          system !== undefined
+            ? 'system'
+            : `${previous.provider}/${previous.model}` !== `${message.provider}/${message.model}`
+              ? 'model'
+              : gap > ttl
+                ? 'expired'
+                : 'prefix'
+        busts.set(entry.id, {
+          written,
+          read: usage.cacheRead,
+          before,
+          gap,
+          cause,
+          ...(system !== undefined && { system }),
+        })
+      }
+    }
+    previous = message
+    system = undefined
+  }
+  found.set(entries, busts)
+  return busts
+}
+
+/** One scan per transcript array: every folded line and marker of a transcript asks for the same one. */
+const found = new WeakMap<readonly EntryRecord[], Map<number, CacheBust>>()
+
 /** Context fill; absent tokens or window leave the percentage unknown. */
 export function contextUsage(
   { tokens, window, estimated }: { tokens?: number; window?: number; estimated?: boolean },

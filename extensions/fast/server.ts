@@ -117,7 +117,7 @@ export function fastStream(
       if (!session && !(await listed()).has(`${model.provider}/${model.id}`))
         return api.streamSimple(model, context, options)
       // Sign in with ChatGPT rejects the documented "fast"; "priority" is the same tier.
-      // Pi upstream: @earendil-works/pi-ai@1.4.0 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
+      // Pi upstream: @earendil-works/pi-ai@1.5.0 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
       return api.streamSimple(model, context, {
         ...options,
         onPayload: async (payload, payloadModel) => ({
@@ -159,9 +159,11 @@ export default function fastExtension(host: ExtensionHost) {
           const provider = await api.snapshot(ProviderDoc, api.conversationId, context)
           if (!provider) return
           const model = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
+          const profile = await api.snapshot(Profile, api.conversationId, context)
+          // An agent made on the fly has no definition; its label may match one by chance.
           const name =
-            model && fastProvider(`${model.provider}/`)
-              ? ((await api.snapshot(Profile, api.conversationId, context))?.definition ??
+            model && fastProvider(`${model.provider}/`) && !profile?.adhoc
+              ? (profile?.definition ??
                 (await api.snapshot(host.metadata, api.conversationId, context))?.label)
               : undefined
           const fast =

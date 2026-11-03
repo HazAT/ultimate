@@ -60,6 +60,18 @@ it('sweeps dead homes, their nested worktrees and branches but preserves neighbo
   )
   expect(await readFile(join(project, 'base'), 'utf8')).toBe('base')
 })
+// Stopping a preview while its own release was removing a checkout left it registered without `.git`, which
+// `git worktree remove` refuses, so the stop failed and kept the preview's branches.
+it('cleans a home whose checkout removal was interrupted', async () => {
+  const { source, home, branch } = await fixture()
+  await git(source, 'worktree', 'add', '--detach', join(home, 'lander', 'hash'))
+  const worker = join(home, 'worktrees', '1')
+  await git(source, 'worktree', 'add', '-b', branch, worker)
+  await rm(join(worker, '.git'))
+  expect(await cleanPreview(home)).toBe(true)
+  expect(await git(source, 'worktree', 'list', '--porcelain')).not.toContain(worker)
+  expect(await git(source, 'branch', '--list', branch)).toBe('')
+})
 it('never cleans a home with a held SQLite storage lock, even without its PID sidecar', async () => {
   const { root, home } = await fixture()
   const lock = await acquireLock(join(home, 'storage.lock'), { pid: process.pid })

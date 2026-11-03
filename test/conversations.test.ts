@@ -4,6 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/provid
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import { afterAll, expect, it } from 'vitest'
+import { onCommit } from '../lib/commits.ts'
 import { attach, fauxServer, held, post, prepareFauxServer, temp, until } from './helpers.ts'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { context } from '../server/harness.ts'
@@ -150,9 +151,8 @@ it.concurrent('tells each top-level conversation about the others in a fixed tex
   expect(await render('conversations', elsewhere)).toBe(fixed)
 
   // An ownerless fork is top-level, but its inherited history is tracked separately.
-  const view = await server.root.viewState(context)
-  const entry = view.value.entries.find((item) => item.kind === 'pi.user')!
-  view.dispose()
+  const view = await server.root.context(context)
+  const entry = view.entries.find((item) => item.kind === 'pi.user')!
   const fork = await server.root.fork(entry.id, { ownership: { kind: 'ownerless' } }, context)
   await until(() => summary(fork.id)?.inputAt !== undefined)
   expect(summary(fork.id)!.inputAt).toEqual(expect.any(Number))
@@ -478,16 +478,15 @@ it.concurrent('projects arbitrary typed inputs, ignores user-role writes, and pr
   await server.harness.waitForIdle(context)
   await until(() => summary(id)?.answerAt !== undefined)
   expect(summary(id)?.title).toBe(' Typed request ')
-  const view = await conversation.viewState(context)
-  const input = view.value.entries.find((entry) => entry.kind === 'test.request')!
+  const view = await conversation.context(context)
+  const input = view.entries.find((entry) => entry.kind === 'test.request')!
   expect(input.input).toBe(true)
   await until(
     async () =>
       (await server.harness.snapshot(Overview, ROOT_CONVERSATION_ID, context))?.conversations[id]
         ?.internalInput === true,
   )
-  const answer = view.value.entries.findLast((entry) => entry.model?.[0]?.role === 'assistant')!
-  view.dispose()
+  const answer = view.entries.findLast((entry) => entry.model?.[0]?.role === 'assistant')!
   const inputAt = input.model![0].timestamp
   const answerAt = answer.model![0].timestamp
   await until(() => summary(id)?.inputAt === inputAt && summary(id)?.answerAt === answerAt)
@@ -571,7 +570,7 @@ it.concurrent('keeps unmarked Pi input history and makes no metadata writes on a
   prepared.host.open = async (...args) => {
     const opened = await open(...args)
     // Subscribe before extension onOpen callbacks reconcile the stored conversations.
-    stop = opened.harness.subscribeCommits((publication) => {
+    stop = onCommit(opened.harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'document' && change.record.kind === Metadata.definition.kind)
           metadataWrites.push(change.conversationId!)

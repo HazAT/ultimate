@@ -2,6 +2,7 @@ import { PencilIcon } from 'lucide-react'
 import { formatTime, Provided, useCompact } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import type {
+  FeatureChange,
   IntentSummary,
   ReplySummary,
   SpawnSummary,
@@ -17,6 +18,10 @@ function summaryText(entry: EntryRecord) {
       return `Intent: ${(entry.data as IntentSummary).summary}`
     case 'conversations.title-changed':
       return `Title changed to “${(entry.data as TitleChange).title}”`
+    case 'conversations.feature-changed': {
+      const data = entry.data as FeatureChange
+      return `Tag changed from “${data.from}” to “${data.feature}”`
+    }
     case 'conversations.summarized':
       return `Summary: ${(entry.data as SpawnSummary).summary}`
     case 'conversations.assessed':

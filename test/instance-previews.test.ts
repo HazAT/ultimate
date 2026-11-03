@@ -6,6 +6,7 @@ import { afterEach, expect, it } from 'vitest'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import {
+  linkHome,
   previewEnv,
   previewWorkspace,
   remember,
@@ -91,7 +92,7 @@ it('isolates preview cloud environment and host identity', () => {
     PATH: '/bin',
     ULTIMATE_HOME: '/preview/state',
     ULTIMATE_PROJECT: '/preview/project',
-    HOME: '/parent/user',
+    HOME: '/preview/user',
     ULTIMATE_USER_HOME: '/preview/user',
     ULTIMATE_PORT: '0',
     ULTIMATE_NO_OPEN: '1',
@@ -133,6 +134,27 @@ it("keeps a preview's agent and family writes out of the user's linked config", 
   // Every preview and the host pick Tailscale ports in one registry, even one the preview creates.
   await writeJson(join(copy, '.ultimate/tailscale.json'), { ports: {} })
   expect(await readFile(join(user, '.ultimate/tailscale.json'), 'utf8')).toContain('ports')
+})
+
+// Regression: a preview agent's bash `~` and write tool `~/…` reached the user's real ~/.ultimate/skills.
+it("keeps a preview's ~/.ultimate private while sharing the rest of the home", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ultimate-preview-home-'))
+  homes.push(root)
+  const [user, copy] = ['user', 'preview'].map((name) => join(root, name))
+  await mkdir(join(user, '.ultimate/skills'), { recursive: true })
+  await mkdir(join(user, '.pi/agent'), { recursive: true })
+  await writeFile(join(user, '.pi/agent/auth.json'), '{"login":true}')
+
+  await seedUserHome(user, copy)
+  await linkHome(user, copy)
+  await linkHome(user, copy)
+  const { HOME } = previewEnv({}, { home: root, project: root, userHome: copy, ownerPid: 1 })
+  await mkdir(join(HOME!, '.ultimate/skills/leak'))
+  await writeFile(join(HOME!, '.ultimate/skills/leak/SKILL.md'), 'x')
+
+  expect(await readFile(join(copy, '.ultimate/skills/leak/SKILL.md'), 'utf8')).toBe('x')
+  await expect(readFile(join(user, '.ultimate/skills/leak/SKILL.md'))).rejects.toThrow('ENOENT')
+  expect(await readFile(join(HOME!, '.pi/agent/auth.json'), 'utf8')).toBe('{"login":true}')
 })
 
 it('remembers stopped previews across restarts, one per port, the last 50', async () => {

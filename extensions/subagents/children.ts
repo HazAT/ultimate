@@ -60,6 +60,8 @@ export async function createChild(
     excludeExtensions?: string[]
     model?: { provider: string; modelId: string }
     thinking?: ModelThinkingLevel
+    /** `definition` was made on the fly: no file of its name, so the profile records none. */
+    adhoc?: true
   },
 ) {
   const { parentAgent: parent, definition, modelRuntime } = options
@@ -77,7 +79,8 @@ export async function createChild(
     label: options.label,
     title: options.title,
   })
-  if (definition) (await tx.doc(Profile, child.id)).definition = definition.name
+  if (options.adhoc) (await tx.doc(Profile, child.id)).adhoc = true
+  else if (definition) (await tx.doc(Profile, child.id)).definition = definition.name
   if (definition?.summaries === false)
     await host.need(ConversationsApi).setAutomaticSummaries(tx, child.id, false)
   return child

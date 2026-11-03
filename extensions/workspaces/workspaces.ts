@@ -507,7 +507,10 @@ export function workspaces(host: Host) {
     const result = await Promise.all(
       ids.map(async (id) => {
         const workspace = await get(id as ConversationId, context)
-        if (workspace?.state !== 'ready' || !(await registeredCheckout(workspace))) return undefined
+        // Its `.git` file, not `git worktree list`: the sidebar asks often, and every git process blocks the host while
+        // it forks. `git worktree remove` deletes that file and leaves only ignored files behind.
+        if (workspace?.state !== 'ready' || !(await onDisk(join(workspace.path, '.git'))))
+          return undefined
         return changes(id as ConversationId, workspace).catch(
           // A checkout gone from disk or mid-removal has nothing to show.
           () => undefined,
@@ -1018,7 +1021,7 @@ export function workspaces(host: Host) {
       index.items[String(id)] = {
         path,
         branch,
-        base: await git(source, 'rev-parse', 'HEAD'),
+        base: await git(source, 'rev-parse', `refs/heads/${target}`),
         source,
         target,
         state: 'preparing',

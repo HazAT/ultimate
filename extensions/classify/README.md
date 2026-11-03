@@ -27,3 +27,5 @@ Import `ClassifyApi` from `api.ts`, then call `host.want(ClassifyApi)` at call t
 The result is `{ model, answers, usage: { inputTokens } }`; each answer is discriminated by `type`. The exported types are `ClassifyQuestion`, `ClassifyAnswer`, `ClassifyResult` and `ClassifyService`.
 
 Calls forward the supplied abort signal and throw on a missing key, HTTP failure or malformed response envelope / missing or mismatched answer type. There are no retries or caching. Callers are responsible for durable memoization.
+
+A 402 (out of credits), 401 or 403 pauses the service for 15 minutes: every `ask` throws that error again without a request, and a notice names the cause once. A changed key ends the pause at once.

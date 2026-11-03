@@ -2,9 +2,8 @@ import { resolve } from 'node:path'
 import type { EntryId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { context } from '../server/harness.ts'
-import { VIEW_WINDOW } from '../server/view-window.ts'
 import { attach, fauxServer, temp, until } from './helpers.ts'
-import type { HistoryResponse, StreamedView } from '../shared/protocol.ts'
+import type { HistoryResponse } from '../shared/protocol.ts'
 
 it('streams a long conversation windowed and keeps the replica in step', async () => {
   const home = await temp('ultimate-history-')
@@ -27,22 +26,19 @@ it('streams a long conversation windowed and keeps the replica in step', async (
       }, context)
     const short = await attach(server)
     // A short conversation streams whole, without a marker.
-    expect((short.view() as StreamedView).older).toBeUndefined()
+    expect(short.view().before).toBeUndefined()
     await short.close()
-    const ids = await append(VIEW_WINDOW + 50)
+    const ids = await append(200)
     const stream = await attach(server)
-    const first = stream.view() as StreamedView
-    expect(first.entries).toHaveLength(VIEW_WINDOW)
+    const first = stream.view()
+    expect(first.entries).toHaveLength(150)
     expect(first.entries[0].id).toBe(ids[50])
-    expect(first.older).toBe(ids[50])
+    expect(first.before).toBe(ids[49])
     // An append applies at the end of the window.
     const [added] = await append(1, 1000)
     await until(() => stream.view().entries.at(-1)?.id === added)
-    const watch = await server.root.watch(context)
-    expect(stream.view().entries).toEqual(watch.value.entries.slice(-VIEW_WINDOW - 1))
-    await watch.stop()
-    // A head marker brings a fresh window: the marker and the newest entries.
-    const views = stream.events.filter((event) => event.name === 'view').length
+    expect(stream.view().entries).toEqual((await server.root.context(context)).entries.slice(-151))
+    // Head markers stay where written in the streamed history, not at the front of model context.
     const marker = await server.harness.commit(
       (tx) =>
         tx.appendEntry(id, {
@@ -53,12 +49,12 @@ it('streams a long conversation windowed and keeps the replica in step', async (
         }),
       context,
     )
-    await until(() => stream.events.filter((event) => event.name === 'view').length > views)
-    const fresh = stream.view() as StreamedView
-    expect(fresh.entries[0].id).toBe(marker.id)
-    expect(fresh.entries).toHaveLength(VIEW_WINDOW + 1)
-    expect(fresh.entries.at(-1)!.id).toBe(added)
-    expect(fresh.older).toBe(fresh.entries[1].id)
+    await until(() => stream.view().entries.at(-1)?.id === marker.id)
+    const fresh = stream.view()
+    expect(fresh.entries[0].id).toBe(ids[50])
+    expect(fresh.entries).toHaveLength(152)
+    expect(fresh.entries.at(-2)!.id).toBe(added)
+    expect(fresh.before).toBe(ids[49])
     await stream.close()
   } finally {
     await server.close()
@@ -153,9 +149,7 @@ it('pages stored fork history exclusively without changing active context', asyn
         }),
       context,
     )
-    const watch = await fork.watch(context)
-    const view = watch.value
-    await watch.stop()
+    const view = await fork.context(context)
     const get = (before: number, id = fork.id) =>
       fetch(`${server.url}/api/conversations/${id}/history?before=${before}`)
     expect(view.entries.map((entry) => entry.id)).toEqual([latestMarker.id, ...ids.slice(90, 101)])
@@ -183,9 +177,7 @@ it('pages stored fork history exclusively without changing active context', asyn
     expect(all.filter((entry) => entry.kind === 'pi.user').map((entry) => entry.id)).toEqual(
       ids.slice(0, 101).toReversed(),
     )
-    const after = await fork.watch(context)
-    expect(after.value).toEqual(view)
-    await after.stop()
+    expect(await fork.context(context)).toEqual(view)
     for (const cursor of ['0', '-1', 'NaN', '1.5', '9007199254740992', '']) {
       expect(
         (await fetch(`${server.url}/api/conversations/${fork.id}/history?before=${cursor}`)).status,
