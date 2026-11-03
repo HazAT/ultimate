@@ -218,6 +218,8 @@ export interface CompactSummaryProps {
   rows: readonly CompactRow[]
   /** Steps in its runs of work. */
   steps: number
+  /** Every entry in it, those in its runs of work included. */
+  entries: readonly EntryRecord[]
   /** Whether the agent still works in it. */
   working: boolean
 }
