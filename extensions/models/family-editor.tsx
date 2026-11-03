@@ -110,6 +110,7 @@ function FamilyForm({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
   const model = draft.model ?? family.follows
+  const suggestion = family.suggested
   const info = models?.models.find((item) => `${item.provider}/${item.id}` === model)
   const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
   // A built-in level can be changed but not cleared: settings keep only what differs from it.
@@ -142,7 +143,11 @@ function FamilyForm({
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center gap-2">
         <span className="font-mono text-[12.5px] font-medium">{familyTitle(family.name)}</span>
-        {family.project && <span className={label}>· the project's settings change it</span>}
+        {family.enforced ? (
+          <span className={label}>· the project pins its model</span>
+        ) : (
+          family.project && <span className={label}>· the project's settings change it</span>
+        )}
         <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Color">
           {Object.keys(FAMILY_COLORS).map((name) => (
             <button
@@ -162,9 +167,32 @@ function FamilyForm({
           ))}
         </div>
       </div>
+      {suggestion && (
+        <div className="flex min-w-0 items-center gap-1">
+          <span className={label}>project suggests</span>
+          <span className="min-w-0 truncate font-mono text-[11.5px] text-muted-foreground">
+            {short(suggestion)}
+          </span>
+          {suggestion !== family.model && (
+            <Button
+              className="ml-auto h-5 shrink-0 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              disabled={pending}
+              onClick={() =>
+                void apply({ families: families({ ...specOf(family), model: suggestion }) })
+              }
+              size="xs"
+              title="Run it on the model the project suggests; your choice stays your own"
+              variant="ghost"
+            >
+              Use
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <div className={label}>Model</div>
         <ModelSelect
+          disabled={family.enforced}
           onChange={(next) => set({ model: next })}
           onClear={
             family.name === DEFAULT_FAMILY && draft.model && family.follows
@@ -322,11 +350,14 @@ const LIMIT = 150
 function ModelSelect({
   value,
   placeholder = 'Pick a model',
+  disabled,
   onChange,
   onClear,
 }: {
   value: string | undefined
   placeholder?: string
+  /** While the project pins the family's model, nothing else can be picked. */
+  disabled?: boolean
   onChange: (value: string) => void
   /** Offered as the first row: go back to no model of its own. */
   onClear?: () => void
@@ -361,6 +392,7 @@ function ModelSelect({
       <PopoverTrigger asChild>
         <button
           className={cn(control, 'flex items-center gap-1 text-left')}
+          disabled={disabled}
           title={value}
           type="button"
         >

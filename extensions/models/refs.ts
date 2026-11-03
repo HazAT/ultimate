@@ -56,7 +56,11 @@ export type FamilyView = {
   follows?: string
   followsThinking?: ModelThinkingLevel
   builtin: boolean
-  /** The project's settings set something of it, over the user's. */
+  /** The project's model for it (`provider/id`), shown as its suggestion; `Use` in the popover adopts it. */
+  suggested?: string
+  /** The project pins its model (`enforce: true`), over the person's choice. */
+  enforced?: true
+  /** The project sets its color or thinking, which win over the person's. */
   project?: true
 }
 

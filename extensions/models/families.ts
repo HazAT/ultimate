@@ -74,14 +74,19 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
   const pi = piDefault(host)
   const families = Object.entries(config.families).map(([name, spec]) => {
     const follows = name === DEFAULT_FAMILY && !spec.model && pi.model
+    const projectSpec = layers.project.families[name]
     return {
       name,
       color: spec.color,
       ...(spec.model ? { model: spec.model } : {}),
+      ...(spec.suggested ? { suggested: spec.suggested } : {}),
       ...(spec.thinking ? { thinking: spec.thinking } : {}),
       ...(follows ? { follows: refName(pi.model!), followsThinking: pi.thinking } : {}),
       builtin: Object.hasOwn(BUILTIN_FAMILIES, name),
-      ...(Object.hasOwn(layers.project.families, name) ? { project: true as const } : {}),
+      ...(layers.project.enforce && projectSpec?.model ? { enforced: true as const } : {}),
+      ...(projectSpec && (projectSpec.thinking || projectSpec.color)
+        ? { project: true as const }
+        : {}),
     }
   })
   const agents: FamilyUser[] = definitions.map((definition) => {

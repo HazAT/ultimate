@@ -1,7 +1,8 @@
 /**
  * Where model families live: `~/.ultimate/model-families.json` keeps each project's families (keyed like its trust
  * decision, so a linked worktree shares its main checkout's) and the most recently saved ones, which every project
- * without its own starts from. A project's `.ultimate/settings.json` `modelFamilies` applies over either, for a team.
+ * without its own starts from. A project's `.ultimate/settings.json` `modelFamilies` owns its team's roles
+ * (families, colors, thinking, assignments); a model it names is a suggestion, unless `enforce: true` pins it.
  */
 import { join, resolve } from 'node:path'
 import type { JsonObject } from '@earendil-works/pi-durable'
@@ -40,7 +41,7 @@ export type FamilyLayers = {
   /** The project's own families, else the most recent ones; `from` says which. */
   base: Layer
   from: 'project' | 'recent' | 'builtin'
-  /** The project's `.ultimate/settings.json` `modelFamilies`, over the base. */
+  /** The project's `.ultimate/settings.json` `modelFamilies`: its roles apply, its models suggest (`enforce` pins). */
   project: Layer
   /** A layer that failed to parse counts as empty; its error is here. */
   errors: string[]

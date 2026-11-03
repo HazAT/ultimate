@@ -35,15 +35,51 @@ it('runs a definition on its pin, else its family, else the default family', () 
   })
 })
 
-it('merges the project over the user over the built-ins, field by field', () => {
+it("gives the person's model precedence, while the project owns the rest", () => {
   const config = families(
     { families: { tiny: { model: 'acme/mini' }, local: { model: 'vllm/current' } } },
-    { families: { tiny: { thinking: 'high' } } },
+    {
+      families: {
+        tiny: { model: 'acme/team', thinking: 'high' },
+        lead: { model: 'acme/lead' },
+      },
+    },
   )
-  expect(config.families.tiny).toEqual({ model: 'acme/mini', thinking: 'high', color: 'emerald' })
+  expect(config.families.tiny).toEqual({
+    model: 'acme/mini',
+    thinking: 'high',
+    suggested: 'acme/team',
+    color: 'emerald',
+  })
   expect(config.families.local.model).toBe('vllm/current')
   expect(config.families.local.color).toBeTruthy()
+  // A family only the project names still runs on its model, suggested by it.
+  expect(config.families.lead).toEqual({
+    model: 'acme/lead',
+    suggested: 'acme/lead',
+    color: 'teal',
+  })
+  expect(() => parseFamilies({ enforce: 'yes' })).toThrow('enforce must be a boolean')
   expect(() => parseFamilies({ families: { Bad: {} } })).toThrow('lowercase')
+})
+
+it("uses the project's model as the suggestion, and enforce pins it over the person's", () => {
+  const person = { families: { tiny: { model: 'acme/mini' } } }
+  const team = {
+    families: { tiny: { model: 'acme/team' }, fast: { model: 'acme/fast' } },
+    assign: { summaries: 'fast' },
+  }
+  const config = families(person, team)
+  // The person's choice wins; a family they never chose runs on the project's, as its suggestion.
+  expect(config.families.tiny.model).toBe('acme/mini')
+  expect(config.families.tiny.suggested).toBe('acme/team')
+  expect(config.families.fast.model).toBe('acme/fast')
+  expect(config.assign.summaries).toBe('fast')
+  // `enforce: true` pins the project's model over the person's, as before the suggestion.
+  const pinned = families(person, { ...team, enforce: true })
+  expect(pinned.families.tiny.model).toBe('acme/team')
+  expect(pinned.families.tiny.suggested).toBeUndefined()
+  expect(pinned.families.fast.model).toBe('acme/fast')
 })
 
 it("keeps each project's families and starts a project without its own from the ones saved last", async () => {
@@ -61,7 +97,9 @@ it("keeps each project's families and starts a project without its own from the 
   expect(await tiny(a)).toBe('project vllm/a')
   expect(await tiny(b)).toBe('project vllm/b')
   expect(await tiny(c)).toBe('recent vllm/b')
-  // The project's team settings apply over its own families.
+  // The project's team settings: a suggestion over its own families, or pinned under `enforce`.
   const team = { modelFamilies: { families: { tiny: { model: 'acme/team' } } } }
-  expect((await readFamilies(userHome, a, team)).families.tiny.model).toBe('acme/team')
+  expect((await readFamilies(userHome, a, team)).families.tiny.model).toBe('vllm/a')
+  const pinned = { modelFamilies: { enforce: true, families: { tiny: { model: 'acme/team' } } } }
+  expect((await readFamilies(userHome, a, pinned)).families.tiny.model).toBe('acme/team')
 })
