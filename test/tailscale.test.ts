@@ -336,6 +336,7 @@ it('admits the owner once status reports the login it lacked at start', async ()
       'tailscale-user-login': 'owner@example.com',
     },
   }
+  expect(await app.status()).toMatchObject({ state: 'ready', allow: [], hint: /owner login/ })
   expect(await admit(request, '4747', app.access.rules)).toBe(false)
   const config = JSON.parse(await readFile(f.config, 'utf8'))
   await writeFile(f.config, JSON.stringify({ ...config, node }))

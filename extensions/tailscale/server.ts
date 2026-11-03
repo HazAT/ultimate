@@ -289,13 +289,20 @@ export default function tailscale(host: ExtensionHost) {
             if (!allow) {
               reading ??= command(['status', '--json']).finally(() => (reading = undefined))
               allow ??= ownerOf(parse((await reading).stdout))
-              if (allow) ready = { ...ready!, allow }
+              if (allow) ready = { state: 'ready', url, allow }
               if (allow && status.state === 'ready') set(ready!)
             }
             return allow?.includes(login) ? { login } : undefined
           },
         })
-        ready = { state: 'ready', url, allow: allow ?? [] }
+        ready = allow
+          ? { state: 'ready', url, allow }
+          : {
+              state: 'ready',
+              url,
+              allow: [],
+              hint: 'No one can open it yet: tailscale status --json does not list the owner login (Self.UserID in User). It is read again on the next tailnet request.',
+            }
         set(ready)
       })
     } catch (error) {
