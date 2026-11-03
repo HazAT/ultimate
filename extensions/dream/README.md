@@ -3,19 +3,24 @@ for @ultimate and the dream branch, is in [DREAM.md](DREAM.md); this file is the
 
 ## Flow
 
-A dream is ordinary work, and nothing in code tracks it:
+A dream is ordinary work; code keeps only which branch is the dream, so its end can show the user Fall asleep:
 
 1. **Asked for.** The user tells @ultimate to dream, presses **Dream** (Memory surface header or ⌘K "Dream…"; user-only
    `start` gives @ultimate a `dream.requested` input), or a built-in automation fires (below).
 2. **Dreamed.** In that turn @ultimate writes its handoff into the prompt of one dream branch, which runs the six
    passes as `dream-pass` subagents (`agents/dream-pass.md`) and answers with its journal and a `Decisions:` block.
+   The `dream-branch` reactor reads each `lineage.branched` event, from the start of the log: a branch @ultimate
+   started in a turn that answered a `dream.requested` entry newer than the last dream's (its stamp's entry, read back
+   to the turn's start) becomes `dream.next.dream { branch, requested, at }`.
 3. **Decided.** @ultimate weighs in and the dream branch asks the user with a questions card; approved ones become ordinary branches or
    `remember` batches.
-4. **Prepared.** Once that work is done and a fresh chapter is worth it, @ultimate calls `prepare {chapter, learned,
-   handoff}`: the chapter's name, three learned lines and a fresh handover (at most 12,000 characters). It is kept in
+4. **Woke.** Once the dream branch is concluded, the sidebar (`awake.tsx`) and the status line show "The dream is
+   done" with **Fall asleep…**, until a chapter is prepared after it or the user dismisses it (user-only `dismiss`).
+   Fall asleep calls user-only `ready`, which wakes @ultimate with a `dream.ready` input asking it to prepare.
+5. **Prepared.** @ultimate calls `prepare {chapter, learned, handoff}`: the chapter's name, three learned lines and a fresh handover (at most 12,000 characters). It is kept in
    `dream.next` on conversation 1 and shows as the `dream.prepared` card in @ultimate's conversation, pinned in the
    status line until it is slept into. A second `prepare` replaces it.
-5. **Asleep.** The user presses Fall asleep on the card (`asleep`, below).
+6. **Asleep.** The user presses Fall asleep on the card (`asleep`, below).
 
 ### Built-in triggers
 
@@ -107,6 +112,7 @@ restart never returns: the new host opens the requested chapter.
 
 ## Actions
 
-`refs.ts` holds the document and actions: `start`, `asleep`, `switch` (user-only), `prepare`, `chapters`, and `stats`,
+`refs.ts` holds the document and actions: `start`, `ready`, `dismiss`, `asleep`, `switch` (user-only), `prepare`,
+`chapters`, and `stats`,
 which reads tool calls from `<home>/trace.sqlite` read-only: calls, failures and mean duration per tool, the 20 most
 frequent errors (each with its two newest calls as `#<conversation>/<entry>` and the start of its args), and enabled tools never called in the trace's window (7 days or 200k rows).
