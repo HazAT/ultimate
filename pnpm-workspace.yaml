@@ -31,6 +31,7 @@ minimumReleaseAgeExclude:
 # patches/@earendil-works__chord@1.5.0.patch and patches/@earendil-works__pi-durable@1.5.0.patch: pnpm errors when a versioned patch no longer matches.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts (70abb65186592ca788b29b3db22c3160d629c41f) — rebuild replay cache markers within Claude's four-block limit; word an incomplete response without stderr so pi-ai retries it; src/stream.ts — resolve a tool named without its MCP prefix instead of ending the turn; src/transcript.ts — define later tools inline (inline-tools beta) instead of falling back to one merged system prompt after a tool redefinition. Drop when upstream fixes this.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — useSpawn() sets how Claude Code's processes start (lib/spawn.ts). Drop when upstream accepts a spawn function.
+# Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — childExit() settles for a child that already exited: model discovery reads stdout to its end first, and 'exit' can precede that, which hung discovery until the next refresh. Drop when upstream fixes this.
 # Dependabot GHSA-587h-7wmj-h5pm and siblings: @tailwindcss/vite and @vitejs/plugin-react resolve vite 8.3.1 on their own. Drop when they peer on >= 8.3.3.
 overrides:
   vite: 8.3.5
