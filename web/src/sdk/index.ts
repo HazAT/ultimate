@@ -8,6 +8,7 @@ export {
   defineWebExtension,
   definePoint,
   ErrorReport,
+  FileUpload,
   MessageReference,
   ParkedRuns,
   provide,
