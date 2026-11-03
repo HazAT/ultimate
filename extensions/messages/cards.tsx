@@ -24,6 +24,7 @@ import {
   events,
   Fold,
   formatAgo,
+  formatTokens,
   MessageActions,
   Provided,
   useCompact,
@@ -55,6 +56,7 @@ import {
   sentBy,
   sentStatus,
 } from './data.tsx'
+import { cacheBusts } from '../../lib/context-usage.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { callerOf } from './caller.ts'
 import { MessagesDoc } from './refs.ts'
@@ -347,8 +349,15 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
  * A whole stretch between @ultimate's messages in one line: how many updates, who with, what landed and whether the
  * app reloaded, so the reader knows whether to open it.
  */
-export function StretchSummary({ rows, steps, working }: CompactSummaryProps) {
+export function StretchSummary({ rows, steps, working, entries }: CompactSummaryProps) {
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  // Against the whole transcript: a stretch's first response compares with the one before the stretch.
+  const busts = cacheBusts(useTranscript())
+  // A response split over rows (a run of work and its visible message call) counts once.
+  const written = [...new Set(entries.map((entry) => entry.id))].reduce(
+    (sum, id) => sum + (busts.get(id)?.written ?? 0),
+    0,
+  )
   const counted = rows.filter(
     (row) => backgroundRow(row, log) !== 'hidden' && row.entry.kind !== 'pi.system',
   )
@@ -382,6 +391,11 @@ export function StretchSummary({ rows, steps, working }: CompactSummaryProps) {
         </span>
       ))}
       {reloaded && <span className="shrink-0 max-sm:hidden">· reloaded</span>}
+      {written > 0 && (
+        <span className="shrink-0 text-warning/80" data-cache-rebuilt={written}>
+          · cache rebuilt · {formatTokens(written)} written
+        </span>
+      )}
       {working && <span className="shrink-0 text-brand">· working</span>}
     </span>
   )
