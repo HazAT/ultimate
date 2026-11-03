@@ -353,7 +353,11 @@ export function StretchSummary({ rows, steps, working, entries }: CompactSummary
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
   // Against the whole transcript: a stretch's first response compares with the one before the stretch.
   const busts = cacheBusts(useTranscript())
-  const written = entries.reduce((sum, entry) => sum + (busts.get(entry.id)?.written ?? 0), 0)
+  // A response split over rows (a run of work and its visible message call) counts once.
+  const written = [...new Set(entries.map((entry) => entry.id))].reduce(
+    (sum, id) => sum + (busts.get(id)?.written ?? 0),
+    0,
+  )
   const counted = rows.filter(
     (row) => backgroundRow(row, log) !== 'hidden' && row.entry.kind !== 'pi.system',
   )

@@ -112,7 +112,7 @@ const causes: Record<CacheBust['cause'], (bust: CacheBust) => string> = {
   system: () => 'after the system prompt change',
   model: () => 'after a model switch',
   expired: (bust) => `expired after ${formatDuration(bust.gap)} idle`,
-  prefix: () => 'an earlier part of the context changed',
+  prefix: () => 'earlier context changed',
 }
 
 /**
