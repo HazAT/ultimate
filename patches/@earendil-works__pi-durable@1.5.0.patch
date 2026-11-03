@@ -60,6 +60,20 @@ index 120ff2015d81eb795a090eae897910a58768373f..379ed6defc0eb0a840cae7e84f68324c
                  if (stdinCommand !== undefined) {
                      child.stdin?.on("error", () => { });
                      child.stdin?.end(stdinCommand);
+diff --git a/dist/harness/compaction.js b/dist/harness/compaction.js
+index e8eded74921ab86f7641bffb0a96e7371021fb55..51cd3239204c27755ca4c45ff7e8617cc329cc5a 100644
+--- a/dist/harness/compaction.js
++++ b/dist/harness/compaction.js
+@@ -94,7 +94,8 @@ export const CompactionTask = defineTask({
+                 model: ref,
+                 thinkingLevel: agent.thinkingLevel,
+                 streamOptions: settings.stream,
+-                maxTokens: Math.min(Math.floor(0.8 * policy.reserveTokens), model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY),
++                // The model's output limit, as Pi's coding agent since #9512: reasoning shares the cap, which 0.8 × reserveTokens left too small.
++                maxTokens: model.maxTokens > 0 ? model.maxTokens : Math.floor(0.8 * policy.reserveTokens),
+                 tail: view.entries.reduce((tail, entry) => (entry.id > tail ? entry.id : tail), firstKept),
+                 firstKept,
+             };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
 index ac42dfe741b20726ab8eb3d8139b1296d664210d..1e7f1ac26d17b83cb15bf00408fa70b0aee4e747 100644
 --- a/dist/harness/generation.js
