@@ -47,6 +47,7 @@
     "extensions/update/item.ts",
     "extensions/pause/lasted.ts",
     "extensions/pause/parked.ts",
+    "extensions/sticky-prompt/turn.ts",
     "extensions/sidebar/work.ts",
     "extensions/sidebar/landings.ts",
     "extensions/subagents/landing.ts",

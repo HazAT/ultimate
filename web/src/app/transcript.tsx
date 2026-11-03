@@ -88,6 +88,15 @@ export function useTranscriptScroll() {
 }
 
 /** The shown conversation; `dock` fits it into a narrow side region. */
+/**
+ * The transcript around a contribution: its scroller, the element holding its rows (each top-level row carries
+ * `data-entry-id`), and whether it follows its newest row. For `transcript.*` slots.
+ */
+export function useTranscriptScroll() {
+  const { scrollRef, contentRef, isAtBottom } = useStickToBottomContext()
+  return { scrollRef, contentRef, atBottom: isAtBottom }
+}
+
 export function Transcript({ dock }: { dock?: boolean }) {
   const { id, loading } = useConversation()
   const { conversationId } = useUltimate()
