@@ -459,10 +459,20 @@ function lineage(host: ExtensionHost) {
                 answerId = view.entries[index].id
               }
             }
-            const delivered = (await host.harness().snapshot(Notified, runtime.conversationId, ctx))
-              ?.answers[target]
-            // This caller already has that answer: wait for the target to write again, then for its next idle.
-            if (delivered === undefined || answerId > delivered) break
+            const caller = runtime.conversationId
+            const delivered = (await host.harness().snapshot(Notified, caller, ctx))?.answers[
+              target
+            ]
+            // Read by kind: messages already depends on lineage.
+            const board = host.doc('board')
+            const log = board && (await host.harness().snapshot(board, ROOT_CONVERSATION_ID, ctx))
+            // A reply carries the answer entry it returned.
+            const replied = (
+              log?.messages as { from: unknown; to: unknown; answer?: number }[] | undefined
+            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            // This caller already has that answer, from a notify or as a reply: wait for the target to write again,
+            // then for its next idle.
+            if (!replied && (delivered === undefined || answerId > delivered)) break
             await awaitWithContext(written.promise, ctx)
           } finally {
             unsubscribe()
