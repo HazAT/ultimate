@@ -62,7 +62,10 @@ if (sessionStorage.getItem('ultimate.driven') === '1') window.ultimate = createT
 export const registry = createRegistry()
 
 /** The web bundle this page runs (`server/web.ts` names it in the page). */
-const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content
+export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content
+/** How long the status line shows "ready · switching" before the page reloads onto a new bundle. */
+const switchDelay = 600
+let switching = false
 /** What a page tells the next one about why it reloaded: the sources that changed, for the update toast. */
 const switchKey = 'ultimate.web-switch'
 /** Set when this page load is a switch to a new bundle: when, and the sources that changed. */
@@ -81,11 +84,13 @@ store.subscribe(() => {
   if (system && !registry.getReady().ready) registry.receiveSystem()
   // A newer bundle is current: switch to it. The reload resumes on the view it leaves (resume.ts), drafts included.
   if (system?.web.id && bundle && system.web.id !== bundle) {
+    if (switching) return
+    switching = true
     sessionStorage.setItem(
       switchKey,
       JSON.stringify({ at: Date.now(), changed: system.web.changed }),
     )
-    location.reload()
+    setTimeout(() => location.reload(), switchDelay)
     return
   }
   // The stream sends `system` before `ui`, so a new process's snapshot finds the revisions forgotten.

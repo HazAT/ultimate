@@ -1,4 +1,4 @@
-import { RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
+import { LoaderCircleIcon, RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
+  bundle,
   cn,
   defineWebExtension,
   formatTime,
   switched,
   useEvents,
+  useNow,
   useRestart,
   useSystem,
   useToolDuration,
@@ -175,22 +177,88 @@ function CoreStale() {
   )
 }
 
-/** `build a1b2c3d` in the status line; it lights up when the build changes. */
+/**
+ * The web bundle's rebuild in place of the build item: `building… 2s` while it runs, `ready · switching` as the page
+ * is about to reload onto it, and what failed (a facet left out, or the whole build) until a build succeeds.
+ */
+function Rebuild() {
+  const web = useSystem()?.web
+  const building = web?.building === true
+  const since = useRef(0)
+  if (building && since.current === 0) since.current = Date.now()
+  if (!building) since.current = 0
+  const now = useNow(1000, building)
+  if (!web) return null
+  if (web.id && bundle && web.id !== bundle)
+    return (
+      <span className="flex items-center gap-1.5 text-brand">
+        <ZapIcon className="size-3" />
+        ready · switching
+      </span>
+    )
+  if (building)
+    return (
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <LoaderCircleIcon className="size-3 animate-spin" />
+        building… {Math.max(0, Math.floor((now - since.current) / 1000))}s
+      </span>
+    )
+  if (!web.error && !web.left) return null
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent',
+            web.error ? 'text-error' : 'text-warning',
+          )}
+          type="button"
+        >
+          <TriangleAlertIcon className="size-3" />
+          {web.error
+            ? 'build failed'
+            : `${web.left!.length} ${web.left!.length === 1 ? 'facet' : 'facets'} left out`}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[32rem] max-w-[calc(100vw-2rem)] p-0 font-mono"
+        side="top"
+      >
+        <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
+          {web.error
+            ? 'The web UI did not build; this page keeps the previous bundle.'
+            : 'Left out of the web bundle; their cards show the error until a save fixes them.'}
+        </div>
+        <pre className="max-h-80 overflow-auto px-3 py-2 text-[11.5px] leading-[1.55] whitespace-pre-wrap text-error">
+          {web.error ?? web.left!.map((entry) => `${entry.file}\n${entry.error}`).join('\n\n')}
+        </pre>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** `build a1b2c3d` in the status line; it lights up when the build changes, or the page just switched to it. */
 function Build() {
   const system = useSystem()
   const id = system?.build.id
-  const [fresh, setFresh] = useState(false)
+  const [fresh, setFresh] = useState(switched !== undefined)
   const last = useRef(id)
   useEffect(() => {
-    if (!id || last.current === id) return undefined
+    if (!id || last.current === id) return
     const first = last.current === undefined
     last.current = id
-    if (first) return undefined
-    setFresh(true)
+    if (!first) setFresh(true)
+  }, [id])
+  useEffect(() => {
+    if (!fresh) return undefined
     const timer = setTimeout(() => setFresh(false), 4000)
     return () => clearTimeout(timer)
-  }, [id])
+  }, [fresh])
   if (!system) return null
+  // The rebuild item stands in for this one while it shows something.
+  const web = system.web
+  if (web.building || web.error || web.left || (web.id && bundle && web.id !== bundle)) return null
   const { build } = system
   return (
     <Tooltip>
@@ -308,6 +376,7 @@ export default defineWebExtension({
     // Discovery order puts `self` before `status-line`: the item sits just left of `live · gen N`.
     'statusline.right': [
       { component: CoreStale, phone: true },
+      { component: Rebuild, order: 1, phone: true },
       { component: Build, order: 1 },
     ],
     overlay: Updated,
