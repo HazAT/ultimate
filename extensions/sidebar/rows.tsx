@@ -24,12 +24,12 @@ import { store } from '@/sdk/client'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
 import {
   AgentMark,
-  agentTitle,
   ConversationEpic,
   ConversationPhase,
   ConversationTask,
   FeatureTag,
   RenameAction,
+  useAgentTitle,
 } from '../conversations/ui.tsx'
 import type { Presence } from '../conversations/ui.tsx'
 import { Review } from '../workspaces/ui.tsx'
@@ -389,6 +389,7 @@ export function StandingRow({
   onOpen: () => void
   children: ReactNode
 }) {
+  const { title, brand } = useAgentTitle(name)
   return (
     <div
       className={cn(
@@ -409,7 +410,7 @@ export function StandingRow({
         <AgentMark name={name} presence={presence} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-1.5">
-            {name === 'ultimate' ? (
+            {brand ? (
               // The title bar's wordmark: Ultimate's own name is the brand.
               <span
                 className="truncate font-sans text-[11.5px] leading-5 font-semibold tracking-[0.28em] text-brand"
@@ -419,7 +420,7 @@ export function StandingRow({
               </span>
             ) : (
               <span className="truncate text-[13px] leading-5 font-semibold text-foreground">
-                {agentTitle(name)}
+                {title}
               </span>
             )}
             <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">@{name}</span>
