@@ -25,7 +25,7 @@ import type { EntryRecord, ToolCallView } from '@/sdk'
 import { useWorkspaceIndex } from './data.tsx'
 import { LandingCard, Open, Subject } from './landing.tsx'
 import type { LandingTone } from './landing.tsx'
-import { inProgress, runningStep, superseded } from './steps.tsx'
+import { inProgress, superseded, tookFor } from './steps.tsx'
 import type {
   LanderEntry,
   LanderOutcome,
@@ -253,17 +253,6 @@ function Steps({
 }) {
   const { switchConversation } = useUltimate()
   const rows = steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
-  // A step runs until the next one starts; a check result's time is its whole check, from its "checking" step.
-  const took = (row: LanderStep, index: number) => {
-    if (row.check) {
-      const start = steps.findLast(
-        (other) => other.at <= row.at && runningStep.exec(other.step)?.[1] === row.check!.command,
-      )
-      return start ? row.at - start.at : undefined
-    }
-    const next = rows[index + 1]
-    return next && (next.check ? undefined : next.at - row.at)
-  }
   return (
     <Collapsible className="group/steps" onOpenChange={onOpenChange} open={open}>
       <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
@@ -279,7 +268,7 @@ function Steps({
             // oxlint-disable-next-line react/no-array-index-key -- Progress rows have no id; steps and times may repeat.
             key={index}
             row={row}
-            took={took(row, index)}
+            took={tookFor(row, index, rows, steps)}
           />
         ))}
         <button
@@ -298,7 +287,10 @@ function Steps({
 export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const data = entry.data as LanderEntry
   const entries = useTranscript()
-  const busy = useConversation((conversation) => conversation.busy)
+  // The lander is a task, not a model run, so the conversation is never busy: its queue says whether it lands.
+  const running = useWorkspaceIndex().queue.some(
+    (item) => item.id === data.submission && item.state === 'landing',
+  )
   const own = (other: EntryRecord) =>
     other.kind === 'ultimate.lander' && (other.data as LanderEntry).submission === data.submission
   const after = entries.filter((other) => other.id > entry.id && own(other))
@@ -316,11 +308,20 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const failed = next?.outcome === 'failed'
   const done = next !== undefined && !failed
   const landing =
-    busy &&
+    running &&
     inProgress(
       data as LanderStep,
       after.map((other) => other.data as LanderStep),
     )
+  // How long this step took, as the submitter's card shows it.
+  const steps = entries
+    .filter((other) => own(other) && (other.data as LanderEntry).step)
+    .map((other) => other.data as LanderStep)
+  const rows = steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
+  const took = (row: LanderStep) => {
+    const index = rows.findIndex((other) => other.at === row.at && other.step === row.step)
+    return index < 0 ? undefined : tookFor(row, index, rows, steps)
+  }
   if (data.outcome) {
     const outcome = data as LanderEntry & LanderOutcome
     return (
@@ -359,12 +360,28 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
           </span>
           <Open id={data.conversationId} />
         </div>
-        {queued && <StepLine row={queued.data as LanderStep} />}
-        <StepLine active={landing} done={done} failed={failed} row={data as LanderStep} />
+        {queued && (
+          <StepLine row={queued.data as LanderStep} took={took(queued.data as LanderStep)} />
+        )}
+        <StepLine
+          active={landing}
+          done={done}
+          failed={failed}
+          row={data as LanderStep}
+          took={took(data as LanderStep)}
+        />
       </div>
     )
   }
-  const line = <StepLine active={landing} done={done} failed={failed} row={data as LanderStep} />
+  const line = (
+    <StepLine
+      active={landing}
+      done={done}
+      failed={failed}
+      row={data as LanderStep}
+      took={took(data as LanderStep)}
+    />
+  )
   if (!data.output) return line
   return (
     <div className="font-mono text-[11px]">
