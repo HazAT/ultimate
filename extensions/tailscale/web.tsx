@@ -355,7 +355,8 @@ function Indicator() {
 }
 
 export default defineWebExtension({
-  slots: { 'statusline.right': [Indicator] },
+  // Left of `live · gen N` and the build item, which stay together at the right end.
+  slots: { 'statusline.right': [{ component: Indicator, order: -0.5 }] },
   commands: [
     {
       id: 'tailscale.panel',
