@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   cn,
+  events,
   ParkedRuns,
   Provided,
   useDocOf,
@@ -10,7 +11,15 @@ import {
   useUltimate,
   Wordmark,
 } from '@/sdk'
-import { MessagesDoc, emptyMessages, waitingOnUser } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  emptyMessages,
+  nextWaiting,
+  stateTone,
+  stateWord,
+  waitingOnUser,
+} from '../messages/ui.tsx'
+import type { MessagesData } from '../messages/refs.ts'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { primaryLabel } from './label.ts'
@@ -18,6 +27,37 @@ import { primaryLabel } from './label.ts'
 /** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
   return children(waitingOnUser(useDocOf(1, MessagesDoc) ?? emptyMessages))
+}
+
+/** Page-local across the separate Agent and Memory sidebars: remounting the row keeps its cycle. */
+let lastWaiting: number | undefined
+
+/** Each click opens the next question, as the To-dos panel and question pointers do. */
+export function WaitingCount({ log, waiting }: { log: MessagesData; waiting: number }) {
+  const { showSurface, switchConversation } = useUltimate()
+  const open = () => {
+    const message = nextWaiting(log, lastWaiting)
+    if (!message) return
+    lastWaiting = message.id
+    if (message.call)
+      events.emit('messages:open', { conversation: message.from, call: message.call })
+    showSurface('agent')
+    switchConversation(message.from)
+  }
+  return (
+    <button
+      className={cn(
+        '-mx-1 -my-1 shrink-0 cursor-pointer rounded-sm px-1 py-1 underline-offset-2 outline-none hover:underline focus-visible:ring-1 focus-visible:ring-ring',
+        stateTone.waits,
+      )}
+      data-waiting-count
+      onClick={open}
+      title="Show the next question waiting on you"
+      type="button"
+    >
+      {stateWord('waits', waiting)}
+    </button>
+  )
 }
 
 /** A busy standing agent's word: its classified phase, lower case like its idle line, else "working". */

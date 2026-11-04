@@ -67,11 +67,9 @@ function MessageNavigation() {
       events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry })
     const loaded = target.entry ?? (call && callerOf(entries, call.split('/')[0])?.id)
     setTarget(undefined)
-    if (loaded) {
-      const frame = requestAnimationFrame(() => reveal(loaded))
-      return () => cancelAnimationFrame(frame)
-    }
-    if (call)
+    // Clearing the target re-runs this effect; it must not cancel the reveal after a conversation switch.
+    if (loaded) requestAnimationFrame(() => reveal(loaded))
+    else if (call)
       api.action(CallerAction, { conversation: id, call }).then(
         ({ entry }) => entry !== undefined && reveal(entry),
         // The conversation is open either way; only the scroll to the question is lost.

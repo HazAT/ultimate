@@ -6,6 +6,7 @@ export {
   conversationState,
   emptyMessages,
   isOpen,
+  nextWaiting,
   stateTone,
   stateWord,
   waitingOnUser,
