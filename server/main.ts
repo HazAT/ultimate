@@ -26,6 +26,38 @@ import type { Notice } from '../shared/protocol.ts'
 
 const send = (message: ChildMessage) => process.send?.(message)
 
+/**
+ * Every response, API and document alike. The instance is loopback-only: a page on another origin must not frame it,
+ * sniff its JSON as something else, or learn from `Referer` which conversation was open.
+ *
+ * Framing is refused for the web but allowed from loopback, because a preview frames another running instance on its
+ * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one. The supervisor opens
+ * the app at `ultimate.localhost`, so `*.localhost` parents count as loopback too. A page on the tailnet opens previews
+ * in a new tab instead of framing them.
+ *
+ * No IPv6 entry, and none is needed: the server listens on `127.0.0.1` only, so nothing answers over `[::1]`.
+ * `http://[::1]:*` would not have parsed anyway — a host source may not carry a port range with an IPv6 literal —
+ * and one invalid expression makes a browser drop the whole directive, silently switching framing protection off.
+ */
+const frameAncestors = [
+  "'self'",
+  'http://127.0.0.1:*',
+  'http://localhost:*',
+  'http://*.localhost:*',
+].join(' ')
+export const securityHeaders = {
+  'Content-Security-Policy': `frame-ancestors ${frameAncestors}; object-src 'none'; base-uri 'none'`,
+  // The legacy fallback for browsers without `frame-ancestors`; they cannot express the port exceptions above.
+  'X-Frame-Options': 'SAMEORIGIN',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+} as const
+/** For the replies that never reach a handler, so an error page carries the same framing refusal. */
+const denyHeaders = {
+  'X-Frame-Options': 'SAMEORIGIN',
+  'X-Content-Type-Options': 'nosniff',
+} as const
+
 export interface ServerOptions extends HostOptions {
   port?: number
   publicUrl?: string
@@ -78,15 +110,17 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
             `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
         ).port || '80'
       if (!(await admit(request, port, access.rules))) {
-        response.writeHead(403)
+        response.writeHead(403, denyHeaders)
         response.end('Forbidden')
         return
       }
       if (!api) {
-        response.writeHead(503)
+        response.writeHead(503, denyHeaders)
         response.end('Preparing')
         return
       }
+      // Set before either handler writes its own head: the API replies with JSON and Vite serves the document.
+      for (const [name, value] of Object.entries(securityHeaders)) response.setHeader(name, value)
       if (await api.handle(request, response)) return
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         response.writeHead(405)
@@ -95,7 +129,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       }
       await web!.handle(request, response)
     })().catch(() => {
-      if (!response.headersSent) response.writeHead(500)
+      if (!response.headersSent) response.writeHead(500, denyHeaders)
       response.end('Internal server error')
     })
   })
