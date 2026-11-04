@@ -37,15 +37,13 @@ export async function admit(
   rules: Set<AccessRule>,
 ) {
   const { host, origin } = request.headers
+  if (
+    !proxied(request.headers) &&
+    loopbackAuthority(host, port) &&
+    (!origin || loopbackOrigin(origin, port))
+  )
+    return true
   const site = request.headers['sec-fetch-site']
-  const frame = request.headers['sec-fetch-dest'] === 'iframe'
-  // A hostile page can point an iframe at the loopback origin, and the browser sends no Origin for it, so fetch
-  // metadata is the only thing that marks it. A frame is another site's page until `same-site` says otherwise:
-  // that is the preview framing another instance on its own port. Browsers without fetch metadata send nothing.
-  if (frame && site === 'cross-site') return false
-  const direct = site === undefined || site === 'same-origin' || site === 'none'
-  // Only a root document navigation relaxes fetch metadata for a cross-site request; every subresource and every
-  // state-changing request stays same-origin.
   const navigation =
     (site === 'cross-site' || site === 'same-site') &&
     request.method === 'GET' &&
@@ -53,15 +51,6 @@ export async function admit(
     request.headers['sec-fetch-mode'] === 'navigate' &&
     request.headers['sec-fetch-dest'] === 'document' &&
     request.headers.upgrade === undefined
-  if (
-    !proxied(request.headers) &&
-    loopbackAuthority(host, port) &&
-    (!origin || loopbackOrigin(origin, port)) &&
-    // Same-site frames are the preview; a root navigation is a link the user followed. Neither is a cross-site
-    // request the page made on its own, which `navigation` still restricts to the root document.
-    (direct || (frame && site === 'same-site') || navigation)
-  )
-    return true
   // Root navigation relaxes only fetch metadata, not origin or identity verification.
   // Any site can now open the UI with any query, so query parameters must only select views, never act.
   if (site !== undefined && site !== 'same-origin' && site !== 'none' && !navigation) return false

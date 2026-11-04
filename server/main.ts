@@ -31,13 +31,20 @@ const send = (message: ChildMessage) => process.send?.(message)
  * sniff its JSON as something else, or learn from `Referer` which conversation was open.
  *
  * Framing is refused for the web but allowed from loopback, because a preview frames another running instance on its
- * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one.
+ * own port (`extensions/instance/web.tsx`) — a same-site load whose origin differs from this one. The supervisor opens
+ * the app at `ultimate.localhost`, so `*.localhost` parents count as loopback too. A page on the tailnet opens previews
+ * in a new tab instead of framing them.
  *
  * No IPv6 entry, and none is needed: the server listens on `127.0.0.1` only, so nothing answers over `[::1]`.
  * `http://[::1]:*` would not have parsed anyway — a host source may not carry a port range with an IPv6 literal —
  * and one invalid expression makes a browser drop the whole directive, silently switching framing protection off.
  */
-const frameAncestors = ["'self'", 'http://127.0.0.1:*', 'http://localhost:*'].join(' ')
+const frameAncestors = [
+  "'self'",
+  'http://127.0.0.1:*',
+  'http://localhost:*',
+  'http://*.localhost:*',
+].join(' ')
 export const securityHeaders = {
   'Content-Security-Policy': `frame-ancestors ${frameAncestors}; object-src 'none'; base-uri 'none'`,
   // The legacy fallback for browsers without `frame-ancestors`; they cannot express the port exceptions above.
