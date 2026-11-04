@@ -983,8 +983,10 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
 - A theme extension (a CSS file imported from its `web.tsx`) targets the app through stable `data-ui` hooks, never
   Tailwind classes: `titlebar`, `surface-tabs`, `wordmark`, `ultimate-button`, `sidebar-row`, `sidebar-section-header`,
   `conversation-header`, `turn-header`, `empty-state`, `card`, `message-card` (with `data-sender`), `composer`,
-  `side-chat-hint`, `side-chat-switch`, `palette` and `status-line`; selected rows and tabs carry `data-selected`. Keep
-  these when changing that markup.
+  `side-chat-hint`, `side-chat-switch`, `palette`, `status-line` and `transcript-meta` (the transcript's small
+  dividers, folds and summary lines); selected rows and tabs carry `data-selected`, the sidebar's status dots `data-status` (`working`,
+  `waiting`, `paused`, `done`, `failed` or `idle`) and the final answer `data-final`. Keep these when changing that
+  markup.
 - Dense and quiet: 12–14 px, monospace (`font-mono`) for meta such as paths, counts, ids, and durations; proportional
   for prose. Subtle borders (`border-border/70`), little motion.
 

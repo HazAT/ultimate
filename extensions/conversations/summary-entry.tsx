@@ -50,7 +50,10 @@ function SummaryLine({ entry }: { entry: EntryRecord }) {
   const text = summaryText(entry)
   const date = new Date((entry.data as { at: number }).at)
   return (
-    <div className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground">
+    <div
+      className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground"
+      data-ui="transcript-meta"
+    >
       <PencilIcon aria-hidden className="size-3 shrink-0 self-center" />
       <span className="min-w-0 break-words">{text}</span>
       <time
