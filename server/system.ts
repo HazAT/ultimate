@@ -57,6 +57,7 @@ export async function createSystem(
   notice: (message: string) => void = () => {},
   processInfo: { activationError?: string } = {},
   origins: () => string[] = () => [],
+  web: () => SystemInfo['web'] = () => ({ id: '', changed: [] }),
 ) {
   const startedAt = new Date().toISOString()
   let coreStale = false
@@ -135,6 +136,7 @@ export async function createSystem(
       },
       execution: { kind: 'node-local', defaultCwd: host.projectRoot },
       code,
+      web: web(),
       extensions: registry(),
       extensionDiagnostics: registry.diagnostics(),
       ...skillInfo(projectSkills(host)),

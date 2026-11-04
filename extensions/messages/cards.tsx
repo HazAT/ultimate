@@ -38,7 +38,7 @@ import {
   UserView,
 } from '@/sdk'
 import type { CompactSummaryProps, ToolCallView } from '@/sdk'
-import { AgentMark, agentTitle, ConversationRef } from '../conversations/ui.tsx'
+import { AgentMark, AgentTitle, ConversationRef, useAgentTitle } from '../conversations/ui.tsx'
 import { openAgentSource, StandingDoc } from '../subagents/ui.tsx'
 import { useWorkspaceIndex } from '../workspaces/ui.tsx'
 import { accentOf } from './accent.tsx'
@@ -88,8 +88,8 @@ export function useAccentOf(id: number | 'user' | 'remote') {
 
 /**
  * Who `id` is: you, another project's Ultimate (`remote` names it), `@name` for a standing agent or the lander (with its
- * mark when `mark`), else a conversation link. The ULTIMATE wordmark takes the colour of its surroundings: the accent
- * of the bubble it heads.
+ * mark when `mark`), else a conversation link. With its mark, @ultimate is the ULTIMATE wordmark, or its definition's
+ * title; either takes the colour of its surroundings: the accent of the bubble it heads.
  */
 export function Address({
   id,
@@ -102,6 +102,7 @@ export function Address({
 }) {
   const standing = useDocOf(1, StandingDoc)
   const workspaces = useWorkspaceIndex()
+  const ultimate = useAgentTitle('ultimate')
   if (id === 'user') return <span>you</span>
   if (id === 'remote')
     return (
@@ -118,12 +119,16 @@ export function Address({
     return (
       <span className="flex items-center gap-1.5" title="@ultimate">
         <AgentMark name={name} size="sm" />
-        <span
-          className="font-sans text-[0.6562rem] font-semibold tracking-[0.28em]"
-          data-ui="wordmark"
-        >
-          ULTIMATE
-        </span>
+        {ultimate.brand ? (
+          <span
+            className="font-sans text-[0.6562rem] font-semibold tracking-[0.28em]"
+            data-ui="wordmark"
+          >
+            ULTIMATE
+          </span>
+        ) : (
+          <span className="font-sans text-[0.75rem] font-semibold">{ultimate.title}</span>
+        )}
       </span>
     )
   return (
@@ -290,7 +295,7 @@ function Sender({ id, tone }: { id: number; tone: string }) {
     <span className="flex shrink-0 items-center gap-2" title={`@${name}`}>
       <AgentMark name={name} size="sm" />
       <span className={cn('font-sans text-[0.8125rem] font-semibold tracking-[-0.005em]', tone)}>
-        {agentTitle(name)}
+        <AgentTitle name={name} />
       </span>
     </span>
   )
@@ -710,6 +715,7 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
           events.emit('ultimate:reveal-entry', {
             conversationId: asked.conversationId,
             entryId: asked.id,
+            toolCallId: question.call?.split('/')[0],
           })
         }
         title="Show the question and your answer"

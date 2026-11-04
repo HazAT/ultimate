@@ -4,22 +4,33 @@ import { useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, DragEvent } from 'react'
 import { ToolImage } from '@/components/ai/tool'
 import { imageMimeTypes, maxImages } from '../../../shared/protocol.ts'
-import { errorMessage } from '../sdk/format.ts'
+import type { AttachedFile } from '../app/attachments.ts'
+import { errorMessage, formatBytes } from '../sdk/format.ts'
+import type { FileUpload } from '../sdk/types.ts'
+import { FileChip, typeLabel } from './file-chip.tsx'
 import { fitImage } from './image-resize.ts'
 
 /** An attached image; `note` says how it was resized and stays in the composer, never sent. */
 export type PastedImage = { data: string; mimeType: string; note?: string }
+/** A file the draft references by its path on the host; `path` is empty while it uploads. */
+export type DraftFile = AttachedFile & { id: string }
+type Upload = NonNullable<NonNullable<typeof FileUpload.value>>
 
 export function useImagePaste({
   images,
   setImages,
+  setFiles,
   setError,
   disabled,
+  upload,
 }: {
   images: PastedImage[]
   setImages: (change: (images: PastedImage[]) => PastedImage[]) => void
+  setFiles: (change: (files: DraftFile[]) => DraftFile[]) => void
   setError: (message: string | undefined) => void
   disabled: () => boolean
+  /** Where files that are not inline images go; without it only images attach. */
+  upload?: Upload
 }) {
   const [reading, setReading] = useState(false)
   const pending = useRef(false)
@@ -36,7 +47,7 @@ export function useImagePaste({
       return
     }
     const files = Array.from(event.clipboardData.items)
-      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .filter((item) => item.kind === 'file' && (!!upload || item.type.startsWith('image/')))
       .flatMap((item) => {
         const file = item.getAsFile()
         return file ? [file] : []
@@ -46,19 +57,47 @@ export function useImagePaste({
     await add(files)
   }
 
-  /** Attach the images dropped on the editor; the page itself never navigates to a dropped file (`main.tsx`). */
+  /** Attach the files dropped on the editor; the page itself never navigates to a dropped file (`main.tsx`). */
   async function drop(event: DragEvent<HTMLElement> | globalThis.DragEvent) {
-    const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
-      file.type.startsWith('image/'),
+    const files = Array.from(event.dataTransfer?.files ?? []).filter(
+      (file) => !!upload || file.type.startsWith('image/'),
     )
     if (files.length) await add(files)
   }
 
-  async function add(files: readonly File[]) {
+  /** Store `files` on the host, each shown uploading until its path is known. */
+  function send(files: readonly File[], { upload: put, maxBytes }: Upload) {
+    const fitting = files.filter((file) => file.size <= maxBytes)
+    for (const file of fitting) {
+      const id = crypto.randomUUID()
+      const mimeType = file.type || 'application/octet-stream'
+      const name = file.name || 'file'
+      setFiles((current) => [
+        ...current,
+        { id, name, size: formatBytes(file.size), mimeType, path: '' },
+      ])
+      put(file).then(
+        (path) =>
+          setFiles((current) => current.map((item) => (item.id === id ? { ...item, path } : item))),
+        (failure: unknown) => {
+          setFiles((current) => current.filter((item) => item.id !== id))
+          setError(`${name}: ${errorMessage(failure)}`)
+        },
+      )
+    }
+    return fitting.length < files.length
+      ? [`Files up to ${formatBytes(maxBytes).replace('.0 ', ' ')} attach.`]
+      : []
+  }
+
+  async function add(dropped: readonly File[]) {
     if (pending.current || disabled()) return
+    const files = upload ? dropped.filter((file) => imageMimeTypes.includes(file.type)) : dropped
+    const others = dropped.filter((file) => !files.includes(file))
     const supported = files.filter((file) => imageMimeTypes.includes(file.type))
     const accepted = supported.slice(0, Math.max(0, maxImages - images.length))
     const problems = [
+      ...(upload && others.length ? send(others, upload) : []),
       ...(supported.length < files.length ? ['Only PNG, JPEG, WebP and GIF images attach.'] : []),
       ...(accepted.length < supported.length ? [`Attach up to ${maxImages} images.`] : []),
     ]
@@ -102,18 +141,25 @@ async function read(file: File): Promise<PastedImage> {
   return { data, mimeType: blob.type, ...(note && { note }) }
 }
 
+const removeClass =
+  'absolute -top-2 -right-2 flex size-5 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-accent'
+
 export function ImagePreviews({
   images,
+  files = [],
   remove,
+  removeFile,
   disabled,
   className,
 }: {
   images: PastedImage[]
+  files?: DraftFile[]
   remove: (index: number) => void
+  removeFile?: (id: string) => void
   disabled: boolean
   className?: string
 }) {
-  return images.length > 0 ? (
+  return images.length + files.length > 0 ? (
     <div className={cn('flex flex-wrap gap-2 px-3 pt-3', className)}>
       {images.map((image, index) => (
         <div
@@ -140,7 +186,7 @@ export function ImagePreviews({
           )}
           <button
             aria-label={`Remove image ${index + 1}`}
-            className="absolute -top-2 -right-2 flex size-5 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-accent"
+            className={removeClass}
             disabled={disabled}
             onClick={() => remove(index)}
             type="button"
@@ -148,6 +194,26 @@ export function ImagePreviews({
             <XIcon className="size-3" />
           </button>
         </div>
+      ))}
+      {files.map((file) => (
+        <FileChip
+          busy={!file.path}
+          key={file.id}
+          mimeType={file.mimeType}
+          name={file.name}
+          note={file.path ? `${file.size} · ${typeLabel(file.name, file.mimeType)}` : 'Uploading…'}
+          title={file.path || file.name}
+        >
+          <button
+            aria-label={`Remove ${file.name}`}
+            className={removeClass}
+            disabled={disabled}
+            onClick={() => removeFile?.(file.id)}
+            type="button"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </FileChip>
       ))}
     </div>
   ) : null

@@ -3,7 +3,8 @@
  * otherwise ask them, records each decision with its reason, and ends the goal with a report. Only the user starts or
  * ends a goal early; @ultimate hears it on every run through a per-input note.
  */
-import { arr, int, lit, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import {
   defineDoc,
   defineExtension,
@@ -331,7 +332,7 @@ export default function goalExtension(host: ExtensionHost) {
         description:
           "The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
         parameters: obj({
-          action: oneOf(['criteria', 'decide', 'met', 'failed', 'finish', 'pause', 'resume']),
+          action: strEnum(['criteria', 'decide', 'met', 'failed', 'finish', 'pause', 'resume']),
           criteria: opt(arr(str())),
           n: opt(int({ minimum: 1 })),
           question: opt(str()),
@@ -339,7 +340,7 @@ export default function goalExtension(host: ExtensionHost) {
           reason: opt(str()),
           conversation: opt(int({ minimum: 1 })),
           images: opt(union([lit('latest'), int({ minimum: 1 })])),
-          outcome: opt(oneOf(['met', 'blocked'])),
+          outcome: opt(strEnum(['met', 'blocked'])),
           summary: opt(str()),
         }),
         // Not replay-safe (the default): an interrupted call is never rerun, so a decision is recorded at most once.

@@ -20,7 +20,13 @@ import automations, {
   actions as automationActions,
   Automations,
 } from '../extensions/automations/server.ts'
-import dream, { actions, Next, toolStats, userActions } from '../extensions/dream/server.ts'
+import dream, {
+  actions,
+  branched,
+  Next,
+  toolStats,
+  userActions,
+} from '../extensions/dream/server.ts'
 import {
   AUTOMATION_NAME,
   BuiltInDoc,
@@ -233,7 +239,7 @@ it("asks @ultimate to dream on a built-in's fire, beside the fire's own wake-up,
 
 it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and replaces it", async () => {
   const f = await fixture()
-  expect(userActions).toEqual(['start', 'asleep', 'switch'])
+  expect(userActions).toEqual(['start', 'ready', 'dismiss', 'asleep', 'switch'])
   expect(await actions.start(null, f.call)).toEqual({ requested: true })
   await until(async () => (await f.requests()).length === 1)
   expect((await f.requests())[0].type).toBe('input')
@@ -259,6 +265,54 @@ it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and 
   })
   const second = await actions.prepare({ ...ready, chapter: 'second-try' }, f.call)
   expect((await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.prepared).toEqual(second)
+})
+
+it("marks the branch a dream request's turn started as the dream, and asks @ultimate to prepare on Fall asleep", async () => {
+  const f = await fixture()
+  const append = (kind: string, model?: { stopReason: string }) =>
+    f.harness.commit(
+      async (tx) =>
+        (
+          await tx.appendEntry(f.ultimate, {
+            kind,
+            ...(model
+              ? {
+                  model: [
+                    {
+                      role: 'assistant',
+                      content: [],
+                      stopReason: model.stopReason,
+                    } as never,
+                  ],
+                }
+              : {}),
+          })
+        ).id as number,
+      context,
+    )
+  const mark = (id: number, call: number, by: number = f.ultimate) =>
+    f.harness.commit((tx) => branched(tx, { id, by, call, at: 1000 + id }), context)
+  const dreamOf = async () => (await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.dream
+  // An ordinary branch, with no dream request in its turn, is not a dream.
+  await mark(900, await append('pi.assistant', { stopReason: 'toolUse' }))
+  expect(await dreamOf()).toBeUndefined()
+  const requested = await append('dream.requested')
+  await append('pi.assistant', { stopReason: 'toolUse' })
+  const call = await append('pi.assistant', { stopReason: 'toolUse' })
+  // Started by another conversation in the same moment: not @ultimate's dream.
+  await mark(901, call, 77)
+  expect(await dreamOf()).toBeUndefined()
+  await mark(902, call)
+  expect(await dreamOf()).toEqual({ branch: 902, requested, at: 1902 })
+  // A later turn's branch, after @ultimate's answer ended the dream turn, leaves the dream as it was.
+  await append('pi.assistant', { stopReason: 'stop' })
+  await mark(903, await append('pi.assistant', { stopReason: 'toolUse' }))
+  expect((await dreamOf())?.branch).toBe(902)
+  // Fall asleep asks @ultimate to prepare, as an input that wakes it.
+  const { asked } = await actions.ready(null, f.call)
+  expect((await dreamOf())?.asked).toBe(asked)
+  await until(async () => (await f.requests()).length === 1)
+  expect(await f.requests()).toEqual([{ requestId: `dream.ready:${asked}`, type: 'input' }])
 })
 
 it('reads tool numbers from the trace, with unused tools and frequent errors', async () => {

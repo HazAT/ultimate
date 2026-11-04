@@ -238,8 +238,7 @@ it.concurrent('refuses a tool name another extension of the same layer already p
 
 const tools = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
   (await server.root.agent(context)).tools.map((tool) => tool.name).toSorted()
-const web = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
-  Object.keys((await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders)
+const web = async (server: Awaited<ReturnType<typeof fauxServer>>) => server.web.facets()
 
 it.concurrent('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
   const { home, projectRoot, server } = await fixture()

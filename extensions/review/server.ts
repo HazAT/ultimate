@@ -45,11 +45,11 @@ async function target(host: ExtensionHost, branch: string) {
  * `<base>...<tip>`, the commits it submitted against the target they landed on. That is the diff the branch showed just
  * before it landed, so draft comments keep their lines. `uncommitted` when no landing is known; else the spec itself.
  */
-async function resolve(host: ExtensionHost, spec: string) {
+async function resolve(host: ExtensionHost, cwd: string, spec: string) {
   if (!spec.startsWith('branch:')) return spec
   const branch = spec.slice('branch:'.length)
   const present = await git(
-    host.projectRoot,
+    cwd,
     'rev-parse',
     '--verify',
     '--quiet',
@@ -198,8 +198,10 @@ export const actions = {
     if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
     // `uncommitted:<id>` names a worktree's uncommitted changes: the same diff, run in that checkout.
     const worktree = worktreeOf(input.spec)
-    const shown = worktree === undefined ? await resolve(host, input.spec.trim()) : 'uncommitted'
-    const diff = await reviewDiff(await where(host, worktree ?? input.conversation), shown, {
+    const cwd = await where(host, worktree ?? input.conversation)
+    const shown =
+      worktree === undefined ? await resolve(host, cwd, input.spec.trim()) : 'uncommitted'
+    const diff = await reviewDiff(cwd, shown, {
       target: (branch) => target(host, branch),
       signal,
     })

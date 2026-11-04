@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import {
   chapterFiles,
@@ -23,22 +23,25 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { CloudApi } from '../cloud/api.ts'
 import { Standing, Started as StandingStarted } from '../subagents/api.ts'
 import { Fired } from '../automations/api.ts'
+import { Branched } from '../lineage/api.ts'
 import {
   AsleepAction,
   ChaptersAction,
+  DismissAction,
   DreamDoc,
   PrepareAction,
+  ReadyAction,
   StartAction,
   StatsAction,
   SwitchAction,
 } from './refs.ts'
-import type { Prepared, Sleep, ToolStats } from './refs.ts'
+import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
 import { busyElsewhere } from './types.ts'
 import { deliver, deliverTask } from './delivery.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
 
-export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep }>({
+export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
   kind: DreamDoc.kind,
   checkpointWhen: () => false,
   version: 1,
@@ -48,7 +51,44 @@ export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep }>({
   initial: () => ({}),
 })
 export const docs = [Next, SeedState, BuiltInDoc, PauseDoc]
-export const userActions = ['start', 'asleep', 'switch']
+export const userActions = ['start', 'ready', 'dismiss', 'asleep', 'switch']
+
+/** How far back from a branch call the turn that answered a dream request is looked for. */
+const TURN_ENTRIES = 200
+
+/**
+ * The `dream.requested` entry the turn that made entry `call` in @ultimate's conversation answered: the newest one
+ * before it with no finished turn in between (an answer that called no tool ends a turn).
+ */
+export async function requestOf(tx: Tx, ultimate: number, call: number) {
+  const page = await tx.scanEntries(
+    { conversationId: ultimate as ConversationId, maxEntryId: call as EntryId },
+    TURN_ENTRIES,
+  )
+  for (const entry of page.items) {
+    if (entry.kind === 'dream.requested') return entry.id as number
+    const message = entry.model?.at(-1)
+    if (entry.id !== call && message?.role === 'assistant' && message.stopReason !== 'toolUse')
+      return undefined
+  }
+  return undefined
+}
+
+/**
+ * Inside `tx`: branch `id` started by @ultimate's call at entry `call` is the dream when that turn answered a dream
+ * request newer than the last dream's. From the start of the event log, so a dream from before this existed is found.
+ */
+export async function branched(
+  tx: Tx,
+  { id, by, call, at }: { id: number; by?: number; call?: number; at: number },
+) {
+  const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+  if (ultimate === undefined || by !== ultimate || call === undefined) return
+  const requested = await requestOf(tx, ultimate, call)
+  const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+  if (requested === undefined || requested <= (doc.dream?.requested ?? 0)) return
+  doc.dream = { branch: id, requested, at }
+}
 
 const LEARNED_LINES = 3
 const LINE_CHARS = 200
@@ -327,6 +367,36 @@ export const actions = {
     host.harness().resume()
     return { requested: true as const }
   }),
+  /** The user pressed Fall asleep on a finished dream: @ultimate writes its handover and prepares the chapter now. */
+  ready: implementAction(ReadyAction, async (_args, { host }) => {
+    const asked = await host.harness().commit(async (tx) => {
+      const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+      if (!doc.dream) throw new Error('No dream to wake from: start one with Dream')
+      if (doc.prepared && doc.prepared.at > doc.dream.at)
+        throw new Error(`Chapter ${doc.prepared.chapter} is already prepared`)
+      const at = Date.now()
+      doc.dream.asked = at
+      delete doc.dream.dismissed
+      await deliver(host, tx, await ultimateOf(tx), {
+        type: 'input',
+        requestId: `dream.ready:${at}`,
+        kind: 'dream.ready',
+        data: { branch: doc.dream.branch },
+        content: `The user pressed Fall asleep after dream #${doc.dream.branch}. Follow "Prepare the fresh chapter" in the clone's extensions/dream/DREAM.md and call prepare now: the Fall asleep card it puts up is what the user waits for. Name in the handoff any branch still running or waiting on an answer.`,
+      })
+      return at
+    }, context)
+    host.harness().resume()
+    return { asked }
+  }),
+  /** The user stays in this chapter: the finished dream's Fall asleep cue goes until the next dream. */
+  dismiss: implementAction(DismissAction, async (_args, { host }) => {
+    await host.harness().commit(async (tx) => {
+      const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+      if (doc.dream) doc.dream.dismissed = true
+    }, context)
+    return { dismissed: true as const }
+  }),
   prepare: implementAction(PrepareAction, async (args, { host }) => {
     const prepared = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
@@ -391,5 +461,14 @@ export default function dream(host: ExtensionHost) {
   host.react('requested', [Fired], (tx, { data }) => fired(host, tx, data.id, data.fire), {
     from: 'now',
   })
+  // The branch a dream request's turn started is the dream; once it is concluded, the user is shown Fall asleep.
+  host.react('dream-branch', [Branched], (tx, event) =>
+    branched(tx, {
+      id: event.data.id,
+      by: event.context?.conversationId,
+      call: event.context?.entryId,
+      at: Date.parse(event.at),
+    }),
+  )
   return defineExtension({ name: 'dream', tasks: [deliverTask(host)] })
 }

@@ -179,6 +179,9 @@ export function Dot({ look, className }: { look: Look; className?: string }) {
         busy && 'animate-pulse-dot',
         className,
       )}
+      data-status={
+        busy ? 'working' : look === 'failed' || look === 'paused' || look === 'done' ? look : 'idle'
+      }
       role="img"
     />
   )

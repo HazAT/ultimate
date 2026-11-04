@@ -24,12 +24,12 @@ import { store } from '@/sdk/client'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
 import {
   AgentMark,
-  agentTitle,
   ConversationEpic,
   ConversationPhase,
   ConversationTask,
   FeatureTag,
   RenameAction,
+  useAgentTitle,
 } from '../conversations/ui.tsx'
 import type { Presence } from '../conversations/ui.tsx'
 import { Review } from '../workspaces/ui.tsx'
@@ -98,6 +98,7 @@ function Mark({
               ) : (
                 <span
                   className={cn('size-1.5 rounded-full bg-brand', working && 'animate-pulse-dot')}
+                  data-status={working ? 'working' : 'idle'}
                 />
               )}
             </span>
@@ -392,6 +393,7 @@ export function StandingRow({
   onOpen: () => void
   children: ReactNode
 }) {
+  const { title, brand } = useAgentTitle(name)
   return (
     <div
       className={cn(
@@ -412,7 +414,7 @@ export function StandingRow({
         <AgentMark name={name} presence={presence} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-1.5">
-            {name === 'ultimate' ? (
+            {brand ? (
               // The title bar's wordmark: Ultimate's own name is the brand.
               <span
                 className="truncate font-sans text-[0.7188rem] leading-5 font-semibold tracking-[0.28em] text-brand"
@@ -422,7 +424,7 @@ export function StandingRow({
               </span>
             ) : (
               <span className="truncate text-[0.8125rem] leading-5 font-semibold text-foreground">
-                {agentTitle(name)}
+                {title}
               </span>
             )}
             <span className="shrink-0 font-mono text-[0.625rem] text-muted-foreground">
@@ -579,6 +581,7 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
                     'size-1.5 rounded-full',
                     working ? 'animate-pulse-dot bg-brand' : 'bg-muted-foreground/40',
                   )}
+                  data-status={working ? 'working' : 'idle'}
                 />
               )}
             </span>

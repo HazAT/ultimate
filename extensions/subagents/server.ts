@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord'
 import type { JsonValue } from '@earendil-works/chord'
-import { arr, bool, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import { arr, bool, int, obj, opt, str } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { AssistantMessage, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import {
   AgentDoc,
@@ -71,9 +72,17 @@ export const docs = [Subagents, Standing, Profile, Runs]
 const ADHOC = `You were made for one task: do what your brief asks, and only that. Read the code and the repository instructions it touches first. Never delegate or push. Report problems instead of working around them. Answer with conclusions and their evidence (\`path:line\`, commands with their output), not dumps; say what you could not confirm.`
 const WRITE_TOOLS = ['edit', 'write']
 
-/** Record how standing agent `definition`'s mark looks in conversations' marks doc, or that it asks for nothing. */
-const setMark = (marks: Record<string, AgentMarkStyle>, { name, icon, tint }: AgentDefinition) => {
-  if (icon || tint) marks[name] = { ...(icon ? { icon } : {}), ...(tint ? { tint } : {}) }
+/** Record standing agent `definition`'s title and how its mark looks in conversations' marks doc, or that it asks for nothing. */
+const setMark = (
+  marks: Record<string, AgentMarkStyle>,
+  { name, title, icon, tint }: AgentDefinition,
+) => {
+  if (title || icon || tint)
+    marks[name] = {
+      ...(title ? { title } : {}),
+      ...(icon ? { icon } : {}),
+      ...(tint ? { tint } : {}),
+    }
   else delete marks[name]
 }
 
@@ -505,6 +514,7 @@ export const actions = {
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
       // The form has no control for these: a save keeps them as discovery read them.
+      ...(existing?.title ? { title: existing.title } : {}),
       ...(existing?.icon ? { icon: existing.icon } : {}),
       ...(existing?.tint ? { tint: existing.tint } : {}),
     }
@@ -960,7 +970,7 @@ export default function subagents(
         // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
         replay: 'safe',
         parameters: obj({
-          action: oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          action: strEnum(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
           agent: opt(
             str({
               description:
@@ -977,7 +987,7 @@ export default function subagents(
             str({ description: 'For start: the model family to run on (fast, review…).' }),
           ),
           model: opt(str({ description: 'For start: provider/modelId, instead of a family.' })),
-          thinking: opt(oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
+          thinking: opt(strEnum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
           tools: opt(
             arr(str(), {
               description:
@@ -996,7 +1006,7 @@ export default function subagents(
           id: opt(int({ minimum: 1 })),
           text: opt(str()),
           steer: opt(bool()),
-          isolate: opt(oneOf(['none', 'worktree'])),
+          isolate: opt(strEnum(['none', 'worktree'])),
         }),
         execute: async (args, api, context) => {
           const cached = await api.memo<ReturnType<typeof reply>>('result', context)

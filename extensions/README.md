@@ -248,16 +248,16 @@ events.emit('hello:selected', { name: 'example' })
 ```
 
 The registry emits `ultimate:extension-loaded { name }` or `ultimate:extension-failed { name, error }` as each
-facet settles, including hot reloads. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
+facet settles. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
 the current loader generation has settled (loaded or failed) and the first system snapshot has arrived, or after
 an 8 s deadline from the first loader map. Superseded imports do not determine readiness. `useReady()` returns
 `{ ready, timedOut, failed, pending }`, even for a subscriber mounted after the event. `ready` and `timedOut` stay
-sticky across hot reloads; `failed` names current load failures and `pending` names current unsettled imports.
+sticky for the page; `failed` names current load failures and `pending` names current unsettled imports.
 The deadline reveals even without a system snapshot; `timedOut` distinguishes that reveal from normal readiness.
 Facets import in parallel and their contributions render as soon as they install, except the app itself: the shell
 shows the surface and starts its shortcuts only once ready. In particular, root overlays can render while another
 facet is still loading; they need not wait for ready.
-A reload of a rendered page (a core restart, a Vite full reload, F5) paints the previous page's view from
+A reload of a rendered page (a core restart, a switch to a new web bundle, F5) paints the previous page's view from
 `sessionStorage` before any module loads and fades it out once the app has rendered and settled
 (`web/src/sdk/resume.ts`); `resumed` from `@/sdk` is true on such a load, so a loading overlay can stay away.
 
@@ -268,7 +268,7 @@ An extension is a folder `<name>/` in one of those places:
 | File        | Facet                                                                                                   | Goes live                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `server.ts` | Agent and server: a Pi Durable extension (tools, prompt sections, hooks, documents) and its `actions`   | Reinstalled on save; running tool calls finish on old code |
-| `web.tsx`   | UI: `export default defineWebExtension({ … })`                                                          | Vite hot reload, no page reload                            |
+| `web.tsx`   | UI: `export default defineWebExtension({ … })`                                                          | Rebuilt on save; open pages switch to the new bundle       |
 | `README.md` | What it does; the first paragraph is shown in the UI, so open with a sentence, not a heading. Required. | Read on change                                             |
 
 Files ending in `.ts` belong to the server facet, files ending in `.tsx` to the web facet: split a large `web.tsx` into
@@ -983,8 +983,10 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
 - A theme extension (a CSS file imported from its `web.tsx`) targets the app through stable `data-ui` hooks, never
   Tailwind classes: `titlebar`, `surface-tabs`, `wordmark`, `ultimate-button`, `sidebar-row`, `sidebar-section-header`,
   `conversation-header`, `turn-header`, `empty-state`, `card`, `message-card` (with `data-sender`), `composer`,
-  `side-chat-hint`, `side-chat-switch`, `palette` and `status-line`; selected rows and tabs carry `data-selected`. Keep
-  these when changing that markup.
+  `side-chat-hint`, `side-chat-switch`, `palette`, `status-line` and `transcript-meta` (the transcript's small
+  dividers, folds and summary lines); selected rows and tabs carry `data-selected`, the sidebar's status dots `data-status` (`working`,
+  `waiting`, `paused`, `done`, `failed` or `idle`) and the final answer `data-final`. Keep these when changing that
+  markup.
 - Dense and quiet: 12–14 px, monospace (`font-mono`) for meta such as paths, counts, ids, and durations; proportional
   for prose. Subtle borders (`border-border/70`), little motion.
 
@@ -998,7 +1000,7 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
   (git and isolation checks), `json-file.ts` (read, atomic write, serialised update), `settings.ts`, `secrets.ts`
   (read-only), `cloud.ts` (the user's cloud settings),
   `project-identity.ts` (a project's GitHub key), `entries.ts` (`isInput`) and `agents.ts` (agent definitions and
-  their discovery). Import them freely; they hot reload with the extensions that import them. `lib/` holds no state
+  their discovery). Import them freely; they reload with the extensions that import them. `lib/` holds no state
   and imports no extension or `web/` code; only `agents.ts` reads the core project trust decision at runtime.
 - Server facets: see `prompt/` for prompt sections and `coding-tools/server.ts` for tools; the root `AGENTS.md` explains
   reloads and durability. Server facets may `export const order = -100`: lower values come first, with the default 0

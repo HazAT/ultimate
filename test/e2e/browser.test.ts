@@ -1,13 +1,51 @@
-import { access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { access, readFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import type { ToolExecutionApi } from '@earendil-works/pi-durable'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { context } from '../../server/harness.ts'
 import browserExtension from '../../extensions/browser/server.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { removeTemp, temp } from '../helpers.ts'
+import { groupAlive } from '../../lib/process-group.ts'
+import { removeTemp, temp, until } from '../helpers.ts'
+
+// A managed Mac's Chrome dropped its CDP pipe seconds after each first page and kept running; every call launched
+// another one, each failed context close raised a notice, and the dropped browsers piled up until the host exited.
+it('kills a browser that drops its connection and keeps running, without a notice', async () => {
+  const directory = await temp('ultimate-browser-dropped-')
+  const pidFile = join(directory, 'chrome.pid')
+  vi.stubEnv('ULTIMATE_CHROMIUM', resolve('test/e2e/dropping-chrome.ts'))
+  vi.stubEnv('DROPPING_CHROME_PID', pidFile)
+  const closers: (() => Promise<void>)[] = []
+  const notices: string[] = []
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    notice: (message: string) => notices.push(message),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const screenshot = browserExtension(host).tools!.find((tool) => tool.name === 'screenshot')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  let pid: number | undefined
+  try {
+    const result = await screenshot.execute({ url: 'data:text/html,x' }, api, context)
+    expect(result.isError).toBe(true)
+    pid = Number(await readFile(pidFile, 'utf8'))
+    await until(() => !groupAlive(pid))
+    expect(notices).toEqual([])
+  } finally {
+    if (pid && groupAlive(pid)) process.kill(-pid, 'SIGKILL')
+    vi.unstubAllEnvs()
+    for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
 
 it('times out a hung step, closes its page and keeps later calls working', async () => {
+  // The runner cannot start Chromium's sandbox (no unprivileged user namespaces), and helpers.ts strips
+  // ULTIMATE_* from the worker env, so a CI variable cannot reach the extension: stub the knob instead.
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-timeout-')
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
@@ -45,6 +83,9 @@ it('times out a hung step, closes its page and keeps later calls working', async
 })
 
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
+  // The runner cannot start Chromium's sandbox (no unprivileged user namespaces), and helpers.ts strips
+  // ULTIMATE_* from the worker env, so a CI variable cannot reach the extension: stub the knob instead.
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
   const host = {

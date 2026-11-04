@@ -9,6 +9,5 @@ Restart affects all conversations. Landing never restarts automatically. `POST /
 `web.tsx` renders restart results, build information, and transcript reload markers. While `server/` or `shared/`
 changed since this core booted, the status line shows `core changed · restart` just left of `live · gen N`; clicking
 it restarts the host, and a failed restart turns it into `restart failed` with the reason in a popover.
-When Vite applies a hot update without reloading the page, a quiet toast above the bottom right of the status line
-names the modules it re-ran for 3 s; updates arriving meanwhile join it. Tailwind's stylesheet, rebuilt on every
-source change, is named only when nothing else changed.
+After the page switched to a new web bundle (`server/web.ts`), a quiet toast above the bottom right of the status line
+names the sources that changed for 4 s, or the landing that brought them when one was recorded within a minute.

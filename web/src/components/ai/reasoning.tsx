@@ -30,6 +30,7 @@ export const ReasoningTrigger = memo(
           'flex items-center gap-1.5 font-mono text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground',
           className,
         )}
+        data-ui="transcript-meta"
         {...props}
       >
         {children ?? (

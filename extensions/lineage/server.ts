@@ -1,7 +1,8 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
 import { onCommit } from '../../lib/commits.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, bool, int, lit, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { Message, Models, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { estimateMessageTokens, estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import {
@@ -459,10 +460,20 @@ function lineage(host: ExtensionHost) {
                 answerId = view.entries[index].id
               }
             }
-            const delivered = (await host.harness().snapshot(Notified, runtime.conversationId, ctx))
-              ?.answers[target]
-            // This caller already has that answer: wait for the target to write again, then for its next idle.
-            if (delivered === undefined || answerId > delivered) break
+            const caller = runtime.conversationId
+            const delivered = (await host.harness().snapshot(Notified, caller, ctx))?.answers[
+              target
+            ]
+            // Read by kind: messages already depends on lineage.
+            const board = host.doc('board')
+            const log = board && (await host.harness().snapshot(board, ROOT_CONVERSATION_ID, ctx))
+            // A reply carries the answer entry it returned.
+            const replied = (
+              log?.messages as { from: unknown; to: unknown; answer?: number }[] | undefined
+            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            // This caller already has that answer, from a notify or as a reply: wait for the target to write again,
+            // then for its next idle.
+            if (!replied && (delivered === undefined || answerId > delivered)) break
             await awaitWithContext(written.promise, ctx)
           } finally {
             unsubscribe()
@@ -1611,13 +1622,13 @@ export default function lineageExtension(host: ExtensionHost) {
           root: opt(int({ minimum: 1 })),
           ops: arr(
             obj({
-              op: oneOf(['add', 'update', 'delete']),
+              op: strEnum(['add', 'update', 'delete']),
               slug: str({
                 pattern: MEMORY_SLUG.source,
                 maxLength: 48,
                 description: 'kebab-case, at most 48 characters',
               }),
-              kind: opt(oneOf(['decision', 'fact', 'lesson'])),
+              kind: opt(strEnum(['decision', 'fact', 'lesson'])),
               line: opt(
                 str({
                   maxLength: LINE_CHARS,

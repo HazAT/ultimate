@@ -277,6 +277,16 @@ export const ErrorReport = definePoint<
   { title: string; send: (report: string) => void } | undefined
 >('ultimate.errorReport')
 
+/**
+ * Where the composer puts a file that is not an inline image (`attachments` provides it): `upload` stores it on the
+ * host and resolves with its absolute path, which the prompt references; files up to `maxBytes` attach, and the host
+ * keeps them `keptMs`. Without a provider only images attach.
+ */
+export const FileUpload = definePoint<
+  null,
+  { upload: (file: File) => Promise<string>; maxBytes: number; keptMs: number } | undefined
+>('ultimate.fileUpload')
+
 /** What a facet provides for a point: `useValue` is a hook, run once per `<Provided>` with its input. */
 export interface Provision {
   point: string

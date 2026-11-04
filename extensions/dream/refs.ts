@@ -16,8 +16,24 @@ export type Sleep = {
   at: number
 }
 
-/** `{ prepared?, sleep? }` on conversation 1: the next chapter @ultimate prepared, and the sleep into it. */
-export const DreamDoc = docRef<{ prepared?: Prepared; sleep?: Sleep }>('dream.next')
+/**
+ * The latest dream: `branch`, the branch @ultimate started in the turn that answered `requested` (its `dream.requested`
+ * entry), at `at`. Once the branch is concluded the user is shown Fall asleep; `asked` when they pressed it (@ultimate
+ * prepares then), `dismissed` when they chose to stay in this chapter.
+ */
+export type Dream = {
+  branch: number
+  requested: number
+  at: number
+  asked?: number
+  dismissed?: true
+}
+
+/**
+ * `{ prepared?, sleep?, dream? }` on conversation 1: the next chapter @ultimate prepared, the sleep into it, and the
+ * latest dream.
+ */
+export const DreamDoc = docRef<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>('dream.next')
 
 /**
  * A `dream.requested` entry in @ultimate's conversation: who asked for the dream, the user's Dream button or a
@@ -27,6 +43,10 @@ export type RequestedEntry = { automation?: { id: string; name: string; pause?: 
 
 /** No arguments: ask @ultimate to dream now. User-only. */
 export const StartAction = actionRef<null, { requested: true }>('dream', 'start')
+/** No arguments: the user pressed Fall asleep after the dream; @ultimate is asked to prepare the chapter. User-only. */
+export const ReadyAction = actionRef<null, { asked: number }>('dream', 'ready')
+/** No arguments: the user stays in this chapter; the dream's Fall asleep cue goes. User-only. */
+export const DismissAction = actionRef<null, { dismissed: true }>('dream', 'dismiss')
 /**
  * `{ chapter, learned, handoff }`: @ultimate prepares the next chapter and puts the Fall asleep card up; a second call
  * replaces it.

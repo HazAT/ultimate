@@ -23,8 +23,9 @@ import {
 } from './chapters.tsx'
 import { MorningCard } from './morning.tsx'
 import { DreamDialog, dreamDialog } from './modal.tsx'
-import { DreamStatus, NextDialog } from './pinned.tsx'
-import { RequestedCard } from './requested.tsx'
+import { AwakeSection, useAwake } from './awake.tsx'
+import { AwakeDialog, DreamStatus, NextDialog } from './pinned.tsx'
+import { ReadyCard, RequestedCard } from './requested.tsx'
 import { DreamDoc } from './refs.ts'
 import { PreparedCard } from './sleep.tsx'
 
@@ -61,8 +62,9 @@ function TimeToDream() {
   const doc = useDocOf(1, DreamDoc)
   const models = useModels()
   const actions = useUltimate()
+  const awake = useAwake()
   if (ultimate === undefined || id !== ultimate || doc === undefined) return null
-  if (doc?.prepared && doc.sleep?.phase !== 'asleep') return null
+  if (awake || (doc?.prepared && doc.sleep?.phase !== 'asleep')) return null
   if (!entries.some((entry) => entry.kind === 'pi.compaction')) return null
   const window = models?.models.find(
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
@@ -132,17 +134,21 @@ function WakeUp() {
 export default defineWebExtension({
   entries: {
     'dream.requested': RequestedCard,
+    'dream.ready': ReadyCard,
     'dream.prepared': attention(PreparedCard),
     'dream.chapter': MorningCard,
   },
   slots: {
-    'sidebar.top': [{ component: OlderChapterBanner, order: -30 }],
+    'sidebar.top': [
+      { component: OlderChapterBanner, order: -30 },
+      { component: AwakeSection, order: -25 },
+    ],
     'statusline.right': [
       { component: DreamStatus, order: -10, phone: true },
       TimeToDream,
       OlderChapterStatus,
     ],
-    overlay: [DreamDialog, NextDialog, ChaptersDialog, SwitchVeil, WakeUp],
+    overlay: [DreamDialog, AwakeDialog, NextDialog, ChaptersDialog, SwitchVeil, WakeUp],
   },
   commands: [
     { id: 'dream.open', title: 'Dream…', run: (context) => context.open(dreamDialog) },

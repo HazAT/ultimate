@@ -1,6 +1,6 @@
 Ultimate's system prompt: coding guidelines, project context, skills, and the source reload layers.
 
-The system prompt stays the same across builds, so a hot reload keeps the prompt cache. Instead, the input that starts a
+The system prompt stays the same across builds, so a reload of an extension keeps the prompt cache. Instead, the input that starts a
 conversation's run gets a `prompt.build` note when the build differs from the one its last run started on: "Build
 changed: <old> → <new> · generation N · changed: …". The note is decided in the commit that places the input (the
 patched `beforeInput` hook), and the `prompt.build` document records the last build each conversation saw. A new
@@ -19,5 +19,5 @@ by its subject; a reload without commits (a hand edit in the clone) names none.
 
 The transcript shows every note as one quiet divider: "↻ Reloaded · <branch> #N · <branch> #M · +K more" with links to
 the branches, else "↻ Reloaded · build a → b" or "↻ Instructions changed · …", its full text on hover. `self`'s
-hot-reload toast names the landing likewise ("Landed <branch>") when a `workspaces.landed` event comes within a minute
-of a hot update.
+update toast names the landing likewise ("Landed <branch>") when a `workspaces.landed` event comes within a minute
+of the page switching to a new web bundle.

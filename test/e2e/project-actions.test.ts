@@ -104,7 +104,7 @@ it('discovers late project and user roots and follows extension symlinks with br
     port: 0,
   })
   servers.push(server)
-  await server.vite.ssrLoadModule('virtual:ultimate/web-facets')
+  await server.web.facets()
   for (const [root, name] of [
     [join(projectRoot, '.ultimate'), 'late-project'],
     [join(userHome, '.ultimate'), 'late-user'],
@@ -113,12 +113,7 @@ it('discovers late project and user roots and follows extension symlinks with br
     await until(
       () => !!server.extensions.info().find((entry) => entry.name === name)?.server?.loadedAt,
     )
-    await until(
-      async () =>
-        !!(await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders[
-          join(path, 'web.tsx')
-        ],
-    )
+    await until(async () => (await server.web.facets()).includes(join(path, 'web.tsx')))
   }
   expect(
     server.extensions.info().find((entry) => entry.name === 'broken-link')?.server?.error,
@@ -169,29 +164,14 @@ it('loads external project facets over user and built-in names, actions and tran
   })
   expect(record().server?.error).toBeUndefined()
   const added = join(projectRoot, '.ultimate/extensions/added')
-  expect(
-    (await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders[
-      join(added, 'web.tsx')
-    ],
-  ).toBeUndefined()
+  const facets = () => server.web.facets()
+  expect(await facets()).not.toContain(join(added, 'web.tsx'))
   await mkdir(added, { recursive: true })
   await writeFile(join(added, 'web.tsx'), 'export default {}')
-  await until(
-    async () =>
-      !!(await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders[
-        join(added, 'web.tsx')
-      ],
-  )
+  await until(async () => (await facets()).includes(join(added, 'web.tsx')))
   await rm(added, { recursive: true })
-  await until(
-    async () =>
-      !(await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders[
-        join(added, 'web.tsx')
-      ],
-  )
-  const browser = await fetch(server.url + '/@fs/' + join(path, 'web.tsx'))
-  expect(browser.status).toBe(200)
-  expect(await browser.text()).toContain('defineWebExtension')
+  await until(async () => !(await facets()).includes(join(added, 'web.tsx')))
+  expect(await facets()).toContain(join(path, 'web.tsx'))
   expect(
     await post(server.url, '/api/extensions/coding-tools/actions/hello', { ok: true }),
   ).toEqual({
