@@ -393,6 +393,7 @@ export default function browserExtension(host: ExtensionHost) {
             const browser = await chromium.launch({
               executablePath,
               headless: true,
+              chromiumSandbox: process.env.ULTIMATE_CHROMIUM_SANDBOX !== '0',
               // Chromium's singleton socket needs a short system temp path. Playwright still puts the profile in our TMPDIR.
               env: { ...process.env, TMPDIR: undefined },
             })
