@@ -97,6 +97,7 @@ export async function createWeb(options: {
   let changedFiles: string[] = []
   let pending = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | undefined
+  const closing = new AbortController()
 
   async function fresh(current: Manifest) {
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
@@ -155,6 +156,7 @@ export async function createWeb(options: {
           cwd: ultimateRoot,
           maxBuffer: 64 * 1024 * 1024,
           env: { ...process.env, NODE_ENV: 'production' },
+          signal: closing.signal,
         },
       )
       result = JSON.parse(stdout.trim().split('\n').at(-1)!) as WebBuildResult
@@ -234,14 +236,15 @@ export async function createWeb(options: {
     building ??= (async () => {
       try {
         await mkdir(folder, { recursive: true })
-        while (stale) {
+        while (stale && !closing.signal.aborted) {
           stale = false
           changedFiles = [...pending]
           pending = new Set()
           try {
             await buildOnce()
           } catch (error) {
-            options.notice(`The web UI did not build: ${String(error)}`)
+            if (!closing.signal.aborted)
+              options.notice(`The web UI did not build: ${String(error)}`)
           }
         }
       } finally {
@@ -364,6 +367,8 @@ export async function createWeb(options: {
     close() {
       clearTimeout(timer)
       unwatch()
+      // A build no one will be served: stop it rather than wait for it.
+      closing.abort()
       return building
     },
   }
