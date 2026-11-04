@@ -5,12 +5,13 @@
  * so its card shows the error and the rest runs; any other failure keeps the previous bundle and raises a notice.
  */
 import { createReadStream } from 'node:fs'
-import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { exec } from '../lib/exec.ts'
+import { writeTextAtomically } from '../lib/json-file.ts'
 import { discoverExtensions } from './discovery.ts'
 import { discoveryRoots } from './project.ts'
 import { extensionSettingsFiles } from './extension-settings.ts'
@@ -76,12 +77,19 @@ export async function createWeb(options: {
     ...settings,
   ]
   let manifest = await readFile(join(folder, 'manifest.json'), 'utf8').then(
-    (text) => JSON.parse(text) as Manifest,
+    (text) => {
+      try {
+        return JSON.parse(text) as Manifest
+      } catch {
+        return undefined // Unreadable: build afresh.
+      }
+    },
     () => undefined, // No bundle yet: the first page builds one.
   )
   let inputs = new Set(manifest?.inputs)
   let brokenRoots = manifest?.broken ?? []
-  let previous: string | undefined
+  /** Bundles replaced in this process, by when: a page still loading one may ask for its chunks for a while. */
+  const retired = new Map<string, number>()
   let stale = !manifest || !(await fresh(manifest))
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
@@ -92,15 +100,32 @@ export async function createWeb(options: {
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
     // A broken facet may have been fixed while the host was down: try it again.
     if (current.broken?.length || facets.join('\0') !== current.facets.join('\0')) return false
+    return !(await changedSince(current.inputs, current.at))
+  }
+
+  /** Whether a file in `files` was saved after `at`. */
+  async function savedSince(files: string[], at: number) {
     const times = await Promise.all(
-      current.inputs.map((file) =>
+      files.map((file) =>
+        stat(file).then(
+          (info) => info.mtimeMs,
+          () => 0, // Removed: the watcher reports that on its own.
+        ),
+      ),
+    )
+    return times.some((time) => time > at)
+  }
+
+  async function changedSince(files: string[], at: number) {
+    const times = await Promise.all(
+      files.map((file) =>
         stat(file).then(
           (info) => info.mtimeMs,
           () => Number.POSITIVE_INFINITY, // A missing source changed.
         ),
       ),
     )
-    return times.every((time) => time <= current.at)
+    return times.some((time) => time > at)
   }
 
   async function buildOnce() {
@@ -148,16 +173,23 @@ export async function createWeb(options: {
       brokenFolders.push(facet.target)
       options.notice(`${join(facet.path, 'web.tsx')} did not build: ${result.error.message}`)
     }
-    // Asset names carry their content hash: a facet's own chunk changes without the entry or index.html changing.
-    const assets = (await readdir(outDir, { recursive: true })).toSorted()
-    const id = createHash('sha256')
-      .update(await readFile(join(outDir, 'index.html')))
-      .update(assets.join('\0'))
-      .digest('hex')
-      .slice(0, 12)
+    // Every file's name and content: a facet's own chunk or a public file changes without index.html changing.
+    const digest = createHash('sha256')
+    for (const file of (await readdir(outDir, { recursive: true })).toSorted()) {
+      const full = join(outDir, file)
+      if ((await stat(full)).isFile()) digest.update(file + '\0').update(await readFile(full))
+    }
+    const id = digest.digest('hex').slice(0, 12)
     const target = join(folder, id)
-    await rm(target, { recursive: true, force: true })
-    await rename(outDir, target)
+    // An identical bundle is already there, maybe being served: keep it.
+    if (
+      await stat(target).then(
+        () => true,
+        () => false, // Not built before.
+      )
+    )
+      await rm(outDir, { recursive: true, force: true })
+    else await rename(outDir, target)
     const publicFiles = (
       await readdir(join(webRoot, 'public'), { recursive: true }).catch(() => [])
     ) // No public files.
@@ -176,18 +208,20 @@ export async function createWeb(options: {
       facets,
       broken: brokenFolders,
     }
-    await writeFile(join(folder, 'manifest.json'), JSON.stringify(next))
-    if (manifest?.id !== id) {
-      previous = manifest?.id
-      // The current bundle and the one before it: a page still on the old one may load a chunk while it switches.
-      for (const name of await readdir(folder))
-        if (![id, previous, 'manifest.json'].includes(name))
-          await rm(join(folder, name), { recursive: true, force: true })
-    }
+    await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     const switched = manifest?.id !== id
+    if (manifest && switched) retired.set(manifest.id, Date.now())
+    retired.delete(id)
     manifest = next
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
+    // A source saved while the build read it, such as a new facet's file it had not seen yet: build again.
+    if (await savedSince(result.inputs, at)) stale = true
+    // Bundles replaced over ten minutes ago go; a page that slow to load reloads onto the current one anyway.
+    for (const [old, since] of retired) if (Date.now() - since > 10 * 60_000) retired.delete(old)
+    for (const name of await readdir(folder))
+      if (name !== id && !name.startsWith('.') && name !== 'manifest.json' && !retired.has(name))
+        await rm(join(folder, name), { recursive: true, force: true })
     if (switched) options.changed()
   }
 
@@ -273,16 +307,20 @@ export async function createWeb(options: {
     },
     async handle(request: IncomingMessage, response: ServerResponse) {
       if (stale || !manifest) await update()
-      if (!manifest) {
+      // One bundle for the whole request, though a build may finish while it is served.
+      const current = manifest
+      if (!current) {
         response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
         response.end('The web UI did not build; the notices name the error.')
         return
       }
       const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname)
-      const found =
-        path !== '/' && path !== '/index.html'
-          ? ((await bundled(manifest.id, path)) ?? (previous && (await bundled(previous, path))))
-          : undefined
+      let found: string | undefined
+      if (path !== '/' && path !== '/index.html')
+        for (const id of [current.id, ...retired.keys()]) {
+          found = await bundled(id, path)
+          if (found) break
+        }
       if (!found) {
         if (extname(path) && path !== '/index.html') {
           response.writeHead(404)
@@ -290,9 +328,9 @@ export async function createWeb(options: {
           return
         }
         // The app, for every route: it names its bundle, so the page knows when a new one is current.
-        const html = (await readFile(join(folder, manifest.id, 'index.html'), 'utf8')).replace(
+        const html = (await readFile(join(folder, current.id, 'index.html'), 'utf8')).replace(
           '<head>',
-          `<head><meta name="ultimate-web" content="${manifest.id}">`,
+          `<head><meta name="ultimate-web" content="${current.id}">`,
         )
         response.writeHead(200, {
           'Content-Type': types['.html'],
