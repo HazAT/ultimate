@@ -10,12 +10,12 @@ import {
   map,
   num,
   obj,
-  oneOf,
   opt,
   str,
   union,
   unknown,
 } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
@@ -188,7 +188,7 @@ export default function browserExtension(host: ExtensionHost) {
           fullPage: opt(bool()),
           selector: opt(str()),
           waitMs: opt(int({ minimum: 0 })),
-          theme: opt({ ...oneOf(['light', 'dark']), type: 'string' }),
+          theme: opt(strEnum(['light', 'dark'])),
         }),
         async execute(args, api, context) {
           const waitMs = args.waitMs ?? 1500

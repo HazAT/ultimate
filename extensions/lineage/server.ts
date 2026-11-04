@@ -1,7 +1,8 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
 import { onCommit } from '../../lib/commits.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, bool, int, lit, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { Message, Models, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { estimateMessageTokens, estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import {
@@ -1621,13 +1622,13 @@ export default function lineageExtension(host: ExtensionHost) {
           root: opt(int({ minimum: 1 })),
           ops: arr(
             obj({
-              op: oneOf(['add', 'update', 'delete']),
+              op: strEnum(['add', 'update', 'delete']),
               slug: str({
                 pattern: MEMORY_SLUG.source,
                 maxLength: 48,
                 description: 'kebab-case, at most 48 characters',
               }),
-              kind: opt(oneOf(['decision', 'fact', 'lesson'])),
+              kind: opt(strEnum(['decision', 'fact', 'lesson'])),
               line: opt(
                 str({
                   maxLength: LINE_CHARS,

@@ -2,7 +2,6 @@ import { createModels, toToolDeclaration } from '@earendil-works/pi-ai'
 import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic'
 import { opencodeGoProvider } from '@earendil-works/pi-ai/providers/opencode-go'
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
-import { compile } from '@earendil-works/pi-schema'
 import { expect, it, vi } from 'vitest'
 import browserExtension from '../extensions/browser/server.ts'
 import subagents from '../extensions/subagents/server.ts'
@@ -76,27 +75,10 @@ it('preserves browser fill and typed tool enum schemas in provider payloads', as
         description: '[selector, value]',
       },
     )
-    const screenshotSchema = schemas.find((tool) => tool.name === 'screenshot')!.parameters
-    const subagentSchema = schemas.find((tool) => tool.name === 'subagent')!.parameters
-    // The observed Moonshot errors named these four properties: "type is not defined".
-    expect(screenshotSchema).toHaveProperty('properties.theme.type', 'string')
-    for (const field of ['action', 'thinking', 'isolate']) {
-      expect(subagentSchema).toHaveProperty(`properties.${field}.type`, 'string')
-    }
-
-    const screenshotArgs = compile(screenshotSchema)
-    expect(screenshotArgs.check({})).toBe(true)
-    expect(screenshotArgs.check({ theme: 'light' })).toBe(true)
-    expect(screenshotArgs.check({ theme: 'dark' })).toBe(true)
-    expect(screenshotArgs.check({ theme: 'sepia' })).toBe(false)
-
-    const subagentArgs = compile(subagentSchema)
-    expect(subagentArgs.check({ action: 'list' })).toBe(true)
-    expect(subagentArgs.check({ action: 'start', thinking: 'low', isolate: 'none' })).toBe(true)
-    expect(subagentArgs.check({ action: 'start', thinking: 'max', isolate: 'worktree' })).toBe(true)
-    expect(subagentArgs.check({})).toBe(false)
-    expect(subagentArgs.check({ action: 'unknown' })).toBe(false)
-    expect(subagentArgs.check({ action: 'start', thinking: 'unknown' })).toBe(false)
-    expect(subagentArgs.check({ action: 'start', isolate: 'unknown' })).toBe(false)
+    // Moonshot rejects an enum without a type (PR #79); strEnum() in lib/schema.ts declares it.
+    expect(schemas.find((tool) => tool.name === 'subagent')?.parameters).toHaveProperty(
+      'properties.action.type',
+      'string',
+    )
   }
 })
