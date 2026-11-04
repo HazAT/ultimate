@@ -10,6 +10,7 @@ import {
   cn,
   defineWebExtension,
   formatTime,
+  switched,
   useEvents,
   useRestart,
   useSystem,
@@ -19,7 +20,6 @@ import {
 import type { ToolCallView } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { SubmissionLanded } from '../workspaces/ui.tsx'
-import type { LandedData } from '../workspaces/ui.tsx'
 
 const short = (id: string | undefined) => id?.slice(0, 7)
 
@@ -240,84 +240,34 @@ function Build() {
   )
 }
 
-/** How long the hot-reload toast stays after the last update. */
-const hotLifetime = 3000
+/** How long the update toast stays. */
+const lifetime = 4000
 
-/** `extensions/lineage/web.tsx?t=1` as `lineage/web.tsx`: enough to recognise the file. */
-const hotFile = (path: string) => path.split('?')[0].split('/').slice(-2).join('/')
+/** `extensions/lineage/web.tsx` as `lineage/web.tsx`: enough to recognise the file. */
+const shortFile = (path: string) => path.split('/').slice(-2).join('/')
 
-/** How far apart a hot update and a landing may be to belong together: the lander fast-forwards, then records it. */
+/** How far apart a landing and the switch it brought may be: the lander fast-forwards, then records it. */
 const landingWindow = 60_000
 
-// This module re-run by a hot update counts as one, so a landing that replaced this file still names itself.
-const reloadedAt = import.meta.hot?.data.loaded ? Date.now() : 0
-if (import.meta.hot) import.meta.hot.data.loaded = true
-
 /**
- * A quiet toast above the bottom right of the status line when Vite applies a hot update without reloading the page:
- * the branches whose landing brought it, else the modules it re-ran (its accept boundaries, not necessarily the edited
- * file). Updates arriving meanwhile join it and keep it up.
+ * A quiet toast above the bottom right of the status line after the page switched to a new web bundle: the branches
+ * whose landing brought it, else the sources that changed.
  */
-function HotReloaded() {
-  const [files, setFiles] = useState<readonly string[]>([])
-  const [landings, setLandings] = useState<readonly LandedData[]>([])
+function Updated() {
+  const [shown, setShown] = useState(switched !== undefined)
   const { switchConversation } = useUltimate()
   const events = useEvents({ events: [SubmissionLanded], limit: 5 })
-  const lastHot = useRef(reloadedAt)
-  const seen = useRef<number | undefined>(undefined)
-  const recent = useRef<{ at: number; landing: LandedData }[]>([])
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const keep = (lifetime: number) => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      setFiles([])
-      setLandings([])
-    }, lifetime)
-  }
-  const show = (landing: LandedData) =>
-    setLandings((shown) =>
-      shown.some((row) => row.submission === landing.submission) ? shown : [landing, ...shown],
-    )
-  // Landings recorded since this page loaded: named right away when a hot update just came, else kept for one to come.
   useEffect(() => {
-    if (!events) return
-    const newest = events[0]?.id ?? 0
-    if (seen.current === undefined) {
-      seen.current = newest
-      return
-    }
-    const fresh = events.filter((event) => event.id > seen.current!)
-    seen.current = Math.max(seen.current, newest)
-    const now = Date.now()
-    for (const event of fresh) {
-      if (now - lastHot.current < landingWindow) {
-        show(event.data)
-        keep(hotLifetime * 2)
-      } else recent.current.push({ at: now, landing: event.data })
-    }
-  }, [events])
-  useEffect(() => {
-    const hot = import.meta.hot
-    if (!hot) return undefined
-    const updated = ({ updates }: { updates: { acceptedPath: string }[] }) => {
-      // Vite's own virtual modules mean nothing to a reader.
-      const paths = updates
-        .map((update) => update.acceptedPath)
-        .filter((path) => !path.startsWith('/@id/'))
-      if (paths.length === 0) return
-      const now = Date.now()
-      lastHot.current = now
-      recent.current = recent.current.filter((row) => now - row.at < landingWindow)
-      for (const row of recent.current) show(row.landing)
-      setFiles((shown) => [...new Set([...shown, ...paths.map(hotFile)])])
-      keep(recent.current.length ? hotLifetime * 2 : hotLifetime)
-    }
-    hot.on('vite:afterUpdate', updated)
-    return () => {
-      hot.off('vite:afterUpdate', updated)
-      clearTimeout(timer.current)
-    }
-  }, [])
+    if (!shown) return undefined
+    const timer = setTimeout(() => setShown(false), lifetime)
+    return () => clearTimeout(timer)
+  }, [shown])
+  if (!shown || !switched) return null
+  const { at } = switched
+  const landings = (events ?? [])
+    .filter((event) => Math.abs(at - Date.parse(event.at)) < landingWindow)
+    .map((event) => event.data)
+  const files = switched.changed
   if (landings.length > 0)
     return (
       <div
@@ -338,16 +288,14 @@ function HotReloaded() {
       </div>
     )
   if (files.length === 0) return null
-  // Tailwind rebuilds its stylesheet on every source change: name it only when nothing else changed.
-  const scripts = files.filter((file) => !file.endsWith('.css'))
-  const named = scripts.length > 0 ? scripts : files
+  const named = files.map(shortFile)
   return (
     <div
       className="pointer-events-none fixed right-3 bottom-9 z-40 flex max-w-96 animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
       role="status"
     >
       <ZapIcon className="size-3.5 shrink-0 text-brand" />
-      <span className="shrink-0 text-foreground/90">Hot reloaded</span>
+      <span className="shrink-0 text-foreground/90">Updated</span>
       <span className="truncate">{named.slice(0, 2).join(', ')}</span>
       {named.length > 2 && <span className="shrink-0">+{named.length - 2}</span>}
     </div>
@@ -362,6 +310,6 @@ export default defineWebExtension({
       { component: CoreStale, phone: true },
       { component: Build, order: 1 },
     ],
-    overlay: HotReloaded,
+    overlay: Updated,
   },
 })

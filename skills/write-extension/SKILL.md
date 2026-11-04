@@ -26,7 +26,7 @@ Read the table at the top of `extensions/README.md` and open the extension it na
 
 | File        | For                                                             | Goes live           |
 | ----------- | --------------------------------------------------------------- | ------------------- |
-| `web.tsx`   | UI: `defineWebExtension({ slots, panels, surfaces, tools, … })` | Vite hot reload     |
+| `web.tsx`   | UI: `defineWebExtension({ slots, panels, surfaces, tools, … })` | Rebuilt on save     |
 | `server.ts` | tools, prompt sections, hooks, documents, `actions`             | reinstalled on save |
 | `api.ts`    | a typed service other extensions call                           | with its importers  |
 | `refs.ts`   | typed refs of your actions and documents for the browser        | with its importers  |

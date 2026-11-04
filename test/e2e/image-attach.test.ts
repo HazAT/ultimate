@@ -1,7 +1,7 @@
 // The composer's paperclip attaches images picked from the device, the only way in on a phone whose keyboard cannot
 // paste them; the conversation receives the image. Any other file is stored on the host and referenced by its path.
-// Selectors start at #app: Vite's first dependency optimisation reloads the page, and the reload's resume overlay
-// briefly shows an inert copy of the composer that would take the file instead.
+// Selectors start at #app: a reload's resume overlay briefly shows an inert copy of the composer that would take the
+// file instead. The paperclip is disabled while the conversation loads, so the file is picked once it is enabled.
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
@@ -52,7 +52,9 @@ it('attaches an image picked with the paperclip and sends it', async () => {
   const editor = page.locator('#app [data-ui="composer"] textarea')
   await editor.waitFor()
   await page
-    .locator('#app [data-ui="composer"] label[aria-label="Attach files"] input[type="file"]')
+    .locator(
+      '#app [data-ui="composer"] label[aria-label="Attach files"] input[type="file"]:enabled',
+    )
     .setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: png })
   await page.locator('#app [data-ui="composer"] [aria-label="Remove image 1"]').waitFor()
   await editor.press('Enter')
@@ -91,7 +93,9 @@ it('uploads a PDF picked with the paperclip and sends its path, not its bytes', 
   await editor.waitFor()
   const pdf = Buffer.from('%PDF-1.7 report')
   await page
-    .locator('#app [data-ui="composer"] label[aria-label="Attach files"] input[type="file"]')
+    .locator(
+      '#app [data-ui="composer"] label[aria-label="Attach files"] input[type="file"]:enabled',
+    )
     .setInputFiles({ name: 'report.pdf', mimeType: 'application/pdf', buffer: pdf })
   await page
     .locator('#app [data-ui="composer"] [data-ui="file-chip"]', { hasText: 'PDF' })

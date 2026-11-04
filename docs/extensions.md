@@ -15,7 +15,7 @@ Server extensions coordinate through typed contracts in each provider's `api.ts`
 documents and durable events (below). The
 browser has its own ephemeral `events`/`useEvent` bus from `@/sdk`. Use `<extension>:<event>` channels there, reserve
 `ultimate:*` for core, and keep durable state in documents. `useReady()` becomes true once the initial facets settle and a system snapshot
-arrives, stays true across hot reloads, and exposes failed facet names. Overlays render as facets install, even while
+arrives, stays true for the page, and exposes failed facet names. Overlays render as facets install, even while
 others load; see [Events](../extensions/README.md#events).
 
 ## Durable events

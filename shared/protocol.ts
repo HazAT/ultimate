@@ -145,6 +145,11 @@ export interface SystemInfo {
     settingsError?: string
   }
   code: { ultimateRoot: string; branch: string; sha: string; dirty: boolean; coreStale?: boolean }
+  /**
+   * The web bundle served now; a page on another id reloads onto it. `changed` lists the sources that changed since the
+   * previous bundle, relative to the Ultimate root when inside it.
+   */
+  web: { id: string; changed: string[] }
   extensionDiagnostics: string[]
   extensions: ExtensionInfo[]
   /**

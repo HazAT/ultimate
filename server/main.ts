@@ -17,6 +17,7 @@ import type { ChildMessage, SupervisorMessage } from './supervisor-protocol.ts'
 import { alive } from './lock.ts'
 import { realpath } from 'node:fs/promises'
 import { extensionModules } from './vite-extensions.ts'
+import { createWeb } from './web.ts'
 import { admit, createAccess } from './request-security.ts'
 import { writeProject } from './project.ts'
 import { reportCore } from './supervisor-protocol.ts'
@@ -68,6 +69,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       .catch((error: unknown) => console.error('Publishing access changes failed:', error))
   })
   let api: Awaited<ReturnType<typeof createApi>> | undefined
+  let web: Awaited<ReturnType<typeof createWeb>> | undefined
   const http = createHttpServer((request, response) => {
     void (async () => {
       const port =
@@ -86,47 +88,34 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         return
       }
       if (await api.handle(request, response)) return
-      vite.middlewares(request, response)
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        response.writeHead(405)
+        response.end()
+        return
+      }
+      await web!.handle(request, response)
     })().catch(() => {
       if (!response.headersSent) response.writeHead(500)
       response.end('Internal server error')
     })
   })
-  const hmr = createHttpServer()
-  http.on('upgrade', (request, socket, head) => {
-    const port =
-      new URL(
-        options.publicUrl ??
-          `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
-      ).port || '80'
-    void admit(request, port, access.rules)
-      .then((allowed) => {
-        if (allowed) hmr.emit('upgrade', request, socket, head)
-        else socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-      })
-      .catch(() => socket.destroy())
-  })
   // A vite.config.ts change restarts Vite with a new watcher; listeners move to each new one.
   const restarted = new Set<(watcher: ViteDevServer['watcher']) => void>()
   reportCore({ type: 'web', state: 'preparing' })
+  // Vite only loads the server facets (`ssrLoadModule`) and watches the sources: the browser gets a production bundle
+  // (web.ts). It serves no page, holds no client socket and optimizes no browser dependencies.
   const vite = await createViteServer({
     customLogger: viteLogger(),
     clearScreen: false,
     configFile: resolvePath(ultimateRoot, 'vite.config.ts'),
     root: resolvePath(ultimateRoot, 'web'),
-    server: {
-      middlewareMode: true,
-      allowedHosts: true,
-      hmr: { server: hmr },
-      fs: {
-        allow: [ultimateRoot, projectRoot, resolvePath(host.userHome, '.ultimate')],
-      },
-    },
-    appType: 'spa',
-    // One dependency cache per state home, so tests and instances never re-optimize the live instance's page.
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: 'custom',
+    optimizeDeps: { noDiscovery: true, include: [] },
     cacheDir: resolvePath(host.home, 'vite'),
     resolve: { alias: { '@': resolvePath(ultimateRoot, 'web/src') } },
     plugins: [
+      // Server facets outside the Ultimate root resolve its packages through it.
       extensionModules(ultimateRoot, projectRoot, host.userHome),
       {
         name: 'ultimate:watchers',
@@ -136,6 +125,11 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       },
     ],
   })
+  // Without HMR Vite does not restart itself for a config change: a new config means a new module graph and watcher.
+  const onConfig = (file: string) => {
+    if (file === vite.config.configFile)
+      vite.restart().catch((error: unknown) => console.error('Restarting Vite failed:', error))
+  }
   const watch: Watch = (attach) => {
     let detach = attach(vite.watcher)
     const move = (watcher: ViteDevServer['watcher']) => {
@@ -148,6 +142,10 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       detach()
     }
   }
+  watch((watcher) => {
+    watcher.on('change', onConfig)
+    return () => watcher.off('change', onConfig)
+  })
   let opened: OpenHost | undefined
   const processInfo: { activationError?: string } = {}
   // go and release each finish before the next starts.
@@ -179,7 +177,18 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     },
     watch,
     (message) => notice({ level: 'warning', message }),
+    () => web!.rebuild(),
   )
+  web = await createWeb({
+    ultimateRoot,
+    projectRoot,
+    userHome: host.userHome,
+    home: host.home,
+    watch,
+    pages: () => api?.pages() ?? 0,
+    changed: () => void system?.changed(),
+    notice: (message) => notice({ level: 'error', message }),
+  })
   await new Promise<void>((resolve, reject) => {
     http.once('error', reject)
     http.listen(options.port ?? Number(process.env.ULTIMATE_PORT ?? 4747), '127.0.0.1', () => {
@@ -199,6 +208,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     (message) => notice({ level: 'error', message }),
     processInfo,
     access.origins,
+    () => web.info(),
   )
   /** Serve the opened harness: the `onOpen` callbacks, then the API. */
   const serve = async (harness: OpenHost) => {
@@ -225,6 +235,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     events,
     url,
     port: address.port,
+    web,
     release: () =>
       serial(async () => {
         if (opened) await extensions.released()
@@ -250,6 +261,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       )
       await api?.close()
       await extensions.close()
+      await web?.close()
       await system?.close()
       await vite.close()
       reportCore({ type: 'web', state: 'stopped' })

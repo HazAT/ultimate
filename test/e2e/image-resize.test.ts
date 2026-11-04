@@ -41,10 +41,11 @@ it('resizes a pasted image over the limit and sends it', async () => {
   cleanup.push(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(server.url)
-  const editor = page.locator('[data-ui="composer"] textarea')
+  const editor = page.locator('#app [data-ui="composer"] textarea')
   await editor.waitFor()
-  // A 3000×2400 PNG of noise: far over 2 MiB, as a phone photo or 5K screenshot would be.
-  const size = await editor.evaluate(async (target) => {
+  // A 3000×2400 PNG of noise: far over 2 MiB, as a phone photo or 5K screenshot would be. It takes a while to make,
+  // and the composer may render a new editor meanwhile, so the paste goes to the one on the page once it is made.
+  const size = await page.evaluate(async () => {
     const canvas = new OffscreenCanvas(3000, 2400)
     const context = canvas.getContext('2d')!
     const pixels = context.createImageData(3000, 2400)
@@ -56,7 +57,9 @@ it('resizes a pasted image over the limit and sends it', async () => {
     const blob = await canvas.convertToBlob({ type: 'image/png' })
     const data = new DataTransfer()
     data.items.add(new File([blob], 'big.png', { type: 'image/png' }))
-    target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
+    document
+      .querySelector('#app [data-ui="composer"] textarea')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
     return blob.size
   })
   expect(size).toBeGreaterThan(maxImageBytes)

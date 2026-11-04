@@ -377,13 +377,8 @@ export function end() {
   set({ problem: undefined, waiting: undefined, muted: false, front: false })
 }
 
-// A session never outlives its page; on a hot reload of this module the old copy closes its own.
-const leave = () => {
+// A session never outlives its page.
+addEventListener('pagehide', () => {
   stopHum()
   if (session) release('off')
-}
-addEventListener('pagehide', leave)
-import.meta.hot?.dispose(() => {
-  removeEventListener('pagehide', leave)
-  leave()
 })

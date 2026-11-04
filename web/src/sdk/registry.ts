@@ -300,13 +300,13 @@ export function createRegistry() {
         refreshReady()
       }
     },
-    /** Install a facet that hot-reloaded on its own. */
+    /** Install a facet loaded on its own. */
     replace(name: string, module: unknown) {
       tokens.set(name, {})
       pending.delete(name)
       install(name, module)
     },
-    /** Record a failed hot reload; the previous version stays installed. */
+    /** Record a failed load; the previous version stays installed. */
     fail(name: string, error: unknown) {
       if (records.some((record) => record.name === name)) fail(name, error)
     },

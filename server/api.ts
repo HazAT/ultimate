@@ -418,6 +418,8 @@ export async function createApi(
     conversations() {
       return summaries
     },
+    /** Open browser tabs: each holds one event stream. */
+    pages: () => connections.size,
     async handle(request: IncomingMessage, response: ServerResponse) {
       const url = new URL(request.url ?? '/', 'http://localhost')
       if (!url.pathname.startsWith('/api/')) return false
