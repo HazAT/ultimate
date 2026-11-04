@@ -68,8 +68,9 @@ function MessageNavigation() {
     const loaded = target.entry ?? (call && callerOf(entries, call.split('/')[0])?.id)
     setTarget(undefined)
     if (loaded) {
-      const frame = requestAnimationFrame(() => reveal(loaded))
-      return () => cancelAnimationFrame(frame)
+      // Not cancelled on cleanup: clearing the target above re-runs this effect, which would drop the frame.
+      requestAnimationFrame(() => reveal(loaded))
+      return undefined
     }
     if (call)
       api.action(CallerAction, { conversation: id, call }).then(
