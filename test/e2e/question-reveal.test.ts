@@ -95,12 +95,6 @@ async function setup() {
     env: { ...process.env, TMPDIR: undefined },
   })
   cleanup.push(() => browser.close())
-  // A fresh dependency cache reloads the first page once Vite has optimized what the extensions import, which would
-  // take a link's place in the address: let it happen first.
-  const warm = await browser.newPage()
-  await warm.goto(server.url)
-  await warm.waitForEvent('load')
-  await warm.close()
   return { server, branch, other, asked, browser }
 }
 
