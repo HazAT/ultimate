@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord'
 import type { JsonValue } from '@earendil-works/chord'
-import { arr, bool, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import { arr, bool, int, obj, opt, str } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { AssistantMessage, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import {
   AgentDoc,
@@ -969,7 +970,7 @@ export default function subagents(
         // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
         replay: 'safe',
         parameters: obj({
-          action: oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          action: strEnum(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
           agent: opt(
             str({
               description:
@@ -986,7 +987,7 @@ export default function subagents(
             str({ description: 'For start: the model family to run on (fast, review…).' }),
           ),
           model: opt(str({ description: 'For start: provider/modelId, instead of a family.' })),
-          thinking: opt(oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
+          thinking: opt(strEnum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
           tools: opt(
             arr(str(), {
               description:
@@ -1005,7 +1006,7 @@ export default function subagents(
           id: opt(int({ minimum: 1 })),
           text: opt(str()),
           steer: opt(bool()),
-          isolate: opt(oneOf(['none', 'worktree'])),
+          isolate: opt(strEnum(['none', 'worktree'])),
         }),
         execute: async (args, api, context) => {
           const cached = await api.memo<ReturnType<typeof reply>>('result', context)

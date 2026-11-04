@@ -5,19 +5,8 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord'
-import {
-  arr,
-  bool,
-  int,
-  lit,
-  map,
-  num,
-  obj,
-  oneOf,
-  opt,
-  str,
-  union,
-} from '@earendil-works/pi-schema'
+import { arr, bool, int, lit, map, num, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import {
   AgentDoc,
   defineDoc,
@@ -876,7 +865,7 @@ export default function automations(host: ExtensionHost) {
         description:
           'Automate background work with one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers). create {name,schedule?|ask?|event?|condition?,once?,secrets?,prompt?,agent?,model?,thinking?,subscribers?: (#id|@name)[],scope?,slug?,to?,key?}. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run. @name subscribers follow that standing agent across chapters. key makes create idempotent: a repeated key returns the automation it made. ask starts a watcher that writes a supervised script: stdout FIRE wakes subscribers and/or starts a prompt run; DONE then exit 0 stops recurring scripts. event {name,where?} watches domain events; events lists names and fields. condition {metric:"context",of:"@name"|"#id",above:1-99,cooldownMs?,idleFor?} watches context fill; idleFor (ms) waits until the user gave it no input for that long. Scripts spend tokens only on setup and repair; prompt runs spend tokens every fire. Schedules: cron "0 9 * * 1-5" Europe/Vienna, at 2026-12-01T09:00:00Z, in 30m, every 15m. IDs A<n>, or lowercase slugs for project scripts in <project>/.ultimate/automations/<slug>/; the to (@name, default @ultimate) in their automation.json is woken on every machine. Project scripts never start themselves. list; update; pause/resume; run (fire trigger now or relaunch script); runs; log {id,lines?}; abort {id,runId}; escalate {id,reason}; subscribe/unsubscribe {id,to?: "#id"|"@name"} (default caller); delete (keeps files and conversations). Without prompt or subscribers, caller subscribes. Optional agent selects an existing definition (isolates ignored), model {provider,modelId} and thinking override it; otherwise runs copy the root agent. Failures wake only the watcher; the third in a row, or a watcher ending its turn mid-repair, escalates: subscribers and @ultimate are notified.',
         parameters: obj({
-          action: oneOf(operations),
+          action: strEnum(operations),
           id: opt(str()),
           name: opt(str()),
           schedule: opt(str()),
@@ -902,10 +891,10 @@ export default function automations(host: ExtensionHost) {
           agent: opt(str()),
           model: opt(obj({ provider: str(), modelId: str() })),
           thinking: opt(
-            oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const),
+            strEnum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const),
           ),
           subscribers: opt(arr(union([int({ minimum: 1 }), str()]))),
-          scope: opt(oneOf(['user', 'project'])),
+          scope: opt(strEnum(['user', 'project'])),
           slug: opt(str()),
           key: opt(str()),
           runId: opt(str()),
