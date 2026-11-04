@@ -309,7 +309,9 @@ function Switcher() {
               {port(current.url)}
             </>
           ) : (
-            `${data.length} ${data.length === 1 ? 'preview' : 'previews'}`
+            <span className="max-md:hidden">
+              {data.length} {data.length === 1 ? 'preview' : 'previews'}
+            </span>
           )}
           <ChevronDownIcon className="size-3.5 opacity-60" />
         </button>
