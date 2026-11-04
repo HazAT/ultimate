@@ -12,6 +12,26 @@ const pending = (row: LanderStep, later: readonly LanderStep[]) =>
   runningStep.test(row.step) &&
   later.every((next) => next.check !== undefined || runningStep.test(next.step))
 
+/**
+ * How long `row`, the step at `index` of the shown `rows`, took: until the next shown step starts; a check result's time is
+ * its whole check, from its "checking" step in all of `steps`. Undefined while it is the last one.
+ */
+export const tookFor = (
+  row: LanderStep,
+  index: number,
+  rows: readonly LanderStep[],
+  steps: readonly LanderStep[],
+) => {
+  if (row.check) {
+    const start = steps.findLast(
+      (other) => other.at <= row.at && runningStep.exec(other.step)?.[1] === row.check!.command,
+    )
+    return start ? row.at - start.at : undefined
+  }
+  const next = rows[index + 1]
+  return next && (next.check ? undefined : next.at - row.at)
+}
+
 /** While its submission lands, a step is in progress when it is the last one or a group check still running; a check result never is. */
 export const inProgress = (row: LanderStep, later: readonly LanderStep[]) =>
   !row.check && (!later.length || pending(row, later))
