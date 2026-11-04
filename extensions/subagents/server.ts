@@ -71,9 +71,17 @@ export const docs = [Subagents, Standing, Profile, Runs]
 const ADHOC = `You were made for one task: do what your brief asks, and only that. Read the code and the repository instructions it touches first. Never delegate or push. Report problems instead of working around them. Answer with conclusions and their evidence (\`path:line\`, commands with their output), not dumps; say what you could not confirm.`
 const WRITE_TOOLS = ['edit', 'write']
 
-/** Record how standing agent `definition`'s mark looks in conversations' marks doc, or that it asks for nothing. */
-const setMark = (marks: Record<string, AgentMarkStyle>, { name, icon, tint }: AgentDefinition) => {
-  if (icon || tint) marks[name] = { ...(icon ? { icon } : {}), ...(tint ? { tint } : {}) }
+/** Record standing agent `definition`'s title and how its mark looks in conversations' marks doc, or that it asks for nothing. */
+const setMark = (
+  marks: Record<string, AgentMarkStyle>,
+  { name, title, icon, tint }: AgentDefinition,
+) => {
+  if (title || icon || tint)
+    marks[name] = {
+      ...(title ? { title } : {}),
+      ...(icon ? { icon } : {}),
+      ...(tint ? { tint } : {}),
+    }
   else delete marks[name]
 }
 
@@ -505,6 +513,7 @@ export const actions = {
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
       // The form has no control for these: a save keeps them as discovery read them.
+      ...(existing?.title ? { title: existing.title } : {}),
       ...(existing?.icon ? { icon: existing.icon } : {}),
       ...(existing?.tint ? { tint: existing.tint } : {}),
     }

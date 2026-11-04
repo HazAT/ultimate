@@ -39,6 +39,8 @@ export interface AgentDefinition {
   fast?: boolean
   /** `false`: its conversations get no automatic summaries (intent, title, reply activity, spawn refresh, abstract). */
   summaries?: boolean
+  /** A standing agent's display name in the UI, such as `Atlas`; its `@name` stays its address. */
+  title?: string
   /** A standing agent's mark: a lucide icon name; an unknown one shows the default glyph. */
   icon?: string
   /** A standing agent's mark colour. */
@@ -206,6 +208,7 @@ const fields = new Set([
   'resident',
   'fast',
   'summaries',
+  'title',
   'icon',
   'tint',
 ])
@@ -222,6 +225,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     | 'fast'
     | 'summaries'
     | 'denyTools'
+    | 'title'
     | 'icon'
     | 'tint'
   >
@@ -238,6 +242,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     fast,
     summaries,
     denyTools,
+    title,
     icon,
     tint,
   } = frontmatter
@@ -258,6 +263,8 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
   if (fast !== undefined && typeof fast !== 'boolean') throw new Error('fast must be a boolean')
   if (summaries !== undefined && typeof summaries !== 'boolean')
     throw new Error('summaries must be a boolean')
+  if (title !== undefined && (typeof title !== 'string' || !title.trim()))
+    throw new Error('title must be a nonempty string')
   if (icon !== undefined && !isIconName(icon))
     throw new Error('icon must be a lucide icon name, like Gem or notebook-pen')
   if (tint !== undefined && !isMarkTint(tint))
@@ -272,6 +279,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     ...(fast !== undefined ? { fast } : {}),
     ...(summaries !== undefined ? { summaries } : {}),
     ...(denyTools !== undefined ? { denyTools } : {}),
+    ...(title !== undefined ? { title: title.trim() } : {}),
     ...(icon !== undefined ? { icon } : {}),
     ...(tint !== undefined ? { tint } : {}),
   }
@@ -475,6 +483,7 @@ export interface DefinitionFields {
   resident?: boolean
   fast?: boolean
   summaries?: boolean
+  title?: string
   icon?: string
   tint?: MarkTint
 }
@@ -511,6 +520,7 @@ export function serializeDefinition(
     ...(frontmatter.resident !== undefined ? [`resident: ${frontmatter.resident}`] : []),
     ...(frontmatter.fast ? ['fast: true'] : []),
     ...(frontmatter.summaries === false ? ['summaries: false'] : []),
+    ...(frontmatter.title ? [`title: ${scalar(frontmatter.title)}`] : []),
     ...(frontmatter.icon ? [`icon: ${scalar(frontmatter.icon)}`] : []),
     ...(frontmatter.tint ? [`tint: ${frontmatter.tint}`] : []),
   ]
@@ -604,6 +614,7 @@ export async function saveOverlay(
   if ((form.fast ?? false) !== (base.fast ?? false)) settings.push(`fast: ${form.fast ?? false}`)
   if ((form.summaries ?? true) !== (base.summaries ?? true))
     settings.push(`summaries: ${form.summaries ?? true}`)
+  if (form.title && form.title !== base.title) settings.push(`title: ${scalar(form.title)}`)
   if (form.icon && form.icon !== base.icon) settings.push(`icon: ${scalar(form.icon)}`)
   if (form.tint && form.tint !== base.tint) settings.push(`tint: ${form.tint}`)
 
