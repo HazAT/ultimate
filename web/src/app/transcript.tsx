@@ -764,7 +764,10 @@ function TranscriptEntries() {
         }
         open={shown}
       >
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+        <CollapsibleTrigger
+          className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+          data-ui="transcript-meta"
+        >
           {item.steps} step{item.steps === 1 ? '' : 's'} set aside · {shown ? 'hide' : 'show'}
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/aside:rotate-90" />
         </CollapsibleTrigger>
@@ -905,7 +908,10 @@ function WorkRow({
 }) {
   return (
     <Collapsible className="group/work" onOpenChange={onOpenChange} open={open}>
-      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+      <CollapsibleTrigger
+        className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+        data-ui="transcript-meta"
+      >
         {working ? 'working' : 'worked'} · {run.steps} step
         {run.steps === 1 ? '' : 's'}
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/work:rotate-90" />
@@ -1213,6 +1219,7 @@ function AssistantView({
         'group/message gap-3',
         final && 'rounded-lg border border-success/40 bg-success/5 px-3.5 py-2.5',
       )}
+      data-final={final || undefined}
       from="assistant"
     >
       {final && (
@@ -1304,6 +1311,7 @@ function Divider({ children, className }: { children: ReactNode; className?: str
         'flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70',
         className,
       )}
+      data-ui="transcript-meta"
     >
       {children}
     </div>

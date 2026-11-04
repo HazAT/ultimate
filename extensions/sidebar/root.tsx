@@ -89,6 +89,16 @@ const tones = {
   quiet: 'text-muted-foreground/70',
 }
 
+/** The `data-status` hook of a row's dot, for themes. */
+const statusOf = {
+  failed: 'failed',
+  success: 'done',
+  brand: 'working',
+  waiting: 'waiting',
+  paused: 'paused',
+  quiet: 'idle',
+} as const
+
 type FlightProps = {
   conversation: ConversationSummary
   working: boolean
@@ -201,6 +211,7 @@ function PhasedFlightRow({
                           ? 'bg-error'
                           : 'bg-muted-foreground/40',
                 )}
+                data-status={statusOf[state.tone]}
               />
               <span
                 className={cn(
