@@ -43,6 +43,9 @@ it('kills a browser that drops its connection and keeps running, without a notic
 })
 
 it('times out a hung step, closes its page and keeps later calls working', async () => {
+  // The runner cannot start Chromium's sandbox (no unprivileged user namespaces), and helpers.ts strips
+  // ULTIMATE_* from the worker env, so a CI variable cannot reach the extension: stub the knob instead.
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-timeout-')
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
@@ -80,6 +83,9 @@ it('times out a hung step, closes its page and keeps later calls working', async
 })
 
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
+  // The runner cannot start Chromium's sandbox (no unprivileged user namespaces), and helpers.ts strips
+  // ULTIMATE_* from the worker env, so a CI variable cannot reach the extension: stub the knob instead.
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
   const host = {
