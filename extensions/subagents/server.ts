@@ -960,7 +960,10 @@ export default function subagents(
         // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
         replay: 'safe',
         parameters: obj({
-          action: oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          action: {
+            ...oneOf(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+            type: 'string',
+          },
           agent: opt(
             str({
               description:
@@ -977,7 +980,10 @@ export default function subagents(
             str({ description: 'For start: the model family to run on (fast, review…).' }),
           ),
           model: opt(str({ description: 'For start: provider/modelId, instead of a family.' })),
-          thinking: opt(oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])),
+          thinking: opt({
+            ...oneOf(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
+            type: 'string',
+          }),
           tools: opt(
             arr(str(), {
               description:
@@ -996,7 +1002,7 @@ export default function subagents(
           id: opt(int({ minimum: 1 })),
           text: opt(str()),
           steer: opt(bool()),
-          isolate: opt(oneOf(['none', 'worktree'])),
+          isolate: opt({ ...oneOf(['none', 'worktree']), type: 'string' }),
         }),
         execute: async (args, api, context) => {
           const cached = await api.memo<ReturnType<typeof reply>>('result', context)

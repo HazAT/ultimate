@@ -160,7 +160,7 @@ export default function browserExtension(host: ExtensionHost) {
           fullPage: opt(bool()),
           selector: opt(str()),
           waitMs: opt(int({ minimum: 0 })),
-          theme: opt(oneOf(['light', 'dark'])),
+          theme: opt({ ...oneOf(['light', 'dark']), type: 'string' }),
         }),
         async execute(args, api, context) {
           const waitMs = args.waitMs ?? 1500
