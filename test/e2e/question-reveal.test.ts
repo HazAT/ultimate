@@ -1,13 +1,15 @@
 // "answer" on a question in To-dos opens the asker's conversation with the question's card at the top of the view. It
 // once left the view at the bottom: clearing the request re-ran the effect whose cleanup cancelled the reveal's frame.
 // The card must also land below the pinned prompt strip, which arrives after the jump, not at the top of the response
-// that asked, whose text comes first; a short question at the end needs room below it to get there.
+// that asked, whose text comes first; a short question at the end needs room below it to get there. A link to a question,
+// `?conversation=<c>&message=<m>`, once opened the conversation at its end, leaving the question to look for.
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
+import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { Started } from '../../extensions/messages/addresses.ts'
@@ -23,7 +25,8 @@ afterEach(async () => {
 const step = (n: number) =>
   `## Step ${n}\n\n${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(12)}\n\n- one\n- two\n- three`
 
-it('brings the question card to the top of the view below the pinned strip', async () => {
+/** A branch asking two questions between long answers, another conversation, and a browser. */
+async function setup() {
   const home = await temp('ultimate-question-reveal-')
   cleanup.push(() => removeTemp(home))
   const server = await fauxServer({
@@ -92,24 +95,54 @@ it('brings the question card to the top of the view below the pinned strip', asy
     env: { ...process.env, TMPDIR: undefined },
   })
   cleanup.push(() => browser.close())
+  // A fresh dependency cache reloads the first page once Vite has optimized what the extensions import, which would
+  // take a link's place in the address: let it happen first.
+  const warm = await browser.newPage()
+  await warm.goto(server.url)
+  await warm.waitForEvent('load')
+  await warm.close()
+  return { server, branch, other, asked, browser }
+}
+
+/** How far a card's top sits below the strip's bottom, once both show. */
+const gap = (page: Page, id: number) =>
+  page.evaluate((message) => {
+    const card = document.querySelector(`[data-message-outgoing="${message}"]`)
+    const strip = document.querySelector('[data-ui="pinned-prompt"]')
+    return card && strip
+      ? card.getBoundingClientRect().top - strip.getBoundingClientRect().bottom
+      : Number.NaN
+  }, id)
+
+/**
+ * How far a revealed card settles from the strip plus the bubble's own top margin, which should be the only space
+ * between them, and stay so.
+ */
+async function drift(page: Page, id: number) {
+  await until(async () => Math.abs((await gap(page, id)) - 8) < 4, 10_000)
+  await page.waitForTimeout(500)
+  return Math.abs((await gap(page, id)) - 8)
+}
+
+it('brings the question card to the top of the view below the pinned strip', async () => {
+  const { server, other, asked, browser } = await setup()
   await post(server, '/api/ui', { set: { 'shell.panel': 'todos', 'shell.panelOpen': true } })
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${other}`)
-  // How far a card's top sits below the strip's bottom, once both show.
-  const gap = (id: number) =>
-    page.evaluate((message) => {
-      const card = document.querySelector(`[data-message-outgoing="${message}"]`)
-      const strip = document.querySelector('[data-ui="pinned-prompt"]')
-      return card && strip
-        ? card.getBoundingClientRect().top - strip.getBoundingClientRect().bottom
-        : Number.NaN
-    }, id)
-  // From another conversation, then within the branch: the bubble's own top margin is the only space between them,
-  // and it stays so.
+  // From another conversation, then within the branch.
   for (const { id } of asked) {
     await page.locator(`[data-todo-question="${id}"] button`).click()
-    await until(async () => Math.abs((await gap(id)) - 8) < 4, 10_000)
-    await page.waitForTimeout(500)
-    expect(Math.abs((await gap(id)) - 8)).toBeLessThan(4)
+    expect(await drift(page, id)).toBeLessThan(4)
   }
+})
+
+it('opens a question link at the question, once', async () => {
+  const { server, branch, asked, browser } = await setup()
+  const [{ id }] = asked
+  // A phone, opened cold by the link: the page mounts the transcript after the overlay that reveals.
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await page.goto(`${server.url}/?conversation=${branch}&message=${id}`)
+  expect(await drift(page, id)).toBeLessThan(4)
+  // A reload opens the conversation as usual.
+  expect(new URL(page.url()).search).toBe(`?conversation=${branch}`)
 })
