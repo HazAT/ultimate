@@ -37,6 +37,10 @@ jobs:
   e2e:
     name: End to end
     runs-on: ubuntu-latest
+    env:
+      # The runner cannot start Chromium's sandbox; the browser extension turns it
+      # back off when this is set to 0 (extensions/browser/server.ts).
+      ULTIMATE_CHROMIUM_SANDBOX: '0'
     # Separate job: it needs a browser download the fast suites do not, so a slow e2e run cannot hide a failing check.
     steps:
       - uses: actions/checkout@v5
