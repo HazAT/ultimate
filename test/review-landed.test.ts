@@ -66,3 +66,57 @@ it('shows a landed branch as its landing range once its ref is gone, and moves o
     await removeTemp(home)
   }
 })
+
+it("checks a branch spec in the conversation's workspace, not the project's checkout", async () => {
+  const home = await temp('ultimate-review-workspace-')
+  const project = join(home, 'project')
+  const other = join(home, 'other')
+  await mkdir(join(project, '.ultimate'), { recursive: true })
+  await writeFile(join(project, '.ultimate/settings.json'), '{}')
+  await mkdir(other)
+  for (const path of [project, other]) {
+    await git(path, 'init', '-q', '-b', 'main')
+    await git(path, 'config', 'user.email', 'test@example.com')
+    await git(path, 'config', 'user.name', 'Test')
+    await writeFile(join(path, 'a.txt'), 'one\n')
+    await git(path, 'add', '-A')
+    await git(path, 'commit', '-q', '-m', 'first')
+  }
+  const base = await git(other, 'rev-parse', 'HEAD')
+  await git(other, 'checkout', '-q', '-b', 'ultimate/feature')
+  await writeFile(join(other, 'feature.txt'), 'new\n')
+  await git(other, 'add', '-A')
+  await git(other, 'commit', '-q', '-m', 'add feature')
+  const tip = await git(other, 'rev-parse', 'HEAD')
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: project,
+    userHome: home,
+    home: join(home, 'state'),
+    localSetup: false,
+  })
+  try {
+    await server.harness.commit(async (tx) => {
+      const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+      index.items['7'] = {
+        path: other,
+        base,
+        source: other,
+        target: 'main',
+        branch: 'ultimate/feature',
+        state: 'ready',
+      }
+    }, context)
+    const diff = (
+      await post(server, '/api/extensions/review/actions/diff', {
+        args: { spec: 'branch:ultimate/feature', conversation: 7 },
+      })
+    ).data.result
+
+    expect(diff).toMatchObject({ spec: 'branch:ultimate/feature', kind: 'branch', base, head: tip })
+    expect(diff.files.map((file: { path: string }) => file.path)).toEqual(['feature.txt'])
+  } finally {
+    await server.close()
+    await removeTemp(home)
+  }
+})
