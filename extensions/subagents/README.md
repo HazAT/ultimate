@@ -55,7 +55,7 @@ Ordinary human input uses the core renderer. Typed agent instructions and asynch
 
 Instructions and reports are stored as `subagents.instruction` and `subagents.report` input entries. Their data carries the sender, source entry, agent name, display body and report failure flag; the model still receives the original user message. Cards read that data directly, including through history forks and reopen. Old plain user messages remain plain messages. If a source entry is no longer in its active transcript, Source still opens the conversation without scrolling to a different entry.
 
-Source and foreground Open offer a header Return button back to the receiving conversation and its message when known. Transcript entry anchors and the core `ultimate:reveal-entry {conversationId, entryId}` web event cancel auto-follow before revealing a row, so a long answer cannot pull the view back to its end. This one-hop navigation is local to the browser session; ordinary conversation switching remains unchanged. Missing sender summaries keep the ID visible and disable Source with an explanatory tooltip.
+Source and foreground Open offer a header Return button back to the receiving conversation and its message when known. Transcript entry anchors and the core `ultimate:reveal-entry {conversationId, entryId, toolCallId?}` web event cancel auto-follow before revealing a row, or the tool call in it, at the top of the view below the pinned strip, so a long answer cannot pull the view back to its end. This one-hop navigation is local to the browser session; ordinary conversation switching remains unchanged. Missing sender summaries keep the ID visible and disable Source with an explanatory tooltip.
 
 ### Preview
 
