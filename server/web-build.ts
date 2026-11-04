@@ -3,7 +3,7 @@
  * until its process ends. Its one argument is a JSON `WebBuildRequest`; it prints one JSON `WebBuildResult` line.
  */
 import { readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { gzipSync } from 'node:zlib'
 import { build } from 'vite-plus'
@@ -36,7 +36,16 @@ try {
     build: {
       outDir: request.outDir,
       emptyOutDir: true,
-      sourcemap: false,
+      // Debuggable as in dev: external maps resolve stack traces to source files, and kept names show in them and
+      // in React's component stacks, for about 2% more gzipped bundle.
+      sourcemap: true,
+      rolldownOptions: {
+        output: {
+          keepNames: true,
+          // Absolute paths: a resolved frame names the file to open, wherever the bundle folder is.
+          sourcemapPathTransform: (source, map) => resolve(dirname(map), source),
+        },
+      },
       reportCompressedSize: false,
       chunkSizeWarningLimit: Number.POSITIVE_INFINITY,
     },
