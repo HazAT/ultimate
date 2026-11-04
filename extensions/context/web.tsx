@@ -64,7 +64,10 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
       {...(fold.folds && { open: fold.open, onOpenChange: fold.setOpen })}
     >
       <CollapsibleTrigger className="w-full cursor-pointer">
-        <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground">
+        <div
+          className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground"
+          data-ui="transcript-meta"
+        >
           <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">
             <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-[state=open]/marker:rotate-90" />
             <span className="truncate">{children}</span>

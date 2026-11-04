@@ -98,6 +98,7 @@ function Mark({
               ) : (
                 <span
                   className={cn('size-1.5 rounded-full bg-brand', working && 'animate-pulse-dot')}
+                  data-status={working ? 'working' : 'idle'}
                 />
               )}
             </span>
@@ -575,6 +576,7 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
                     'size-1.5 rounded-full',
                     working ? 'animate-pulse-dot bg-brand' : 'bg-muted-foreground/40',
                   )}
+                  data-status={working ? 'working' : 'idle'}
                 />
               )}
             </span>
