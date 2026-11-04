@@ -27,6 +27,8 @@ interface Manifest {
   facets: string[]
   /** Folders of facets left out because they did not build: any change in one may fix it. */
   broken: string[]
+  /** Bundles replaced by this one, by when: kept for pages still loading them, across restarts too. */
+  retired: Record<string, number>
 }
 
 const types: Record<string, string> = {
@@ -89,7 +91,7 @@ export async function createWeb(options: {
   let inputs = new Set(manifest?.inputs)
   let brokenRoots = manifest?.broken ?? []
   /** Bundles replaced in this process, by when: a page still loading one may ask for its chunks for a while. */
-  const retired = new Map<string, number>()
+  const retired = new Map(Object.entries(manifest?.retired ?? {}))
   let stale = !manifest || !(await fresh(manifest))
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
@@ -207,18 +209,20 @@ export async function createWeb(options: {
       ],
       facets,
       broken: brokenFolders,
+      retired: {},
     }
-    await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     const switched = manifest?.id !== id
     if (manifest && switched) retired.set(manifest.id, Date.now())
     retired.delete(id)
+    // Bundles replaced over ten minutes ago go; a page that slow to load reloads onto the current one anyway.
+    for (const [old, since] of retired) if (Date.now() - since > 10 * 60_000) retired.delete(old)
+    next.retired = Object.fromEntries(retired)
+    await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     manifest = next
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
     // A source saved while the build read it, such as a new facet's file it had not seen yet: build again.
     if (await savedSince(result.inputs, at)) stale = true
-    // Bundles replaced over ten minutes ago go; a page that slow to load reloads onto the current one anyway.
-    for (const [old, since] of retired) if (Date.now() - since > 10 * 60_000) retired.delete(old)
     for (const name of await readdir(folder))
       if (name !== id && !name.startsWith('.') && name !== 'manifest.json' && !retired.has(name))
         await rm(join(folder, name), { recursive: true, force: true })
