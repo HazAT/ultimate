@@ -1,4 +1,5 @@
-import { arr, int, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, int, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -180,7 +181,7 @@ export default function debug(host: ExtensionHost) {
           "`apis` lists extension contracts (api.ts, refs.ts) with summaries and `api` returns one extension's by `name`, each file under a header. " +
           'Start from an event or a call, take its trace id and read the tree. Read-only; one line per row, ages relative; `limit` defaults to 20 events or 50 rows.',
         parameters: obj({
-          call: oneOf(['events', 'reactors', 'catalogue', 'trace', 'apis', 'api']),
+          call: strEnum(['events', 'reactors', 'catalogue', 'trace', 'apis', 'api']),
           events: opt(
             arr(str({ minLength: 1 }), {
               description: 'events: event names to keep.',

@@ -10,16 +10,18 @@ import {
   map,
   num,
   obj,
-  oneOf,
   opt,
   str,
   union,
   unknown,
 } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import { identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { fetchText, sourceFrames } from '../../lib/source-frames.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -49,8 +51,9 @@ export async function browserBinary() {
     process.env.ULTIMATE_CHROMIUM,
     '/usr/bin/chromium',
     '/usr/bin/google-chrome-stable',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    // Before Google Chrome: on a managed Mac its policy can disallow remote debugging, and it then drops every page.
     ...(await playwrightChromiums(homedir())),
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter((path): path is string => !!path)
   for (const path of candidates) {
     try {
@@ -95,6 +98,31 @@ function within<T>(ms: number, work: Promise<T>, error = timeout(ms)) {
       timer = setTimeout(() => reject(error), Math.max(0, ms))
     }),
   ]).finally(() => clearTimeout(timer))
+}
+
+/** The browser's process, which leads its own group, and its start time, which tells it from a later one with its pid. */
+async function browserProcess(browser: Browser) {
+  const cdp = await browser.newBrowserCDPSession()
+  const { processInfo } = (await cdp.send('SystemInfo.getProcessInfo')) as {
+    processInfo: { type: string; id: number }[]
+  }
+  await cdp.detach()
+  const pid = processInfo.find((info) => info.type === 'browser')?.id
+  const start = pid === undefined ? undefined : identify(pid)
+  return pid === undefined || start === undefined ? undefined : { pid, start }
+}
+
+/**
+ * Kill a disconnected browser's process group. A browser can drop its connection and keep running (Chrome does when
+ * its policy disallows remote debugging), and Playwright never closes a disconnected browser.
+ */
+function killGroup(owner: { pid: number; start: string } | undefined) {
+  if (!owner || identify(owner.pid) !== owner.start) return
+  try {
+    process.kill(-owner.pid, 'SIGKILL')
+  } catch {
+    // The group exited since (ESRCH), or only zombies are left of it (EPERM on Darwin).
+  }
 }
 
 async function capture(page: Page, file: string, selector?: string, fullPage = false) {
@@ -160,7 +188,7 @@ export default function browserExtension(host: ExtensionHost) {
           fullPage: opt(bool()),
           selector: opt(str()),
           waitMs: opt(int({ minimum: 0 })),
-          theme: opt(oneOf(['light', 'dark'])),
+          theme: opt(strEnum(['light', 'dark'])),
         }),
         async execute(args, api, context) {
           const waitMs = args.waitMs ?? 1500
@@ -365,12 +393,23 @@ export default function browserExtension(host: ExtensionHost) {
             const browser = await chromium.launch({
               executablePath,
               headless: true,
+              chromiumSandbox: process.env.ULTIMATE_CHROMIUM_SANDBOX !== '0',
               // Chromium's singleton socket needs a short system temp path. Playwright still puts the profile in our TMPDIR.
               env: { ...process.env, TMPDIR: undefined },
             })
             if (state.launched === launched) state.browser = browser
+            // Looked up beside the call, which need not wait for it. It takes milliseconds; a policy drop comes seconds in.
+            const owner = browserProcess(browser).catch(() => undefined)
             browser.once('disconnected', () => {
-              if (state.launched === launched) state.launched = undefined
+              if (state.launched === launched) {
+                state.launched = undefined
+                state.browser = undefined
+              }
+              owner
+                .then(killGroup)
+                .catch((error: unknown) =>
+                  host.notice(`Killing a disconnected browser failed: ${String(error)}`),
+                )
             })
             return browser
           })
@@ -414,6 +453,15 @@ export default function browserExtension(host: ExtensionHost) {
       await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
       const result = await action(page, outcomes, png, guard)
       const title = await guard(page.title())
+      // Errors name source files and lines, as dev tools show them, not positions in the bundle.
+      const maps = new Map()
+      outcomes.splice(
+        0,
+        outcomes.length,
+        ...(await guard(
+          Promise.all(outcomes.map((outcome) => sourceFrames(outcome, fetchText, maps))),
+        )),
+      )
       context.abortSignal?.throwIfAborted()
       return {
         structuredContent: {
@@ -456,14 +504,15 @@ export default function browserExtension(host: ExtensionHost) {
     try {
       await within(closeTimeoutMs, isolated.close())
     } catch (error) {
-      host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       const browser = isolated.browser()
-      if (!browser) return
+      // A browser that disconnected took the context with it, and its disconnect killed it.
+      if (!browser?.isConnected()) return
+      host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       if (state.browser === browser) {
         state.launched = undefined
         state.browser = undefined
       }
-      // Closing kills the process too; a browser that won't even do that is left to the host's shutdown.
+      // Closing kills the process too; Playwright kills one that won't close within 30 s.
       await within(closeTimeoutMs, browser.close()).catch((reason: unknown) =>
         host.notice(`Closing the wedged browser failed: ${String(reason)}`),
       )

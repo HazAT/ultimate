@@ -8,10 +8,10 @@ chats). The conversations the `sidebar.unlisted` point names (side-chat names ev
 other list (`listed.ts`).
 
 Every standing agent's row leads with its mark (conversations' `AgentMark`): a small tinted tile with a glyph — a brand
-`U` for @ultimate (the title bar's wordmark), a green merge for the lander,
+`U` for @ultimate (the title bar's wordmark, or its definition `title`'s first letter), a green merge for the lander,
 its definition's `icon` and `tint` for any other resident, else a bot — with a presence dot in its corner (pulsing while it works or lands, amber while it
-waits on you). Then a fixed display name (`Ultimate`, `Lander`, else the name capitalised) with
-`@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
+waits on you). Then its display name (its definition's `title`, else the ULTIMATE wordmark for @ultimate, `Lander`, or
+the name capitalised) with `@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
 
 The **project** heads the sidebar: its path from home (or `<project> #<worktree>`, the full path on hover) with a quiet
 `History #id` on the right, and its root's **Memory** row under it, as one block. Clicking the path opens the root's

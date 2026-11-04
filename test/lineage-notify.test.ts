@@ -98,6 +98,34 @@ it.concurrent('re-armed on an idle target, waits for its next answer instead of 
   expect(delivered[1].data).toMatchObject({ from: other.id, text: 'echo Second' })
 })
 
+it.concurrent('does not repeat an answer the caller already received as a reply', async () => {
+  const { server } = await notifyFixture()
+  const other = await second(server)
+  await ask(
+    server,
+    ROOT_CONVERSATION_ID,
+    `SEND ${JSON.stringify({ to: `#${other.id}`, text: 'Dry run' })}`,
+  )
+  await until(async () => (await kinds(server, ROOT_CONVERSATION_ID)).includes('board.reply'))
+  await other.waitForIdle(context)
+  await server.root.waitForIdle(context)
+
+  await ask(server, ROOT_CONVERSATION_ID, `NOTIFY ${JSON.stringify({ id: other.id })}`)
+  await server.root.waitForIdle(context)
+  expect(await kinds(server, ROOT_CONVERSATION_ID)).not.toContain('lineage.finished')
+  expect(await pendingNotifies(server)).toHaveLength(1)
+
+  // Its next answer is new to the caller: that one is delivered.
+  await ask(server, other.id, 'Published')
+  await until(async () => (await pendingNotifies(server)).length === 0)
+  const finished = (await server.root.context(context)).entries.filter(
+    (entry) => entry.kind === 'lineage.finished',
+  )
+  expect(finished.map((entry) => entry.data)).toEqual([
+    { from: other.id, title: expect.any(String), text: 'echo Published' },
+  ])
+})
+
 it.concurrent('a replacing notify finds the delivery its aborted predecessor made before recording it', async () => {
   const { server } = await notifyFixture()
   const other = await second(server)

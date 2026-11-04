@@ -55,7 +55,7 @@ Workers start with no context. Every brief states:
 5. "Do not expand scope. Report problems instead of working around them."
 6. What to return: conclusions with file:line evidence, not raw dumps.
 
-Start a designer's preview yourself with `instance start {subagent: <designer id>}` on its worktree and hand it the URL; the preview hot-reloads as the designer saves, and workers and designers cannot start instances.
+Start a designer's preview yourself with `instance start {subagent: <designer id>}` on its worktree and hand it the URL; the preview switches to each save about 2 s later, and workers and designers cannot start instances.
 
 The worker can only be as good as its brief. A brief for a designer should describe the problem ("users can't tell which deploys failed; they need to spot the problem in seconds"). It shouldn't give a pixel spec ("add a red badge to the left of each row"). Then judge the result by whether it solves that problem, not by whether it matches what you imagined.
 

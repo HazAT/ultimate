@@ -61,6 +61,20 @@ if (sessionStorage.getItem('ultimate.driven') === '1') window.ultimate = createT
 /** Installed web facets of `extensions/*`. */
 export const registry = createRegistry()
 
+/** The web bundle this page runs (`server/web.ts` names it in the page). */
+export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content
+/** How long the status line shows "ready · switching" before the page reloads onto a new bundle. */
+const switchDelay = 600
+let switching = false
+/** What a page tells the next one about why it reloaded: the sources that changed, for the update toast. */
+const switchKey = 'ultimate.web-switch'
+/** Set when this page load is a switch to a new bundle: when, and the sources that changed. */
+export const switched = ((): { at: number; changed: string[] } | undefined => {
+  const stored = sessionStorage.getItem(switchKey)
+  sessionStorage.removeItem(switchKey)
+  const value = stored ? (JSON.parse(stored) as { at: number; changed: string[] }) : undefined
+  return value && Date.now() - value.at < 30000 ? value : undefined
+})()
 /** The server process the UI state came from: another one may have started from other storage. */
 let server: string | undefined
 /** The previous process's UI state, still in the store until the new stream's `ui` replaces it. */
@@ -68,6 +82,17 @@ let stale: unknown
 store.subscribe(() => {
   const { shared, ui, system } = store.getState()
   if (system && !registry.getReady().ready) registry.receiveSystem()
+  // A newer bundle is current: switch to it. The reload resumes on the view it leaves (resume.ts), drafts included.
+  if (system?.web.id && bundle && system.web.id !== bundle) {
+    if (switching) return
+    switching = true
+    sessionStorage.setItem(
+      switchKey,
+      JSON.stringify({ at: Date.now(), changed: system.web.changed }),
+    )
+    setTimeout(() => location.reload(), switchDelay)
+    return
+  }
   // The stream sends `system` before `ui`, so a new process's snapshot finds the revisions forgotten.
   const process = system && `${system.process.pid}:${system.process.generation}`
   if (process !== server) {
@@ -142,7 +167,3 @@ addEventListener('unhandledrejection', (event) => {
   event.preventDefault()
   store.notify({ level: 'error', message: actionMessage(event.reason) })
 })
-
-// These singletons own the live stream: a change to them reloads the page rather than run a second copy. The new
-// module only constructs (nothing connects before `start()`), then the page reloads.
-import.meta.hot?.accept(() => location.reload())

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
 import { fauxServer, removeTemp, temp, until } from './helpers.ts'
@@ -8,7 +8,7 @@ afterAll(async () => {
   for (const home of homes.splice(0)) await removeTemp(home)
 })
 
-it('generates the classes of a project extension folder created while the host runs', async () => {
+it('builds the classes of a project extension folder created while the host runs', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')
@@ -20,7 +20,11 @@ it('generates the classes of a project extension folder created while the host r
     home: join(home, 'state'),
   })
   try {
-    const css = async () => (await fetch(`${server.url}/src/index.css`)).text()
+    const css = async () => {
+      const page = await (await fetch(server.url)).text()
+      const sheet = /href="(\/assets\/[^"]+\.css)"/.exec(page)![1]
+      return (await fetch(server.url + sheet)).text()
+    }
     expect(await css()).not.toContain('37deg')
     const dir = join(projectRoot, '.ultimate/extensions/scratch')
     await mkdir(dir, { recursive: true })
@@ -28,7 +32,11 @@ it('generates the classes of a project extension folder created while the host r
       join(dir, 'web.tsx'),
       'export const Chevron = () => <span className="rotate-[37deg]" />\n',
     )
+    // No page is open: a page load after the change builds the new bundle.
     await until(async () => (await css()).includes('37deg'))
+    const bundles = await readdir(join(home, 'state/web'))
+    const manifest = JSON.parse(await readFile(join(home, 'state/web/manifest.json'), 'utf8'))
+    expect(bundles).toContain(manifest.id)
   } finally {
     await server.close()
   }

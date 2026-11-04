@@ -1,7 +1,8 @@
 import type { JsonValue } from '@earendil-works/chord'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import { obj, opt, str } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import {
   configure,
   defineExtension,
@@ -229,7 +230,7 @@ export default function workspaceExtension(host: ExtensionHost) {
         description:
           'Inspect your workspace and source tips, or submit your clean, verified tip to the lander (submit requires divergence from the original request).',
         parameters: obj({
-          action: oneOf(['status', 'submit']),
+          action: strEnum(['status', 'submit']),
           divergence: opt(
             str({
               description:

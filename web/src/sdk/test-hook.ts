@@ -26,7 +26,7 @@ interface Sent {
   ran: boolean
 }
 
-/** Where a page keeps its sent records, so a reload mid-wait (hot reload, server swap) still waits for the sent turn. */
+/** Where a page keeps its sent records, so a reload mid-wait (new web bundle, server swap) still waits for the sent turn. */
 const SENT_KEY = 'ultimate.sent'
 
 export function createTestHook(store: Store, api: Api) {

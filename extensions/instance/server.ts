@@ -18,7 +18,8 @@ import { basename, join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Context } from '@earendil-works/chord'
-import { int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import { int, obj, opt, str } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { ConversationId, ToolExecutionApi } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionAction } from '../../server/actions.ts'
@@ -646,7 +647,7 @@ export default function instanceExtension(
         description:
           'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree.',
         parameters: obj({
-          action: oneOf(['start', 'stop', 'logs', 'list']),
+          action: strEnum(['start', 'stop', 'logs', 'list']),
           id: opt(str()),
           home: opt(str()),
           subagent: opt(int({ minimum: 1 })),
