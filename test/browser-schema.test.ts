@@ -1,27 +1,38 @@
 import { createModels, toToolDeclaration } from '@earendil-works/pi-ai'
 import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic'
+import { opencodeGoProvider } from '@earendil-works/pi-ai/providers/opencode-go'
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
+import { compile } from '@earendil-works/pi-schema'
 import { expect, it, vi } from 'vitest'
 import browserExtension from '../extensions/browser/server.ts'
+import subagents from '../extensions/subagents/server.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 
-it('emits draft-2020-compatible browser fill schemas for Anthropic and OpenRouter', async () => {
+it('preserves browser fill and typed tool enum schemas in provider payloads', async () => {
   const host = {
     resource: <T>(_name: string, create: () => T) => create(),
     onClose() {},
+    onOpen() {},
+    need: vi.fn<ExtensionHost['need']>(),
+    implement: vi.fn<ExtensionHost['implement']>(),
   } as unknown as ExtensionHost
-  const tools = browserExtension(host).tools?.map(toToolDeclaration)
+  const tools = [
+    ...browserExtension(host).tools!,
+    subagents(host).tools!.find((tool) => tool.name === 'subagent')!,
+  ].map(toToolDeclaration)
   const models = createModels()
   models.setProvider(anthropicProvider())
   models.setProvider(openrouterProvider())
-  for (const [provider, modelId] of [
-    ['anthropic', 'claude-opus-4-6'],
-    ['openrouter', 'anthropic/claude-opus-4.6'],
+  models.setProvider(opencodeGoProvider())
+  for (const [provider, modelId, api] of [
+    ['anthropic', 'claude-opus-4-6', 'anthropic-messages'],
+    ['openrouter', 'anthropic/claude-opus-4.6', 'anthropic-messages'],
+    ['opencode-go', 'kimi-k3.1-pro', 'openai-completions'],
   ]) {
     const model = models.getModel(provider, modelId)
     if (!model) throw new Error(`Missing test model ${provider}/${modelId}`)
-    expect(model.api).toBe('anthropic-messages')
-    let schemas: { name: string; input_schema: unknown }[] = []
+    expect(model.api).toBe(api)
+    let schemas: { name: string; parameters: object }[] = []
     const forbiddenFetch = vi.fn<typeof fetch>(async () => {
       throw new Error('Network forbidden')
     })
@@ -36,14 +47,26 @@ it('emits draft-2020-compatible browser fill schemas for Anthropic and OpenRoute
         maxRetries: 0,
         fetch: forbiddenFetch,
         onPayload(payload) {
-          schemas = (JSON.parse(JSON.stringify(payload)) as { tools: typeof schemas }).tools
+          // Capture adapter output only; this is not a live provider acceptance test.
+          const { tools: payloadTools } = JSON.parse(JSON.stringify(payload)) as {
+            tools: {
+              name: string
+              input_schema: object
+              function: { name: string; parameters: object }
+            }[]
+          }
+          schemas = payloadTools.map((tool) =>
+            api === 'openai-completions'
+              ? tool.function
+              : { name: tool.name, parameters: tool.input_schema },
+          )
           throw new Error('Schema captured')
         },
       },
     )
     expect(result.errorMessage).toContain('Schema captured')
     expect(forbiddenFetch).not.toHaveBeenCalled()
-    expect(schemas.find((tool) => tool.name === 'browser')?.input_schema).toHaveProperty(
+    expect(schemas.find((tool) => tool.name === 'browser')?.parameters).toHaveProperty(
       'properties.steps.items.anyOf.1.properties.fill',
       {
         type: 'array',
@@ -53,5 +76,27 @@ it('emits draft-2020-compatible browser fill schemas for Anthropic and OpenRoute
         description: '[selector, value]',
       },
     )
+    const screenshotSchema = schemas.find((tool) => tool.name === 'screenshot')!.parameters
+    const subagentSchema = schemas.find((tool) => tool.name === 'subagent')!.parameters
+    // The observed Moonshot errors named these four properties: "type is not defined".
+    expect(screenshotSchema).toHaveProperty('properties.theme.type', 'string')
+    for (const field of ['action', 'thinking', 'isolate']) {
+      expect(subagentSchema).toHaveProperty(`properties.${field}.type`, 'string')
+    }
+
+    const screenshotArgs = compile(screenshotSchema)
+    expect(screenshotArgs.check({})).toBe(true)
+    expect(screenshotArgs.check({ theme: 'light' })).toBe(true)
+    expect(screenshotArgs.check({ theme: 'dark' })).toBe(true)
+    expect(screenshotArgs.check({ theme: 'sepia' })).toBe(false)
+
+    const subagentArgs = compile(subagentSchema)
+    expect(subagentArgs.check({ action: 'list' })).toBe(true)
+    expect(subagentArgs.check({ action: 'start', thinking: 'low', isolate: 'none' })).toBe(true)
+    expect(subagentArgs.check({ action: 'start', thinking: 'max', isolate: 'worktree' })).toBe(true)
+    expect(subagentArgs.check({})).toBe(false)
+    expect(subagentArgs.check({ action: 'unknown' })).toBe(false)
+    expect(subagentArgs.check({ action: 'start', thinking: 'unknown' })).toBe(false)
+    expect(subagentArgs.check({ action: 'start', isolate: 'unknown' })).toBe(false)
   }
 })
