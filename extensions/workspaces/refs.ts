@@ -57,6 +57,8 @@ export type LandedData = {
   paths: string[]
   /** `<remote>/<target>` it was pushed to; absent when not pushed or the push failed. */
   pushed?: string
+  /** The submitter's screenshots as evidence, from its conversation's entry. */
+  images?: { entry: number }
 }
 /**
  * The lander landed a submission: the target moved to `sha`. Emitted in the commit that records the outcome, also when

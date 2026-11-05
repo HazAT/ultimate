@@ -111,6 +111,12 @@ the main keeps working. The submission saves `divergence` and `at`, the submitte
 time, as a breadcrumb. One `workspaces.lander` task per source checkout (`landers`) processes that source's entries
 in order.
 
+`workspace submit` also accepts `images` (`"latest"` or an entry id): screenshots from the submitter's conversation,
+validated like forwarded images (at most 4, 2 MiB each). They stay in that entry and ride on the outcome as a
+reference, so every card that shows the landing — the submitter's, the starter's, the lander log's and the root's
+note — shows up to four of them as evidence. A UI diff (`web/` or an extension's `web.tsx`) submitted without them
+gets a nudge to attach before/after screenshots.
+
 The task runs in that source's lander conversation (`landerConversations`): ownerless, titled "@lander",
 labelled `lander`, its cwd the lander checkout. The project's checkout has one from the moment the extension opens
 (idempotently, the same record submit uses); another source gets its own on its first submit. It has no workspace and
@@ -134,7 +140,7 @@ conversation; it keeps the full log, grouped by submission, and shows in the Age
 The commit that records a landed outcome (also when only its push failed) emits the durable event
 `workspaces.landed` (`SubmissionLanded` in `api.ts`): submission, submitter and its `at`, `sha`, `base`, `target`,
 lander, divergence, the submit-time title, summary and feature, the first ten commits with `commitCount`, the first
-eight paths and `pushed`. Failures emit nothing. Each check run, a rerun included, emits `workspaces.check`
+eight paths, `pushed`, and the submitter's screenshots (`images`, a reference to its entry). Failures emit nothing. Each check run, a rerun included, emits `workspaces.check`
 (`CheckRan`): submission, command, `passed`, `failed`, `flaky` or `timeout` (a watchdog stopped it) and its `ms`, in the
 commit that logs its result. Lineage reacts to it with a landing note in the submitter's tree
 root, exactly once, unless the submitter is that root or has none; the lander itself calls no lineage service. Its

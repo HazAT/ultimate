@@ -403,8 +403,10 @@ export function createLander(
             const steps = draft.queue.find((item) => item.id === id)!.steps
             draft.queue = draft.queue.filter((item) => item.id !== id)
             if (outcome.sha) draft.items[String(entry.conversationId)].landed = outcome.sha
+            // The submitter's screenshots ride on the outcome, so every card that shows this landing shows them.
+            const full = { ...outcome, ...(entry.images ? { images: entry.images } : {}) }
             draft.results[id] = {
-              ...outcome,
+              ...full,
               at: entry.at,
               divergence: entry.divergence,
               target: entry.target,
@@ -415,7 +417,7 @@ export function createLander(
               ...(entry.subject ? { subject: entry.subject } : {}),
             }
             for (const old of Object.keys(draft.results).slice(0, -kept)) delete draft.results[old]
-            await log(tx, runtime.conversationId, entry, outcome)
+            await log(tx, runtime.conversationId, entry, full)
             if (outcome.outcome === 'landed') {
               const subject = entry.subject ?? {}
               const commits = (outcome.commits ?? []).map((commit) => {
@@ -441,6 +443,7 @@ export function createLander(
                 commitCount: commits.length,
                 paths: (outcome.paths ?? []).slice(0, 8),
                 ...(outcome.pushed ? { pushed: outcome.pushed } : {}),
+                ...(entry.images ? { images: entry.images } : {}),
               })
             }
             return {

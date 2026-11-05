@@ -1,7 +1,7 @@
 import type { JsonValue } from '@earendil-works/chord'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { obj, opt, str } from '@earendil-works/pi-schema'
+import { int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
   configure,
@@ -237,8 +237,14 @@ export default function workspaceExtension(host: ExtensionHost) {
                 "Required for submit. How the delivered result differs from what was originally asked: new agreements, a different approach or library, changed scope. Say 'None' when it matches.",
             }),
           ),
+          images: opt(
+            union([lit('latest'), int({ minimum: 1 })], {
+              description:
+                'Submit screenshots from this conversation as the landing\'s evidence: "latest" for the newest images of this turn (your before/after screenshots since the last input) or the id of an entry that holds them. At most 4 images.',
+            }),
+          ),
         }),
-        async execute({ action, divergence }, api, caller) {
+        async execute({ action, divergence, images }, api, caller) {
           if (action === 'status')
             return finish({
               conversationId: api.conversationId,
@@ -255,7 +261,7 @@ export default function workspaceExtension(host: ExtensionHost) {
             )
               throw new Error(`Only a top-level main conversation can ${action} its own workspace`)
           }, caller)
-          return finish(await service.submit(api.conversationId, divergence ?? '', caller))
+          return finish(await service.submit(api.conversationId, divergence ?? '', caller, images))
         },
       }),
     ],
@@ -271,7 +277,7 @@ export default function workspaceExtension(host: ExtensionHost) {
           .commit((tx) => tx.conversation(input.conversationId), caller)
         if (row?.owner)
           return `${head} You are a subagent: commit your verified work in this worktree and report the commit to your owner, who lands it. Only a top-level conversation can \`workspace submit\`.`
-        return `${head} Finish with \`workspace submit\` once your tip is committed and verified: the lander merges it into ${own.target} with whatever landed meanwhile, runs the project's checks, fast-forwards ${own.target} and pushes when configured; keep working meanwhile and do not merge ${own.target} yourself first. A failure comes back to you as a message: fix it and submit again. A landing reaches whoever started you as its card, and concludes you unless other work is still under way.`
+        return `${head} Finish with \`workspace submit\` once your tip is committed and verified: the lander merges it into ${own.target} with whatever landed meanwhile, runs the project's checks, fast-forwards ${own.target} and pushes when configured; keep working meanwhile and do not merge ${own.target} yourself first. A change that touches the UI (web/ or an extension's web.tsx) captures before/after screenshots with \`screenshot\` and submits them with \`images: 'latest'\` as the landing's evidence. A failure comes back to you as a message: fix it and submit again. A landing reaches whoever started you as its card, and concludes you unless other work is still under way.`
       }),
     ],
   })

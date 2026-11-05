@@ -16,6 +16,8 @@ import { git, isolatable } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branches } from './api.ts'
+import { capturesApply, resolveEvidence } from './evidence.ts'
+import type { ImagesRef } from './evidence.ts'
 import { WorkspacesDoc } from './refs.ts'
 import { setup } from './setup.ts'
 import {
@@ -794,6 +796,7 @@ export function workspaces(host: Host) {
     id: ConversationId,
     divergence: string,
     context: Context,
+    images?: ImagesRef,
   ): Promise<SubmitResult> {
     if (!divergence?.trim())
       throw new Error(
@@ -808,6 +811,13 @@ export function workspaces(host: Host) {
     if ((await git(workspace.path, 'symbolic-ref', '--short', 'HEAD')) !== workspace.branch)
       throw new Error('Workspace branch changed')
     const tip = await git(workspace.path, 'rev-parse', 'HEAD')
+    // A UI diff submitted without screenshots gets told so; capturing them stays the submitter's own work.
+    const uiPaths =
+      images === undefined
+        ? (await git(workspace.path, 'diff', '--name-only', '--no-renames', workspace.base, tip))
+            .split('\n')
+            .filter(Boolean)
+        : undefined
     const path = await landerPath(host.home, workspace.source, await host.projectSettings())
     const subject = await host.need(ConversationsApi).subject(id, context)
     const result = await host.harness().commit(async (tx) => {
@@ -817,6 +827,8 @@ export function workspaces(host: Host) {
       const at = (await tx.scanEntries({ conversationId: id }, 1)).items[0]?.id
       if (at === undefined)
         throw new Error('Submitting requires a conversation entry for its breadcrumb')
+      // Reads stay ahead of the first write; the evidence validates before anything queues.
+      const evidence = images === undefined ? undefined : await resolveEvidence(tx, id, images)
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       const { source, target } = index.items[String(id)]
       // Reads first: a transaction cannot read tables after its first write.
@@ -835,12 +847,17 @@ export function workspaces(host: Host) {
         divergence,
         state: 'queued' as const,
         ...(subject ? { subject } : {}),
+        ...(evidence ? { images: evidence } : {}),
         steps: [],
       }
       if (!queued) {
         await log(tx, lander, entry, { step: 'queued' })
         index.queue.push(entry)
-      }
+      } else if (evidence) queued.images = evidence
+      const nudge =
+        uiPaths && capturesApply(uiPaths)
+          ? ' The diff touches the UI: submit again with `images` ("latest" or a screenshot entry id) to land before/after screenshots as its evidence.'
+          : ''
       if (stopped) await startLander(tx, index, source)
       const position = index.queue
         .filter((item) => item.source === source)
@@ -849,7 +866,7 @@ export function workspaces(host: Host) {
         id: entry.id,
         position: position + 1,
         lander,
-        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
+        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue.${nudge} A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
       }
     }, context)
     host.harness().resume()

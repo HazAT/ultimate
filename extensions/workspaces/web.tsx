@@ -26,6 +26,7 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
     more,
     pushed,
     abstract,
+    images,
   } = entry.data as {
     from: number
     at?: number
@@ -41,6 +42,7 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
     more: number
     pushed?: string
     abstract?: { at: number; text: string }
+    images?: { entry: number }
   }
   const github = useGithubRepo()
   // A note from before landings recorded their base: the landing before it, where the lander's serial queue left the
@@ -63,6 +65,7 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
         card={entry.id}
         sha={sha}
         from={from}
+        images={images}
         sourceEntry={at}
         divergence={divergence}
         headline={
