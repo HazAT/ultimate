@@ -5,11 +5,13 @@ import { Kbd } from '@/components/ui/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   api,
+  BrandName,
   cn,
   defineWebExtension,
   errorMessage,
   getConversation,
   getState,
+  Provided,
   useDialog,
   useTranscript,
   useUltimate,
@@ -57,11 +59,15 @@ function ModelButton() {
           loading ? undefined : ref ? 'text-foreground/85' : 'text-warning',
         )}
       >
-        {loading
-          ? 'model…'
-          : family
-            ? `${familyTitle(family.name)} (${ref!.modelId})`
-            : (ref?.modelId ?? 'no model')}
+        {loading ? (
+          'model…'
+        ) : family ? (
+          <Provided input={null} point={BrandName}>
+            {(brand) => `${familyTitle(family.name, brand)} (${ref!.modelId})`}
+          </Provided>
+        ) : (
+          (ref?.modelId ?? 'no model')
+        )}
       </span>
       <ChevronDownIcon className="size-3 shrink-0 opacity-60 @max-md:hidden" />
     </button>

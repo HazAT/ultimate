@@ -135,10 +135,10 @@ export const refOf = (value: string | undefined): ModelRef | undefined => {
 }
 export const refName = (ref: ModelRef) => `${ref.provider}/${ref.modelId}`
 
-/** "fast" → "Fast", "my-local" → "My local"; the default family is shown as "Ultimate". */
-export const familyTitle = (name: string) =>
+/** "fast" → "Fast", "my-local" → "My local"; the default family is shown as `brand`, else "Ultimate". */
+export const familyTitle = (name: string, brand?: string) =>
   name === DEFAULT_FAMILY
-    ? 'Ultimate'
+    ? brand || 'Ultimate'
     : name.charAt(0).toUpperCase() + name.slice(1).replaceAll('-', ' ')
 
 /** The CSS color of a family color name; an unknown name is slate. */

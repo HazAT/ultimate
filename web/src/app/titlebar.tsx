@@ -16,7 +16,8 @@ import { actions } from '../sdk/actions.ts'
 import { shortenPath } from '../sdk/format.ts'
 import { useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { Slot } from './boundary.tsx'
+import { BrandName } from '../sdk/types.ts'
+import { Provided, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
 import { sidebarWidthBeyondPhone } from './primitives.tsx'
 
@@ -109,14 +110,21 @@ function Project() {
 }
 
 const wordmark =
-  'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[11px] font-semibold tracking-[0.28em] text-brand'
+  'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[11px] font-semibold tracking-[0.28em] text-brand uppercase'
+
+/** The wordmark's word: ULTIMATE, or @ultimate's definition title (`BrandName`); blank while that is still unknown. */
+const BrandWord = () => (
+  <Provided input={null} point={BrandName}>
+    {(name) => name ?? 'ULTIMATE'}
+  </Provided>
+)
 
 /** The ULTIMATE wordmark beyond a phone; with `onClick` a button, for an extension that fills `titlebar.brand`. */
 export function Wordmark({ onClick, label }: { onClick?: () => void; label?: string }) {
   if (!onClick)
     return (
       <span className={wordmark} data-ui="wordmark">
-        ULTIMATE
+        <BrandWord />
       </span>
     )
   return (
@@ -132,7 +140,7 @@ export function Wordmark({ onClick, label }: { onClick?: () => void; label?: str
           onClick={onClick}
           type="button"
         >
-          ULTIMATE
+          <BrandWord />
         </button>
       </TooltipTrigger>
       {label && <TooltipContent>{label}</TooltipContent>}
@@ -166,7 +174,7 @@ function Brand() {
             title="Switch surface"
             type="button"
           >
-            ULTIMATE
+            <BrandWord />
             {current && current.id !== HOME && (
               <span className="flex items-center gap-1.5 text-[12px] font-medium tracking-normal text-foreground">
                 {Icon && <Icon className="size-3.5 text-muted-foreground" />}

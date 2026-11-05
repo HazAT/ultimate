@@ -35,7 +35,7 @@ import { touchKeyboard } from '../sdk/viewport.ts'
 import { imageMimeTypes, type ModelsResponse } from '../../../shared/protocol.ts'
 import { ExtensionBoundary, Provided, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
-import { FileUpload } from '../sdk/types.ts'
+import { BrandName, FileUpload } from '../sdk/types.ts'
 import { column } from './layout.ts'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
@@ -270,25 +270,37 @@ function clearDraft(
 }
 
 type Upload = typeof FileUpload.value
-/** Hands the provided upload to the editor beside it: a provider installing late never remounts the editor mid-attach. */
-function UploadBridge({ value, set }: { value: Upload; set: (value: Upload) => void }) {
+/** Hands a provided value to the editor beside it: a provider installing late never remounts the editor mid-attach. */
+function Bridge<Value>({ value, set }: { value: Value; set: (value: Value) => void }) {
   useEffect(() => set(value), [value, set])
   return null
 }
 
 function ConversationComposer({ dock }: { dock?: boolean }) {
   const [upload, setUpload] = useState<Upload>()
+  const [brand, setBrand] = useState<string>()
   return (
     <>
       <Provided input={null} point={FileUpload}>
-        {(value) => <UploadBridge set={setUpload} value={value} />}
+        {(value) => <Bridge set={setUpload} value={value} />}
       </Provided>
-      <ComposerEditor dock={dock} upload={upload} />
+      <Provided input={null} point={BrandName}>
+        {(value) => <Bridge set={setBrand} value={value} />}
+      </Provided>
+      <ComposerEditor brand={brand} dock={dock} upload={upload} />
     </>
   )
 }
 
-function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
+function ComposerEditor({
+  brand,
+  dock,
+  upload,
+}: {
+  brand: string | undefined
+  dock?: boolean
+  upload: Upload
+}) {
   const { id, agent, busy, loading, inbox } = useConversation()
   const queued = inbox.filter((item) => item.mode !== 'write')
   const scoped = useContext(ConversationIdContext)
@@ -490,7 +502,9 @@ function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
           onKeyDown={onKeyDown}
           placeholder={
             target?.placeholder ??
-            (busy ? 'Steer the run, or queue a follow-up…' : 'Ask Ultimate to change something…')
+            (busy
+              ? 'Steer the run, or queue a follow-up…'
+              : `Ask ${brand || 'Ultimate'} to change something…`)
           }
           value={text}
         />

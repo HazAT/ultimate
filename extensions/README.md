@@ -202,7 +202,8 @@ and while none does the render prop gets `undefined`. A point that combines its 
 @ultimate) renders `<AllProvided point input>{(values) => …}</AllProvided>` instead: every provider's value in discovery
 order, a throwing one left out behind its inline error card. The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
-branches `branch · coordinator`) and `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is an extension point
+branches `branch · coordinator`), `BrandName` (what the wordmark, the empty state, the composer and the default model
+family call the agent; conversations gives @ultimate's definition title) and `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is an extension point
 ([docs/extensions.md](../docs/extensions.md#extension-apis)).
 
 The provider calls `host.implement(Echo, { echo: (text) => text })` in its factory; it is staged, replaced and

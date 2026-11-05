@@ -260,6 +260,11 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * What core calls the agent where it prints the product name: @ultimate's definition `title` (`conversations` provides
+ * it from its marks doc), empty while that doc is unknown. Undefined, as without a title, shows ULTIMATE.
+ */
+export const BrandName = definePoint<null, string | undefined>('ultimate.brand')
+/**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */

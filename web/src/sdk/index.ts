@@ -4,6 +4,7 @@
  */
 export {
   attention,
+  BrandName,
   ConversationKind,
   defineWebExtension,
   definePoint,

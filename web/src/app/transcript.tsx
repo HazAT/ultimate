@@ -52,7 +52,7 @@ import {
 import { entryRenderers, messageItems, toolLine } from '../sdk/registry.ts'
 import { covered } from '../sdk/resume.ts'
 import { ExtensionBoundary, Provided, Slot } from './boundary.tsx'
-import { ParkedRuns, RunStart } from '../sdk/types.ts'
+import { BrandName, ParkedRuns, RunStart } from '../sdk/types.ts'
 import type { CompactSummaryProps } from '../sdk/types.ts'
 import { MessageActions } from './message-actions.tsx'
 import { textOf, UserView } from './user-turn.tsx'
@@ -1063,8 +1063,13 @@ function EmptyState() {
   return (
     <ConversationEmptyState className="min-h-[55vh]">
       <div className="w-full max-w-md font-mono text-[12px]" data-ui="empty-state">
-        <div className="text-[13px] font-semibold tracking-[0.3em] text-brand" data-ui="wordmark">
-          ULTIMATE
+        <div
+          className="text-[13px] font-semibold tracking-[0.3em] text-brand uppercase"
+          data-ui="wordmark"
+        >
+          <Provided input={null} point={BrandName}>
+            {(name) => name ?? 'ULTIMATE'}
+          </Provided>
         </div>
         <div className="mt-1 font-sans text-[13px] text-muted-foreground">
           {!system || system.project.root === system.code.ultimateRoot
