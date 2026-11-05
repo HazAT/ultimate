@@ -61,6 +61,9 @@ it('times out a hung step, closes its page and keeps later calls working', async
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   const url = 'data:text/html,<title>Hang</title>'
+  // A cold launch takes seconds on a quiet runner, and the timed calls' 1s budget bounds the
+  // launch too (the guard wraps it): warm the browser once outside the timed calls.
+  await browser.execute({ url, steps: [{ eval: '1' }] }, api, context)
   const drive = async (steps: unknown[], timeoutMs?: number) => {
     const started = Date.now()
     const result = await browser.execute({ url, steps, screenshot: false, timeoutMs }, api, context)
@@ -102,6 +105,8 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
   const api = (env = true) =>
     ({ env: env ? { cwd } : undefined, output() {} }) as unknown as ToolExecutionApi
   const url = 'data:text/html,<title>Shot</title><p>hello</p>'
+  // Warm the browser outside the screenshot calls: a cold launch takes seconds on a quiet runner.
+  await tools.get('browser')!.execute({ url, steps: [{ eval: '1' }] }, api(), context)
   const file = async (name: string, args: Record<string, unknown>, env?: boolean) => {
     const result = await tools.get(name)!.execute({ url, waitMs: 0, ...args }, api(env), context)
     expect(result.isError).toBeFalsy()
