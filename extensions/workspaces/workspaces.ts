@@ -754,12 +754,11 @@ export function workspaces(host: Host) {
       const { source, target } = index.items[String(id)]
       const idleReadBeforeWrites = await landerIdle(tx, index, source)
       const lander = await ensureLanderBeforeWrites(tx, index, source, target, path)
-      // A resubmit replaces this conversation's entries still waiting (never a landing one) and takes the first one's place.
       const waiting = index.queue.filter(
         (item) => item.conversationId === id && item.state === 'queued',
       )
       const queued = waiting.find((item) => item.tip === tip)
-      const replaced = queued ? [] : waiting
+      const replaced = waiting.filter((item) => item !== queued)
       const entry = queued ?? {
         id: `${id}-${tip.slice(0, 7)}-${Date.now().toString(36)}`,
         conversationId: id,
@@ -772,16 +771,14 @@ export function workspaces(host: Host) {
         ...(subject ? { subject } : {}),
         steps: [],
       }
-      if (!queued) {
-        await log(tx, lander, entry, { step: 'queued' })
-        for (const old of replaced)
-          await log(tx, lander, entry, {
-            step: `replaced ${old.tip.slice(0, 7)} (queued) with ${tip.slice(0, 7)}`,
-          })
-        const place = replaced.length ? index.queue.indexOf(replaced[0]) : index.queue.length
-        index.queue = index.queue.filter((item) => !replaced.includes(item))
-        index.queue.splice(place, 0, entry)
-      }
+      if (!queued) await log(tx, lander, entry, { step: 'queued' })
+      for (const old of replaced)
+        await log(tx, lander, entry, {
+          step: `replaced ${old.tip.slice(0, 7)} (queued) with ${tip.slice(0, 7)}`,
+        })
+      const place = waiting.length ? index.queue.indexOf(waiting[0]) : index.queue.length
+      index.queue = index.queue.filter((item) => !waiting.includes(item))
+      index.queue.splice(place, 0, entry)
       if (idleReadBeforeWrites) await startIdleLander(tx, index, source)
       const position = index.queue
         .filter((item) => item.source === source)

@@ -1356,10 +1356,33 @@ it.concurrent('a resubmit replaces its queued entry in place, keeps a landing on
     [first, fresh, 'queued'],
     [second, other, 'queued'],
   ])
+  // A stale entry left from before this rule, ahead of the other conversation's: resubmitting the same tip keeps its
+  // entry, drops the stale one and takes its place.
+  const staleTip = await git(one, 'rev-parse', 'HEAD~1')
+  await f.opened.harness.commit(async (tx) => {
+    const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+    const [running, current, waiting] = index.queue
+    const left = {
+      ...current,
+      id: 'left-before-the-rule',
+      tip: staleTip,
+      steps: [],
+    }
+    index.queue = [running, left, waiting, current]
+  }, context)
+  const again = await f.service.submit(first, 'None', context)
+  expect(again.id).toBe(replacing.id)
+  expect(again.text).toContain(`position 2 in the main queue, replacing ${stale}.`)
+  expect(await queue()).toEqual([
+    [first, landing, 'landing'],
+    [first, fresh, 'queued'],
+    [second, other, 'queued'],
+  ])
   await held.release()
   await submitted(f, second)
   const { log } = await landerLog(f)
   expect(log.filter((line) => line.step?.startsWith('replaced')).map((line) => line.step)).toEqual([
+    `replaced ${stale} (queued) with ${fresh}`,
     `replaced ${stale} (queued) with ${fresh}`,
   ])
   expect(log.filter((line) => line.outcome).map((line) => line.tip.slice(0, 7))).toEqual([
