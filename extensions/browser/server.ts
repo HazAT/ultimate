@@ -21,7 +21,7 @@ import { defineExtension, defineTool, section } from '@earendil-works/pi-durable
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { fetchText, sourceFrames } from '../../lib/source-frames.ts'
+import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -455,12 +455,12 @@ export default function browserExtension(host: ExtensionHost) {
       const title = await guard(page.title())
       // Errors name source files and lines, as dev tools show them, not positions in the bundle.
       const maps = new Map()
+      // The page's own origin, after redirects: Chromium already reached it, and a preview's frames map too.
+      const read = fetchAssets(new URL(page.url()).origin)
       outcomes.splice(
         0,
         outcomes.length,
-        ...(await guard(
-          Promise.all(outcomes.map((outcome) => sourceFrames(outcome, fetchText, maps))),
-        )),
+        ...(await guard(Promise.all(outcomes.map((outcome) => sourceFrames(outcome, read, maps))))),
       )
       context.abortSignal?.throwIfAborted()
       return {
