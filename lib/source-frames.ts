@@ -45,10 +45,24 @@ export async function sourceFrames(
     .concat(text.slice(at))
 }
 
-/** `fetchText` over `fetch`: a failed or missing response reads as no text. */
-export function fetchText(url: string) {
-  return fetch(url).then(
-    (response) => (response.ok ? response.text() : undefined),
-    () => undefined, // Unreachable: the frame stays as it is.
-  )
+/**
+ * A `read` for `sourceFrames` that fetches only `origin`'s own bundle assets. Error text comes from a page, which can
+ * name any URL, so a frame's `/assets/…` path is requested from `origin` and its host is ignored: the server never
+ * contacts another host, and pages served through `localhost`, Tailscale or other aliases still map. Asset names carry
+ * a content hash, so a foreign page's `/assets/x.js` is a 404 here or the same file. Anything else, a malformed URL or
+ * a slow response reads as no text and the frame stays as it is.
+ */
+export function fetchAssets(origin: string) {
+  return async (url: string) => {
+    try {
+      const target = new URL(url)
+      if (!target.pathname.startsWith('/assets/')) return undefined
+      const response = await fetch(new URL(target.pathname + target.search, origin), {
+        signal: AbortSignal.timeout(5000),
+      })
+      return response.ok ? await response.text() : undefined
+    } catch {
+      return undefined // Malformed, unreachable or timed out: the frame stays as it is.
+    }
+  }
 }
