@@ -38,7 +38,9 @@ Each automation has one or both:
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
-escalating with `Fired more than 6 times in an hour; paused`.
+escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
+one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
+`maxFiresPerHour` (a positive integer, default 6) on create or update sets the cap per automation.
 
 An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
 model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
@@ -50,8 +52,8 @@ override either. Enabled automations add a line each to the prompt, such as `whe
 `automation` is replay-safe and takes `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`,
 `abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
 
-- `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
-  scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
+- `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?,
+  maxFiresPerHour?, subscribers?, scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
   New ids are `A<n>`; project scripts use slugs.
 - `update {id, …}` may switch between schedule, event and condition; a script stays a script.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
