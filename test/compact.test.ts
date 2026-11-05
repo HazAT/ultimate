@@ -1,11 +1,11 @@
 import { createModels } from '@earendil-works/pi-ai/models'
-import { Type } from '@earendil-works/pi-ai'
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
 } from '@earendil-works/pi-ai/providers/faux'
 import type { Message } from '@earendil-works/pi-ai'
+import { obj } from '@earendil-works/pi-schema'
 import {
   createRegistry,
   defineExtension,
@@ -38,7 +38,7 @@ const big = defineExtension({
     defineTool({
       name: 'big',
       description: 'Returns a large output.',
-      parameters: Type.Object({}),
+      parameters: obj({}),
       execute: async () => ({ output: [{ type: 'text', text: OUTPUT }] }),
     }),
   ],

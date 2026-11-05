@@ -1,6 +1,6 @@
 import type { Context } from '@earendil-works/chord'
-import { Type } from '@earendil-works/pi-ai'
 import type { Message } from '@earendil-works/pi-ai'
+import { arr, int, obj, opt, str } from '@earendil-works/pi-schema'
 import {
   CompactionTask,
   defineDoc,
@@ -11,6 +11,7 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, DocumentReader, JsonObject, Tx } from '@earendil-works/pi-durable'
+import { strEnum } from '../../lib/schema.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from '../conversations/api.ts'
@@ -136,23 +137,19 @@ export default function compact(host: CompactHost) {
         deferred: true,
         description:
           'Compact your own context in place. Call with action "index" first: it lists the older messages and explains what to do (right after a nudge that carries the index, go straight to "compact"). Then call with action "compact" to collapse ranges of index rows into short notes and trim tool outputs you no longer need; the originals stay in storage. If nothing is worth compacting, call with action "skip": it compacts nothing but drops the nudges and earlier compact_in_place calls from your context.',
-        parameters: Type.Object({
-          action: Type.Union([
-            Type.Literal('index'),
-            Type.Literal('compact'),
-            Type.Literal('skip'),
-          ]),
-          trim: Type.Optional(
-            Type.Array(Type.Integer(), {
+        parameters: obj({
+          action: strEnum(['index', 'compact', 'skip'] as const),
+          trim: opt(
+            arr(int(), {
               description: 'compact: ids of index rows whose tool outputs to trim',
             }),
           ),
-          collapse: Type.Optional(
-            Type.Array(
-              Type.Object({
-                from: Type.Integer(),
-                to: Type.Integer(),
-                note: Type.String({ description: 'what still matters from the range' }),
+          collapse: opt(
+            arr(
+              obj({
+                from: int(),
+                to: int(),
+                note: str({ description: 'what still matters from the range' }),
               }),
               { description: 'compact: ranges of index ids (inclusive) to replace with a note' },
             ),
