@@ -49,6 +49,7 @@
     "extensions/pause/lasted.ts",
     "extensions/pause/parked.ts",
     "extensions/sidebar/work.ts",
+    "extensions/sidebar/waiting-on.ts",
     "extensions/sidebar/landings.ts",
     "extensions/subagents/landing.ts",
     "extensions/onboarding/onboarded.ts",
