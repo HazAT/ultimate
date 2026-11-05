@@ -1,14 +1,15 @@
 // The composer's paperclip attaches images picked from the device, the only way in on a phone whose keyboard cannot
 // paste them; the conversation receives the image. Any other file is stored on the host and referenced by its path.
 // Selectors start at #app: a reload's resume overlay briefly shows an inert copy of the composer that would take the
-// file instead. The paperclip is disabled while the conversation loads, so the file is picked once it is enabled.
+// file instead. Open the standing conversation explicitly: on bare / the enabled fallback root composer can still
+// be replaced by the shared UI's initial selection. Pick only once that conversation's paperclip is enabled.
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
-import { fauxServer, removeTemp, temp, until } from '../helpers.ts'
+import { fauxServer, post, removeTemp, temp, until } from '../helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -48,8 +49,13 @@ it('attaches an image picked with the paperclip and sends it', async () => {
   })
   cleanup.push(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-  await page.goto(server.url)
-  const editor = page.locator('#app [data-ui="composer"] textarea')
+  const { data } = await post(server, '/api/extensions/subagents/actions/standing', {
+    args: { name: 'ultimate' },
+  })
+  await page.goto(`${server.url}/?conversation=${data.result}`)
+  const editor = page.locator(
+    `#app [data-ui="composer"] textarea[data-conversation="${data.result}"]`,
+  )
   await editor.waitFor()
   await page
     .locator(
@@ -88,8 +94,13 @@ it('uploads a PDF picked with the paperclip and sends its path, not its bytes', 
   })
   cleanup.push(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-  await page.goto(server.url)
-  const editor = page.locator('#app [data-ui="composer"] textarea')
+  const { data } = await post(server, '/api/extensions/subagents/actions/standing', {
+    args: { name: 'ultimate' },
+  })
+  await page.goto(`${server.url}/?conversation=${data.result}`)
+  const editor = page.locator(
+    `#app [data-ui="composer"] textarea[data-conversation="${data.result}"]`,
+  )
   await editor.waitFor()
   const pdf = Buffer.from('%PDF-1.7 report')
   await page
