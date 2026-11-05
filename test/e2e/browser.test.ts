@@ -43,6 +43,7 @@ it('kills a browser that drops its connection and keeps running, without a notic
 })
 
 it('times out a hung step, closes its page and keeps later calls working', async () => {
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-timeout-')
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
@@ -63,6 +64,8 @@ it('times out a hung step, closes its page and keeps later calls working', async
     return { result, text: JSON.stringify(result.output), ms: Date.now() - started }
   }
   try {
+    const ready = await drive([{ eval: 'document.title' }])
+    expect(ready.result.isError).toBeFalsy()
     for (const hang of ['new Promise(() => {})', 'for (;;) {}']) {
       const hung = await drive([{ eval: '1 + 1' }, { eval: hang }], 1000)
       expect(hung.result.isError).toBe(true)
@@ -74,12 +77,14 @@ it('times out a hung step, closes its page and keeps later calls working', async
       expect(next.text).toContain('Step 1: OK \\"Hang\\"')
     }
   } finally {
+    vi.unstubAllEnvs()
     for (const close of closers) await close()
     await removeTemp(directory)
   }
 })
 
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
+  vi.stubEnv('ULTIMATE_CHROMIUM_SANDBOX', '0')
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
   const host = {
@@ -123,6 +128,7 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
     expect(wrong.isError).toBe(true)
     expect(JSON.stringify(wrong.output)).toContain('must end in .png')
   } finally {
+    vi.unstubAllEnvs()
     for (const close of closers) await close()
     await removeTemp(directory)
   }
