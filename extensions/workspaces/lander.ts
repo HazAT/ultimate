@@ -226,7 +226,9 @@ export async function runLanderCheck(
   } finally {
     clearTimeout(stallTimer)
     clearTimeout(totalTimer)
-    await rm(tmp, { recursive: true, force: true })
+    // Best effort: a process the check left behind can still be writing here (ENOTEMPTY), and a check that passed must
+    // not fail on cleanup; sweepChecks removes the leftover at the next start.
+    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {})
   }
 }
 
