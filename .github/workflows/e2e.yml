@@ -1,0 +1,30 @@
+name: E2E
+
+# Nothing automatic: upstream verifies locally through the lander, which runs every suite, so a
+# push or pull_request trigger would only duplicate that. This is the on-demand runner: dispatch
+# it for a full browser e2e pass on GitHub runners, or copy it into a fork where CI runs.
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: End to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Some e2e suites make commits and only set a local identity in some of them; a runner has no global one.
+      - run: |
+          git config --global user.name 'CI'
+          git config --global user.email 'ci@example.test'
+      # The dependency is `playwright-core`, whose CLI is `playwright-core`; it ships no browser of its own, and the
+      # browser e2e finds one under ~/.cache/ms-playwright. `--with-deps` pulls the system libraries Chromium needs.
+      - run: pnpm exec playwright-core install --with-deps chromium
+      - run: pnpm test:e2e
