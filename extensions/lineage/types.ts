@@ -15,6 +15,8 @@ export type RootEvent = {
       feature?: string
       title?: string
       from?: number
+      /** How the work diverged from its task as given, as the landing recorded it (`None` when it matched). */
+      divergence?: string
       /** `https://diffshub.com/<owner>/<repo>/compare/<base>...<sha>`, when `origin` is on GitHub. */
       compare?: string
     }

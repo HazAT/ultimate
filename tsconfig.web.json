@@ -29,6 +29,7 @@
     "extensions/conversations/types.ts",
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",
+    "extensions/lineage/landings.ts",
     "extensions/phase/types.ts",
     "extensions/recall/types.ts",
     "extensions/conversations/summary-model-ref.ts",
