@@ -455,7 +455,8 @@ export default function browserExtension(host: ExtensionHost) {
       const title = await guard(page.title())
       // Errors name source files and lines, as dev tools show them, not positions in the bundle.
       const maps = new Map()
-      const read = fetchAssets(new URL(host.system().process.url).origin)
+      // The page's own origin, after redirects: Chromium already reached it, and a preview's frames map too.
+      const read = fetchAssets(new URL(page.url()).origin)
       outcomes.splice(
         0,
         outcomes.length,

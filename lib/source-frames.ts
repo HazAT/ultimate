@@ -46,11 +46,12 @@ export async function sourceFrames(
 }
 
 /**
- * A `read` for `sourceFrames` that fetches only `origin`'s own bundle assets. Error text comes from a page, which can
- * name any URL, so a frame's `/assets/…` path is requested from `origin` and its host is ignored: the server never
- * contacts another host, and pages served through `localhost`, Tailscale or other aliases still map. Asset names carry
- * a content hash, so a foreign page's `/assets/x.js` is a 404 here or the same file. Anything else, a malformed URL or
- * a slow response reads as no text and the frame stays as it is.
+ * A `read` for `sourceFrames` that fetches only `origin`'s bundle assets (the page's own server: this UI, a preview, or
+ * the site the browser tool opened). Error text comes from a page, which can name any URL: before PR #89 a page the
+ * browser tool visited could make this server fetch any address (localhost, the tailnet) and follow its source map.
+ * So a frame's `/assets/…` path is requested from `origin` and its host is ignored, and pages served through
+ * `localhost`, Tailscale or other aliases still map. Anything else, a malformed URL or a slow response reads as no
+ * text and the frame stays as it is.
  */
 export function fetchAssets(origin: string) {
   return async (url: string) => {
