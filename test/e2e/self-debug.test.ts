@@ -47,8 +47,8 @@ it('terminates an isolated instance after its owner is SIGKILLed', async () => {
     const server = await createServer({ultimateRoot:process.cwd(),projectRoot:process.cwd(),userHome:${JSON.stringify(home)},home:${JSON.stringify(home)},faux:fauxProvider(),port:0});
     server.host.faux.setResponses([fauxAssistantMessage([fauxToolCall('instance',{action:'start'})],{stopReason:'toolUse'}),fauxAssistantMessage('Complete')]);
     await (await server.root.submit({type:'input',content:'start'},context)).wait(context);
-    const view = await server.root.viewState(context);
-    const result = view.value.entries.findLast(e => e.kind === 'pi.tool-result').model[0];
+    const view = await server.root.context(context);
+    const result = view.entries.findLast(e => e.kind === 'pi.tool-result').model[0];
     await writeFile(${JSON.stringify(resultPath)}, result.content.find(p => p.type === 'text').text);
   `
   const owner = spawn(process.execPath, ['--input-type=module', '-e', code], {

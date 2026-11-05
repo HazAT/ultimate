@@ -2,11 +2,26 @@ import { access, mkdir, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { Type } from '@earendil-works/pi-ai'
+import {
+  arr,
+  bool,
+  int,
+  lit,
+  map,
+  num,
+  obj,
+  opt,
+  str,
+  union,
+  unknown,
+} from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import { identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { fetchText, sourceFrames } from '../../lib/source-frames.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -14,17 +29,21 @@ export async function playwrightChromiums(
   platform = process.platform,
   arch = process.arch,
 ) {
-  const [cache, executable] =
+  const [cache, executables] =
     platform === 'darwin'
       ? [
           join(home, 'Library/Caches/ms-playwright'),
-          `chrome-mac-${arch}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+          [
+            `chrome-mac-${arch}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+            // Older Playwright releases installed their own Chromium build.
+            'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+          ],
         ]
-      : [join(home, '.cache/ms-playwright'), 'chrome-linux64/chrome']
+      : [join(home, '.cache/ms-playwright'), ['chrome-linux64/chrome']]
   return (await readdir(cache).catch(() => []))
     .filter((name) => name.startsWith('chromium-'))
     .toSorted((a, b) => b.localeCompare(a, 'en', { numeric: true }))
-    .map((name) => join(cache, name, executable))
+    .flatMap((name) => executables.map((executable) => join(cache, name, executable)))
 }
 
 export async function browserBinary() {
@@ -32,7 +51,9 @@ export async function browserBinary() {
     process.env.ULTIMATE_CHROMIUM,
     '/usr/bin/chromium',
     '/usr/bin/google-chrome-stable',
+    // Before Google Chrome: on a managed Mac its policy can disallow remote debugging, and it then drops every page.
     ...(await playwrightChromiums(homedir())),
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter((path): path is string => !!path)
   for (const path of candidates) {
     try {
@@ -43,7 +64,7 @@ export async function browserBinary() {
     }
   }
   throw new Error(
-    'No Chromium found. Set ULTIMATE_CHROMIUM, install /usr/bin/chromium or /usr/bin/google-chrome-stable, or run `npx playwright install chromium` (~/.cache/ms-playwright on Linux, ~/Library/Caches/ms-playwright on macOS).',
+    'No Chromium found. Set ULTIMATE_CHROMIUM, install /usr/bin/chromium or /usr/bin/google-chrome-stable (Google Chrome in /Applications on macOS), or run `npx playwright install chromium` (~/.cache/ms-playwright on Linux, ~/Library/Caches/ms-playwright on macOS).',
   )
 }
 
@@ -79,6 +100,31 @@ function within<T>(ms: number, work: Promise<T>, error = timeout(ms)) {
   ]).finally(() => clearTimeout(timer))
 }
 
+/** The browser's process, which leads its own group, and its start time, which tells it from a later one with its pid. */
+async function browserProcess(browser: Browser) {
+  const cdp = await browser.newBrowserCDPSession()
+  const { processInfo } = (await cdp.send('SystemInfo.getProcessInfo')) as {
+    processInfo: { type: string; id: number }[]
+  }
+  await cdp.detach()
+  const pid = processInfo.find((info) => info.type === 'browser')?.id
+  const start = pid === undefined ? undefined : identify(pid)
+  return pid === undefined || start === undefined ? undefined : { pid, start }
+}
+
+/**
+ * Kill a disconnected browser's process group. A browser can drop its connection and keep running (Chrome does when
+ * its policy disallows remote debugging), and Playwright never closes a disconnected browser.
+ */
+function killGroup(owner: { pid: number; start: string } | undefined) {
+  if (!owner || identify(owner.pid) !== owner.start) return
+  try {
+    process.kill(-owner.pid, 'SIGKILL')
+  } catch {
+    // The group exited since (ESRCH), or only zombies are left of it (EPERM on Darwin).
+  }
+}
+
 async function capture(page: Page, file: string, selector?: string, fullPage = false) {
   await mkdir(dirname(file), { recursive: true })
   const target = selector ? page.locator(selector) : page
@@ -108,17 +154,15 @@ export default function browserExtension(host: ExtensionHost) {
     return resource
   })
   const base = {
-    url: Type.Optional(
-      Type.String({ description: 'Page to load; relative URLs resolve against this UI.' }),
-    ),
-    path: Type.Optional(
-      Type.String({
+    url: opt(str({ description: 'Page to load; relative URLs resolve against this UI.' })),
+    path: opt(
+      str({
         description:
-          'Where to save the PNG, relative to your cwd. Omit it unless the file must be committed: the default, a new file in the home, keeps screenshots out of your checkout.',
+          'Where to save the PNG, relative to your cwd; default: a new file in the home.',
       }),
     ),
-    timeoutMs: Type.Optional(
-      Type.Integer({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
+    timeoutMs: opt(
+      int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
   }
   return defineExtension({
@@ -137,14 +181,14 @@ export default function browserExtension(host: ExtensionHost) {
           'Look at a browser page; save a full-resolution PNG and return a compact image with loading errors. Loading and capturing each time out after 30 s.',
         // A fresh isolated page only observes the UI and writes the screenshot again; it performs no interactions.
         replay: 'safe',
-        parameters: Type.Object({
+        parameters: obj({
           ...base,
-          width: Type.Optional(Type.Integer({ minimum: 1 })),
-          height: Type.Optional(Type.Integer({ minimum: 1 })),
-          fullPage: Type.Optional(Type.Boolean()),
-          selector: Type.Optional(Type.String()),
-          waitMs: Type.Optional(Type.Integer({ minimum: 0 })),
-          theme: Type.Optional(Type.Union([Type.Literal('light'), Type.Literal('dark')])),
+          width: opt(int({ minimum: 1 })),
+          height: opt(int({ minimum: 1 })),
+          fullPage: opt(bool()),
+          selector: opt(str()),
+          waitMs: opt(int({ minimum: 0 })),
+          theme: opt(strEnum(['light', 'dark'])),
         }),
         async execute(args, api, context) {
           const waitMs = args.waitMs ?? 1500
@@ -158,46 +202,46 @@ export default function browserExtension(host: ExtensionHost) {
         name: 'browser',
         description:
           "Drive a fresh browser page with clicks, fills, keys, waits and JavaScript; report outcomes and optionally an image. Each step times out after 30 s. On an Ultimate page (this UI or a preview), `send` submits a prompt without the composer and `until` waits on Ultimate's state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind} or {event: name, where}; until defaults to 5 min (timeoutMs) and on timeout says what was still busy. Click and fill only to test the interaction itself. Scope selectors to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")', not 'button:has-text(\"Retry\")', which hits the first match on the page).",
-        parameters: Type.Object({
+        parameters: obj({
           ...base,
-          steps: Type.Array(
-            Type.Union([
-              Type.Object({ click: Type.String() }),
-              Type.Object({
-                fill: Type.Array(Type.String(), {
+          steps: arr(
+            union([
+              obj({ click: str() }),
+              obj({
+                fill: arr(str(), {
                   minItems: 2,
                   maxItems: 2,
                   description: '[selector, value]',
                 }),
               }),
-              Type.Object({ press: Type.String() }),
-              Type.Object({ wait: Type.Union([Type.Number({ minimum: 0 }), Type.String()]) }),
-              Type.Object({
-                eval: Type.String({
+              obj({ press: str() }),
+              obj({ wait: union([num({ minimum: 0 }), str()]) }),
+              obj({
+                eval: str({
                   description:
                     "One expression, its value returned: 'document.title'. For statements or await, an async IIFE: '(async () => { const r = await fetch(\"/api/x\"); return r.status })()'. A bare 'const x = …; return x' fails.",
                 }),
               }),
-              Type.Object({
-                send: Type.String(),
-                conversation: Type.Optional(Type.Integer({ minimum: 1 })),
+              obj({
+                send: str(),
+                conversation: opt(int({ minimum: 1 })),
               }),
-              Type.Object({
-                until: Type.Union([
-                  Type.Literal('idle'),
-                  Type.Literal('quiet'),
-                  Type.Object({ entry: Type.String() }),
-                  Type.Object({
-                    event: Type.String(),
-                    where: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+              obj({
+                until: union([
+                  lit('idle'),
+                  lit('quiet'),
+                  obj({ entry: str() }),
+                  obj({
+                    event: str(),
+                    where: opt(map(unknown())),
                   }),
                 ]),
-                conversation: Type.Optional(Type.Integer({ minimum: 1 })),
-                timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
+                conversation: opt(int({ minimum: 1 })),
+                timeoutMs: opt(int({ minimum: 1 })),
               }),
             ]),
           ),
-          screenshot: Type.Optional(Type.Boolean()),
+          screenshot: opt(bool()),
         }),
         async execute(args, api, context) {
           const waits = args.steps.reduce(
@@ -349,12 +393,23 @@ export default function browserExtension(host: ExtensionHost) {
             const browser = await chromium.launch({
               executablePath,
               headless: true,
+              chromiumSandbox: process.env.ULTIMATE_CHROMIUM_SANDBOX !== '0',
               // Chromium's singleton socket needs a short system temp path. Playwright still puts the profile in our TMPDIR.
               env: { ...process.env, TMPDIR: undefined },
             })
             if (state.launched === launched) state.browser = browser
+            // Looked up beside the call, which need not wait for it. It takes milliseconds; a policy drop comes seconds in.
+            const owner = browserProcess(browser).catch(() => undefined)
             browser.once('disconnected', () => {
-              if (state.launched === launched) state.launched = undefined
+              if (state.launched === launched) {
+                state.launched = undefined
+                state.browser = undefined
+              }
+              owner
+                .then(killGroup)
+                .catch((error: unknown) =>
+                  host.notice(`Killing a disconnected browser failed: ${String(error)}`),
+                )
             })
             return browser
           })
@@ -398,6 +453,15 @@ export default function browserExtension(host: ExtensionHost) {
       await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
       const result = await action(page, outcomes, png, guard)
       const title = await guard(page.title())
+      // Errors name source files and lines, as dev tools show them, not positions in the bundle.
+      const maps = new Map()
+      outcomes.splice(
+        0,
+        outcomes.length,
+        ...(await guard(
+          Promise.all(outcomes.map((outcome) => sourceFrames(outcome, fetchText, maps))),
+        )),
+      )
       context.abortSignal?.throwIfAborted()
       return {
         structuredContent: {
@@ -440,14 +504,15 @@ export default function browserExtension(host: ExtensionHost) {
     try {
       await within(closeTimeoutMs, isolated.close())
     } catch (error) {
-      host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       const browser = isolated.browser()
-      if (!browser) return
+      // A browser that disconnected took the context with it, and its disconnect killed it.
+      if (!browser?.isConnected()) return
+      host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       if (state.browser === browser) {
         state.launched = undefined
         state.browser = undefined
       }
-      // Closing kills the process too; a browser that won't even do that is left to the host's shutdown.
+      // Closing kills the process too; Playwright kills one that won't close within 30 s.
       await within(closeTimeoutMs, browser.close()).catch((reason: unknown) =>
         host.notice(`Closing the wedged browser failed: ${String(reason)}`),
       )

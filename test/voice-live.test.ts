@@ -65,9 +65,7 @@ export default { name: 'probe' }
   const info = server.extensions.info().find((extension) => extension.name === 'voice-live')!
   expect(info.enabled).toBe(enabled)
   expect(Boolean(info.server)).toBe(enabled)
-  const webFacets = Object.keys(
-    (await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders,
-  )
+  const webFacets = await server.web.facets()
   expect(webFacets.some((path) => path.includes('/voice-live/'))).toBe(enabled)
   const rootAgent = await server.root.agent(context)
   expect(

@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, EntryId } from '@earendil-works/pi-durable'
 import {
@@ -110,7 +111,7 @@ export function contextBehavior(
     closed = false
     stop?.()
     // Not a reactor: context follows Pi's own assistant/head entries and agent document, not domain events.
-    stop = host.harness().subscribeCommits((publication) => {
+    stop = onCommit(host.harness(), (publication) => {
       const ids = new Set<ConversationId>()
       for (const change of publication.changes) {
         if (

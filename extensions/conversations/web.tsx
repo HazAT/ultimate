@@ -8,6 +8,7 @@ export default defineWebExtension({
   entries: {
     'conversations.identity': () => null,
     'conversations.title-changed': SummaryAction,
+    'conversations.feature-changed': SummaryAction,
     'conversations.intent-summarized': SummaryAction,
     'conversations.summarized': SummaryAction,
     'conversations.assessed': SummaryAction,

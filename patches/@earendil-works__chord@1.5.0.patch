@@ -1,21 +1,23 @@
 diff --git a/dist/output.js b/dist/output.js
-index c54d794..b224d7b 100644
+index f0fd7cb410ad2a5d41fd2e5837b9b468a369e2f4..27afc3ea92c239417112e7a14195f3e891e593de 100644
 --- a/dist/output.js
 +++ b/dist/output.js
-@@ -3,13 +3,14 @@
+@@ -3,15 +3,14 @@
   * proportional to each chunk, and `Progress` paces commits of a changing value by their size.
   */
  const NEWLINE = 0x0a;
 -const INVALID_OUTPUT = /[\x00-\x08\x0b-\x1f\ufff9-\ufffb]/g;
+-/** Whole 7-bit escape sequences: strings (OSC, DCS, APC, PM, SOS) up to BEL or ST, CSI, and short `ESC x` forms. */
+-const ESCAPE_SEQUENCE = /\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\x1b[\x20-\x2f]*[\x30-\x7e]/g;
 +// Consume whole CSI, OSC and control strings before individual controls; otherwise their payload leaks into text.
 +const OUTPUT_CONTROLS = /(?:\x1b\[|\x9b)[0-?]*[ -/]*(?:[@-~]|$)|(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x1b\\|\x9c|$)|\x1b[ -/]*[0-~]|[\x00-\x08\x0b-\x1f\x7f-\x9f\ufff9-\ufffb]/g;
  const encoder = new TextEncoder();
  /** Slices decode exactly: a U+FEFF at a slice's start is text, not a byte-order mark. */
  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
--/** Remove control characters that break display and transcripts; tabs and newlines stay. */
+-/** Remove escape sequences and control characters that break display and transcripts; tabs and newlines stay. */
 +/** Keep numeric ANSI SGR, tabs and newlines; remove other terminal sequences and controls in full. */
  export function sanitizeOutput(text) {
--    return text.replace(INVALID_OUTPUT, "");
+-    return text.replace(ESCAPE_SEQUENCE, "").replace(INVALID_OUTPUT, "");
 +    return text.replace(OUTPUT_CONTROLS, (sequence) => /^\x1b\[[0-9;]*m$/.test(sequence) ? sequence : "");
  }
  /**

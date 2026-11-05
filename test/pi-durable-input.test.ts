@@ -4,7 +4,13 @@ import {
   fauxToolCall,
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
-import { defineDoc, defineExtension, GenerationTask, hook } from '@earendil-works/pi-durable'
+import {
+  defineDoc,
+  defineExtension,
+  GenerationTask,
+  hook,
+  InboxDoc,
+} from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { prepareHarness } from '../server/harness.ts'
 import { temp, until } from './helpers.ts'
@@ -151,7 +157,7 @@ it('starts one run with every follow-up queued while busy, and steers join the c
             : [],
       ),
     ).toEqual(['first', 'steer', '> first answer', 'one', 'two', 'three', '> follow-ups answer'])
-    expect((await f.root.viewState(context)).value.docs['pi.inbox']).toEqual({ items: [] })
+    expect(await f.harness.snapshot(InboxDoc, f.root.id, context)).toEqual({ items: [] })
   } finally {
     gate.resolve()
     await f.close()

@@ -48,10 +48,10 @@ it.concurrent('orders facets by source so a project bash tool and renderer win r
     await writeFile(
       join(folder, 'server.ts'),
       `
-      import { Type } from '@earendil-works/pi-ai'
+      import { obj } from '@earendil-works/pi-schema'
       import { defineExtension, defineTool } from '@earendil-works/pi-durable'
       export default defineExtension({ name: '${name}', tools: [defineTool({
-        name: 'bash', description: '${name}', parameters: Type.Object({}),
+        name: 'bash', description: '${name}', parameters: obj({}),
         execute: async () => ({})
       })] })
     `,
@@ -199,10 +199,10 @@ it.concurrent('keeps the replacement provider available while the old cleanup is
 it.concurrent('refuses a tool name another extension of the same layer already provides', async () => {
   const { home, projectRoot, server } = await fixture('{}')
   const facet = (name: string, version = '') => `
-    import { Type } from '@earendil-works/pi-ai'
+    import { obj } from '@earendil-works/pi-schema'
     import { defineExtension, defineTool } from '@earendil-works/pi-durable'
     export default defineExtension({ name: '${name}', tools: [defineTool({
-      name: 'clash_tool', description: '${name}${version}', parameters: Type.Object({}),
+      name: 'clash_tool', description: '${name}${version}', parameters: obj({}),
       execute: async () => ({})
     })] })`
   const files: Record<string, string> = {}
@@ -238,8 +238,7 @@ it.concurrent('refuses a tool name another extension of the same layer already p
 
 const tools = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
   (await server.root.agent(context)).tools.map((tool) => tool.name).toSorted()
-const web = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
-  Object.keys((await server.vite.ssrLoadModule('virtual:ultimate/web-facets')).loaders)
+const web = async (server: Awaited<ReturnType<typeof fauxServer>>) => server.web.facets()
 
 it.concurrent('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
   const { home, projectRoot, server } = await fixture()
@@ -396,6 +395,45 @@ it.concurrent('keeps a core-tier extension enabled over extensions.disable, with
     enabled: true,
     core: true,
   })
+})
+
+/** Discovery with every claim disabled in the user's settings; each [source, name] folder declares the core tier. */
+async function discoverCoreClaims(claims: ['user' | 'project', string][]) {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(join(projectRoot, '.ultimate'), { recursive: true })
+  await mkdir(join(home, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(home, '.ultimate/settings.json'),
+    JSON.stringify({ extensions: { disable: claims.map(([, name]) => name) } }),
+  )
+  new ProjectTrustStore(join(home, '.ultimate')).set(projectRoot, true)
+  for (const [source, name] of claims) {
+    const folder = join(source === 'user' ? home : projectRoot, '.ultimate/extensions', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'api.ts'), "export const tier = 'core'\n")
+  }
+  const discovered = await discoverExtensions(resolve('.'), projectRoot, home)
+  return (name: string) => discovered.find((entry) => entry.name === name)
+}
+
+it.concurrent('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
+  const find = await discoverCoreClaims([
+    ['user', 'user-core-claim'],
+    ['project', 'project-core-claim'],
+  ])
+  expect(find('user-core-claim')).toMatchObject({ source: 'user', enabled: false })
+  expect(find('project-core-claim')).toMatchObject({ source: 'project', enabled: false })
+})
+
+it.concurrent('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
+  const find = await discoverCoreClaims([
+    ['user', 'subagents'],
+    ['project', 'lineage'],
+  ])
+  expect(find('subagents')).toMatchObject({ source: 'user', core: true, enabled: true })
+  expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
 })
 
 it.concurrent('enables every built-in by default except the default-off ones', async () => {

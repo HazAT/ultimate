@@ -58,7 +58,7 @@ describe('web replica store', () => {
 
     main.send('view', view([user(1, 'hello')], { 'pi.live': {} }))
     const ops: Op[] = [
-      ['s', ['docs', 'pi.live', 'run'], { taskId: 2, inputs: [1] }],
+      ['s', ['docs', 'pi.live', 'run'], { taskId: 2, inputs: [1], turns: 0 }],
       ['p', ['entries'], 1, 0, [user(3, 'steer')]],
     ]
     main.send('ops', ops)
@@ -69,7 +69,7 @@ describe('web replica store', () => {
       content: 'steer now',
     })
     expect(replica.docs['pi.live']).toEqual({
-      run: { taskId: 2, inputs: [1] },
+      run: { taskId: 2, inputs: [1], turns: 0 },
     })
     // Unchanged entries keep their identity, so the transcript re-renders only what changed.
     main.send('ops', [['d', ['docs', 'pi.live', 'run']]])
@@ -264,6 +264,25 @@ describe('web replica store', () => {
     expect(store.getState().conversations).toBe(before)
     latest().send('conversations', [{ ...list[0], busy: true }])
     expect(store.getState().conversations[0].busy).toBe(true)
+    store.stop()
+  })
+
+  it('keeps unchanged rows when the list is resent for another row', () => {
+    const { store, latest } = setup()
+    latest().open()
+    latest().send('conversations', [
+      { id: 1, title: 'my-app', busy: false },
+      { id: 2, title: 'fix login', busy: false },
+    ])
+    const [root, branch] = store.getState().conversations
+    latest().send('conversations', [
+      { id: 1, title: 'my-app', busy: false },
+      { id: 2, title: 'fix login', busy: true, answerAt: 5 },
+    ])
+    // Readers of row 1 (`useConversationSummary(1)`) see the same object and skip the re-render.
+    expect(store.getState().conversations[0]).toBe(root)
+    expect(store.getState().conversations[1]).not.toBe(branch)
+    expect(store.getState().conversations[1]).toMatchObject({ busy: true, answerAt: 5 })
     store.stop()
   })
 

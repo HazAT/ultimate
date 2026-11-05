@@ -10,7 +10,7 @@ type Delivery = {
   to: number
   type: 'input' | 'write'
   requestId: string
-  kind: 'dream.requested' | 'dream.prepared' | 'dream.chapter'
+  kind: 'dream.requested' | 'dream.ready' | 'dream.prepared' | 'dream.chapter'
   data?: JsonObject
   content: string
 }

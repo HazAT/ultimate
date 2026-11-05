@@ -66,7 +66,7 @@ export default (host) => {
   return defineExtension({ name: 'delta' })
 }`,
   tooler: `${tokens}
-import { Type } from '@earendil-works/pi-ai'
+import { obj } from '@earendil-works/pi-schema'
 export default (host) => {
   const delta = host.need(Delta)
   return defineExtension({
@@ -74,7 +74,7 @@ export default (host) => {
     tools: [defineTool({
       name: 'probe',
       description: 'Calls delta',
-      parameters: Type.Object({}),
+      parameters: obj({}),
       execute: async (_args, api, ctx) => {
         await api.commit(async () => delta.note({ tool: true }), ctx)
         return { output: [{ type: 'text', text: 'probed' }] }
@@ -204,11 +204,10 @@ it('links a tool call to its conversation and tool-call entry, with service call
   ])
   await server.root.submit({ type: 'input', content: 'probe' }, context)
   await server.harness.waitForIdle(context)
-  const view = await server.root.viewState(context)
-  const assistant = view.value.entries.find(
+  const view = await server.root.context(context)
+  const assistant = view.entries.find(
     (entry) => entry.kind === 'pi.assistant' && JSON.stringify(entry.model).includes('"toolCall"'),
   )!
-  view.dispose()
   const tool = server.extensions.trace.query().find((row) => row.kind === 'tool')!
   expect(tool).toMatchObject({
     caller: 'agent',

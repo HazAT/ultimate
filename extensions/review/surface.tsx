@@ -493,6 +493,11 @@ export default function ReviewSurface() {
   const [sent, setSent] = useState<{ conversation: number } | { error: string }>()
   const { switchConversation, showSurface } = useUltimate()
   const data = diff.data?.spec === spec ? diff.data : undefined
+  // A branch gone without a landing shows another spec: follow it rather than ask for the deleted ref again.
+  const moved = diff.data && diff.data.spec !== spec ? diff.data.spec : undefined
+  useEffect(() => {
+    if (moved) setSpec(moved)
+  }, [moved, setSpec])
   const parsed = useMemo(() => (data ? parse(data) : new Map<string, FileDiffMetadata>()), [data])
   const send = async () => {
     if (to === undefined) return

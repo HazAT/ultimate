@@ -47,6 +47,7 @@ function unit(description: string, service: string[]) {
     'Restart=on-failure',
     'RestartSec=5',
     'KillSignal=SIGTERM',
+    'KillMode=mixed',
     'TimeoutStopSec=30',
     '',
     '[Install]',

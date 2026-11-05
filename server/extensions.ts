@@ -22,7 +22,7 @@ import type { ConversationSummary, ExtensionInfo, SystemInfo } from '../shared/p
 import type { PreparedHost } from './harness.ts'
 import { Metadata } from './metadata.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { AgentDoc } from '@earendil-works/pi-durable'
+import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
 import { EventFeed, eventLog } from './events.ts'
@@ -69,6 +69,8 @@ export type ExtensionHost = Pick<
   /** Run `callback` each time before the harness closes while the process stays: on a core swap. */
   onRelease(callback: () => Promise<void>): void
   onClose(cleanup: () => Promise<void>): void
+  /** Run `callback` each time an extension's server facet fails to load, with its name and error; facet-scoped. */
+  onLoadError(callback: (name: string, error: string) => void): void
   harness(): Harness
   system(): SystemInfo
   /** Summaries of every conversation, as the web's conversation list shows them; empty until the harness is open. */
@@ -111,6 +113,8 @@ export async function loadExtensions(
   runtime: Pick<ExtensionHost, 'harness' | 'system' | 'conversations' | 'access'>,
   watch: Watch,
   notice: (message: string) => void = () => {},
+  /** Bring the web bundle up to date with the settings just applied. */
+  rebuildWeb: () => Promise<void> = async () => {},
 ) {
   const trace = host.callTrace
   const log = eventLog(runtime.harness, trace.run, trace.keep)
@@ -234,6 +238,10 @@ export async function loadExtensions(
         if (sharedResource) extensionHost.onClose(cleanup)
         else facetCleanups.get(facetHost)!.add(cleanup)
       },
+      onLoadError: (callback) => {
+        loadErrorListeners.add(callback)
+        stops.add(() => loadErrorListeners.delete(callback))
+      },
       react: (reactorName, tokens, handler, options) => {
         const reactor = log.reactor(`${name}/${reactorName}`, tokens, handler, options)
         facetHost.onOpen(reactor.start)
@@ -261,9 +269,12 @@ export async function loadExtensions(
   const findDoc = (kind: string) =>
     [
       EventFeed as never as ConversationDocToken<JsonObject>,
+      // A conversation's live round without its transcript, for watchers of many conversations (the sound of agents).
+      LiveDoc as never as ConversationDocToken<JsonObject>,
       ...[...documents.values()].flat(),
     ].find((doc) => doc.definition.kind === kind)
   const openers = new Set<() => Promise<void>>()
+  const loadErrorListeners = new Set<(name: string, error: string) => void>()
   const releasers = new Set<() => Promise<void>>()
   let open = false
   const cleanups = new Set<() => Promise<void>>()
@@ -346,6 +357,7 @@ export async function loadExtensions(
       releasers.add(callback)
     },
     onClose: (cleanup) => cleanups.add(cleanup),
+    onLoadError: (callback) => loadErrorListeners.add(callback),
     ultimateRoot: host.ultimateRoot,
     projectRoot: host.projectRoot,
     userHome: host.userHome,
@@ -406,16 +418,7 @@ export async function loadExtensions(
       // The caller gets the failure; the chain recovers so later reloads still run.
       chain = work.catch(() => changed())
       await work
-      for (const id of [
-        '\0virtual:ultimate/web-facets',
-        join(host.ultimateRoot, 'web/src/index.css'),
-      ]) {
-        const module = vite.moduleGraph.getModuleById(id)
-        if (module) {
-          vite.moduleGraph.invalidateModule(module)
-          await vite.reloadModule(module)
-        }
-      }
+      await rebuildWeb()
     },
     doc: findDoc,
     metadata: Metadata,
@@ -609,6 +612,7 @@ export async function loadExtensions(
             ...(previous?.server ?? { tools: [], sections: [], hooks: 0, docs: [] }),
             error: String(error),
           }
+          for (const listener of loadErrorListeners) listener(name, String(error))
         }
       } else if (!enabled || !record.facets.server) {
         await unload(name)

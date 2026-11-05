@@ -110,7 +110,10 @@ export const tallyTokens = async (server: Server, id: ConversationId) =>
 
 export const image = { type: 'image', data: 'aW1n', mimeType: 'image/png' } as const
 
-/** A faux server where `NOTIFY {json}` calls the notify tool and `HOLD` answers only once released. */
+/**
+ * A faux server where `NOTIFY {json}` calls the notify tool, `SEND {json}` the message tool, and `HOLD` answers only
+ * once released.
+ */
 export async function notifyFixture(reopen?: string) {
   const home = reopen ?? (await temp('ultimate-lineage-'))
   const server = await fauxServer({ ultimateRoot, home, userHome: home })
@@ -124,6 +127,10 @@ export async function notifyFixture(reopen?: string) {
     if (last.role === 'toolResult') return fauxAssistantMessage(`Tool: ${text}`)
     if (text.startsWith('NOTIFY '))
       return fauxAssistantMessage([fauxToolCall('notify', JSON.parse(text.slice(7)))], {
+        stopReason: 'toolUse',
+      })
+    if (text.startsWith('SEND '))
+      return fauxAssistantMessage([fauxToolCall('message', JSON.parse(text.slice(5)))], {
         stopReason: 'toolUse',
       })
     if (text === 'HOLD')

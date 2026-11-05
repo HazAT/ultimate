@@ -9,6 +9,6 @@ No row is named after the root conversation: work it owns (deliveries, automatio
 
 The composer's status line shows the shown conversation's open messages (`messages/open.tsx`): how many answers it waits for, owes and is still delivering; a click lists them, and each row opens its conversation.
 
-A task Pi Durable cannot run shows why: a task cut off by a crash five times in a row is **parked** by the crash-loop guard (header counts them), with a **Retry** button that calls the user-only `retry {id}` action (`Harness.retryTask`); other blocked reasons (missing or too-old definition, failed migration) are named without Retry, since they clear when the registry changes.
+A task Pi Durable cannot run shows why (missing or too-old definition, failed migration); these clear when the registry changes. A task cut off by crashes `restartLimit` times in a row is not shown here: Pi ends it, and its run, tool call or compaction shows the failure.
 
 Data comes from `useTasks()` (the server's `tasks` event), `useConversations()`, the conversations overview and the messages log; start times and facts come from the `started {ids}` and `describe {ids}` actions, each asked once per task since they never change.

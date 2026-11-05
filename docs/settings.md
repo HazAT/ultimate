@@ -38,9 +38,8 @@ named; a project listed on several machines needs a `machine`. Cloud backups' re
 Compaction thresholds come from Pi's settings (`~/.pi/agent/settings.json`, then `<project>/.pi/settings.json`,
 key `compaction`: `enabled`, `reserveTokens`, `keepRecentTokens`) over Pi Durable's defaults (reserve 16k, keep 20k,
 background compaction 32k below the blocking threshold), which suit a ~200k window. `server/harness.ts`
-(`compactionOverrides`) sets per-model values by context window: `openai-codex/gpt-6.1-sol`
-(500k) and the 1M-window Claude Code models, which keep more recent context and start compacting in the background
-earlier. `compaction.modelOverrides` in those settings files, keyed by exact `"provider/modelId"` (fields
+(`compactionProfile`) sets values by each model's context window: windows of 500k and of 1M or more keep more
+recent context and start compacting in the background earlier. `compaction.modelOverrides` in those settings files, keyed by exact `"provider/modelId"` (fields
 `reserveTokens`, `keepRecentTokens`, `backgroundTokens`, `enabled`), replaces them field by field. Pi's settings files
 are read when the server starts. @ultimate compacts in place instead (`extensions/compact/README.md`): its threshold
 compactions are declined, and `compactInPlace: { nudgeAt, nudgeEvery }` in Ultimate's settings sets when it is asked to.

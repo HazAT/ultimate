@@ -2,6 +2,7 @@ import { cn } from 'cn'
 import { MessageSquareShareIcon, PuzzleIcon, TriangleAlertIcon } from 'lucide-react'
 import { Component, Fragment, useContext } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { fetchText, sourceFrames } from '../../../lib/source-frames.ts'
 import type { SystemInfo } from '../../../shared/protocol.ts'
 import { errorMessage, shortenPath } from '../sdk/format.ts'
 import { ExtensionNameContext, useExtensions, useSystem } from '../sdk/hooks.ts'
@@ -28,15 +29,17 @@ export function stackFrames(error: unknown) {
 }
 
 /**
- * A stack frame with short paths: Vite's URL loses its origin and `?t=` stamp, a file served by `/@fs/` reads as
- * `shortenPath` shows it, and one under the web root as `src/…`.
+ * A stack frame with short paths: a source file its map names reads as `shortenPath` shows it; Vite's URL loses its
+ * origin and `?t=` stamp, a file served by `/@fs/` reads as `shortenPath` shows it, and one under the web root as `src/…`.
  */
 function shortFrame(system: SystemInfo | undefined, line: string) {
-  return line.replace(/https?:\/\/[^/\s]+(\/@fs)?\/([^?:\s)]*)(\?[^:\s)]*)?/g, (_, fs, path) =>
-    fs
-      ? shortenPath(`/${path}`, { cwd: system?.code.ultimateRoot, home: system?.machine.home })
-      : path,
-  )
+  const short = (path: string) =>
+    shortenPath(path, { cwd: system?.code.ultimateRoot, home: system?.machine.home })
+  return line
+    .replace(/(?<=\()\/[^\s():]+/, short)
+    .replace(/https?:\/\/[^/\s]+(\/@fs)?\/([^?:\s)]*)(\?[^:\s)]*)?/g, (_, fs, path) =>
+      fs ? short(`/${path}`) : path,
+    )
 }
 
 /** What an error card hands over for debugging: the failure, where it lives, its stack and the running build. */
@@ -120,7 +123,17 @@ export function ErrorCard({
                   aria-label={report.title}
                   className="-my-0.5 shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
                   onClick={() =>
-                    report.send(errorReport(system, { extension, error, context, stack }))
+                    // The bundle's frames, mapped back to the source files and lines.
+                    void sourceFrames(stack ?? '', fetchText).then((source) =>
+                      report.send(
+                        errorReport(system, {
+                          extension,
+                          error,
+                          context,
+                          stack: source || undefined,
+                        }),
+                      ),
+                    )
                   }
                   title={report.title}
                   type="button"

@@ -31,7 +31,7 @@ Only inside codemode (not standalone model tools):
 - `ultimate.conversations()` — all stored conversations with their owner, and for listed ones title, label, cwd,
   busy, inputAt and concluded.
 - `ultimate.entries(conversationId, { kinds?, limit?, before? })` — newest-first fork-aware history, including entries before resets/compactions; `before` is an exclusive entry ID.
-- `ultimate.search(text, { conversationId?, limit? })` — case-sensitive substring over stored entry JSON, including pre-reset/pre-compaction history.
+- `ultimate.search(text, { conversationId?, kinds?, limit?, full? })` — case-sensitive substring over stored entry JSON, including pre-reset/pre-compaction history. `kinds` keeps only those entry kinds. Hits are compact, `{ conversation, id, kind, at?, excerpt }` with about 200 characters of the entry's JSON around the match, so wide audits and cross-project reads stay small; `full: true` returns whole entries, or read one hit with `ultimate.entries(conversation, { before: id + 1, limit: 1 })`.
 - `ultimate.taskGraph()` — live tasks and ownership graph.
 
 ### Other chapters

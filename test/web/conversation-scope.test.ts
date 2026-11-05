@@ -140,7 +140,7 @@ function view(id: number, text: string, busy = false): StreamedView {
     ],
     docs: {
       'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } },
-      'pi.live': busy ? { run: { taskId: 2, inputs: [] } } : {},
+      'pi.live': busy ? { run: { taskId: 2, inputs: [], turns: 0 } } : {},
       'pi.inbox': { items: [{ id: id * 100, mode: 'steer', content: `queued ${id}` }] },
     },
   } as unknown as StreamedView
@@ -313,6 +313,48 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   harness.stop!()
   await tick()
   expect(harness.fetch).toHaveBeenLastCalledWith('/api/conversations/17/abort', expect.anything())
+})
+
+it('sends on Cmd or Ctrl+Enter on a coarse pointer, but not on plain Enter or while composing', async () => {
+  // iPadOS reports a coarse primary pointer even with a Magic Keyboard attached.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(pointer: coarse)',
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  effects.push(store.watchConversation(19))
+  await tick()
+  source(19).send('view', view(19, 'ipad transcript'))
+  const render = () => renderToStaticMarkup(scoped(19, h(Conversation)))
+  render()
+  async function enter(text: string, keys: object, nativeEvent = {}) {
+    harness.change!({ target: { value: text } })
+    render()
+    let prevented = false
+    harness.keyDown!({
+      key: 'Enter',
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+      ctrlKey: false,
+      ...keys,
+      nativeEvent,
+      preventDefault: () => (prevented = true),
+    })
+    await tick()
+    return prevented
+  }
+  const sent = () =>
+    harness.fetch.mock.calls.flatMap(([path, init]) =>
+      path === '/api/conversations/19/submit' ? [JSON.parse(init!.body as string).text] : [],
+    )
+  // Plain Return on a touch keyboard keeps its newline; Return that commits an IME candidate never sends.
+  expect(await enter('plain', {})).toBe(false)
+  expect(await enter('composing', { metaKey: true }, { isComposing: true })).toBe(false)
+  expect(sent()).toEqual([])
+  expect(await enter('cmd', { metaKey: true })).toBe(true)
+  expect(await enter('ctrl', { ctrlKey: true })).toBe(true)
+  expect(sent()).toEqual(['cmd', 'ctrl'])
 })
 
 it('adds a view to a document-only subscription, keeps documents after the scope releases, and watches the view again from a snapshot', async () => {

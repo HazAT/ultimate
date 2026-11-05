@@ -8,6 +8,7 @@ export {
   defineWebExtension,
   definePoint,
   ErrorReport,
+  FileUpload,
   MessageReference,
   ParkedRuns,
   provide,
@@ -66,13 +67,14 @@ export { setAsideIds } from '../app/compact.ts'
 export { MessageActions } from '../app/message-actions.tsx'
 /** A turn of the user's as the transcript shows a typed one; `text` gives the words a delivered message carries. */
 export { UserText, UserView } from '../app/user-turn.tsx'
+export { useTranscriptScroll } from '../app/transcript.tsx'
 /** Renders with the value another extension provides for your point; see `definePoint`. */
 export { AllProvided, Provided } from '../app/boundary.tsx'
 export { ConversationScope } from './conversation-scope.tsx'
 /** Sends what the composer inside it submits somewhere else, such as a new side chat; see `composer` renderers. */
 export { Composer, ComposerRedirect, fillComposer, insertIntoComposer } from '../app/composer.tsx'
 export type { ComposerTarget } from '../app/composer.tsx'
-export { api } from './client.ts'
+export { api, bundle, switched } from './client.ts'
 export { ActionError } from './api.ts'
 export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'
@@ -89,6 +91,7 @@ export {
   useConnection,
   useConversation,
   useConversations,
+  useConversationSummary,
   useDialog,
   useDoc,
   useDocKind,

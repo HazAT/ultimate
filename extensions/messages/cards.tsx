@@ -24,11 +24,12 @@ import {
   events,
   Fold,
   formatAgo,
+  formatTokens,
   MessageActions,
   Provided,
   useCompact,
   useConversation,
-  useConversations,
+  useConversationSummary,
   useDocOf,
   useNow,
   useTranscript,
@@ -37,7 +38,7 @@ import {
   UserView,
 } from '@/sdk'
 import type { CompactSummaryProps, ToolCallView } from '@/sdk'
-import { AgentMark, agentTitle, ConversationRef } from '../conversations/ui.tsx'
+import { AgentMark, AgentTitle, ConversationRef, useAgentTitle } from '../conversations/ui.tsx'
 import { openAgentSource, StandingDoc } from '../subagents/ui.tsx'
 import { useWorkspaceIndex } from '../workspaces/ui.tsx'
 import { accentOf } from './accent.tsx'
@@ -55,6 +56,7 @@ import {
   sentBy,
   sentStatus,
 } from './data.tsx'
+import { cacheBusts } from '../../lib/context-usage.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { callerOf } from './caller.ts'
 import { MessagesDoc } from './refs.ts'
@@ -86,8 +88,8 @@ export function useAccentOf(id: number | 'user' | 'remote') {
 
 /**
  * Who `id` is: you, another project's Ultimate (`remote` names it), `@name` for a standing agent or the lander (with its
- * mark when `mark`), else a conversation link. The ULTIMATE wordmark takes the colour of its surroundings: the accent
- * of the bubble it heads.
+ * mark when `mark`), else a conversation link. With its mark, @ultimate is the ULTIMATE wordmark, or its definition's
+ * title; either takes the colour of its surroundings: the accent of the bubble it heads.
  */
 export function Address({
   id,
@@ -100,6 +102,7 @@ export function Address({
 }) {
   const standing = useDocOf(1, StandingDoc)
   const workspaces = useWorkspaceIndex()
+  const ultimate = useAgentTitle('ultimate')
   if (id === 'user') return <span>you</span>
   if (id === 'remote')
     return (
@@ -116,12 +119,16 @@ export function Address({
     return (
       <span className="flex items-center gap-1.5" title="@ultimate">
         <AgentMark name={name} size="sm" />
-        <span
-          className="font-sans text-[10.5px] font-semibold tracking-[0.28em]"
-          data-ui="wordmark"
-        >
-          ULTIMATE
-        </span>
+        {ultimate.brand ? (
+          <span
+            className="font-sans text-[10.5px] font-semibold tracking-[0.28em]"
+            data-ui="wordmark"
+          >
+            ULTIMATE
+          </span>
+        ) : (
+          <span className="font-sans text-[12px] font-semibold">{ultimate.title}</span>
+        )}
       </span>
     )
   return (
@@ -288,7 +295,7 @@ function Sender({ id, tone }: { id: number; tone: string }) {
     <span className="flex shrink-0 items-center gap-2" title={`@${name}`}>
       <AgentMark name={name} size="sm" />
       <span className={cn('font-sans text-[13px] font-semibold tracking-[-0.005em]', tone)}>
-        {agentTitle(name)}
+        <AgentTitle name={name} />
       </span>
     </span>
   )
@@ -347,8 +354,15 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
  * A whole stretch between @ultimate's messages in one line: how many updates, who with, what landed and whether the
  * app reloaded, so the reader knows whether to open it.
  */
-export function StretchSummary({ rows, steps, working }: CompactSummaryProps) {
+export function StretchSummary({ rows, steps, working, entries }: CompactSummaryProps) {
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  // Against the whole transcript: a stretch's first response compares with the one before the stretch.
+  const busts = cacheBusts(useTranscript())
+  // A response split over rows (a run of work and its visible message call) counts once.
+  const written = [...new Set(entries.map((entry) => entry.id))].reduce(
+    (sum, id) => sum + (busts.get(id)?.written ?? 0),
+    0,
+  )
   const counted = rows.filter(
     (row) => backgroundRow(row, log) !== 'hidden' && row.entry.kind !== 'pi.system',
   )
@@ -382,6 +396,11 @@ export function StretchSummary({ rows, steps, working }: CompactSummaryProps) {
         </span>
       ))}
       {reloaded && <span className="shrink-0 max-sm:hidden">· reloaded</span>}
+      {written > 0 && (
+        <span className="shrink-0 text-warning/80" data-cache-rebuilt={written}>
+          · cache rebuilt · {formatTokens(written)} written
+        </span>
+      )}
       {working && <span className="shrink-0 text-brand">· working</span>}
     </span>
   )
@@ -498,11 +517,11 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
 /** The `branch` tool as the branch it started and the prompt it was given; a failed call keeps the generic card. */
 export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const log = useDocOf(1, MessagesDoc)
-  const conversations = useConversations()
   const { switchConversation, showSurface } = useUltimate()
-  if (call.status === 'error' || call.status === 'interrupted') return core
   const started = /^Branch #(\d+) started; message (\d+) sent\.$/.exec(call.output)
   const id = started ? Number(started[1]) : undefined
+  const title = useConversationSummary(id)?.title
+  if (call.status === 'error' || call.status === 'interrupted') return core
   const message = started ? log?.messages.find((m) => m.id === Number(started[2])) : undefined
   const { prompt, root, isolated } = call.args as {
     prompt?: string
@@ -528,10 +547,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
           <span className="shrink-0">Branch</span>
           {id !== undefined && (
             <span className="flex min-w-0 text-foreground/80">
-              <ConversationRef
-                id={id}
-                title={conversations.find((conversation) => conversation.id === id)?.title}
-              />
+              <ConversationRef id={id} title={title} />
             </span>
           )}
           <span className={cn('shrink-0', state === 'failed' && 'text-destructive')}>
@@ -549,11 +565,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
           </span>
           {id !== undefined && (
             <span className="flex min-w-0 overflow-hidden text-foreground">
-              <ConversationRef
-                className="w-full"
-                id={id}
-                title={conversations.find((conversation) => conversation.id === id)?.title}
-              />
+              <ConversationRef className="w-full" id={id} title={title} />
             </span>
           )}
           <span className="shrink-0 max-sm:hidden">
@@ -703,6 +715,7 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
           events.emit('ultimate:reveal-entry', {
             conversationId: asked.conversationId,
             entryId: asked.id,
+            toolCallId: question.call?.split('/')[0],
           })
         }
         title="Show the question and your answer"

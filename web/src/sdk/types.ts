@@ -18,6 +18,7 @@ export type SlotName =
   | 'composer.status'
   | 'composer.actions'
   | 'conversation.overlay'
+  | 'transcript.top'
   | 'transcript.start'
   | 'transcript.end'
   | 'overlay'
@@ -217,6 +218,8 @@ export interface CompactSummaryProps {
   rows: readonly CompactRow[]
   /** Steps in its runs of work. */
   steps: number
+  /** Every entry in it, those in its runs of work included. */
+  entries: readonly EntryRecord[]
   /** Whether the agent still works in it. */
   working: boolean
 }
@@ -273,6 +276,16 @@ export const ErrorReport = definePoint<
   null,
   { title: string; send: (report: string) => void } | undefined
 >('ultimate.errorReport')
+
+/**
+ * Where the composer puts a file that is not an inline image (`attachments` provides it): `upload` stores it on the
+ * host and resolves with its absolute path, which the prompt references; files up to `maxBytes` attach, and the host
+ * keeps them `keptMs`. Without a provider only images attach.
+ */
+export const FileUpload = definePoint<
+  null,
+  { upload: (file: File) => Promise<string>; maxBytes: number; keptMs: number } | undefined
+>('ultimate.fileUpload')
 
 /** What a facet provides for a point: `useValue` is a hook, run once per `<Provided>` with its input. */
 export interface Provision {

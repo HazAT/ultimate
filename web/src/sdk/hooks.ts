@@ -64,11 +64,11 @@ export interface ConversationState {
   /** True until this conversation's snapshot arrived. */
   loading: boolean
   /**
-   * The streamed active entries, oldest first: the head marker and the newest entries of a long context, all of a short
-   * one. Whole-transcript readers use `useTranscript()`, which grows as the reader pages in earlier history.
+   * The streamed entries, oldest first: the newest of a long transcript, all of a short one, head markers in place.
+   * Whole-transcript readers use `useTranscript()`, which grows as the reader pages in earlier history.
    */
   entries: readonly EntryRecord[]
-  /** The exclusive `api.history` cursor for active entries the stream left out; absent when it sent them all. */
+  /** The exclusive `api.history` cursor for entries the stream left out; absent when it sent them all. */
   older?: number
   /** `pi.agent`: model, thinking level, cwd, extensions, tools. */
   agent: AgentState
@@ -103,7 +103,7 @@ function derive(view: StreamedView | undefined): ConversationState {
       id: view.conversation.id,
       loading: false,
       entries: view.entries,
-      older: view.older,
+      older: view.before === undefined ? undefined : view.before + 1,
       agent: docs['pi.agent'] ?? {},
       usage: (docs['pi.usage'] ?? empty.usage) as UsageState,
       live,
@@ -141,6 +141,14 @@ export const getConversation = (id?: number): ConversationState => {
 export const getState = (): State => store.getState()
 export const useSystem = () => useStore((state) => state.system)
 export const useConversations = () => useStore((state) => state.conversations)
+/**
+ * One conversation's summary: it re-renders only when that row changes, not when another conversation's busy, title or
+ * answer time does. Use it instead of `useConversations().find(…)`.
+ */
+export const useConversationSummary = (id: number | undefined) =>
+  useStore((state) =>
+    id === undefined ? undefined : state.conversations.find((summary) => summary.id === id),
+  )
 /** The live task graph of every conversation. */
 export const useTasks = () => useStore((state) => state.tasks)
 /** `GET /api/models`, refreshed after (re)connects and by `refreshModels()`. */
@@ -342,7 +350,7 @@ export function useCompactThread() {
 function useCompactConfig() {
   const records = useExtensions()
   const id = useConversation((conversation) => conversation.id)
-  const conversation = useStore((state) => state.conversations.find((summary) => summary.id === id))
+  const conversation = useConversationSummary(id)
   const kinds = useMemo(() => compactDocs(records).join(','), [records])
   useEffect(() => {
     const releases = kinds ? kinds.split(',').map((kind) => store.watchDocOf(1, kind)) : []

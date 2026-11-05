@@ -44,6 +44,7 @@ Do it yourself when it's a quick lookup, a small fix, or when the work is mostly
 - **Best fit:** read-only reconnaissance ("find all callers of X", "summarize how Y works", "which tests cover Z") with `scout`. Run independent scouts in parallel.
 - **Sometimes:** implementation with clear boundaries: `worker`, or `designer` for UI and design. Workers editing the same files run one at a time.
 - **Never:** requirements, architecture, acceptance criteria, final review.
+- **No definition fits?** Don't borrow one whose instructions don't match your brief. Make the agent on the fly: `subagent start` with `label`, `family` (or `model`), `thinking`, `tools` and `instructions` instead of `agent`. Leave out `edit` and `write` for a read-only pass. An agent that can write gets its own worktree. To run a definition on another model, pass `family` with `agent`.
 
 Workers start with no context. Every brief states:
 
@@ -54,7 +55,7 @@ Workers start with no context. Every brief states:
 5. "Do not expand scope. Report problems instead of working around them."
 6. What to return: conclusions with file:line evidence, not raw dumps.
 
-Start a designer's preview yourself with `instance start {subagent: <designer id>}` on its worktree and hand it the URL; the preview hot-reloads as the designer saves, and workers and designers cannot start instances.
+Start a designer's preview yourself with `instance start {subagent: <designer id>}` on its worktree and hand it the URL; the preview switches to each save about 2 s later, and workers and designers cannot start instances.
 
 The worker can only be as good as its brief. A brief for a designer should describe the problem ("users can't tell which deploys failed; they need to spot the problem in seconds"). It shouldn't give a pixel spec ("add a red badge to the left of each row"). Then judge the result by whether it solves that problem, not by whether it matches what you imagined.
 

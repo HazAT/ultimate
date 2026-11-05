@@ -1,68 +1,14 @@
-// Pi upstream: @earendil-works/pi-durable@1.4.0 src/harness/prompt.ts — internal remove-all pi.system entry immediately precedes a reordered re-add, folded into the re-add's diff here. Drop when Pi exposes prompt reorder metadata instead of requiring entry-sequence inference.
-import type { ImageContent, SystemMessage, TextContent } from '@earendil-works/pi-ai'
+// Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/prompt.ts — internal remove-all pi.system entry immediately precedes a reordered re-add, folded into the re-add's diff here. Drop when Pi exposes prompt reorder metadata instead of requiring entry-sequence inference.
+import type { Message, SystemMessage } from '@earendil-works/pi-ai'
 import {
   estimateMessageTokens,
   estimateTextAndImageContentTokens,
   estimateTextTokens,
 } from '@earendil-works/pi-ai/utils/estimate'
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { Breakdown, Diff, Injected, Prompt, SectionChange, ToolChange } from './types.ts'
 
-/** A prompt section as the model saw it, with its estimated tokens. */
-export interface Section {
-  key: string
-  text: string
-  tokens: number
-}
-/** A tool declaration as the model saw it; its tokens estimate the declaration's JSON. */
-export interface Tool {
-  name: string
-  description: string
-  parameters: unknown
-  tokens: number
-}
-/** The system prompt and tools in effect at an entry, in request order. */
-export interface Prompt {
-  sections: Section[]
-  tools: Tool[]
-}
-/** What a context start put in front of the model before its prompt: a memory brief, a tally, a summary, a handoff. */
-export interface Injected {
-  label: string
-  entry?: EntryRecord
-  content: string | readonly (TextContent | ImageContent)[]
-  tokens: number
-}
-/** What the model saw before the first input of a context, part by part. */
-export interface Breakdown {
-  /** The context's start marker; absent for a conversation's own start. */
-  start?: EntryRecord
-  injected?: Injected
-  /** The first system prompt of the context; absent until its first request. */
-  system?: EntryRecord
-  prompt?: Prompt
-  /** The model and thinking level of the context's first response. */
-  model?: { provider: string; model: string; thinking?: string }
-  tokens: { prompt: number; tools: number; injected: number; total: number }
-}
-export interface SectionChange {
-  key: string
-  change: 'added' | 'changed' | 'removed'
-  /** The new text, or the removed one. */
-  text: string
-  delta: number
-}
-export interface ToolChange {
-  name: string
-  change: 'added' | 'changed' | 'removed'
-  tool: Tool
-  delta: number
-}
-/** How a `pi.system` patch changed the prompt and tools, against the state before it. */
-export interface Diff {
-  sections: SectionChange[]
-  tools: ToolChange[]
-  delta: number
-}
+export type * from './types.ts'
 
 export const systemOf = (entry: EntryRecord | undefined): SystemMessage | undefined => {
   const message = entry?.model?.[0]
@@ -95,12 +41,20 @@ export function promptAt(
 ): Prompt {
   let from = index
   while (from >= 0 && !startsContext(entries[from])) from--
+  const messages: SystemMessage[] = []
+  for (let at = from + 1; at <= index; at++) {
+    const message = aside.has(entries[at].id) ? undefined : systemOf(entries[at])
+    if (message) messages.push(message)
+  }
+  return promptOf(messages)
+}
+
+/** The prompt the system messages among `messages` add up to, such as a model context's: `null` removes, re-adding appends. */
+export function promptOf(messages: readonly Message[]): Prompt {
   const sections = new Map<string, string>()
   const tools = new Map<string, NonNullable<SystemMessage['toolsAdded']>[number]>()
-  for (let at = from + 1; at <= index; at++) {
-    if (aside.has(entries[at].id)) continue
-    const message = systemOf(entries[at])
-    if (!message) continue
+  for (const message of messages) {
+    if (message.role !== 'system') continue
     for (const [key, value] of Object.entries(message.sections ?? {})) {
       if (value === null) sections.delete(key)
       else sections.set(key, value)
@@ -268,7 +222,11 @@ export function diffAt(
   aside: ReadonlySet<number> = new Set(),
 ): Diff {
   const before = promptAt(entries, removesAll(entries[index - 1]) ? index - 2 : index - 1, aside)
-  const after = promptAt(entries, index, aside)
+  return comparePrompts(before, promptAt(entries, index, aside))
+}
+
+/** How `after` differs from `before`: each section and tool added, changed or removed, with its token delta. */
+export function comparePrompts(before: Prompt, after: Prompt): Diff {
   const sections: SectionChange[] = []
   const old = new Map(before.sections.map((section) => [section.key, section]))
   for (const section of after.sections) {
@@ -279,6 +237,7 @@ export function diffAt(
       key: section.key,
       change: previous ? 'changed' : 'added',
       text: section.text,
+      ...(previous && { before: previous.text }),
       delta: section.tokens - (previous?.tokens ?? 0),
     })
   }

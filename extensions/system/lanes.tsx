@@ -2,11 +2,11 @@ import { ListFilterIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn, formatDuration, useConversations, useUltimate } from '@/sdk'
+import { cn, formatDuration, useConversationSummary, useUltimate } from '@/sdk'
 import type { ConversationSummary } from '@/sdk'
 import { stateTone, stateWord } from '../messages/ui.tsx'
 import type { ConversationState } from '../messages/ui.tsx'
-import { AgentMark, agentTitle, ConversationRef } from '../conversations/ui.tsx'
+import { AgentMark, AgentTitle, ConversationRef } from '../conversations/ui.tsx'
 import { block, duration, label, ticks } from './layout.ts'
 import type { TreeRow, WindowName } from './layout.ts'
 import type { Lane, LaneRun } from './refs.ts'
@@ -262,7 +262,7 @@ export function LaneRow({
 }) {
   const { lane } = row
   const actions = useUltimate()
-  const summary = useConversations().find((item) => item.id === lane.conversation)
+  const summary = useConversationSummary(lane.conversation)
   const standing = standingName(lane, summary)
   const [selected, setSelected] = useState<string>()
   const run = lane.runs.find((item) => item.start === selected)
@@ -298,7 +298,7 @@ export function LaneRow({
             <span className="flex min-w-0 flex-1 flex-col">
               {standing ? (
                 <span className="truncate text-[12.5px] leading-5 font-semibold text-foreground">
-                  {agentTitle(standing)}
+                  <AgentTitle name={standing} />
                   <span className="ml-1.5 font-mono text-[10px] font-normal text-muted-foreground/70">
                     #{lane.conversation}
                   </span>

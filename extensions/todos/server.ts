@@ -2,7 +2,8 @@
  * To-dos: one short list per project on the root conversation, each item owned by the user or @ultimate. @ultimate
  * keeps it with its `todo` tool and hears about it when it changed; the user adds and ticks in the To-dos panel.
  */
-import { Type } from '@earendil-works/pi-ai'
+import { int, obj, opt, str } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import {
   defineDoc,
   defineExtension,
@@ -149,7 +150,7 @@ export default function todosExtension(host: ExtensionHost) {
     name: 'todos',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.4.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
         // A per-input note when the list changed, never a system-prompt section, keeps the prompt cached.
         beforeInput: async (_input, { tx, conversationId }) =>
           (await standing(tx, conversationId))
@@ -163,11 +164,11 @@ export default function todosExtension(host: ExtensionHost) {
         deferred: true,
         description:
           "The project's to-dos, owned by you ('ultimate') or the user ('user'): add {text, owner}, done {id}, list. Keep open loops here, not in codemode store; the user sees and ticks them in the To-dos panel, and their open questions already show there, so never add a to-do for a question. Other projects read this list with ultimate.doc('todos', 1, {project}) and ask you to add through ultimate.tell.",
-        parameters: Type.Object({
-          action: Type.Union([Type.Literal('add'), Type.Literal('done'), Type.Literal('list')]),
-          text: Type.Optional(Type.String()),
-          owner: Type.Optional(Type.Union([Type.Literal('user'), Type.Literal('ultimate')])),
-          id: Type.Optional(Type.Integer({ minimum: 1 })),
+        parameters: obj({
+          action: strEnum(['add', 'done', 'list']),
+          text: opt(str()),
+          owner: opt(strEnum(['user', 'ultimate'])),
+          id: opt(int({ minimum: 1 })),
         }),
         // Not replay-safe (the default): an interrupted add is never rerun, so it commits at most once.
         async execute(args, api, ctx) {

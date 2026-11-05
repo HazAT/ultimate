@@ -15,6 +15,7 @@ import {
   AllProvided,
   Provided,
   Slot,
+  useConversationSummary,
   useDocOf,
   useNow,
   useStore,
@@ -34,7 +35,7 @@ import {
   useWorkspaceConversations as useConversations,
   useWorkspaceIndex,
 } from '../workspaces/ui.tsx'
-import { Row, ChildRow, StandingRow, SubagentLine } from './rows.tsx'
+import { Row, ChildRow, EpicLine, StandingRow, SubagentLine } from './rows.tsx'
 import {
   MessagesDoc,
   conversationState,
@@ -539,7 +540,10 @@ function Tree({
     conversation: branch,
     working: working.has(branch.id),
     parked: parked.has(branch.id),
-    subagents: subagentLines(branch.id),
+    subagents: [
+      <EpicLine id={branch.id} key="epic" working={working.get(branch.id) === 'self'} />,
+      ...subagentLines(branch.id),
+    ],
   }))
 
   return (
@@ -718,7 +722,7 @@ function Tree({
 /** Records the answer the user has seen: the shown top-level conversation's latest, once it is idle. */
 export function Seen() {
   const id = useShownId()
-  const summary = useConversations().find((conversation) => conversation.id === id)
+  const summary = useConversationSummary(id)
   const [seen, setSeen] = useSidebarState<Record<string, number>>('seen', {})
   const answerAt =
     summary && summary.parentConversationId === undefined && !summary.busy

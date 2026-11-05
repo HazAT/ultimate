@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
+import { onCommit } from '../../lib/commits.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -249,14 +250,14 @@ export function triggers(
     closed = false
     stop?.()
     // Not a reactor: context usage is a document, not a domain event.
-    stop = host.harness().subscribeCommits((publication) => {
+    stop = onCommit(host.harness(), (publication) => {
       const changed = new Map<number, ContextUsage>()
       for (const change of publication.changes)
         if (
           change.type === 'document' &&
+          change.kind === 'change' &&
           change.record.kind === ContextUsageDoc.definition.kind &&
-          change.conversationId !== undefined &&
-          change.value
+          change.conversationId !== undefined
         )
           changed.set(change.conversationId, structuredClone(change.value as ContextUsage))
       if (changed.size)

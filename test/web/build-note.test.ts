@@ -10,6 +10,7 @@ vi.mock('@/sdk', () => ({
   definePoint: (name: string) => ({ name }),
   defineWebExtension: (facet: unknown) => facet,
   useConversations: () => [],
+  useConversationSummary: (id?: number) => [].find((item: { id: number }) => item.id === id),
   useDocOf: () => undefined,
   useUltimate: () => ({ switchConversation: () => {} }),
 }))

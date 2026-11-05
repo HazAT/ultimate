@@ -72,12 +72,6 @@ export const hit = (happening: Happening) => {
   if (!document.hidden) band?.hit(happening)
 }
 
-// A hot reload replaces this module: the old band would keep playing on the shared transport beside the new one.
-import.meta.hot?.dispose(() => {
-  band?.dispose()
-  stopDemo()
-})
-
 /** Plays the scripted demo through the band: a feature from first message to landing, about 40 seconds. */
 export function startDemo() {
   stopDemo()

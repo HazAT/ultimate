@@ -1,4 +1,4 @@
-import { RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
+import { LoaderCircleIcon, RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
+  bundle,
   cn,
   defineWebExtension,
   formatTime,
+  switched,
   useEvents,
+  useNow,
   useRestart,
   useSystem,
   useToolDuration,
@@ -19,7 +22,6 @@ import {
 import type { ToolCallView } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { SubmissionLanded } from '../workspaces/ui.tsx'
-import type { LandedData } from '../workspaces/ui.tsx'
 
 const short = (id: string | undefined) => id?.slice(0, 7)
 
@@ -175,22 +177,88 @@ function CoreStale() {
   )
 }
 
-/** `build a1b2c3d` in the status line; it lights up when the build changes. */
+/**
+ * The web bundle's rebuild in place of the build item: `building… 2s` while it runs, `ready · switching` as the page
+ * is about to reload onto it, and what failed (a facet left out, or the whole build) until a build succeeds.
+ */
+function Rebuild() {
+  const web = useSystem()?.web
+  const building = web?.building === true
+  const since = useRef(0)
+  if (building && since.current === 0) since.current = Date.now()
+  if (!building) since.current = 0
+  const now = useNow(1000, building)
+  if (!web) return null
+  if (web.id && bundle && web.id !== bundle)
+    return (
+      <span className="flex items-center gap-1.5 text-brand">
+        <ZapIcon className="size-3" />
+        ready · switching
+      </span>
+    )
+  if (building)
+    return (
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <LoaderCircleIcon className="size-3 animate-spin" />
+        building… {Math.max(0, Math.floor((now - since.current) / 1000))}s
+      </span>
+    )
+  if (!web.error && !web.left) return null
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent',
+            web.error ? 'text-error' : 'text-warning',
+          )}
+          type="button"
+        >
+          <TriangleAlertIcon className="size-3" />
+          {web.error
+            ? 'build failed'
+            : `${web.left!.length} ${web.left!.length === 1 ? 'facet' : 'facets'} left out`}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[32rem] max-w-[calc(100vw-2rem)] p-0 font-mono"
+        side="top"
+      >
+        <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
+          {web.error
+            ? 'The web UI did not build; this page keeps the previous bundle.'
+            : 'Left out of the web bundle; their cards show the error until a save fixes them.'}
+        </div>
+        <pre className="max-h-80 overflow-auto px-3 py-2 text-[11.5px] leading-[1.55] whitespace-pre-wrap text-error">
+          {web.error ?? web.left!.map((entry) => `${entry.file}\n${entry.error}`).join('\n\n')}
+        </pre>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** `build a1b2c3d` in the status line; it lights up when the build changes, or the page just switched to it. */
 function Build() {
   const system = useSystem()
   const id = system?.build.id
-  const [fresh, setFresh] = useState(false)
+  const [fresh, setFresh] = useState(switched !== undefined)
   const last = useRef(id)
   useEffect(() => {
-    if (!id || last.current === id) return undefined
+    if (!id || last.current === id) return
     const first = last.current === undefined
     last.current = id
-    if (first) return undefined
-    setFresh(true)
+    if (!first) setFresh(true)
+  }, [id])
+  useEffect(() => {
+    if (!fresh) return undefined
     const timer = setTimeout(() => setFresh(false), 4000)
     return () => clearTimeout(timer)
-  }, [id])
+  }, [fresh])
   if (!system) return null
+  // The rebuild item stands in for this one while it shows something.
+  const web = system.web
+  if (web.building || web.error || web.left || (web.id && bundle && web.id !== bundle)) return null
   const { build } = system
   return (
     <Tooltip>
@@ -240,84 +308,34 @@ function Build() {
   )
 }
 
-/** How long the hot-reload toast stays after the last update. */
-const hotLifetime = 3000
+/** How long the update toast stays. */
+const lifetime = 4000
 
-/** `extensions/lineage/web.tsx?t=1` as `lineage/web.tsx`: enough to recognise the file. */
-const hotFile = (path: string) => path.split('?')[0].split('/').slice(-2).join('/')
+/** `extensions/lineage/web.tsx` as `lineage/web.tsx`: enough to recognise the file. */
+const shortFile = (path: string) => path.split('/').slice(-2).join('/')
 
-/** How far apart a hot update and a landing may be to belong together: the lander fast-forwards, then records it. */
+/** How far apart a landing and the switch it brought may be: the lander fast-forwards, then records it. */
 const landingWindow = 60_000
 
-// This module re-run by a hot update counts as one, so a landing that replaced this file still names itself.
-const reloadedAt = import.meta.hot?.data.loaded ? Date.now() : 0
-if (import.meta.hot) import.meta.hot.data.loaded = true
-
 /**
- * A quiet toast above the bottom right of the status line when Vite applies a hot update without reloading the page:
- * the branches whose landing brought it, else the modules it re-ran (its accept boundaries, not necessarily the edited
- * file). Updates arriving meanwhile join it and keep it up.
+ * A quiet toast above the bottom right of the status line after the page switched to a new web bundle: the branches
+ * whose landing brought it, else the sources that changed.
  */
-function HotReloaded() {
-  const [files, setFiles] = useState<readonly string[]>([])
-  const [landings, setLandings] = useState<readonly LandedData[]>([])
+function Updated() {
+  const [shown, setShown] = useState(switched !== undefined)
   const { switchConversation } = useUltimate()
   const events = useEvents({ events: [SubmissionLanded], limit: 5 })
-  const lastHot = useRef(reloadedAt)
-  const seen = useRef<number | undefined>(undefined)
-  const recent = useRef<{ at: number; landing: LandedData }[]>([])
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const keep = (lifetime: number) => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      setFiles([])
-      setLandings([])
-    }, lifetime)
-  }
-  const show = (landing: LandedData) =>
-    setLandings((shown) =>
-      shown.some((row) => row.submission === landing.submission) ? shown : [landing, ...shown],
-    )
-  // Landings recorded since this page loaded: named right away when a hot update just came, else kept for one to come.
   useEffect(() => {
-    if (!events) return
-    const newest = events[0]?.id ?? 0
-    if (seen.current === undefined) {
-      seen.current = newest
-      return
-    }
-    const fresh = events.filter((event) => event.id > seen.current!)
-    seen.current = Math.max(seen.current, newest)
-    const now = Date.now()
-    for (const event of fresh) {
-      if (now - lastHot.current < landingWindow) {
-        show(event.data)
-        keep(hotLifetime * 2)
-      } else recent.current.push({ at: now, landing: event.data })
-    }
-  }, [events])
-  useEffect(() => {
-    const hot = import.meta.hot
-    if (!hot) return undefined
-    const updated = ({ updates }: { updates: { acceptedPath: string }[] }) => {
-      // Vite's own virtual modules mean nothing to a reader.
-      const paths = updates
-        .map((update) => update.acceptedPath)
-        .filter((path) => !path.startsWith('/@id/'))
-      if (paths.length === 0) return
-      const now = Date.now()
-      lastHot.current = now
-      recent.current = recent.current.filter((row) => now - row.at < landingWindow)
-      for (const row of recent.current) show(row.landing)
-      setFiles((shown) => [...new Set([...shown, ...paths.map(hotFile)])])
-      keep(recent.current.length ? hotLifetime * 2 : hotLifetime)
-    }
-    hot.on('vite:afterUpdate', updated)
-    return () => {
-      hot.off('vite:afterUpdate', updated)
-      clearTimeout(timer.current)
-    }
-  }, [])
+    if (!shown) return undefined
+    const timer = setTimeout(() => setShown(false), lifetime)
+    return () => clearTimeout(timer)
+  }, [shown])
+  if (!shown || !switched) return null
+  const { at } = switched
+  const landings = (events ?? [])
+    .filter((event) => Math.abs(at - Date.parse(event.at)) < landingWindow)
+    .map((event) => event.data)
+  const files = switched.changed
   if (landings.length > 0)
     return (
       <div
@@ -338,16 +356,14 @@ function HotReloaded() {
       </div>
     )
   if (files.length === 0) return null
-  // Tailwind rebuilds its stylesheet on every source change: name it only when nothing else changed.
-  const scripts = files.filter((file) => !file.endsWith('.css'))
-  const named = scripts.length > 0 ? scripts : files
+  const named = files.map(shortFile)
   return (
     <div
       className="pointer-events-none fixed right-3 bottom-9 z-40 flex max-w-96 animate-in items-center gap-1.5 rounded-md border border-border/80 bg-popover px-2.5 py-1.5 font-mono text-[11.5px] text-muted-foreground shadow-lg fade-in-0 slide-in-from-bottom-1"
       role="status"
     >
       <ZapIcon className="size-3.5 shrink-0 text-brand" />
-      <span className="shrink-0 text-foreground/90">Hot reloaded</span>
+      <span className="shrink-0 text-foreground/90">Updated</span>
       <span className="truncate">{named.slice(0, 2).join(', ')}</span>
       {named.length > 2 && <span className="shrink-0">+{named.length - 2}</span>}
     </div>
@@ -360,8 +376,9 @@ export default defineWebExtension({
     // Discovery order puts `self` before `status-line`: the item sits just left of `live · gen N`.
     'statusline.right': [
       { component: CoreStale, phone: true },
+      { component: Rebuild, order: 1, phone: true },
       { component: Build, order: 1 },
     ],
-    overlay: HotReloaded,
+    overlay: Updated,
   },
 })

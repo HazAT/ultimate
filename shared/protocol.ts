@@ -27,10 +27,11 @@ export interface ConfigureRequest {
   thinkingLevel?: ModelThinkingLevel
 }
 /**
- * A conversation's view as `/api/events` streams it. A long active context arrives windowed: its head marker and newest
- * entries, with `older` the exclusive `/history` cursor for the active entries left out. Absent when nothing was left out.
+ * A conversation's view as `/api/events` streams it: Pi's window over its newest entries in id order, head markers
+ * where they were written, with `before` the entry just before the window (absent when the window starts the
+ * transcript), so `/history` pages on from `before + 1`.
  */
-export type StreamedView = ConversationView & { older?: number }
+export type StreamedView = ConversationView
 /** Stored history, newest first; `before` is the exclusive cursor for the next page. */
 export interface HistoryResponse {
   entries: EntryRecord[]
@@ -144,6 +145,18 @@ export interface SystemInfo {
     settingsError?: string
   }
   code: { ultimateRoot: string; branch: string; sha: string; dirty: boolean; coreStale?: boolean }
+  /**
+   * The web bundle served now; a page on another id reloads onto it. `changed` lists the sources that changed since the
+   * previous bundle, relative to the Ultimate root when inside it. `building` is set while a rebuild runs; the last
+   * build's `left` names facets left out with their errors, `error` a build that failed as a whole and kept `id`.
+   */
+  web: {
+    id: string
+    changed: string[]
+    building?: boolean
+    left?: { file: string; error: string }[]
+    error?: string
+  }
   extensionDiagnostics: string[]
   extensions: ExtensionInfo[]
   /**

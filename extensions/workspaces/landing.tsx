@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MentionText } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
-import { api, definePoint, Fold, Provided, useConversations, useUltimate } from '@/sdk'
+import { api, definePoint, Fold, Provided, useConversationSummary, useUltimate } from '@/sdk'
 import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
 import { GithubAction } from './refs.ts'
 import type { ConversationSubject } from '../conversations/types.ts'
@@ -28,7 +28,7 @@ export function Open({
   entry?: number
 }) {
   const { switchConversation } = useUltimate()
-  const busy = useConversations().find((conversation) => conversation.id === id)?.busy
+  const busy = useConversationSummary(id)?.busy
   return (
     <Button
       className={cn(

@@ -17,7 +17,7 @@ const live = new DatabaseSync(source, { readOnly: true })
 live.exec(`VACUUM INTO '${target.replaceAll("'", "''")}'`)
 live.close()
 
-// Pi upstream: @earendil-works/pi-durable@1.4.0 src/storage/sqlite/migrations.ts — a document is a `documents` row
+// Pi upstream: @earendil-works/pi-durable@1.5.0 src/storage/sqlite/migrations.ts — a document is a `documents` row
 // plus `document_revisions` (a base, then deltas of chord ops), each revision numbered from durable_metadata.next_seq.
 const db = new DatabaseSync(target)
 try {

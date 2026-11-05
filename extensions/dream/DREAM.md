@@ -56,11 +56,12 @@ A codified memory (`retire` on the proposal) stays until its branch lands; then 
 ### Prepare the fresh chapter
 
 A fresh chapter starts lean: the new @ultimate wakes from your handover, the memory and the open work instead of
-re-reading a full context. Offer it when it is worth it: the dream's work has landed or been dropped (the branches
-you care about are done), and either your context is well filled, the user was away for long, or the dream changed a
-lot. After a small dream with plenty of room left, stay in this chapter and carry on.
+re-reading a full context. The branch you start in the turn that answers a dream request is the dream: once it is
+concluded, the user sees "The dream is done · Fall asleep…" in the sidebar and the status line, and decides. Pressing
+it wakes you with a `dream.ready` input; "Stay in this chapter" dismisses it. You may also prepare earlier when the
+user asks.
 
-When ready, call `prepare` once:
+On `dream.ready`, call `prepare` once:
 
 - `chapter`: a 2–3 word lowercase, dash-separated name drawn from what the dream learned (at most 40 characters);
 - `learned`: exactly three short lines in your own voice ("I learned…", "I keep…", "I'd like…");

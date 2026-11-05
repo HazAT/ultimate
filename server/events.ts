@@ -7,6 +7,7 @@ import type { JsonValue } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
+import { onCommit } from '../lib/commits.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type { EventContext, EventData, EventRecord, EventToken } from '../shared/events.ts'
 import { Metadata } from './metadata.ts'
@@ -276,7 +277,7 @@ export function eventLog(
           await stop()
           state.active = active
           state.kinds = active.kinds
-          unsubscribe = harness().subscribeCommits((publication) => {
+          unsubscribe = onCommit(harness(), (publication) => {
             if (
               publication.changes.some(
                 (change) => change.type === 'entry' && active.kinds.has(change.value.kind),

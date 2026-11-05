@@ -13,7 +13,7 @@ A project is a forest of conversation trees, like commit histories.
   intents, latest conversation abstracts and landings with divergence and `#conversation/entry` breadcrumbs. The UI
   calls a tally **context** and shows it as the read-only **History** page (the sidebar's project path opens it), with **Open in Zed** and **Back to
   @ultimate**; the sidebar's Memory row shows the memory's estimated tokens (what a branch starts from) and opens the
-  Memory surface, and each root heads its tree with its last three events (landings, notes, branches, compactions).
+  Memory surface.
   Start a project with @ultimate: Continue on Get ready, or **Set up with @ultimate** on the Start here card that
   @ultimate's conversation shows until onboarding has run. It walks the user through Ultimate, handles setup
   cards, reads the project and writes its first memories with `remember`; the user's answer about the project
@@ -54,16 +54,19 @@ A project is a forest of conversation trees, like commit histories.
 
 | Path                          | What lives there                                                                                                                                                                                      | How a change goes live                                                                                                                                                                                 |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `extensions/<name>/web.tsx`   | UI of an extension: slots, panels, surfaces, tool and entry renderers, commands                                                                                                                       | Vite hot reload, instantly, without a page reload. A broken facet shows an error card; the rest keeps running.                                                                                         |
+| `extensions/<name>/web.tsx`   | UI of an extension: slots, panels, surfaces, tool and entry renderers, commands                                                                                                                       | Rebuilt into the page about 2 s after a save; open pages switch to the new bundle (drafts and view kept). A broken facet shows an error card; the rest keeps running.                                  |
 | `extensions/<name>/server.ts` | Agent behaviour: system prompt, tools, hooks (Pi Durable extensions)                                                                                                                                  | Reinstalled on save. Running tool calls finish on the old code; the next call uses the new code.                                                                                                       |
 | `extensions/<name>/api.ts`    | Its contract for other extensions; `export const tier = 'core'` puts it in the always-on core tier, which depends only on the core tier, one way ([docs/extensions.md](docs/extensions.md#core-tier)) | With the facets that import it.                                                                                                                                                                        |
-| `lib/`                        | Pure helpers extensions share (exec, git, JSON and settings files, secret reads); no state, no extension imports                                                                                      | Like the extensions that import it: hot reload or reinstall on save.                                                                                                                                   |
-| `web/`                        | The web core: surface host with primitives, SDK (`web/src/sdk`), transcript, composer, palette                                                                                                        | Vite hot reload, instantly. Nothing else to do.                                                                                                                                                        |
+| `lib/`                        | Pure helpers extensions share (exec, git, JSON and settings files, secret reads); no state, no extension imports                                                                                      | Like the extensions that import it: rebuilt or reinstalled on save.                                                                                                                                    |
+| `web/`                        | The web core: surface host with primitives, SDK (`web/src/sdk`), transcript, composer, palette                                                                                                        | Rebuilt and switched to like a `web.tsx`. Nothing else to do.                                                                                                                                          |
 | `agents/`                     | Subagent definitions (Markdown with frontmatter)                                                                                                                                                      | Read at each use.                                                                                                                                                                                      |
 | `server/`, `shared/`          | Core plumbing: harness, storage, API, Vite hookup                                                                                                                                                     | Call the `restart` tool. A new process boots and type-checks next to the old one; if it fails you get the error and the old process keeps running. If it succeeds, the run resumes in the new process. |
 | `bin/`                        | The supervisor                                                                                                                                                                                        | Only a human restart (`pnpm start`) applies it. Keep it tiny and change it rarely.                                                                                                                     |
 
-Put behaviour in `extensions/` rather than `server/` whenever you can: it reloads without a restart.
+Put behaviour in `extensions/` rather than `server/` whenever you can: it reloads without a restart. The browser runs a
+production bundle (`server/web.ts`): a change to `web/` or a `web.tsx` rebuilds it in a short-lived child process, and
+every open page reloads onto the new bundle, resuming the view and drafts it left; with no page open the next page load
+builds it.
 A surface is a full-screen app the user switches to (header, ⌘K, `mod+1…9`); the conversation itself is the built-in
 `agent` surface, and a project's apps go in `<project>/.ultimate/extensions/` (see "Surfaces" in the guide).
 New UI is a new extension folder, not a change to `web/`: follow the `write-extension` skill, which points into
@@ -84,11 +87,9 @@ New UI is a new extension folder, not a change to `web/`: follow the `write-exte
 
 The top-level agent may commit verified work, land it and normally push the destination branch to `origin`
 (`HazAT/ultimate`), public or private, without asking. `workspace submit` runs checks and pushes. Subagents commit
-and report, never push. Preserve remote advancement with a
-non-destructive merge in an isolate, inspect it and rerun checks; stop for ambiguous conflicts, failed checks,
-security concerns or any force push/history rewrite. Never push secrets or unrelated unverified work.
-This permission does not cover other repositories, releases, publishing, deployments or GitHub issue/PR changes.
-See [integration details](docs/worktrees.md#standing-permission-to-push-this-repository) before pushing.
+and report, never push. Never force-push, rewrite history or push secrets. This permission does not cover other
+repositories, releases, publishing, deployments or GitHub issue/PR changes. A rejected push or remote advancement:
+see [integration details](docs/worktrees.md#standing-permission-to-push-this-repository).
 
 ## Conventions
 
@@ -117,6 +118,10 @@ Rules about how agents behave live in prompts and agent definitions, not in code
 invalid states: data loss, security, impossible states. Lint enforces only what the user explicitly asked for.
 
 A swallowed error needs a reason comment explaining why ignoring it is correct; `ultimate/no-silent-catch` enforces this for empty catch blocks and empty or `undefined`-returning `.catch` handlers.
+Likewise, code that exists only because of something outside it (an upstream bug, a provider quirk, a helper that
+papers over a library, an edge case found in the wild) carries a short comment at the code naming its origin (the
+issue or PR URL, our PR number or the `#conversation`), what breaks without it and, if known, when it can go, so a
+later agent can rethink it.
 
 Reject slop and jargon: keep code and explanations direct, minimal, and grounded in evidence. No backward-compatibility
 shims or speculative fallbacks; move forward and update callers. Commit tests for a feature's core path and one

@@ -105,13 +105,13 @@ async function fixture(events: EventRecord[] = [], summaries: ConversationSummar
   /** Conversations with a live foreground task. */
   const running = new Set<number>()
   const harness = {
-    taskGraph: async () => ({
+    watchTaskGraph: async () => ({
       value: {
         tasks: Object.fromEntries(
           [...running].map((id) => [id, { conversationId: id, background: false }]),
         ),
       },
-      dispose: () => {},
+      stop: async () => {},
     }),
   }
   const host = {

@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -78,6 +78,56 @@ export async function coreChangedSince(git: Git, boot: string | undefined) {
   return files !== ''
 }
 
+/** How long after an automatic restart no other one starts, across processes: a restart that does not help never loops. */
+export const AUTO_RESTART_PAUSE = 10 * 60_000
+
+/**
+ * A listener for server facets that fail to load. When the running core is stale (`stale`: the core or packages changed
+ * since boot), the facet most likely needs the new core, so it restarts the host at once, busy agents included: their
+ * work resumes in the new process. A failure while the core is current is a real bug and stays a load error. Facets
+ * failing in one reload join the first one's check, so they cause one restart; `last` (ms) keeps restarts apart.
+ */
+export function restartOnStaleLoad(options: {
+  stale: () => Promise<boolean>
+  restart: () => Promise<string>
+  notice: (message: string) => void
+  last: { read: () => Promise<number | undefined>; write: (at: number) => Promise<void> }
+  pending: { current?: Promise<void> }
+  now?: () => number
+}) {
+  const { stale, restart, notice, last, pending, now = Date.now } = options
+  return (name: string) => {
+    pending.current ??= (async () => {
+      const at = await last.read()
+      if (at !== undefined && now() - at < AUTO_RESTART_PAUSE) return
+      if (!(await stale())) return
+      await last.write(now())
+      notice(`Restarting: ${name} failed to load after a core change`)
+      notice(`Automatic restart failed: ${await restart()}`)
+    })()
+      .catch((error: unknown) => notice(`Automatic restart: ${String(error)}`))
+      .finally(() => {
+        pending.current = undefined
+      })
+  }
+}
+
+/**
+ * Check failed facets again once packages are installed: one that failed before the install linked a landing's new
+ * package found nothing stale then. `failed` names a facet that still has a load error.
+ */
+export async function retryStaleLoad(
+  listener: (name: string) => void,
+  pending: { current?: Promise<void> },
+  failed: () => string | undefined,
+) {
+  await pending.current
+  const name = failed()
+  if (!name) return
+  listener(name)
+  await pending.current
+}
+
 /** Install the lockfile's packages when they differ from the installed ones; the install's last lines when it fails. */
 async function installPackages(
   root: string,
@@ -138,6 +188,27 @@ export default function update(host: ExtensionHost) {
   boot(host)
   // A preview never fetches: it must not race the host on the same clone.
   if (preview()) return defineExtension({ name: 'update' })
+  const lastFile = join(host.home, 'update-auto-restart.json')
+  const pending = host.resource<{ current?: Promise<void> }>('update.auto-restart', () => ({}))
+  const onLoadError = restartOnStaleLoad({
+    stale: async () =>
+      (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
+      (await coreChangedSince(gitIn(host.ultimateRoot), await boot(host).head)),
+    // A successful restart never returns: this process is released and the new core resumes its work.
+    restart: () => host.restart(async () => {}),
+    notice: (message) => host.notice(message),
+    last: {
+      read: () =>
+        readFile(lastFile, 'utf8').then(
+          (text) => (JSON.parse(text) as { at: number }).at,
+          // No automatic restart recorded yet.
+          () => undefined,
+        ),
+      write: (at) => writeFile(lastFile, JSON.stringify({ at })),
+    },
+    pending,
+  })
+  host.onLoadError(onLoadError)
   const tick = () => {
     // Paused: no fetch starts until Play; the next tick after it catches up.
     if (host.want(PauseApi)?.paused()) return
@@ -156,6 +227,13 @@ export default function update(host: ExtensionHost) {
       const root = host.ultimateRoot
       if (!(await landingInstalls(gitIn(root), data))) return
       shared.installing ??= withLock(await lockOf(root), () => installPackages(root))
+        .then(() =>
+          retryStaleLoad(
+            onLoadError,
+            pending,
+            () => host.extensions().find((extension) => extension.server?.error)?.name,
+          ),
+        )
         .then(() => refresh(host, false))
         .catch((error: unknown) => host.notice(`Install after landing: ${String(error)}`))
         .finally(() => {

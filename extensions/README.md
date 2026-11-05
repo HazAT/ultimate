@@ -96,8 +96,17 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 - `models()`: model descriptors, including availability.
 - `skills(cwd)`: merged clone, user and project skills for a working directory, each with its `scope` and `overrides`.
 - `restart(approved)`: request a verified core swap; the async callback records the approved generation before activation.
+- `scanSubmissions(query, limit, cursor, caller)`: a page of committed submission records; it exists until Pi Durable exposes submission scans publicly.
+- `chapter`: the active chapter: its name, number, the newest chapter's name and its files.
 - `build()`, `system()`, `extensions()`: current build, system and extension inspection.
 - `conversations()`: every conversation's summary, as `useConversations()` gives the web; empty until the harness is open.
+- `projects()`: the user's central project homes read from their JSON manifests, never another project's SQLite; includes this home and live supervisor URLs.
+- `projectSetup()`: whether the project has `.ultimate/` setup, the decision of its root (a linked worktree's main checkout) and its capped README.
+- `projectSettings()`: the project's parsed settings, only after a local decision; otherwise empty.
+- `projectExtensions()`: a read-only inventory of the project's extension folders, including replacements of active extensions.
+- `setProjectDecision(local)`: remember the local/global choice and apply it through the live settings reload.
+- `reloadExtensions()`: apply settings writes to the registry, browser facets and styles before returning.
+- `invoke(name, action, args, signal, conversationId?)`: call an installed extension action on behalf of a conversation; rejects user-only actions.
 - `harness()`, `uiState(context)`, `doc(kind)`: durable harness, root UI snapshot and exported conversation document token.
 - `implement(api, value)`, `need(api)`, `want(api)`, `catalogue()`: publish and use typed process-local services; see [Extension APIs](#extension-apis). Registrations are staged until installation succeeds, replaced on reload, and removed when the facet is disabled, removed or closed; a failed replacement keeps the old provider.
 - `metadata`: the core's `ultimate.metadata` conversation document, `{ title?, label? }`; the shell names a conversation
@@ -110,6 +119,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
   time the harness opens (at once if it is open; the server serves once it settles), async work each time before it closes while the process stays (a core swap; drop commit subscriptions there), and async cleanup. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
+- `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.
 
 ## Extension APIs
 
@@ -197,17 +207,9 @@ branches `branch · coordinator`) and `MessageReference` (the copyable reference
 
 The provider calls `host.implement(Echo, { echo: (text) => text })` in its factory; it is staged, replaced and
 removed with its facet. A consumer calls `host.need(Echo)` for a hard dependency or `host.want(Echo)` for an
-optional one. Both return a handle typed by the token that resolves the current provider on every member access, so
-holding it from setup is fine. `need` throws `<ext> needs echo, which no enabled extension provides` while nothing
-provides it; called during setup it records the dependency instead (the provider may load later) and a still-missing
-provider becomes an extension diagnostic. `want` returns undefined while missing, so call it where you use it. The core
-tier is always on, so its services are always `need`ed; `want` is for optional extensions and extension points.
-`host.catalogue()` (codemode: `ultimate.catalogue()`) lists each API's provider, needs and wants, plus missing
-providers and dependency cycles, each a sorted group of extensions that depend on each other in a cycle.
-
-Which channel to use: services for calls between extensions; documents for durable state; durable events for "this
-happened" (`host.emit` in your commit, `host.react` to act on it; see
-[docs/extensions.md](../docs/extensions.md#durable-events)); actions for the UI and user boundary.
+optional one (the core tier is always on, so its services are always `need`ed). The handles, missing providers, the
+catalogue and which channel to use (services, documents, durable events, actions) are in
+[docs/extensions.md](../docs/extensions.md#extension-apis).
 
 ## Lifecycle
 
@@ -246,16 +248,16 @@ events.emit('hello:selected', { name: 'example' })
 ```
 
 The registry emits `ultimate:extension-loaded { name }` or `ultimate:extension-failed { name, error }` as each
-facet settles, including hot reloads. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
+facet settles. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
 the current loader generation has settled (loaded or failed) and the first system snapshot has arrived, or after
 an 8 s deadline from the first loader map. Superseded imports do not determine readiness. `useReady()` returns
 `{ ready, timedOut, failed, pending }`, even for a subscriber mounted after the event. `ready` and `timedOut` stay
-sticky across hot reloads; `failed` names current load failures and `pending` names current unsettled imports.
+sticky for the page; `failed` names current load failures and `pending` names current unsettled imports.
 The deadline reveals even without a system snapshot; `timedOut` distinguishes that reveal from normal readiness.
 Facets import in parallel and their contributions render as soon as they install, except the app itself: the shell
 shows the surface and starts its shortcuts only once ready. In particular, root overlays can render while another
 facet is still loading; they need not wait for ready.
-A reload of a rendered page (a core restart, a Vite full reload, F5) paints the previous page's view from
+A reload of a rendered page (a core restart, a switch to a new web bundle, F5) paints the previous page's view from
 `sessionStorage` before any module loads and fades it out once the app has rendered and settled
 (`web/src/sdk/resume.ts`); `resumed` from `@/sdk` is true on such a load, so a loading overlay can stay away.
 
@@ -266,7 +268,7 @@ An extension is a folder `<name>/` in one of those places:
 | File        | Facet                                                                                                   | Goes live                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `server.ts` | Agent and server: a Pi Durable extension (tools, prompt sections, hooks, documents) and its `actions`   | Reinstalled on save; running tool calls finish on old code |
-| `web.tsx`   | UI: `export default defineWebExtension({ … })`                                                          | Vite hot reload, no page reload                            |
+| `web.tsx`   | UI: `export default defineWebExtension({ … })`                                                          | Rebuilt on save; open pages switch to the new bundle       |
 | `README.md` | What it does; the first paragraph is shown in the UI, so open with a sentence, not a heading. Required. | Read on change                                             |
 
 Files ending in `.ts` belong to the server facet, files ending in `.tsx` to the web facet: split a large `web.tsx` into
@@ -323,6 +325,7 @@ title bar the host shows above every surface.
 | `composer.status`      | Line under the composer; conversation-specific, monospace, one line (`<Conversation />`)                     |
 | `composer.actions`     | Composer footer, beside Send; input helpers that write into the draft with `insertIntoComposer`              |
 | `conversation.overlay` | Over the transcript and the composer (`<Conversation />`); position it `absolute inset-0`                    |
+| `transcript.top`       | At the top of a transcript's view as it scrolls, over its rows; `useTranscript()`, `useTranscriptScroll()`   |
 | `transcript.start`     | Above a transcript's first row once its whole history is loaded; `useTranscript()` inside                    |
 | `transcript.end`       | After a transcript's last row, before the working line: a turn still forming, such as live speech            |
 | `overlay`              | Always mounted at the root, above every surface: dialogs, toasts, global effects                             |
@@ -949,6 +952,7 @@ are watched with `useDocOf` (the shown one included), replays their changes, and
 | `useNotices()`, `useCommands()`, `useExtensions()`, `useNow(ms, active?)` | Server and client notices, all commands, installed web facets, a clock ticking every `ms` while `active`                                                                                                                 |
 | `useDocumentRenderers()`                                                  | Registered document renderers by kind (see [Documents](#documents))                                                                                                                                                      |
 | `useStore(select)`                                                        | Any slice of the client state (`State`), re-rendering when it changes                                                                                                                                                    |
+| `useTranscriptScroll()`                                                   | In `transcript.*` slots: `{ scrollRef, contentRef, atBottom }`, the transcript's scroller, the element whose children are its rows (`data-entry-id`), and whether it follows its newest row                              |
 
 `api` sends commands: `submit(text, whenBusy?)`, `abort()`, `configure({ model, thinkingLevel })`, `compact()`,
 `createConversation()`, `restart()`, and `action(extension, name, args?)`. Conversation commands default to the shown
@@ -979,8 +983,10 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
 - A theme extension (a CSS file imported from its `web.tsx`) targets the app through stable `data-ui` hooks, never
   Tailwind classes: `titlebar`, `surface-tabs`, `wordmark`, `ultimate-button`, `sidebar-row`, `sidebar-section-header`,
   `conversation-header`, `turn-header`, `empty-state`, `card`, `message-card` (with `data-sender`), `composer`,
-  `side-chat-hint`, `side-chat-switch`, `palette` and `status-line`; selected rows and tabs carry `data-selected`. Keep
-  these when changing that markup.
+  `side-chat-hint`, `side-chat-switch`, `palette`, `status-line` and `transcript-meta` (the transcript's small
+  dividers, folds and summary lines); selected rows and tabs carry `data-selected`, the sidebar's status dots `data-status` (`working`,
+  `waiting`, `paused`, `done`, `failed` or `idle`) and the final answer `data-final`. Keep these when changing that
+  markup.
 - Dense and quiet: 12–14 px, monospace (`font-mono`) for meta such as paths, counts, ids, and durations; proportional
   for prose. Subtle borders (`border-border/70`), little motion.
 
@@ -994,7 +1000,7 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
   (git and isolation checks), `json-file.ts` (read, atomic write, serialised update), `settings.ts`, `secrets.ts`
   (read-only), `cloud.ts` (the user's cloud settings),
   `project-identity.ts` (a project's GitHub key), `entries.ts` (`isInput`) and `agents.ts` (agent definitions and
-  their discovery). Import them freely; they hot reload with the extensions that import them. `lib/` holds no state
+  their discovery). Import them freely; they reload with the extensions that import them. `lib/` holds no state
   and imports no extension or `web/` code; only `agents.ts` reads the core project trust decision at runtime.
 - Server facets: see `prompt/` for prompt sections and `coding-tools/server.ts` for tools; the root `AGENTS.md` explains
   reloads and durability. Server facets may `export const order = -100`: lower values come first, with the default 0

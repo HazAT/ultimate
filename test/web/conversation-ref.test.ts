@@ -11,6 +11,8 @@ vi.mock('@/sdk', () => ({
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   useDocOf: () => ({ conversations: state.features }),
   useConversations: () => state.titles,
+  useConversationSummary: (id?: number) =>
+    state.titles.find((item: { id: number }) => item.id === id),
 }))
 
 /** The text a person reads, and which part of it is the gray `#id`. */

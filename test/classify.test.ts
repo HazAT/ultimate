@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, it, vi } from 'vitest'
-import classify, { secrets } from '../extensions/classify/server.ts'
+import classify, { cooldownMs, secrets } from '../extensions/classify/server.ts'
 import { ClassifyApi } from '../extensions/classify/api.ts'
 import type { ClassifyService } from '../extensions/classify/api.ts'
 import { writeSecret } from '../extensions/secrets/store.ts'
@@ -11,6 +11,7 @@ import { removeTemp, temp } from './helpers.ts'
 
 const cleanup: string[] = []
 afterEach(async () => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   for (const root of cleanup.splice(0)) await removeTemp(root)
@@ -28,14 +29,16 @@ async function fixture(key = true, models?: unknown) {
     authPath: join(root, 'auth.json'),
   })
   const implement = vi.fn<(api: typeof ClassifyApi, service: ClassifyService) => void>()
+  const notice = vi.fn<(message: string) => void>()
   const extension = classify({
     userHome: root,
     implement,
     modelRuntime,
+    notice,
   } as unknown as ExtensionHost)
   expect(extension.name).toBe('classify')
   expect(implement.mock.calls[0][0]).toBe(ClassifyApi)
-  return { root, service: implement.mock.calls[0][1] }
+  return { root, notice, service: implement.mock.calls[0][1] }
 }
 
 const request = {
@@ -141,6 +144,24 @@ it('includes the HTTP status and truncated response body without retrying', asyn
     `TypeSafe 429: ${'x'.repeat(1000)}`,
   )
   expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('stops sending after a 402 until the cooldown ends', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  const { service, notice } = await fixture()
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response('billing_error', { status: 402 }))
+    .mockImplementation(async () => Response.json(body))
+  vi.stubGlobal('fetch', fetch)
+  const signal = new AbortController().signal
+  await expect(service.ask(request, signal)).rejects.toThrow('TypeSafe 402: billing_error')
+  await expect(service.ask(request, signal)).rejects.toThrow('TypeSafe 402: billing_error')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(notice).toHaveBeenCalledWith(expect.stringContaining('TypeSafe: out of credits'))
+  vi.advanceTimersByTime(cooldownMs)
+  expect((await service.ask(request, signal)).model).toBe('jev-1.14.0')
+  expect(fetch).toHaveBeenCalledTimes(2)
 })
 
 it.each([

@@ -1,6 +1,8 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
+import { onCommit } from '../../lib/commits.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { Message, Models, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { estimateMessageTokens, estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import {
@@ -359,10 +361,12 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   host.onOpen(async () => {
     roots = new Set(await rootsOf(host, ctx))
     // Not a reactor: any entry a root gets (Pi's own resets and compactions too) changes its count, no domain event.
-    unsubscribe = host.harness().subscribeCommits((publication) => {
+    unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes)
         if (change.type === 'document' && change.record.kind === Roots.definition.kind)
-          roots = new Set((change.value as { roots?: number[] } | null)?.roots ?? [])
+          roots = new Set(
+            change.kind === 'change' ? ((change.value as { roots?: number[] }).roots ?? []) : [],
+          )
       const before = dirty.size
       for (const change of publication.changes)
         if (change.type === 'entry' && roots.has(change.value.conversationId))
@@ -432,7 +436,7 @@ function lineage(host: ExtensionHost) {
           // Subscribed before reading, so an entry the target writes after the read still ends the wait below.
           const written = Promise.withResolvers<void>()
           // Not a reactor: a short wait inside this task for any entry of the target, a Pi record.
-          const unsubscribe = host.harness().subscribeCommits((publication) => {
+          const unsubscribe = onCommit(host.harness(), (publication) => {
             if (
               publication.changes.some(
                 (change) => change.type === 'entry' && change.value.conversationId === target,
@@ -456,10 +460,20 @@ function lineage(host: ExtensionHost) {
                 answerId = view.entries[index].id
               }
             }
-            const delivered = (await host.harness().snapshot(Notified, runtime.conversationId, ctx))
-              ?.answers[target]
-            // This caller already has that answer: wait for the target to write again, then for its next idle.
-            if (delivered === undefined || answerId > delivered) break
+            const caller = runtime.conversationId
+            const delivered = (await host.harness().snapshot(Notified, caller, ctx))?.answers[
+              target
+            ]
+            // Read by kind: messages already depends on lineage.
+            const board = host.doc('board')
+            const log = board && (await host.harness().snapshot(board, ROOT_CONVERSATION_ID, ctx))
+            // A reply carries the answer entry it returned.
+            const replied = (
+              log?.messages as { from: unknown; to: unknown; answer?: number }[] | undefined
+            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            // This caller already has that answer, from a notify or as a reply: wait for the target to write again,
+            // then for its next idle.
+            if (!replied && (delivered === undefined || answerId > delivered)) break
             await awaitWithContext(written.promise, ctx)
           } finally {
             unsubscribe()
@@ -1468,9 +1482,9 @@ export default function lineageExtension(host: ExtensionHost) {
         name: 'note',
         description:
           'Leave a note in another conversation (an id, or "root" for the root of your tree) without waking it; its agent reads it with its next input. Use it when your work affects that conversation.',
-        parameters: Type.Object({
-          to: Type.Union([Type.Integer({ minimum: 1 }), Type.Literal('root')]),
-          text: Type.String({ minLength: 1 }),
+        parameters: obj({
+          to: union([int({ minimum: 1 }), lit('root')]),
+          text: str({ minLength: 1 }),
         }),
         async execute({ to, text }, api, ctx) {
           const from = await actingAs(host, api.conversationId, ctx)
@@ -1482,9 +1496,9 @@ export default function lineageExtension(host: ExtensionHost) {
         name: 'notify',
         description:
           'Get told when conversation `id` finishes: once it and its subagents are idle (at once if it already is), you receive "#id finished" with its title and last answer. An answer you already received is not sent again: you are told when it next finishes. `wake` (default true) starts your next run with it; `wake: false` leaves it as a note you read with your next input. Calling it again for the same id replaces the earlier request.',
-        parameters: Type.Object({
-          id: Type.Integer({ minimum: 1 }),
-          wake: Type.Optional(Type.Boolean()),
+        parameters: obj({
+          id: int({ minimum: 1 }),
+          wake: opt(bool()),
         }),
         // The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.
         replay: 'safe',
@@ -1547,7 +1561,7 @@ export default function lineageExtension(host: ExtensionHost) {
         deferred: true,
         description:
           'Compact your own context: older turns become a summary, recent ones stay verbatim, full history stays in storage. Use instructions to guide the summary. It runs after this turn; end the turn, and you are woken once it is done.',
-        parameters: Type.Object({ instructions: Type.Optional(Type.String()) }),
+        parameters: obj({ instructions: opt(str()) }),
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
           // The compaction and its wake-up commit together, so no crash leaves one without the other. @ultimate's own
@@ -1578,9 +1592,9 @@ export default function lineageExtension(host: ExtensionHost) {
         name: 'memory',
         description:
           "Read your project's memory, kept in your tree's root: without `read`, the index (one line per memory); with `read: slug`, that memory in full with its source. Outside a tree it reads the project's only root; `root` reads another root's.",
-        parameters: Type.Object({
-          read: Type.Optional(Type.String({ minLength: 1 })),
-          root: Type.Optional(Type.Integer({ minimum: 1 })),
+        parameters: obj({
+          read: opt(str({ minLength: 1 })),
+          root: opt(int({ minimum: 1 })),
         }),
         async execute({ read, root }, api, ctx) {
           const id = await memoryRoot(api.conversationId, root, ctx)
@@ -1609,36 +1623,30 @@ export default function lineageExtension(host: ExtensionHost) {
         name: 'remember',
         deferred: true,
         description: `Change a root's project memory in one atomic batch. Limits, checked before anything is written: ${MEMORY_RULES}. One op over a limit refuses the whole batch, so count a line's characters before you send it and keep detail in the body. Ops are {op:'add', slug, kind: 'decision'|'fact'|'lesson', line, body, source?}, {op:'update', slug, kind?, line?, body?, source?} and {op:'delete', slug}; source is \`#<conversation>/<entry>\`. \`root\` defaults to your tree's root, or outside a tree to the project's only root.`,
-        parameters: Type.Object({
-          root: Type.Optional(Type.Integer({ minimum: 1 })),
-          ops: Type.Array(
-            Type.Object({
-              op: Type.Union([Type.Literal('add'), Type.Literal('update'), Type.Literal('delete')]),
-              slug: Type.String({
+        parameters: obj({
+          root: opt(int({ minimum: 1 })),
+          ops: arr(
+            obj({
+              op: strEnum(['add', 'update', 'delete']),
+              slug: str({
                 pattern: MEMORY_SLUG.source,
                 maxLength: 48,
                 description: 'kebab-case, at most 48 characters',
               }),
-              kind: Type.Optional(
-                Type.Union([
-                  Type.Literal('decision'),
-                  Type.Literal('fact'),
-                  Type.Literal('lesson'),
-                ]),
-              ),
-              line: Type.Optional(
-                Type.String({
+              kind: opt(strEnum(['decision', 'fact', 'lesson'])),
+              line: opt(
+                str({
                   maxLength: LINE_CHARS,
                   description: `The index line: one line, at most ${LINE_CHARS} characters`,
                 }),
               ),
-              body: Type.Optional(
-                Type.String({
+              body: opt(
+                str({
                   maxLength: BODY_CHARS,
                   description: `The full memory, at most ${BODY_CHARS} characters; split longer text across memories`,
                 }),
               ),
-              source: Type.Optional(Type.String({ description: '#<conversation>/<entry>' })),
+              source: opt(str({ description: '#<conversation>/<entry>' })),
             }),
             { minItems: 1 },
           ),

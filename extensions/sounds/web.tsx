@@ -7,8 +7,7 @@ import {
   api,
   cn,
   defineWebExtension,
-  ConversationScope,
-  useConversation,
+  docRef,
   useConnection,
   useConversations,
   useDocOf,
@@ -16,6 +15,7 @@ import {
   useExtensionUiState,
   useNow,
 } from '@/sdk'
+import type { LiveState } from '@/sdk'
 import { MessagesDoc, emptyMessages } from '../messages/ui.tsx'
 import { OverviewDoc } from '../conversations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
@@ -212,8 +212,8 @@ function Listener({ landings }: { landings: boolean }) {
   const events = useEvents({ events: watched, limit: 20 })
   const [follow] = useState(tracker)
   const catchingUp = useCatchingUp()
-  // Each busy conversation's live round, reported by a `Round` in its scope: its tool calls by name. A fast call
-  // passes through `pi.live` but often not through the coalesced task graph.
+  // Each busy conversation's live round, reported by a `RoundOf`: its tool calls by name. A fast call passes through
+  // `pi.live` but often not through the coalesced task graph.
   const [rounds, setRounds] = useState<Record<number, Round>>({})
   const busy = conversations.filter((conversation) => conversation.busy).map(({ id }) => id)
   useEffect(() => {
@@ -234,12 +234,11 @@ function Listener({ landings }: { landings: boolean }) {
       if (landings || happening.kind !== 'landed') conductor.hit(happening)
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- `busy` follows `conversations`; `catchingUp` reads the time.
   }, [follow, conversations, standing, rounds, overview, events, landings])
-  return busy.map((id) => (
-    <ConversationScope id={id} key={id}>
-      <RoundOf id={id} report={setRounds} />
-    </ConversationScope>
-  ))
+  return busy.map((id) => <RoundOf id={id} key={id} report={setRounds} />)
 }
+
+/** `pi.live` alone: a conversation's whole view would stream its transcript to every tab that plays. */
+const LiveDoc = docRef<LiveState>('pi.live')
 
 type Round = { tools: [string, { name: string; conversationId: number }][] }
 
@@ -251,10 +250,10 @@ function RoundOf({
   id: number
   report: (update: (previous: Record<number, Round>) => Record<number, Round>) => void
 }) {
-  const live = useConversation((conversation) => conversation.live)
+  const live = useDocOf(id, LiveDoc)
   useEffect(() => {
     const round: Round = {
-      tools: [...(live.tools ?? []), ...(live.nestedTools ?? [])].map((slot) => [
+      tools: [...(live?.tools ?? []), ...(live?.nestedTools ?? [])].map((slot) => [
         `${id}:${slot.callId}`,
         { name: slot.name, conversationId: id },
       ]),

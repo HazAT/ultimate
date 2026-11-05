@@ -11,14 +11,14 @@ import {
   shortenPath,
   useConnection,
   useConversation,
-  useConversations as useAllConversations,
+  useConversations,
   useModels,
   useSystem,
   useDoc,
   useTranscript,
 } from '@/sdk'
 import type { AssistantMessage, EntryRecord, Usage } from '@/sdk'
-import { useWorkspaceConversations as useConversations } from '../workspaces/ui.tsx'
+import { useWorkspaces } from '../workspaces/ui.tsx'
 import { ContextDoc } from '../conversations/ui.tsx'
 import { lastAssistant, promptTokens as prompt } from '../../lib/context-usage.ts'
 import { usageTotals } from './context.ts'
@@ -51,7 +51,7 @@ function Item({
 function Cwd() {
   const system = useSystem()
   const { agent, id } = useConversation()
-  const workspace = useConversations().find((conversation) => conversation.id === id)?.workspace
+  const workspace = useWorkspaces()[String(id)]
   if (!system) return null
   const cwd = agent.cwd ?? system.execution.defaultCwd
   const shown = workspace ? `#${id}` : shortenPath(cwd, { home: system.machine.home })
@@ -180,7 +180,7 @@ function Tokens() {
 
 function GlobalUsage() {
   const speed = useTokenRates()
-  const running = useAllConversations().filter((conversation) => conversation.busy).length
+  const running = useConversations().filter((conversation) => conversation.busy).length
   return (
     <>
       <Item

@@ -10,8 +10,26 @@ const names: Record<string, string> = {
   ultimate: 'Ultimate',
   lander: 'Lander',
 }
-export const agentTitle = (name: string) =>
-  names[name] ?? name.charAt(0).toUpperCase() + name.slice(1)
+const agentTitle = (name: string) => names[name] ?? name.charAt(0).toUpperCase() + name.slice(1)
+
+/**
+ * What the UI calls an agent: a standing agent's definition `title` (the marks doc), else its built-in or capitalised
+ * name. `brand` is @ultimate without a title of its own, which shows as the ULTIMATE wordmark. Empty until the marks
+ * doc arrives, so a page load never flashes the default name before the title.
+ */
+export function useAgentTitle(name: string) {
+  const marks = useDocOf(1, MarksDoc)
+  if (marks === undefined) return { title: '', brand: false }
+  const title = marks?.[name]?.title
+  return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
+}
+
+/** A standing agent's display name, as `useAgentTitle` gives it. */
+export const AgentTitle = ({ name }: { name: string }) => useAgentTitle(name).title
+
+const initialGlyph = (text: string) => (
+  <span className="font-sans leading-none font-semibold">{text}</span>
+)
 
 /**
  * Each built-in tile: its tint and glyph. Glyphs size to the tile through `size-[60%]`. Every other standing agent
@@ -20,8 +38,8 @@ export const agentTitle = (name: string) =>
 const tiles: Record<string, { tint: string; glyph: ReactNode }> = {
   ultimate: {
     tint: 'bg-brand/12 text-brand ring-brand/25',
-    // The top bar's wordmark, reduced to its first letter.
-    glyph: <span className="font-sans leading-none font-semibold">U</span>,
+    // The top bar's wordmark, reduced to its first letter; a definition title's first letter replaces it.
+    glyph: initialGlyph('U'),
   },
   lander: {
     tint: 'bg-success/10 text-success ring-success/25',
@@ -89,8 +107,18 @@ export function AgentMark({
   size?: 'xs' | 'sm' | 'md'
   presence?: Presence
 }) {
-  const styles = useDocOf(1, MarksDoc)
-  const tile = tiles[name] ?? definedTile(styles?.[name])
+  const marks = useDocOf(1, MarksDoc)
+  const style = marks?.[name]
+  const tile = tiles[name] ?? definedTile(style)
+  // @ultimate's letter is its title's first; unknown, and so blank, until the marks doc arrives.
+  const glyph =
+    name !== 'ultimate'
+      ? tile.glyph
+      : marks === undefined
+        ? null
+        : style?.title
+          ? initialGlyph(Array.from(style.title)[0])
+          : tile.glyph
   return (
     <span
       aria-hidden
@@ -103,7 +131,7 @@ export function AgentMark({
       )}
       data-agent-mark={name}
     >
-      {tile.glyph}
+      {glyph}
       {presence && (
         <span
           className={cn(

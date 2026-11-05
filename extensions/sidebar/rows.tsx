@@ -24,17 +24,20 @@ import { store } from '@/sdk/client'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
 import {
   AgentMark,
-  agentTitle,
+  ConversationEpic,
   ConversationPhase,
   ConversationTask,
   FeatureTag,
   RenameAction,
+  useAgentTitle,
 } from '../conversations/ui.tsx'
 import type { Presence } from '../conversations/ui.tsx'
 import { Review } from '../workspaces/ui.tsx'
+import { RunName } from '../subagents/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
 import type { OverviewRow } from '../conversations/types.ts'
 import type { ConversationState } from '../messages/ui.tsx'
+import { SummaryHistory } from './summaries.tsx'
 
 /** What a row's mark and state word say for each settled state; `working` and `idle` show no icon. */
 const settled = {
@@ -95,6 +98,7 @@ function Mark({
               ) : (
                 <span
                   className={cn('size-1.5 rounded-full bg-brand', working && 'animate-pulse-dot')}
+                  data-status={working ? 'working' : 'idle'}
                 />
               )}
             </span>
@@ -180,7 +184,6 @@ function PhasedRow({
           : 'text-muted-foreground',
       )}
       onDoubleClick={draft ? undefined : rename}
-      title={name}
     >
       {name}
     </span>
@@ -222,47 +225,49 @@ function PhasedRow({
           />
         </div>
       ) : (
-        <button
-          aria-current={shown ? 'true' : undefined}
-          className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-          onClick={() => actions.switchConversation(conversation.id)}
-          ref={(element) => {
-            if (!element || !refocus.current) return
-            refocus.current = false
-            element.focus()
-          }}
-          type="button"
-        >
-          <span className="flex w-full min-w-0 items-center gap-1.5">
-            <Mark state={state} unseen={unseen} working={markWorking} />
-            {title}
-          </span>
-          {hasMetadata && (
-            <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
-              {feature && <FeatureTag feature={feature} />}
-              {conversation.workspace && (
-                <span className="shrink-0" title="Isolated checkout">
-                  #{conversation.id}
-                </span>
-              )}
-              {latest > 0 && (
-                <span
-                  className="shrink-0 text-muted-foreground/80"
-                  title={new Date(latest).toLocaleString()}
-                >
-                  {formatAgo(latest, now)}
-                </span>
-              )}
+        <SummaryHistory id={conversation.id} title={name}>
+          <button
+            aria-current={shown ? 'true' : undefined}
+            className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            onClick={() => actions.switchConversation(conversation.id)}
+            ref={(element) => {
+              if (!element || !refocus.current) return
+              refocus.current = false
+              element.focus()
+            }}
+            type="button"
+          >
+            <span className="flex w-full min-w-0 items-center gap-1.5">
+              <Mark state={state} unseen={unseen} working={markWorking} />
+              {title}
             </span>
-          )}
-          {hasActivity && (
-            <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
-              {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
-              {displayPhase && activity && <span>·</span>}
-              {activity && <span className="truncate">{activity}</span>}
-            </span>
-          )}
-        </button>
+            {hasMetadata && (
+              <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
+                {feature && <FeatureTag feature={feature} />}
+                {conversation.workspace && (
+                  <span className="shrink-0" title="Isolated checkout">
+                    #{conversation.id}
+                  </span>
+                )}
+                {latest > 0 && (
+                  <span
+                    className="shrink-0 text-muted-foreground/80"
+                    title={new Date(latest).toLocaleString()}
+                  >
+                    {formatAgo(latest, now)}
+                  </span>
+                )}
+              </span>
+            )}
+            {hasActivity && (
+              <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
+                {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
+                {displayPhase && activity && <span>·</span>}
+                {activity && <span className="truncate">{activity}</span>}
+              </span>
+            )}
+          </button>
+        </SummaryHistory>
       )}
       {(!draft || conversation.workspace) && !editing && (
         <RowMenu
@@ -385,6 +390,7 @@ export function StandingRow({
   onOpen: () => void
   children: ReactNode
 }) {
+  const { title, brand } = useAgentTitle(name)
   return (
     <div
       className={cn(
@@ -405,7 +411,7 @@ export function StandingRow({
         <AgentMark name={name} presence={presence} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-1.5">
-            {name === 'ultimate' ? (
+            {brand ? (
               // The title bar's wordmark: Ultimate's own name is the brand.
               <span
                 className="truncate font-sans text-[11.5px] leading-5 font-semibold tracking-[0.28em] text-brand"
@@ -415,7 +421,7 @@ export function StandingRow({
               </span>
             ) : (
               <span className="truncate text-[13px] leading-5 font-semibold text-foreground">
-                {agentTitle(name)}
+                {title}
               </span>
             )}
             <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">@{name}</span>
@@ -526,7 +532,7 @@ function TaskedSubagentLine({
       <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
       {task?.chip}
       <span className="min-w-0 flex-1 truncate text-foreground/75">
-        {conversation.label ?? 'agent'}
+        <RunName id={conversation.id} label={conversation.label ?? 'agent'} />
         <span className="text-muted-foreground/60"> #{conversation.id}</span>
       </span>
       <span
@@ -538,6 +544,58 @@ function TaskedSubagentLine({
         {working ? 'working' : (known?.word.toLowerCase() ?? 'idle')}
       </span>
     </button>
+  )
+}
+
+/**
+ * The epic a branch's coordinator works itself, as the first line under its In flight row, styled like a subagent's:
+ * its dot pulses while the coordinator runs, and a done epic reads done. Click opens the epic in the plan panel.
+ */
+export function EpicLine({ id, working }: { id: number; working: boolean }) {
+  return (
+    <Provided input={id} point={ConversationEpic}>
+      {(epic) => {
+        if (!epic) return null
+        const done = epic.status === 'done'
+        return (
+          <button
+            className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            data-epic-line={id}
+            data-ui="sidebar-row"
+            onClick={epic.open}
+            title={`${epic.key} · ${epic.title}\nWorked directly by #${id}`}
+            type="button"
+          >
+            <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+            <span className="flex size-3 shrink-0 items-center justify-center">
+              {done ? (
+                <CircleCheckIcon className="size-3.5 text-success" />
+              ) : (
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    working ? 'animate-pulse-dot bg-brand' : 'bg-muted-foreground/40',
+                  )}
+                  data-status={working ? 'working' : 'idle'}
+                />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-foreground/75">
+              {epic.key}
+              <span className="text-muted-foreground/60"> · {epic.title}</span>
+            </span>
+            <span
+              className={cn(
+                'shrink-0 text-[10px]',
+                done ? 'text-success' : working ? 'text-brand' : 'text-muted-foreground/70',
+              )}
+            >
+              {done ? 'done' : working ? 'working' : 'idle'}
+            </span>
+          </button>
+        )
+      }}
+    </Provided>
   )
 }
 
@@ -590,7 +648,8 @@ function TaskedChildRow({
         <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
         {task?.chip}
         <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
-          {conversation.label ?? 'Agent'} · #{conversation.id}
+          <RunName id={conversation.id} label={conversation.label ?? 'Agent'} /> · #
+          {conversation.id}
         </span>
         {conversation.workspace && (
           <GitBranchIcon

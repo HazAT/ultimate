@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it } from 'vitest'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { Type } from '@earendil-works/pi-ai'
+import { obj } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
@@ -51,7 +51,7 @@ async function fixture() {
     name: 't',
     description: 'Owned tool',
     deferred: true,
-    parameters: Type.Object({}),
+    parameters: obj({}),
     execute: async () => ({ output: [] }),
   })
   prepared.registry.install(CodingTools)
@@ -84,7 +84,12 @@ async function fixture() {
   const reopen = async () => {
     for (const callback of openers) await callback()
   }
-  return { path, prepared, host, service, file, reopen }
+  const open = async () => {
+    host = await prepared.open()
+    opened.push(host)
+    return host
+  }
+  return { path, prepared, host, service, file, reopen, open }
 }
 
 it('lists definitions only to agents that can use them', async () => {
@@ -133,20 +138,24 @@ it('parses and saves the resident field, refusing non-booleans', async () => {
   expect(parseDefinition(await readFile(saved.path, 'utf8'), saved.path).resident).toBe(true)
 })
 
-it('reads, saves and publishes a standing agent mark', async () => {
+it('reads, saves and publishes a standing agent mark and title', async () => {
   const { service, host, prepared, path, file } = await fixture()
   expect(() => parseDefinition(definition('Instructions', 'tint: purple\n'), 'test')).toThrow(
     'tint must be one of',
+  )
+  expect(() => parseDefinition(definition('Instructions', 'title: " "\n'), 'test')).toThrow(
+    'title must be a nonempty string',
   )
   const saved = await saveDefinition(
     { projectRoot: path, userHome: path },
     prepared.modelRuntime,
     'user',
     'saved',
-    { description: 'Saved', icon: 'notebook-pen', tint: 'teal' },
+    { description: 'Saved', title: 'Notes', icon: 'notebook-pen', tint: 'teal' },
     'Instructions',
   )
   expect(parseDefinition(await readFile(saved.path, 'utf8'), saved.path)).toMatchObject({
+    title: 'Notes',
     icon: 'notebook-pen',
     tint: 'teal',
   })
@@ -155,13 +164,23 @@ it('reads, saves and publishes a standing agent mark', async () => {
   expect(await host.harness.snapshot(Marks, ROOT_CONVERSATION_ID, ctx)).toEqual({
     x: { icon: 'Gem', tint: 'violet' },
   })
+  // A later folder's overlay names the agent without touching its address or instructions.
+  const overlay = join(path, '.ultimate/agents/x.md')
+  await mkdir(join(path, '.ultimate/agents'), { recursive: true })
+  await writeFile(overlay, '---\nname: x\naddTools: []\ntitle: Atlas\n---\n')
+  const id = await service.standing('x', ctx)
+  expect(await host.harness.snapshot(Marks, ROOT_CONVERSATION_ID, ctx)).toEqual({
+    x: { title: 'Atlas', icon: 'Gem', tint: 'violet' },
+  })
+  expect(await host.harness.snapshot(Metadata, id, ctx)).toMatchObject({ title: '@x' })
+  await rm(overlay)
   await writeFile(file, definition('Instructions'))
   await service.standing('x', ctx)
   expect(await host.harness.snapshot(Marks, ROOT_CONVERSATION_ID, ctx)).toEqual({})
 })
 
 it('keeps one ownerless standing conversation, refreshes its definition and recreates deleted records', async () => {
-  const { service, host, prepared, path, file } = await fixture()
+  const { service, host, prepared, path, file, open } = await fixture()
   expect(await service.residents(ctx)).toEqual([{ name: 'x', description: 'Test' }])
   const ids = await Promise.all([service.standing('x', ctx), service.standing('x', ctx)])
   expect(ids[0]).toBe(ids[1])
@@ -189,14 +208,17 @@ it('keeps one ownerless standing conversation, refreshes its definition and recr
     '---\nname: ordinary\ndescription: Ordinary\n---\nInstructions',
   )
   await expect(service.standing('ordinary', ctx)).rejects.toThrow('Standing agents: @x')
-  // No public delete API: remove the record to exercise a stale standing index.
+  // No public delete API: remove the record between sessions, outside Pi's live record cache.
+  await host.close()
+  opened.splice(opened.indexOf(host), 1)
   const database = new DatabaseSync(prepared.database)
   database.prepare('DELETE FROM conversations WHERE id = ?').run(id)
   database.close()
+  const restored = await open()
   const recreated = await service.standing('x', ctx)
   expect(recreated).not.toBe(id)
   // Each new conversation starts once; repeats and refreshes start nothing.
-  const log = eventHost(() => host.harness, 'test').eventLog
+  const log = eventHost(() => restored.harness, 'test').eventLog
   expect((await log.recent({ events: [Started] })).map((event) => event.data)).toEqual([
     {
       id: recreated,

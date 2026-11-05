@@ -116,6 +116,12 @@ user-only `answer` action posts a normal user reply with `re` and the answers in
 sender. Its admission atomically checks that the original message is still open, preventing duplicate replies. See
 [Questions](../questions/README.md).
 
+A link `/?conversation=<c>&message=<m>`, such as a notification's (`m` is the message's id in the log, `c` the
+conversation that asked), opens at that question: while it is still open, the page shows the Agent surface with its
+card at the top of the view, as `messages:open {conversation, message}` does, then drops `message` from the address so
+a reload does not jump again. An unknown, answered or dismissed message, or one another conversation asked, only
+opens the conversation.
+
 In the sender's transcript a `message` call renders as an outgoing card: recipient, one-way or expects reply, and
 the message's live state from the messages log (sending, delivered, awaiting reply, awaiting your reply, answered,
 failed, stopped by the user), with an Open link to the recipient's entry. A `branch` call renders as a branch-start card: the branch's

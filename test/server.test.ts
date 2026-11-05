@@ -25,7 +25,7 @@ import { eventHost } from './helpers.ts'
 import { UserInputEvent } from '../shared/events.ts'
 
 describe('server', () => {
-  it('admits registered identities for API, SSE, actions, assets and HMR, then revokes on disposal and unload', async () => {
+  it('admits registered identities for API, SSE, actions and assets, then revokes on disposal and unload', async () => {
     const origin = 'https://rog.example.ts.net:5799'
     const { server, options } = await fixture(false, {
       access: `import { defineExtension } from '@earendil-works/pi-durable'
@@ -61,10 +61,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
           },
         )
         req.on('error', reject)
-        req.on('upgrade', (_response, socket) => {
-          resolve(101)
-          socket.destroy()
-        })
         req.end(method === 'POST' ? '{"args":null}' : undefined)
       })
     for (const path of ['/', '/api/models', '/api/events', '/api/extensions/access/actions/ping']) {
@@ -102,14 +98,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
         })
       ).json(),
     ).toEqual({ result: 'pong' })
-    const upgrade = {
-      connection: 'Upgrade',
-      upgrade: 'websocket',
-      'sec-websocket-version': '13',
-      'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
-      'sec-websocket-protocol': 'vite-hmr',
-    }
-    const wsPath = '/?token=' + server.vite.config.webSocketToken
     for (const forwarded of ['x-forwarded-for', 'x-forwarded-host', 'forwarded']) {
       for (const login of [null, 'other', 'owner']) {
         for (const originHeader of ['', server.url]) {
@@ -118,7 +106,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
             expect(
               await wire(path, login, headers, path.includes('actions') ? 'POST' : 'GET'),
             ).toBe(403)
-          expect(await wire(wsPath, login, { ...upgrade, ...headers })).toBe(403)
         }
       }
     }
@@ -138,22 +125,13 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
       expect(await wire('/', 'owner', { ...navigation, 'sec-fetch-dest': 'iframe' })).toBe(403)
       expect(await wire('/', 'owner', { origin: '', 'sec-fetch-site': site })).toBe(403)
       // Navigation metadata cannot turn API, SSE, assets or other paths into documents.
-      for (const path of ['/api/models', '/api/events', '/@vite/client', '/other'])
+      for (const path of ['/api/models', '/api/events', '/assets/index.js', '/other'])
         expect(await wire(path, 'owner', navigation)).toBe(403)
       expect(await wire('/api/extensions/access/actions/ping', 'owner', navigation, 'POST')).toBe(
         403,
       )
-      expect(await wire(wsPath, 'owner', { ...upgrade, 'sec-fetch-site': site })).toBe(403)
-      expect(await wire(wsPath, 'owner', { ...upgrade, ...navigation, origin })).toBe(403)
     }
     expect(await wire('/api/models', 'owner', { 'sec-fetch-site': 'none' })).toBe(200)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(101)
-    expect(await wire(wsPath, 'other', upgrade)).toBe(403)
-    expect(await wire(wsPath, null, upgrade)).toBe(403)
-    expect(await wire(wsPath, 'owner', { ...upgrade, host: 'unknown.example:5799' })).toBe(403)
-    expect(
-      await wire(wsPath, null, { ...upgrade, host: new URL(server.url).host, origin: server.url }),
-    ).toBe(101)
     await until(() => server.system.current().access.origins.includes(origin))
     expect(await wire('/api/extensions/access/actions/revoke', 'owner', {}, 'POST')).toBe(200)
     expect(await wire('/api/models')).toBe(403)
@@ -165,7 +143,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
           'sec-fetch-dest': 'document',
         }),
       ).toBe(403)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(403)
     // Reload the facet to create a new registration, then disable it.
     await writeFile(
       join(options.ultimateRoot, 'extensions/access/server.ts'),
@@ -177,9 +154,8 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
       '{"extensions":{"disable":["access"]}}',
     )
     await until(async () => (await wire('/api/models')) === 403)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(403)
   })
-  it('revokes a deferred verifier in flight for HTTP and upgrades', async () => {
+  it('revokes a deferred verifier in flight', async () => {
     const { server } = await fixture(false, {
       deferred: `import { defineExtension } from '@earendil-works/pi-durable'
 
@@ -191,41 +167,26 @@ waiting: async () => Boolean(resolve),
 finish: async () => { remove(); resolve({login:'owner'}); return true }
 }`,
     })
-    for (const upgrade of [false, true]) {
-      await post(server, '/api/extensions/deferred/actions/arm', { args: null })
-      const pending = new Promise<number>((resolve, reject) => {
-        const req = request(
-          server.url + (upgrade ? '/?token=' + server.vite.config.webSocketToken : '/api/models'),
-          {
-            headers: {
-              host: 'remote.example:5799',
-              ...(upgrade
-                ? {
-                    connection: 'Upgrade',
-                    upgrade: 'websocket',
-                    'sec-websocket-version': '13',
-                    'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
-                    'sec-websocket-protocol': 'vite-hmr',
-                  }
-                : {}),
-            },
-          },
-          (res) => {
-            resolve(res.statusCode!)
-            res.destroy()
-          },
-        )
-        req.on('error', reject)
-        req.end()
-      })
-      await until(
-        async () =>
-          (await post(server, '/api/extensions/deferred/actions/waiting', { args: null })).data
-            .result === true,
+    await post(server, '/api/extensions/deferred/actions/arm', { args: null })
+    const pending = new Promise<number>((resolve, reject) => {
+      const req = request(
+        server.url + '/api/models',
+        { headers: { host: 'remote.example:5799' } },
+        (res) => {
+          resolve(res.statusCode!)
+          res.destroy()
+        },
       )
-      await post(server, '/api/extensions/deferred/actions/finish', { args: null })
-      expect(await pending).toBe(403)
-    }
+      req.on('error', reject)
+      req.end()
+    })
+    await until(
+      async () =>
+        (await post(server, '/api/extensions/deferred/actions/waiting', { args: null })).data
+          .result === true,
+    )
+    await post(server, '/api/extensions/deferred/actions/finish', { args: null })
+    expect(await pending).toBe(403)
   })
 
   it('cleans up facet lifecycles on reload but retains reload-stable resource lifecycles until shutdown', async () => {
@@ -346,16 +307,12 @@ export default host => { host.resource('cleanup.process',()=>{
     const submitted = await server.root.submit({ type: 'input', content: 'hello' }, context)
     await submitted.wait(context)
     await server.harness.waitForIdle(context)
-    const view = await server.root.viewState(context)
-    try {
-      const messages = view.value.entries.flatMap((entry) => entry.model ?? [])
-      expect(
-        messages.some((message) => message.role === 'assistant' && message.stopReason === 'stop'),
-      ).toBe(true)
-      expect(messages.some((message) => message.role === 'toolResult')).toBe(false)
-    } finally {
-      view.dispose()
-    }
+    const view = await server.root.context(context)
+    const messages = view.entries.flatMap((entry) => entry.model ?? [])
+    expect(
+      messages.some((message) => message.role === 'assistant' && message.stopReason === 'stop'),
+    ).toBe(true)
+    expect(messages.some((message) => message.role === 'toolResult')).toBe(false)
   })
   it('scans committed submissions newest first, filtered and paged', async () => {
     const { server } = await fixture(false, undefined, true)
@@ -394,15 +351,11 @@ export default host => { host.resource('cleanup.process',()=>{
       await (
         await server.root.submit({ type: 'input', content: 'self URL' }, context)
       ).wait(context)
-      const view = await server.root.viewState(context)
-      try {
-        const system = view.value.entries.find((entry) => entry.kind === 'pi.system')?.model?.[0]
-        expect(system?.role === 'system' ? system.sections?.environment : undefined).toContain(
-          `UI: ${server.url}`,
-        )
-      } finally {
-        view.dispose()
-      }
+      const view = await server.root.context(context)
+      const system = view.entries.find((entry) => entry.kind === 'pi.system')?.model?.[0]
+      expect(system?.role === 'system' ? system.sections?.environment : undefined).toContain(
+        `UI: ${server.url}`,
+      )
       await server.root.abort(context)
     } finally {
       vi.unstubAllEnvs()
@@ -452,19 +405,15 @@ export default host => { host.resource('cleanup.process',()=>{
     ).toEqual(['queued'])
     await post(server, '/api/conversations/1/submit', { text: 'next' })
     expect((await server.harness.snapshot(InboxDoc, server.root.id, context))?.items).toEqual([])
-    const view = await server.root.viewState(context)
-    try {
-      const users = view.value.entries.flatMap((entry) =>
-        entry.model?.[0]?.role === 'user' ? [JSON.stringify(entry.model[0].content)] : [],
-      )
-      expect(users.slice(-3).map((text) => /start|queued|next/.exec(text)?.[0])).toEqual([
-        'start',
-        'queued',
-        'next',
-      ])
-    } finally {
-      view.dispose()
-    }
+    const view = await server.root.context(context)
+    const users = view.entries.flatMap((entry) =>
+      entry.model?.[0]?.role === 'user' ? [JSON.stringify(entry.model[0].content)] : [],
+    )
+    expect(users.slice(-3).map((text) => /start|queued|next/.exec(text)?.[0])).toEqual([
+      'start',
+      'queued',
+      'next',
+    ])
     await server.root.abort(context)
   })
   it('records each typed input as one user.input event with its device and never its text', async () => {
@@ -524,15 +473,14 @@ export default host => { host.resource('cleanup.process',()=>{
     ).toBeUndefined()
     await post(server, '/api/conversations/1/submit', { text: 'Return the word DONE.' })
     await server.harness.waitForIdle(context)
-    const view = await server.root.viewState(context)
-    const systems = view.value.entries.filter((entry) => entry.kind === 'pi.system')
+    const view = await server.root.context(context)
+    const systems = view.entries.filter((entry) => entry.kind === 'pi.system')
     const message = systems.at(-1)!.model![0]
     expect(message.role).toBe('system')
     if (message.role !== 'system') throw new Error('Expected system message')
     expect(Object.keys(message.sections!)).toEqual(['prompt', 'new', 'a'])
     expect(message.toolsAdded!.map((tool) => tool.name)).toEqual(['prompt', 'new', 'a'])
     const lastId = systems.at(-1)!.id
-    view.dispose()
     await server.vite.watcher.close()
     await server.close()
     servers.splice(servers.indexOf(server), 1)
@@ -540,11 +488,10 @@ export default host => { host.resource('cleanup.process',()=>{
     servers.push(reopened)
     await post(reopened, '/api/conversations/1/submit', { text: 'Return the word DONE.' })
     await reopened.harness.waitForIdle(context)
-    const next = await reopened.root.viewState(context)
-    expect(
-      next.value.entries.filter((entry) => entry.kind === 'pi.system' && entry.id > lastId),
-    ).toEqual([])
-    next.dispose()
+    const next = await reopened.root.context(context)
+    expect(next.entries.filter((entry) => entry.kind === 'pi.system' && entry.id > lastId)).toEqual(
+      [],
+    )
   })
 
   it('shares root UI snapshots and set/delete deltas across conversations and reopen', async () => {
@@ -657,7 +604,7 @@ export default host => { host.resource('cleanup.process',()=>{
     const result = await post(server, '/api/conversations/1/submit', { text: 'edit the file' })
     expect(result.status).toBe(202)
     await server.harness.waitForIdle(context)
-    const state = await server.root.viewState(context)
+    const state = await server.root.watch(context)
     let replica!: ConversationView
     await until(() => {
       replica = stream.events.find((event) => event.name === 'view')!.data as ConversationView
@@ -666,7 +613,7 @@ export default host => { host.resource('cleanup.process',()=>{
       return JSON.stringify(replica) === JSON.stringify(state.value)
     })
     expect(replica).toEqual(state.value)
-    state.dispose()
+    await state.stop()
     expect(replica.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(2)
     expect(await readFile(file, 'utf8')).toBe('after\n')
     await stream.close()
@@ -902,6 +849,23 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     for (const event of stream.events)
       if (event.name === 'docOps') value = applyImmutable(value, (event.data as { ops: Op[] }).ops)
     expect(value).toEqual({ count: 1 })
+    await stream.close()
+  })
+  it("streams a conversation's pi.live alone, without its view", async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { docs: ['pi.live'], view: false })
+    await until(() => stream.events.some((event) => event.name === 'doc'))
+    expect(stream.events.some((event) => event.name === 'view')).toBe(false)
+    expect(stream.events.some((event) => event.name === 'notice')).toBe(false)
+    server.host.faux!.setResponses([
+      fauxAssistantMessage([fauxToolCall('increment', {})], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Incremented'),
+    ])
+    await post(server, '/api/conversations/1/submit', { text: 'increment' })
+    await server.harness.waitForIdle(context)
+    // The run started and ended in pi.live.
+    await until(() => stream.events.filter((event) => event.name === 'docOps').length > 1)
+    expect(stream.events.some((event) => event.name === 'view')).toBe(false)
     await stream.close()
   })
   it('carries subscriptions opened and closed on one stream, each event tagged with its id', async () => {

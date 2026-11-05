@@ -1,7 +1,7 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { cp, mkdir, readdir, readFile, writeFile, access, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Type } from '@earendil-works/pi-ai'
+import { obj } from '@earendil-works/pi-schema'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import {
@@ -11,7 +11,7 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
-import type { ConversationId, JsonObject, TaskId, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, JsonObject, Submission, TaskId, Tx } from '@earendil-works/pi-durable'
 import { afterAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../server/harness.ts'
 import { Metadata } from '../../server/metadata.ts'
@@ -169,7 +169,7 @@ async function fixture(
         defineTool({
           name: 'write_commit',
           description: 'Write and commit a change',
-          parameters: Type.Object({}),
+          parameters: obj({}),
           async execute(_args, api) {
             writes++
             const cwd = api.env!.cwd
@@ -225,13 +225,8 @@ async function fixture(
       )
     ).wait(context)
     await conversation.waitForIdle(context)
-    const view = await conversation.viewState(context)
-    try {
-      return view.value.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
-        ?.model?.[0]
-    } finally {
-      view.dispose()
-    }
+    const view = await conversation.context(context)
+    return view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)?.model?.[0]
   }
   return {
     ...paths,
@@ -731,42 +726,34 @@ async function submitted(f: Awaited<ReturnType<typeof fixture>>, id: Conversatio
   })
   const conversation = (await f.opened.harness.conversation(id, context))!
   await conversation.waitForIdle(context)
-  const view = await conversation.viewState(context)
-  try {
-    const reports = view.value.entries.filter((entry) => entry.kind === 'workspaces.lander-report')
-    for (const report of reports) {
-      const { id: submission, outcome } = report.data as {
-        id: string
-        outcome: WorkspaceIndex['results'][string]
-      }
-      const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
-      expect(outcome).toEqual(index.results[submission])
-      expect(outcome.lander).toBeGreaterThan(0)
-      expect(outcome.steps.length).toBeGreaterThan(0)
+  const view = await conversation.context(context)
+  const reports = view.entries.filter((entry) => entry.kind === 'workspaces.lander-report')
+  for (const report of reports) {
+    const { id: submission, outcome } = report.data as {
+      id: string
+      outcome: WorkspaceIndex['results'][string]
     }
-    return reports.map((entry) => JSON.stringify(entry.model))
-  } finally {
-    view.dispose()
+    const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+    expect(outcome).toEqual(index.results[submission])
+    expect(outcome.lander).toBeGreaterThan(0)
+    expect(outcome.steps.length).toBeGreaterThan(0)
   }
+  return reports.map((entry) => JSON.stringify(entry.model))
 }
 /** The lander conversation of the project source and its `ultimate.lander` log. */
 async function landerLog(f: Awaited<ReturnType<typeof fixture>>) {
   const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
   const id = index.landerConversations[await realpath(f.projectRoot)] as ConversationId
   const conversation = (await f.opened.harness.conversation(id, context))!
-  const view = await conversation.viewState(context)
-  try {
-    return {
-      id,
-      metadata: await f.opened.harness.snapshot(Metadata, id, context),
-      cwd: (await conversation.agent(context)).cwd,
-      kinds: view.value.entries.map((entry) => entry.kind),
-      log: view.value.entries
-        .filter((entry) => entry.kind === 'ultimate.lander')
-        .map((entry) => entry.data as LanderEntry),
-    }
-  } finally {
-    view.dispose()
+  const view = await conversation.context(context)
+  return {
+    id,
+    metadata: await f.opened.harness.snapshot(Metadata, id, context),
+    cwd: (await conversation.agent(context)).cwd,
+    kinds: view.entries.map((entry) => entry.kind),
+    log: view.entries
+      .filter((entry) => entry.kind === 'ultimate.lander')
+      .map((entry) => entry.data as LanderEntry),
   }
 }
 /** Wait until every reactor has handled every event so far. */
@@ -774,12 +761,8 @@ const reacted = (f: Awaited<ReturnType<typeof fixture>>) =>
   until(async () => (await f.host.eventLog.reactors()).every((reactor) => reactor.lag === 0))
 async function rootNotes(f: Awaited<ReturnType<typeof fixture>>) {
   const root = (await f.opened.harness.conversation(ROOT_CONVERSATION_ID, context))!
-  const view = await root.viewState(context)
-  try {
-    return view.value.entries.filter((entry) => entry.kind === 'lineage.note')
-  } finally {
-    view.dispose()
-  }
+  const view = await root.context(context)
+  return view.entries.filter((entry) => entry.kind === 'lineage.note')
 }
 
 it.concurrent('emits one landed event and notes the root once, across a replayed report and a reopen', async () => {
@@ -943,9 +926,8 @@ it.concurrent('does not note the root about its own submission', async () => {
   await f.service.submit(id, 'None', context)
   expect((await submitted(f, id))[0]).toContain('landed as')
   await reacted(f)
-  const view = await (await f.opened.harness.conversation(id, context))!.viewState(context)
-  expect(view.value.entries.filter((entry) => entry.kind === 'lineage.note')).toHaveLength(0)
-  view.dispose()
+  const view = await (await f.opened.harness.conversation(id, context))!.context(context)
+  expect(view.entries.filter((entry) => entry.kind === 'lineage.note')).toHaveLength(0)
   expect(await rootNotes(f)).toHaveLength(0)
 })
 
@@ -974,12 +956,8 @@ it.concurrent('notes the root of the submitter’s tree and skips a conversation
   expect((await submitted(f, unrooted))[0]).toContain('landed as')
   await reacted(f)
   const notes = async (id: ConversationId) => {
-    const view = await (await f.opened.harness.conversation(id, context))!.viewState(context)
-    try {
-      return view.value.entries.filter((entry) => entry.kind === 'lineage.note')
-    } finally {
-      view.dispose()
-    }
+    const view = await (await f.opened.harness.conversation(id, context))!.context(context)
+    return view.entries.filter((entry) => entry.kind === 'lineage.note')
   }
   await until(async () => (await notes(other.id)).length > 0)
   expect((await notes(other.id)).map((note) => (note.data as { from: number }).from)).toEqual([
@@ -2128,7 +2106,7 @@ it.concurrent('input admitted after release marks removed waits for deletion and
     )
   const releasing = f.service.release([id], context)
   const conversation = (await harness.conversation(id, context))!
-  let request: ReturnType<typeof conversation.submit> | undefined
+  let request!: Promise<Submission>
   try {
     await marked
     // The idle check and removed state are committed, but filesystem removal has not started.
@@ -2261,7 +2239,7 @@ it('resuming a child after its removal keeps the parent in the same release batc
   const queued = vi.spyOn(queues, 'set')
   const releasing = f.service.release([parent], context)
   const conversation = (await f.opened.harness.conversation(child, context))!
-  let request: ReturnType<typeof conversation.submit> | undefined
+  let request!: Promise<Submission>
   try {
     await deletingChildBranch.started()
     expect((await f.service.get(child, context))!.state).toBe('removed')
@@ -2354,18 +2332,14 @@ case "$(ps -ww -p "$PPID" -o args=)" in "git branch -D "*) exit 1 ;; esac
   ).toContain(kept[0].reason!)
   expect(f.writes).toBe(0)
   const conversation = (await f.opened.harness.conversation(id, context))!
-  const view = await conversation.viewState(context)
-  try {
-    const reply = view.value.entries
-      .flatMap((entry) => entry.model ?? [])
-      .findLast((message) => message.role === 'assistant')
-    expect(
-      reply?.role === 'assistant' &&
-        reply.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n'),
-    ).toContain(kept[0].reason!)
-  } finally {
-    view.dispose()
-  }
+  const view = await conversation.context(context)
+  const reply = view.entries
+    .flatMap((entry) => entry.model ?? [])
+    .findLast((message) => message.role === 'assistant')
+  expect(
+    reply?.role === 'assistant' &&
+      reply.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n'),
+  ).toContain(kept[0].reason!)
   expect((await f.service.get(id, context))!).toMatchObject({
     state: 'removed',
     error: kept[0].reason,

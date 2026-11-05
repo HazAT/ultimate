@@ -6,16 +6,12 @@ const row = (id: number, conversationId: number, kind = 'pi.user') =>
   ({ id, conversationId, kind, createdAt: 0 }) as unknown as EntryRecord
 
 it('keeps paging a long fork until its oldest own entry and the inherited one before it are loaded', () => {
-  // Fork #9 of #1 at entry 50; it has 300 own entries from 100. The window keeps a compaction marker its source wrote
-  // (id 40) next to only its newest 150 entries.
+  // Fork #9 of #1 at entry 50; it has 300 own entries from 100, and the window holds its newest 150.
   const own = Array.from({ length: 300 }, (_, index) => row(100 + index, 9))
   const marker = row(40, 1, 'pi.compaction')
-  const window = [marker, ...own.slice(150)]
-  expect(reachedFork(window, 9, marker.id)).toBe(false)
-  expect(reachedFork([marker, ...own], 9, marker.id)).toBe(false)
-  // The marker is the window's head, so it is not yet loaded as the context the fork carries in.
-  expect(reachedFork([marker, row(50, 1), ...own], 9, marker.id)).toBe(false)
-  expect(reachedFork([row(30, 1), marker, row(50, 1), ...own], 9)).toBe(true)
+  expect(reachedFork(own.slice(150), 9)).toBe(false)
+  expect(reachedFork(own, 9)).toBe(false)
+  expect(reachedFork([marker, row(50, 1), ...own], 9)).toBe(true)
 })
 
 it('keeps paging a fork until the context it carries in is loaded', () => {

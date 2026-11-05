@@ -21,9 +21,17 @@ export const ConversationTask = definePoint<
   number | undefined,
   { chip: ReactNode; title: string } | undefined
 >('conversations.task')
+/**
+ * The epic coordinator `id` works itself (`plan` provides it): its newest open epic, else its newest, when none of its
+ * tasks went to a subagent; `open` shows it in the plan panel.
+ */
+export const ConversationEpic = definePoint<
+  number,
+  { key: string; title: string; status: string; open: () => void } | undefined
+>('conversations.epic')
 
 export { ConversationRef, FeatureTag, useOverview, useStandingName } from './feature.tsx'
-export { AgentMark, agentTitle } from './marks.tsx'
+export { AgentMark, AgentTitle, useAgentTitle } from './marks.tsx'
 export type { Presence } from './marks.tsx'
 export { hiddenConversationIds } from './visible.tsx'
 
@@ -43,4 +51,5 @@ export {
   OverviewDoc,
   RenameAction,
   ResumeAction,
+  SummariesAction,
 } from './refs.ts'

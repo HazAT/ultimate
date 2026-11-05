@@ -8,10 +8,10 @@ chats). The conversations the `sidebar.unlisted` point names (side-chat names ev
 other list (`listed.ts`).
 
 Every standing agent's row leads with its mark (conversations' `AgentMark`): a small tinted tile with a glyph — a brand
-`U` for @ultimate (the title bar's wordmark), a green merge for the lander,
+`U` for @ultimate (the title bar's wordmark, or its definition `title`'s first letter), a green merge for the lander,
 its definition's `icon` and `tint` for any other resident, else a bot — with a presence dot in its corner (pulsing while it works or lands, amber while it
-waits on you). Then a fixed display name (`Ultimate`, `Lander`, else the name capitalised) with
-`@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
+waits on you). Then its display name (its definition's `title`, else the ULTIMATE wordmark for @ultimate, `Lander`, or
+the name capitalised) with `@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
 
 The **project** heads the sidebar: its path from home (or `<project> #<worktree>`, the full path on hover) with a quiet
 `History #id` on the right, and its root's **Memory** row under it, as one block. Clicking the path opens the root's
@@ -71,7 +71,10 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   its target, opening `branch:<name>` in Review, and `+ N edits` (uncommitted changed paths), opening
   `uncommitted:<id>`. A fresh worktree, or a branch without one, shows nothing. All rows are read in one call, again
   only when an agent commits (`coding-tools.committed`), a worktree's state changes or a branch's run starts or ends;
-  never on a timer. Its subagents follow, one line each at any depth (`SubagentLine`, `rows.tsx`): their mark, plan
+  never on a timer. When its coordinator works its current epic itself (no task linked to a subagent), a line
+  `E1 · <title>` comes first (`EpicLine`, `rows.tsx`, from plan's `conversations.epic` point): its dot pulses while
+  the coordinator runs, it reads `idle` between runs and `done` with a check once the epic is, and a click opens the
+  epic in the plan panel. Its subagents follow, one line each at any depth (`SubagentLine`, `rows.tsx`): their mark, plan
   chip, role and `#id`, and their state word, with the latest activity or plan task on hover.
 
 Landed branches and older conversations that are neither roots nor branches live in the collapsed "Earlier · N" group,
@@ -86,7 +89,7 @@ lagging title/timestamp list.
 A solid purple dot means an unread reply, not ongoing work; only the pulsing dot means working.
 
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
-**waits on you** (only the primary agent, @ultimate: an open question to the user);
+**waits on you** (@ultimate or a branch with an open question to the user);
 **awaiting @ultimate** (amber question mark, never on a subagent: an open reply-expected message the conversation sent
 the primary agent); **done** (green check, subagents only: it answered, and its answer went to its parent);
 **failed** (red cross: its latest input ended unanswered); else idle. Working includes queued input. Standing rows,
@@ -107,6 +110,11 @@ section lists the checkouts.
 Conclude releases clean, fully landed checkouts, including owned subagent checkouts. Uncommitted files,
 unlanded commits, and busy checkouts are kept.
 Info's Workspace section shows checkouts read-only.
+
+Hovering a branch's row (In flight, Earlier, Concluded) for a moment opens its summary history (`summaries.tsx`): the
+latest summary first, older ones below with their time, in a list capped in height that scrolls inside, also with ↑/↓
+while the row has focus. It reads the conversations `summaries` action only when it opens. Standing agents, roots and
+subagents have no summary, so their rows get none; touch devices have no hover and show none.
 
 On hover or focus, a row's `…` menu offers Rename (inline; also on double-click; Enter or leaving the field saves,
 Escape cancels, and after either key focus returns to the row), Compact context (keeps the gist and frees context;

@@ -1,8 +1,15 @@
 import type { AgentState, InboxItem } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
-import { CornerDownRightIcon, ListPlusIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  CornerDownRightIcon,
+  ListPlusIcon,
+  LoaderCircleIcon,
+  PaperclipIcon,
+  XIcon,
+} from 'lucide-react'
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePreviews, useImagePaste } from '@/components/image-paste'
+import type { DraftFile } from '@/components/image-paste'
 import type { KeyboardEvent, ReactNode } from 'react'
 import {
   PromptInput,
@@ -14,7 +21,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { api } from '../sdk/client.ts'
 import { ConversationIdContext } from '../sdk/conversation-scope.tsx'
-import { errorMessage } from '../sdk/format.ts'
+import { errorMessage, formatBytes } from '../sdk/format.ts'
 import { events } from '../sdk/events.ts'
 import {
   TranscriptContext,
@@ -25,11 +32,13 @@ import {
 } from '../sdk/hooks.ts'
 import { isMac } from '../sdk/keys.ts'
 import { touchKeyboard } from '../sdk/viewport.ts'
-import type { ModelsResponse } from '../../../shared/protocol.ts'
-import { ExtensionBoundary, Slot } from './boundary.tsx'
+import { imageMimeTypes, type ModelsResponse } from '../../../shared/protocol.ts'
+import { ExtensionBoundary, Provided, Slot } from './boundary.tsx'
 import { composerRenderers, inboxRenderer } from '../sdk/registry.ts'
+import { FileUpload } from '../sdk/types.ts'
 import { column } from './layout.ts'
-import { storeImages, storedImages } from './draft-images.ts'
+import { splitAttachments, withAttachments } from './attachments.ts'
+import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import {
   atFirstLine,
   mergedSteer,
@@ -56,9 +65,14 @@ function blockedBy(agent: AgentState, models: ModelsResponse | undefined): strin
 function inboxText(item: InboxItem): string {
   if (item.mode === 'write') return 'entry write'
   const content = item.content
-  return typeof content === 'string'
-    ? content
-    : content.flatMap((block) => (block.type === 'text' ? [block.text] : ['[image]'])).join(' ')
+  const blocks = typeof content === 'string' ? [{ type: 'text' as const, text: content }] : content
+  return blocks
+    .flatMap((block) => {
+      if (block.type !== 'text') return ['[image]']
+      const { text, files } = splitAttachments(block.text)
+      return [text, ...files.map((file) => `[${file.name}]`)].filter(Boolean)
+    })
+    .join(' ')
 }
 
 /** A queued text on one line that keeps its start and its end: the head gives way, the tail always shows. */
@@ -179,6 +193,7 @@ export function Composer({ dock }: { dock?: boolean }) {
 type Draft = {
   text: string
   images: { data: string; mimeType: string }[]
+  files: DraftFile[]
   error?: string
   sending: boolean
   revision: number
@@ -191,6 +206,7 @@ function createDraft(id: number | undefined) {
   let value: Draft = {
     text: key ? (localStorage.getItem(key) ?? '') : '',
     images: key ? storedImages(key) : [],
+    files: key ? storedFiles(key) : [],
     sending: false,
     revision: 0,
   }
@@ -205,9 +221,10 @@ function createDraft(id: number | undefined) {
       }
     },
     set: (change: Partial<Draft>) => {
-      const images = value.images
+      const { images, files } = value
       value = { ...value, ...change }
       if (key && value.images !== images) storeImages(key, value.images)
+      if (key && value.files !== files) storeFiles(key, value.files)
       for (const listener of listeners) listener()
     },
   }
@@ -252,22 +269,79 @@ function clearDraft(
   draft.set({ text: stored === snapshot.text ? '' : stored })
 }
 
+type Upload = typeof FileUpload.value
+/** Hands the provided upload to the editor beside it: a provider installing late never remounts the editor mid-attach. */
+function UploadBridge({ value, set }: { value: Upload; set: (value: Upload) => void }) {
+  useEffect(() => set(value), [value, set])
+  return null
+}
+
 function ConversationComposer({ dock }: { dock?: boolean }) {
+  const [upload, setUpload] = useState<Upload>()
+  return (
+    <>
+      <Provided input={null} point={FileUpload}>
+        {(value) => <UploadBridge set={setUpload} value={value} />}
+      </Provided>
+      <ComposerEditor dock={dock} upload={upload} />
+    </>
+  )
+}
+
+function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
   const { id, agent, busy, loading, inbox } = useConversation()
   const queued = inbox.filter((item) => item.mode !== 'write')
   const scoped = useContext(ConversationIdContext)
   const target = useContext(ComposerTargetContext)
   const draft = getDraft(id)
-  const { text, images, error, sending } = useSyncExternalStore(draft.subscribe, draft.get)
+  const { text, images, files, error, sending } = useSyncExternalStore(draft.subscribe, draft.get)
   const setError = (message: string | undefined) => draft.set({ error: message })
   const setImages = (change: (images: Draft['images']) => Draft['images']) =>
     draft.set({ images: change(draft.get().images), revision: draft.get().revision + 1 })
-  const { paste, drop, reading, pending } = useImagePaste({
+  const setFiles = (change: (files: Draft['files']) => Draft['files']) =>
+    draft.set({ files: change(draft.get().files), revision: draft.get().revision + 1 })
+  const { paste, drop, attach, reading, pending } = useImagePaste({
     images,
     setImages,
+    setFiles,
     setError,
     disabled: () => loading || draft.get().sending,
+    upload,
   })
+  const uploading = files.some((file) => !file.path)
+  // The shown conversation's composer also takes images dropped anywhere else on the page, and lights up while a file is
+  // dragged over it.
+  const [dragging, setDragging] = useState(false)
+  const dropRef = useRef(drop)
+  dropRef.current = drop
+  useEffect(() => {
+    if (scoped !== undefined) return undefined
+    let depth = 0
+    const carriesFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
+    const enter = (event: DragEvent) => {
+      if (carriesFiles(event)) setDragging(++depth > 0)
+    }
+    const leave = (event: DragEvent) => {
+      if (carriesFiles(event)) setDragging(--depth > 0)
+    }
+    const dropped = (event: DragEvent) => {
+      depth = 0
+      setDragging(false)
+      const on = event.target instanceof Element ? event.target : null
+      // Every composer's editor takes its own drops, a side chat's too.
+      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')) return
+      // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
+      void dropRef.current(event)
+    }
+    document.addEventListener('dragenter', enter)
+    document.addEventListener('dragleave', leave)
+    document.addEventListener('drop', dropped)
+    return () => {
+      document.removeEventListener('dragenter', enter)
+      document.removeEventListener('dragleave', leave)
+      document.removeEventListener('drop', dropped)
+    }
+  }, [scoped])
   const models = useModels()
   const key = draft.key
   useEffect(() => {
@@ -280,11 +354,29 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     if (value) localStorage.setItem(key, value)
     else localStorage.removeItem(key)
   }
+  /** Put sent text back into the draft, such as a recalled steer: its attachment lines become file chips again. */
+  const restore = (value: string) => {
+    const { text: rest, files: back } = splitAttachments(value)
+    update(rest)
+    if (back.length)
+      setFiles((current) => [
+        ...back.map((file) => ({ ...file, id: crypto.randomUUID() })),
+        ...current,
+      ])
+  }
   const blocked = loading ? undefined : blockedBy(agent, models)
-  const empty = !text.trim() && images.length === 0
+  const empty = !text.trim() && images.length === 0 && files.length === 0
 
   async function send(whenBusy?: 'steer' | 'followUp') {
-    if (loading || empty || blocked || draft.get().sending || pending.current || id === undefined)
+    if (
+      loading ||
+      empty ||
+      blocked ||
+      uploading ||
+      draft.get().sending ||
+      pending.current ||
+      id === undefined
+    )
       return
     const submitted = draft.get()
     if (target && images.length) {
@@ -293,7 +385,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     }
     draft.set({ sending: true, error: undefined })
     const mode = busy ? (whenBusy ?? 'steer') : undefined
-    let input = { text: text.trim(), images }
+    let input = { text: withAttachments(text.trim(), files), images }
     let previous: typeof input | undefined
     try {
       if (target) await target.send(input.text)
@@ -303,16 +395,22 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
         if (previous) input = mergedSteer(previous, input)
         // Sending means following the run from here, wherever the reader had scrolled to.
         events.emit('ultimate:sent', { conversationId: id })
-        await api.submit(input.text, mode, id, input.images)
+        await api.submit(
+          input.text,
+          mode,
+          id,
+          input.images.map(({ data, mimeType }) => ({ data, mimeType })),
+        )
       }
       clearDraft(draft, submitted)
       if (draft.get().images === submitted.images) draft.set({ images: [] })
+      if (draft.get().files === submitted.files) draft.set({ files: [] })
     } catch (failure) {
       if (key && draft.get().revision === submitted.revision)
         draft.set({ text: localStorage.getItem(key) ?? '' })
       // A steer withdrawn for a merge that then failed to send would be lost: it comes back into the draft.
       if (previous) {
-        update(mergedSteer(previous, { text: draft.get().text, images: [] }).text)
+        restore(mergedSteer(previous, { text: draft.get().text, images: [] }).text)
         setImages((current) => [...previous!.images, ...current])
       }
       setError(errorMessage(failure))
@@ -326,7 +424,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     draft.set({ sending: true, error: undefined })
     try {
       const recalled = await recallQueued(api, id, queued)
-      update(recalledText(draft.get().text, recalled))
+      restore(recalledText(draft.get().text, recalled))
       setImages((current) => [...current, ...recalled.flatMap((input) => input.images)])
     } catch (failure) {
       setError(errorMessage(failure))
@@ -345,8 +443,9 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       return
     }
     if (event.key !== 'Enter' || event.shiftKey) return
-    // A touch keyboard's return key writes a new line; the send button sends.
-    if (touchKeyboard()) return
+    // A touch keyboard's return key writes a new line; the send button, or a
+    // hardware keyboard's Cmd/Ctrl+Enter (iPad with Magic Keyboard), sends.
+    if (touchKeyboard() && !event.metaKey && !event.ctrlKey) return
     event.preventDefault()
     // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
     void send(event.altKey ? 'followUp' : 'steer')
@@ -361,6 +460,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
     >
       <Inbox items={inbox} />
       <PromptInput
+        className={cn(dragging && 'ring-2 ring-brand/60')}
         onSubmit={(event) => {
           event.preventDefault()
           // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
@@ -369,14 +469,21 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       >
         <ImagePreviews
           images={images}
+          files={files}
           disabled={loading || sending || reading}
           remove={(index) => setImages((current) => current.filter((_, i) => i !== index))}
+          removeFile={(fileId) =>
+            setFiles((current) => current.filter((file) => file.id !== fileId))
+          }
         />
         <PromptInputTextarea
           autoFocus={!touchKeyboard()}
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
+          // Chrome on Android offers a keyboard's images (Gboard's screenshot chip, clipboard bar) only to a rich editor
+          // and delivers them as a paste with the file; a plain textarea gets nothing.
+          style={touchKeyboard() ? { WebkitUserModify: 'read-write' } : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}
@@ -407,6 +514,34 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
                   </span>
                 ) : null)}
             </span>
+            <label
+              aria-label={upload ? 'Attach files' : 'Attach images'}
+              className={cn(
+                'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
+                (loading || sending || reading) &&
+                  'pointer-events-none opacity-50 hover:bg-transparent',
+              )}
+              title={
+                upload
+                  ? `Attach files: images inline, others up to ${formatBytes(upload.maxBytes).replace('.0 ', ' ')}`
+                  : 'Attach images'
+              }
+            >
+              <PaperclipIcon className="size-4" />
+              <input
+                accept={upload ? undefined : imageMimeTypes.join(',')}
+                className="sr-only"
+                disabled={loading || sending || reading}
+                multiple
+                onChange={(event) => {
+                  const picked = Array.from(event.target.files ?? [])
+                  event.target.value = ''
+                  // oxlint-disable-next-line typescript/no-floating-promises -- attach reports failures in the draft's error state.
+                  void attach(picked)
+                }}
+                type="file"
+              />
+            </label>
             {!target && <Slot name="composer.actions" variant="inline" />}
             {busy && (
               <PromptInputSubmit
@@ -419,14 +554,16 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
             )}
             {(!busy || !empty) && (
               <PromptInputSubmit
-                disabled={loading || empty || !!blocked || sending || reading}
+                disabled={loading || empty || !!blocked || sending || reading || uploading}
                 aria-label={loading ? 'Loading conversation' : 'Send'}
                 title={
                   loading
                     ? 'Loading conversation'
-                    : busy && !target
-                      ? 'Steer (Enter)'
-                      : 'Send (Enter)'
+                    : uploading
+                      ? 'Uploading files…'
+                      : busy && !target
+                        ? 'Steer (Enter)'
+                        : 'Send (Enter)'
                 }
                 className={loading ? 'bg-muted text-muted-foreground' : undefined}
               >

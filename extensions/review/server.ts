@@ -40,6 +40,39 @@ async function target(host: ExtensionHost, branch: string) {
   return checkout.target
 }
 
+/**
+ * What a `branch:<name>` spec shows once its ref is gone (it landed and its worktree was removed): its latest landing as
+ * `<base>...<tip>`, the commits it submitted against the target they landed on. That is the diff the branch showed just
+ * before it landed, so draft comments keep their lines. `uncommitted` when no landing is known; else the spec itself.
+ */
+async function resolve(host: ExtensionHost, cwd: string, spec: string) {
+  if (!spec.startsWith('branch:')) return spec
+  const branch = spec.slice('branch:'.length)
+  const present = await git(
+    cwd,
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    '--end-of-options',
+    `refs/heads/${branch}`,
+  ).catch(
+    // `--quiet` exits 1 for an unknown ref: the branch is gone.
+    () => '',
+  )
+  if (present) return spec
+  const doc = await index(host, context)
+  const owner = Object.entries(doc?.items ?? {}).find(([, item]) => item.branch === branch)?.[0]
+  const landed = Object.values(doc?.results ?? {}).findLast(
+    (result) => result.outcome === 'landed' && String(result.conversationId) === owner,
+  )
+  if (landed?.base) return `${landed.base}...${landed.tip}`
+  // Past the index's latest outcomes, the landing event: what the target gained, merged with what landed meanwhile.
+  const [event] = await host.eventLog
+    .recent({ events: [SubmissionLanded], limit: 200 })
+    .then((landings) => landings.filter(({ data }) => String(data.conversationId) === owner))
+  return event ? `${event.data.base}...${event.data.sha}` : 'uncommitted'
+}
+
 /** A git or landing time in seconds, as the range list shows it. */
 const ago = (seconds: number) => formatAgo(seconds * 1000)
 
@@ -165,14 +198,17 @@ export const actions = {
     if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
     // `uncommitted:<id>` names a worktree's uncommitted changes: the same diff, run in that checkout.
     const worktree = worktreeOf(input.spec)
-    const diff = await reviewDiff(
-      await where(host, worktree ?? input.conversation),
-      worktree === undefined ? input.spec : 'uncommitted',
-      { target: (branch) => target(host, branch), signal },
-    )
-    return worktree === undefined
-      ? diff
-      : { ...diff, spec: input.spec, title: `Uncommitted changes in #${worktree}` }
+    const cwd = await where(host, worktree ?? input.conversation)
+    const shown =
+      worktree === undefined ? await resolve(host, cwd, input.spec.trim()) : 'uncommitted'
+    const diff = await reviewDiff(cwd, shown, {
+      target: (branch) => target(host, branch),
+      signal,
+    })
+    if (worktree !== undefined)
+      return { ...diff, spec: input.spec, title: `Uncommitted changes in #${worktree}` }
+    // A landed branch keeps its spec on screen, and so its drafts; one gone without a landing moves on to `shown`.
+    return shown === 'uncommitted' ? diff : { ...diff, spec: input.spec }
   }),
   ranges: implementAction(RangesAction, (_args, { host }) => ranges(host)),
   recipient: implementAction(RecipientAction, async (args, { host }) => {
