@@ -37,7 +37,7 @@ export function Field({
         {aside && <span className="ml-auto">{aside}</span>}
       </div>
       {children}
-      {hint && <p className="text-[11.5px] leading-snug text-muted-foreground/80">{hint}</p>}
+      {hint && <p className="text-[0.7188rem] leading-snug text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -54,7 +54,7 @@ export function StandingField({
       label="Standing agent"
       hint="One conversation per project, addressed by @name. Its isolate setting is ignored."
     >
-      <label className="flex items-center justify-between rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px]">
+      <label className="flex items-center justify-between rounded-md border border-border/80 bg-background px-2 py-1.5 text-[0.8125rem]">
         Available by name
         <Switch aria-label="Standing agent" checked={value} onCheckedChange={onChange} />
       </label>
@@ -78,7 +78,7 @@ export function SummariesField({
           : 'Its conversations keep the title they were given; the summary model answers only explicit calls.'
       }
     >
-      <label className="flex items-center justify-between rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px]">
+      <label className="flex items-center justify-between rounded-md border border-border/80 bg-background px-2 py-1.5 text-[0.8125rem]">
         Title and reply activity
         <Switch aria-label="Automatic summaries" checked={value} onCheckedChange={onChange} />
       </label>
@@ -87,7 +87,7 @@ export function SummariesField({
 }
 
 export const inputClass =
-  'w-full rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground/50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 aria-invalid:border-error/70'
+  'w-full rounded-md border border-border/80 bg-background px-2 py-1.5 text-[0.8125rem] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-error/70'
 
 /** Exclusive choices as one control; `value` null selects none. */
 export function Segmented<T extends string>({
@@ -104,7 +104,7 @@ export function Segmented<T extends string>({
   return (
     <div
       aria-label={label}
-      className="flex flex-wrap rounded-md border border-border/80 bg-background p-0.5 font-mono text-[11px]"
+      className="flex flex-wrap rounded-md border border-border/80 bg-background p-0.5 font-mono text-[0.6875rem]"
       role="group"
     >
       {options.map((option) => (
@@ -181,7 +181,7 @@ export function ModelField({
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
-          className={cn(inputClass, 'flex items-center gap-2 text-left font-mono text-[12px]')}
+          className={cn(inputClass, 'flex items-center gap-2 text-left font-mono text-[0.75rem]')}
           type="button"
         >
           {value ? (
@@ -193,7 +193,7 @@ export function ModelField({
             <>
               <span className="text-muted-foreground">inherit</span>
               {shown && (
-                <span className="min-w-0 truncate text-muted-foreground/70">· {shown.modelId}</span>
+                <span className="min-w-0 truncate text-muted-foreground">· {shown.modelId}</span>
               )}
             </>
           )}
@@ -207,19 +207,19 @@ export function ModelField({
           shouldFilter={false}
         >
           <CommandInput
-            className="text-[13px]"
+            className="text-[0.8125rem]"
             onValueChange={setQuery}
             placeholder={`Search ${(models?.models.length ?? 0).toLocaleString()} models…`}
             value={query}
           />
           <CommandList className="max-h-[45vh]">
-            <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+            <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
               No model matches.
             </CommandEmpty>
             {!query && (
               <CommandGroup heading="Main conversation">
                 <CommandItem
-                  className="gap-2 py-1 font-mono text-[12px]"
+                  className="gap-2 py-1 font-mono text-[0.75rem]"
                   onSelect={() => choose(null)}
                   value="inherit"
                 >
@@ -246,7 +246,7 @@ export function ModelField({
               </Fragment>
             ))}
           </CommandList>
-          <div className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <div className="border-t border-border/70 px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
             {query ? 'all providers' : 'logged-in providers · type to search all'}
           </div>
         </Command>
@@ -266,7 +266,7 @@ function ModelRow({
 }) {
   return (
     <CommandItem
-      className={cn('gap-2 py-1 font-mono text-[12px]', !model.available && 'opacity-60')}
+      className={cn('gap-2 py-1 font-mono text-[0.75rem]', !model.available && 'opacity-60')}
       onSelect={onSelect}
       title={model.available ? undefined : 'Not logged in to this provider'}
       value={`${model.provider}/${model.id}`}
@@ -274,18 +274,18 @@ function ModelRow({
       <CheckIcon className={cn('size-3.5', current ? 'text-brand' : 'opacity-0')} />
       <span className={cn('shrink-0', current ? 'text-brand' : 'text-foreground')}>{model.id}</span>
       {model.name !== model.id && (
-        <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground/80">
+        <span className="min-w-0 truncate font-sans text-[0.75rem] text-muted-foreground">
           {model.name}
         </span>
       )}
-      <span className="ml-auto flex shrink-0 items-center gap-1 pl-3 text-[11px] text-muted-foreground">
+      <span className="ml-auto flex shrink-0 items-center gap-1 pl-3 text-[0.6875rem] text-muted-foreground">
         {model.reasoning ? (
           <>
             <BrainIcon className="size-3" />
             {model.thinkingLevels.filter((level) => level !== 'off').at(-1)}
           </>
         ) : (
-          <span className="text-muted-foreground/40">no thinking</span>
+          <span className="text-muted-foreground">no thinking</span>
         )}
       </span>
     </CommandItem>
@@ -309,7 +309,7 @@ export function ToolsField({
   return (
     <Field
       aside={
-        <label className="flex items-center gap-1.5 font-sans text-[11.5px] text-muted-foreground">
+        <label className="flex items-center gap-1.5 font-sans text-[0.7188rem] text-muted-foreground">
           inherit all
           <Switch
             checked={value === null}
@@ -327,7 +327,7 @@ export function ToolsField({
     >
       <div
         className={cn(
-          'grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-md border border-border/70 px-2 py-1.5 font-mono text-[11.5px]',
+          'grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-md border border-border/70 px-2 py-1.5 font-mono text-[0.7188rem]',
           value === null && 'opacity-50',
         )}
       >
@@ -387,7 +387,7 @@ export function InstructionsEditor({
   const [tab, setTab] = useState<'write' | 'preview' | 'file'>('write')
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/80 bg-background focus-within:border-ring">
-      <div className="flex items-center gap-1 border-b border-border/70 px-1.5 py-1 font-mono text-[11px]">
+      <div className="flex items-center gap-1 border-b border-border/70 px-1.5 py-1 font-mono text-[0.6875rem]">
         {(file === undefined
           ? (['write', 'preview'] as const)
           : (['write', 'preview', 'file'] as const)
@@ -405,29 +405,27 @@ export function InstructionsEditor({
             {name === 'write' ? 'Write' : name === 'preview' ? 'Preview' : 'File'}
           </button>
         ))}
-        <span className="ml-auto pr-1.5 text-muted-foreground/70">
-          Markdown · the system prompt
-        </span>
+        <span className="ml-auto pr-1.5 text-muted-foreground">Markdown · the system prompt</span>
       </div>
       {tab === 'write' ? (
         <textarea
           aria-label="Instructions"
-          className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
+          className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-[0.7812rem] leading-relaxed outline-none placeholder:text-muted-foreground"
           onChange={(event) => onChange(event.target.value)}
           placeholder="What this agent does and how it reports back…"
           spellCheck={false}
           value={value}
         />
       ) : tab === 'preview' ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 text-[13px]">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 text-[0.8125rem]">
           {value.trim() ? (
             <MessageResponse>{value}</MessageResponse>
           ) : (
-            <p className="text-muted-foreground/70">Nothing to preview.</p>
+            <p className="text-muted-foreground">Nothing to preview.</p>
           )}
         </div>
       ) : (
-        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[0.75rem] leading-relaxed whitespace-pre-wrap text-muted-foreground">
           {file}
         </pre>
       )}

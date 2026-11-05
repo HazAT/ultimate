@@ -121,13 +121,13 @@ export function Address({
         <AgentMark name={name} size="sm" />
         {ultimate.brand ? (
           <span
-            className="font-sans text-[10.5px] font-semibold tracking-[0.28em]"
+            className="font-sans text-[0.6562rem] font-semibold tracking-[0.28em]"
             data-ui="wordmark"
           >
             ULTIMATE
           </span>
         ) : (
-          <span className="font-sans text-[12px] font-semibold">{ultimate.title}</span>
+          <span className="font-sans text-[0.75rem] font-semibold">{ultimate.title}</span>
         )}
       </span>
     )
@@ -141,7 +141,7 @@ export function Address({
 /** A message's text; `pending` shimmers in its place until the model has written any, on the line the text takes. */
 export function Body({ text, pending }: { text: string; pending?: string }) {
   return (
-    <div className="min-w-0 px-3 py-3 text-[13px] leading-relaxed">
+    <div className="min-w-0 px-3 py-3 text-[0.8125rem] leading-relaxed">
       {pending && !text ? (
         <Shimmer as="p">{pending}</Shimmer>
       ) : (
@@ -228,7 +228,7 @@ export function Bubble({
       data-ui="message-card"
       className="group/bubble mt-2 w-full min-w-0"
     >
-      <header className="flex h-6 min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex h-6 min-w-0 items-center gap-2 font-mono text-[0.6875rem] text-muted-foreground">
         <Sender id={from} tone={accent.name} />
         {entry ? (
           // One line: on a narrow column the details clip on the left instead of wrapping into an empty second row.
@@ -262,7 +262,7 @@ export function Bubble({
         {children}
         {answer && <AttachedAnswer answer={answer} question={message!} />}
         {(shown || message?.error) && (
-          <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+          <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
             {shown && message ? (
               <Status message={message} perspective="user" />
             ) : (
@@ -294,7 +294,7 @@ function Sender({ id, tone }: { id: number; tone: string }) {
   return (
     <span className="flex shrink-0 items-center gap-2" title={`@${name}`}>
       <AgentMark name={name} size="sm" />
-      <span className={cn('font-sans text-[13px] font-semibold tracking-[-0.005em]', tone)}>
+      <span className={cn('font-sans text-[0.8125rem] font-semibold tracking-[-0.005em]', tone)}>
         <AgentTitle name={name} />
       </span>
     </span>
@@ -313,7 +313,7 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
   const { showSurface, switchConversation } = useUltimate()
   return (
     <div className="border-t border-border/60 px-3 py-2.5" data-compact-answer={answer.id}>
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 font-mono text-[0.6875rem] text-muted-foreground">
         <CornerDownRightIcon className={cn('size-3.5 shrink-0', accent.name)} />
         <span className={cn('font-semibold', accent.name)}>{settledLabel(question, answer)}</span>
         {via?.entry !== undefined && (
@@ -342,7 +342,7 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
       </div>
       {(!dismissed || via) && (
         <UserText
-          className="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[13px] leading-relaxed"
+          className="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[0.8125rem] leading-relaxed"
           text={answer.text}
         />
       )}
@@ -465,7 +465,7 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
       }
     >
       <Card data-message-outgoing={message?.id}>
-        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
           {toUser ? (
             <InboxIcon className="size-3.5 text-brand" />
           ) : (
@@ -503,7 +503,7 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
           )}
         </header>
         {message?.error && (
-          <p className="border-b border-border/60 px-3 py-1.5 font-mono text-[11px] break-words text-destructive">
+          <p className="border-b border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] break-words text-destructive">
             {message.error}
           </p>
         )}
@@ -557,7 +557,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
       }
     >
       <Card data-message-branch={id}>
-        <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] whitespace-nowrap text-muted-foreground">
+        <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] whitespace-nowrap text-muted-foreground">
           <GitBranchIcon className="size-3.5 shrink-0 text-brand" />
           <span className="shrink-0">
             <span className="max-sm:hidden">Started branch · coordinator</span>
@@ -595,7 +595,7 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
           )}
         </header>
         {message?.error && (
-          <p className="border-b border-border/60 px-3 py-1.5 font-mono text-[11px] break-words text-destructive">
+          <p className="border-b border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] break-words text-destructive">
             {message.error}
           </p>
         )}
@@ -639,7 +639,7 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
             origin.failed && <span className="shrink-0 text-destructive">· failed</span>
           )}
           {origin.delivery === 'note' && (
-            <span className="shrink-0 text-muted-foreground/60">· note</span>
+            <span className="shrink-0 text-muted-foreground">· note</span>
           )}
         </>
       }
@@ -650,7 +650,7 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
         data-ui="message-card"
         className={cn('group/bubble min-w-0 rounded-lg border', accent.edge, accent.fill)}
       >
-        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
           <MailIcon className={cn('size-3.5 shrink-0', accent.name)} />
           <span className={cn('flex min-w-0 font-semibold', accent.name)}>
             <Address id={origin.from} mark remote={origin.remote} />
@@ -709,7 +709,7 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
   if (question && asked) {
     return (
       <button
-        className="ml-auto flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+        className="ml-auto flex cursor-pointer items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-muted-foreground"
         data-compact-answer-ref={id}
         onClick={() =>
           events.emit('ultimate:reveal-entry', {
@@ -848,7 +848,7 @@ function ScriptMessages({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Collapsible className="group/script">
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-muted-foreground">
           sent with codemode
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/script:rotate-90" />
         </CollapsibleTrigger>
@@ -888,7 +888,7 @@ function ReplyFold({
     )
   return (
     <Collapsible className="group/reply">
-      <CollapsibleTrigger className="flex cursor-pointer flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
+      <CollapsibleTrigger className="flex cursor-pointer flex-wrap items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-muted-foreground">
         replied to
         {answered.map((m) => (
           <span className="flex min-w-0" key={m.id}>

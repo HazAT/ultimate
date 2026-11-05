@@ -81,7 +81,7 @@ export function AgentsOverview() {
             </span>
             <AddFamily view={families} />
             <Button
-              className="h-5 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              className="h-5 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
               onClick={() => show('')}
               size="xs"
               title="New agent definition"
@@ -96,13 +96,13 @@ export function AgentsOverview() {
         Agents
       </Heading>
       {families.errors.map((problem) => (
-        <p className="px-3 pb-2 font-mono text-[11px] leading-snug text-error" key={problem}>
+        <p className="px-3 pb-2 font-mono text-[0.6875rem] leading-snug text-error" key={problem}>
           {problem}
         </p>
       ))}
       {wrote && (
         <p
-          className="truncate px-3 pb-2 font-mono text-[10.5px] text-muted-foreground"
+          className="truncate px-3 pb-2 font-mono text-[0.6562rem] text-muted-foreground"
           title={wrote}
         >
           <span className="text-success">saved</span> {wrote}
@@ -147,10 +147,10 @@ export function AgentsOverview() {
       ))}
       {(pinned.length > 0 || pinnedFeatures.length > 0) && (
         <section className="pt-3">
-          <div className="flex items-center gap-1.5 px-3 pb-0.5 font-mono text-[11.5px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 px-3 pb-0.5 font-mono text-[0.7188rem] text-muted-foreground">
             <PinIcon className="size-3" />
             Own model
-            <span className="text-[10.5px] text-muted-foreground/60">· no family</span>
+            <span className="text-[0.6562rem] text-muted-foreground">· no family</span>
           </div>
           {pinned.map((definition) => (
             <AgentRow
@@ -192,12 +192,12 @@ export function AgentsOverview() {
               title={error.path}
               type="button"
             >
-              <div className="flex min-w-0 items-center gap-1.5 font-mono text-[11.5px] text-error">
+              <div className="flex min-w-0 items-center gap-1.5 font-mono text-[0.7188rem] text-error">
                 <BotIcon className="size-3.5 shrink-0" />
                 <span className="shrink-0">{error.name}</span>
                 <Tag>{error.source}</Tag>
               </div>
-              <p className="line-clamp-3 pl-5 font-mono text-[11px] leading-snug break-words whitespace-pre-wrap text-error/80">
+              <p className="line-clamp-3 pl-5 font-mono text-[0.6875rem] leading-snug break-words whitespace-pre-wrap text-error/80">
                 {parseError(error.error)}
               </p>
             </button>
@@ -205,7 +205,7 @@ export function AgentsOverview() {
         </section>
       )}
       {definitions.length === 0 && errors.length === 0 && (
-        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
+        <p className="px-3 pt-3 font-sans text-[0.75rem] leading-relaxed text-muted-foreground">
           No definitions yet: add one with Agent, or Markdown files in{' '}
           <code className="font-mono">.ultimate/agents/</code>
         </p>
@@ -231,7 +231,7 @@ function FamilyGroup({
     <section className="pt-3 first-of-type:pt-1">
       <FamilyPopover family={family} view={view}>
         <button
-          className="group/family flex w-full min-w-0 items-center gap-1.5 px-3 py-1 text-left font-mono text-[11.5px] transition-colors hover:bg-accent/50 data-[state=open]:bg-accent/50"
+          className="group/family flex w-full min-w-0 items-center gap-1.5 px-3 py-1 text-left font-mono text-[0.7188rem] transition-colors hover:bg-accent/50 data-[state=open]:bg-accent/50"
           title={`${model ?? 'No model'}${thinking ? ` · thinking ${thinking}` : ''}${family.name === DEFAULT_FAMILY && family.follows ? " (Pi's default)" : ''} · click to change`}
           type="button"
         >
@@ -241,9 +241,9 @@ function FamilyGroup({
           </span>
           <span className="min-w-0 truncate text-muted-foreground">
             {model ? short(model) : 'no model'}
-            {thinking && <span className="text-muted-foreground/70"> · {thinking}</span>}
+            {thinking && <span className="text-muted-foreground"> · {thinking}</span>}
           </span>
-          <span className="ml-auto shrink-0 pl-2 text-[10.5px] text-muted-foreground/60 opacity-0 transition-opacity group-hover/family:opacity-100">
+          <span className="ml-auto shrink-0 pl-2 text-[0.6562rem] text-muted-foreground opacity-0 transition-opacity group-hover/family:opacity-100">
             edit
           </span>
         </button>
@@ -254,7 +254,7 @@ function FamilyGroup({
       >
         {children}
         {empty && (
-          <p className="py-1 pl-2.5 font-mono text-[10.5px] text-muted-foreground/50">
+          <p className="py-1 pl-2.5 font-mono text-[0.6562rem] text-muted-foreground">
             nothing runs on it
           </p>
         )}
@@ -332,15 +332,15 @@ function Row({
 }) {
   const body = (
     <>
-      <div className="flex min-w-0 items-center gap-1.5 font-mono text-[11.5px]">
-        <Icon className="size-3 shrink-0 text-muted-foreground/70" />
+      <div className="flex min-w-0 items-center gap-1.5 font-mono text-[0.7188rem]">
+        <Icon className="size-3 shrink-0 text-muted-foreground" />
         <span className="shrink-0 text-foreground/85">{label}</span>
         {tags}
         {meta && (
-          <span className="min-w-0 truncate text-[10.5px] text-muted-foreground/70">{meta}</span>
+          <span className="min-w-0 truncate text-[0.6562rem] text-muted-foreground">{meta}</span>
         )}
       </div>
-      <p className="line-clamp-1 pl-4.5 font-sans text-[11.5px] leading-snug text-muted-foreground/80">
+      <p className="line-clamp-1 pl-4.5 font-sans text-[0.7188rem] leading-snug text-muted-foreground">
         {description}
       </p>
     </>
@@ -382,7 +382,7 @@ function MoveMenu({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <button
           aria-label={`Move ${label} to another family`}
-          className="flex h-5 items-center gap-1 rounded px-1 font-mono text-[10.5px] text-muted-foreground/0 transition-colors group-hover/row:text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:text-muted-foreground disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-foreground pointer-coarse:text-muted-foreground"
+          className="flex h-5 items-center gap-1 rounded px-1 font-mono text-[0.6562rem] text-muted-foreground/0 transition-colors group-hover/row:text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:text-muted-foreground disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-foreground pointer-coarse:text-muted-foreground"
           title={disabled ? "The project's settings decide it" : 'Run it on another family'}
           type="button"
         >
@@ -400,7 +400,7 @@ function MoveMenu({
           const model = runsOn(item)
           return (
             <DropdownMenuItem
-              className="gap-2 py-1 text-[12px]"
+              className="gap-2 py-1 text-[0.75rem]"
               key={item.name}
               onSelect={() => item.name !== current && onMove(item.name)}
             >
@@ -409,7 +409,7 @@ function MoveMenu({
               />
               <FamilyDot color={item.color} />
               <span style={{ color: familyColor(item.color) }}>{familyTitle(item.name)}</span>
-              <span className="ml-auto truncate text-[10.5px] text-muted-foreground">
+              <span className="ml-auto truncate text-[0.6562rem] text-muted-foreground">
                 {model ? short(model) : ''}
               </span>
             </DropdownMenuItem>

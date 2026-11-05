@@ -39,7 +39,7 @@ export function SummaryHistory({
         data-summary-history={id}
         side="right"
       >
-        <p className="border-b border-border/50 px-3 py-1.5 font-mono text-[10px] break-words text-muted-foreground">
+        <p className="border-b border-border/50 px-3 py-1.5 font-mono text-[0.625rem] break-words text-muted-foreground">
           {title} · #{id}
         </p>
         <History id={id} list={list} />
@@ -53,12 +53,12 @@ function History({ id, list }: { id: number; list: React.RefObject<HTMLOListElem
   const now = Date.now()
   if (!data)
     return (
-      <p className="px-3 py-2 text-[11px] text-muted-foreground">
+      <p className="px-3 py-2 text-[0.6875rem] text-muted-foreground">
         {loading ? 'Loading summaries…' : 'Summaries unavailable'}
       </p>
     )
   if (!data.length)
-    return <p className="px-3 py-2 text-[11px] text-muted-foreground">No summary yet</p>
+    return <p className="px-3 py-2 text-[0.6875rem] text-muted-foreground">No summary yet</p>
   return (
     <ol
       aria-label="Summary history"
@@ -70,7 +70,7 @@ function History({ id, list }: { id: number; list: React.RefObject<HTMLOListElem
           className="border-b border-border/50 px-3 py-1.5 last:border-b-0"
           key={`${record.at ?? 'now'}-${record.summary}`}
         >
-          <div className="flex items-baseline gap-2 font-mono text-[10px] text-muted-foreground/80">
+          <div className="flex items-baseline gap-2 font-mono text-[0.625rem] text-muted-foreground">
             {index === 0 && <span className="text-foreground/80">Latest</span>}
             {record.at !== undefined && (
               <time

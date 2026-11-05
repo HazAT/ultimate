@@ -65,13 +65,13 @@ export function MorningCard({ entry }: { entry: EntryRecord }) {
   const at = entry.model?.[0]?.timestamp
   return (
     <Card data-dream-morning={data.name}>
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <SunriseIcon className="size-3.5 text-brand" />
         <span className="text-foreground">{chapterLabel(data.number, data.name)}</span>
         <span>{at === undefined ? 'woke up' : `woke up ${formatTime(at)}`}</span>
       </header>
       <div className="space-y-3 px-4 pt-3.5 pb-3">
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="text-[0.8125rem] leading-relaxed text-muted-foreground">
           A fresh start after{' '}
           <span className="text-foreground">{chapterLabel(data.from.number, data.from.name)}</span>.
           That chapter stays on disk, and I can still read it.
@@ -80,7 +80,7 @@ export function MorningCard({ entry }: { entry: EntryRecord }) {
           <ul className="space-y-1">
             {data.learned.map((line) => (
               <li
-                className="border-l-2 border-brand/30 pl-3 text-[13.5px] leading-snug text-foreground/85"
+                className="border-l-2 border-brand/30 pl-3 text-[0.8438rem] leading-snug text-foreground/85"
                 key={line}
               >
                 {line}
@@ -101,7 +101,7 @@ function Carried({ counts }: { counts: Seed['counts'] }) {
     .filter((kind) => counts[kind] > 0)
     .map((kind) => `${counts[kind]} ${nouns[kind][counts[kind] === 1 ? 0 : 1]}`)
   return (
-    <p className="font-mono text-[11px] text-muted-foreground" data-dream-carried>
+    <p className="font-mono text-[0.6875rem] text-muted-foreground" data-dream-carried>
       <span className="text-foreground/80">Carried</span>{' '}
       {parts.length ? parts.join(' · ') : 'nothing: no memory or open work came along'}
     </p>
@@ -142,7 +142,7 @@ function Awake({ data }: { data: ChapterEntry }) {
 
   if (check?.ended === 'injected')
     return (
-      <div className={cn(footer, 'text-[12px]')} data-dream-awake="checked">
+      <div className={cn(footer, 'text-[0.75rem]')} data-dream-awake="checked">
         <span className="flex items-center gap-1.5 text-foreground">
           <CheckIcon className="size-3.5 text-success" />
           Awake and checked
@@ -157,7 +157,7 @@ function Awake({ data }: { data: ChapterEntry }) {
         >
           Check again
         </Button>
-        {failure && <p className="w-full text-[12px] text-error">{failure}</p>}
+        {failure && <p className="w-full text-[0.75rem] text-error">{failure}</p>}
       </div>
     )
 
@@ -165,13 +165,13 @@ function Awake({ data }: { data: ChapterEntry }) {
     return (
       <>
         <Off data={data} onAgain={() => void open()} opening={opening || !!waking} />
-        {failure && <p className="px-4 pb-2.5 text-[12px] text-error">{failure}</p>}
+        {failure && <p className="px-4 pb-2.5 text-[0.75rem] text-error">{failure}</p>}
       </>
     )
 
   if (check)
     return (
-      <div className={cn(footer, 'text-[12px]')} data-dream-awake="checking">
+      <div className={cn(footer, 'text-[0.75rem]')} data-dream-awake="checking">
         <span className="flex items-center gap-1.5 text-muted-foreground">
           <GitForkIcon className="size-3.5 text-brand" />
           Checking in a side chat
@@ -204,12 +204,12 @@ function Awake({ data }: { data: ChapterEntry }) {
         )}
         Check that I'm awake
       </Button>
-      <span className="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
+      <span className="min-w-0 flex-1 text-[0.75rem] leading-snug text-muted-foreground">
         {waking
           ? 'Still waking up…'
           : 'A side chat asks me what this project is, what is open, our rules and who we are.'}
       </span>
-      {failure && <p className="w-full text-[12px] text-error">{failure}</p>}
+      {failure && <p className="w-full text-[0.75rem] text-error">{failure}</p>}
     </div>
   )
 }
@@ -237,7 +237,7 @@ function Off({
   }
   return (
     <div className="space-y-2.5 border-t border-border/60 px-4 pt-3 pb-3.5" data-dream-awake="off">
-      <p className="flex items-start gap-2 text-[12.5px] leading-relaxed">
+      <p className="flex items-start gap-2 text-[0.7812rem] leading-relaxed">
         <Trash2Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <span className="text-muted-foreground">
           <span className="text-foreground">You discarded the check.</span> If something is off

@@ -203,7 +203,7 @@ function VoiceButton() {
         >
           <XIcon className="size-4" />
         </button>
-        <span className="flex h-7 items-center gap-1.5 rounded-lg bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums pointer-coarse:h-9">
+        <span className="flex h-7 items-center gap-1.5 rounded-lg bg-error/10 px-2 font-mono text-[0.7188rem] text-error tabular-nums pointer-coarse:h-9">
           <span className="size-1.5 rounded-full bg-error motion-safe:animate-pulse" />
           {clock(now - recording.started)}
           <Level audio={recording.audio} stream={recording.stream} />
@@ -225,7 +225,7 @@ function VoiceButton() {
     <div className="flex min-w-0 shrink items-center gap-1.5">
       {error && (
         <span
-          className="min-w-0 truncate font-mono text-[11px] text-error"
+          className="min-w-0 truncate font-mono text-[0.6875rem] text-error"
           role="alert"
           title={error}
         >
@@ -233,7 +233,9 @@ function VoiceButton() {
         </span>
       )}
       {transcribing && (
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">transcribing…</span>
+        <span className="shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+          transcribing…
+        </span>
       )}
       <Tooltip>
         <TooltipTrigger asChild>

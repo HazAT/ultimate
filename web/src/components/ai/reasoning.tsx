@@ -27,7 +27,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          'flex items-center gap-1.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground',
+          'flex items-center gap-1.5 font-mono text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground',
           className,
         )}
         data-ui="transcript-meta"
@@ -52,7 +52,7 @@ export const ReasoningContent = memo(({ className, children, ...props }: Reasoni
   return (
     <CollapsibleContent
       className={cn(
-        'mt-1.5 border-l-2 border-border pl-3 text-[13px] text-muted-foreground italic',
+        'mt-1.5 border-l-2 border-border pl-3 text-[0.8125rem] text-muted-foreground italic',
         className,
       )}
       {...props}

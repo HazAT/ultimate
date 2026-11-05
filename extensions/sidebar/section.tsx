@@ -39,7 +39,7 @@ export function Section({
       >
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/section:rotate-90" />
         {label}
-        <span className="text-muted-foreground/60 tabular-nums">{count}</span>
+        <span className="text-muted-foreground tabular-nums">{count}</span>
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-px">{children}</CollapsibleContent>
     </Collapsible>
@@ -58,7 +58,7 @@ export function More({
 }) {
   return (
     <button
-      className="mx-2 h-5 cursor-pointer rounded-md pl-[26px] text-left font-mono text-[10px] text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      className="mx-2 h-5 cursor-pointer rounded-md pl-[26px] text-left font-mono text-[0.625rem] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
       onClick={onToggle}
       type="button"
     >

@@ -26,7 +26,7 @@ export function FeatureTag({ feature, className }: { feature: string; className?
   return (
     <span
       className={cn(
-        'min-w-0 truncate rounded px-1.5 font-sans text-[10px] leading-4',
+        'min-w-0 truncate rounded px-1.5 font-sans text-[0.625rem] leading-4',
         hues[(hash >>> 0) % hues.length],
         className,
       )}
@@ -76,7 +76,7 @@ export function ConversationRef({
           {name}
         </span>
       )}
-      <span className="shrink-0 text-muted-foreground/70">#{id}</span>
+      <span className="shrink-0 text-muted-foreground">#{id}</span>
     </span>
   )
 }

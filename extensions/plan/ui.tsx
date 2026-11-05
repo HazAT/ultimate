@@ -15,7 +15,7 @@ import { TaskIndexDoc } from './refs.ts'
 import type { TaskLink } from './refs.ts'
 
 const statuses: Record<string, { icon: typeof CircleIcon; tone: string; dot: string }> = {
-  backlog: { icon: CircleDashedIcon, tone: 'text-muted-foreground/70', dot: 'bg-muted-foreground' },
+  backlog: { icon: CircleDashedIcon, tone: 'text-muted-foreground', dot: 'bg-muted-foreground' },
   planning: { icon: CircleDashedIcon, tone: 'text-muted-foreground', dot: 'bg-muted-foreground' },
   todo: { icon: CircleIcon, tone: 'text-muted-foreground', dot: 'bg-muted-foreground' },
   in_progress: {
@@ -32,7 +32,7 @@ const statuses: Record<string, { icon: typeof CircleIcon; tone: string; dot: str
   blocked: { icon: CircleAlertIcon, tone: 'border-error/40 text-error', dot: 'bg-error' },
   canceled: {
     icon: CircleSlashIcon,
-    tone: 'text-muted-foreground/60 line-through',
+    tone: 'text-muted-foreground line-through',
     dot: 'bg-muted-foreground/40',
   },
 }
@@ -83,7 +83,7 @@ export function TaskChip({ task, className }: { task: TaskLink; className?: stri
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 cursor-pointer items-center gap-1 rounded bg-muted/60 px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+        'inline-flex shrink-0 cursor-pointer items-center gap-1 rounded bg-muted/60 px-1.5 font-mono text-[0.625rem] leading-4 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
         className,
       )}
       data-task={task.key}

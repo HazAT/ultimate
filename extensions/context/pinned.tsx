@@ -102,7 +102,7 @@ function Pinned({ id }: { id: number }) {
               <div className="flex items-center gap-2 px-3">
                 <span className="section-label text-brand">Changed since you last looked</span>
                 <Button
-                  className="ml-auto h-6 cursor-pointer px-2 font-mono text-[11px]"
+                  className="ml-auto h-6 cursor-pointer px-2 font-mono text-[0.6875rem]"
                   onClick={() => current.at !== undefined && setSeen(current.at)}
                   size="sm"
                   variant="outline"

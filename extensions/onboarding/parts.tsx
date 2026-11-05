@@ -94,7 +94,7 @@ export function Heading({
     <div className={cn('flex items-center gap-2 section-label', className)}>
       {children}
       {meta !== undefined && (
-        <span className="ml-auto truncate pl-2 text-muted-foreground/70">{meta}</span>
+        <span className="ml-auto truncate pl-2 text-muted-foreground">{meta}</span>
       )}
     </div>
   )
@@ -118,7 +118,7 @@ export function Segmented<T extends string>({
     <div
       aria-label={label}
       className={cn(
-        'inline-flex rounded-md border border-border/80 bg-background p-0.5 font-mono text-[11px]',
+        'inline-flex rounded-md border border-border/80 bg-background p-0.5 font-mono text-[0.6875rem]',
         className,
       )}
       role="group"

@@ -43,7 +43,7 @@ function SkillRun({ name, location, body }: { name: string; location: string; bo
         title={
           <>
             <span className="text-brand">{name}</span>
-            <span className="text-muted-foreground/60" title={location}>
+            <span className="text-muted-foreground" title={location}>
               {' '}
               · run by you
             </span>
@@ -52,7 +52,7 @@ function SkillRun({ name, location, body }: { name: string; location: string; bo
       />
       <ToolContent>
         <ToolSection>
-          <MessageResponse className="text-[13px]">{body}</MessageResponse>
+          <MessageResponse className="text-[0.8125rem]">{body}</MessageResponse>
         </ToolSection>
       </ToolContent>
     </Tool>

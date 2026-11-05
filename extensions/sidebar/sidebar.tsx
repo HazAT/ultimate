@@ -77,7 +77,7 @@ function Project({
     <div aria-label="Project" className="mb-1 border-b border-border/70 pb-1" role="group">
       {root === undefined ? (
         <div
-          className="flex h-10 shrink-0 items-center gap-2 px-4 text-[13px] font-medium text-foreground/90"
+          className="flex h-10 shrink-0 items-center gap-2 px-4 text-[0.8125rem] font-medium text-foreground/90"
           title={system?.project.root}
         >
           <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -86,14 +86,14 @@ function Project({
       ) : (
         <div
           className={cn(
-            'group/project mx-2 mt-1 flex h-8 min-w-0 items-center rounded-md text-[13px] font-medium text-foreground/90 has-[[data-root-context]:hover]:bg-sidebar-accent/50',
+            'group/project mx-2 mt-1 flex h-8 min-w-0 items-center rounded-md text-[0.8125rem] font-medium text-foreground/90 has-[[data-root-context]:hover]:bg-sidebar-accent/50',
             shown && 'bg-sidebar-accent has-[[data-root-context]:hover]:bg-sidebar-accent',
           )}
         >
           <button
             aria-expanded={open}
             aria-label={open ? 'Hide the project memory' : 'Show the project memory'}
-            className="flex h-full w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="flex h-full w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-project-toggle
             onClick={() => setOpen(!open)}
             title={open ? 'Hide Memory' : 'Show Memory'}
@@ -113,7 +113,7 @@ function Project({
           >
             <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{title}</span>
-            <span className="ml-auto shrink-0 font-mono text-[10px] font-normal text-muted-foreground/50 group-hover/project:text-muted-foreground">
+            <span className="ml-auto shrink-0 font-mono text-[0.625rem] font-normal text-muted-foreground group-hover/project:text-muted-foreground">
               History #{root}
             </span>
           </button>
@@ -135,7 +135,7 @@ function MemoryHint({ root }: { root: number }) {
       aria-current={shown ? 'page' : undefined}
       aria-label="Open the project memory"
       className={cn(
-        'mr-0.5 flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-normal text-muted-foreground/50 outline-none hover:bg-sidebar-accent/50 hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
+        'mr-0.5 flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[0.625rem] font-normal text-muted-foreground outline-none hover:bg-sidebar-accent/50 hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
         shown && 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent hover:text-foreground',
       )}
       data-memory-hint={root}
@@ -399,7 +399,7 @@ function Tree({
             )}
             {latest > 0 && (
               <span
-                className="ml-auto shrink-0 text-muted-foreground/80"
+                className="ml-auto shrink-0 text-muted-foreground"
                 title={new Date(latest).toLocaleString()}
               >
                 {formatAgo(latest, now)}
@@ -489,7 +489,7 @@ function Tree({
       >
         <CollapsibleTrigger
           aria-label={`Sub-agents of conversation ${conversation.id}`}
-          className="group/agents ml-5 flex cursor-pointer items-center gap-1 py-1 text-[10.5px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          className="group/agents ml-5 flex cursor-pointer items-center gap-1 py-1 text-[0.6562rem] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
         >
           <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/agents:rotate-90" />
           Sub-agents · {children.length}
@@ -556,8 +556,10 @@ function Tree({
       >
         <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md" showCloseButton={false}>
           <div className="px-5 pt-5 pb-4">
-            <DialogTitle className="text-[14px] font-medium">Conclude #{warning?.id}?</DialogTitle>
-            <DialogDescription className="mt-2 text-[13px] leading-relaxed break-words">
+            <DialogTitle className="text-[0.875rem] font-medium">
+              Conclude #{warning?.id}?
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-[0.8125rem] leading-relaxed break-words">
               {warning?.failure ? (
                 <>
                   Couldn't check #{warning.id}'s checkout: {warning.failure}. Conclude anyway?
@@ -581,7 +583,9 @@ function Tree({
                 </>
               )}
             </DialogDescription>
-            {error && <p className="mt-3 font-mono text-[12px] break-words text-error">{error}</p>}
+            {error && (
+              <p className="mt-3 font-mono text-[0.75rem] break-words text-error">{error}</p>
+            )}
           </div>
           <div className="flex justify-end gap-2 border-t border-border/70 bg-sidebar px-5 py-3">
             <Button onClick={() => setWarning(undefined)} size="sm" variant="ghost">
@@ -662,12 +666,12 @@ function Tree({
               {summary.summary}
             </p>
             {(summary.summaryStatus === 'pending' || summary.assessmentStatus === 'pending') && (
-              <p className="mt-1 text-[10.5px] text-muted-foreground/70" role="status">
+              <p className="mt-1 text-[0.6562rem] text-muted-foreground" role="status">
                 {summary.summaryStatus === 'pending' ? 'Updating summary…' : 'Assessing reply…'}
               </p>
             )}
             {(summary.summaryStatus === 'error' || summary.assessmentStatus === 'error') && (
-              <p className="mt-1 text-[10.5px] text-muted-foreground/70" role="status">
+              <p className="mt-1 text-[0.6562rem] text-muted-foreground" role="status">
                 {summary.summaryStatus === 'error'
                   ? 'Summary unavailable'
                   : 'Assessment unavailable'}{' '}

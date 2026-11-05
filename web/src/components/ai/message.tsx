@@ -35,7 +35,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
 export const MessageContent = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex min-w-0 max-w-full flex-col gap-2 text-[14px] leading-relaxed',
+      'flex min-w-0 max-w-full flex-col gap-2 text-[0.875rem] leading-relaxed',
       'group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-border/70 group-[.is-user]:bg-secondary/60 group-[.is-user]:px-3.5 group-[.is-user]:py-2.5',
       className,
     )}

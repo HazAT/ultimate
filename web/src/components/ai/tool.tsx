@@ -21,7 +21,7 @@ export type ToolState = 'streaming' | 'pending' | 'running' | 'done' | 'error' |
 export const Tool = ({ className, ...props }: ComponentProps<typeof Collapsible>) => (
   <Collapsible
     className={cn(
-      'group/tool not-prose w-full overflow-hidden rounded-md border border-border/80 bg-card/50 font-mono text-[12px]',
+      'group/tool not-prose w-full overflow-hidden rounded-md border border-border/80 bg-card/50 font-mono text-[0.75rem]',
       className,
     )}
     {...props}
@@ -103,11 +103,11 @@ const ToolTrigger = ({
     {name && <span className="shrink-0 font-medium text-foreground">{name}</span>}
     <span className="min-w-0 flex-1 truncate text-muted-foreground">{title}</span>
     {meta && (
-      <span className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+      <span className="flex shrink-0 items-center gap-2 text-[0.6875rem] text-muted-foreground tabular-nums">
         {meta}
       </span>
     )}
-    <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/tool:rotate-90" />
+    <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-90" />
   </CollapsibleTrigger>
 )
 

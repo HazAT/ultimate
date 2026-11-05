@@ -51,13 +51,13 @@ function SummaryLine({ entry }: { entry: EntryRecord }) {
   const date = new Date((entry.data as { at: number }).at)
   return (
     <div
-      className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground"
+      className="flex items-baseline gap-2 font-mono text-[0.6875rem] text-muted-foreground"
       data-ui="transcript-meta"
     >
       <PencilIcon aria-hidden className="size-3 shrink-0 self-center" />
       <span className="min-w-0 break-words">{text}</span>
       <time
-        className="shrink-0 text-muted-foreground/70"
+        className="shrink-0 text-muted-foreground"
         dateTime={date.toISOString()}
         title={date.toLocaleString()}
       >

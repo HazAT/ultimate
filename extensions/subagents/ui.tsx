@@ -34,7 +34,7 @@ export function RunName({ id, label }: { id: number | undefined; label: ReactNod
         </WandSparklesIcon>
       )}
       {label}
-      {run?.model && <span className="text-muted-foreground/70"> · {run.model}</span>}
+      {run?.model && <span className="text-muted-foreground"> · {run.model}</span>}
     </>
   )
 }

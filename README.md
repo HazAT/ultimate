@@ -126,7 +126,8 @@ account limits, and subscription coverage is not guaranteed. This is a recommend
 core generation and PID, web readiness, registered extension services, and the last event. Routine
 Vite output updates the dashboard instead of scrolling; warnings and errors remain in scrollback. Redirected
 output is plain text with no dashboard escape sequences. Detailed, timestamped JSON lines (including routine
-output and diagnostics) are appended to `<state home>/supervisor.log`; this file is not automatically rotated.
+output and diagnostics) are appended to `<state home>/supervisor.log`. Past 8 MiB the file is renamed once to
+`supervisor.log.1` and a fresh one starts, so the log stays bounded across long runs.
 A log-write failure warns once and does not stop supervision.
 
 Services are status reports, not separate processes. Automations reports `ready · durable scheduler` when the

@@ -68,7 +68,7 @@ export function PanelActions() {
               const Icon = panel.icon
               return (
                 <DropdownMenuItem
-                  className="gap-2 py-1.5 font-mono text-[12px]"
+                  className="gap-2 py-1.5 font-mono text-[0.75rem]"
                   key={`${panel.extension}:${panel.id}`}
                   onSelect={() => openPanel(panel.id)}
                 >

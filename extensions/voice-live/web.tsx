@@ -453,7 +453,7 @@ function Stage() {
       )}
       {inFront && phone && (
         <button
-          className="pointer-events-auto absolute inset-x-0 top-0 flex h-11 cursor-pointer items-center justify-center gap-2 bg-gradient-to-b from-background via-background/90 to-background/40 font-mono text-[11px] text-muted-foreground"
+          className="pointer-events-auto absolute inset-x-0 top-0 flex h-11 cursor-pointer items-center justify-center gap-2 bg-gradient-to-b from-background via-background/90 to-background/40 font-mono text-[0.6875rem] text-muted-foreground"
           onClick={() => live.setFront(false)}
           type="button"
         >
@@ -485,17 +485,17 @@ function Stage() {
           <ConversationScope id={voice}>
             <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
               <AudioLinesIcon className="size-3.5 text-brand" />
-              <span className="text-[13px] font-semibold">Voice</span>
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
+              <span className="text-[0.8125rem] font-semibold">Voice</span>
+              <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">
                 relay to @ultimate
               </span>
               <span className="ml-auto flex items-center gap-2">
-                <span className="font-mono text-[10.5px] text-muted-foreground/70 pointer-coarse:hidden">
+                <span className="font-mono text-[0.6562rem] text-muted-foreground pointer-coarse:hidden">
                   <Kbd>{keyHint}</Kbd> back
                 </span>
                 <button
                   aria-label="Collapse Voice; it keeps listening"
-                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[0.75rem] text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                   onClick={() => live.setFront(false)}
                   title={`Collapse · keeps listening · ${keyHint}`}
                   type="button"
@@ -547,7 +547,7 @@ function Collapsed({ phone }: { phone: boolean }) {
       </button>
       {asleep ? (
         <button
-          className="h-8 shrink-0 cursor-pointer rounded-lg px-2 text-[12px] text-brand outline-none hover:bg-brand/15 focus-visible:ring-1 focus-visible:ring-ring"
+          className="h-8 shrink-0 cursor-pointer rounded-lg px-2 text-[0.75rem] text-brand outline-none hover:bg-brand/15 focus-visible:ring-1 focus-visible:ring-ring"
           onClick={() => void live.open(mode.waiting)}
           type="button"
         >
@@ -614,10 +614,10 @@ function StepLine({ step, mode }: { step: Step; mode: VoiceMode }) {
         : 'Voice · tap to expand'
   return (
     <>
-      <span className="block truncate text-[13px] leading-tight font-semibold">{title}</span>
+      <span className="block truncate text-[0.8125rem] leading-tight font-semibold">{title}</span>
       {/* The newest words stay in view: the line is cut at its start, never its end. */}
       <span
-        className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground [direction:rtl]"
+        className="mt-0.5 block truncate font-mono text-[0.6875rem] text-muted-foreground [direction:rtl]"
         title={detail}
       >
         <bdi>{detail}</bdi>
@@ -728,7 +728,7 @@ function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
                               <span className="flex min-w-0 items-baseline gap-2" key="working">
                                 <span className="shrink-0">@ultimate is on it</span>
                                 {step.since !== undefined && (
-                                  <span className="font-mono text-[13px] font-normal text-muted-foreground tabular-nums">
+                                  <span className="font-mono text-[0.8125rem] font-normal text-muted-foreground tabular-nums">
                                     {clock(now - step.since)}
                                   </span>
                                 )}
@@ -751,15 +751,17 @@ function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
                             : ['Listening', 'Talk · requests go to @ultimate']
   return (
     <div className="min-w-0 flex-1" aria-live="polite" data-voice-step={step.step}>
-      <div className="flex min-w-0 items-baseline gap-2 text-[17px] leading-tight font-semibold sm:text-[19px]">
+      <div className="flex min-w-0 items-baseline gap-2 text-[1.0625rem] leading-tight font-semibold sm:text-[1.1875rem]">
         <span className="min-w-0 truncate">{title}</span>
         {session && step.step !== 'working' && (
-          <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground tabular-nums">
+          <span className="shrink-0 font-mono text-[0.6875rem] font-normal text-muted-foreground tabular-nums">
             {session}
           </span>
         )}
       </div>
-      <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{detail}</div>
+      <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
+        {detail}
+      </div>
     </div>
   )
 }
@@ -820,7 +822,7 @@ function VoiceDock({ core }: { core: ReactNode }) {
     <div className="mx-auto w-full max-w-[46rem] px-3 pt-1 pb-3 sm:px-6" data-voice-live-dock>
       {mode.problem && (
         <p
-          className="mb-2 flex items-start gap-1.5 rounded-md border border-error/30 bg-error/5 px-2.5 py-1.5 font-mono text-[11px] break-words text-error"
+          className="mb-2 flex items-start gap-1.5 rounded-md border border-error/30 bg-error/5 px-2.5 py-1.5 font-mono text-[0.6875rem] break-words text-error"
           role="alert"
         >
           <CircleAlertIcon className="mt-px size-3.5 shrink-0" />
@@ -850,7 +852,7 @@ function VoiceDock({ core }: { core: ReactNode }) {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {off || asleep ? (
             <button
-              className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-brand/50 px-3 text-[13px] hover:border-brand focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-brand/50 px-3 text-[0.8125rem] hover:border-brand focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
               onClick={() => void (off ? start() : live.open(mode.waiting))}
               type="button"
             >
@@ -861,7 +863,7 @@ function VoiceDock({ core }: { core: ReactNode }) {
             <button
               aria-pressed={mode.muted}
               className={cn(
-                'flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50',
+                'flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-[0.8125rem] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50',
                 mode.muted && 'border-warning/50 text-warning',
               )}
               disabled={mode.phase !== 'live'}
@@ -875,7 +877,7 @@ function VoiceDock({ core }: { core: ReactNode }) {
           {!off && (
             <button
               aria-label="End voice relay"
-              className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-error px-3 text-[13px] text-white hover:bg-error/90 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-error px-3 text-[0.8125rem] text-white hover:bg-error/90 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
               onClick={live.end}
               type="button"
             >
@@ -937,12 +939,12 @@ function useVoiceRow(main: number | undefined): ReactNode {
       <AudioLinesIcon
         className={cn('size-3 shrink-0', on ? 'text-brand' : 'text-muted-foreground')}
       />
-      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
+      <span className="min-w-0 flex-1 truncate font-mono text-[0.6562rem] text-foreground/80">
         Voice
       </span>
       <span
         className={cn(
-          'flex shrink-0 items-center gap-1 font-mono text-[10px]',
+          'flex shrink-0 items-center gap-1 font-mono text-[0.625rem]',
           hot ? 'text-error' : mode.waiting ? 'text-brand' : 'text-muted-foreground',
         )}
       >
@@ -984,7 +986,7 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   if (line.role === 'notice')
     return (
       <div
-        className="mt-3 flex items-center gap-2 font-mono text-[11.5px] text-warning first:mt-0"
+        className="mt-3 flex items-center gap-2 font-mono text-[0.7188rem] text-warning first:mt-0"
         data-voice-line="notice"
       >
         <CircleAlertIcon className="size-3.5 shrink-0" />
@@ -994,8 +996,8 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   if (line.role === 'live')
     return (
       <div className="mt-2 flex gap-2 first:mt-0" data-voice-line="live">
-        <AudioLinesIcon className="mt-[3px] size-3 shrink-0 text-muted-foreground/50" />
-        <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-muted-foreground/70">
+        <AudioLinesIcon className="mt-[3px] size-3 shrink-0 text-muted-foreground" />
+        <p className="min-w-0 flex-1 text-[0.7812rem] leading-relaxed break-words text-muted-foreground">
           {line.text}
         </p>
       </div>
@@ -1004,14 +1006,14 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   const source = line.source
   return (
     <div className="mt-2 flex gap-2 first:mt-0" data-voice-line="ultimate">
-      <Volume2Icon className="mt-[3px] size-3 shrink-0 text-muted-foreground/60" />
+      <Volume2Icon className="mt-[3px] size-3 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] leading-relaxed break-words text-muted-foreground">
+        <p className="text-[0.8125rem] leading-relaxed break-words text-muted-foreground">
           <Spoken entry={entry.id} text={line.text} />
         </p>
         {source && (
           <button
-            className="mt-1 flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            className="mt-1 flex cursor-pointer items-center gap-1 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
             onClick={() => {
               // In front of @ultimate, the answer is right behind: step back and reveal it there.
               const behind = mode.front && actions.conversationId === source.conversation
@@ -1083,13 +1085,13 @@ function RequestCard({ entry, line }: { entry: EntryRecord; line: VoiceLine }) {
 function Asked({ text }: { text: string }) {
   return (
     <div className="px-3 pt-2">
-      <div className="flex items-center gap-1.5 font-mono text-[11px] text-brand">
+      <div className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-brand">
         <MicIcon className="size-3 shrink-0" />
         <span className="font-semibold">You asked</span>
         <span className="text-muted-foreground">by voice</span>
       </div>
       <UserText
-        className="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[13px] leading-relaxed"
+        className="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[0.8125rem] leading-relaxed"
         text={text}
       />
     </div>
@@ -1102,7 +1104,7 @@ function Working({ main, since }: { main: number; since?: number }) {
   const now = useNow(1000, since !== undefined)
   return (
     <div
-      className="flex items-center gap-2 px-3 py-3 font-mono text-[11px] text-muted-foreground"
+      className="flex items-center gap-2 px-3 py-3 font-mono text-[0.6875rem] text-muted-foreground"
       role="status"
     >
       <LoaderCircleIcon className="size-3.5 shrink-0 text-brand motion-safe:animate-spin" />
@@ -1142,7 +1144,7 @@ function Answer({
     <>
       <div className={cn(!open && !spoken && 'line-clamp-4')}>
         {!full && spoken && spokenId !== undefined && mode.speaking?.entry === spokenId ? (
-          <p className="min-w-0 px-3 py-3 text-[13px] leading-relaxed break-words">
+          <p className="min-w-0 px-3 py-3 text-[0.8125rem] leading-relaxed break-words">
             <Spoken entry={spokenId} text={spoken.text} />
           </p>
         ) : (
@@ -1150,7 +1152,7 @@ function Answer({
         )}
       </div>
       {(answer || source) && (
-        <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+        <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
           {answer && spoken && (
             <button
               aria-expanded={open}
@@ -1196,7 +1198,7 @@ function Failed({ notice, spoken }: { notice: VoiceLine; spoken?: VoiceLine }) {
   return (
     <>
       {spoken && <Body text={spoken.text} />}
-      <footer className="flex items-center gap-1.5 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-destructive">
+      <footer className="flex items-center gap-1.5 border-t border-border/60 px-3 py-1.5 font-mono text-[0.6875rem] text-destructive">
         <CircleAlertIcon className="size-3 shrink-0" />
         {notice.text}
       </footer>
@@ -1208,7 +1210,7 @@ function VoiceMark({ children, className }: { children: ReactNode; className?: s
   return (
     <span
       className={cn(
-        '-mt-1 flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground/70',
+        '-mt-1 flex items-center gap-1 font-mono text-[0.6562rem] text-muted-foreground',
         className,
       )}
     >
@@ -1225,7 +1227,7 @@ function SessionRow({ entry }: { entry: EntryRecord }) {
     session.seconds === undefined ? undefined : Math.max(1, Math.round(session.seconds / 60))
   return (
     <div
-      className="my-3 flex items-center gap-3 font-mono text-[11px] text-muted-foreground"
+      className="my-3 flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground"
       data-voice-session={session.phase}
       role="separator"
     >
@@ -1264,7 +1266,7 @@ function ContextRow({ entry }: { entry: EntryRecord }) {
       )}
       data-voice-context={newest ? 'current' : 'past'}
     >
-      <CollapsibleTrigger className="flex w-full min-w-0 cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-left font-mono text-[11px] text-muted-foreground hover:text-foreground">
+      <CollapsibleTrigger className="flex w-full min-w-0 cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-left font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground">
         <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-[state=open]/context:rotate-90" />
         <BookOpenIcon
           className={cn('size-3 shrink-0', brief.error ? 'text-error' : 'text-brand')}
@@ -1280,7 +1282,7 @@ function ContextRow({ entry }: { entry: EntryRecord }) {
         )}
       </CollapsibleTrigger>
       {!brief.error && (
-        <CollapsibleContent className="max-h-[28rem] overflow-y-auto border-t border-border/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+        <CollapsibleContent className="max-h-[28rem] overflow-y-auto border-t border-border/60 px-3 py-2.5 text-[0.75rem] leading-relaxed text-muted-foreground">
           <MessageResponse>
             {brief.text.replace(/^<voice_context>\n|\n<\/voice_context>$/g, '')}
           </MessageResponse>
@@ -1311,7 +1313,7 @@ function HeardRow({ entry }: { entry: EntryRecord }) {
   const { text } = entry.data as { text: string }
   return (
     <Message className="mt-4 first:mt-0" data-voice-line="user" from="user">
-      <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[13px] group-[.is-user]:text-foreground/80">
+      <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[0.8125rem] group-[.is-user]:text-foreground/80">
         <UserText text={text} />
       </MessageContent>
     </Message>
@@ -1355,7 +1357,7 @@ function LiveTurn() {
   if (!text) return null
   return (
     <Message className="mt-4" data-voice-line="hearing" from="user">
-      <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[13px] group-[.is-user]:text-foreground/80">
+      <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[0.8125rem] group-[.is-user]:text-foreground/80">
         <p
           className="flex max-h-[13.5rem] flex-col justify-end overflow-hidden break-words whitespace-pre-wrap [mask-image:linear-gradient(to_bottom,transparent,black_4.5rem)]"
           data-voice-partial

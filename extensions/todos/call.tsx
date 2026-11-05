@@ -52,7 +52,7 @@ export function TodoCall({ call, core }: { call: ToolCallView; core: ReactNode }
         ) : (
           text && (
             <ToolSection>
-              <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+              <p className="font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
                 {text}
               </p>
             </ToolSection>

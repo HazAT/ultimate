@@ -83,7 +83,7 @@ export function OpenMessages() {
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="grid w-80 gap-2.5 p-1.5 font-mono text-[11px]"
+        className="grid w-80 gap-2.5 p-1.5 font-mono text-[0.6875rem]"
         side="top"
       >
         <Section messages={waiting} now={now} open={go} side="to" title="Waiting on" />

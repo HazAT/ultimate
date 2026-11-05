@@ -28,7 +28,7 @@ function Fix({ fix }: { fix: NonNullable<SetupIssue['fix']> }) {
   if (fix.command && !commands.some((command) => command.id === fix.command)) return null
   return (
     <Button
-      className="h-6 shrink-0 px-2 text-[11px]"
+      className="h-6 shrink-0 px-2 text-[0.6875rem]"
       onClick={() =>
         fix.secret ? events.emit('secrets:open', { name: fix.secret }) : ui.runCommand(fix.command!)
       }
@@ -113,10 +113,10 @@ function Setup() {
         className="w-[34rem] max-w-[calc(100vw-1rem)] p-0 font-mono"
         side="top"
       >
-        <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
+        <div className="border-b border-border/70 px-3 py-2 text-[0.7188rem] text-muted-foreground">
           What isn't set up on this machine, and what it costs.
         </div>
-        <ul className="max-h-[60vh] overflow-y-auto px-3 py-1.5 text-[11.5px] leading-[1.5]">
+        <ul className="max-h-[60vh] overflow-y-auto px-3 py-1.5 text-[0.7188rem] leading-[1.5]">
           {data!.map((issue, index) => (
             // oxlint-disable-next-line react/no-array-index-key -- Check results have no id; areas and failures may repeat.
             <Row issue={issue} key={`${issue.area}-${index}`} />

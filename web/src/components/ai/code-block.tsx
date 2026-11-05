@@ -87,7 +87,7 @@ const CodeBlockContent = memo(
     return (
       <pre
         className={cn(
-          'shiki m-0 overflow-auto px-3 py-2 font-mono text-[12px] leading-[1.6]',
+          'shiki m-0 overflow-auto px-3 py-2 font-mono text-[0.75rem] leading-[1.6]',
           className,
         )}
       >
@@ -97,7 +97,7 @@ const CodeBlockContent = memo(
             <span className="flex" key={index}>
               {showLineNumbers && (
                 <span
-                  className="sticky left-0 mr-3 shrink-0 bg-inherit pr-1 text-right text-muted-foreground/50 select-none"
+                  className="sticky left-0 mr-3 shrink-0 bg-inherit pr-1 text-right text-muted-foreground select-none"
                   style={{ width: `${width + 1}ch` }}
                 >
                   {startLine + index}

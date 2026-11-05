@@ -41,7 +41,7 @@ function Item({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{content}</TooltipTrigger>
-      <TooltipContent className="font-mono text-[11px]" side="top">
+      <TooltipContent className="font-mono text-[0.6875rem]" side="top">
         {tip}
       </TooltipContent>
     </Tooltip>
@@ -361,7 +361,7 @@ function Connection() {
       <span className={open ? undefined : 'text-warning'}>
         {open ? 'live' : connection.status === 'connecting' ? 'connecting…' : 'reconnecting…'}
       </span>
-      {system && <span className="text-muted-foreground/70">gen {system.process.generation}</span>}
+      {system && <span className="text-muted-foreground">gen {system.process.generation}</span>}
     </Item>
   )
 }

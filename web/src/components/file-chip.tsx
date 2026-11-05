@@ -83,10 +83,10 @@ export function FileChip({
           createElement(icon(name, mimeType), { className: 'size-7', strokeWidth: 1.5 })
         )}
       </div>
-      <p className="w-full truncate px-1 text-center text-[12px] leading-4 text-foreground/90">
+      <p className="w-full truncate px-1 text-center text-[0.75rem] leading-4 text-foreground/90">
         {name}
       </p>
-      <p className="mt-0.5 w-full truncate pb-0.5 text-center text-[11px] leading-4 text-muted-foreground">
+      <p className="mt-0.5 w-full truncate pb-0.5 text-center text-[0.6875rem] leading-4 text-muted-foreground">
         {note}
       </p>
       {children}

@@ -174,7 +174,7 @@ export function ImagePreviews({
           />
           {image.note && (
             <p
-              className="mt-1 pb-0.5 text-center text-[11px] leading-4 text-muted-foreground"
+              className="mt-1 pb-0.5 text-center text-[0.6875rem] leading-4 text-muted-foreground"
               title={image.note}
             >
               {image.note.split(' · ').map((line) => (

@@ -149,7 +149,7 @@ export function LaneTree({
           >
             <Guide centre={16} row={row} />
             <button
-              className="flex h-8 cursor-pointer items-center pl-2 font-mono text-[10.5px] text-muted-foreground/70 hover:text-foreground"
+              className="flex h-8 cursor-pointer items-center pl-2 font-mono text-[0.6562rem] text-muted-foreground hover:text-foreground"
               onClick={() => toggle(row.parent)}
               type="button"
             >

@@ -2,7 +2,6 @@ allowBuilds:
   '@google/genai': false
   esbuild: true
   protobufjs: false
-  workerd: set this to true or false
 minimumReleaseAgeExclude:
   - '@earendil-works/chord@1.5.0'
   - '@earendil-works/pi-agent-core@1.5.0'

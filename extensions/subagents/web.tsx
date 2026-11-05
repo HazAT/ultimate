@@ -61,7 +61,7 @@ function StateTag({ isolate }: { isolate: Isolate }) {
     <Tag
       className={cn(
         'font-mono',
-        isolate.state === 'failed' ? 'border-error/40 text-error' : 'text-muted-foreground/70',
+        isolate.state === 'failed' ? 'border-error/40 text-error' : 'text-muted-foreground',
       )}
     >
       <span title={isolate.landed ? `Last landed ${isolate.landed.slice(0, 7)}` : undefined}>
@@ -147,7 +147,7 @@ function SubagentCall({ call }: { call: ToolCallView }) {
         />
         {childId !== undefined && (
           <Button
-            className="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            className="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
             onClick={(event) => {
               const entry = Number(
                 event.currentTarget.closest('[data-entry-id]')?.getAttribute('data-entry-id'),
@@ -171,14 +171,14 @@ function SubagentCall({ call }: { call: ToolCallView }) {
       <ToolContent>
         {instruction && (
           <ToolSection label={action === 'start' ? 'Task' : 'Message'}>
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+            <p className="font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground/90">
               <MentionText text={instruction} />
             </p>
           </ToolSection>
         )}
         {!finished && call.status !== 'interrupted' && (
           <ToolSection>
-            <Shimmer className="text-[12px]">
+            <Shimmer className="text-[0.75rem]">
               {child?.busy ? `${agent || 'subagent'} is working…` : 'starting…'}
             </Shimmer>
           </ToolSection>
@@ -191,7 +191,7 @@ function SubagentCall({ call }: { call: ToolCallView }) {
           <ToolSection
             label={yielded ? 'Wait status' : background && action !== 'wait' ? 'Result' : 'Answer'}
           >
-            <Message className="font-sans text-[13px]" from="assistant">
+            <Message className="font-sans text-[0.8125rem]" from="assistant">
               <MessageResponse>{call.output}</MessageResponse>
             </Message>
           </ToolSection>
@@ -308,7 +308,7 @@ function ChildList({ output }: { output: string }) {
           <span className="text-brand">
             <RunName id={row.conversationId} label={row.agent} />
           </span>
-          <span className="text-muted-foreground/70">#{row.conversationId}</span>
+          <span className="text-muted-foreground">#{row.conversationId}</span>
           {row.background && <Tag>bg</Tag>}
         </button>
       ))}

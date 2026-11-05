@@ -87,9 +87,9 @@ function PartHeading({
     <div className="flex items-baseline gap-2 px-3 pt-3 pb-1">
       {tone && <span className={cn('size-2 shrink-0 translate-y-[-1px] rounded-[2px]', tone)} />}
       <span className="section-label">{title}</span>
-      {count && <span className="text-muted-foreground/70">{count}</span>}
+      {count && <span className="text-muted-foreground">{count}</span>}
       <span className="ml-auto text-foreground/85 tabular-nums">{formatTokens(tokens)}</span>
-      <span className="w-9 text-right text-muted-foreground/70 tabular-nums">
+      <span className="w-9 text-right text-muted-foreground tabular-nums">
         {percent(tokens, total)}
       </span>
     </div>
@@ -119,13 +119,11 @@ function Row({
   return (
     <Collapsible className="group/row">
       <CollapsibleTrigger className="flex h-6 w-full cursor-pointer items-center gap-2 rounded-sm px-3 text-left hover:bg-accent/50">
-        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/60 transition-transform group-data-[state=open]/row:rotate-90" />
+        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-90" />
         <span className="w-44 shrink-0 truncate text-foreground/85 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1">
           {name}
         </span>
-        <span className="min-w-0 flex-1 truncate text-muted-foreground/70 max-sm:hidden">
-          {hint}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground max-sm:hidden">{hint}</span>
         {total !== undefined && (
           <span className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted max-sm:hidden">
             <span
@@ -145,7 +143,7 @@ function Row({
 
 function Text({ text }: { text: string }) {
   return (
-    <pre className="max-h-96 overflow-auto rounded-sm bg-terminal px-2.5 py-2 text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap text-foreground/85">
+    <pre className="max-h-96 overflow-auto rounded-sm bg-terminal px-2.5 py-2 text-[0.7188rem] leading-[1.55] break-words whitespace-pre-wrap text-foreground/85">
       {text}
     </pre>
   )
@@ -154,7 +152,7 @@ function Text({ text }: { text: string }) {
 function ToolBody({ tool }: { tool: Tool }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-sans text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-foreground/85">
+      <p className="font-sans text-[0.7812rem] leading-relaxed break-words whitespace-pre-wrap text-foreground/85">
         {tool.description}
       </p>
       <Text text={JSON.stringify(tool.parameters, null, 2)} />
@@ -214,14 +212,14 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
       : shown.data.path.replace(system?.machine.home ?? '\0', '~'))
   return (
     <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-3 pt-3">
-      <span className="text-muted-foreground/70">agent</span>
+      <span className="text-muted-foreground">agent</span>
       <span className="text-foreground/90">{identity.name}</span>
-      <span className="text-muted-foreground/70">model</span>
+      <span className="text-muted-foreground">model</span>
       <span className="truncate text-foreground/90">
         {model ? (
           <>
             {model.text}
-            {model.configured && <span className="text-muted-foreground/70"> (configured)</span>}
+            {model.configured && <span className="text-muted-foreground"> (configured)</span>}
           </>
         ) : (
           'none configured'
@@ -229,16 +227,16 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
       </span>
       {path && (
         <>
-          <span className="text-muted-foreground/70">definition</span>
+          <span className="text-muted-foreground">definition</span>
           <span className="min-w-0">
             <span className="break-all text-foreground/85">{path}</span>
-            <span className="text-muted-foreground/70"> · current file</span>
+            <span className="text-muted-foreground"> · current file</span>
             {definition?.description && (
-              <span className="mt-0.5 block font-sans text-[12.5px] leading-snug text-muted-foreground">
+              <span className="mt-0.5 block font-sans text-[0.7812rem] leading-snug text-muted-foreground">
                 {definition.description}
               </span>
             )}
-            <span className="mt-0.5 block font-sans text-[11.5px] leading-snug text-muted-foreground/70">
+            <span className="mt-0.5 block font-sans text-[0.7188rem] leading-snug text-muted-foreground">
               What it ran with is the instructions section below.
             </span>
           </span>
@@ -276,7 +274,7 @@ export function Header({
   return (
     <Collapsible
       className={cn(
-        'group/context rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]',
+        'group/context rounded-md border border-border/70 bg-card/40 font-mono text-[0.7188rem]',
         className,
       )}
       data-context-header={breakdown.start?.id ?? 'start'}
@@ -285,7 +283,7 @@ export function Header({
       open={open}
     >
       <CollapsibleTrigger className="flex h-8 w-full cursor-pointer items-center gap-2 px-2.5 text-left text-muted-foreground transition-colors hover:bg-accent/40">
-        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/context:rotate-90" />
+        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/context:rotate-90" />
         <AgentMark name={identity.mark} size="sm" />
         <span className="shrink-0 text-foreground/90">{identity.name}</span>
         {model && (
@@ -368,7 +366,7 @@ export function Header({
                 </Row>
               </>
             )}
-            <p className="px-3 pt-2 font-sans text-[11.5px] text-muted-foreground/70">
+            <p className="px-3 pt-2 font-sans text-[0.7188rem] text-muted-foreground">
               Estimates at 3.5 characters per token; an image counts as about 1.4k.
             </p>
           </>
@@ -384,7 +382,7 @@ function SectionDiff({ before, after }: { before: string; after: string }) {
     () => parsePatch(createPatch('section', before, after, '', '', { context: 3 })),
     [before, after],
   )
-  return <Diff className="max-h-96 rounded-sm text-[11.5px]" rows={rows} />
+  return <Diff className="max-h-96 rounded-sm text-[0.7188rem]" rows={rows} />
 }
 
 /**

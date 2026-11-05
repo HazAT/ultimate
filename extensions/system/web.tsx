@@ -136,7 +136,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
   return (
     <>
       <Header>
-        <span className="flex items-center gap-2 text-[13px] font-medium">
+        <span className="flex items-center gap-2 text-[0.8125rem] font-medium">
           <GanttChartIcon className="size-4 text-muted-foreground" />
           System
         </span>
@@ -144,7 +144,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <section className="mx-auto max-w-6xl px-3 py-3 md:px-5">
           <div className="rounded-lg border border-border/70 bg-card/40">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
               <span className="section-label">Agents</span>
               <span className="flex items-center gap-1.5" data-running={running}>
                 <span className={cn(dot, 'bg-brand', running > 0 && 'animate-pulse-dot')} />
@@ -157,7 +157,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
                 </span>
               )}
               {lanes.data?.more !== undefined && (
-                <span className="text-muted-foreground/70">+{lanes.data.more} more</span>
+                <span className="text-muted-foreground">+{lanes.data.more} more</span>
               )}
               <span className="ml-auto flex items-center gap-0.5">
                 {(Object.keys(windows) as WindowName[]).map((name) => (
@@ -184,7 +184,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
                 </div>
               </div>
               {list.length === 0 ? (
-                <p className="py-6 text-center font-mono text-[11.5px] text-muted-foreground/70">
+                <p className="py-6 text-center font-mono text-[0.7188rem] text-muted-foreground">
                   {lanes.error
                     ? `lanes failed: ${errorMessage(lanes.error)}`
                     : !lanes.data

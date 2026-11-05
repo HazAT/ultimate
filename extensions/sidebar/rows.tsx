@@ -176,7 +176,7 @@ function PhasedRow({
   const title = (
     <span
       className={cn(
-        'min-w-0 flex-1 truncate text-[13px]',
+        'min-w-0 flex-1 truncate text-[0.8125rem]',
         conversation.title || !draft
           ? shown
             ? 'text-foreground'
@@ -205,7 +205,7 @@ function PhasedRow({
           <input
             aria-label="Conversation title"
             autoFocus
-            className="h-6 min-w-0 flex-1 rounded-sm border border-input bg-background px-1.5 text-[13px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-6 min-w-0 flex-1 rounded-sm border border-input bg-background px-1.5 text-[0.8125rem] outline-none focus-visible:ring-1 focus-visible:ring-ring"
             defaultValue={conversation.title ?? ''}
             onBlur={(event) => save(event.currentTarget.value)}
             onFocus={(event) => event.currentTarget.select()}
@@ -242,7 +242,7 @@ function PhasedRow({
               {title}
             </span>
             {hasMetadata && (
-              <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
+              <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[0.625rem] leading-4 text-muted-foreground">
                 {feature && <FeatureTag feature={feature} />}
                 {conversation.workspace && (
                   <span className="shrink-0" title="Isolated checkout">
@@ -251,7 +251,7 @@ function PhasedRow({
                 )}
                 {latest > 0 && (
                   <span
-                    className="shrink-0 text-muted-foreground/80"
+                    className="shrink-0 text-muted-foreground"
                     title={new Date(latest).toLocaleString()}
                   >
                     {formatAgo(latest, now)}
@@ -260,7 +260,7 @@ function PhasedRow({
               </span>
             )}
             {hasActivity && (
-              <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[11px] leading-4 text-muted-foreground/70">
+              <span className="flex w-full min-w-0 items-center gap-1 pr-5 pl-[18px] text-[0.6875rem] leading-4 text-muted-foreground">
                 {displayPhase && <span className="shrink-0 text-brand">{displayPhase.label}</span>}
                 {displayPhase && activity && <span>·</span>}
                 {activity && <span className="truncate">{activity}</span>}
@@ -320,7 +320,7 @@ export function RowMenu({
       >
         {conversation.workspace && (
           <DropdownMenuItem
-            className="cursor-pointer text-[12.5px]"
+            className="cursor-pointer text-[0.7812rem]"
             onSelect={() =>
               (afterMenu.current = () => {
                 actions.switchConversation(conversation.id)
@@ -337,7 +337,7 @@ export function RowMenu({
             {(open) =>
               open && (
                 <DropdownMenuItem
-                  className="cursor-pointer text-[12.5px]"
+                  className="cursor-pointer text-[0.7812rem]"
                   onSelect={() => (afterMenu.current = open)}
                 >
                   <FileDiffIcon />
@@ -347,12 +347,15 @@ export function RowMenu({
             }
           </Provided>
         )}
-        <DropdownMenuItem className="text-[12.5px]" onSelect={() => (afterMenu.current = onRename)}>
+        <DropdownMenuItem
+          className="text-[0.7812rem]"
+          onSelect={() => (afterMenu.current = onRename)}
+        >
           <PencilIcon />
           Rename
         </DropdownMenuItem>
         <CompactItem conversation={conversation} />
-        <DropdownMenuItem className="text-[12.5px]" onSelect={() => onConclude(!concluded)}>
+        <DropdownMenuItem className="text-[0.7812rem]" onSelect={() => onConclude(!concluded)}>
           <CircleCheckIcon />
           {concluded ? 'Resume' : 'Conclude'}
         </DropdownMenuItem>
@@ -414,19 +417,21 @@ export function StandingRow({
             {brand ? (
               // The title bar's wordmark: Ultimate's own name is the brand.
               <span
-                className="truncate font-sans text-[11.5px] leading-5 font-semibold tracking-[0.28em] text-brand"
+                className="truncate font-sans text-[0.7188rem] leading-5 font-semibold tracking-[0.28em] text-brand"
                 data-ui="wordmark"
               >
                 ULTIMATE
               </span>
             ) : (
-              <span className="truncate text-[13px] leading-5 font-semibold text-foreground">
+              <span className="truncate text-[0.8125rem] leading-5 font-semibold text-foreground">
                 {title}
               </span>
             )}
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">@{name}</span>
+            <span className="shrink-0 font-mono text-[0.625rem] text-muted-foreground">
+              @{name}
+            </span>
           </span>
-          <span className="flex w-full min-w-0 items-center gap-2 pr-5 font-mono text-[10px] leading-4 text-muted-foreground">
+          <span className="flex w-full min-w-0 items-center gap-2 pr-5 font-mono text-[0.625rem] leading-4 text-muted-foreground">
             {children}
           </span>
         </span>
@@ -452,7 +457,7 @@ export function StandingRow({
 function CompactItem({ conversation }: { conversation: ConversationSummary }) {
   return (
     <DropdownMenuItem
-      className="text-[12.5px]"
+      className="text-[0.7812rem]"
       disabled={conversation.busy}
       onSelect={() => void api.compact(undefined, conversation.id)}
     >
@@ -512,7 +517,7 @@ function TaskedSubagentLine({
     <button
       aria-current={shown ? 'true' : undefined}
       className={cn(
-        'mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        'mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[0.6562rem] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         shown && 'bg-sidebar-accent',
       )}
       data-child-conversation={conversation.id}
@@ -528,17 +533,17 @@ function TaskedSubagentLine({
         .join('\n')}
       type="button"
     >
-      <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+      <span className="w-2 shrink-0 text-muted-foreground">└</span>
       <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
       {task?.chip}
       <span className="min-w-0 flex-1 truncate text-foreground/75">
         <RunName id={conversation.id} label={conversation.label ?? 'agent'} />
-        <span className="text-muted-foreground/60"> #{conversation.id}</span>
+        <span className="text-muted-foreground"> #{conversation.id}</span>
       </span>
       <span
         className={cn(
-          'shrink-0 text-[10px]',
-          working ? 'text-brand' : (known?.tone ?? 'text-muted-foreground/70'),
+          'shrink-0 text-[0.625rem]',
+          working ? 'text-brand' : (known?.tone ?? 'text-muted-foreground'),
         )}
       >
         {working ? 'working' : (known?.word.toLowerCase() ?? 'idle')}
@@ -559,14 +564,14 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
         const done = epic.status === 'done'
         return (
           <button
-            className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[0.6562rem] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-epic-line={id}
             data-ui="sidebar-row"
             onClick={epic.open}
             title={`${epic.key} · ${epic.title}\nWorked directly by #${id}`}
             type="button"
           >
-            <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+            <span className="w-2 shrink-0 text-muted-foreground">└</span>
             <span className="flex size-3 shrink-0 items-center justify-center">
               {done ? (
                 <CircleCheckIcon className="size-3.5 text-success" />
@@ -582,12 +587,12 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
             </span>
             <span className="min-w-0 flex-1 truncate text-foreground/75">
               {epic.key}
-              <span className="text-muted-foreground/60"> · {epic.title}</span>
+              <span className="text-muted-foreground"> · {epic.title}</span>
             </span>
             <span
               className={cn(
-                'shrink-0 text-[10px]',
-                done ? 'text-success' : working ? 'text-brand' : 'text-muted-foreground/70',
+                'shrink-0 text-[0.625rem]',
+                done ? 'text-success' : working ? 'text-brand' : 'text-muted-foreground',
               )}
             >
               {done ? 'done' : working ? 'working' : 'idle'}
@@ -647,7 +652,7 @@ function TaskedChildRow({
       <span className="flex w-full items-center gap-1.5">
         <Mark state={state} unseen={false} working={working ? 'self' : undefined} />
         {task?.chip}
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
+        <span className="min-w-0 flex-1 truncate font-mono text-[0.6562rem] text-foreground/80">
           <RunName id={conversation.id} label={conversation.label ?? 'Agent'} /> · #
           {conversation.id}
         </span>
@@ -659,7 +664,7 @@ function TaskedChildRow({
         )}
         <span
           className={cn(
-            'shrink-0 text-[10px]',
+            'shrink-0 text-[0.625rem]',
             working
               ? 'text-brand'
               : state in settled
@@ -674,7 +679,7 @@ function TaskedChildRow({
               : 'Idle'}
         </span>
       </span>
-      <span className="line-clamp-2 pl-[18px] text-[11px] leading-relaxed break-words text-muted-foreground">
+      <span className="line-clamp-2 pl-[18px] text-[0.6875rem] leading-relaxed break-words text-muted-foreground">
         {task
           ? task.title
           : row?.activity

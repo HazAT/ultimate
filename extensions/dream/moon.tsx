@@ -28,7 +28,7 @@ export function Moon({
       className={cn(
         'size-3 shrink-0',
         status === 'failed' ? 'text-error/70' : 'text-brand',
-        status === 'waiting' && 'text-muted-foreground/50',
+        status === 'waiting' && 'text-muted-foreground',
         className,
       )}
       viewBox="0 0 12 12"

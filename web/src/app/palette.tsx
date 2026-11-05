@@ -47,9 +47,9 @@ export function CommandPalette() {
       open={open}
       showCloseButton={false}
     >
-      <CommandInput className="text-[13px]" placeholder="Run a command…" />
+      <CommandInput className="text-[0.8125rem]" placeholder="Run a command…" />
       <CommandList className="max-h-[50vh]" data-ui="palette">
-        <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
+        <CommandEmpty className="py-6 text-center text-[0.75rem] text-muted-foreground">
           No matching command.
         </CommandEmpty>
         {[...groups].map(([group, items]) => (
@@ -57,7 +57,7 @@ export function CommandPalette() {
             <CommandGroup heading={group}>
               {items.map((command) => (
                 <CommandItem
-                  className="text-[12.5px]"
+                  className="text-[0.7812rem]"
                   key={command.id}
                   keywords={[command.id, command.extension]}
                   onSelect={() => {

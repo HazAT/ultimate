@@ -16,7 +16,7 @@ import { stateLabel, useLanderQueue, useWorkspaces } from './data.tsx'
 import type { WorkspaceConversation } from './data.tsx'
 import { DiskAction, InfoAction, StatsAction } from './refs.ts'
 
-const heading = 'mb-1 font-mono text-[10.5px] text-muted-foreground/70'
+const heading = 'mb-1 font-mono text-[0.6562rem] text-muted-foreground'
 
 /** One line for a collapsed section header: what lands now, else the shown conversation's checkout state. */
 export function useWorkspacesMeta() {
@@ -44,7 +44,7 @@ export function Workspaces() {
       {shown ? (
         <Checkout conversation={shown} key={shown.id} />
       ) : (
-        <p className="font-mono text-[11px] text-muted-foreground/60">
+        <p className="font-mono text-[0.6875rem] text-muted-foreground">
           shown conversation works in the shared checkout
         </p>
       )}
@@ -105,7 +105,7 @@ function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
         <Row label="target">
           <span className="truncate">
             {workspace.target}
-            <span className="text-muted-foreground/60"> in {workspace.source}</span>
+            <span className="text-muted-foreground"> in {workspace.source}</span>
           </span>
         </Row>
         {typeof ahead === 'number' && (
@@ -117,7 +117,7 @@ function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
       </Rows>
       {(workspace.state === 'failed' || info.error) && (
         <p
-          className="mt-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error"
+          className="mt-1.5 font-mono text-[0.6875rem] break-words whitespace-pre-wrap text-error"
           role="alert"
         >
           {workspace.state === 'failed' ? workspace.error : info.error?.message}
@@ -150,7 +150,7 @@ function LanderQueue() {
   return (
     <section aria-label="Lander queue">
       <h3 className={heading}>lander queue</h3>
-      <ol className="flex flex-col gap-0.5 font-mono text-[11.5px]">
+      <ol className="flex flex-col gap-0.5 font-mono text-[0.7188rem]">
         {queue.map((item) => (
           <li className="flex min-w-0 items-center gap-2" key={item.id}>
             <ConversationRef className="max-w-1/2" id={item.conversationId} />
@@ -199,7 +199,7 @@ function Stats() {
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [refetch, refetchDisk])
-  if (error) return <p className="font-mono text-[11px] text-error">{error.message}</p>
+  if (error) return <p className="font-mono text-[0.6875rem] text-error">{error.message}</p>
   if (!data) return null
   return (
     <section aria-label="Workspace statistics">
@@ -209,7 +209,7 @@ function Stats() {
           <span className="truncate">
             {data.total - data.removed}
             {data.removed > 0 && (
-              <span className="text-muted-foreground/70"> · {data.removed} removed</span>
+              <span className="text-muted-foreground"> · {data.removed} removed</span>
             )}
           </span>
         </Row>
@@ -245,7 +245,7 @@ function Stats() {
                   {formatBytes(disk.data.bytes)}
                   {disk.data.real != null && (
                     <span
-                      className="text-muted-foreground/60"
+                      className="text-muted-foreground"
                       title="Blocks shared between checkouts counted once (btrfs)"
                     >
                       {' '}
@@ -255,7 +255,7 @@ function Stats() {
                 </>
               )
             ) : (
-              <span className="text-muted-foreground/70">measuring…</span>
+              <span className="text-muted-foreground">measuring…</span>
             )}
           </span>
         </Row>

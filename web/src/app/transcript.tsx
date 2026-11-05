@@ -681,7 +681,7 @@ function TranscriptEntries() {
       </div>
       {!loading && entries.length > 0 && cursor !== undefined && (
         <div
-          className="flex min-h-5 items-center justify-center font-mono text-[11px] text-muted-foreground/70"
+          className="flex min-h-5 items-center justify-center font-mono text-[0.6875rem] text-muted-foreground"
           ref={sentinel}
         >
           {pending ? (
@@ -691,7 +691,7 @@ function TranscriptEntries() {
               <span className="flex items-center gap-2" role="alert">
                 <span className="text-error">Could not load earlier messages</span>
                 <Button
-                  className="h-6 cursor-pointer px-2 font-mono text-[11px]"
+                  className="h-6 cursor-pointer px-2 font-mono text-[0.6875rem]"
                   onClick={retry}
                   size="sm"
                   variant="ghost"
@@ -765,7 +765,7 @@ function TranscriptEntries() {
         open={shown}
       >
         <CollapsibleTrigger
-          className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+          className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-muted-foreground"
           data-ui="transcript-meta"
         >
           {item.steps} step{item.steps === 1 ? '' : 's'} set aside · {shown ? 'hide' : 'show'}
@@ -850,7 +850,7 @@ function BetweenLine({
   return (
     <button
       aria-expanded={open}
-      className="my-1 flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-muted-foreground/60 transition-colors before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
+      className="my-1 flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground transition-colors before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
       data-between={rows.length}
       onClick={onOpen}
       type="button"
@@ -909,7 +909,7 @@ function WorkRow({
   return (
     <Collapsible className="group/work" onOpenChange={onOpenChange} open={open}>
       <CollapsibleTrigger
-        className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+        className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:text-muted-foreground"
         data-ui="transcript-meta"
       >
         {working ? 'working' : 'worked'} · {run.steps} step
@@ -979,12 +979,12 @@ function StepLines({
   const shown = calls.slice(-STEP_LINES)
   return (
     <button
-      className="mt-1.5 flex w-full min-w-0 cursor-pointer flex-col gap-0.5 border-l border-border/70 pl-3 text-left font-mono text-[11.5px] leading-[1.6] text-muted-foreground hover:text-foreground/90"
+      className="mt-1.5 flex w-full min-w-0 cursor-pointer flex-col gap-0.5 border-l border-border/70 pl-3 text-left font-mono text-[0.7188rem] leading-[1.6] text-muted-foreground hover:text-foreground/90"
       onClick={onOpen}
       type="button"
     >
       {calls.length > shown.length && (
-        <span className="text-muted-foreground/60">+{calls.length - shown.length} earlier</span>
+        <span className="text-muted-foreground">+{calls.length - shown.length} earlier</span>
       )}
       {shown.map(({ block, startedAt }) => {
         const call = toolCallView(block, {
@@ -1062,11 +1062,14 @@ function EmptyState() {
   ]
   return (
     <ConversationEmptyState className="min-h-[55vh]">
-      <div className="w-full max-w-md font-mono text-[12px]" data-ui="empty-state">
-        <div className="text-[13px] font-semibold tracking-[0.3em] text-brand" data-ui="wordmark">
+      <div className="w-full max-w-md font-mono text-[0.75rem]" data-ui="empty-state">
+        <div
+          className="text-[0.8125rem] font-semibold tracking-[0.3em] text-brand"
+          data-ui="wordmark"
+        >
           ULTIMATE
         </div>
-        <div className="mt-1 font-sans text-[13px] text-muted-foreground">
+        <div className="mt-1 font-sans text-[0.8125rem] text-muted-foreground">
           {!system || system.project.root === system.code.ultimateRoot
             ? 'A coding agent that edits this repository, itself included.'
             : `A coding agent that edits ${system.project.name}, and can change itself too.`}
@@ -1074,7 +1077,7 @@ function EmptyState() {
         <div className="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
           {rows.map(([label, value]) => (
             <Fragment key={label}>
-              <span className="text-muted-foreground/70">{label}</span>
+              <span className="text-muted-foreground">{label}</span>
               <span className="truncate text-foreground/85">{value}</span>
             </Fragment>
           ))}
@@ -1223,7 +1226,7 @@ function AssistantView({
       from="assistant"
     >
       {final && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-success">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.6875rem] text-success">
           <span className="inline-flex items-center gap-1.5">
             <CheckIcon aria-hidden="true" className="size-3.5" /> Final answer
           </span>
@@ -1301,14 +1304,14 @@ function AssistantNotice({ message }: { message: AssistantMessage }) {
         <CircleAlertIcon className="size-3.5" /> stopped at the output limit
       </div>
     ) : null
-  return notice && <div className="font-mono text-[11px]">{notice}</div>
+  return notice && <div className="font-mono text-[0.6875rem]">{notice}</div>
 }
 
 function Divider({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70',
+        'flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70',
         className,
       )}
       data-ui="transcript-meta"
@@ -1329,7 +1332,7 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
   return (
     <Collapsible className="group/compaction rounded-lg border border-brand/30 bg-brand/5">
       <CollapsibleTrigger className="flex w-full cursor-pointer flex-col gap-1 px-3.5 py-2.5 text-left">
-        <span className="flex items-center gap-1.5 font-mono text-[11px] text-brand">
+        <span className="flex items-center gap-1.5 font-mono text-[0.6875rem] text-brand">
           <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]/compaction:rotate-90" />
           Conversation condensed{reason ? ` · ${reason}` : ''}
         </span>
@@ -1337,7 +1340,7 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
           Prior conversation was condensed into a summary. Earlier messages remain available above.
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-brand/20 px-3.5 py-2.5 text-[13px]">
+      <CollapsibleContent className="border-t border-brand/20 px-3.5 py-2.5 text-[0.8125rem]">
         <MessageResponse>{summary}</MessageResponse>
       </CollapsibleContent>
     </Collapsible>
@@ -1346,11 +1349,11 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
 
 function UnknownEntry({ entry }: { entry: EntryRecord }) {
   return (
-    <Collapsible className="group/unknown rounded-md border border-dashed border-border font-mono text-[11.5px]">
+    <Collapsible className="group/unknown rounded-md border border-dashed border-border font-mono text-[0.7188rem]">
       <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-muted-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/unknown:rotate-90" />
         {entry.kind}
-        <span className="text-muted-foreground/60">#{entry.id}</span>
+        <span className="text-muted-foreground">#{entry.id}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <pre className="max-h-64 overflow-auto border-t border-dashed px-2.5 py-2 text-muted-foreground">
@@ -1419,7 +1422,7 @@ export function LiveLines({
   const now = useNow(100, !paused && (!!retry || idle))
   if (paused)
     return (
-      <div className="flex flex-col gap-1 font-mono text-[12px] text-muted-foreground">
+      <div className="flex flex-col gap-1 font-mono text-[0.75rem] text-muted-foreground">
         <span className="flex items-center gap-2 text-warning" data-paused-run>
           <PauseIcon className="size-3" />
           paused · runs on Play
@@ -1450,15 +1453,15 @@ export function LiveLines({
         <span className="size-1.5 animate-pulse-dot rounded-full bg-brand" />
         <Shimmer>{thinking ? 'thinking…' : 'working…'}</Shimmer>
         {since !== undefined && now - since >= 2000 && (
-          <span className="text-muted-foreground/60 tabular-nums">
-            {formatDuration(now - since)}
-          </span>
+          <span className="text-muted-foreground tabular-nums">{formatDuration(now - since)}</span>
         )}
       </span>,
     )
   }
   if (lines.length === 0) return null
   return (
-    <div className="flex flex-col gap-1 font-mono text-[12px] text-muted-foreground">{lines}</div>
+    <div className="flex flex-col gap-1 font-mono text-[0.75rem] text-muted-foreground">
+      {lines}
+    </div>
   )
 }

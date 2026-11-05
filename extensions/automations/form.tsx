@@ -238,7 +238,7 @@ function useSettled<T>(value: T, ms: number) {
 }
 
 const input =
-  'h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
+  'h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-[0.8125rem] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring'
 
 function Field({
   label,
@@ -251,7 +251,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[12.5px] font-medium text-foreground/90" htmlFor={htmlFor}>
+      <label className="text-[0.7812rem] font-medium text-foreground/90" htmlFor={htmlFor}>
         {label}
       </label>
       {children}
@@ -279,12 +279,12 @@ function Preview({ schedule }: { schedule: string | undefined }) {
         {error ? error.message : data ? words(data.schedule, data.description, now) : ''}
       </span>
       {error ? (
-        <p className="flex items-start gap-1.5 font-mono text-[11.5px] leading-snug text-error">
+        <p className="flex items-start gap-1.5 font-mono text-[0.7188rem] leading-snug text-error">
           <XIcon className="mt-px size-3 shrink-0" />
           {error.message.replace(/^automations\/describe: /, '')}
         </p>
       ) : !data ? (
-        <p className="flex items-center gap-1.5 font-mono text-[11.5px] text-muted-foreground">
+        <p className="flex items-center gap-1.5 font-mono text-[0.7188rem] text-muted-foreground">
           {schedule === undefined ? (
             'Fill in the schedule to see its next runs.'
           ) : (
@@ -295,13 +295,13 @@ function Preview({ schedule }: { schedule: string | undefined }) {
         </p>
       ) : (
         <>
-          <p className="text-[12.5px] text-foreground/90">
+          <p className="text-[0.7812rem] text-foreground/90">
             {words(data.schedule, data.description, now)}
           </p>
-          <ol className="mt-1 flex flex-col gap-0.5 font-mono text-[11.5px]">
+          <ol className="mt-1 flex flex-col gap-0.5 font-mono text-[0.7188rem]">
             {data.next.map((at, index) => (
               <li className="flex gap-2" key={at} title={full(at)}>
-                <span className="w-9 shrink-0 text-muted-foreground/60">
+                <span className="w-9 shrink-0 text-muted-foreground">
                   {index === 0 ? 'next' : 'then'}
                 </span>
                 <span className="text-foreground/85 tabular-nums">{clock(at, now)}</span>
@@ -314,7 +314,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
             ))}
           </ol>
           {perDay > 1 && (
-            <p className="mt-1 font-mono text-[11px] text-warning">
+            <p className="mt-1 font-mono text-[0.6875rem] text-warning">
               about {perDay.toLocaleString()} runs a day
             </p>
           )}
@@ -359,7 +359,7 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
           >
             <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="shrink-0 text-foreground/90">{value || 'Main agent'}</span>
-            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-[0.6875rem] text-muted-foreground">
               {value
                 ? chosen
                   ? model(chosen, inherits)
@@ -374,40 +374,40 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
           className="max-h-72 w-(--radix-dropdown-menu-trigger-width) min-w-72"
         >
           <DropdownMenuRadioGroup onValueChange={onChange} value={value}>
-            <DropdownMenuRadioItem className="items-start text-[12.5px]" value="">
+            <DropdownMenuRadioItem className="items-start text-[0.7812rem]" value="">
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="flex items-baseline gap-2">
                   <span>Main agent</span>
-                  <span className="ml-auto truncate font-mono text-[10.5px] text-muted-foreground">
+                  <span className="ml-auto truncate font-mono text-[0.6562rem] text-muted-foreground">
                     {main}
                   </span>
                 </span>
-                <span className="text-[11.5px] text-muted-foreground">
+                <span className="text-[0.7188rem] text-muted-foreground">
                   A copy of the main conversation's agent, its tools and model
                 </span>
               </span>
             </DropdownMenuRadioItem>
             {definitions.map((definition) => (
               <DropdownMenuRadioItem
-                className="items-start text-[12.5px]"
+                className="items-start text-[0.7812rem]"
                 key={definition.name}
                 value={definition.name}
               >
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="flex items-baseline gap-2">
                     <span className="font-mono">{definition.name}</span>
-                    <span className="ml-auto truncate font-mono text-[10.5px] text-muted-foreground">
+                    <span className="ml-auto truncate font-mono text-[0.6562rem] text-muted-foreground">
                       {model(definition, inherits)}
                     </span>
                   </span>
-                  <span className="line-clamp-2 text-[11.5px] text-muted-foreground">
+                  <span className="line-clamp-2 text-[0.7188rem] text-muted-foreground">
                     {definition.description}
                   </span>
                 </span>
               </DropdownMenuRadioItem>
             ))}
             {value && !chosen && data && (
-              <DropdownMenuRadioItem className="text-[12.5px] text-error" value={value}>
+              <DropdownMenuRadioItem className="text-[0.7812rem] text-error" value={value}>
                 {value} (not found)
               </DropdownMenuRadioItem>
             )}
@@ -416,7 +416,7 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
       </DropdownMenu>
       {chosen && (
         <Button
-          className="h-8 shrink-0 gap-1.5 px-2.5 text-[12px]"
+          className="h-8 shrink-0 gap-1.5 px-2.5 text-[0.75rem]"
           onClick={() => {
             opened.current = true
             events.emit('subagents:open-definition', { name: chosen.name })
@@ -565,10 +565,10 @@ export function AutomationForm({
           }}
         >
           <div className="px-5 pt-5 pb-3">
-            <DialogTitle className="text-[14px] font-medium">
+            <DialogTitle className="text-[0.875rem] font-medium">
               {automation ? 'Edit automation' : 'New automation'}
             </DialogTitle>
-            <DialogDescription className="mt-1.5 text-[12.5px] leading-relaxed">
+            <DialogDescription className="mt-1.5 text-[0.7812rem] leading-relaxed">
               {script
                 ? 'An agent writes a small script that watches for it, then wakes you or runs a prompt when it happens.'
                 : ultimate
@@ -597,8 +597,8 @@ export function AutomationForm({
                   >
                     <option.icon className="size-3.5 shrink-0" />
                     <span className="flex min-w-0 flex-col">
-                      <span className="text-[12.5px]">{option.label}</span>
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <span className="text-[0.7812rem]">{option.label}</span>
+                      <span className="truncate text-[0.6875rem] text-muted-foreground">
                         {option.hint}
                       </span>
                     </span>
@@ -621,7 +621,7 @@ export function AutomationForm({
             </Field>
             {ultimate && (
               <fieldset className="flex flex-col gap-3">
-                <legend className="mb-1.5 text-[12.5px] font-medium">When Ultimate…</legend>
+                <legend className="mb-1.5 text-[0.7812rem] font-medium">When Ultimate…</legend>
                 <div className="flex gap-2" role="group" aria-label="Ultimate trigger">
                   {(['event', 'context'] as const).map((kind) => (
                     <Button
@@ -657,7 +657,7 @@ export function AutomationForm({
                       </select>
                     </Field>
                     {eventChoices.error && (
-                      <p role="alert" className="text-[12px] text-error">
+                      <p role="alert" className="text-[0.75rem] text-error">
                         Could not load events: {errorMessage(eventChoices.error)}
                       </p>
                     )}
@@ -699,7 +699,9 @@ export function AutomationForm({
                           </select>
                         </div>
                         {draft.filterTypes[field] === 'boolean' && (
-                          <p className="text-[11px] text-muted-foreground">Enter true or false.</p>
+                          <p className="text-[0.6875rem] text-muted-foreground">
+                            Enter true or false.
+                          </p>
                         )}
                       </Field>
                     ))}
@@ -751,7 +753,7 @@ export function AutomationForm({
                         value={draft.idleHours}
                       />
                     </Field>
-                    <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                    <p className="text-[0.7188rem] leading-relaxed text-muted-foreground">
                       {condition ? (
                         <>
                           {condition.idleFor > 0 &&
@@ -785,31 +787,31 @@ export function AutomationForm({
                         value={draft.ask}
                       />
                     </Field>
-                    <label className="-mt-1.5 flex items-center gap-2 text-[12.5px] text-foreground/90">
+                    <label className="-mt-1.5 flex items-center gap-2 text-[0.7812rem] text-foreground/90">
                       <Checkbox
                         checked={!draft.once}
                         onCheckedChange={(checked) => set({ once: checked !== true })}
                       />
                       Keep watching after it happens
-                      <span className="text-[11.5px] text-muted-foreground">
+                      <span className="text-[0.7188rem] text-muted-foreground">
                         {draft.once ? 'stops after the first time' : 'fires every time'}
                       </span>
                     </label>
                   </>
                 )}
                 <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-1.5 text-[12.5px] font-medium text-foreground/90">
+                  <legend className="mb-1.5 text-[0.7812rem] font-medium text-foreground/90">
                     When it happens
                   </legend>
                   {!automation && (
-                    <label className="flex items-center gap-2 text-[12.5px] text-foreground/90">
+                    <label className="flex items-center gap-2 text-[0.7812rem] text-foreground/90">
                       <Checkbox
                         checked={draft.wake}
                         onCheckedChange={(checked) => set({ wake: checked === true })}
                       />
                       Wake this conversation
                       {conversationId !== undefined && (
-                        <span className="font-mono text-[11px] text-muted-foreground">
+                        <span className="font-mono text-[0.6875rem] text-muted-foreground">
                           #{conversationId}
                         </span>
                       )}
@@ -845,7 +847,7 @@ export function AutomationForm({
                   />
                 </Field>
                 <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-1.5 text-[12.5px] font-medium text-foreground/90">
+                  <legend className="mb-1.5 text-[0.7812rem] font-medium text-foreground/90">
                     Schedule
                   </legend>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label="Presets">
@@ -855,7 +857,7 @@ export function AutomationForm({
                         <button
                           aria-pressed={pressed}
                           className={cn(
-                            'flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11.5px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            'flex h-6 items-center gap-1 rounded-full border px-2.5 text-[0.7188rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             pressed
                               ? 'border-brand/60 bg-brand/10 text-foreground'
                               : 'border-border/80 text-muted-foreground hover:border-border hover:text-foreground',
@@ -873,7 +875,7 @@ export function AutomationForm({
                   <div className="flex items-center gap-2">
                     <div
                       aria-label="Schedule kind"
-                      className="inline-flex shrink-0 rounded-md border border-border/80 bg-background p-0.5 font-mono text-[11px]"
+                      className="inline-flex shrink-0 rounded-md border border-border/80 bg-background p-0.5 font-mono text-[0.6875rem]"
                       role="radiogroup"
                     >
                       {modes.map((option) => (
@@ -892,7 +894,7 @@ export function AutomationForm({
                         </button>
                       ))}
                     </div>
-                    <span className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground/70">
+                    <span className="min-w-0 truncate font-mono text-[0.6562rem] text-muted-foreground">
                       {mode.hint}
                     </span>
                   </div>
@@ -901,7 +903,7 @@ export function AutomationForm({
                       <input
                         aria-label="Cron expression"
                         autoComplete="off"
-                        className={cn(input, 'flex-[3] font-mono text-[12.5px]')}
+                        className={cn(input, 'flex-[3] font-mono text-[0.7812rem]')}
                         onChange={(event) => set({ cron: event.target.value })}
                         placeholder="0 9 * * 1-5"
                         spellCheck={false}
@@ -910,7 +912,7 @@ export function AutomationForm({
                       <input
                         aria-label="Timezone"
                         autoComplete="off"
-                        className={cn(input, 'flex-[2] font-mono text-[12.5px]')}
+                        className={cn(input, 'flex-[2] font-mono text-[0.7812rem]')}
                         list={`${ids}-zones`}
                         onChange={(event) => set({ tz: event.target.value })}
                         placeholder={zone}
@@ -927,7 +929,7 @@ export function AutomationForm({
                     <input
                       aria-label="Time"
                       autoComplete="off"
-                      className={cn(input, 'font-mono text-[12.5px]')}
+                      className={cn(input, 'font-mono text-[0.7812rem]')}
                       onChange={(event) => set({ at: event.target.value })}
                       placeholder="in 30m · 2026-12-01 09:00"
                       spellCheck={false}
@@ -937,7 +939,7 @@ export function AutomationForm({
                     <input
                       aria-label="Interval"
                       autoComplete="off"
-                      className={cn(input, 'font-mono text-[12.5px]')}
+                      className={cn(input, 'font-mono text-[0.7812rem]')}
                       onChange={(event) => set({ every: event.target.value })}
                       placeholder="15m"
                       spellCheck={false}
@@ -952,14 +954,14 @@ export function AutomationForm({
               </>
             )}
             {error && (
-              <p className="flex items-start gap-1.5 font-mono text-[11.5px] leading-snug break-words text-error">
+              <p className="flex items-start gap-1.5 font-mono text-[0.7188rem] leading-snug break-words text-error">
                 <XIcon className="mt-px size-3 shrink-0" />
                 {error}
               </p>
             )}
           </div>
           <div className="flex items-center gap-2 border-t border-border/70 bg-sidebar px-5 py-3">
-            <p className="flex min-w-0 items-start gap-1.5 text-[11.5px] leading-snug text-muted-foreground">
+            <p className="flex min-w-0 items-start gap-1.5 text-[0.7188rem] leading-snug text-muted-foreground">
               <CoinsIcon className="mt-px size-3.5 shrink-0 text-warning" />
               {script
                 ? 'Writing and repairing the script costs tokens; watching does not. Each fire wakes the agent, which costs tokens.'

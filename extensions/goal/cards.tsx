@@ -50,7 +50,7 @@ function Card({
       className="min-w-0 rounded-md border border-border border-l-2 border-l-brand/50 bg-muted/20"
       data-goal={goal}
     >
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         {header}
       </header>
       {children}
@@ -67,13 +67,15 @@ const marks: Record<Criterion['status'], ReactNode> = {
 function Criteria({ goal }: { goal: Goal }) {
   if (!goal.criteria.length)
     return (
-      <p className="px-4 py-2 text-[12px] text-muted-foreground">Writing down what done means…</p>
+      <p className="px-4 py-2 text-[0.75rem] text-muted-foreground">
+        Writing down what done means…
+      </p>
     )
   return (
     <ol className="space-y-1 px-4 py-2.5" data-goal-criteria>
       {goal.criteria.map((item, index) => (
         <li
-          className="flex items-start gap-2 text-[13px] leading-5"
+          className="flex items-start gap-2 text-[0.8125rem] leading-5"
           data-goal-criterion={item.status}
           // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered positions; text may repeat.
           key={index}
@@ -82,7 +84,7 @@ function Criteria({ goal }: { goal: Goal }) {
           <span className={cn('min-w-0', item.status === 'met' && 'text-muted-foreground')}>
             {item.text}
             {item.status !== 'met' && item.tries ? (
-              <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+              <span className="ml-2 font-mono text-[0.6875rem] text-muted-foreground">
                 {item.status === 'blocked' ? 'blocked after' : ''}{' '}
                 {plural(item.tries, 'failed try')}
               </span>
@@ -116,7 +118,7 @@ function DecisionRow({ goal, decision }: { goal: number; decision: Decision }) {
   const { switchConversation } = useUltimate()
   return (
     <li className="space-y-0.5 py-2" data-goal-decision>
-      <p className="flex flex-wrap items-baseline gap-x-2 font-mono text-[11px] text-muted-foreground">
+      <p className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem] text-muted-foreground">
         <span>{formatTime(decision.at)}</span>
         {decision.conversation !== undefined && (
           <button
@@ -129,8 +131,8 @@ function DecisionRow({ goal, decision }: { goal: number; decision: Decision }) {
           </button>
         )}
       </p>
-      <p className="text-[13px] leading-5 text-muted-foreground">{decision.question}</p>
-      <p className="text-[13px] leading-5">
+      <p className="text-[0.8125rem] leading-5 text-muted-foreground">{decision.question}</p>
+      <p className="text-[0.8125rem] leading-5">
         <span className="text-foreground">→ {decision.picked}</span>
         <span className="text-muted-foreground"> · {decision.reason}</span>
       </p>
@@ -161,7 +163,7 @@ function Decisions({ goal, latest }: { goal: Goal; latest?: number }) {
 
 function Words({ goal }: { goal: Goal }) {
   return (
-    <p className="px-4 pt-3 pb-1 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground">
+    <p className="px-4 pt-3 pb-1 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-foreground">
       {goal.text}
     </p>
   )
@@ -190,7 +192,7 @@ export function StartedCard({ entry }: { entry: EntryRecord }) {
       }
     >
       {!goal ? (
-        <p className="px-3 py-3 text-[12px] text-muted-foreground">Loading…</p>
+        <p className="px-3 py-3 text-[0.75rem] text-muted-foreground">Loading…</p>
       ) : (
         <>
           <Words goal={goal} />
@@ -213,7 +215,7 @@ function Reminder({ goal }: { goal: Goal }) {
   if (!goal.reminder && !goal.waiting) return null
   return (
     <p
-      className="flex items-start gap-2 border-t border-border/60 px-4 py-2 text-[12px] leading-snug"
+      className="flex items-start gap-2 border-t border-border/60 px-4 py-2 text-[0.75rem] leading-snug"
       data-goal-reminder={goal.waiting ? 'paused' : 'active'}
     >
       {goal.waiting ? (
@@ -221,7 +223,7 @@ function Reminder({ goal }: { goal: Goal }) {
           <BellOffIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
           <span className="min-w-0">
             <span className="text-warning">Waiting on you:</span> {goal.waiting.reason}
-            <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+            <span className="ml-2 font-mono text-[0.6875rem] text-muted-foreground">
               reminder paused since {formatTime(goal.waiting.at)}
             </span>
           </span>
@@ -254,10 +256,10 @@ function Footer() {
   }
   return (
     <footer className="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5">
-      <span className="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
+      <span className="min-w-0 flex-1 text-[0.75rem] leading-snug text-muted-foreground">
         I decide what I would ask you and note each decision here. Pause stops everything at once.
       </span>
-      {failure && <p className="w-full text-[12px] text-error">{failure}</p>}
+      {failure && <p className="w-full text-[0.75rem] text-error">{failure}</p>}
       <Button
         data-goal-end
         disabled={ending}
@@ -296,13 +298,13 @@ export function ReportCard({ entry }: { entry: EntryRecord }) {
       }
     >
       {!goal || !ended ? (
-        <p className="px-3 py-3 text-[12px] text-muted-foreground">Loading…</p>
+        <p className="px-3 py-3 text-[0.75rem] text-muted-foreground">Loading…</p>
       ) : (
         <>
           <div className="space-y-1 px-4 pt-3" data-goal-outcome={ended.outcome}>
             <p
               className={cn(
-                'text-[13px]',
+                'text-[0.8125rem]',
                 ended.outcome === 'met'
                   ? 'text-success'
                   : ended.outcome === 'blocked'
@@ -312,7 +314,7 @@ export function ReportCard({ entry }: { entry: EntryRecord }) {
             >
               {headlines[ended.outcome]}
             </p>
-            <p className="font-mono text-[11px] text-muted-foreground">
+            <p className="font-mono text-[0.6875rem] text-muted-foreground">
               {formatTime(goal.startedAt)}–{formatTime(ended.at)} ·{' '}
               {goal.criteria.length > 0 &&
                 `${goal.criteria.filter((item) => item.status === 'met').length} of ${goal.criteria.length} criteria met · `}
@@ -320,7 +322,7 @@ export function ReportCard({ entry }: { entry: EntryRecord }) {
             </p>
           </div>
           {ended.summary && (
-            <p className="px-4 pt-2 text-[13px] leading-relaxed whitespace-pre-wrap">
+            <p className="px-4 pt-2 text-[0.8125rem] leading-relaxed whitespace-pre-wrap">
               {ended.summary}
             </p>
           )}

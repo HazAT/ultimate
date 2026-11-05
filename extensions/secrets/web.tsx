@@ -68,7 +68,7 @@ const missing = (secrets: readonly Secret[] | undefined) =>
   secrets?.filter((secret) => !secret.set && !secret.via && secret.declaredBy.length > 0) ?? []
 
 const dot = (tone: string) => <span className={cn('size-1.5 shrink-0 rounded-full', tone)} />
-const small = 'h-7 gap-1.5 px-2 font-mono text-[11.5px]'
+const small = 'h-7 gap-1.5 px-2 font-mono text-[0.7188rem]'
 
 function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
   return (
@@ -121,7 +121,7 @@ function ValueInput({
         <input
           aria-label={`${replacing ? 'New value' : 'Value'} for ${name}`}
           autoComplete="one-time-code"
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[0.75rem] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
@@ -174,7 +174,7 @@ function ValueInput({
           Cancel
         </Button>
       </div>
-      {error && <p className="font-mono text-[11px] leading-snug text-error">{error}</p>}
+      {error && <p className="font-mono text-[0.6875rem] leading-snug text-error">{error}</p>}
     </div>
   )
 }
@@ -200,7 +200,9 @@ function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
   return (
     <div className="mt-2 flex flex-col gap-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="min-w-0 flex-1 text-[12px] text-foreground/90">Delete this secret?</span>
+        <span className="min-w-0 flex-1 text-[0.75rem] text-foreground/90">
+          Delete this secret?
+        </span>
         <Button
           className={small}
           disabled={busy}
@@ -223,7 +225,7 @@ function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
           Cancel
         </Button>
       </div>
-      {error && <p className="font-mono text-[11px] leading-snug text-error">{error}</p>}
+      {error && <p className="font-mono text-[0.6875rem] leading-snug text-error">{error}</p>}
     </div>
   )
 }
@@ -253,12 +255,12 @@ function Row({
   return (
     <li aria-label={secret.name} className="px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono text-[0.7812rem] text-foreground">
           {secret.name}
         </span>
         {secret.set ? (
           <span
-            className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
+            className="flex shrink-0 items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground"
             title={secret.updatedAt && new Date(secret.updatedAt).toLocaleString()}
           >
             {dot('bg-success')}
@@ -267,29 +269,29 @@ function Row({
               : 'set'}
           </span>
         ) : secret.via ? (
-          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
             {dot('bg-success')}
             via {secret.via}
           </span>
         ) : (
-          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-warning">
+          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[0.6875rem] text-warning">
             {dot('bg-warning')}
             missing
           </span>
         )}
       </div>
       {secret.description && (
-        <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+        <p className="mt-0.5 text-[0.7812rem] leading-snug text-muted-foreground">
           {secret.description}
         </p>
       )}
       <div className="mt-1 flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/75">
+        <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground">
           {needed ? `needed by ${secret.declaredBy.join(', ')}` : 'no enabled extension needs it'}
         </span>
         {secret.url && (
           <a
-            className="inline-flex shrink-0 items-center gap-1 text-[12px] text-brand outline-none hover:underline focus-visible:underline"
+            className="inline-flex shrink-0 items-center gap-1 text-[0.75rem] text-brand outline-none hover:underline focus-visible:underline"
             href={secret.url}
             rel="noreferrer"
             target="_blank"
@@ -353,18 +355,18 @@ function SecretsPanel() {
         {absent} missing
       </span>
     ) : data?.length ? (
-      <span className="text-muted-foreground/70">all set</span>
+      <span className="text-muted-foreground">all set</span>
     ) : undefined
   return (
     <section className="pt-3 pb-3.5">
       <Heading meta={meta}>Secrets</Heading>
       {error && (
-        <p className="mx-3 mt-2.5 font-mono text-[11px] leading-snug break-words text-error">
+        <p className="mx-3 mt-2.5 font-mono text-[0.6875rem] leading-snug break-words text-error">
           {errorMessage(error)}
         </p>
       )}
       {data && data.length === 0 && (
-        <p className="mx-3 mt-2.5 text-[12.5px] text-muted-foreground">
+        <p className="mx-3 mt-2.5 text-[0.7812rem] text-muted-foreground">
           No enabled extension needs a secret.
         </p>
       )}
@@ -381,7 +383,7 @@ function SecretsPanel() {
           ))}
         </ul>
       )}
-      <p className="mx-3 mt-3 text-[11.5px] leading-snug text-muted-foreground/80">
+      <p className="mx-3 mt-3 text-[0.7188rem] leading-snug text-muted-foreground">
         Plain text in <span className="font-mono">~/.ultimate/secrets.json</span>, readable only by
         your user, shared by every project.
       </p>

@@ -29,7 +29,7 @@ export function Section({
         <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-[state=open]/section:rotate-90" />
         {title}
         {meta !== undefined && (
-          <span className="ml-auto truncate pl-2 text-muted-foreground/70">{meta}</span>
+          <span className="ml-auto truncate pl-2 text-muted-foreground">{meta}</span>
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="px-3 pb-3">{children}</CollapsibleContent>
@@ -85,7 +85,9 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   return (
     <span
       className={cn(
-        'inline-flex h-[18px] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[10.5px] text-muted-foreground',
+        // `min-h` rather than a fixed height: the tag holds text, so its box has to grow with it when the page font
+        // is raised, or the label clips.
+        'inline-flex min-h-[1.125rem] items-center rounded-sm border border-border/80 px-1.5 font-mono text-[0.6562rem] text-muted-foreground',
         className,
       )}
     >
@@ -96,7 +98,7 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
 
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-1.5 max-h-40 overflow-auto rounded-sm border border-error/30 bg-error/8 px-2 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error">
+    <div className="mt-1.5 max-h-40 overflow-auto rounded-sm border border-error/30 bg-error/8 px-2 py-1.5 font-mono text-[0.6875rem] break-words whitespace-pre-wrap text-error">
       {children}
     </div>
   )

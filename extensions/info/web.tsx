@@ -52,7 +52,7 @@ function Machine({ system }: { system: SystemInfo }) {
       <Rows>
         <Row label="host">
           {machine.hostname}
-          <span className="text-muted-foreground/70">· {machine.user}</span>
+          <span className="text-muted-foreground">· {machine.user}</span>
         </Row>
         <Row label="os">
           <span className="truncate">
@@ -64,7 +64,7 @@ function Machine({ system }: { system: SystemInfo }) {
           <span className="truncate" title={machine.cpuModel}>
             {machine.cpuModel || 'unknown'}
           </span>
-          <span className="shrink-0 text-muted-foreground/70">×{machine.cpuCount}</span>
+          <span className="shrink-0 text-muted-foreground">×{machine.cpuCount}</span>
         </Row>
         <Row label="memory">
           <Meter
@@ -91,7 +91,7 @@ function Process({ system }: { system: SystemInfo }) {
         <Row label="node">{process.node}</Row>
         <Row label="uptime">
           <span className="tabular-nums">{uptime(now - Date.parse(process.startedAt))}</span>
-          <span className="truncate text-muted-foreground/60">
+          <span className="truncate text-muted-foreground">
             since {formatTime(process.startedAt, true)}
           </span>
         </Row>
@@ -101,7 +101,7 @@ function Process({ system }: { system: SystemInfo }) {
             <span className="text-brand">→ {restart.pending} swapping…</span>
           )}
           <Button
-            className="ml-auto h-5 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground"
+            className="ml-auto h-5 gap-1 px-1.5 font-mono text-[0.6562rem] text-muted-foreground"
             disabled={restart.busy}
             onClick={restart.run}
             size="sm"
@@ -137,9 +137,7 @@ function Persistence({ system }: { system: SystemInfo }) {
         </Row>
         <Row label="size">
           {formatBytes(persistence.sizeBytes)}
-          <span className="text-muted-foreground/70">
-            + wal {formatBytes(persistence.walBytes)}
-          </span>
+          <span className="text-muted-foreground">+ wal {formatBytes(persistence.walBytes)}</span>
         </Row>
       </Rows>
     </Section>
@@ -196,12 +194,12 @@ function Code({ system }: { system: SystemInfo }) {
           {code.dirty ? (
             <span className="text-warning">uncommitted changes</span>
           ) : (
-            <span className="text-muted-foreground/60">clean</span>
+            <span className="text-muted-foreground">clean</span>
           )}
         </Row>
         <Row label="build">
           <Copy value={build.id}>{build.id.slice(0, 7)}</Copy>
-          <span className="truncate text-muted-foreground/60">
+          <span className="truncate text-muted-foreground">
             {build.changed.length
               ? `changed ${build.changed.join(', ')}`
               : `gen ${build.generation}`}
@@ -212,7 +210,7 @@ function Code({ system }: { system: SystemInfo }) {
             <>
               <span className="text-warning">changed · restart pending</span>
               <Button
-                className="ml-auto h-5 gap-1 px-1.5 font-mono text-[10.5px] text-warning hover:text-warning"
+                className="ml-auto h-5 gap-1 px-1.5 font-mono text-[0.6562rem] text-warning hover:text-warning"
                 disabled={restart.busy}
                 onClick={restart.run}
                 size="sm"
@@ -223,7 +221,7 @@ function Code({ system }: { system: SystemInfo }) {
               </Button>
             </>
           ) : (
-            <span className="text-muted-foreground/60">{build.core.slice(0, 12)} · current</span>
+            <span className="text-muted-foreground">{build.core.slice(0, 12)} · current</span>
           )}
         </Row>
       </Rows>
@@ -266,18 +264,18 @@ function Model() {
         <Row label="provider">
           {ref?.provider ?? <span className="text-warning">none</span>}
           {provider?.isUsingSubscription && (
-            <span className="text-muted-foreground/70">· subscription</span>
+            <span className="text-muted-foreground">· subscription</span>
           )}
         </Row>
         <Row label="model">
           <span className="truncate">{ref?.modelId ?? '—'}</span>
           {model && model.name !== model.id && (
-            <span className="truncate text-muted-foreground/60">{model.name}</span>
+            <span className="truncate text-muted-foreground">{model.name}</span>
           )}
         </Row>
         <Row label="thinking">
           {model && !model.reasoning ? (
-            <span className="text-muted-foreground/70">not supported</span>
+            <span className="text-muted-foreground">not supported</span>
           ) : (
             <span
               className={
@@ -292,9 +290,7 @@ function Model() {
           <>
             <Row label="context">
               {formatTokens(model.contextWindow)}
-              <span className="text-muted-foreground/60">
-                · out {formatTokens(model.maxTokens)}
-              </span>
+              <span className="text-muted-foreground">· out {formatTokens(model.maxTokens)}</span>
             </Row>
             <Row label="price /M">
               <span className="truncate">
@@ -312,11 +308,11 @@ function Model() {
         </Row>
         <Row label="cost">
           {cost(total.cost)}
-          {provider?.isUsingSubscription && <span className="text-muted-foreground/70">(sub)</span>}
+          {provider?.isUsingSubscription && <span className="text-muted-foreground">(sub)</span>}
         </Row>
       </Rows>
       {buckets.length > 0 && (
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-t border-border/50 pt-2 font-mono text-[11px] text-muted-foreground">
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-t border-border/50 pt-2 font-mono text-[0.6875rem] text-muted-foreground">
           {buckets.map(([name, bucket]) => (
             <Bucket bucket={bucket} key={name} name={name} />
           ))}
@@ -353,7 +349,7 @@ function Described({
   tags?: ReactNode
 }) {
   return (
-    <div className="min-w-0 font-mono text-[11px]">
+    <div className="min-w-0 font-mono text-[0.6875rem]">
       <div className="flex min-w-0 items-center gap-1.5">
         <Copy className="text-foreground/90" value={path}>
           {name}
@@ -361,7 +357,7 @@ function Described({
         {tags}
       </div>
       {description && (
-        <p className="line-clamp-2 font-sans text-[11.5px] leading-snug text-muted-foreground">
+        <p className="line-clamp-2 font-sans text-[0.7188rem] leading-snug text-muted-foreground">
           {description}
         </p>
       )}
@@ -380,7 +376,7 @@ function Skills({ system }: { system: SystemInfo }) {
             name={skill.name}
             path={skill.path}
             tags={
-              <span className="truncate text-muted-foreground/60">
+              <span className="truncate text-muted-foreground">
                 {skill.scope}
                 {skill.manual && ' · manual'}
                 {skill.overrides.length > 0 &&
@@ -392,7 +388,7 @@ function Skills({ system }: { system: SystemInfo }) {
         {system.skills.length === 0 && <Empty>no skills</Empty>}
         {system.skillDiagnostics.map((diagnostic) => (
           <div
-            className={`font-mono text-[11px] leading-snug ${diagnostic.type === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}
+            className={`font-mono text-[0.6875rem] leading-snug ${diagnostic.type === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}
             key={`${diagnostic.path ?? ''}:${diagnostic.message}`}
             title={diagnostic.path}
           >
@@ -411,7 +407,7 @@ function ContextFiles({ system }: { system: SystemInfo }) {
   const path = usePath(system)
   return (
     <Section id="context" meta={system.contextFiles.length} title="Context files">
-      <div className="flex flex-col gap-0.5 font-mono text-[11.5px] text-foreground/85">
+      <div className="flex flex-col gap-0.5 font-mono text-[0.7188rem] text-foreground/85">
         {system.contextFiles.map((file) => (
           <Copy key={file} value={file}>
             {path(file, 52)}
@@ -438,13 +434,13 @@ function shortSkill(path: string) {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="font-mono text-[11px] text-muted-foreground/60">{children}</div>
+  return <div className="font-mono text-[0.6875rem] text-muted-foreground">{children}</div>
 }
 
 function InfoPanel() {
   const system = useSystem()
   if (!system)
-    return <div className="p-3 font-mono text-[11.5px] text-muted-foreground">connecting…</div>
+    return <div className="p-3 font-mono text-[0.7188rem] text-muted-foreground">connecting…</div>
   return (
     <div className="pb-4">
       {/* The shown conversation first, then this host, then what loads into every prompt. */}

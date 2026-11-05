@@ -101,7 +101,7 @@ function After({ layers, install }: { layers: Layers; install?: UpdateResult & {
 function CheckNow({ checking, onClick }: { checking: boolean; onClick: () => void }) {
   return (
     <Button
-      className="h-7 font-sans text-[12px] text-muted-foreground"
+      className="h-7 font-sans text-[0.75rem] text-muted-foreground"
       data-update-check
       disabled={checking}
       onClick={onClick}
@@ -144,13 +144,13 @@ function Popup({
   const current = !state.behind && !updated && !owes
   return (
     <>
-      <div className="border-b border-border/70 px-3 py-2 text-[11.5px]">
+      <div className="border-b border-border/70 px-3 py-2 text-[0.7188rem]">
         <div className="section-label">Ultimate update</div>
         <div className="truncate text-muted-foreground" title={state.root}>
           {short(state.root)}
         </div>
       </div>
-      <div className="space-y-2 px-3 py-2 text-[11.5px] leading-[1.55]">
+      <div className="space-y-2 px-3 py-2 text-[0.7188rem] leading-[1.55]">
         {current ? (
           <div>
             {checking ? (
@@ -184,7 +184,7 @@ function Popup({
               {state.branch ?? 'main'}
             </div>
             {state.summary && (
-              <ul className="space-y-0.5 font-sans text-[12.5px] text-foreground">
+              <ul className="space-y-0.5 font-sans text-[0.7812rem] text-foreground">
                 {state.summary.map((line) => (
                   <li className="flex gap-1.5" key={line}>
                     <span className="text-brand">•</span>
@@ -256,7 +256,7 @@ function Popup({
         {error && <div className="break-words text-error">{error}</div>}
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-border/70 px-3 py-1.5">
-        <span className="text-[10.5px] text-muted-foreground">
+        <span className="text-[0.6562rem] text-muted-foreground">
           {state.fetchedAt !== undefined && !(state.refused && !state.merge && !updated)
             ? `checked ${formatAgo(state.fetchedAt, Date.now(), { ago: true })}`
             : ''}
@@ -300,7 +300,7 @@ function Action({
     <>
       {!state.behind && state.install ? (
         <Button
-          className="h-7 font-sans text-[12px]"
+          className="h-7 font-sans text-[0.75rem]"
           disabled={busy || !!state.refused}
           onClick={run}
           size="sm"
@@ -312,7 +312,7 @@ function Action({
       ) : updated || owes ? (
         (updated?.layers.core || updated?.layers.lockfile || coreStale || state.restart) && (
           <Button
-            className="h-7 font-sans text-[12px]"
+            className="h-7 font-sans text-[0.75rem]"
             disabled={restart.busy}
             onClick={restart.run}
             size="sm"
@@ -323,7 +323,7 @@ function Action({
         )
       ) : state.merge ? (
         <Button
-          className="h-7 font-sans text-[12px]"
+          className="h-7 font-sans text-[0.75rem]"
           data-update-merge
           disabled={busy}
           onClick={merge}
@@ -334,7 +334,7 @@ function Action({
         </Button>
       ) : (
         <Button
-          className="h-7 font-sans text-[12px]"
+          className="h-7 font-sans text-[0.75rem]"
           data-update-now
           disabled={busy || !!state.refused}
           onClick={run}
@@ -450,7 +450,7 @@ function Update() {
           className={cn(
             statusButton,
             item === 'current'
-              ? 'text-muted-foreground/70 hover:text-foreground'
+              ? 'text-muted-foreground hover:text-foreground'
               : busy
                 ? 'text-brand'
                 : !state.behind || (state.refused && !state.merge)

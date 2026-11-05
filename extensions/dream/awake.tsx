@@ -59,7 +59,7 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
       className="mx-2 mb-1.5 rounded-md border border-l-2 border-border/70 border-l-brand/60 bg-muted/30 px-2.5 py-2"
       data-dream-awake={awake.phase}
     >
-      <p className="flex items-start gap-1.5 text-[12px] leading-snug">
+      <p className="flex items-start gap-1.5 text-[0.75rem] leading-snug">
         <MoonStarIcon className="mt-px size-3.5 shrink-0 text-brand" />
         <span className="text-foreground">
           {awake.phase === 'prepared'
@@ -69,7 +69,7 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
               : 'The dream is done'}
         </span>
       </p>
-      <p className="mt-1 ml-5 text-[11.5px] leading-snug text-muted-foreground">
+      <p className="mt-1 ml-5 text-[0.7188rem] leading-snug text-muted-foreground">
         {awake.phase === 'prepared'
           ? 'Fall asleep when you are ready: my handover carries the open work.'
           : awake.phase === 'preparing'
@@ -77,14 +77,14 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
             : 'Time to fall asleep: @ultimate writes its handover, then you confirm.'}
       </p>
       {failure && (
-        <p className="mt-1 ml-5 text-[11.5px] leading-snug text-error" role="alert">
+        <p className="mt-1 ml-5 text-[0.7188rem] leading-snug text-error" role="alert">
           {failure}
         </p>
       )}
       <div className="mt-1.5 ml-5 flex flex-wrap items-center gap-x-3 gap-y-1">
         {awake.phase === 'preparing' ? (
           <button
-            className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-foreground/85 hover:text-foreground"
+            className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.6875rem] text-foreground/85 hover:text-foreground"
             onClick={() => {
               onAct?.()
               // Opening a conversation fails only when @ultimate is unknown; the sidebar row stays as it is then.
@@ -97,7 +97,7 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
           </button>
         ) : (
           <button
-            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-brand/50 px-2 py-0.5 text-[12px] text-foreground transition-colors outline-none hover:border-brand hover:bg-brand/10 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
+            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-brand/50 px-2 py-0.5 text-[0.75rem] text-foreground transition-colors outline-none hover:border-brand hover:bg-brand/10 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
             data-dream-awake-asleep
             disabled={busy}
             onClick={() => {
@@ -120,7 +120,7 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
         )}
         {awake.phase !== 'prepared' && (
           <button
-            className="cursor-pointer font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            className="cursor-pointer font-mono text-[0.6875rem] text-muted-foreground hover:text-foreground"
             data-dream-awake-dismiss
             disabled={busy}
             onClick={() => void run(() => api.action(DismissAction, null))}

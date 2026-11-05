@@ -93,7 +93,7 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   return (
     <span
       className={cn(
-        'shrink-0 rounded-sm border border-border/80 px-1 font-mono text-[10px] leading-4 text-muted-foreground',
+        'shrink-0 rounded-sm border border-border/80 px-1 font-mono text-[0.625rem] leading-4 text-muted-foreground',
         className,
       )}
     >
@@ -209,7 +209,7 @@ export function KindIcon({
         ? RadarIcon
         : CalendarClockIcon
   return (
-    <Icon aria-label={kind} className={cn('size-3 shrink-0 text-muted-foreground/70', className)} />
+    <Icon aria-label={kind} className={cn('size-3 shrink-0 text-muted-foreground', className)} />
   )
 }
 
@@ -389,7 +389,7 @@ export function Heading({
     <div className={cn('flex items-center gap-2 section-label', className)}>
       {children}
       {meta !== undefined && (
-        <span className="ml-auto truncate pl-2 text-muted-foreground/70">{meta}</span>
+        <span className="ml-auto truncate pl-2 text-muted-foreground">{meta}</span>
       )}
     </div>
   )

@@ -65,7 +65,7 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
     >
       <CollapsibleTrigger className="w-full cursor-pointer">
         <div
-          className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/70 before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground"
+          className="flex items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground before:h-px before:flex-1 before:bg-border/70 after:h-px after:flex-1 after:bg-border/70 hover:text-muted-foreground"
           data-ui="transcript-meta"
         >
           <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">
@@ -75,7 +75,7 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
           </span>
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-2 rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]">
+      <CollapsibleContent className="mt-2 rounded-md border border-border/70 bg-card/40 font-mono text-[0.7188rem]">
         <DiffBody diff={diff} />
       </CollapsibleContent>
     </Collapsible>
@@ -136,7 +136,7 @@ function CacheRebuilt({
   return (
     <div className="flex flex-col gap-3">
       <div
-        className="flex items-center gap-3 font-mono text-[11px] text-warning/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+        className="flex items-center gap-3 font-mono text-[0.6875rem] text-warning/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
         data-cache-rebuilt={entry.id}
       >
         <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">

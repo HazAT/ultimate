@@ -11,7 +11,7 @@ export function ReadyCard({ entry }: { entry: EntryRecord }) {
   const { branch } = (entry.data ?? {}) as { branch?: number }
   return (
     <Card data-dream-ready={branch}>
-      <p className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <MoonIcon className="size-3.5 text-brand" />
         <span className="text-foreground">Fall asleep</span>
         <span>you pressed it after dream #{branch} · preparing the next chapter</span>
@@ -25,7 +25,7 @@ export function RequestedCard({ entry }: { entry: EntryRecord }) {
   const { automation } = (entry.data ?? {}) as RequestedEntry
   return (
     <Card data-dream-requested={automation?.id ?? 'user'}>
-      <p className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[0.6875rem] text-muted-foreground">
         <MoonIcon className="size-3.5 text-brand" />
         <span className="text-foreground">Time to dream</span>
         <span>
