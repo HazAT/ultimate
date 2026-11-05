@@ -16,24 +16,25 @@ import { actions } from '../sdk/actions.ts'
 import { shortenPath } from '../sdk/format.ts'
 import { useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { Slot } from './boundary.tsx'
+import { ProjectLabel } from '../sdk/types.ts'
+import { Provided, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
 import { sidebarWidthBeyondPhone } from './primitives.tsx'
 
 /**
  * The project as tabs name it: its folder from home. A branch's checkout (`<home>/worktrees/<id>`) is the project's
  * name and that conversation, and a server with a home outside `~/.ultimate/projects`, as test previews have, says
- * it is a preview.
+ * it is a preview. A `label` (`ProjectLabel`) replaces the folder.
  */
-export function projectTitle(system: SystemInfo | undefined) {
+export function projectTitle(system: SystemInfo | undefined, label?: string) {
   if (!system) return undefined
   const { home } = system.machine
   const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(
     system.project.root,
   )
   const project = worktree
-    ? `${worktree[1]} #${worktree[2]}`
-    : shortenPath(system.project.root, { home })
+    ? `${label ?? worktree[1]} #${worktree[2]}`
+    : (label ?? shortenPath(system.project.root, { home }))
   return system.persistence.path.startsWith(`${home}/.ultimate/projects/`)
     ? project
     : `preview · ${project}`
@@ -41,15 +42,15 @@ export function projectTitle(system: SystemInfo | undefined) {
 
 /**
  * The project as the title bar's chip says it beside the wordmark: another project's name, a branch checkout's
- * `#<worktree>`; nothing for Ultimate's own checkout, whose name the wordmark already says.
+ * `#<worktree>`; nothing for Ultimate's own checkout, whose name the wordmark already says. A `label` replaces the name.
  */
-export function projectName(system: SystemInfo | undefined) {
+export function projectName(system: SystemInfo | undefined, label?: string) {
   if (!system) return ''
   const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(
     system.project.root,
   )
-  const name = worktree?.[1] ?? system.project.name
-  const own = name.toLowerCase() === 'ultimate'
+  const name = label ?? worktree?.[1] ?? system.project.name
+  const own = !label && name.toLowerCase() === 'ultimate'
   return [own ? '' : name, worktree ? `#${worktree[2]}` : ''].filter(Boolean).join(' ')
 }
 
@@ -61,9 +62,19 @@ export function projectName(system: SystemInfo | undefined) {
 export const ProjectChip = forwardRef<
   HTMLButtonElement,
   ComponentProps<'button'> & { menu?: boolean; children?: ReactNode }
->(function ProjectChip({ menu, className, children, ...props }, ref) {
+>(function ProjectChip(props, ref) {
+  return (
+    <Provided input={null} point={ProjectLabel}>
+      {(label) => <Chip {...props} label={label} ref={ref} />}
+    </Provided>
+  )
+})
+const Chip = forwardRef<
+  HTMLButtonElement,
+  ComponentProps<'button'> & { menu?: boolean; children?: ReactNode; label?: string }
+>(function Chip({ menu, className, children, label, ...props }, ref) {
   const system = useSystem()
-  const name = projectName(system)
+  const name = projectName(system, label)
   const preview =
     system && !system.persistence.path.startsWith(`${system.machine.home}/.ultimate/projects/`)
   if (!system || (!name && !preview && !menu)) return null

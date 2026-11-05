@@ -18,7 +18,8 @@ import {
 import { HOME, surfaceItems } from '../sdk/registry.ts'
 import type { SurfaceItem } from '../sdk/registry.ts'
 import { rendered } from '../sdk/resume.ts'
-import { ExtensionErrors, Slot } from './boundary.tsx'
+import { ProjectLabel } from '../sdk/types.ts'
+import { ExtensionErrors, Provided, Slot } from './boundary.tsx'
 import { useShortcuts } from './keyboard.ts'
 import { CommandPalette } from './palette.tsx'
 import { Conversation, Header, StatusLine } from './primitives.tsx'
@@ -113,19 +114,26 @@ function Surfaces({ surfaces }: { surfaces: readonly SurfaceItem[] }) {
 }
 
 /**
- * The window title: the project's folder first, so tabs of several projects tell apart, then the shown conversation on
- * Agent or the surface elsewhere; a dot while the agent works.
+ * The window title: the project's folder (or `ProjectLabel`) first, so tabs of several projects tell apart, then the
+ * shown conversation on Agent or the surface elsewhere; a dot while the agent works.
  */
-function useDocumentTitle(surface: { id: string; title: string } | undefined) {
+function DocumentTitle({
+  surface,
+  projectLabel,
+}: {
+  surface: { id: string; title: string } | undefined
+  projectLabel: string | undefined
+}) {
   const { id, busy } = useConversation()
   const label = useConversationSummary(id)?.label
-  const project = projectTitle(useSystem())
+  const project = projectTitle(useSystem(), projectLabel)
   const app = surface && surface.id !== HOME ? surface.title : undefined
   useEffect(() => {
     const shown = app ?? (id === ROOT || id === undefined ? undefined : (label ?? `#${id}`))
     const name = [project ?? 'Ultimate', shown].filter(Boolean).join(' · ')
     document.title = busy ? `● ${name}` : name
   }, [app, label, busy, id, project])
+  return null
 }
 
 /** Command shortcuts, which start with the app. */
@@ -149,7 +157,6 @@ export function App() {
   const home = surfaceItems(records).find((item) => item.id === HOME)
   const shown = useStore((state) => state.ui.surface)
   const viewed = useStore((state) => state.view !== undefined)
-  useDocumentTitle(shown)
   // The surface and its conversation are on screen: what a reload resumes, and what a resumed reload uncovers.
   useEffect(() => {
     if (loaded && !pending && viewed) rendered()
@@ -184,6 +191,9 @@ export function App() {
           {loaded && !pending && <Surfaces surfaces={line} />}
         </div>
       </div>
+      <Provided input={null} point={ProjectLabel}>
+        {(projectLabel) => <DocumentTitle projectLabel={projectLabel} surface={shown} />}
+      </Provided>
       {loaded && <Shortcuts />}
       <CommandPalette />
       <ExtensionErrors />

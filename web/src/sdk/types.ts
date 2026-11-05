@@ -260,6 +260,11 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * What the tab title and the title bar's project chip call the project, in place of its folder's path or name: for a
+ * project whose folder is not its name. Undefined, as while nothing provides it, names the folder.
+ */
+export const ProjectLabel = definePoint<null, string | undefined>('ultimate.projectLabel')
+/**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */

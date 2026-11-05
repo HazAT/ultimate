@@ -11,6 +11,7 @@ export {
   FileUpload,
   MessageReference,
   ParkedRuns,
+  ProjectLabel,
   provide,
   RunStart,
 } from './types.ts'
