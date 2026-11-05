@@ -754,9 +754,12 @@ export function workspaces(host: Host) {
       const { source, target } = index.items[String(id)]
       const idleReadBeforeWrites = await landerIdle(tx, index, source)
       const lander = await ensureLanderBeforeWrites(tx, index, source, target, path)
-      const queued = index.queue.find(
-        (item) => item.conversationId === id && item.tip === tip && item.state === 'queued',
+      // A resubmit replaces this conversation's entries still waiting (never a landing one) and takes the first one's place.
+      const waiting = index.queue.filter(
+        (item) => item.conversationId === id && item.state === 'queued',
       )
+      const queued = waiting.find((item) => item.tip === tip)
+      const replaced = queued ? [] : waiting
       const entry = queued ?? {
         id: `${id}-${tip.slice(0, 7)}-${Date.now().toString(36)}`,
         conversationId: id,
@@ -771,7 +774,13 @@ export function workspaces(host: Host) {
       }
       if (!queued) {
         await log(tx, lander, entry, { step: 'queued' })
-        index.queue.push(entry)
+        for (const old of replaced)
+          await log(tx, lander, entry, {
+            step: `replaced ${old.tip.slice(0, 7)} (queued) with ${tip.slice(0, 7)}`,
+          })
+        const place = replaced.length ? index.queue.indexOf(replaced[0]) : index.queue.length
+        index.queue = index.queue.filter((item) => !replaced.includes(item))
+        index.queue.splice(place, 0, entry)
       }
       if (idleReadBeforeWrites) await startIdleLander(tx, index, source)
       const position = index.queue
@@ -781,7 +790,7 @@ export function workspaces(host: Host) {
         id: entry.id,
         position: position + 1,
         lander,
-        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
+        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue${replaced.length ? `, replacing ${replaced.map((old) => old.tip.slice(0, 7)).join(', ')}` : ''}. A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
       }
     }, context)
     host.harness().resume()

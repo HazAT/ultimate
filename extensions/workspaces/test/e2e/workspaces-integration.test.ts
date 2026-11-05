@@ -1318,6 +1318,56 @@ it.concurrent('lands two submissions in order onto a moved target and reports bo
   // Lineage is disabled in this fixture: landings leave no root note.
   expect(await rootNotes(f)).toHaveLength(0)
 })
+it.concurrent('a resubmit replaces its queued entry in place, keeps a landing one and leaves other conversations alone', async () => {
+  const f = await fixture()
+  const held = heldCheck(f)
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command] } })
+  const first = await f.create()
+  const second = await f.create()
+  await f.service.ready(first, context)
+  await f.service.ready(second, context)
+  const one = (await f.service.get(first, context))!.path
+  const two = (await f.service.get(second, context))!.path
+  const queue = async () =>
+    (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!.queue.map(
+      (item) => [item.conversationId, item.tip.slice(0, 7), item.state],
+    )
+  const tipOf = async (path: string) => (await git(path, 'rev-parse', 'HEAD')).slice(0, 7)
+  await commit(one, 'one.txt')
+  const landing = await tipOf(one)
+  await f.service.submit(first, 'None', context)
+  await held.started()
+  // The landing entry stays; the resubmit queues behind it.
+  await commit(one, 'two.txt')
+  const stale = await tipOf(one)
+  const kept = await f.service.submit(first, 'None', context)
+  expect(kept.text).not.toContain('replacing')
+  await commit(two, 'other.txt')
+  const other = await tipOf(two)
+  await f.service.submit(second, 'None', context)
+  // The next resubmit replaces the queued entry and keeps its place, ahead of the other conversation's.
+  await commit(one, 'three.txt')
+  const fresh = await tipOf(one)
+  const replacing = await f.service.submit(first, 'None', context)
+  expect(replacing.position).toBe(2)
+  expect(replacing.text).toContain(`position 2 in the main queue, replacing ${stale}.`)
+  expect(await queue()).toEqual([
+    [first, landing, 'landing'],
+    [first, fresh, 'queued'],
+    [second, other, 'queued'],
+  ])
+  await held.release()
+  await submitted(f, second)
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.step?.startsWith('replaced')).map((line) => line.step)).toEqual([
+    `replaced ${stale} (queued) with ${fresh}`,
+  ])
+  expect(log.filter((line) => line.outcome).map((line) => line.tip.slice(0, 7))).toEqual([
+    landing,
+    fresh,
+    other,
+  ])
+})
 it.concurrent('runs a check group concurrently and records each summary', async () => {
   const f = await fixture()
   /** Both checks must start before either gate is released; serial execution cannot pass. */
