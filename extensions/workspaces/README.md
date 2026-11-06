@@ -174,7 +174,8 @@ lander's sidebar row shows the feature it lands or landed last.
    A failed run's log entry keeps its output tail as `output` (not in `steps`), under a collapsed "Output" in the
    lander's log, so a check that then passed as flaky can still be diagnosed.
 4. Fast-forwards the target branch in the source checkout (`merge --ff-only` when it is checked out). If the target
-   moved meanwhile it starts again, at most three attempts.
+   moved meanwhile it starts again, at most three attempts; a target that already contains the integrated commit (a
+   replay after the fast-forward, with more landed on top) counts as fast-forwarded.
 5. With `lander.push`, pushes the target branch (never forced); a rejection integrates again once, then is reported.
 6. Records `landed`, emitting `workspaces.landed` in the same commit, then reports (request id `lander:<submission>`
    for each write): the landed commit and commits, flaky checks, whether it pushed, "Needs restart." for `server/`,
@@ -204,7 +205,7 @@ When several submissions wait, the lander takes the first and the ones right beh
    fast-forwards the target once and pushes `checked` once; the push adds `pushed`. Each member is then reported in
    turn exactly as a submission landed by an earlier task: no merge, checks or push again, its own report, conclusion,
    starter card and `workspaces.landed` event. A member whose record the target lacks never landed (its batch
-   stopped before the fast-forward): it lands by itself, and the record is replaced.
+   stopped before the fast-forward): its record is dropped first, so only what it lands by itself is reported.
 
 A check that fails twice, a remote merge conflict, a fast-forward refused or a target that kept moving splits the
 batch: its members go back to `queued` marked `alone`, and each lands by itself on the usual path, so only the one at

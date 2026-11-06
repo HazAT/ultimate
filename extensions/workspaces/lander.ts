@@ -496,7 +496,8 @@ export function createLander(
     serializeSourceWrites(source, async (): Promise<{ moved?: true; refused?: string }> => {
       const current = await git(source, 'rev-parse', `refs/heads/${target}`)
       if (current === integrated) return {}
-      if (current !== base) return { moved: true }
+      if (current !== base)
+        return (await contains(source, integrated, current)) ? {} : { moved: true }
       try {
         const worktree = (await git(source, 'worktree', 'list', '--porcelain'))
           .split('\n\n')
@@ -741,6 +742,11 @@ export function createLander(
           const landedHere =
             entry.landed !== undefined &&
             (await contains(source, entry.landed.sha, `refs/heads/${target}`))
+          if (entry.landed && !landedHere)
+            await runtime.commit(async (tx) => {
+              const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+              delete draft.queue.find((item) => item.id === id)!.landed
+            }, context)
           if (landedHere && attempt === 1 && !pushRetried)
             return await landedReport(
               settings,
@@ -845,7 +851,7 @@ export function createLander(
           await runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
             const saved = draft.queue.find((item) => item.id === id)!
-            if (!landedHere) saved.landed = firstFastForwardCandidate
+            saved.landed ??= firstFastForwardCandidate
             landed = copyJson(saved.landed) as Landed
             draft.items[String(entry.conversationId)].landed = integrated
           }, context)
