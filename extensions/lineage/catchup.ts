@@ -138,6 +138,11 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
   return files
 }
 
+/** Commit rows a catch-up shows, overlaps first. */
+const ROWS = 30
+/** Changed files checked for overlap; the rest of a huge diff only loses its marks. */
+const OVERLAP_PATHS = 1000
+
 async function catchupText(
   host: ExtensionHost,
   id: ConversationId,
@@ -146,30 +151,53 @@ async function catchupText(
   tx: Tx,
 ) {
   const range = `${since.main}..${main.sha}`
-  const [count, records, changed] = await Promise.all([
-    git(main.cwd, 'rev-list', '--count', range).then(Number),
+  // Commits that landed on the target are its first-parent history. Walking every parent instead lists the whole
+  // upstream behind a merge (a monorepo's "merge main into branch" is ~200k commits and gigabytes of names), which
+  // overflowed git's output buffer and failed every input of the conversation.
+  const log = (...args: string[]) =>
     git(
       main.cwd,
       'log',
-      '--name-only',
-      '--no-renames',
-      '--diff-merges=first-parent',
+      '--first-parent',
+      `--max-count=${ROWS}`,
       '--format=%x1e%H%x00%s%x00%(trailers:key=Ultimate-Conversation,valueonly)%x00',
-      range,
-    ),
+      ...args,
+    )
+  const [count, recent, changed] = await Promise.all([
+    git(main.cwd, 'rev-list', '--first-parent', '--count', range).then(Number),
+    log(range),
     changedFiles(host, id, main, tx),
   ])
   if (!count) return undefined
-  const commits = records
-    .split('\x1e')
-    .map((record) => record.trim())
-    .filter(Boolean)
-    .map((record) => {
-      const [sha, subject, trailer, paths] = record.split('\0')
-      const overlap = paths
-        .trim()
-        .split('\n')
-        .filter((path) => changed.has(path))
+  // Names only for this conversation's own files: a pathspec keeps git from listing a merge's every path.
+  const pathspec = [...changed]
+    .slice(0, OVERLAP_PATHS)
+    .map((path) => (main.workspace ? `:(top,literal)${path}` : `:(literal)${path}`))
+  const overlapping = pathspec.length
+    ? await log(
+        '--name-only',
+        '--no-renames',
+        '--diff-merges=first-parent',
+        range,
+        '--',
+        ...pathspec,
+      )
+        // A path outside the checkout (or any other refusal) only loses the overlap marks.
+        .catch(() => '')
+    : ''
+  const parse = (records: string) =>
+    records
+      .split('\x1e')
+      .map((record) => record.trim())
+      .filter(Boolean)
+      .map((record) => {
+        const [sha, subject, trailer, paths = ''] = record.split('\0')
+        return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
+      })
+  const overlaps = parse(overlapping)
+  const listed = new Set(overlaps.map((commit) => commit.sha))
+  const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]
+    .map(({ sha, subject, trailer, paths: overlap }) => {
       const conversation = Number(trailer.trim())
       // Subagents are never summary-titled; older ones carry their whole prompt as title, so one line each.
       const made = host.conversations().find((summary) => summary.id === conversation)
@@ -181,16 +209,17 @@ async function catchupText(
         row: `- ${overlap.length ? '**Overlap** ' : ''}\`${sha.slice(0, 7)}\` ${subject}${conversation ? ` · #${conversation}${label ? ` ${label}` : ''}` : ''}${overlap.length ? ` — ${overlap.map((path) => `\`${path}\``).join(', ')}` : ''}`,
       }
     })
-    .toSorted((a, b) => Number(b.overlap.length > 0) - Number(a.overlap.length > 0))
-    .slice(0, 30)
+    .slice(0, ROWS)
   const behind = main.workspace
-    ? Number(await git(main.workspace, 'rev-list', '--count', `HEAD..${main.sha}`))
+    ? Number(
+        await git(main.workspace, 'rev-list', '--first-parent', '--count', `HEAD..${main.sha}`),
+      )
     : 0
   return [
     `Since you last worked (${new Date(since.at ?? Date.now()).toISOString()}), ${count} commits landed on ${main.target}:`,
     ...commits.map((commit) => commit.row),
     ...(count > commits.length
-      ? [`and ${count - commits.length} more (\`git log ${range}\`).`]
+      ? [`and ${count - commits.length} more (\`git log --first-parent ${range}\`).`]
       : []),
     ...(behind
       ? [`Your workspace is ${behind} commits behind ${main.target}; merge it before continuing.`]
@@ -430,9 +459,16 @@ export async function catchup(
   const meanwhile = tree
     ? await tallyText(conversationId, tree, seen.tally ?? tree.since, tx)
     : undefined
+  // A catch-up that cannot be built is skipped, never a failed input: the baseline still moves on below, so the
+  // next input does not retry it.
   const commits =
     main && seen.main && seen.main !== main.sha
-      ? await catchupText(host, conversationId, main, { main: seen.main, at: seen.at }, tx)
+      ? await catchupText(host, conversationId, main, { main: seen.main, at: seen.at }, tx).catch(
+          (error: unknown) => {
+            host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
+            return undefined
+          },
+        )
       : undefined
   if (meanwhile?.tip !== undefined) seen.tally = meanwhile.tip
   if (main) {
