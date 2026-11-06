@@ -27,10 +27,12 @@ A dream starts when it is asked for, all the same way:
 
 If a reminder never fires, check the model's effective compaction settings: an override can compact the conversation
 before it reaches the reminder's threshold. Set the threshold below the effective background compaction point, not
-just the blocking point. For an estimate, subtract effective `reserveTokens` and `backgroundTokens` from the model's
-context window, then divide by that window to get a percentage (when background compaction is enabled). Settings,
-defaults and model overrides are in [Settings](../../docs/settings.md). A reminder also needs enough context to be
-removed to re-arm; see [context conditions](../automations/README.md#triggers).
+just the blocking point. With background compaction enabled, estimate its percentage as
+`100 × (context window - reserveTokens - backgroundTokens) / context window`, using the effective values. For windows
+of 500k or more, Ultimate's [model profiles](../../server/harness.ts) take precedence over the general compaction
+settings; a model override takes precedence over those profiles, field by field. See [Settings](../../docs/settings.md)
+for the settings files. A reminder also needs enough context to be removed to re-arm; see
+[context conditions](../automations/README.md#triggers).
 
 If a dream branch is already running, say so in one line and do nothing else. Otherwise, in that same turn, while your
 context still holds everything, write your **handoff**: what you worked on, what is still open (branches, questions,

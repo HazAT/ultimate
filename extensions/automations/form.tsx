@@ -757,7 +757,7 @@ export function AutomationForm({
                           {condition.idleFor > 0 &&
                             `Waits until you gave it no input for ${condition.idleFor === 3600000 ? 'an hour' : `${condition.idleFor / 3600000} hours`}. `}
                           {condition.above <= 10 ? (
-                            'Fires once; it cannot re-arm at a threshold of 10% or less.'
+                            'After firing, it cannot re-arm at a threshold of 10% or less.'
                           ) : (
                             <>
                               Fires once, again after it drops below {condition.above - 10}% and{' '}

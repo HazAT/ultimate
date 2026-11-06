@@ -223,7 +223,7 @@ it('warns when a low context threshold cannot re-arm, both on the list and in th
       onClosed: () => {},
     }),
   )
-  expect(form).toContain('Fires once; it cannot re-arm at a threshold of 10% or less.')
+  expect(form).toContain('After firing, it cannot re-arm at a threshold of 10% or less.')
 })
 
 it('renders the third trigger, event descriptions and context re-arm defaults in the form', () => {
