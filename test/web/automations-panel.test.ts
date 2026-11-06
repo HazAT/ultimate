@@ -206,6 +206,26 @@ it('shows bolt triggers, filters, context fill and event fire history without sc
   expect(html).toContain('re-arms below 70%')
 })
 
+it('warns when a low context threshold cannot re-arm, both on the list and in the form', () => {
+  const low = {
+    ...contextAutomation,
+    lastFireAt: 900000,
+    condition: { ...contextAutomation.condition!, above: 10, armed: false },
+  }
+  shell.list = [low]
+  expect(render()).toContain('won&#x27;t re-arm')
+  const form = renderToStaticMarkup(
+    createElement(AutomationForm, {
+      open: true,
+      automation: low,
+      onOpenChange: () => {},
+      onSaved: () => {},
+      onClosed: () => {},
+    }),
+  )
+  expect(form).toContain('Fires once; it cannot re-arm at a threshold of 10% or less.')
+})
+
 it('renders the third trigger, event descriptions and context re-arm defaults in the form', () => {
   const form = (automation?: AutomationListItem) =>
     renderToStaticMarkup(

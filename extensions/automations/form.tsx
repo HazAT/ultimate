@@ -756,11 +756,17 @@ export function AutomationForm({
                         <>
                           {condition.idleFor > 0 &&
                             `Waits until you gave it no input for ${condition.idleFor === 3600000 ? 'an hour' : `${condition.idleFor / 3600000} hours`}. `}
-                          Fires once, again after it drops below {condition.above - 10}% and{' '}
-                          {condition.cooldownMs === 3600000
-                            ? 'an hour has'
-                            : `${condition.cooldownMs / 60000} minutes have`}{' '}
-                          passed.
+                          {condition.above <= 10 ? (
+                            'Fires once; it cannot re-arm at a threshold of 10% or less.'
+                          ) : (
+                            <>
+                              Fires once, again after it drops below {condition.above - 10}% and{' '}
+                              {condition.cooldownMs === 3600000
+                                ? 'an hour has'
+                                : `${condition.cooldownMs / 60000} minutes have`}{' '}
+                              passed.
+                            </>
+                          )}
                         </>
                       ) : (
                         'Fill in each number: context 1–99%, cooldown and pause 0 or more.'
