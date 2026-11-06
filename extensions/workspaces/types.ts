@@ -42,6 +42,7 @@ export type Landed = {
   paths: string[]
   flaky: string[]
   weight?: Weight
+  checked?: string
   pushed?: string
 }
 export type Weight = { added: number; removed: number; tokens: number }

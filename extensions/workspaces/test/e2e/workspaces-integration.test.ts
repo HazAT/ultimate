@@ -2036,6 +2036,57 @@ it.concurrent('drops a conflicting submission from its batch: the rest land toge
   ])
 })
 
+it.concurrent('a batch whose task ends after its fast-forward reports each member’s own landing and pushes only the checked commit', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({}, paths)
+  const held = heldCheck(f)
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command], push: 'origin' } })
+  const pushed = join(f.directory, 'pushed')
+  const started = join(f.directory, 'push-started')
+  const gate = join(f.directory, 'push-gate')
+  // Logs every pushed commit and holds the batch's push, the first with 1.txt.
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh
+while read local sha rest; do
+  echo "$sha" >> '${pushed}'
+  if git cat-file -e "$sha:1.txt" 2>/dev/null && [ ! -f '${gate}' ]; then
+    touch '${started}'
+    while [ ! -f '${gate}' ]; do sleep 0.02; done
+  fi
+done
+`,
+    { mode: 0o755 },
+  )
+  const batched = await committed(f, [['1.txt'], ['2.txt']])
+  await queueBehind(f, held, batched)
+  await until(() =>
+    access(started).then(
+      () => true,
+      () => false,
+    ),
+  )
+  const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
+  const task = Object.values((await index())!.landers)[0]
+  await f.opened.harness.abortTask(task, context)
+  await until(
+    async () =>
+      (await f.opened.harness.commit((tx) => tx.task(task), context))!.state.status === 'terminal',
+  )
+  await writeFile(gate, '')
+  const checked = await git(f.projectRoot, 'rev-parse', 'main')
+  const ownMerge = await git(f.projectRoot, 'rev-parse', 'main~1')
+  await f.reopen()
+  const [reportOne] = await submitted(f, batched[0])
+  const [reportTwo] = await submitted(f, batched[1])
+  expect(reportOne).toContain(`landed as ${ownMerge.slice(0, 7)} on main.`)
+  expect(reportOne).toContain('Pushed to origin/main.')
+  expect(reportTwo).toContain(`landed as ${checked.slice(0, 7)} on main.`)
+  expect(await git(bare, 'rev-parse', 'main')).toBe(checked)
+  // After the first submission's own push, only the commit the batch's checks ran on was pushed.
+  expect(new Set(lines(await readFile(pushed, 'utf8')).slice(1))).toEqual(new Set([checked]))
+})
+
 it.concurrent('resumes a batch after a restart without rerunning its passed checks', async () => {
   const f = await lander({})
   const held = heldCheck(f)

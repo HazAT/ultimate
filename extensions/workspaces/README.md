@@ -198,18 +198,22 @@ When several submissions wait, the lander takes the first and the ones right beh
 1. It merges each member's tip onto the target tip in queue order, each with its own merge commit, as landing them
    one after another would. A member that conflicts leaves the batch (logged with the conflicting paths), moves right
    behind it and lands by itself afterwards, where it gets the usual conflict report; the rest merge again.
-2. It runs the checks once, on the last merge commit, then fast-forwards the target once and pushes once.
-3. In one commit it records each member's own `landed`: its merge commit, with the member before it (or the old tip)
-   as `base`, and the batch's flaky checks; the push adds `pushed`. Then each member is reported in turn exactly as a
-   submission landed by an earlier task: no merge, checks or push again, its own report, conclusion, starter card and
-   `workspaces.landed` event.
+2. It runs the checks once, on the last merge commit.
+3. Before the target moves, it records each member's own `landed` in one commit: its merge commit, with the member
+   before it (or the old tip) as `base`, the batch's flaky checks, and `checked`, the commit the checks ran on. Then it
+   fast-forwards the target once and pushes `checked` once; the push adds `pushed`. Each member is then reported in
+   turn exactly as a submission landed by an earlier task: no merge, checks or push again, its own report, conclusion,
+   starter card and `workspaces.landed` event. A member whose record the target lacks never landed (its batch
+   stopped before the fast-forward): it lands by itself, and the record is replaced.
 
 A check that fails twice, a remote merge conflict, a fast-forward refused or a target that kept moving splits the
 batch: its members go back to `queued` marked `alone`, and each lands by itself on the usual path, so only the one at
-fault is reported as failed. A rejected batch push leaves each member to push on its own, with its own retry.
+fault is reported as failed. A rejected batch push leaves each member to push `checked` on its own, with its own retry; no member's
+intermediate merge commit, which no check ran on, is ever pushed.
 The batch is the task's checkpoint (`batch`, `ids`, `attempt`) and its merges, checks and integrated commits are
-memoized under it, so a restart resumes it where it stopped; a lander task that ends mid-batch leaves its members
-queued, and the next task forms the batch again.
+memoized under it, so a restart resumes it where it stopped. A lander task that ends mid-batch leaves its members
+queued: before the fast-forward the next task forms the batch again (or, once their records exist, lands them one at a
+time); after it, each reports its own recorded landing and pushes `checked`.
 
 In the lander's log a batch is one run: its first line (`started`, with `batch` listing the members' submissions,
 conversations, tips and subjects) heads it with one row per member, and its steps and checks are logged once, under

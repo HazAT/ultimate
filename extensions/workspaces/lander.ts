@@ -712,10 +712,15 @@ export function createLander(
             return { retry: fail(`${settings.push} rejected the push`, failure(error)) }
           }
         }
-        const landedReport = async (settings: Settings, landed: Landed, sha: string) => {
+        const landedReport = async (
+          settings: Settings,
+          landed: Landed,
+          sha: string,
+          pushing = sha,
+        ) => {
           const pushed = landed.pushed
             ? { remote: landed.pushed, text: `Pushed to ${landed.pushed}.` }
-            : await push(settings, sha)
+            : await push(settings, pushing)
           if (pushed.retry) return pushed.retry
           const needsRestart =
             (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
@@ -733,14 +738,16 @@ export function createLander(
         }
         try {
           const settings = await landerSettings(host)
-          const landingFromEarlierTask = entry.landed
-          if (
-            landingFromEarlierTask &&
-            attempt === 1 &&
-            !pushRetried &&
-            (await contains(source, landingFromEarlierTask.sha, `refs/heads/${target}`))
-          )
-            return await landedReport(settings, landingFromEarlierTask, landingFromEarlierTask.sha)
+          const landedHere =
+            entry.landed !== undefined &&
+            (await contains(source, entry.landed.sha, `refs/heads/${target}`))
+          if (landedHere && attempt === 1 && !pushRetried)
+            return await landedReport(
+              settings,
+              entry.landed!,
+              entry.landed!.sha,
+              entry.landed!.checked ?? entry.landed!.sha,
+            )
           let checkedIntegration = await runtime.memo<CheckedIntegration>(
             `prepared:${id}:${attempt}`,
             context,
@@ -838,7 +845,7 @@ export function createLander(
           await runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
             const saved = draft.queue.find((item) => item.id === id)!
-            saved.landed ??= firstFastForwardCandidate
+            if (!landedHere) saved.landed = firstFastForwardCandidate
             landed = copyJson(saved.landed) as Landed
             draft.items[String(entry.conversationId)].landed = integrated
           }, context)
@@ -856,8 +863,15 @@ export function createLander(
         const { source, target } = members[0]
         const key = `${batch}:${ids.join('+')}:${attempt}`
         const step = stepper(runtime, context, batch, ids)
-        const split = (reason: string, output?: string) =>
-          runtime.commit(async (tx) => {
+        const split = async (reason: string, output?: string) => {
+          const now = (await runtime.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+          const landedThere = new Set<string>()
+          for (const id of ids) {
+            const landed = now.queue.find((item) => item.id === id)?.landed
+            if (landed && (await contains(source, landed.sha, `refs/heads/${target}`)))
+              landedThere.add(id)
+          }
+          return runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
             const saved = ids.map((id) => draft.queue.find((item) => item.id === id)!)
             const text = `batch not landed: ${reason}; landing one at a time`
@@ -871,9 +885,11 @@ export function createLander(
               member.alone = true
               member.state = 'queued'
               delete member.step
+              if (!landedThere.has(member.id)) delete member.landed
             }
             return { status: 'running', checkpoint: { phase: 'next' } }
           }, context)
+        }
         const drop = (member: QueueEntry, conflicts: string) =>
           runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
@@ -965,24 +981,6 @@ export function createLander(
           }
           const { base, merges, flaky } = prepared
           const integrated = merges.at(-1)!
-          await step('fast-forwarding')
-          const { moved, refused } = await fastForward(source, target, base, integrated)
-          if (refused)
-            return await split(
-              `the checkout of ${target} refused the fast-forward to ${integrated.slice(0, 7)}`,
-              refused,
-            )
-          if (moved) {
-            if (attempt < maxTargetMoveAttempts)
-              return await runtime.commit(
-                () => ({
-                  status: 'running',
-                  checkpoint: { phase: 'batch', batch, ids, attempt: attempt + 1 },
-                }),
-                context,
-              )
-            return await split(`${target} kept moving during ${maxTargetMoveAttempts} attempts`)
-          }
           const landed: Landed[] = []
           for (const [position, sha] of merges.entries()) {
             const from = position ? merges[position - 1] : base
@@ -994,16 +992,33 @@ export function createLander(
               commits: lines(await git(source, 'log', '--oneline', `${from}..${sha}`)),
               paths: lines(await git(source, 'diff', '--name-only', from, sha)),
               flaky,
+              checked: integrated,
             })
           }
           await runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-            for (const [position, id] of ids.entries()) {
-              const saved = draft.queue.find((item) => item.id === id)!
-              saved.landed ??= landed[position]
-              draft.items[String(saved.conversationId)].landed = saved.landed.sha
-            }
+            for (const [position, id] of ids.entries())
+              draft.queue.find((item) => item.id === id)!.landed = landed[position]
           }, context)
+          await step('fast-forwarding')
+          const { moved, refused } = await fastForward(source, target, base, integrated)
+          if (refused)
+            return await split(
+              `the checkout of ${target} refused the fast-forward to ${integrated.slice(0, 7)}`,
+              refused,
+            )
+          if (moved) {
+            if (attempt < maxTargetMoveAttempts)
+              return await runtime.commit(async (tx) => {
+                const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+                for (const id of ids) delete draft.queue.find((item) => item.id === id)!.landed
+                return {
+                  status: 'running',
+                  checkpoint: { phase: 'batch', batch, ids, attempt: attempt + 1 },
+                }
+              }, context)
+            return await split(`${target} kept moving during ${maxTargetMoveAttempts} attempts`)
+          }
           let pushed: string | undefined
           if (settings.push) {
             await step(`pushing to ${settings.push}`)
@@ -1026,9 +1041,11 @@ export function createLander(
           }
           await runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-            if (pushed)
-              for (const id of ids)
-                draft.queue.find((item) => item.id === id)!.landed!.pushed = pushed
+            for (const id of ids) {
+              const saved = draft.queue.find((item) => item.id === id)!
+              draft.items[String(saved.conversationId)].landed = saved.landed!.sha
+              if (pushed) saved.landed!.pushed = pushed
+            }
             return { status: 'running', checkpoint: { phase: 'next' } }
           }, context)
         } catch (error) {
