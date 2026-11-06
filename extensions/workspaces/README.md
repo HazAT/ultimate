@@ -190,8 +190,34 @@ lander's sidebar row shows the feature it lands or landed last.
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.
 
-Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin" }`;
-both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
+### Batches
+
+When several submissions wait, the lander takes the first and the ones right behind it for the same target, up to
+`lander.batch` (default 3; 1 lands one at a time), and lands them as one batch:
+
+1. It merges each member's tip onto the target tip in queue order, each with its own merge commit, as landing them
+   one after another would. A member that conflicts leaves the batch (logged with the conflicting paths), moves right
+   behind it and lands by itself afterwards, where it gets the usual conflict report; the rest merge again.
+2. It runs the checks once, on the last merge commit, then fast-forwards the target once and pushes once.
+3. In one commit it records each member's own `landed`: its merge commit, with the member before it (or the old tip)
+   as `base`, and the batch's flaky checks; the push adds `pushed`. Then each member is reported in turn exactly as a
+   submission landed by an earlier task: no merge, checks or push again, its own report, conclusion, starter card and
+   `workspaces.landed` event.
+
+A check that fails twice, a remote merge conflict, a fast-forward refused or a target that kept moving splits the
+batch: its members go back to `queued` marked `alone`, and each lands by itself on the usual path, so only the one at
+fault is reported as failed. A rejected batch push leaves each member to push on its own, with its own retry.
+The batch is the task's checkpoint (`batch`, `ids`, `attempt`) and its merges, checks and integrated commits are
+memoized under it, so a restart resumes it where it stopped; a lander task that ends mid-batch leaves its members
+queued, and the next task forms the batch again.
+
+In the lander's log a batch is one run: its first line (`started`, with `batch` listing the members' submissions,
+conversations, tips and subjects) heads it with one row per member, and its steps and checks are logged once, under
+the batch's own id; each check run emits one `workspaces.check` with that id. Each member's `steps` get every batch
+step, starting with `started with #<the others>`, so its submit card follows the batch. Its outcome is its own line.
+
+Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin", "batch": 3 }`;
+all are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
 `workspaces.landed` event.
 
 Each attempt starts from a reset checkout, and the integrated commit is memoized after the checks, so a crash resumes

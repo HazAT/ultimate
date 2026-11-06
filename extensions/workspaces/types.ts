@@ -33,6 +33,7 @@ export type QueueEntry = {
   step?: string
   steps: LanderStep[]
   landed?: Landed
+  alone?: boolean
 }
 export type Landed = {
   sha: string
@@ -41,6 +42,7 @@ export type Landed = {
   paths: string[]
   flaky: string[]
   weight?: Weight
+  pushed?: string
 }
 export type Weight = { added: number; removed: number; tokens: number }
 export type LanderCheck = {
@@ -80,6 +82,12 @@ export type LanderEntry = {
   runs?: string
   check?: LanderCheck
   subject?: SubmitTimeSubject
+  batch?: {
+    submission: string
+    conversationId: ConversationId
+    tip: string
+    subject?: SubmitTimeSubject
+  }[]
 } & Partial<LanderOutcome>
 type SourceCheckout = string
 

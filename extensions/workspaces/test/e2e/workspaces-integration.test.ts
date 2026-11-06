@@ -1894,6 +1894,180 @@ it.concurrent('resumes a group after a restart without a third run of its twice-
   expect(await git(f.projectRoot, 'rev-parse', 'HEAD')).toBe(head)
 })
 
+/** One workspace per file, each with its own commit writing `content` (the file's name by default) to it. */
+async function committed(f: Awaited<ReturnType<typeof fixture>>, files: [string, string?][]) {
+  const ids: ConversationId[] = []
+  for (const [file, content = file] of files) {
+    const id = await f.create()
+    await f.service.ready(id, context)
+    const { path } = (await f.service.get(id, context))!
+    await writeFile(join(path, file), content)
+    await git(path, 'add', '.')
+    await git(path, 'commit', '-qm', file)
+    ids.push(id)
+  }
+  return ids
+}
+/** While a first submission holds the lander on its `held` check, submit `waiting`: they queue behind it together. */
+async function queueBehind(
+  f: Awaited<ReturnType<typeof fixture>>,
+  held: ReturnType<typeof heldCheck>,
+  waiting: ConversationId[],
+) {
+  const [first] = await committed(f, [['first.txt']])
+  await f.service.submit(first, 'None', context)
+  await held.started()
+  for (const id of waiting) await f.service.submit(id, 'None', context)
+  await held.release()
+}
+const lines = (text: string) => text.split('\n').filter(Boolean)
+
+it.concurrent('lands waiting submissions as one batch: one check run and one push, each with its own merge commit, report and landed event', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({}, paths)
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  const pushes = join(f.directory, 'pushes')
+  f.host.projectSettings = async () => ({
+    lander: { checks: [`echo run >> '${runs}'; ${held.command}`], push: 'origin' },
+  })
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh\ncat >/dev/null\necho push >> '${pushes}'\n`,
+    { mode: 0o755 },
+  )
+  const batched = await committed(f, [['1.txt'], ['2.txt'], ['3.txt']])
+  await queueBehind(f, held, batched)
+  const reports = []
+  for (const id of batched) reports.push(await submitted(f, id))
+  // The first submission ran alone, the three after it together.
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(lines(await readFile(pushes, 'utf8'))).toHaveLength(2)
+  expect(await git(bare, 'rev-parse', 'main')).toBe(await git(f.projectRoot, 'rev-parse', 'main'))
+  // Each member merged onto the one before it, in queue order, and reports its own merge commit.
+  const merges = lines(
+    await git(f.projectRoot, 'log', '--first-parent', '--format=%H %P %s', '-4'),
+  ).toReversed()
+  const landings = (await f.host.eventLog.recent({ events: [SubmissionLanded] })).map(
+    (event) => event.data,
+  )
+  for (const [position, id] of batched.entries()) {
+    const [sha, parent, , ...message] = merges[position + 1].split(' ')
+    expect(parent).toBe(merges[position].split(' ')[0])
+    expect(message.join(' ')).toMatch(`from #${id} into main`)
+    expect(reports[position]).toHaveLength(1)
+    expect(reports[position][0]).toContain(`landed as ${sha.slice(0, 7)} on main.`)
+    expect(reports[position][0]).toContain(`${position + 1}.txt`)
+    expect(reports[position][0]).toContain('Pushed to origin/main.')
+    expect(landings.filter((landing) => landing.conversationId === id)).toEqual([
+      expect.objectContaining({ sha, base: parent, pushed: 'origin/main', commitCount: 2 }),
+    ])
+  }
+  // The log heads the batch's run with its three submissions; each member's steps name the others.
+  const { log } = await landerLog(f)
+  const started = log.filter((line) => line.batch)
+  expect(started).toHaveLength(1)
+  expect(started[0].batch!.map((member) => member.conversationId)).toEqual(batched)
+  const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+  const steps = Object.values(index.results)
+    .find((result) => result.conversationId === batched[1])!
+    .steps.map((row) => row.step)
+  expect(steps).toEqual(
+    expect.arrayContaining([
+      `started with #${batched[0]}, #${batched[2]}`,
+      `merging #${batched[1]}`,
+      'pushing to origin',
+    ]),
+  )
+  expect(steps.filter((step) => step === 'pushing to origin')).toHaveLength(1)
+})
+
+it.concurrent('splits a batch whose check fails: the others land one at a time and only the failing one is reported', async () => {
+  const f = await lander({})
+  const held = heldCheck(f, 'test ! -f fail.txt')
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command] } })
+  const [good, bad, later] = await committed(f, [['good.txt'], ['fail.txt'], ['later.txt']])
+  await queueBehind(f, held, [good, bad, later])
+  const [reportGood] = await submitted(f, good)
+  const reportsBad = await submitted(f, bad)
+  const [reportLater] = await submitted(f, later)
+  expect(reportGood).toContain('landed as')
+  expect(reportLater).toContain('landed as')
+  expect(reportsBad).toHaveLength(1)
+  expect(reportsBad[0]).toContain('was not landed: check failed twice')
+  const subjects = await git(f.projectRoot, 'log', '--first-parent', '--format=%s', '-2')
+  expect(lines(subjects).map((line) => line.split(' ').at(-3))).toEqual([`#${later}`, `#${good}`])
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.step?.startsWith('batch not landed'))).toEqual([
+    expect.objectContaining({
+      step: `batch not landed: check failed twice: ${held.command}; landing one at a time`,
+    }),
+  ])
+})
+
+it.concurrent('drops a conflicting submission from its batch: the rest land together and it gets the conflict report after them', async () => {
+  const f = await lander({})
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  f.host.projectSettings = async () => ({
+    lander: { checks: [`echo run >> '${runs}'; ${held.command}`] },
+  })
+  const [one, clash, three] = await committed(f, [
+    ['shared.txt', 'one'],
+    ['shared.txt', 'clash'],
+    ['three.txt'],
+  ])
+  await queueBehind(f, held, [one, clash, three])
+  const [reportClash] = await submitted(f, clash)
+  expect(reportClash).toContain('was not landed: it conflicts with main in:')
+  expect(reportClash).toContain('shared.txt')
+  expect((await submitted(f, one))[0]).toContain('landed as')
+  expect((await submitted(f, three))[0]).toContain('landed as')
+  // The first submission's run and the batch's: the dropped one never ran its checks.
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(await readFile(join(f.projectRoot, 'shared.txt'), 'utf8')).toBe('one')
+  // It landed by itself after the batch, which reported first.
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.outcome).map((line) => line.conversationId)).toEqual([
+    expect.any(Number),
+    one,
+    three,
+    clash,
+  ])
+})
+
+it.concurrent('resumes a batch after a restart without rerunning its passed checks', async () => {
+  const f = await lander({})
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  const batchStarted = join(f.directory, 'batch-started')
+  const batchGate = join(f.directory, 'batch-gate')
+  f.host.projectSettings = async () => ({
+    lander: {
+      checks: [
+        held.command,
+        `echo run >> '${runs}'`,
+        // Holds only the batch, which has 1.txt.
+        `if [ -f 1.txt ]; then touch '${batchStarted}'; while [ ! -f '${batchGate}' ]; do sleep 0.05; done; fi`,
+      ],
+    },
+  })
+  const batched = await committed(f, [['1.txt'], ['2.txt']])
+  await queueBehind(f, held, batched)
+  await until(() =>
+    access(batchStarted).then(
+      () => true,
+      () => false,
+    ),
+  )
+  await f.reopen()
+  await writeFile(batchGate, '')
+  for (const id of batched) expect((await submitted(f, id))[0]).toContain('landed as')
+  expect((await landerLog(f)).log.filter((line) => line.batch)).toHaveLength(1)
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(await readFile(join(f.projectRoot, '2.txt'), 'utf8')).toBe('2.txt')
+})
+
 it.concurrent('pending warns about branch commits; release keeps only dirty or detached work and input restores branch commits', async () => {
   const f = await fixture()
   const clean = await f.create()
