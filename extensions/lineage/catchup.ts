@@ -30,7 +30,12 @@ export const Seen = defineDoc<{ main?: string; at?: number; tally?: number }>({
   initial: () => ({}),
 })
 
-type Main = { cwd: string; target: string; sha: string; workspace?: string }
+type Main = { cwd: string; prefix: string; target: string; sha: string; workspace?: string }
+const literal = (path: string) => `:(top,literal)${path}`
+const scope = (main: Main) => (main.prefix ? [literal(main.prefix)] : [])
+// Follow all sides of merges, retaining merges that brought changes in from a non-first parent.
+// Default path history can hide relevant commits on the other side of a merge.
+const history = ['--full-history', '--simplify-merges', '--show-pulls']
 async function mainOf(
   host: ExtensionHost,
   id: ConversationId,
@@ -53,9 +58,18 @@ async function mainOf(
     () => undefined,
   )
   // Only a ready checkout exists on disk: a concluded conversation's is released, and its next request recreates it.
-  return sha
-    ? { cwd, target, sha, ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}) }
-    : undefined
+  if (!sha) return undefined
+  const [repository, prefix] = await Promise.all([
+    git(cwd, 'rev-parse', '--show-toplevel'),
+    git(host.projectRoot, 'rev-parse', '--show-prefix'),
+  ])
+  return {
+    cwd: repository,
+    prefix,
+    target,
+    sha,
+    ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}),
+  }
 }
 
 export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: number) {
@@ -112,7 +126,20 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
   if (main.workspace) {
     const base = await git(main.workspace, 'merge-base', 'HEAD', main.sha)
     return new Set(
-      (await git(main.workspace, 'diff', '--name-only', base)).split('\n').filter(Boolean),
+      (
+        await git(
+          main.workspace,
+          'diff',
+          '--name-only',
+          '--no-renames',
+          '-z',
+          base,
+          '--',
+          ...scope(main),
+        )
+      )
+        .split('\0')
+        .filter(Boolean),
     )
   }
   const cwd = (await tx.doc(AgentDoc, id)).cwd ?? host.projectRoot
@@ -129,7 +156,9 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
           const path = part.arguments.path
           if (typeof path !== 'string') continue
           const absolute = isAbsolute(path) ? path : resolve(cwd, path)
-          files.add(relative(main.cwd, absolute))
+          const file = relative(main.cwd, absolute)
+          if (!file.startsWith('../') && (!main.prefix || file.startsWith(main.prefix)))
+            files.add(file)
         }
       }
     }
@@ -146,30 +175,73 @@ async function catchupText(
   tx: Tx,
 ) {
   const range = `${since.main}..${main.sha}`
-  const [count, records, changed] = await Promise.all([
-    git(main.cwd, 'rev-list', '--count', range).then(Number),
+  const paths = scope(main)
+  const [count, changed] = await Promise.all([
     git(
       main.cwd,
-      'log',
-      '--name-only',
-      '--no-renames',
-      '--diff-merges=first-parent',
-      '--format=%x1e%H%x00%s%x00%(trailers:key=Ultimate-Conversation,valueonly)%x00',
+      'rev-list',
+      '--count',
+      ...(paths.length ? history : []),
       range,
-    ),
+      '--',
+      ...paths,
+    ).then(Number),
     changedFiles(host, id, main, tx),
   ])
   if (!count) return undefined
-  const commits = records
-    .split('\x1e')
-    .map((record) => record.trim())
-    .filter(Boolean)
-    .map((record) => {
-      const [sha, subject, trailer, paths] = record.split('\0')
-      const overlap = paths
-        .trim()
-        .split('\n')
-        .filter((path) => changed.has(path))
+  const changedPaths = [...changed].map(literal)
+  // Metadata only: even one commit's filenames can exceed exec's output cap and block input placement.
+  // Search overlaps independently so an old overlap is not lost behind the 30 most recent commits.
+  const read = async (pathspecs: string[]) =>
+    (
+      await git(
+        main.cwd,
+        'log',
+        '-30',
+        '--no-patch',
+        ...(pathspecs.length ? history : []),
+        '--format=%H%x00%s%x00%(trailers:key=Ultimate-Conversation,valueonly)%x1e',
+        range,
+        '--',
+        ...pathspecs,
+      )
+    )
+      .split('\x1e')
+      .map((record) => record.trim())
+      .filter(Boolean)
+  const [recent, overlapping] = await Promise.all([
+    read(paths),
+    changedPaths.length ? read(changedPaths) : [],
+  ])
+  const selected = [
+    ...new Map(
+      [...overlapping, ...recent].map((record) => [record.split('\0')[0], record]),
+    ).values(),
+  ].slice(0, 30)
+  const commits = await Promise.all(
+    selected.map(async (record) => {
+      const [sha, subject, trailer] = record.split('\0')
+      // Limit even a selected commit's diff to this conversation's paths, not its entire file list.
+      const overlap = changedPaths.length
+        ? (
+            await git(
+              main.cwd,
+              'diff-tree',
+              '--root',
+              '--no-commit-id',
+              '--name-only',
+              '--no-renames',
+              '--diff-merges=first-parent',
+              '-r',
+              '-z',
+              sha,
+              '--',
+              ...changedPaths,
+            )
+          )
+            .split('\0')
+            .filter(Boolean)
+        : []
       const conversation = Number(trailer.trim())
       // Subagents are never summary-titled; older ones carry their whole prompt as title, so one line each.
       const made = host.conversations().find((summary) => summary.id === conversation)
@@ -180,9 +252,9 @@ async function catchupText(
         overlap,
         row: `- ${overlap.length ? '**Overlap** ' : ''}\`${sha.slice(0, 7)}\` ${subject}${conversation ? ` · #${conversation}${label ? ` ${label}` : ''}` : ''}${overlap.length ? ` — ${overlap.map((path) => `\`${path}\``).join(', ')}` : ''}`,
       }
-    })
-    .toSorted((a, b) => Number(b.overlap.length > 0) - Number(a.overlap.length > 0))
-    .slice(0, 30)
+    }),
+  )
+  commits.sort((a, b) => Number(b.overlap.length > 0) - Number(a.overlap.length > 0))
   const behind = main.workspace
     ? Number(await git(main.workspace, 'rev-list', '--count', `HEAD..${main.sha}`))
     : 0
