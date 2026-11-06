@@ -219,6 +219,35 @@ it('keeps a catch-up exactly once when reopened during the first request', async
   ])
 })
 
+it('counts a merged upstream as the one merge that landed it, not its every commit and path', async () => {
+  const f = await catchupFixture()
+  const editing = ask(f.server, ROOT_CONVERSATION_ID, 'edit schema')
+  await until(f.held)
+  f.release()
+  await editing
+  repoGit(f.projectRoot, 'commit', '-am', 'Own schema edit')
+  await ask(f.server, ROOT_CONVERSATION_ID, 'baseline')
+  // A long upstream merged in: its own commits are not what landed on main, the merge is.
+  repoGit(f.projectRoot, 'checkout', '-q', '-b', 'upstream', 'HEAD~1')
+  for (let i = 0; i < 40; i++) {
+    await writeFile(join(f.projectRoot, `up${i}.ts`), `${i}\n`)
+    repoGit(f.projectRoot, 'add', '.')
+    repoGit(f.projectRoot, 'commit', '-qm', `Upstream ${i}`)
+  }
+  repoGit(f.projectRoot, 'checkout', '-q', 'main')
+  repoGit(f.projectRoot, 'merge', '-q', '--no-ff', '-m', 'Merge upstream', 'upstream')
+  await ask(f.server, ROOT_CONVERSATION_ID, 'after merge')
+  const notes = (await f.server.root.context(context)).entries.filter(
+    (entry) =>
+      entry.kind === 'lineage.note' && (entry.data as { source?: string }).source === 'main',
+  )
+  const text = (notes.at(-1)!.data as { text: string }).text
+  expect(text).toContain('1 commits landed on main')
+  expect(text).toMatch(/Merge upstream/)
+  expect(text).not.toContain('Upstream 1')
+  expect(text).not.toContain('up1.ts')
+})
+
 it('warns an isolated workspace it is behind, prioritizes old overlaps, and caps the rows at 30', async () => {
   const f = await catchupFixture()
   await ask(f.server, ROOT_CONVERSATION_ID, 'An idea')
