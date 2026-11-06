@@ -1,8 +1,9 @@
 /**
- * Keep warm: Claude Code caches @ultimate's prompt for an hour after each request. Shortly before that hour ends, with
- * @ultimate idle and the user away less than 8 hours, one request replays @ultimate's context as its next request would
- * send it, plus a one-word question. It reads the whole prefix from the cache, which renews the hour, and leaves
- * nothing in any transcript; its tokens count toward @ultimate's usage.
+ * Keep warm: Claude Code, or the Anthropic API under `PI_CACHE_RETENTION=long`, caches @ultimate's prompt for an hour
+ * after each request. Shortly before that hour ends, with @ultimate idle and the user away less than 8 hours, one
+ * request replays @ultimate's context as its next request would send it, plus a one-word question. It reads the whole
+ * prefix from the cache, which renews the hour, and leaves nothing in any transcript; its tokens count toward
+ * @ultimate's usage.
  */
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { copyJson } from '@earendil-works/chord'
@@ -12,7 +13,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
+import type { ConversationId, Cursor, ModelRef } from '@earendil-works/pi-durable'
 import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
@@ -38,8 +39,10 @@ export const docs = [State]
 
 /** How often the timer looks; a ping lands within a minute after `LEAD`, well inside the hour. */
 const TICK = 60_000
-/** Only Claude Code asks for the hour-long cache (`ttl: "1h"`); other providers cache for minutes or not at all. */
-const PROVIDER = 'claude-code'
+/** Caches for an hour (`ttl: "1h"`): Claude Code always, the Anthropic API under `PI_CACHE_RETENTION=long`. */
+export const hourLong = (provider: string) =>
+  provider === 'claude-code' ||
+  (provider === 'anthropic' && process.env.PI_CACHE_RETENTION === 'long')
 const QUESTION = 'Cache keep-warm check from Ultimate, not from the user. Reply with just: ok'
 
 const read = async (host: ExtensionHost) =>
@@ -48,10 +51,14 @@ const read = async (host: ExtensionHost) =>
 const ultimateOf = async (host: ExtensionHost) =>
   (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
 
+/** The last ping, if it was on `model`: the same model id on another provider has another cache. */
+export const lastOn = (last: Ping | undefined, model: ModelRef) =>
+  last?.provider === model.provider && last.model === model.modelId ? last : undefined
+
 /** A response that read or wrote `model`'s cache: an answer that came back, with cache tokens. */
-export const cached = (message: AssistantMessage, model: string) =>
-  message.provider === PROVIDER &&
-  message.model === model &&
+export const cached = (message: AssistantMessage, model: ModelRef) =>
+  message.provider === model.provider &&
+  message.model === model.modelId &&
   message.stopReason !== 'error' &&
   message.stopReason !== 'aborted' &&
   message.usage.cacheRead + message.usage.cacheWrite > 0
@@ -60,7 +67,7 @@ export const cached = (message: AssistantMessage, model: string) =>
  * When @ultimate's own requests last renewed `model`'s cache (ms): its newest such response within the hour. A failed
  * response or one of another model renews nothing, so it does not count.
  */
-async function answeredAt(host: ExtensionHost, id: ConversationId, model: string, now: number) {
+async function answeredAt(host: ExtensionHost, id: ConversationId, model: ModelRef, now: number) {
   const conversation = (await host.harness().conversation(id, context))!
   let cursor: Cursor | undefined
   do {
@@ -76,19 +83,20 @@ async function answeredAt(host: ExtensionHost, id: ConversationId, model: string
   return undefined
 }
 
-/** @ultimate, its Claude model and the times that decide a ping; undefined while it is not on Claude Code. */
+/** @ultimate, its model and the times that decide a ping; undefined while its provider does not cache for an hour. */
 async function activity(host: ExtensionHost, doc: WarmDocState, now: number) {
   const id = await ultimateOf(host)
   const conversation = id === undefined ? undefined : await host.harness().conversation(id, context)
   if (!conversation) return undefined
   const model = (await conversation.agent(context)).model
-  if (model?.provider !== PROVIDER) return undefined
-  const answered = await answeredAt(host, id!, model.modelId, now)
-  const last = doc.last?.model === model.modelId ? doc.last : undefined
+  if (!model || !hourLong(model.provider)) return undefined
+  const answered = await answeredAt(host, id!, model, now)
+  const last = lastOn(doc.last, model)
   const pinged = last && !last.error ? last.at : undefined
   const lastRequest = Math.max(answered ?? 0, pinged ?? 0) || undefined
   return {
     id: id!,
+    provider: model.provider,
     model: model.modelId,
     lastRequest,
     failedAfter: last?.error ? last.at : undefined,
@@ -142,13 +150,19 @@ async function record(
  */
 async function ping(
   host: ExtensionHost,
-  found: { id: ConversationId; model: string; lastRequest: number; previous?: number },
+  found: {
+    id: ConversationId
+    provider: string
+    model: string
+    lastRequest: number
+    previous?: number
+  },
 ) {
   const paused = () => host.want(PauseApi)?.paused()
-  const { id } = found
+  const { id, provider } = found
   const conversation = (await host.harness().conversation(id, context))!
   const agent = await conversation.agent(context)
-  const model = host.modelRuntime.getModel(PROVIDER, found.model)
+  const model = host.modelRuntime.getModel(provider, found.model)
   if (!model) return
   let messages: Message[] = [...(await conversation.context(context)).messages]
   // As conversations' beforeRequest hook sends it (extensions/conversations/server.ts): the identity leads, once.
@@ -160,10 +174,22 @@ async function ping(
   // Preparing awaited: a pause, a new run or the switch may have come in meanwhile. The claim checks the switch and the
   // run in its commit; pause and the hour are checked again after it, with nothing awaited before the request starts.
   if (!open(paused(), found.lastRequest, Date.now())) return
-  if (!(await claim(host, id, { at, model: found.model, error: 'interrupted' }, found.previous)))
+  if (
+    !(await claim(
+      host,
+      id,
+      { at, provider, model: found.model, error: 'interrupted' },
+      found.previous,
+    ))
+  )
     return
   if (!open(paused(), found.lastRequest, Date.now())) {
-    await record(host, id, { at, model: found.model, error: 'skipped: paused or expired' })
+    await record(host, id, {
+      at,
+      provider,
+      model: found.model,
+      error: 'skipped: paused or expired',
+    })
     return
   }
   let answer: AssistantMessage
@@ -183,6 +209,7 @@ async function ping(
     // Kept as the last ping: it blocks pings until @ultimate's next request, so a failure is never retried.
     await record(host, id, {
       at,
+      provider,
       model: found.model,
       error: error instanceof Error ? error.message : String(error),
     })
@@ -193,8 +220,14 @@ async function ping(
     host,
     id,
     failed
-      ? { at, model: found.model, error: answer.errorMessage ?? answer.stopReason }
-      : { at, model: found.model, read: answer.usage.cacheRead, write: answer.usage.cacheWrite },
+      ? { at, provider, model: found.model, error: answer.errorMessage ?? answer.stopReason }
+      : {
+          at,
+          provider,
+          model: found.model,
+          read: answer.usage.cacheRead,
+          write: answer.usage.cacheWrite,
+        },
     answer,
   )
 }
