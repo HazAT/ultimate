@@ -168,7 +168,7 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
               <BusyBlocker busy={busy} />
               <p className="text-[12px] leading-relaxed text-muted-foreground">
                 This wait clears automatically when they finish. Then press Fall asleep to switch
-                chapters. You can open a conversation above to check on its work.
+                chapters.
               </p>
             </div>
           )}
