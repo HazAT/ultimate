@@ -701,6 +701,45 @@ describe('side chats', () => {
     }
   })
 
+  it('lets a side chat whose ending task faulted be injected or discarded again', async () => {
+    const f = await fixture()
+    const side = await f.open('FAULTED ENDING FINDING')
+    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
+    // The task throws after the summary, where a failure of main's admission faults it (not a model failure).
+    const harness = f.server.harness
+    const conversation = harness.conversation.bind(harness)
+    let fault = false
+    harness.conversation = async (id, ctx) => {
+      if (fault && id === f.main) throw new RangeError('stdout maxBuffer length exceeded')
+      return conversation(id, ctx)
+    }
+    try {
+      fault = true
+      const failed = await f.action('inject', { id: side })
+      expect(failed.status).toBe(500)
+      expect(failed.data.error).toContain(`Could not end side chat #${side}`)
+      expect(failed.data.error).toContain('maxBuffer')
+      fault = false
+      expect((await f.action('inject', { id: side })).status).toBe(200)
+      expect(
+        (await entries(f.server, f.main)).filter((entry) => entry.kind === 'sidechat.summary'),
+      ).toHaveLength(1)
+      expect((await f.server.harness.snapshot(Side, side, context))!.ended).toBe('injected')
+      const discardable = await f.open()
+      fault = true
+      expect((await f.action('inject', { id: discardable })).status).toBe(500)
+      fault = false
+      expect((await f.action('discard', { id: discardable })).status).toBe(200)
+      expect((await f.server.harness.snapshot(Side, discardable, context))!.ended).toBe('discarded')
+    } finally {
+      harness.conversation = conversation
+      await writeFile(
+        join(ultimateRoot, '.ultimate/settings.json'),
+        JSON.stringify({ summaryModel: 'unavailable/test' }),
+      )
+    }
+  })
+
   it('queues the passive summary in a busy main without starting a run, then reads it with the next input', async () => {
     const f = await fixture()
     const side = await f.open('BUSY MAIN FINDING')
