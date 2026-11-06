@@ -160,9 +160,13 @@ export interface ComposerTarget {
   send: (text: string) => Promise<unknown>
 }
 const ComposerTargetContext = createContext<ComposerTarget | undefined>(undefined)
-/** Redirects the composer inside it to `to` while it is set; a composer renderer wraps `core` in it. */
+/**
+ * Redirects the composer inside it to `to` while it is set; a composer renderer wraps `core` in it. Unset, it keeps an
+ * outer redirect, so a renderer that only sometimes redirects (side chat) does not hide another renderer's.
+ */
 export function ComposerRedirect({ to, children }: { to?: ComposerTarget; children: ReactNode }) {
-  return <ComposerTargetContext value={to}>{children}</ComposerTargetContext>
+  const outer = useContext(ComposerTargetContext)
+  return <ComposerTargetContext value={to ?? outer}>{children}</ComposerTargetContext>
 }
 
 export function Composer({ dock }: { dock?: boolean }) {

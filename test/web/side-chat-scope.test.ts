@@ -65,6 +65,7 @@ vi.mock('@/components/ui/command', () => {
   }
 })
 
+import { Composer as CoreComposer, ComposerRedirect } from '../../web/src/app/composer.tsx'
 import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
 import { actions } from '../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../web/src/sdk/client.ts'
@@ -269,6 +270,25 @@ it('makes main’s composer inert while a side chat is in front, with Back to ma
   // Back to main brings main forward again: nothing is inert.
   uiState.set('ext.side-chat.front', null)
   expect(render()).not.toContain('inert')
+})
+
+it('keeps an outer composer redirect while side chat mode is off', async () => {
+  vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {} })
+  stream().send('view', view(44, 'main-model', 'off'))
+  const SideChat = sideChat.composer!
+  // A later composer renderer redirects; side chat's own renderer, inside it, wraps the composer with no redirect.
+  const outer = { placeholder: 'Sent elsewhere', send: async () => {} }
+  const children = h(SideChat, { core: h(CoreComposer) })
+  const render = () => renderToStaticMarkup(h(ComposerRedirect, { to: outer, children }))
+  render()
+  await settle()
+  stream(1).send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: 44 } })
+  render()
+  await settle()
+
+  const html = render()
+  expect(html).toContain('data-side-mode="normal"')
+  expect(html).toContain('placeholder="Sent elsewhere"')
 })
 
 it('focuses the side chat’s composer, not main’s covered one, from Focus the composer', () => {
