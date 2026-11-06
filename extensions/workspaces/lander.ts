@@ -226,7 +226,10 @@ export async function runLanderCheck(
   } finally {
     clearTimeout(stallTimer)
     clearTimeout(totalTimer)
-    await rm(tmp, { recursive: true, force: true })
+    // Best effort: detached processes an e2e test leaves behind (supervisors, preview homes) can still be writing here,
+    // the same race #43 fixed in test/sweep-temp.ts. Without retry and catch, rm throws ENOTEMPTY and refuses a landing
+    // whose checks passed. sweepChecks removes the leftover at the next start. Can go once no check leaves writers.
+    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {})
   }
 }
 
