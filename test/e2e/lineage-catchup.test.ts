@@ -10,6 +10,7 @@ import { afterEach, beforeAll, expect, it } from 'vitest'
 import { abstract, leaveNote, Tally } from '../../extensions/lineage/server.ts'
 import { Seen, tallyText } from '../../extensions/lineage/catchup.ts'
 import { context } from '../../server/harness.ts'
+import { git } from '../../lib/git.ts'
 import { branchProbe, fauxServer, post, seedTally, sourceCopy, temp, until } from '../helpers.ts'
 
 let ultimateRoot: string
@@ -48,11 +49,12 @@ const repoGit = (cwd: string, ...args: string[]) =>
     .toString()
     .trim()
 
-async function catchupFixture() {
+async function catchupFixture(subdir = '') {
   const home = await temp('ultimate-lineage-main-')
-  const projectRoot = join(home, 'project')
-  await mkdir(projectRoot)
-  repoGit(projectRoot, 'init', '-b', 'main')
+  const repository = join(home, 'project')
+  const projectRoot = join(repository, subdir)
+  await mkdir(projectRoot, { recursive: true })
+  repoGit(repository, 'init', '-b', 'main')
   repoGit(projectRoot, 'config', 'user.email', 'test@example.com')
   repoGit(projectRoot, 'config', 'user.name', 'Test')
   await writeFile(join(projectRoot, 'schema.ts'), 'base\n')
@@ -76,7 +78,7 @@ async function catchupFixture() {
       const text = textOf(last.content)
       if (last.role === 'user' && text === 'edit schema')
         return fauxAssistantMessage(
-          [fauxToolCall('write', { path: join(projectRoot, 'schema.ts'), content: 'own edit\n' })],
+          [fauxToolCall('write', { path: 'schema.ts', content: 'own edit\n' })],
           { stopReason: 'toolUse' },
         )
       if (
@@ -97,7 +99,15 @@ async function catchupFixture() {
     return server
   }
   const server = await open()
-  return { server, projectRoot, requests, open, release: () => gate.resolve(), held: () => held }
+  return {
+    server,
+    repository,
+    projectRoot,
+    requests,
+    open,
+    release: () => gate.resolve(),
+    held: () => held,
+  }
 }
 
 it('catches up once on an idle resume, puts overlap first, and reads it before the input', async () => {
@@ -246,6 +256,79 @@ it('warns an isolated workspace it is behind, prioritizes old overlaps, and caps
   expect(text.split('\n\n').filter((row) => row.startsWith('- '))).toHaveLength(30)
   expect(text).toContain('and 2 more')
   expect(text).toContain('Your workspace is 32 commits behind main; merge it before continuing.')
+})
+
+it.each([false, true])(
+  'scopes catch-up to the project subdirectory (isolated: %s)',
+  async (isolated) => {
+    const f = await catchupFixture('apps/my[app]')
+    let id = ROOT_CONVERSATION_ID
+    if (isolated)
+      id = await branchFrom(f.server, { from: 1, prompt: 'Project work', isolated: true })
+    f.release()
+    await ask(f.server, id, 'edit schema')
+    await writeFile(join(f.projectRoot, 'schema.ts'), 'landed schema\n')
+    repoGit(f.repository, 'add', '.')
+    repoGit(f.repository, 'commit', '-m', 'Project overlap')
+    await writeFile(join(f.projectRoot, 'other.ts'), 'other\n')
+    repoGit(f.repository, 'add', '.')
+    repoGit(f.repository, 'commit', '-m', 'Project other')
+    await writeFile(join(f.repository, 'outside.ts'), 'outside\n')
+    repoGit(f.repository, 'add', '.')
+    repoGit(f.repository, 'commit', '-m', 'Outside project')
+    await ask(f.server, id, 'resume project')
+    const notes = await catchups(f.server, id)
+    expect(notes).toHaveLength(1)
+    const text = (notes[0].data as { text: string }).text
+    expect(text).toContain('2 commits landed on main')
+    expect(text.split('\n\n')[1]).toMatch(
+      /^- \*\*Overlap\*\* .*Project overlap.*apps\/my\[app\]\/schema.ts/,
+    )
+    expect(text).toContain('Project other')
+    expect(text).not.toContain('Outside project')
+    expect(text.includes('Your workspace is 3 commits behind main')).toBe(isolated)
+    expect(f.requests.at(-1)!.slice(-2)).toEqual([text, 'resume project'])
+    repoGit(f.repository, 'commit', '--allow-empty', '-m', 'Unrelated empty commit')
+    await ask(f.server, id, 'resume again')
+    expect(await catchups(f.server, id)).toHaveLength(1)
+  },
+)
+
+it('admits input with an old overlapping commit whose filenames exceed the Git output limit', async () => {
+  const f = await catchupFixture()
+  f.release()
+  await ask(f.server, ROOT_CONVERSATION_ID, 'edit schema')
+  const baseline = repoGit(f.projectRoot, 'rev-parse', 'HEAD')
+  repoGit(f.projectRoot, 'add', '.')
+  const schema = repoGit(f.projectRoot, 'ls-tree', repoGit(f.projectRoot, 'write-tree'))
+  const blob = repoGit(f.projectRoot, 'rev-parse', 'HEAD:schema.ts')
+  // Reuse a blob to build a real large tree without thousands of working-tree files.
+  const names = Array.from({ length: 6000 }, (_, i) => `${i}-${'x'.repeat(180)}.ts`)
+  const tree = execFileSync('git', ['mktree'], {
+    cwd: f.projectRoot,
+    input: [schema, ...names.map((name) => `100644 blob ${blob}\t${name}`)].join('\n') + '\n',
+  })
+    .toString()
+    .trim()
+  const sha = repoGit(f.projectRoot, 'commit-tree', tree, '-p', baseline, '-m', 'Large old overlap')
+  repoGit(f.projectRoot, 'update-ref', 'refs/heads/main', sha)
+  for (let i = 0; i < 31; i++) {
+    const next = repoGit(f.projectRoot, 'commit-tree', tree, '-p', 'HEAD', '-m', `Recent ${i}`)
+    repoGit(f.projectRoot, 'update-ref', 'refs/heads/main', next)
+  }
+  await expect(git(f.projectRoot, 'log', '--name-only', `${baseline}..HEAD`)).rejects.toMatchObject(
+    {
+      code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+    },
+  )
+  await ask(f.server, ROOT_CONVERSATION_ID, 'resume large history')
+  const [note] = await catchups(f.server, ROOT_CONVERSATION_ID)
+  const text = (note.data as { text: string }).text
+  expect(text).toContain('32 commits landed on main')
+  expect(text.split('\n\n')[1]).toMatch(/^- \*\*Overlap\*\* .*Large old overlap.*schema.ts/)
+  expect(text.split('\n\n').filter((row) => row.startsWith('- '))).toHaveLength(30)
+  expect(text).toContain('and 2 more')
+  expect(f.requests.at(-1)!.slice(-2)).toEqual([text, 'resume large history'])
 })
 
 const branchFrom = async (server: Server, args: Record<string, unknown>) => {

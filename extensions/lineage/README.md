@@ -160,6 +160,11 @@ document, tools and model-facing text, where agents and stored entries already u
   status with a pointer to `ultimate.entries(root)`; no model call runs in input placement.
   The same note then lists up to 30 new target commits, overlaps first (workspace diff against merge-base, or the
   conversation's own edit/write calls in a shared checkout), with conversation trailers and an isolate's behind count.
+  In a repository subdirectory, commit counts, history and overlaps follow the project directory, including in isolated
+  workspaces; repository-root projects still include empty commits. History reads are capped metadata queries, with a
+  separate overlap search so older overlaps keep priority without reading every commit's filenames. Scoped history
+  follows both sides of merges and includes merges that bring project changes in; the workspace behind count stays
+  repository-wide.
   No new tally material or commits means no note; mid-run inputs do not trigger catch-up. The local Pi Durable patch
   commits the `lineage.note` (`source: 'main'`), seen baselines and input atomically, with the note before the input
   in transcript and context. Tallies take no inputs and get no resume catch-up.
