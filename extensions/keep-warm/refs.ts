@@ -2,10 +2,17 @@
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**
- * One keep-warm request: when, on which model, what it read from and wrote to the cache, or why it failed. Recorded as
+ * One keep-warm request: when, on which provider and model, what it read from and wrote to the cache, or why it failed. Recorded as
  * `interrupted` before it is sent, so a crash mid-request counts as a failure.
  */
-export type Ping = { at: number; model: string; read?: number; write?: number; error?: string }
+export type Ping = {
+  at: number
+  provider: string
+  model: string
+  read?: number
+  write?: number
+  error?: string
+}
 
 /**
  * On conversation 1. `off` when the user turned it off (it is on by default); the user's latest input to @ultimate
