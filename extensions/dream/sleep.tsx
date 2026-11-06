@@ -73,7 +73,7 @@ export function NextChapter({
     >
       <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
         <MoonStarIcon className="size-3.5 text-brand" />
-        <span className="text-foreground">Ready for a fresh chapter</span>
+        <span className="text-foreground">Next chapter prepared</span>
         <span>{formatTime(prepared.at)}</span>
       </header>
       <ul className="space-y-1.5 px-4 pt-4 pb-3" data-dream-learned>
@@ -163,7 +163,15 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
                 : 'Lowercase letters, digits and dashes, up to 40.'}
             </p>
           )}
-          {blocked && <BusyBlocker busy={busy} />}
+          {blocked && (
+            <div className="space-y-1.5">
+              <BusyBlocker busy={busy} />
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                This wait clears automatically when they finish. Then press Fall asleep to switch
+                chapters. You can open a conversation above to check on its work.
+              </p>
+            </div>
+          )}
           {refusal && (
             <p className="text-[12px] leading-relaxed" role="alert">
               <span className="text-error">Didn't start.</span>{' '}
