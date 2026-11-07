@@ -221,6 +221,18 @@ conversations, tips and subjects) heads it with one row per member, and its step
 the batch's own id; each check run emits one `workspaces.check` with that id. Each member's `steps` get every batch
 step, starting with `started with #<the others>`, so its submit card follows the batch. Its outcome is its own line.
 
+### Offline
+
+A fetch, `ls-remote` or push that cannot reach the remote (git's or curl's words for an unresolved host, a refused,
+reset or timed-out connection, `SSL_ERROR_SYSCALL`, or our own 5-minute timeout: usually the Mac slept or the VPN
+dropped) fails nothing. The landing waits in place, so the queue pauses with every submission still in it: one
+`waiting for network` step (git's last line under its collapsed output), then `git ls-remote <push> HEAD` every 30 s,
+doubling up to every 5 minutes. Once the probe reaches the remote, or fails some other way, the same command runs
+again and a `network back after <n> min` step follows. After 30 minutes offline the lander says so once, as a notice
+and an input to @ultimate listing the waiting submissions, and keeps waiting. Anything else stays a failure:
+authentication, a rejected push, a conflict. The check watchdog does not apply: git's network commands are not checks.
+A restart mid-wait runs the command again at once.
+
 Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin", "batch": 3 }`;
 all are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
 `workspaces.landed` event.

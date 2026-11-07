@@ -28,6 +28,7 @@ import { createLander, landerCheckout, landerPath } from '../../lander.ts'
 import { CheckRan, SubmissionFailed, SubmissionLanded } from '../../api.ts'
 import lineage, { leaveNote, startBranch } from '../../../lineage/server.ts'
 import { LineageApi, Roots } from '../../../lineage/api.ts'
+import type { NetworkWait } from '../../lander.ts'
 import {
   actions as conversationActions,
   concludeIn,
@@ -63,6 +64,8 @@ async function repository() {
     const path = join(await temp('ultimate-workspaces-template-'), 'project')
     await mkdir(join(path, 'agents'), { recursive: true })
     await git(path, 'init', '-b', 'main')
+    // A global core.fsmonitor would leave its daemon's socket in .git, which the copies below cannot copy.
+    await git(path, 'config', 'core.fsmonitor', 'false')
     await git(path, 'config', 'user.email', 'test@example.com')
     await git(path, 'config', 'user.name', 'Test')
     await writeFile(join(path, 'base.txt'), 'base')
@@ -780,6 +783,7 @@ it.concurrent('emits one landed event and notes the root once, across a replayed
     working: async () => false,
     conclude: async () => {},
     release: async () => [],
+    ultimate: async () => undefined,
   })
   const report = task.definition.phases.report
   let replays = 0
@@ -1719,6 +1723,112 @@ it.concurrent('reports a local landing whose push retry conflicts as landed loca
   ).toBe(true)
   expect((await f.service.get(id, context))!.landed).toBe(landed)
 })
+/**
+ * Run the lander with `network`'s probe backoff and offline notice instead of 30 s, 5 min and 30 min; the root plays
+ * @ultimate.
+ */
+function landerWaiting(f: Awaited<ReturnType<typeof fixture>>, network: NetworkWait) {
+  const task = createLander(
+    f.host,
+    Workspaces,
+    (_source, operation) => operation(),
+    {
+      starter: async () => undefined,
+      working: async () => false,
+      conclude: async () => {},
+      release: async () => [],
+      ultimate: async () => f.opened.root.id,
+    },
+    undefined,
+    network,
+  )
+  f.prepared.registry.install(
+    defineExtension({
+      ...workspaceExtension(f.host),
+      tasks: [
+        ...(workspaceExtension(f.host).tasks ?? []).filter(
+          (item) => item.definition.name !== task.definition.name,
+        ),
+        task,
+      ],
+    }),
+  )
+}
+it('waits out an unreachable remote with the submission in place, says so once, and lands once it is back', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({ push: 'origin' }, paths)
+  landerWaiting(f, { first: 0.05, most: 0.1, tell: 0.3 })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path, 'offline.txt')
+  // The Mac slept: GitHub's name does not resolve.
+  await git(f.projectRoot, 'remote', 'set-url', 'origin', 'https://github.invalid/o/r.git')
+  const { id: submission } = await f.service.submit(id, 'None', context)
+  const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
+  await until(async () => (await index())!.queue[0]?.step?.startsWith('still waiting') ?? false)
+  expect((await index())!.queue).toMatchObject([{ id: submission, state: 'landing' }])
+  expect((await index())!.results[submission]).toBeUndefined()
+  expect(f.notice).toHaveBeenCalledWith(
+    expect.stringContaining(
+      `No network for 0 min (fatal: unable to access 'https://github.invalid/o/r.git/': Could not resolve host: github.invalid). 1 submission waits in the queue (#${id})`,
+    ),
+  )
+  // The network is back.
+  await git(f.projectRoot, 'remote', 'set-url', 'origin', bare)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(report).toContain('Pushed to origin/main.')
+  expect(await git(bare, 'rev-parse', 'main')).toBe(await git(f.projectRoot, 'rev-parse', 'main'))
+  const steps = (await index())!.results[submission].steps.map((row) => row.step)
+  expect(steps.slice(0, 6)).toEqual([
+    'queued',
+    'started',
+    'preparing',
+    'waiting for network',
+    'still waiting for network after 0 min',
+    'network back after 0 min',
+  ])
+  expect(steps.filter((step) => step.includes('network'))).toHaveLength(3)
+  expect(f.notice).toHaveBeenCalledTimes(1)
+  expect(await offlineInputs(f)).toEqual([expect.stringContaining('[lander] No network for 0 min')])
+  const waiting = (await landerLog(f)).log.find((line) => line.step === 'waiting for network')
+  expect(waiting?.output).toContain('Could not resolve host: github.invalid')
+})
+it('still fails a push the remote refuses for auth, without waiting for the network', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({ push: 'origin' }, paths)
+  landerWaiting(f, { first: 0.05, most: 0.1, tell: 0.3 })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path, 'auth.txt')
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh\necho "remote: Invalid username or token." >&2\necho "fatal: Authentication failed for 'https://github.com/o/r.git/'" >&2\nexit 1\n`,
+    { mode: 0o755 },
+  )
+  const { id: submission } = await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed locally as')
+  expect(report).toContain('Push failed: origin rejected the push')
+  expect(report).toContain('Authentication failed')
+  expect(await git(bare, 'rev-parse', 'main')).not.toBe(
+    await git(f.projectRoot, 'rev-parse', 'main'),
+  )
+  const result = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+    .results[submission]
+  expect(result.reason).toBe('Push failed: origin rejected the push')
+  expect(result.steps.some((row) => row.step.includes('network'))).toBe(false)
+  expect(f.notice).not.toHaveBeenCalled()
+  expect(await offlineInputs(f)).toEqual([])
+})
+/** What the lander told @ultimate (the root) about an outage. */
+async function offlineInputs(f: Awaited<ReturnType<typeof fixture>>) {
+  const view = await f.opened.root.context(context)
+  return view.entries
+    .flatMap((entry) => entry.model ?? [])
+    .flatMap((message) => (typeof message.content === 'string' ? [message.content] : []))
+    .filter((text) => text.includes('No network'))
+}
 it.concurrent('resumes checks after a restart without rerunning passed ones and keeps flaky notes', async () => {
   const f = await fixture()
   const log = join(f.directory, 'runs')

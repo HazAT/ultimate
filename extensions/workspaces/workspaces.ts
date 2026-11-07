@@ -193,6 +193,7 @@ export function workspaces(host: Host) {
   const Lander = createLander(host, Workspaces, serializeSourceWrites, {
     starter: async (id, context) => host.want(Branches)?.starter(id, context),
     working: async (tx, id) => (await host.want(Branches)?.working(tx, id)) ?? false,
+    ultimate: async (context) => host.want(Branches)?.ultimate(context),
     conclude: async (tx, id) => void (await host.need(ConversationsApi).concludeIn(tx, [id])),
     release: (id, context) => release([id], context),
   })

@@ -14,7 +14,7 @@ import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { debounce, deadline } from '../../lib/timers.ts'
+import { debounce, deadline, pace } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
 import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
@@ -263,6 +263,53 @@ const failure = (error: unknown) => {
 }
 const remote = (cwd: string, signal: AbortSignal, ...args: string[]) =>
   git({ cwd, signal, timeout: 300000 }, ...args)
+const unreachableText =
+  /Could not resolve (host|hostname|proxy)|Temporary failure in name resolution|nodename nor servname|Failed to connect to|Could not connect to server|Connection (refused|reset|timed out)|Operation timed out|Network is unreachable|No route to host|SSL_ERROR_SYSCALL/i
+export const unreachable = (error: unknown) =>
+  (error as { killed?: boolean }).killed === true || unreachableText.test(failure(error))
+export type NetworkWait = { first: number; most: number; tell: number }
+const networkWait: NetworkWait = { first: 30, most: 5 * 60, tell: 30 * 60 }
+type Offline = {
+  waiting: (reason: string) => Promise<void>
+  long: (reason: string, minutes: number) => Promise<void>
+  back: (minutes: number) => Promise<void>
+}
+export async function whenOnline<T>(
+  call: () => Promise<T>,
+  probe: () => Promise<unknown>,
+  signal: AbortSignal,
+  offline: Offline,
+  timing: NetworkWait = networkWait,
+): Promise<T> {
+  for (;;) {
+    try {
+      return await call()
+    } catch (error) {
+      if (signal.aborted || !unreachable(error)) throw error
+      const reason = lines(failure(error)).at(-1) ?? 'unreachable'
+      await offline.waiting(reason)
+      const since = Date.now()
+      const minutes = () => Math.round((Date.now() - since) / 60000)
+      let told = false
+      for (let delay = timing.first; ; delay = Math.min(delay * 2, timing.most)) {
+        await pace(delay * 1000, signal)
+        const reached = await probe().then(
+          () => true,
+          (failed: unknown) => {
+            if (signal.aborted) throw failed
+            return !unreachable(failed)
+          },
+        )
+        if (reached) break
+        if (!told && Date.now() - since >= timing.tell * 1000) {
+          told = true
+          await offline.long(reason, minutes())
+        }
+      }
+      await offline.back(minutes())
+    }
+  }
+}
 
 type CheckedIntegration = {
   base: string
@@ -300,15 +347,10 @@ async function tryMerge(path: string, commit: string, message: string) {
     return conflicts
   }
 }
-async function remoteAhead(
-  path: string,
-  push: string | undefined,
-  target: string,
-  signal: AbortSignal,
-) {
-  if (!push || !(await remote(path, signal, 'ls-remote', push, `refs/heads/${target}`)))
-    return undefined
-  await remote(path, signal, 'fetch', '-q', push, target)
+type Remote = (cwd: string, ...args: string[]) => Promise<string>
+async function remoteAhead(path: string, push: string | undefined, target: string, run: Remote) {
+  if (!push || !(await run(path, 'ls-remote', push, `refs/heads/${target}`))) return undefined
+  await run(path, 'fetch', '-q', push, target)
   const fetched = await git(path, 'rev-parse', 'FETCH_HEAD')
   return (await contains(path, fetched, 'HEAD')) ? undefined : fetched
 }
@@ -358,8 +400,10 @@ export function createLander(
     working: (tx: Tx, id: ConversationId) => Promise<boolean>
     conclude: (tx: Tx, id: ConversationId) => Promise<void>
     release: (id: ConversationId, context: Context) => Promise<unknown>
+    ultimate: (context: Context) => Promise<ConversationId | undefined>
   },
   limits: CheckLimits = defaultCheckLimitsSeconds,
+  network: NetworkWait = networkWait,
 ) {
   async function resetTrackedIntegration(source: string, tip: string) {
     const path = await landerCheckout(host.home, source, await host.projectSettings(), tip)
@@ -402,6 +446,47 @@ export function createLander(
             ms: Math.round(ran.ms),
           })
       }, context)
+  const online =
+    (
+      runtime: Runtime,
+      context: Context,
+      step: Step,
+      source: string,
+      push: string | undefined,
+    ): Remote =>
+    (cwd, ...args) =>
+      whenOnline(
+        () => remote(cwd, runtime.signal, ...args),
+        async () => push && remote(cwd, runtime.signal, 'ls-remote', push, 'HEAD'),
+        runtime.signal,
+        {
+          waiting: (reason) => step('waiting for network', { output: reason }),
+          long: async (reason, minutes) => {
+            const index = (await runtime.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+            const waiting = index.queue.filter((item) => item.source === source)
+            const count =
+              waiting.length === 1 ? '1 submission waits' : `${waiting.length} submissions wait`
+            const text = `[lander] No network for ${minutes} min (${reason}). ${count} in the queue (${waiting.map((item) => `#${item.conversationId}`).join(', ')}); the lander keeps them in place and lands them when the network is back.\nLog: lander conversation #${runtime.conversationId}.`
+            await step(`still waiting for network after ${minutes} min`)
+            host.notice(text)
+            const ultimate = await after.ultimate(context)
+            if (ultimate)
+              await (
+                await runtime.conversation(ultimate, context)
+              )?.submit(
+                {
+                  type: 'input',
+                  content: text,
+                  whenBusy: 'followUp',
+                  requestId: `lander-offline:${runtime.conversationId}:${Date.now()}`,
+                },
+                context,
+              )
+          },
+          back: (minutes) => step(`network back after ${minutes} min`),
+        },
+        network,
+      )
   async function runChecks(
     runtime: Runtime,
     context: Context,
@@ -695,9 +780,8 @@ export function createLander(
           if (!settings.push) return { text: 'Not pushed.' }
           await step(`pushing to ${settings.push}`)
           try {
-            await remote(
+            await online(runtime, context, step, source, settings.push)(
               source,
-              signal,
               'push',
               '-q',
               settings.push,
@@ -770,7 +854,12 @@ export function createLander(
             if (!mergedBeforeChecks) {
               await step('preparing')
               const base = await git(path, 'rev-parse', 'HEAD')
-              const fetched = await remoteAhead(path, settings.push, target, signal)
+              const fetched = await remoteAhead(
+                path,
+                settings.push,
+                target,
+                online(runtime, context, step, source, settings.push),
+              )
               if (fetched) {
                 await step(`merging ${settings.push}/${target}`)
                 const conflicts = await tryMerge(path, fetched, `Merge ${settings.push}/${target}`)
@@ -941,7 +1030,12 @@ export function createLander(
             if (!merged) {
               await step('preparing')
               const base = await git(path, 'rev-parse', 'HEAD')
-              const fetched = await remoteAhead(path, settings.push, target, signal)
+              const fetched = await remoteAhead(
+                path,
+                settings.push,
+                target,
+                online(runtime, context, step, source, settings.push),
+              )
               if (fetched) {
                 await step(`merging ${settings.push}/${target}`)
                 const conflicts = await tryMerge(path, fetched, `Merge ${settings.push}/${target}`)
@@ -1029,9 +1123,8 @@ export function createLander(
           if (settings.push) {
             await step(`pushing to ${settings.push}`)
             try {
-              await remote(
+              await online(runtime, context, step, source, settings.push)(
                 source,
-                signal,
                 'push',
                 '-q',
                 settings.push,

@@ -38,6 +38,8 @@ export type BranchesService = {
   starter(id: ConversationId, ctx: Context): Promise<ConversationId | undefined>
   /** Inside `tx`: whether branch `id` has work of its own that will wake it again, so a landing leaves it open. */
   working(tx: Tx, id: ConversationId): Promise<boolean>
+  /** @ultimate's conversation, which hears what the lander cannot settle itself, such as a long network outage. */
+  ultimate(ctx: Context): Promise<ConversationId | undefined>
 }
 /** What a landing asks about the branch it landed; messages provides it. `want` it. */
 export const Branches = defineApi<BranchesService>()('workspaces.branches')
