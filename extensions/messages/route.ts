@@ -17,8 +17,15 @@ import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Messages } from './api.ts'
 import { terminal } from './log.ts'
+import type { Message } from './api.ts'
+import type { Remote } from './refs.ts'
 import { send } from './send.ts'
+import { tell } from './remote.ts'
 import { Started } from './addresses.ts'
+import type { Serves } from './addresses.ts'
+
+/** The lander's card in the starter, an input only when the landing concluded the branch (workspaces' lander.ts). */
+const LANDED = 'workspaces.lander-report'
 
 /** Every task state but `terminal`: queried by status, so finished tasks are never scanned. */
 const LIVE = ['pending', 'running', 'waiting', 'sleeping', 'completing'] as const
@@ -93,39 +100,78 @@ async function children(tx: Tx, id: ConversationId): Promise<boolean> {
 }
 
 /**
- * The branches whose reports or replies made up the starter's run `answered`, when the starter's final answer should
- * reach them: each is the starter's, not concluded, and the starter did not message it during the run. Replies arriving
- * close together share one run (a reply steers a busy starter), so every branch in it hears the answer, or one of them
- * would wait on it forever. An echo (a branch's answer to a routed answer) routes nowhere, so routing goes back and
- * forth at most once; any other input (the user's, a landing card) leaves the answer local.
+ * Where the starter's final answer to its run `answered` goes, when every input was a branch's report or reply, or the
+ * card of its landing: to each branch that is not concluded and that the starter did not message during the run, and,
+ * for a concluded branch that serves an agent's request (`Started.serves`), to that agent, unless the run messaged it.
+ * Replies arriving close together share one run (a reply steers a busy starter), so every branch in it hears the
+ * answer, or one of them would wait on it forever. An echo (a branch's answer to a routed answer) routes nowhere, so
+ * routing goes back and forth at most once; any other input (the user's) leaves the answer local.
  */
 async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
+  const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  // Each branch with the newest message of it the run answers: the starter's messages after it are the run's own.
   const latest = new Map<number, number>()
   for (const entryId of answered) {
     const entry = await tx.entry(entryId as never)
     const data = entry?.data as
-      | { id?: number; from?: unknown; reply?: unknown; echo?: unknown }
+      | { id?: unknown; from?: unknown; reply?: unknown; echo?: unknown }
       | undefined
+    if (entry?.kind === LANDED) {
+      // A landing card is an input only when the landing concluded the branch, which is when its result is ready.
+      const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
+      const branch = results[String(data?.id)]?.conversationId
+      if (branch === undefined || (await tx.doc(Started, branch as ConversationId)).by !== starter)
+        return { branches: [], askers: [] }
+      const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
+      latest.set(branch, Math.max(latest.get(branch) ?? 0, last))
+      continue
+    }
     const report =
       entry?.kind === 'board.reply' || (entry?.kind === 'board.message' && data?.reply === false)
-    if (!report || typeof data?.from !== 'number') return []
+    if (!report || typeof data?.from !== 'number') return { branches: [], askers: [] }
     if (data.echo === true) continue
-    if ((await tx.doc(Started, data.from as ConversationId)).by !== starter) return []
-    latest.set(data.from, Math.max(latest.get(data.from) ?? 0, data.id ?? 0))
+    if ((await tx.doc(Started, data.from as ConversationId)).by !== starter)
+      return { branches: [], askers: [] }
+    latest.set(data.from, Math.max(latest.get(data.from) ?? 0, Number(data.id ?? 0)))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
-  const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  return [...latest].flatMap(([branch, since]) =>
-    concluded.has(branch as ConversationId) ||
-    log.messages.some((m) => m.from === starter && m.to === branch && m.id > since)
-      ? []
-      : [branch],
-  )
+  const messaged = (since: number, to: (m: Message) => boolean) =>
+    log.messages.some((m) => m.from === starter && m.id > since && to(m))
+  const branches: number[] = []
+  const askers: { branch: number; serves: Serves }[] = []
+  for (const [branch, since] of latest) {
+    if (!concluded.has(branch as ConversationId)) {
+      if (!messaged(since, (m) => m.to === branch)) branches.push(branch)
+      continue
+    }
+    // A copy: the doc's proxy is unusable once this commit settles, and `board.route` sends after it.
+    const stored = (await tx.doc(Started, branch as ConversationId)).serves
+    const serves: Serves | undefined = stored && {
+      message: stored.message,
+      from: stored.from,
+      ...(stored.remote ? { remote: { ...stored.remote } } : {}),
+    }
+    if (
+      serves &&
+      // The early answer to the request itself ("started #X") may be logged after a quick branch's reply: not a result.
+      !messaged(
+        since,
+        (m) =>
+          m.re !== serves.message &&
+          (serves.from === 'remote'
+            ? m.to === 'remote' && m.remote?.project === serves.remote!.project
+            : m.to === serves.from),
+      )
+    )
+      askers.push({ branch, serves })
+  }
+  return { branches, askers }
 }
 
-/** One message `board.route` sends, with `send`'s options. */
+/** One message `board.route` sends, with `send`'s options; `remote` sends it to another project's Ultimate. */
 interface Route {
-  to: number
+  to: number | 'remote'
+  remote?: Remote
   text: string
   requestId: string
   options: { note?: boolean; report?: boolean; echo?: boolean; routed?: EntryId }
@@ -185,17 +231,27 @@ export function route(host: ExtensionHost) {
             return []
           const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
           if (task.input.down) {
-            const branches = await reported(host, tx, by, answered)
+            if (!text.trim()) return []
+            const { branches, askers } = await reported(host, tx, by, answered)
             const together =
               branches.length > 1
                 ? `(This answers ${branches.map((b) => `#${b}`).join(' and ')} together.)\n\n`
                 : ''
-            return branches.map((to) => ({
-              to,
-              text: together + text,
-              requestId: `route:${answer}:${to}`,
-              options: { routed: answer },
-            }))
+            return [
+              ...branches.map((to) => ({
+                to,
+                text: together + text,
+                requestId: `route:${answer}:${to}`,
+                options: { routed: answer },
+              })),
+              ...askers.map(({ branch, serves }) => ({
+                to: serves.from,
+                ...(serves.remote ? { remote: serves.remote } : {}),
+                text: `Result of #${branch}, which worked on your message ${serves.message}:\n\n${text}`,
+                requestId: `route:${answer}:asker:${branch}`,
+                options: { routed: answer },
+              })),
+            ]
           }
           // board.delivery returns an answer to a reply-enabled message to whoever sent it. To the starter's, that is
           // where the answer goes; when every input was another conversation's question (a sibling's, a subagent's),
@@ -235,12 +291,28 @@ export function route(host: ExtensionHost) {
           }
           return up(text, { echo })
         }, ctx)
-        for (const { to, text, requestId, options } of routed)
-          if (text.trim())
-            await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
-              requestId,
-              ...options,
+        for (const { to, remote, text, requestId, options } of routed) {
+          if (!text.trim()) continue
+          if (to === 'remote') {
+            await tell(
+              host,
+              id,
+              { project: remote!.project, machine: remote!.machine, text, reply: false },
+              ctx,
+              undefined,
+              { key: requestId, routed: options.routed! },
+            ).catch((error: unknown) => {
+              // tell already marked the message failed in the log, where the user sees it; a retry would not reach
+              // an Ultimate that is down either, and the route must still finish.
+              void error
             })
+            continue
+          }
+          await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
+            requestId,
+            ...options,
+          })
+        }
         await runtime.commit(() => terminal, ctx)
       },
     },

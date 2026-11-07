@@ -75,6 +75,13 @@ conversation that started you is a note, and stopping with nothing under way is 
   report. A reply steers a busy starter, so replies arriving close together share one run: each branch in it gets the
   answer, prefixed with which branches it answers together, or one would wait on it forever. User input, notes and
   landing cards in the run route nothing, and a message to the user ends the run without a final answer.
+- **Results to the asker.** A branch started while its starter owed an agent an answer (a reply-enabled message it
+  had read, another project's Ultimate's included) records that request in `board.started` as `serves`. Its reply
+  and report inputs say so in one line. Once the branch is concluded (by the starter during the run, or by the
+  landing whose card is the run's input), the starter's final answer goes to that agent instead, as a one-way message
+  with `routed` (`Result of #id, which worked on your message n:`), unless the run already messaged it. Another
+  project's Ultimate gets it as a one-way `tell` keyed by the route's request id, so a replayed route sends it once.
+  The early answer ("started #id") still settles the request.
 
 Routing cannot loop: a branch's report that answers only routed messages carries `echo: true`, and the starter's
 answer to an echo stays local, so it goes back and forth at most once without an explicit `message`. Request id

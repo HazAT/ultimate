@@ -15,7 +15,7 @@ import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
-import { remoteLabel } from './addresses.ts'
+import { remoteLabel, servesLine } from './addresses.ts'
 
 export function delivery(host: ExtensionHost) {
   const refresh = async (id: number, ctx: Context) => {
@@ -39,7 +39,14 @@ export function delivery(host: ExtensionHost) {
     },
     | { phase: 'deliver' }
     /** `stopped`: the recipient's run was stopped before it answered; `failed` is set too, as for any non-answer. */
-    | { phase: 'reply'; message: Message; failed: boolean; stopped?: boolean },
+    | {
+        phase: 'reply'
+        message: Message
+        failed: boolean
+        stopped?: boolean
+        /** `servesLine` for the starter reading a branch's reply, decided with the reply. */
+        serves?: string
+      },
     null
   >({
     name: 'board.delivery',
@@ -72,9 +79,11 @@ export function delivery(host: ExtensionHost) {
             ...(m.remote ? { remote: m.remote } : {}),
           },
         }
+        // A replayed delivery places its first body again by request id.
+        const serves = await host.harness().commit((tx) => servesLine(tx, m.from, m.to), ctx)
         const body = task.input.note
-          ? `Note from ${task.input.fromLabel} (one-way update, no answer goes back):\n${m.text}`
-          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}`
+          ? `Note from ${task.input.fromLabel} (one-way update, no answer goes back):\n${m.text}${serves}`
+          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}${serves}`
         const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
         const requestId = `board:${m.id}`
         const placing = task.input.note
@@ -207,6 +216,7 @@ export function delivery(host: ExtensionHost) {
             ...(error ? { error } : {}),
             ...(m.remote ? { remote: m.remote } : {}),
           })
+          const line = await servesLine(tx, response.from, response.to)
           return {
             status: 'running',
             checkpoint: {
@@ -214,6 +224,7 @@ export function delivery(host: ExtensionHost) {
               message: response,
               failed,
               ...(stopped ? { stopped } : {}),
+              ...(line ? { serves: line } : {}),
             },
           }
         }, ctx)
@@ -280,7 +291,7 @@ export function delivery(host: ExtensionHost) {
               ...(m.remote ? { remote: m.remote } : {}),
             },
           }
-          const body = `Reply from ${task.input.toLabel} to your message ${m.re}${stopped ? ' (stopped)' : failed ? ' (failed)' : ''}:\n${m.text}`
+          const body = `Reply from ${task.input.toLabel} to your message ${m.re}${stopped ? ' (stopped)' : failed ? ' (failed)' : ''}:\n${m.text}${task.state.checkpoint.serves ?? ''}`
           const content = images.length ? [{ type: 'text' as const, text: body }, ...images] : body
           await sender?.submit(
             {

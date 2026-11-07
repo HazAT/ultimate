@@ -1,16 +1,18 @@
 /** Who a message is from and to: resolving addresses, naming senders, and a subagent's parent. */
 import type { Context } from '@earendil-works/chord'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote } from './refs.ts'
 
+/** The agent's request a branch works on: the message its starter still owed an answer when it started the branch. */
+export type Serves = { message: number; from: number | 'remote'; remote?: Remote }
 /**
- * Who started a branch through `branch`, so its later final answers reach that conversation. `yielded` is the newest
- * generation observed, so a replayed hook creates no second observer.
+ * Who started a branch through `branch`, so its later final answers reach that conversation, and the request it serves.
+ * `yielded` is the newest generation observed, so a replayed hook creates no second observer.
  */
-export const Started = defineDoc<{ by?: number; yielded?: number }>({
+export const Started = defineDoc<{ by?: number; yielded?: number; serves?: Serves }>({
   kind: 'board.started',
   checkpointWhen: () => false,
   version: 1,
@@ -23,6 +25,21 @@ export const Started = defineDoc<{ by?: number; yielded?: number }>({
 export async function starterOf(host: ExtensionHost, id: number | 'user', ctx: Context) {
   if (typeof id !== 'number') return undefined
   return (await host.harness().snapshot(Started, id as ConversationId, ctx))?.by
+}
+/**
+ * Inside `tx`, for the starter `to` reading branch `from`'s reply or report: whose request the branch serves, and that
+ * concluding it sends the starter's final answer there. Empty for anything else.
+ */
+export async function servesLine(
+  tx: Tx,
+  from: number | 'user' | 'remote',
+  to: number | 'user' | 'remote',
+) {
+  if (typeof from !== 'number') return ''
+  const { by, serves } = await tx.doc(Started, from as ConversationId)
+  if (!serves || by !== to) return ''
+  const asker = serves.from === 'remote' ? remoteLabel(serves.remote!) : `#${serves.from}`
+  return `\n#${from} works on ${asker}'s message ${serves.message}. Once #${from} is concluded, your final answer to it goes to ${asker} instead.`
 }
 /** The conversation that started `id` as a subagent, which is the only one it may message. */
 export async function parentOf(host: ExtensionHost, id: number, ctx: Context) {
