@@ -6,6 +6,7 @@ import { fetchOrigin, standing } from '../../lib/fast-forward.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 // oxlint-disable-next-line no-restricted-imports -- the core's process-safe lock, shared with secrets and tailscale
 import { acquireLock } from '../../server/lock.ts'
+import { conflictsPredicted } from './merge.ts'
 import type { Layers, UpdateState } from './refs.ts'
 
 /** Origin is fetched when the last fetch of the clone, by any Ultimate on it, is older than this. */
@@ -70,31 +71,45 @@ export async function withLock<T>(lock: string, work: () => Promise<T>): Promise
   }
 }
 
-/** The clone against `origin/<default branch>` as of the last fetch: commits behind, what they touch, refusals. */
+/**
+ * The clone against `origin/<default branch>` as of the last fetch: commits behind, what they touch, whether a
+ * diverged branch would conflict with a merge, and refusals.
+ */
 export async function cloneState(
   git: Git,
   root: string,
 ): Promise<
   Pick<
     UpdateState,
-    'branch' | 'behind' | 'ahead' | 'commits' | 'layers' | 'refused' | 'fetchedAt'
+    | 'branch'
+    | 'behind'
+    | 'ahead'
+    | 'diverged'
+    | 'conflicts'
+    | 'commits'
+    | 'layers'
+    | 'refused'
+    | 'fetchedAt'
   > & {
     head: string
     remoteHead?: string
-    diverged?: true
   }
 > {
   const head = await git('rev-parse', 'HEAD')
   const at = await fetchedAt(git, root)
   const state = await standing(git)
+  // Predicted for a diverged clone only: a status poll never runs merge-tree for a plain fast-forward.
+  const predicted = state.diverged ? await conflictsPredicted(root, state.remote) : undefined
   const result = {
     head,
     branch: state.branch,
     behind: state.behind,
     ahead: state.ahead,
     commits: [] as UpdateState['commits'],
+    ...(state.diverged
+      ? { diverged: state.diverged, ...(predicted !== undefined ? { conflicts: predicted } : {}) }
+      : {}),
     ...(state.refused ? { refused: state.refused } : {}),
-    ...(state.diverged ? { diverged: state.diverged } : {}),
     ...(at !== undefined ? { fetchedAt: at } : {}),
   }
   if (!state.behind) return result

@@ -103,21 +103,27 @@ export type FastForward = Standing & {
 }
 
 /**
- * Fetch origin and fast-forward the checkout's default branch to it; throws the refusal of `standing` as a `Refusal`. `owe` runs
- * before a fast-forward that changes `pnpm-lock.yaml`, so an install owed is recorded before the lockfile changes.
- * `admit`, checked after the fetch and before the merge, refuses with the reason it returns.
+ * Fetch origin and fast-forward the checkout's default branch to it; throws the refusal of `standing` as a
+ * `Refusal`. `diverged`, when given, replaces that refusal for a branch with commits of its own besides
+ * origin's new ones: it moves the branch itself (a merge that stops on conflicts) and returns what moved it.
+ * `owe` runs before a fast-forward that changes `pnpm-lock.yaml`, so an install owed is recorded before the
+ * lockfile changes. `admit`, checked after the fetch and before the merge, refuses with the reason it returns.
  */
 export async function fastForward(
   git: Git,
   owe?: () => Promise<void>,
   admit?: () => Promise<string | undefined>,
+  diverged?: (state: Standing) => Promise<FastForward>,
 ): Promise<FastForward> {
   // Checked before fetching, so a dirty checkout is refused as such and its remote refs stay as they were.
   if (await git('status', '--porcelain', '--untracked-files=no'))
     throw new Refusal('The checkout has uncommitted changes')
   await fetchOrigin(git)
   const state = await standing(git)
-  if (state.refused) throw new Refusal(state.refused)
+  if (state.refused) {
+    if (state.diverged && diverged) return await diverged(state)
+    throw new Refusal(state.refused)
+  }
   const refused = state.behind ? await admit?.() : undefined
   if (refused) throw new Refusal(refused)
   const before = await git('rev-parse', 'HEAD')

@@ -25,6 +25,10 @@ export type UpdateState = {
   behind: number
   /** Commits of the clone's own that origin lacks. */
   ahead?: number
+  /** The branch has commits of its own besides origin's new ones, so an update merges instead of fast-forwarding. */
+  diverged?: true
+  /** Whether merging origin into the diverged branch would conflict (`git merge-tree`); absent when git can't say (before 2.38). */
+  conflicts?: boolean
   /** The newest of them (at most 5), newest first. */
   commits: { sha: string; subject: string }[]
   /** 2–4 plain lines on what the range brings, from the summary model; absent without one. */
@@ -36,8 +40,9 @@ export type UpdateState = {
   /** Why Update refuses: uncommitted changes, another branch, diverged, the lander landing. */
   refused?: string
   /**
-   * The only refusal is a diverged branch, and the clone is the project this Ultimate serves: `merge` asks @ultimate to
-   * merge origin into it through a branch the lander lands.
+   * The only refusal is a diverged branch, and the clone is the project this Ultimate serves: @ultimate can
+   * merge origin into it through a branch the lander lands. The popover offers that ask when conflicts are
+   * predicted (so Update now does not run), or after a merged update whose check failed, so @ultimate fixes it.
    */
   merge?: true
   /** Why the last fetch failed; the counts are from the fetch before. */
@@ -64,6 +69,16 @@ export type UpdateResult =
       install: 'done' | 'failed' | 'skipped'
       /** The install's last output lines when it failed. */
       installError?: string
+      /** The update merged the branch's own commits with origin's instead of fast-forwarding. */
+      merged?: true
+      /** The restore ref written before the merge: `git reset --hard <ref>` undoes it. */
+      restore?: string
+      /** `pnpm check` after a merge: whether it passed. */
+      check?: 'passed' | 'failed'
+      /** The check's last output lines when it failed. */
+      checkError?: string
+      /** The check failed and the clone is the project: @ultimate can fix it. */
+      fixable?: true
     }
   | { ok: false; refused: string }
 
@@ -72,19 +87,22 @@ export const StateAction = actionRef<null, UpdateState>('update', 'state')
 /** No arguments → fetch origin now (bypassing the hourly gate, under the clone's lock), then the refreshed state. */
 export const CheckAction = actionRef<null, UpdateState>('update', 'check')
 /**
- * Fetch origin, fast-forward the clone's default branch and install when the lockfile changed. Refuses a
- * dirty, diverged or switched clone and while the lander lands into it; never stashes, rebases or resets.
+ * Fetch origin, fast-forward the clone's default branch and install when the lockfile changed; a diverged
+ * branch merges with origin instead, restoring itself on a conflict. Refuses a dirty or switched clone and
+ * while the lander lands into it; never stashes, rebases or resets.
  */
 export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
 /**
- * The user's alone: ask @ultimate to merge `origin/<branch>` into the diverged clone through a coordinator branch;
+ * The user's alone: ask @ultimate to merge `origin/<branch>` into the diverged clone through a coordinator
+ * branch — offered when conflicts are predicted — or to fix a merged update whose `pnpm check` failed;
  * @ultimate's conversation id. Only while `merge` is offered.
  */
 export const MergeAction = actionRef<null, { id: number }>('update', 'merge')
 
 /**
- * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages were
- * installed. The clone lives outside storage, so this commits on its own right after the change.
+ * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages
+ * were installed, `merged` whether it was a merge (then `restore` undoes it and `check` says how `pnpm check`
+ * fared). The clone lives outside storage, so this commits on its own right after the change.
  */
 export const Applied = defineEvent<{
   root: string
@@ -93,6 +111,9 @@ export const Applied = defineEvent<{
   commits: number
   layers: Layers
   install: 'done' | 'failed' | 'skipped'
+  merged?: true
+  restore?: string
+  check?: 'passed' | 'failed'
 }>('update.applied')
 /** Update was refused for `reason` (uncommitted changes, another branch, diverged, the lander landing). */
 export const Refused = defineEvent<{ root: string; reason: string }>('update.refused')
