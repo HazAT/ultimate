@@ -107,6 +107,8 @@ export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TI
   )
   // node:https and node:net callers in this process (the Claude Code relay) ignore the dispatcher and
   // would keep Node's 500 ms default, which fails dual-stack connects with an empty AggregateError.
+  // Origin: https://github.com/HazAT/ultimate/pull/104 (relay failures on macOS); drop when pi-claude-code's
+  // turn-relay.ts sets its own attempt timeout or Node raises the default.
   setDefaultAutoSelectFamilyAttemptTimeout(DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS)
   undici.setGlobalDispatcher(dispatcher)
   // Keep fetch and the dispatcher on the same undici implementation. Node 26.0's
