@@ -120,6 +120,18 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
     const side = await tx.doc(Side, id)
     if (side.of === undefined) throw new Error(`#${id} is not a side chat`)
     const ending = await tx.doc(Ending, id)
+    // An ending whose task faulted or was aborted (a summary failure reopens the copy itself) is no ending: without
+    // this, every retry waited on the dead task again and Discard refused the chat as "already ending".
+    const previous = ending.task === undefined ? undefined : await tx.task(ending.task as TaskId)
+    if (
+      ending.mode &&
+      !side.ended &&
+      (!previous ||
+        (previous.state.status === 'terminal' && previous.state.outcome.status !== 'completed'))
+    ) {
+      delete ending.mode
+      delete ending.task
+    }
     if (mode === 'injected' && ending.mode === mode && ending.task !== undefined)
       return ending.task as TaskId
     if (side.ended || ending.mode) throw new Error(`Side chat #${id} is already ended or ending`)
