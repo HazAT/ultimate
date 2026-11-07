@@ -645,6 +645,7 @@ function landingNote(landing: LandedData) {
     ...(landing.summary ? { summary: landing.summary } : {}),
     ...(landing.feature ? { feature: landing.feature } : {}),
     ...(landing.pushed ? { pushed: landing.pushed } : {}),
+    ...(landing.images ? { images: landing.images } : {}),
   }
   return { text, data }
 }

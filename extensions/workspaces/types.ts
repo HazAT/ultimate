@@ -22,6 +22,8 @@ export type QueueEntry = {
   divergence: string
   state: 'queued' | 'landing'
   subject?: ConversationSubject
+  /** Screenshots the submitter attached as evidence; they stay in its conversation's entry `entry`. */
+  images?: { entry: number }
   step?: string
   /** What the lander did so far, as its conversation logs it. */
   steps: LanderStep[]
@@ -64,6 +66,8 @@ export type LanderOutcome = {
   reason?: string
   /** Output tail behind the reason: conflicting paths, a check's output, git's error. */
   output?: string
+  /** The submitter's screenshots as evidence, from its conversation's entry. */
+  images?: { entry: number }
   /** What the submitter does next, for a failure. */
   hint?: string
 }

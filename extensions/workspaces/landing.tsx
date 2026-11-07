@@ -8,9 +8,21 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { EntryRecord } from '@earendil-works/pi-durable'
 import { MentionText } from '@/components/ai/message'
+import { ToolImage } from '@/components/ai/tool'
 import { Button } from '@/components/ui/button'
-import { api, definePoint, Fold, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import {
+  api,
+  definePoint,
+  Fold,
+  Provided,
+  useConversationSummary,
+  useTranscript,
+  useUltimate,
+} from '@/sdk'
+import { imagesOf } from '../../lib/entries.ts'
+import { maxImages } from '../../shared/protocol.ts'
 import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
 import { GithubAction } from './refs.ts'
 import type { ConversationSubject } from '../conversations/types.ts'
@@ -171,6 +183,35 @@ export function Subject({
   )
 }
 
+/**
+ * The screenshots a submission attached as evidence: they stay in the submitter's entry `entry` of conversation
+ * `from`, read from the loaded transcript or else fetched from its stored history, up to four in a row.
+ */
+function Evidence({ from, entry }: { from: number; entry: number }) {
+  const loaded = useTranscript().find((item) => item.conversationId === from && item.id === entry)
+  const [fetched, setFetched] = useState<EntryRecord>()
+  useEffect(() => {
+    if (loaded) return undefined
+    const controller = new AbortController()
+    api.history(from, entry + 1, controller.signal, entry).then(
+      (page) => setFetched(page.entries.find((item) => item.id === entry)),
+      // Without its entry the card still reads; only the evidence is missing.
+      () => undefined,
+    )
+    return () => controller.abort()
+  }, [from, entry, loaded])
+  const images = imagesOf(loaded ?? fetched).slice(0, maxImages)
+  if (!images.length) return null
+  return (
+    <div className="flex flex-wrap gap-2" data-landing-evidence="">
+      {images.map((image, index) => (
+        // oxlint-disable-next-line react/no-array-index-key -- A fixed attachment may carry the same image twice.
+        <ToolImage alt={`Landing screenshot ${index + 1}`} image={image} key={index} />
+      ))}
+    </div>
+  )
+}
+
 export type LandingTone = 'landed' | 'pushFailed' | 'failed'
 const tones = {
   landed: ['border-l-success/70', 'text-success', CheckIcon, 'landed'],
@@ -189,6 +230,7 @@ export function LandingCard({
   headline,
   subject,
   from,
+  images,
   sha,
   at,
   divergence,
@@ -202,6 +244,8 @@ export function LandingCard({
   subject?: ConversationSubject
   /** The submitting conversation. */
   from: number
+  /** The submitter's screenshots as evidence, from its conversation's entry `entry`. */
+  images?: { entry: number }
   /** The landed commit, for the folded line. */
   sha?: string
   at?: ReactNode
@@ -249,6 +293,7 @@ export function LandingCard({
             <span className="min-w-0 flex-1 break-words text-foreground/90">{headline}</span>
             {at}
           </div>
+          {images && <Evidence entry={images.entry} from={from} />}
           {divergence && (
             <p className="flex items-baseline gap-2 text-muted-foreground">
               <span className="shrink-0 text-[11px]">Diverged</span>
