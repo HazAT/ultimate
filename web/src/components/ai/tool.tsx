@@ -24,6 +24,7 @@ export const Tool = ({ className, ...props }: ComponentProps<typeof Collapsible>
       'group/tool not-prose w-full overflow-hidden rounded-md border border-border/80 bg-card/50 font-mono text-[12px]',
       className,
     )}
+    data-ui="tool"
     {...props}
   />
 )
