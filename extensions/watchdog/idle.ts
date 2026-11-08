@@ -4,6 +4,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
+import { isOpen } from '../../lib/message-state.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 
 const Seen = defineDoc<{ key?: string }>({
@@ -29,11 +30,7 @@ export async function idleNote(
   // A branch waiting on a reply gets 2 h; one that ended its run with nothing to wait on may have stalled: 30 min.
   const waiting = new Set<number>()
   for (const message of messages)
-    if (
-      typeof message.from === 'number' &&
-      message.reply &&
-      (message.state === 'sent' || message.state === 'delivered')
-    )
+    if (typeof message.from === 'number' && isOpen(message))
       (message.to === 'user' ? excluded : waiting).add(message.from)
   const conversations = []
   let cursor: Cursor | undefined

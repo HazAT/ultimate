@@ -3,6 +3,7 @@ import { MessageCircleQuestionIcon, SquareArrowOutUpRightIcon } from 'lucide-rea
 import { Card, cn, events, useConversation, useDocOf, useUltimate } from '@/sdk'
 import { Address, useAccentOf } from './cards.tsx'
 import { MessagesDoc } from './refs.ts'
+import { openQuestion } from './data.tsx'
 
 type Notice = {
   message: number
@@ -27,7 +28,7 @@ export function QuestionPointer({ entry }: { entry: EntryRecord }) {
       )?.data as Notice | undefined,
   )
   const message = useDocOf(1, MessagesDoc)?.messages.find((m) => m.id === id)
-  const open = !outcome && message?.state === 'delivered'
+  const open = !outcome && message !== undefined && openQuestion(message)
   const accent = useAccentOf(from)
   const { showSurface, switchConversation } = useUltimate()
   const [state, text] = outcome

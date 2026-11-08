@@ -1,5 +1,8 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
+
+export { isOpen, isOwed, openQuestion }
 
 /** How another project's Ultimate is named; the server says the same in its model text. */
 export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
@@ -12,10 +15,7 @@ export function answeredMessages(messages: Message[], conversation: number, entr
 
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
 /** What waits on the user: each question to the user they have neither answered nor dismissed. */
-export const waitingOnUser = (log: MessagesData) =>
-  log.messages.filter(
-    (message) => message.to === 'user' && message.reply && message.state === 'delivered',
-  ).length
+export const waitingOnUser = (log: MessagesData) => log.messages.filter(openQuestion).length
 
 /**
  * Where a conversation stands, the one state every view shows:
@@ -77,11 +77,7 @@ export function conversationState(
   return 'idle'
 }
 
-/**
- * Whether conversation `id` waits on the primary agent: a reply-enabled message to it is open, or its latest report
- * (a routed final answer after it stopped with nothing under way) or a branch's reply to the primary agent's message
- * (`awaits`) came after the primary agent's latest message to it and after it was last concluded.
- */
+/** Whether conversation `id` waits on the primary agent: a reply-enabled message to it is open, or a report is pending. */
 function awaitsPrimary(
   id: number,
   primary: number | undefined,
@@ -89,14 +85,29 @@ function awaitsPrimary(
   concludedSince: (id: number) => number | undefined,
 ) {
   if (primary === undefined) return false
-  let reported = false
-  for (const message of log.messages) {
-    if (message.from === id && message.to === primary) {
-      if (isOpen(message)) return true
-      if ((message.report || message.awaits) && !settled(message, concludedSince)) reported = true
-    } else if (message.from === primary && message.to === id) reported = false
-  }
-  return reported
+  return (
+    log.messages.some((m) => m.from === id && m.to === primary && isOpen(m)) ||
+    pendingReport(log.messages, id, primary, concludedSince) !== undefined
+  )
+}
+
+/**
+ * The report `from` left with `to` that `to` has not taken up: `from`'s latest report (a routed final answer after it
+ * stopped with nothing under way) or reply that awaits `to` (`awaits`), unless `to` messaged `from` since, or `from`
+ * was concluded after sending it. One rule for both sides: `from` shows as awaiting `to`, and `to` owes it.
+ */
+export function pendingReport(
+  messages: readonly Message[],
+  from: number | 'user' | 'remote',
+  to: number | 'user' | 'remote',
+  concludedSince: (id: number) => number | undefined,
+) {
+  let pending: Message | undefined
+  for (const m of messages)
+    if (m.from === from && m.to === to) {
+      if ((m.report || m.awaits) && !settled(m, concludedSince)) pending = m
+    } else if (m.from === to && m.to === from) pending = undefined
+  return pending
 }
 
 /** A state in the sidebar's and System's lower-case words; `waiting` counts what waits on you. */
@@ -306,16 +317,17 @@ export function openMessages(
   id: number,
   concludedSince: (id: number) => number | undefined,
 ) {
-  const reports = new Map<number | 'user' | 'remote', Message>()
-  for (const m of messages)
-    if (m.to === id && m.report && !settled(m, concludedSince)) reports.set(m.from, m)
-    else if (m.from === id) reports.delete(m.to)
+  const reporters = new Set(
+    messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
+  )
+  const reports = [...reporters].flatMap(
+    (from) => pendingReport(messages, from, id, concludedSince) ?? [],
+  )
   return {
-    waiting: messages.filter((m) => m.from === id && isOpen(m) && m.state === 'delivered'),
-    owed: [
-      ...messages.filter((m) => m.to === id && isOpen(m) && m.state === 'delivered'),
-      ...reports.values(),
-    ].toSorted((a, b) => a.id - b.id),
+    waiting: messages.filter((m) => m.from === id && isOwed(m)),
+    owed: [...messages.filter((m) => m.to === id && isOwed(m)), ...reports].toSorted(
+      (a, b) => a.id - b.id,
+    ),
     delivering: messages.filter((m) => m.from === id && m.state === 'sent'),
   }
 }
@@ -323,10 +335,6 @@ export function openMessages(
 /** Whether a report is settled: its sender was concluded after sending it (or is concluded now). */
 export const settled = (message: Message, concludedSince: (id: number) => number | undefined) =>
   typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
-
-/** A reply-enabled message still waiting for its answer. */
-export const isOpen = (message: Message) =>
-  message.reply && (message.state === 'sent' || message.state === 'delivered')
 
 /** Who waits on whom for one message; `yours` is an open question to the user. */
 export function messageStatus(message: Message) {

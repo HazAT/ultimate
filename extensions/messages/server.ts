@@ -21,6 +21,7 @@ import { callerOf } from './caller.ts'
 import { CallerAction, SettleAction } from './refs.ts'
 import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { parentOf, Started, starterOf } from './addresses.ts'
@@ -324,7 +325,7 @@ export default function messages(host: ExtensionHost) {
             .commit(
               async (tx) =>
                 (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
-                  (m) => m.to === api.conversationId && m.reply && m.state === 'delivered',
+                  (m) => m.to === api.conversationId && isOwed(m),
                 ),
               ctx,
             )

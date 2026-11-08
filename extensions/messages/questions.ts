@@ -8,6 +8,7 @@ import { strEnum } from '../../lib/schema.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { formatAgo } from '../../lib/ago.ts'
+import { openQuestion } from '../../lib/message-state.ts'
 import { Messages } from './api.ts'
 import { Standing } from '../subagents/api.ts'
 import type { Message } from './api.ts'
@@ -112,8 +113,7 @@ export function checkQuestions(questions: Question[]): Question[] {
   })
 }
 
-/** A reply-enabled message to the user that the user has neither answered nor dismissed yet. */
-export const openQuestion = (m: Message) => m.to === 'user' && m.reply && m.state === 'delivered'
+export { openQuestion }
 /** A message in one line: its questions by number, else its first line that asks something, else its first line, clipped. */
 export const gist = (message: Pick<Message, 'text' | 'questions'>) => {
   const lines = message.questions?.length

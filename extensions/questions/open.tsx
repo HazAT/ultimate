@@ -1,3 +1,4 @@
+import { openQuestion } from '../../lib/message-state.ts'
 import type { Question } from '../messages/refs.ts'
 
 /** The fields of a message the answer card reads. */
@@ -11,8 +12,7 @@ export type Message = {
 }
 
 /** Whether a message to the user still waits on their answer or dismissal. */
-export const waitsOnUser = (message: Message) =>
-  message.to === 'user' && message.reply && message.state === 'delivered'
+export const waitsOnUser = (message: Message) => openQuestion(message)
 
 /** The questions of a message while it still waits on the user's reply; none once it is answered or dismissed. */
 export function openQuestions(message: Message) {

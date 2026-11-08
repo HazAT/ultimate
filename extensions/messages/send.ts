@@ -8,6 +8,7 @@ import { Messages, MessageSent } from './api.ts'
 import type { Question } from './api.ts'
 import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
+import { isOwed } from '../../lib/message-state.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
@@ -146,9 +147,7 @@ export async function send(
     if (from !== 'user' && input.reply !== false) {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
       // Only a message the agent has read is owed; one still queued is unread and gets its own turn.
-      const pending = log.messages.find(
-        (m) => m.to === from && m.from === to && m.reply && m.state === 'delivered',
-      )
+      const pending = log.messages.find((m) => m.to === from && m.from === to && isOwed(m))
       // A message to the user who is owed an answer is that answer, with its questions and images.
       if (pending && to === 'user') {
         pending.state = 'answered'

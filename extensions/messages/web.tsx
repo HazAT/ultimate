@@ -24,6 +24,7 @@ import {
 import {
   answeredMessages,
   emptyMessages,
+  openQuestion,
   scriptMessaged,
   threadRow,
   ultimateCompact,
@@ -85,13 +86,7 @@ function MessageNavigation() {
   useEffect(() => {
     if (target?.message === undefined || !log) return
     const asked = log.messages.find((m) => m.id === target.message)
-    if (
-      asked?.call &&
-      asked.from === target.conversation &&
-      asked.to === 'user' &&
-      asked.reply &&
-      asked.state === 'delivered'
-    ) {
+    if (asked?.call && asked.from === target.conversation && openQuestion(asked)) {
       showSurface('agent')
       setTarget({ conversation: target.conversation, call: asked.call })
     } else setTarget(undefined)

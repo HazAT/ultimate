@@ -10,6 +10,7 @@ import { imagesParameter } from './images.ts'
 import { send } from './send.ts'
 import { Started } from './addresses.ts'
 import { Messages } from './api.ts'
+import { isOwed } from '../../lib/message-state.ts'
 
 export const branchTool = (host: ExtensionHost) =>
   defineTool({
@@ -86,7 +87,7 @@ export const branchTool = (host: ExtensionHost) =>
           // works on: its result reaches that agent once it is concluded (route.ts). Without the link, a result routed
           // to a concluded branch reached no one (danielgriesser.com #13859/15161, @writer's briefing).
           const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
-            (m) => m.to === from && m.reply && m.from !== 'user' && m.state === 'delivered',
+            (m) => m.to === from && m.from !== 'user' && isOwed(m),
           )
           if (owed && owed.from !== 'user')
             started.serves = {

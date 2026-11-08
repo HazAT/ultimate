@@ -447,6 +447,19 @@ describe('conversation state', () => {
     expect(conversationState({ ...branch, concludedSince: 200 }, messagesLog(report))).toBe('idle')
   })
 
+  it('owes what the branch awaits: a reply that awaits its starter shows on both sides until answered', () => {
+    // Two report rules disagreed: a branch's reply showed it as awaiting @ultimate while @ultimate's chip owed nothing.
+    const reply = { from: 5, to: 3, reply: false, re: 1, awaits: true as const, at: 100 }
+    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
+    const owed = (...more: Partial<Message>[]) =>
+      openMessages(messagesLog(reply, ...more).messages, 3, () => undefined).owed.map((m) => m.id)
+    expect(conversationState(branch, messagesLog(reply))).toBe('awaiting')
+    expect(owed()).toEqual([1])
+    const answer = { from: 3, to: 5, reply: false, at: 200 }
+    expect(conversationState(branch, messagesLog(reply, answer))).toBe('idle')
+    expect(owed(answer)).toEqual([])
+  })
+
   it('says every state in a word, so a standing row or lane never falls back to idle', () => {
     // A standing agent (not the primary) asking @ultimate shows it, rather than idle.
     const standing = { id: 7, kind: 'other' as const, runState: 'answered' as const, primary: 3 }

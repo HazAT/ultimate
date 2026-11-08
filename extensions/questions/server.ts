@@ -2,12 +2,11 @@ import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durabl
 import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
-import type { Message, Question } from '../messages/api.ts'
+import type { Question } from '../messages/api.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { openQuestion as open } from '../../lib/message-state.ts'
 import { AnswerAction, DismissAction } from './refs.ts'
 
-const open = (message: Message) =>
-  message.to === 'user' && message.reply && message.state === 'delivered'
 const NOT_OPEN = 'These questions are no longer open'
 
 function validAnswers(value: unknown): value is { question: string; answer: string }[] {

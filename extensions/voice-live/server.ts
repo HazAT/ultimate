@@ -14,6 +14,7 @@ import { obj, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { openQuestion } from '../../lib/message-state.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
 import type { Question } from '../messages/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
@@ -239,9 +240,7 @@ export function answerTask(host: ExtensionHost) {
         let question = await runtime.memo<number | false>('question', ctx)
         if (question === undefined) {
           const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-          const open = log?.messages.findLast(
-            (m) => m.from === main && m.to === 'user' && m.reply && m.state === 'delivered',
-          )
+          const open = log?.messages.findLast((m) => m.from === main && openQuestion(m))
           question = await runtime.memo('question', open?.id ?? false, ctx)
         }
         let receipt

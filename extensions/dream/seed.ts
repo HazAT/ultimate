@@ -4,6 +4,7 @@ import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
+import { openQuestion } from '../../lib/message-state.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import type { Todo } from '../todos/refs.ts'
@@ -66,7 +67,7 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
     // the message itself when it asks none.
     const questions: Seed['questions'] = []
     for (const message of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages) {
-      if (message.to !== 'user' || !message.reply || message.state !== 'delivered') continue
+      if (!openQuestion(message)) continue
       const ref = `#${message.id}`
       if (message.questions?.length)
         for (const { text } of message.questions) questions.push({ text, ref })

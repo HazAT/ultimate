@@ -3,7 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { api, cn, defineWebExtension, errorMessage, events, useDocOf, useUltimate } from '@/sdk'
-import { MessagesDoc } from '../messages/ui.tsx'
+import { isOpen, MessagesDoc } from '../messages/ui.tsx'
 import { KeyAction, PresentAction, SubscribeAction, TestAction, UnsubscribeAction } from './refs.ts'
 import type { Subscription } from './refs.ts'
 
@@ -95,7 +95,7 @@ function Pusher() {
   // A question answered on its card or another device takes its notification with it.
   const log = useDocOf(1, MessagesDoc)
   const settled = log?.messages
-    .filter((m) => m.to === 'user' && m.reply && m.state !== 'sent' && m.state !== 'delivered')
+    .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
     .map((m) => `message:${m.id}`)
     .join(' ')
   useEffect(() => {
