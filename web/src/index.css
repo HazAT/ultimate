@@ -235,6 +235,72 @@
   }
 }
 
+/*
+ * Phone layout: the same building blocks, without boxes inside the page. Tool calls, cards and message cards run edge
+ * to edge as rows split by hairlines, and the composer is the one raised surface, a sheet on the status line.
+ * Unlayered, so it wins over the components' utility classes; it hangs on `data-ui` hooks only.
+ */
+@media (width < 48rem) {
+  [data-ui='transcript'] {
+    --gutter: 0.75rem;
+    padding-inline: var(--gutter);
+  }
+  /* use-stick-to-bottom reserves a scrollbar gutter on both edges inline; a phone's scrollbar overlays the content, so
+     the reserved 10px would keep every row off the screen's edges. */
+  :has(> [data-ui='transcript']) {
+    scrollbar-gutter: auto !important;
+  }
+  /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card, final answer. Inside an
+     opened step list they stay in its indented column, only losing their rounded box. The user's own bubble stays. */
+  :is(
+    [data-ui='transcript'] [data-tool-call-id] > [data-ui='tool'],
+    [data-ui='transcript'] [data-ui='card'],
+    [data-ui='transcript'] [data-ui='message-card-body'],
+    [data-ui='transcript'] [data-ui='message-card'][data-message-input],
+    [data-ui='transcript'] [data-final],
+    [data-ui='pinned-prompt'] [data-ui='turn-header']
+  ) {
+    border-radius: 0;
+    border-inline-end-width: 0;
+    &:not([data-ui='transcript-steps'] *) {
+      width: auto;
+      max-width: none;
+      margin-inline: calc(-1 * var(--gutter));
+    }
+    /* Cards and messages keep their accent edge; a tool call or an answer is just a row. */
+    &:not([data-ui='card'], [data-message-input]) {
+      border-inline-start-width: 0;
+    }
+  }
+  /* Back-to-back tool calls form one list: the gap closes and their hairlines overlap. */
+  :is([data-ui='transcript'], [data-ui='transcript-steps'])
+    > :has(> [data-from] > [data-tool-call-id]:only-child > [data-ui='tool'])
+    + :has(> [data-from] > [data-tool-call-id]:first-child > [data-ui='tool']) {
+    margin-top: calc(-0.75rem - 1px);
+  }
+  [data-ui='pinned-prompt'] [data-ui='turn-header'] {
+    border-top-width: 0;
+  }
+  /* A question card's open question needs no frame of its own inside the card; its choices stay tappable boxes. */
+  [data-ui='message-card-body'] fieldset[data-current] {
+    border-color: transparent;
+    background: none;
+  }
+  [data-ui='composer'] {
+    padding: 0;
+    max-width: none;
+    & form {
+      border-width: 1px 0 0;
+      border-radius: 1rem 1rem 0 0;
+      box-shadow: 0 -4px 16px -8px rgb(0 0 0 / 0.25);
+    }
+  }
+  /* The composer's sheet sits on the status line, so the line needs no rule of its own. */
+  :has([data-ui='composer']) > [data-ui='status-line'] {
+    border-top-width: 0;
+  }
+}
+
 /* Touch browsers zoom into a focused field set smaller than 16px. Unlayered, so it wins over text utilities. */
 @media (pointer: coarse) {
   input,

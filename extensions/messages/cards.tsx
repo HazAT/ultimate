@@ -257,7 +257,10 @@ export function Bubble({
           <Body pending={writing ? 'Writing you a message…' : undefined} text={text} />
         )}
       </div>
-      <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/60 empty:hidden [&>:first-child]:border-t-0">
+      <div
+        className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/60 empty:hidden [&>:first-child]:border-t-0"
+        data-ui="message-card-body"
+      >
         {message?.images && <MessageImages conversation={from} entry={message.images.entry} />}
         {children}
         {answer && <AttachedAnswer answer={answer} question={message!} />}
