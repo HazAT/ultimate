@@ -16,13 +16,12 @@ import {
   waitingOnUser,
   UserActionsProvider,
   useUserActions,
-  useOpenUserAction,
 } from '../messages/ui.tsx'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { primaryLabel } from './label.ts'
 
-/** Renders with how many questions wait on the user's answer or dismissal. */
+/** Renders with how many questions and extension-owned actions wait on the user. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
   return children(waitingOnUser(useDocOf(1, MessagesDoc) ?? emptyMessages, useUserActions()))
 }
@@ -65,8 +64,6 @@ export function UltimateButton() {
 const name = 'ultimate'
 
 function Primary({ parked }: { parked?: ReadonlySet<number> }) {
-  const pending = useUserActions()
-  const openUserAction = useOpenUserAction()
   const actions = useUltimate()
   const id = useDocOf(1, StandingDoc)?.[name]
   const tasks = useTasks()
@@ -100,9 +97,7 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
                     )}
                     data-ui="ultimate-button"
                     data-ultimate-button
-                    onClick={() =>
-                      pending[0] ? openUserAction(pending[0]) : void talkToUltimate(actions)
-                    }
+                    onClick={() => void talkToUltimate(actions)}
                     type="button"
                   >
                     <AgentMark

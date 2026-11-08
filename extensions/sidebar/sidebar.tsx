@@ -407,10 +407,8 @@ function Tree({
           state === 'working' || landing ? 'working' : state === 'waits' ? 'waiting' : 'idle'
         }
         onOpen={() => {
-          const approval = isUltimate
-            ? userActions[0]
-            : userActions.find((a) => a.conversation === conversation?.id)
-          if (state === 'waits' && approval) return openUserAction(approval)
+          const approval = userActions.find((a) => a.conversation === conversation?.id)
+          if (!isUltimate && state === 'waits' && approval) return openUserAction(approval)
           return conversation && !isUltimate
             ? actions.switchConversation(conversation.id)
             : void talkToUltimate(actions)

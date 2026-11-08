@@ -1,5 +1,5 @@
 /** Live, extension-owned actions that wait on the user without creating another question or running an agent. */
-import { createContext, useContext } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AllProvided, definePoint, events, useConversations, useNow, useUltimate } from '@/sdk'
 import { liveUserActions } from './data.tsx'
@@ -30,47 +30,68 @@ export function useUserActions(conversation?: number) {
     : actions.filter((a) => a.conversation === conversation)
 }
 
-/** Share the collected actions across a status view. No source state is copied or persisted here. */
+/** Share live descriptors across a status view; pending state stays in the providers' durable documents. */
 export function UserActionsProvider({ children }: { children: ReactNode }) {
   const ids = useConversations()
     .filter((conversation) => conversation.ownerTaskId === undefined)
     .map((conversation) => conversation.id)
+  const [sources, setSources] = useState<Record<number, readonly PendingUserAction[]>>({})
+  const update = useCallback((id: number, actions: readonly PendingUserAction[]) => {
+    setSources((current) => {
+      const previous = current[id] ?? []
+      if (
+        previous.length === actions.length &&
+        previous.every((action, index) => {
+          const candidate = actions[index]
+          return (
+            action.id === candidate.id &&
+            action.label === candidate.label &&
+            action.entry === candidate.entry &&
+            action.expiresAt === candidate.expiresAt
+          )
+        })
+      )
+        return current
+      const next = { ...current }
+      if (actions.length) next[id] = actions
+      else delete next[id]
+      return next
+    })
+  }, [])
+  const actions = Object.entries(sources).flatMap(([id, values]) =>
+    values.map((action) => ({ ...action, conversation: Number(id) })),
+  )
   return (
-    <Collect ids={ids} index={0} actions={[]}>
-      {(actions) => <LiveActions actions={actions}>{children}</LiveActions>}
-    </Collect>
+    <>
+      <Observers ids={ids} update={update} />
+      <LiveActions actions={actions}>{children}</LiveActions>
+    </>
   )
 }
 
-function Collect({
-  ids,
-  index,
-  actions,
-  children,
-}: {
-  ids: readonly number[]
-  index: number
-  actions: readonly UserAction[]
-  children: (actions: readonly UserAction[]) => ReactNode
-}) {
-  const id = ids[index]
-  if (id === undefined) return children(actions)
-  return (
-    <AllProvided input={id} point={PendingUserActions}>
-      {(values) => (
-        <Collect
-          ids={ids}
-          index={index + 1}
-          actions={[
-            ...actions,
-            ...values.flatMap((value) => value.map((a) => ({ ...a, conversation: id }))),
-          ]}
-        >
-          {children}
-        </Collect>
-      )}
+type Update = (id: number, actions: readonly PendingUserAction[]) => void
+
+/** Keep observers beside the view, not wrapped around it: changing conversations must not remount its drafts. */
+function Observers({ ids, update }: { ids: readonly number[]; update: Update }) {
+  return ids.map((id) => (
+    <AllProvided key={id} input={id} point={PendingUserActions}>
+      {(values) => <Observed id={id} values={values} update={update} />}
     </AllProvided>
-  )
+  ))
+}
+
+function Observed({
+  id,
+  values,
+  update,
+}: {
+  id: number
+  values: readonly (readonly PendingUserAction[])[]
+  update: Update
+}) {
+  useEffect(() => update(id, values.flat()), [id, values, update])
+  useEffect(() => () => update(id, []), [id, update])
+  return null
 }
 
 function LiveActions({
@@ -80,11 +101,12 @@ function LiveActions({
   actions: readonly UserAction[]
   children: ReactNode
 }) {
-  const now = useNow(
+  useNow(
     1000,
-    actions.some((action) => action.expiresAt !== undefined),
+    actions.some((action) => action.expiresAt !== undefined && action.expiresAt > Date.now()),
   )
-  const live = liveUserActions(actions, now)
+  // A document update can cross the deadline before the clock's next tick.
+  const live = liveUserActions(actions, Date.now())
   return <ActionsContext.Provider value={live}>{children}</ActionsContext.Provider>
 }
 
@@ -92,9 +114,9 @@ function LiveActions({
 export function useOpenUserAction() {
   const { showSurface, switchConversation } = useUltimate()
   return (action: UserAction) => {
-    showSurface('agent')
-    switchConversation(action.conversation)
     if (action.entry !== undefined)
       events.emit('messages:open', { conversation: action.conversation, entry: action.entry })
+    showSurface('agent')
+    switchConversation(action.conversation)
   }
 }
