@@ -13,7 +13,7 @@ import { git } from '../../lib/git.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { weightDelta } from '../../lib/token-weight.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { CheckRan, SubmissionLanded } from './api.ts'
+import { CheckRan, SubmissionFailed, SubmissionLanded } from './api.ts'
 import { setup } from './setup.ts'
 import { addCheckout, treePath } from './tree.ts'
 import type { Landed, LanderEntry, LanderOutcome, QueueEntry, WorkspaceIndex } from './types.ts'
@@ -436,6 +436,13 @@ export function createLander(
             }
             for (const old of Object.keys(draft.results).slice(0, -kept)) delete draft.results[old]
             await log(tx, runtime.conversationId, entry, outcome)
+            if (outcome.outcome === 'failed')
+              await host.emit(tx, SubmissionFailed, {
+                submission: id,
+                conversationId: entry.conversationId,
+                target: entry.target,
+                reason: outcome.reason ?? '',
+              })
             if (outcome.outcome === 'landed') {
               const subject = entry.subject ?? {}
               const commits = (outcome.commits ?? []).map((commit) => {

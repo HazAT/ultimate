@@ -84,6 +84,8 @@ export interface ExtensionInfo {
   layer: 'default' | 'user' | 'project' | 'folder'
   path: string
   actions: string[]
+  /** The durable events its api.ts and refs.ts define with `defineEvent`. */
+  events: string[]
   readme?: string
   facets: { server: boolean; web: boolean }
   server?: {

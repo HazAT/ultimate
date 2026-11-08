@@ -64,6 +64,16 @@ export type LandedData = {
  */
 export const SubmissionLanded = defineEvent<LandedData>('workspaces.landed')
 /**
+ * The lander gave up on submission `submission` of `conversationId` without landing it, for `reason`. Emitted in the
+ * commit that records the outcome; it fails `workspaces.landed`, so a wait on that ends with it.
+ */
+export const SubmissionFailed = defineEvent<{
+  submission: string
+  conversationId: number
+  target: string
+  reason: string
+}>('workspaces.landing-failed', { fails: 'workspaces.landed' })
+/**
  * The lander ran check `command` on submission `submission`: `passed`, `failed`, `flaky` (its rerun passed) or `timeout`
  * (a watchdog stopped it), taking `ms`. Once per run, the rerun too, in the commit that logs its result; a crash
  * before that commit runs the check again, as the lander log shows it.

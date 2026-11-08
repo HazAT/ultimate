@@ -26,6 +26,7 @@ import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
 import { EventFeed, eventLog } from './events.ts'
+import { contractOutline } from '../lib/api-files.ts'
 import type { EventHost } from './events.ts'
 import { extensionApis } from './extension-apis.ts'
 import type { TraceReader } from './trace.ts'
@@ -397,6 +398,7 @@ export async function loadExtensions(
           enabled: records.get(entry.name)?.path === entry.path && records.get(entry.name)!.enabled,
           layer: available.settings.layers.get(entry.name) ?? 'folder',
           actions: [],
+          events: [],
           facets: {
             server: entry.files.includes('server.ts'),
             web: entry.files.includes('web.tsx'),
@@ -525,6 +527,7 @@ export async function loadExtensions(
         ...(core ? { core } : {}),
         layer,
         actions: Object.keys(actions.get(name) ?? {}),
+        events: (await contractOutline({ name, path, enabled })).events,
         readme,
         facets: { server: files.includes('server.ts'), web: files.includes('web.tsx') },
         ...(previous?.server ? { server: previous.server } : {}),

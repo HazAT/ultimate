@@ -91,7 +91,7 @@ function currentContext(): EventContext | undefined {
 }
 
 const record = (entry: EntryRecord): EventRecord => {
-  const envelope = entry.data as Pick<EventRecord, 'v' | 'at' | 'data' | 'context'>
+  const envelope = entry.data as Pick<EventRecord, 'v' | 'at' | 'data' | 'context' | 'fails'>
   return structuredClone({
     id: entry.id,
     name: entry.kind.slice('event.'.length),
@@ -122,6 +122,7 @@ export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, da
       at: new Date().toISOString(),
       data,
       ...(stamp ? { context: stamp } : {}),
+      ...(event.fails ? { fails: event.fails } : {}),
     },
   })
   const emitted = record(entry) as EventRecord<D>

@@ -22,6 +22,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
+import { watchSteer } from '../../lib/steer.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -313,19 +314,35 @@ export default function browserExtension(host: ExtensionHost) {
                         ),
                         ms,
                       )
-                    let outcome: Awaited<ReturnType<typeof wait>>
-                    for (;;) {
-                      try {
-                        outcome = await wait()
-                        break
-                      } catch (error) {
-                        // A reload (hot reload, server swap) destroys the wait, not the sent turn: the page keeps its
-                        // sent records in sessionStorage, so waiting again in the new page is a retry, never a resend.
-                        if (!String(error).includes('Execution context was destroyed')) throw error
-                        context.abortSignal?.throwIfAborted()
-                        api.output('The page reloaded; waiting again\n')
-                        await hook()
+                    // A steer queued meanwhile ends the call with what it has, as it ends an interruptible bash call.
+                    const { promise: steered, resolve: steer } = Promise.withResolvers<'steered'>()
+                    const stopSteer = await watchSteer(api, context, () => steer('steered'))
+                    const started = Date.now()
+                    let outcome: Awaited<ReturnType<typeof wait>> | 'steered'
+                    try {
+                      for (;;) {
+                        try {
+                          outcome = await Promise.race([wait(), steered])
+                          break
+                        } catch (error) {
+                          // A reload (hot reload, server swap) destroys the wait, not the sent turn: the page keeps
+                          // its sent records in sessionStorage, so waiting again in the new page is a retry, never a
+                          // resend.
+                          if (!String(error).includes('Execution context was destroyed'))
+                            throw error
+                          context.abortSignal?.throwIfAborted()
+                          api.output('The page reloaded; waiting again\n')
+                          await hook()
+                        }
                       }
+                    } finally {
+                      await stopSteer()
+                    }
+                    if (outcome === 'steered') {
+                      outcomes.push(
+                        `Step ${index + 1}: interrupted by a steering message after ${Math.round((Date.now() - started) / 1000)}s; later steps did not run`,
+                      )
+                      return undefined
                     }
                     if ('error' in outcome) throw new Error(outcome.error.replace(/^Error: /, ''))
                     value = outcome.result

@@ -28,7 +28,7 @@ import { git } from '../../lib/git.ts'
 import { setup } from '../../extensions/workspaces/setup.ts'
 import type { LanderEntry, WorkspaceIndex } from '../../extensions/workspaces/types.ts'
 import { createLander, landerCheckout, landerPath } from '../../extensions/workspaces/lander.ts'
-import { CheckRan, SubmissionLanded } from '../../extensions/workspaces/api.ts'
+import { CheckRan, SubmissionFailed, SubmissionLanded } from '../../extensions/workspaces/api.ts'
 import lineage, { leaveNote, startBranch } from '../../extensions/lineage/server.ts'
 import { LineageApi, Roots } from '../../extensions/lineage/api.ts'
 import {
@@ -1158,6 +1158,12 @@ it.concurrent('wakes only the submitter on a failed landing and leaves it open',
   const { id: submission } = await f.service.submit(id, 'None', context)
   const [report] = await submitted(f, id)
   expect(report).toContain('was not landed: check failed twice: exit 1')
+  expect(await f.host.eventLog.recent({ events: [SubmissionFailed] })).toMatchObject([
+    {
+      fails: 'workspaces.landed',
+      data: { submission, conversationId: id, reason: 'check failed twice: exit 1' },
+    },
+  ])
   expect(await concludedIds(f)).not.toContain(id)
   expect((await f.service.get(id, context))!.state).toBe('ready')
   const requests = await f.opened.harness.commit(

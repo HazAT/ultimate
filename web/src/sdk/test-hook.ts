@@ -1,7 +1,7 @@
 // `window.ultimate` on pages the browser tool drives: send input, set up state through the page's SDK `api` and wait on
 // Ultimate's state instead of on time.
 import type { EventRecord } from '../../../shared/events.ts'
-import { EVENT_FEED } from '../../../shared/events.ts'
+import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
 import type { State, Store } from './store.ts'
@@ -190,18 +190,32 @@ export function createTestHook(store: Store, api: Api) {
             return `no ${condition.entry} entry in #${id}; last entries: ${kinds.join(', ') || 'none'}`
           },
         )
+      // An event no extension of this server defines never comes: fail now, naming the closest ones.
+      const system = await when(
+        (state) => state.system,
+        left(),
+        () => 'no system info',
+      )
+      const known = [...CORE_EVENTS, ...system.extensions.flatMap((extension) => extension.events)]
+      if (!known.includes(condition.event)) {
+        const near = known.filter((name) => name.split('.')[0] === condition.event.split('.')[0])
+        throw new Error(
+          `Unknown event ${condition.event}; ${near.length ? `did you mean ${near.join(', ')}?` : `known: ${known.join(', ')}`}`,
+        )
+      }
       const where = Object.entries(condition.where ?? {})
-      return when(
+      const matches = (event: EventRecord) =>
+        event.id > (record?.event ?? 0) &&
+        where.every(
+          ([key, value]) =>
+            JSON.stringify((event.data as Record<string, unknown> | null)?.[key]) ===
+            JSON.stringify(value),
+        )
+      const found = await when(
         (state) =>
           feed(state).find(
             (event) =>
-              event.name === condition.event &&
-              event.id > (record?.event ?? 0) &&
-              where.every(
-                ([key, value]) =>
-                  JSON.stringify((event.data as Record<string, unknown> | null)?.[key]) ===
-                  JSON.stringify(value),
-              ),
+              (event.name === condition.event || event.fails === condition.event) && matches(event),
           ),
         left(),
         (state) => {
@@ -211,6 +225,11 @@ export function createTestHook(store: Store, api: Api) {
           return `no matching ${condition.event} event; since: ${names.slice(-8).join(', ') || 'none'}`
         },
       )
+      if (found.name !== condition.event)
+        throw new Error(
+          `${found.name} instead of ${condition.event}: ${JSON.stringify(found.data)}`,
+        )
+      return found
     },
   }
 }

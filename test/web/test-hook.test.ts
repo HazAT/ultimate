@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApi } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
 import { createTestHook } from '../../web/src/sdk/test-hook.ts'
-import type { ConversationSummary } from '../../shared/protocol.ts'
+import type { ConversationSummary, SystemInfo } from '../../shared/protocol.ts'
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
 beforeEach(() => {
@@ -41,7 +41,7 @@ function setup() {
       { id: 1, busy, ...(answerAt === undefined ? {} : { answerAt }) } as ConversationSummary,
     ])
   list(false)
-  return { hook, list, fetch }
+  return { hook, list, fetch, main, server }
 }
 
 it('until idle waits for the sent turn, not the idle state before it starts', async () => {
@@ -92,6 +92,38 @@ it('until idle counts a turn too short to show busy by its answer, and times out
   const late = hook.until('idle', { timeoutMs: 1000 }).catch((error: unknown) => error)
   await vi.advanceTimersByTimeAsync(1000)
   expect(String(await late)).toContain('Timed out after 1s: #1 is still busy')
+})
+
+// A branch waited 35 minutes on `workspaces.submission-landed`, a name nothing emits, while its landing failed (#531986).
+it('until fails at once on an unknown event, and on the event that fails the awaited one', async () => {
+  const { hook, main, server } = setup()
+  main.send('system', {
+    extensions: [
+      { name: 'workspaces', events: ['workspaces.landed', 'workspaces.landing-failed'] },
+    ],
+  } as unknown as SystemInfo)
+  expect(
+    String(await hook.until({ event: 'workspaces.submission-landed' }).catch((error) => error)),
+  ).toContain(
+    'Unknown event workspaces.submission-landed; did you mean workspaces.landed, workspaces.landing-failed?',
+  )
+  const landing = hook
+    .until({ event: 'workspaces.landed', where: { submission: 's1' } })
+    .catch((error: unknown) => error)
+  const failed = (submission: string, id: number) => ({
+    id,
+    name: 'workspaces.landing-failed',
+    fails: 'workspaces.landed',
+    data: { submission, reason: 'check failed twice: pnpm test' },
+  })
+  await vi.advanceTimersByTimeAsync(10)
+  server.of(1)!.send('doc', {
+    kind: 'ultimate.event-feed',
+    value: { events: [failed('s0', 1), failed('s1', 2)] },
+  })
+  expect(String(await landing)).toContain(
+    'workspaces.landing-failed instead of workspaces.landed: {"submission":"s1"',
+  )
 })
 
 it('exposes the page api, so a driven page sets up state with one call', async () => {

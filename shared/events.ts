@@ -19,6 +19,8 @@ export type EventRecord<D extends JsonValue = JsonValue> = {
   at: string
   data: D
   context?: EventContext
+  /** The event this one fails (`defineEvent`'s `fails`): a wait on that event ends with this one as its error. */
+  fails?: string
 }
 
 /** A typed event: `name` like `workspaces.landed`, stored as entry kind `event.<name>`. Plain data, browser-safe. */
@@ -26,6 +28,7 @@ export interface EventToken<D extends JsonValue = JsonValue> {
   readonly name: string
   readonly kind: string
   readonly version: number
+  readonly fails?: string
   is(event: EventRecord | undefined): event is EventRecord<D>
 }
 
@@ -34,13 +37,14 @@ export type EventData<T> = T extends EventToken<infer D extends JsonValue> ? D :
 
 export function defineEvent<D extends JsonValue>(
   name: string,
-  options: { version?: number } = {},
+  options: { version?: number; fails?: string } = {},
 ): EventToken<D> {
   const kind = `event.${name}`
   return {
     name,
     kind,
     version: options.version ?? 1,
+    ...(options.fails ? { fails: options.fails } : {}),
     is: (event): event is EventRecord<D> => event?.kind === kind,
   }
 }
@@ -80,6 +84,11 @@ export const UserInputEvent = defineEvent<
 export const NavigatedEvent = defineEvent<
   { surface: string; conversation?: number } & Partial<Device>
 >('ui.navigated')
+
+/** The events core defines here; extensions declare theirs in their refs.ts, listed in `ExtensionInfo.events`. */
+export const CORE_EVENTS = [NoticeEvent, StartedEvent, UserInputEvent, NavigatedEvent].map(
+  (event) => event.name,
+)
 
 /** Root document with the newest events, which `useEvents()` streams to the browser. */
 export const EVENT_FEED = 'ultimate.event-feed'
