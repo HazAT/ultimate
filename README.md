@@ -55,7 +55,7 @@ and extensions/claude-code/README.md.
 Then:
 1. Check the prerequisites from README "Start": Node 26, pnpm, Git 2.54 or newer, and a Chromium for the screenshot tools. Tell me
    what is missing and how to install it on my system; ask before installing anything system-wide.
-2. Clone the repository unless I'm already in it, run `pnpm install`, then `pnpm link --global` so I get the
+2. Clone the repository unless I'm already in it, run `pnpm install`, then `pnpm add -g .` so I get the
    `ultimate` command; if pnpm's global bin is not on my PATH yet, `pnpm setup` adds it.
 3. Model login, per "Recommended models": for Claude Code, install the CLI and let me run `claude auth login`
    myself; otherwise I log in from Ultimate's command palette (Ctrl+K, ⌘K on macOS) → "Log in to a provider".
@@ -83,7 +83,7 @@ screenshot and browser tools need a Chromium: `/usr/bin/chromium`, Google Chrome
 
 ```bash
 pnpm install
-pnpm link --global  # once, in this clone, to get the `ultimate` command (`pnpm setup` first if pnpm's global bin is not on PATH)
+pnpm add -g .       # once, in this clone, to get the `ultimate` command (`pnpm setup` first if pnpm's global bin is not on PATH)
 pnpm start          # Ultimate on its own repository; opens http://127.0.0.1:4747
 cd ~/Projects/app && ultimate  # or Ultimate on one of your projects
 ```
