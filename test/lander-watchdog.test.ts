@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { withAbortSignal } from '@earendil-works/chord/context'
@@ -172,4 +172,24 @@ it('gives each check its own TMPDIR in the given directory and removes it afterw
   await run('.', 'pnpm test', context, tmpdir(), temp)
   expect(seen && dirname(seen)).toBe(temp)
   expect(await readdir(temp)).toEqual([])
+})
+
+it('keeps the result of a check whose TMPDIR cannot be removed', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'lander-tmp-'))
+  // A process the check left behind can keep writing into its TMPDIR, so removing it fails with ENOTEMPTY. A
+  // read-only folder fails the removal the same way, without a real process or a wait.
+  vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
+    const locked = join(options.env!.TMPDIR!, 'locked')
+    await mkdir(join(locked, 'file'), { recursive: true })
+    await chmod(locked, 0o500)
+    options.onOutput('passed\n')
+    return 0
+  })
+  try {
+    expect(await run('.', 'pnpm test', context, tmpdir(), temp)).toEqual({ summary: 'passed' })
+  } finally {
+    const [left] = await readdir(temp)
+    if (left) await chmod(join(temp, left, 'locked'), 0o700)
+    await rm(temp, { recursive: true, force: true })
+  }
 })

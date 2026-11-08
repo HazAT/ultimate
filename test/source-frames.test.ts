@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest'
-import { sourceFrames } from '../lib/source-frames.ts'
+import { afterEach, expect, it, vi } from 'vitest'
+import { fetchAssets, sourceFrames } from '../lib/source-frames.ts'
 
 // `function Crash(){throw new Error("x")}` from /repo/extensions/a/web.tsx line 3, column 9, in one minified line.
 const script = 'function Crash(){throw new Error("x")}\n//# sourceMappingURL=web-1.js.map\n'
@@ -42,4 +42,23 @@ it('maps bundled frames to their source files and keeps the rest', async () => {
     'http://host/assets/gone.js',
     'http://host/assets/web-1.js.map',
   ])
+})
+
+afterEach(() => vi.unstubAllGlobals())
+
+it("fetches only its own origin's bundle assets", async () => {
+  const requested: string[] = []
+  vi.stubGlobal('fetch', async (url: URL | string) => {
+    requested.push(String(url))
+    return new Response('x')
+  })
+  const read = fetchAssets('http://host')
+  expect(await read('http://127.0.0.1:1/assets/x.js')).toBe('x')
+  expect(requested).toEqual(['http://host/assets/x.js'])
+  requested.length = 0
+  expect(await read('http://host/api/secret.js')).toBeUndefined()
+  expect(await read('http://[bad]/assets/x.js')).toBeUndefined()
+  expect(requested).toEqual([])
+  const text = 'Error\n    at x (http://[bad]/assets/x.js:1:1)'
+  expect(await sourceFrames(text, read)).toBe(text)
 })

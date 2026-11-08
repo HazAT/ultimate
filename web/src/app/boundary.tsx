@@ -2,7 +2,7 @@ import { cn } from 'cn'
 import { MessageSquareShareIcon, PuzzleIcon, TriangleAlertIcon } from 'lucide-react'
 import { Component, Fragment, useContext } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { fetchText, sourceFrames } from '../../../lib/source-frames.ts'
+import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import type { SystemInfo } from '../../../shared/protocol.ts'
 import { errorMessage, shortenPath } from '../sdk/format.ts'
 import { ExtensionNameContext, useExtensions, useSystem } from '../sdk/hooks.ts'
@@ -124,7 +124,7 @@ export function ErrorCard({
                   className="-my-0.5 shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
                   onClick={() =>
                     // The bundle's frames, mapped back to the source files and lines.
-                    void sourceFrames(stack ?? '', fetchText).then((source) =>
+                    void sourceFrames(stack ?? '', fetchAssets(location.origin)).then((source) =>
                       report.send(
                         errorReport(system, {
                           extension,

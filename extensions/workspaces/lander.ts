@@ -226,7 +226,10 @@ export async function runLanderCheck(
   } finally {
     clearTimeout(stallTimer)
     clearTimeout(totalTimer)
-    await rm(tmp, { recursive: true, force: true })
+    // Best effort: detached processes an e2e test leaves behind (supervisors, preview homes) can still be writing here,
+    // the same race #43 fixed in test/sweep-temp.ts. Without retry and catch, rm throws ENOTEMPTY and refuses a landing
+    // whose checks passed. sweepChecks removes the leftover at the next start. Can go once no check leaves writers.
+    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {})
   }
 }
 
@@ -601,7 +604,8 @@ export function createLander(
               if (
                 await merge(
                   entry.tip,
-                  `Merge ${entry.tip.slice(0, 7)} from #${entry.conversationId} into ${target}`,
+                  // The trailer labels the landing in first-parent catch-up rows (lineage/catchup.ts).
+                  `Merge ${entry.tip.slice(0, 7)} from #${entry.conversationId} into ${target}\n\nUltimate-Conversation: ${entry.conversationId}`,
                   `it conflicts with ${target} in`,
                   `Merge ${target} into your workspace, resolve, verify and submit again.`,
                 )
