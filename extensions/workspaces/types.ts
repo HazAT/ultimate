@@ -35,7 +35,10 @@ export type Landed = {
   commits: string[]
   paths: string[]
   flaky: string[]
+  weight?: Weight
 }
+/** Lines and estimated tokens a landing added and removed over the files `lib/token-weight.ts` counts. */
+export type Weight = { added: number; removed: number; tokens: number }
 /** A check's result; a passed or flaky one carries its last output line as `summary`. */
 export type LanderCheck = {
   command: string
@@ -60,6 +63,7 @@ export type LanderOutcome = {
   commits?: string[]
   paths?: string[]
   flaky?: string[]
+  weight?: Weight
   /** `<remote>/<target>` it was pushed to. */
   pushed?: string
   needsRestart?: boolean

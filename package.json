@@ -10,6 +10,7 @@
     "start": "node bin/ultimate.ts",
     "check": "vp check && node scripts/deps.ts",
     "deps": "node scripts/deps.ts",
+    "weigh": "node scripts/weigh.ts",
     "test": "MIMALLOC_ALLOW_THP=0 MIMALLOC_PURGE_DELAY=0 vp test",
     "test:e2e": "MIMALLOC_ALLOW_THP=0 MIMALLOC_PURGE_DELAY=0 vitest run --config test/e2e/vitest.config.ts",
     "setup:machine": "node scripts/setup-machine.ts",
