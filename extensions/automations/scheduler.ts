@@ -152,6 +152,10 @@ export function scheduler(
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, context),
   })
+  /**
+   * Every trigger kind fires here, manual runs included. The seventh fire within an hour (`recentFires`) pauses the
+   * automation and escalates instead; an overlapping prompt run is recorded as skipped, not queued.
+   */
   async function fire(tx: Tx, a: Automation, firedAt: number, text = '') {
     a.recentFires = (a.recentFires ?? []).filter((at) => at > firedAt - 3600000)
     if (a.recentFires.length >= 6) {
@@ -218,6 +222,11 @@ export function scheduler(
     a.runs = a.runs.slice(-50)
     return a.runs.at(-1)!
   }
+  /**
+   * One root-owned task per enabled schedule: plan → sleep → fire. The sleep survives a restart; an overdue fire runs once
+   * on waking and a recurring schedule plans again from now. The fire, its run and the checkpoint commit together.
+   * Pause, edit and delete retire it (`a.scheduler` no longer names it) without stopping runs already started.
+   */
   const Scheduler = defineTask<
     { id: string },
     { phase: 'plan' } | { phase: 'sleep'; until: number } | { phase: 'fire'; until: number },

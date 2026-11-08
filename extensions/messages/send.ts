@@ -154,7 +154,8 @@ export async function send(
         re = pending.id
       }
       // An agent messaging a sender whose message it has read and owes an answer is answering: this becomes the reply,
-      // and that message's delivery, seeing it answered, keeps the final answer local.
+      // and that message's delivery, seeing it answered, keeps the final answer local. The call's own `steer` and
+      // `reply` do not apply: an answer is one-way and returns in the reply phase.
       else if (pending) {
         pending.state = 'answered'
         const response = await append(tx, {

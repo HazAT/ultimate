@@ -1,15 +1,41 @@
 Claude Code is an experimental provider that uses the external CLI login, with a setup panel and no in-app OAuth flow.
 
-It is on by default; turn it off with `claude-code` in `extensions.disable`. Existing Anthropic models and the default model are unchanged.
+It is on by default; turn it off with `claude-code` in `extensions.disable`. Existing Anthropic models and the default
+model are unchanged.
 
-Install the CLI with `npm install -g @anthropic-ai/claude-code`, then run `claude auth login` in a terminal. Open **Claude Code setup…** in the command palette and refresh status. Select a Claude Code model in the existing model picker once the CLI reports a login. Login/logout remain external (`claude auth logout`); refresh after changing them. Successful status checks also refresh the browser's model cache, so login/logout updates the picker without a page reload. Unreadable CLI status is reported as an unconfirmed login by upstream. Status action failures have a retry state.
+## Setup
 
-The dependency is `earendil-works/pi-claude-code` at immutable commit `70abb65186592ca788b29b3db22c3160d629c41f`. Its source-only TypeScript package is loaded by Ultimate's existing Vite server-facet loader (not a direct Node import from node_modules). We reuse its provider, status/environment helpers, process cleanup, streaming transport and billing guard. The auth adaptation removes its throwing OAuth login function while retaining subscription metadata and ambient CLI auth. The selectable `claude-sonnet-5` model does not advertise thinking `off`: this pinned transport sends `disabled`, which the native Sonnet route rejects instead of accepting as `between_tools`. Its static and discovered metadata exclude `off`; Pi clamps unsupported levels to a supported level. Other models are unchanged. No request-body or transport rewrite is applied. No credentials are read, copied or logged by this extension. Status responses expose only availability, login, subscription and plan, not account identity or raw CLI output.
+Install the CLI with `npm install -g @anthropic-ai/claude-code`, then run `claude auth login` in a terminal. Open
+**Claude Code setup…** in the command palette and refresh status. Once the CLI reports a login, pick a Claude Code model
+in the model picker. Login and logout stay external (`claude auth logout`); refresh after changing them, and the picker
+follows without a page reload. A status the CLI cannot report reads as an unconfirmed login, and a failed check can be
+retried.
 
-`PI_CLAUDE_CODE_COMMAND` selects the CLI executable; `PI_CLAUDE_CODE_CONFIG_DIR` selects its config directory. Another extension can set these per conversation by implementing the optional `ClaudeCodeEnv` API (`api.ts`, `claude-code.env`): `env(conversationId)` returns extra variables merged over each request's environment, or undefined to change nothing. The conversation is found from Pi's provider session id, which a `beforeRequest` hook maps to it, and is undefined for requests outside a conversation's generation (an extension's one-shot call, a compaction resumed right after a restart). Each distinct environment gets its own warm CLI process. The hook selects an environment, for example a conversation's Claude Code config directory; it does not report usage or rate limits back, and rotating subscription accounts around usage limits is outside what Anthropic's Claude Code terms allow for Pro and Max plans. Requests default `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so the CLI's auto-memory stays out of a conversation that has Ultimate's own; the launch environment or the hook can set it to `0` to opt back in. Upstream also supports provider-scoped environment settings; the panel uses the same environment remembered by its auth checks. Facet replacement keeps the provider registered continuously; disabling or removing the extension unregisters it without killing an in-flight request. The upstream provider, its active-request set and the session map are a process-local host resource retained across facet reloads; it holds only data and handles, never behaviour, so each reloaded facet wraps it with its own new code while in-flight requests finish on the old wrappers. The retained object may come from older code, so each load adds the fields its code needs (and replaces one whose kind changed) instead of needing a host restart; a request's environment lookup or tracking failing raises a notice and the request runs anyway. On host shutdown, warm CLI cleanup waits for active streams to settle without blocking harness suspension: the harness signal interrupts requests, and durable reopening replays the unfinished request. A browser refresh only reconnects its event subscription; a setup status refresh checks auth/model availability, not stream ownership. User cancellation still aborts the request and is not replayed on reopening. Every facet's stream wrappers share that tracking, and captured registrations reject new requests once host cleanup begins. No new retry classification is added: an unexpected SIGKILL is not reclassified as a retryable lifecycle interruption.
+No credentials are read, copied or logged. Status exposes only availability, login, subscription and plan, never account
+identity or raw CLI output.
 
-Browser refresh, facet reload and host restart are distinct. Landing files can invalidate a facet through its dependency/import graph even when `extensions/claude-code/server.ts` itself did not change; this replacement can occur immediately after landing, before an explicit restart. Supervised swaps call `release()` to suspend the harness before extension cleanup, whereas ordinary `close()` cleans up extensions first. Tests exercise both shutdown orders.
+## Contract
 
-This is experimental and depends on Claude Code's protocol and account limits. Subscription coverage is not guaranteed. Displayed costs are list-price accounting, not your bill. Upstream rejects conflicting API/backend overrides and stops further requests when usage-credit overage is reported, but the first response may already be charged. This extension does not enable `PI_CLAUDE_CODE_ALLOW_USAGE_CREDITS` or alter the guard. Read [upstream documentation](https://github.com/earendil-works/pi-claude-code) before using it.
+- **Upstream:** `earendil-works/pi-claude-code`, pinned to an immutable commit in `package.json` and patched in
+  `patches/`. Ultimate reuses its provider, status and environment helpers, process cleanup, streaming transport and
+  billing guard, minus its in-app OAuth login.
+- **Environment:** `PI_CLAUDE_CODE_COMMAND` selects the CLI executable, `PI_CLAUDE_CODE_CONFIG_DIR` its config
+  directory. Requests default `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so the CLI's auto-memory stays out of a conversation
+  that has Ultimate's own; set it to `0` in the launch environment or the hook to opt back in.
+- **Per-conversation hook:** another extension can implement the optional `ClaudeCodeEnv` API (`api.ts`,
+  `claude-code.env`) to set those variables per conversation, for example a project's own Claude Code config directory.
+  Each distinct environment gets its own warm CLI process. The hook selects an environment only; it does not report
+  usage or rate limits back, and rotating subscription accounts around usage limits is outside what Anthropic's Claude
+  Code terms allow for Pro and Max plans.
+- **Tool ids** from other providers (an OpenAI `call_…|fc_…` id) are rewritten where the transcript is built, so
+  stored history is unchanged.
 
-Verification: `pnpm check`, `pnpm test:e2e` (`test/e2e/claude-code.test.ts`). The focused tests use a temporary fake CLI and isolated real server/harness to exercise provider availability, subscription accounting, status refresh, browser event reconnect, active source reload, durable close/reopen, supervised release/close/reopen, disable, missing CLI, unreadable auth status, user cancellation, permanent failure and worker cleanup without paid model requests. Tool ids from other providers (an OpenAI `call_…|fc_…` id) are normalised by the pnpm patch where the transcript builds tool-use/result frames: an id Anthropic rejects becomes its sanitised prefix plus a hash, the same for a call and its result; stored history is unchanged.
+## Costs and limits
+
+Experimental: it depends on Claude Code's protocol and account limits, and subscription coverage is not guaranteed.
+Displayed costs are list-price accounting, not your bill. Upstream rejects conflicting API or backend overrides and stops
+further requests when usage-credit overage is reported, but the first response may already be charged; this extension
+never sets `PI_CLAUDE_CODE_ALLOW_USAGE_CREDITS` or alters that guard. Read the
+[upstream documentation](https://github.com/earendil-works/pi-claude-code) before using it.
+
+Tests: `test/e2e/claude-code.test.ts`, against a fake CLI.

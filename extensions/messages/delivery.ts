@@ -1,4 +1,10 @@
-/** The `board.delivery` task: it places a message in its recipient, then returns the answer as a reply. */
+/**
+ * The `board.delivery` task: it places a message in its recipient, then returns the answer as a reply. A background
+ * task of the root conversation. Request ids `board:<id>` and `board-reply:<id>` deduplicate placement across reopen;
+ * recording the answer, appending its reply and advancing the checkpoint commit together, so a placed input awaiting
+ * its answer and a recorded answer awaiting delivery both survive a restart without a duplicate reply. One-way inputs
+ * also wait for their answer (kept in `answer`, the state stays `delivered`); notes complete once placed.
+ */
 import type { Context } from '@earendil-works/chord'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import {
@@ -18,6 +24,7 @@ import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
 
 export function delivery(host: ExtensionHost) {
+  // A standing recipient is reconfigured from its current definition before each delivery, by name or by number.
   const refresh = async (id: number, ctx: Context) => {
     const index = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
     const name = Object.keys(index ?? {}).find((candidate) => index![candidate] === id)

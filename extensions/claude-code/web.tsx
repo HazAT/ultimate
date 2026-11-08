@@ -9,6 +9,7 @@ function ClaudeCodePanel() {
     onError: () => {},
   })
   useEffect(() => {
+    // A successful status check also refreshes the model cache, so a login or logout reaches the picker without a reload.
     // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
     if (data) void refreshModels()
   }, [data])

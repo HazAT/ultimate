@@ -1,59 +1,75 @@
 Durable schedules, domain events, context thresholds and supervised scripts, with actions that start prompt runs or wake subscribed conversations. One `automation` tool and session ledger; requires core `subagents` and `messages`. Scripts use tokens for setup and repair, not waiting; prompt runs cost tokens on every fire.
 
-The supervisor terminal dashboard shows `automations/scheduler: ready · durable scheduler` after the harness opens.
-This facet-scoped status reports availability, not idleness or run counts; it adds no polling and does not change the
-root-owned durable scheduler. It disappears when the extension is disabled or the core is released/stopped.
-
 ## Triggers
 
-- `cron "0 9 * * 1-5" Europe/Vienna`: five fields (minute, hour, day of month, month, weekday); numbers, lists, ranges and steps. Sunday is 0 or 7. Timezone defaults to the machine's IANA timezone. Restricted day-of-month and weekday fields use cron's OR rule. Search is bounded to eight years, including leap-day schedules. Nonexistent local minutes in the spring daylight-saving gap are skipped (not shifted); a repeated wall-clock match in the autumn hour fires only once.
-- `at 2026-12-01T09:00:00Z` or `in 30m`, `in 2h`, `in 1d`: one fire, then disabled. Prefer explicit ISO offsets.
-- `every 15m`: elapsed-time interval, at least one second. Units: s, m, h, d.
+Exactly one per automation:
 
-`event: {name, where?}` fires for matching domain events after creation or resume. `automation events` lists the ten supported event names, descriptions and filter fields. Filters use strict equality on top-level data; a value `@name` stands for that standing agent's conversation when the event comes (no match while it has none), so `conversations.compacted where conversation=@ultimate` follows @ultimate across chapters. An event from one of the automation's own run conversations is ignored. Dream ships two context automations on `@ultimate` (`extensions/dream/README.md`). A single durable reactor commits fires with its cursor, so a rollback or restart does not duplicate them.
-
-`condition: {metric: 'context', of: '@name' | '#id', above: 80, cooldownMs?: 3600000}` watches the conversation's context percentage. Standing names resolve at evaluation time. A crossing fires once, disarms until below `above - 10` (ten points of hysteresis), and respects the cooldown even after re-arming. At thresholds of 10% or less it cannot re-arm from a non-negative context measurement; at higher thresholds it still needs a drop below that line. The cooldown counts from the condition's own last crossing (`condition.firedAt`); a manual `run` does not start it. Creation, resume and opening the harness re-check the latest context document, catching missed crossings. The last measured percentage is kept as `condition.value`. With `idleFor` (ms) it also waits for a pause: it fires only once the user gave `of` no input for that long, counted from the latest `user.input` to that conversation (`condition.inputAt`, kept by the `automations/user-input` reactor) or, before one, from creation. Time alone crosses a pause, so a once-a-minute look evaluates the conditions that have `idleFor`, and only those; `idleFor: 0` on update removes it.
-
-One background root-owned scheduler per enabled schedule automation commits plan → sleep → fire. Sleep survives restart; overdue fires run once on waking, then recurring schedules continue from now. Run creation, its running record, and the scheduler checkpoint advance atomically. Overlaps are recorded as skipped, not queued. Pause/edit/delete retire the scheduler without stopping running runs. Editing fields other than the schedule preserves the next fire time. Resuming a spent one-shot is refused; update its time first. Delete keeps all run conversations. The session document `ultimate.automations` keeps the last 50 runs per automation.
-
-A script trigger uses `ask` instead of `schedule`. A `watcher` agent writes an executable `run`, briefly tests it, then calls `automation resume {id}`. Stdout `FIRE [text]` fires the automation; stderr and other stdout are progress. `once` defaults to true: its first FIRE atomically makes it done and disabled, then terminates the group. A recurring script may print `DONE [text]` and exit 0 to stop cleanly without a wake or failure. Resume keeps its persistent state. Any other unplanned exit, including a one-shot that never fired, wakes only the watcher to repair or escalate.
-
-No script stays stuck: `script.failures` counts unplanned exits in a row (a FIRE, or an exit after an hour of running, starts it again), and the third escalates instead of waking the watcher. When a watcher's turn ends while its script is still `writing` or `investigating`, with no input queued or delivery on its way, the `onYield` hook escalates it with the first line of the watcher's answer. Every escalation (these, the tool's `escalate` and the hourly fire cap) goes through one path: the script stops as `failed`, subscribers get `automations.escalated`, and @ultimate a message.
-
-An event trigger skips events from its own prompt runs: the event's trace conversation, or the conversation its data
-names (`conversation`, `conversationId`), owned by one of its run tasks, however old the run. Its `sinceEvent` is the
-newest event when the creating or resuming transaction commits. Context conditions evaluate each commit's
-measurements in commit order.
+- **Schedule.** `cron "0 9 * * 1-5" Europe/Vienna`: five fields (minute, hour, day of month, month, weekday) with
+  numbers, lists, ranges and steps; Sunday is 0 or 7; the timezone defaults to the machine's. `at
+  2026-12-01T09:00:00Z` or `in 30m` / `2h` / `1d` fires once, then disables (prefer explicit ISO offsets). `every 15m`
+  is an elapsed interval of at least one second (units s, m, h, d). Overdue fires run once after a restart; an
+  overlapping prompt run is recorded as skipped. Editing other fields keeps the next fire time; resuming a spent
+  one-shot is refused until its time is updated.
+- **Event.** `event: {name, where?}` fires for matching domain events after creation or resume. `automation events`
+  lists the supported names and filter fields. `where` compares top-level data with strict equality; a value `@name`
+  stands for that standing agent's conversation when the event comes, so `conversations.compacted where
+  conversation=@ultimate` follows @ultimate across chapters. Events from the automation's own prompt runs are ignored.
+- **Context.** `condition: {metric: 'context', of: '@name' | '#id', above: 80, cooldownMs?: 3600000, idleFor?}` fires
+  when the conversation's context crosses `above`, then re-arms only after it drops below `above - 10`. The cooldown
+  counts from the condition's own last crossing, not manual runs. With `idleFor` (ms) it also waits until the user gave
+  `of` no input for that long (`idleFor: 0` on update removes it). Dream ships two of these on `@ultimate`
+  (`extensions/dream/README.md`).
+- **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it briefly and calls
+  `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
+  makes the first FIRE finish the automation. A recurring script may print `DONE [text]` and exit 0 to stop cleanly.
+  Any other unplanned exit wakes only the watcher, to repair or escalate. The third failure in a row (a FIRE or an hour
+  of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
+  `failed`, subscribers get `automations.escalated`, and @ultimate a message.
 
 ## Actions
 
-Each automation has one or both actions: `prompt` starts a fresh run conversation; `subscribers` wakes existing conversations. A subscriber is a conversation id (`#12` in the tool, stored as `12`) or a standing agent's `@name`, resolved when a fire is delivered, so `@ultimate` follows @ultimate across chapters and dream's seed carries it to the next one. Without a prompt or explicit subscribers, create adds the caller. A prompt-only automation has no subscribers. Create, update and unsubscribe refuse to leave an automation with neither: a fire must reach someone. To be reminded, subscribe; a prompt run costs a whole agent turn per fire. All trigger kinds share `fire`: increment lifetime `fires`, set `lastFireAt`, emit `automations.fired {id, text, fire}`, create a run when requested (overlap skips that run only), and create one durable delivery task for all subscribers. Each subscriber receives an `automations.fired` input with data `{id, name, text}`. A nonempty FIRE payload is appended to the run prompt as `\n\nFired: <text>`.
+Each automation has one or both:
 
-The seventh fire within an hour pauses the automation instead of running it, emits `automations.escalated` with `Fired more than 6 times in an hour; paused`, and notifies subscribers and @ultimate. Script processes are stopped too. The bounded `recentFires` timestamps cover all trigger kinds, including manual runs.
+- `prompt` starts a fresh run conversation per fire, labelled `automation`, titled with the name and local fire time; a
+  nonempty FIRE text is appended as `\n\nFired: <text>`. Runs record status and the first answer line; the ledger keeps
+  the last 50 per automation.
+- `subscribers` wakes existing conversations with an `automations.fired` input `{id, name, text}`. A subscriber is
+  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters.
 
-## Agent and tool
+Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
+a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
+escalating with `Fired more than 6 times in an hour; paused`.
 
-The one replay-safe `automation` tool supports 14 operations: `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`, `abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`. Create uses flat arguments `{name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?, scope?, slug?, to?, key?}`. Exactly one trigger is required. `key` makes create idempotent for callers that may retry after losing a receipt (the goal reminder, dream's built-ins and seed): a create whose key an automation already has returns that automation, unchanged. New user ids are `A<n>`; project scripts use lowercase slugs. Only script triggers support project scope. Mutation receipts and tool memo prevent duplicate effects on replay; process receipts target the previous pid and reuse their committed replacement on replay.
+An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
+model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
+copy the root agent minus the automation tool, on the default model. `model {provider, modelId}` and `thinking`
+override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
 
-`update {id, name?, schedule?, event?, condition?, ask?, once?, secrets?, prompt?, agent?, model?, thinking?}` may switch a schedule, event or condition to another of these (one at a time; the old trigger goes); a script stays a script. Pause retires a scheduler or stops a process; resume enables it (scripts require an executable). Run fires a schedule, event or context trigger now, or relaunches a script. `runs {id}` reads run history; `abort {id, runId}` aborts a running prompt run. `log {id, lines?}` reads output (default 50, maximum 2000). `subscribe` / `unsubscribe {id, to?}` use `#id` or `@name`, default caller. `escalate {id, reason}` fails a script, notifies subscribers with `automations.escalated` and messages @ultimate from its watcher. Delete keeps files and conversations.
+## Tool
 
-The watcher is a normal ownerless conversation labelled `watcher`, titled `${id} · ${name}`, using `agents/watcher.md`. It receives `automations.writing` on create and `automations.failed` with the last 50 output lines on failure. It repairs and resumes, or escalates; a turn that ends with neither escalates by itself, as does the third failure in a row.
+`automation` is replay-safe and takes `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`,
+`abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
 
-An optional `agent` selects a shared Markdown agent definition discovered exactly as in subagents (clone, user, project). Runs use its instructions, tool subset (minus automation and subagent), model and thinking. Thinking is clamped to the selected model; the definition's isolate is ignored. Unknown names are rejected on create/update; a definition removed before firing produces a failed run. Write new project profiles in `.ultimate/agents/<name>.md`. The shared `createChild` and `definitionAgent` helpers provide configuration. Without a profile, runs copy the root agent except for the automation tool/extension, on the default model. Optional model `{provider,modelId}` and thinking override either configuration.
+- `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
+  scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
+  New ids are `A<n>`; project scripts use slugs.
+- `update {id, …}` may switch between schedule, event and condition; a script stays a script.
+- `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
+  (default 50, at most 2000); `subscribe` / `unsubscribe {id, to?}` (default the caller); `escalate {id, reason}`;
+  `delete` keeps files and conversations.
 
-Each run task owns its new conversation, labelled `automation`, titled with the automation name and local fire time. It submits the prompt with a stable task-derived request id, awaits its answer and records status plus the first answer line (200 characters). Aborting a run task cascades to its conversation. Enabled automations contribute name/trigger lines to the prompt, such as `on workspaces.check where result=failed` or `when @ultimate context ≥ 80%`.
+Lifecycle events: `automations.started`, `.fired` `{id, text, fire}`, `.done`, `.exited`, `.escalated`.
 
-## Files and lifecycle
+## Script files
 
-User scripts live in `~/.ultimate/automations/<project>/<id>/`: executable `run`, persistent `state/`, `output.log` (about 2000 lines / 256 KiB), and `pid`. `<project>` is `basename(host.home)`, not a worktree cwd. Environment variables are `AUTOMATION_ID` and `AUTOMATION_STATE`. Only named `secrets` are read from Secrets and injected into the child environment; records never contain their values.
+User scripts live in `~/.ultimate/automations/<project>/<id>/`: executable `run`, persistent `state/`, `output.log`
+(about 2000 lines / 256 KiB) and `pid`. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
+`secrets` from Secrets; records never hold their values. Script state must survive a restart: open stops leftover
+processes and relaunches enabled running scripts.
 
-The supervisor keeps its children and in-flight work in the reload-stable `automations.supervisor.state` resource and rebuilds its functions on each install, so a reload that changes the ledger never leaves a stale reader. Every spawn waits behind the existing process-group handshake until its pid is written; EOF before go runs nothing. Pause, relaunch, delete, disable/release and shutdown share SIGTERM → three-second grace → SIGKILL cleanup. The pid file is removed only after the whole group is gone. On open it sweeps every runtime pid, including deleted records, then restarts enabled running scripts. Script state must tolerate restart. A fired one-shot is already done before termination, so reopening cannot re-arm it; its eventual exit still records metadata and an event without reporting failure.
+### Project automations
 
-The single v3 session document `ultimate.automations` stores all trigger kinds; its migration gives schedule records from before the merge `subscribers: []` and their runs as `fires` and `lastFireAt`, project records that wake nobody `@ultimate`, and conditions their `firedAt` from `lastFireAt`. Lifecycle events are `automations.started`, `.fired`, `.done`, `.exited`, `.escalated`. Durable `ultimate.automation-delivery` tasks commit with state changes; request-id dedupe in Pi's atomic submit prevents duplicate subscriber inputs. No other old records or files are imported.
-
-## Project automations
-
-Commit shared scripts in:
+Commit shared scripts as:
 
 ```text
 <project>/.ultimate/automations/<slug>/
@@ -61,30 +77,38 @@ Commit shared scripts in:
   automation.json     {"name":"…","ask":"…","once":false,"secrets":["GH_TOKEN"]}
 ```
 
-The manifest needs `ask`; `name` defaults to its first 80 characters, `once` to true, and `to` (a standing agent's `@name`, the subscriber on every machine) to `@ultimate`, written only when it differs. Secrets are names, never values. Slugs match `^[a-z][a-z0-9-]*$` (maximum 63 characters, excluding inherited object keys) and cannot collide with `A<n>`. Runtime state stays machine-local under `~/.ultimate/automations/<project>/<slug>/`.
+`ask` is required; `name` defaults to its first 80 characters, `once` to true, `to` (the standing agent woken on every
+machine) to `@ultimate`. Slugs match `^[a-z][a-z0-9-]*$`, at most 63 characters. Runtime state stays machine-local.
+Discovery runs only in a project chosen as local: a new manifest becomes a stopped record with an idle watcher, never
+starting itself; changed manifests update it; a removed folder or revoked trust forgets it. `delete` forgets the record,
+not the folder. `run` executes from the host checkout; a watcher's repairs edit the committed file, and a branch's
+edits apply after landing.
 
-Discovery runs only for a project chosen as local, on open, list, status and slug operations, and is the only place project records are made. A new manifest creates a stopped record and idle watcher, subscribed to its `to`; it never starts itself. A project create writes the manifest (or finds its own, equal one after a crash), runs discovery, then takes the unused record it made: it adds the caller and the run profile and starts the watcher writing. A used record with that slug is someone else's automation and is refused. Resume starts it, then enabled running scripts restart on reopen. Changed manifests update records; removed folders or revoked trust stop and forget them. Delete forgets the local record, not the committed folder, so it can be rediscovered. `run` executes from the host checkout in the project root. A watcher's repairs edit the committed file in place and report it as uncommitted; branch edits take effect after landing.
+## Service and browser API
 
-## Service
+`AutomationsApi` (`api.ts`, token `automations`, used with `want`) offers `create(args)` (`subscribers` stand in for a
+caller; `key` makes it safe to retry), `delete`, `resume`, `pause`, `run` and `status`, each returning the record with
+`alive`. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
 
-`AutomationsApi` in `api.ts`, token `automations`, offers `create(args)` (the tool's create; `subscribers` stand in for a caller, and `key` makes it safe to retry) and `delete(id)`, and `resume(id)`, `pause(id)`, `run(id)`, `status(id)`, each returning the record with computed `alive`; goal keeps its reminder through it. This optional extension is accessed with `want`; external project extensions use `host.want({name:'automations'})`. Mutating methods commit: call outside transactions; from a reactor, do not await them, and report rejection with `.catch`.
+`POST /api/extensions/automations/actions/<operation>` with `{args}` returns `{result}` for every tool operation, plus
+`describe {schedule}` → `{schedule, description, next}` (up to three fire times) and `script {id}` → `{path, text}`
+(first 64 KiB). `list`, `log` and `script` are poll actions. Session state is read through `list` and `runs`, not
+exported as a document.
 
-## Browser API
+## UI
 
-`POST /api/extensions/automations/actions/<operation>` with `{args: {...}}` returns `{result}`. Actions match the tool: list → records with `alive`; create/update/pause/resume/subscribe/unsubscribe/escalate → record; run → run (schedule) or record (script); runs → run array; log → `{text}`; delete/abort → `{id}`. A subscriber-only trigger's manual run returns `{id}`. `events` (no id) lists event names, descriptions and filter fields; it is not a poll action. Create and default subscriber operations need the caller's conversation id.
+States share one word and colour (`parts.tsx` `lookOf`), worst first: failed (red), investigating (yellow), writing or
+working (purple), watching or scheduled (green), paused and done (grey).
 
-The two non-tool actions remain: `describe {schedule}` → `{schedule, description, next}` (up to three fire times), and `script {id}` → `{path, text}` (first 64 KiB, empty before writing). Schedule actions accept strings or structured schedules. Read session state through list/runs; it is not exported as a conversation doc. `list`, `log`, `script` are poll actions.
-
-## Overview
-
-Both triggers share one state word and dot (`parts.tsx` `lookOf`): failed (red: a failed or escalated script, or an enabled schedule whose last run failed), investigating (yellow), writing or working (purple), watching or scheduled (green), paused and done (grey). Worst first is the order everywhere.
-
-The Automations right-panel tab (after Activity; palette: "Automations…") lists every automation worst first, then newest: a kind icon (clock for a schedule, radar for a script), its name, the schedule in words from `describe` (a one-shot as a local time) or the script's ask, the state line (next run and last result, or uptime and fires, or the error), what a fire does (wakes #id, runs a prompt), an enable switch (pause/resume), Run now (a schedule; off while a run works) or Restart (a script), and Edit and Delete in its menu. Delete asks first and says the conversations are kept. A script row's "script" opens its watcher in the middle and, beside it, the script detail: facts (pid, uptime, exit, fires), the run path, the error, and the live output tail with FIRE lines marked or the script source; "Automations" goes back to the list. The panel follows the shown conversation: a watcher shows its script.
-
-The Agent sidebar's Automations section (`sidebar.top`) shows up to five active automations worst first, hidden when none is; its count turns red while one needs attention and opens the panel. A row opens a script beside its watcher, a working or failed run's conversation, else the panel. The status-line chip counts active automations, coloured by the worst, and opens the panel. The chip, sidebar, panel and cards share one `list` poll at the fastest rate any asks for.
-
-The transcript renders the `automation` call (action, id or name, the ask or prompt, a link to it) and the four inputs `automations.fired`, `.failed`, `.escalated`, `.writing` as folding cards with an "open" button. The switch of a one-shot whose time has passed stays off, since resuming it would fire at once. Expanding an automation lists its runs, newest first: status, fire time, the first answer line, and "open #id", which shows the run conversation as the Agents tab does; a running run shows as working with its elapsed time.
-
-New automation and Edit open one form. New first asks the trigger: "When something happens" takes what to watch for in plain words (the ask), whether to keep watching after the first fire, "Wake this conversation" (on by default) and an optional prompt with the agent picker; Edit keeps the trigger kind and the subscribers. "On a schedule" takes name, prompt, and schedule, either a preset (every weekday at 9, every hour, in 30 minutes) or the raw forms (cron with a timezone, at `in 30m` or a local date and time, every), with a live preview of the next runs from `describe` and how many runs a day that means. The agent picker lists the agent definitions with their models, or a copy of the main agent; Configure opens the chosen definition's config in the subagents extension over the bus (`subagents:open-definition`), then refetches and takes focus back on `subagents:definition-closed`. A note says each run uses the model and costs tokens.
-
-Besides polling, the list refetches when automation tasks change in the live task graph, when a run or watcher conversation appears or settles, while a shown next run is overdue, and on window focus.
+- **Automations tab** (right panel, after Activity; palette "Automations…"): every automation, worst first, with its
+  trigger in words, state line, what a fire does, an enable switch, Run now or Restart, Edit and Delete. A script's
+  "script" opens its watcher beside the script detail (pid, uptime, exit, fires, live output or source). Expanding a
+  row lists its runs. The panel follows the shown conversation: a watcher shows its script.
+- **Sidebar** (`sidebar.top`): up to five active automations, hidden when none; **status-line chip**: the active count
+  in the worst colour. Both open the panel.
+- **Transcript:** the `automation` call and the inputs `automations.fired`, `.failed`, `.escalated`, `.writing` render
+  as folding cards.
+- **Form:** New asks the trigger first. "When something happens" takes the ask in plain words, keep-watching, "Wake
+  this conversation" (on by default) and an optional prompt; "On a schedule" takes name, prompt and a preset or raw
+  schedule with a live preview from `describe`. The agent picker's Configure opens the definition over the bus
+  (`subagents:open-definition`, then `subagents:definition-closed`).

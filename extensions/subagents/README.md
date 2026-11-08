@@ -1,114 +1,172 @@
-Delegate bounded work with `subagent`: `start {agent, task, background?, fork?}`, `message {id, text, steer?}` (steers a busy child unless `steer: false` queues a follow-up), `wait {id}`, `stop {id}`, and `list`. Every new child belongs to an independent background anchor. Foreground is a waiting style, not lifetime ownership: foreground start/message and explicit wait return the answer when ready, or yield on queued steering while the child keeps running. Stopping the parent does not stop these children; use `stop {id}` explicitly. Stop cancels the captured current work and existing pending reporters/inputs, even before a child run starts; replay leaves later reuse alone. Its result lists the changed tracked and untracked paths in the child's worktree (`Left uncommitted in <path>: …`); nothing is committed or deleted. Undelivered answers steer the current run at its next tool-round boundary, or start a run when the parent is idle. Child IDs are conversation IDs. Definitions are reread on every start; children receive `subagent` and its extension only when their definition explicitly includes `subagent` in `tools`.
+Delegate bounded work to child conversations with `subagent`, configure them from Markdown agent definitions, and run standing agents such as @ultimate.
 
-## Agents made on the fly
+## The `subagent` tool
 
-`start {label, task, family? | model?, thinking?, tools?, instructions?, isolate?}` without `agent` makes a child from the call. Nothing is written to disk.
+- `start {agent, task, background?, fork?, isolate?}` starts a child from a definition and returns its answer
+  (foreground) or its id (background). Child ids are conversation ids.
+- `message {id, text, steer?}` steers a busy child, or queues a follow-up with `steer: false`.
+- `wait {id}` returns the latest answer; `list` shows your children.
+- `stop {id}` stops the child's current work and pending reporters, even before its run starts. It lists the paths left
+  uncommitted in the child's worktree; nothing is committed or deleted.
+- `land {id}` fast-forwards a worktree child's commits into your checkout; `discard {id}` removes its clean, idle
+  checkout and keeps its branch. See [workspaces](../workspaces/README.md).
 
-- **Instructions:** a short neutral base (one task, no delegating or pushing, report evidence), then the call's `instructions`.
-- **Tools:** the parent's, or the `tools` subset; never `subagent`.
-- **Model:** `family`, else the `default` family, which is the parent's model.
-- **Summaries:** none.
-- **Isolation:** `worktree` when it may `edit` or `write`, else `none`. Read-only means leaving those out; bash stays read-only only by instruction, as for `scout`.
+Every child belongs to an independent background anchor: foreground is a waiting style, not ownership, and stopping the
+parent does not stop its children. A foreground start, message or wait returns the answer when ready, or yields on
+queued steering while the child keeps running; it then returns status text and the child's id, and you message, stop
+or wait again. Follow-ups do not wake waits; steering and other children's answers do.
 
-The call's `label`, `family`, `model` and `thinking` also apply over a named `agent`, for example a worker on the review family; `tools` and `instructions` need it left out.
+Each start or message creates a reporter that delivers the answer once, including after a restart. Undelivered answers
+steer the current run at its next tool-round boundary, or start a run when the parent is idle. Before each request, a
+reminder lists running children and inputs waiting to start. Answers say `Returned model: provider/model`, read from
+the stored assistant message.
 
-A family or model the call names must have a login here. Unlike a definition's pin, it never falls back to the parent's model; the error lists the usable families.
+- **No answer.** A turn with no text, or one that stopped as `aborted` or `error`, is not an answer: the parent gets
+  `[subagent <id> failed: ended its turn without an answer]` (foreground: `… Message it to continue.`), and nothing
+  retries.
+- **Provider errors** belong to the [watchdog](../watchdog/README.md): one retry after 60 seconds for temporary errors,
+  else a `watchdog.failure` card to the parent. A later answer (a watchdog retry, or someone typing `continue` in the
+  child) is delivered as a normal report, once.
+- **Answers without a reporter.** The answer to the parent's one-way message, or to its reply to the child's own
+  question, is reported too, or an idle parent would never wake.
 
-The child's metadata label is the call's `label`. Its `Profile` records `adhoc` instead of a definition, so `Pin` and `fast` never look a definition up by that label.
+Children get `subagent` only when their definition lists it in `tools`; each parent owns only its direct children.
 
-The root's `subagents.runs` document (`RunsDoc`, `{ [childId]: { model?, adhoc? } }`) records, for every `start`, the model id the child started on and whether it was made on the fly. The sidebar's child rows and the call card read it through `RunName` (`ui.tsx`): `label · model`, with a wand for one made on the fly. The spec stays in the transcript as the call's arguments; its worktree lands or is discarded like a worker's.
+### Agents made on the fly
 
-## Interruptible waits and delivery
+`start {label, task, family? | model?, thinking?, tools?, instructions?, isolate?}` without `agent` makes a child from
+the call; nothing is written to disk. It gets a short neutral base (one task, no delegating or pushing, report
+evidence) plus `instructions`; the parent's tools or the `tools` subset, never `subagent`; `family`, else the parent's
+model; no automatic summaries; and a worktree when it may `edit` or `write`. Read-only means leaving those two out;
+bash stays read-only only by instruction, as for `scout`. A family or model the call names must have a login here and
+never falls back; the error lists the usable families.
 
-A wait can yield to steering while the child keeps running. It returns status text and the child's ID, not an answer.
-Message or stop that ID, or wait again. Follow-ups do not wake waits; steering and other children's answers do.
-An answer already completed by the awaited child takes precedence. Only the local wait is cancelled.
-Before each request, a reminder lists running children and inputs waiting to start.
-Each start or message creates a reporter that delivers its answer once, including after restart.
-If a child ends unanswered with `model_error` or `no_model`, the reporter ends silently and marks the action `failed`: [watchdog](../watchdog/README.md) owns provider-error retries and failure cards. Once the watchdog reports that failure instead of retrying it, it marks the action `given-up`, its final state. Temporary errors get one retry after 60 seconds; a persistent or non-temporary failure reaches the parent as `watchdog.failure`. The answer to a successful `watchdog-retry:` input is recovered as a normal subagent report, once, including across restart.
-A turn with no text, or one that stopped as `aborted` or `error`, is not an answer: a stopped Claude Code turn keeps only an empty thinking block. The reporter sends `[subagent <id> failed: ended its turn without an answer]`, and foreground answers and `wait` return `Subagent <id> ended its turn without an answer. Message it to continue.`, so the parent knows to nudge it. Nothing retries automatically, because the stop came from a person or a stop.
-If the last action failed, or its input was aborted in the child's own conversation (a person pressing stop there; a parent `stop` aborts the reporter first and stays silent), a later non-reporter input that produces an answer (for example, a user typing `continue` in the child) is delivered as a normal report. So is the answer to a one-way Messages `message` from the parent (`reply: false`, a `board.message` entry from the parent) or to the parent's reply to the child's own question (a `board.reply` entry from the parent), unless a pending reporter's input was answered in the same run and delivers that answer itself: nothing else routes it back, and a parent that went idle meanwhile would never wake. A reply from any other conversation reports nothing. Committed submission receipts are observed live and scanned on reopen; creating the reporter and recording the answer ID is atomic, so restart cannot lose or duplicate this delivery. Reporter-sent inputs remain owned by their original reporters.
-Foreground, wait, and asynchronous answers include `Returned model: provider/model` from the stored assistant message (or `unknown` when unavailable), not the configured profile or self-report. Asynchronous model-facing report prefixes remain unchanged. Successful tool answers carry `details.answerId`; completed codemode scripts list these in `details.subagentAnswers`.
-The backend removes queued reports already returned by those tools. Failed or yielded scripts leave reports queued.
-Reports already sent to the model stay there. An explicit `wait` can still return an earlier answer.
+`label`, `family`, `model` and `thinking` also apply over a named `agent`, for example a worker on the review family;
+`tools` and `instructions` need `agent` left out. The root's `subagents.runs` document (`RunsDoc`, `{ [childId]:
+{ model?, adhoc? } }`) records each start's model and whether it was made on the fly; the sidebar and call card show
+`label · model` with a wand for those.
 
-Definitions are Markdown with YAML frontmatter, parsed by Pi's `parseFrontmatter`: required `name` and `description`, optional `resident` (boolean), `isolate` (`none` or `worktree`), `model` (Pi's `resolveCliModel` accepts `provider/id`, fuzzy id or name, and a `:thinking` suffix; unknown models are errors and custom models must be registered in Pi's `models.json`), `thinking` (a Pi thinking level), `tools` (a YAML list, `[read, bash]` or one `- item` per line), `denyTools` (a YAML list of tool names removed from either the explicit `tools` list or inherited parent tools; unknown names are silently ignored), `fast` (a boolean: the definition's requests on `openai-codex/` and `openai/` models go on the priority tier; see the fast README), and `summaries` (a boolean, default true; `false` turns off the automatic summary model triggers for every conversation configured from the definition: no intent title, title or sidebar summary, reply activity line, spawn refresh or tree abstract, so the conversation keeps the title it was given. The summary model stays available for explicit calls, such as the side chat's Summarize & inject; see the [conversations README](../conversations/README.md). The Agents tab's Automatic summaries switch saves this field), a standing agent's display name `title` (the sidebar, message cards and lanes show it in place of its capitalised name, and for @ultimate in place of the ULTIMATE wordmark, its mark's letter becoming the title's first; `@name` stays its address, so a project overlay `addTools: []` with `title: Atlas` renames @ultimate in that project only), and its mark: `icon` (a [lucide](https://lucide.dev/icons) icon name, `Gem` or `notebook-pen`; an unknown one shows the default bot) and `tint` (`violet`, `blue`, `green`, `amber`, `red`, `pink`, `teal` or `grey`), published in conversations' marks doc whenever the agent is opened or refreshed and on start; other fields are errors. An explicit `thinking` field overrides the model suffix. The body is the instructions. `lib/agents.ts` reads them from three directories, later overriding by name: `agents/` in Ultimate's clone, `~/.ultimate/agents/`, and the project root's `.ultimate/agents/` (not a conversation's cwd). A later file marked by `addTools` (a list, `[]` when it only changes settings) is an overlay instead: it may override any setting of the earlier definition (`description`, `model`, `thinking`, `isolate`, `resident`, `fast`, `summaries`, `title`), adds its `addTools` to the earlier definition's `tools` list (a definition without a list already inherits every tool; it keeps the names as `addTools`, so deferred ones such as `debug` load, also for a coordinator branch), adds its `denyTools` to the earlier deny list, and appends its body, if any, under `## User additions` or `## Project additions`, so the earlier file stays the source of its instructions and tool list. An overlay setting `tools`, or with no earlier definition of its name, fails to parse. The setup check warns about each user or project file that replaces a built-in whole. The Agents tab saves a definition an overlay extends as an overlay in the chosen scope (by default the last overlay's): only the settings, added tools and denials, and the text after the base instructions that differ from what applies without that file (over a base that inherits every tool, the file keeps its `addTools`, which the form does not show), so the base stays the source of its instructions and tool list. A change an overlay cannot express (removing a base tool, clearing a base setting, rewriting the base instructions) is refused; Duplicate the definition or edit its file instead. Omitted tools inherit the parent's tools minus `subagent` and exclude the subagents extension. Explicit tools must remain a subset of the parent's tools; `[read, bash, subagent]` opts into bounded child delegation. Each parent owns only its direct children, and forked children start with a fresh child index. The existing definition editor's tools checklist includes `subagent`. Tool restrictions select tools, not a shell sandbox: read-only agents' bash restrictions are instructions. An edited definition is not a code change, so it does not change the build id.
+### History forks
 
-The built-in `coordinator` definition supplies instructions for Messages `branch` calls: these are feature branches, not subagents, and keep their normal tools and model.
+`fork: true` gives the child the parent's visible history up to the call, and the task as its first new input.
+Everything else (definition, model, tools, isolate) works as for a fresh child. It costs more than a fresh child; the
+prompt cache usually covers the shared prefix.
 
-## Standing agents and owned tools
+### Isolates
 
-Set `resident: true` (a boolean) to make a definition available as a standing agent. The config view's Standing agent switch saves this field. Its standing conversation is ownerless, uses the project directory regardless of `isolate`, and is pinned in the sidebar's agents group as `@name`.
+An isolate is where a child's tools run. `isolate: "none"` (the default) uses the parent's directory; `"worktree"` (the
+shipped worker's) gets a checkout made from the parent's committed HEAD, owned by the workspaces extension, with the
+project's `isolates.worktree.setup` commands (see [workspaces](../workspaces/README.md)). Isolation is by working
+directory, not a sandbox: absolute paths can still reach other checkouts, and children are instructed to work only in
+their isolate, commit, and never push.
 
-Other extensions look up `host.want(SubagentsApi)` (`api.ts`, with the `Subagents` and `Standing` documents); definitions are read with `lib/agents.ts`. `residents(ctx)` reads the effective resident definitions fresh and returns `{name, description}[]`. `standing(name, ctx)` creates or returns its conversation ID and configures it from the current definition on top of the root conversation's agent on every call. A new standing conversation starts on the default model (`defaultModel` in `lib/agents.ts`) and the root's thinking level; afterwards it keeps the ones chosen in it, and a refresh changes them only where the definition pins `model` or `thinking` (a pin applies on every refresh, so to choose freely, leave it out of the definition). A pinned model whose provider has no login here is skipped. Unknown and non-resident names fail with the available names. Creation and indexing are atomic; deleted conversations are recreated. A standing agent whose definition is gone is retired, once every definition parses (any discovery error retires nothing), when the home opens or its name is next requested: its `Standing` entry, `agent` label and standing mark (conversations' `setStanding`) are dropped, so its conversation stays readable as an ordinary, concludable one under its `@name` title. The exported `Standing` document, kind `ultimate.standing-agents`, holds `{ [name]: conversationId }` on `ROOT_CONVERSATION_ID`. The `standing {name}` action opens the same standing conversation and returns its ID.
+## Definitions
 
-Each conversation configured to run as an agent emits `subagents.started` (`Started` in `refs.ts`) in its creating
-commit: `{ id, agent, model?, thinking?, parent?, kind }`, `kind` `child` for a subagent or an automation run
-(`createChild` through the service), `standing` for a new standing conversation (a refresh emits none) and `branch`
-for a branch, which lineage emits with the agent the fork kept.
+A definition is Markdown with YAML frontmatter (parsed by Pi's `parseFrontmatter`); the body is the instructions. It is
+the profile both subagents and automations run with, turned into a child's configuration by `createChild`
+(`children.ts`) and `definitionAgent` (`lib/agents.ts`). `lib/agents.ts` reads `agents/` in Ultimate's clone, then
+`~/.ultimate/agents/`, then the project's `.ultimate/agents/`; a later file overrides by name. Definitions are reread on
+every start, and editing one does not change the build id.
 
-A deferred tool explicitly named in a definition's `tools` is loaded into that conversation's `modelTools.add`. This applies to children, automation profiles and standing agents; other conversations, including the root, do not gain it. Tools remain restricted to the base agent's enabled tools. Deferred tools are not a security boundary: nested tool calls can still reach enabled tools.
+Fields (others are errors):
 
-## Attributed transcript messages
+- `name`, `description`: required.
+- `family`: the model family it runs on; the default family runs on the parent's model. Change a family's model in the
+  Agents panel.
+- `model`: a pin, `provider/id`, a fuzzy id or name, optionally with `:thinking` (Pi's `resolveCliModel`; custom models
+  go in Pi's `models.json`). Unknown models are errors; a pin whose provider has no login here is skipped.
+- `thinking`: a Pi thinking level; overrides a model suffix.
+- `tools`: a YAML list, a subset of the parent's. Omitted: the parent's tools minus `subagent`. `[read, bash,
+  subagent]` opts into bounded delegation. A deferred tool named here is loaded for that conversation. Tool lists
+  select tools; they are not a shell sandbox.
+- `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored.
+- `isolate`: `none` or `worktree`. `resident: true` makes it a standing agent.
+- `fast`: the priority tier for `openai-codex/` and `openai/` models (see the fast README).
+- `summaries: false` turns off automatic titles, summaries, reply activity lines and tree abstracts for its
+  conversations; explicit summary calls still work ([conversations](../conversations/README.md)).
+- `title`, `icon`, `tint`: a standing agent's display name (its `@name` stays its address) and mark, a
+  [lucide](https://lucide.dev/icons) icon name and one of `violet`, `blue`, `green`, `amber`, `red`, `pink`, `teal`,
+  `grey`.
+- `addTools` marks an **overlay** (below).
 
-Ordinary human input uses the core renderer. Typed agent instructions and asynchronous reports use compact Markdown cards with a bot marker, sender conversation ID, and a Source button. Message bodies always show in full, with no inner scroll. Successful foreground answers still use the existing `SubagentCall` / `MessageResponse` renderer; their Open button now targets the answer when available.
+**Overlays.** A later file with `addTools` (`[]` when it only changes settings) extends the earlier definition of its
+name instead of replacing it: its settings override, its `addTools` and `denyTools` join the earlier lists, and its body
+is appended under `## User additions` or `## Project additions`. An overlay that sets `tools`, or has no earlier
+definition, fails to parse. So `addTools: []` with `title: Atlas` renames @ultimate in one project, and `addTools: []`
+with `model` pins one agent, the exception to families. The setup check warns about user or project files that replace
+a built-in whole.
 
-Instructions and reports are stored as `subagents.instruction` and `subagents.report` input entries. Their data carries the sender, source entry, agent name, display body and report failure flag; the model still receives the original user message. Cards read that data directly, including through history forks and reopen. Old plain user messages remain plain messages. If a source entry is no longer in its active transcript, Source still opens the conversation without scrolling to a different entry.
+**Shipped definitions:** `coordinator` (branches started with the messages extension's `branch`; its behaviour lives
+in `agents/coordinator.md`), `scout` (read-only reconnaissance, tiny family), `worker` (fast family, worktree),
+`designer` (design family, worktree), `reviewer`, `lander` and `watcher` (owns one script automation).
 
-Source and foreground Open offer a header Return button back to the receiving conversation and its message when known. Transcript entry anchors and the core `ultimate:reveal-entry {conversationId, entryId, toolCallId?}` web event cancel auto-follow before revealing a row, or the tool call in it, at the top of the view below the pinned strip, so a long answer cannot pull the view back to its end. This one-hop navigation is local to the browser session; ordinary conversation switching remains unchanged. Missing sender summaries keep the ID visible and disable Source with an explanatory tooltip.
+**Review team.** The shipped `reviewer` reviews alone on the `review` family. Add `reviewer-<name>.md` definitions and
+it leads them instead: it starts every one in parallel and returns one merged verdict, like this repository's
+`.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`).
 
-### Preview
+### Editing definitions
 
-Start an instance, accept its project setup, ask it to delegate a small task to a worker, and use the foreground card's Open button to inspect the attributed child instruction.
+The right panel's **Agents** tab (`overview.tsx`) lists every definition under the model family it runs on (each family
+line edits its model, thinking and caps in place; see "Model families" in the models README), then those that pin a
+model, then invalid files with their errors. A definition's **move** menu puts it on another family. Clicking one, or
+New, opens its config view (`definitions.tsx`): description, model, thinking, tools, isolate, standing agent, automatic
+summaries, and the instructions with a preview. Save validates as discovery reads and writes nothing when that fails.
+Built-ins are never written: saving one writes an override to the project's `.ultimate/agents/` (only once the
+project's setup is local) or `~/.ultimate/agents/`; deleting an override restores what it shadowed. Over a definition
+an overlay extends, Save writes an overlay holding only what differs; a change an overlay cannot express (removing a
+base tool, rewriting the base instructions) is refused. Duplicate starts a new definition from the shown one.
 
-## Queued agent inputs
+Another extension opens a config view with `events.emit('subagents:open-definition', { name })` (`''` for a new one)
+and hears `subagents:definition-closed { name }` when it closes. Codemode's `ultimate.agents()` lists every definition
+with its source, path and fields.
 
-Above the composer, actual pending instructions and reports use quiet bordered rows: sender, instruction/report, steer/follow-up, a truncated preview with full text in its tooltip, Source, and the existing cancellation button. Human lookalikes remain ordinary queue rows. Rows read the typed input from `item.entry`; delivered or cancelled inputs leave the inbox. Source uses the same one-hop Return navigation, returning to the receiving conversation without a transcript entry target.
+## Standing agents
 
-## Definitions are shared profiles
+A `resident: true` definition is a standing agent: one ownerless conversation in the project directory (whatever its
+`isolate`), pinned in the sidebar's agents group as `@name`. It starts on the default model and the root's thinking
+level, then keeps what is chosen in it; a refresh changes model or thinking only where the definition pins them. A
+standing agent whose definition is gone is retired, once every definition parses: its conversation stays readable as an
+ordinary one.
 
-A definition is the profile both subagents and automations run with: one helper, `createChild` (`children.ts`) with `definitionAgent` (`lib/agents.ts`), turns it into a child's agent configuration for `start` and for an automation that names it (automations reach `createChild` through `SubagentsApi`). Edit one in the Agents tab or as its file; both are the same Markdown, and Ultimate changes one when asked by editing that file (codemode's `ultimate.agents()` lists every definition with its source, path, and fields). Built-ins in the clone are never written: saving one writes an override with the same name to the project's `.ultimate/agents/` (shared with the team, and only once the project's setup is local) or to `~/.ultimate/agents/`. Deleting an override makes the definition it shadowed apply again.
+## Contract
 
-Click a definition in the Agents tab, or New, for its config view: description, model (picked from the models extension's catalogue, or inherited from the main conversation), thinking (the levels that model supports, or inherited), tools (a checklist of the main conversation's tools, or all of them), isolate, and the instructions as Markdown with a preview and the saved file. The header shows its source and path, the footer where Save writes and whether that overrides or is shadowed by another file. Duplicate starts a new definition from the shown one. Save writes nothing when the result fails to parse, and shows why inline; files that fail to parse stay listed with their errors and open with the error above the form. Another extension opens a definition's config over the web bus with `events.emit('subagents:open-definition', { name })` (`''` for a new one); `subagents:definition-closed { name }` follows when that dialog closes, so the opener can refetch and take focus back.
+`host.want(SubagentsApi)` (`api.ts`):
 
-## Coordinator behaviour
+- `residents(ctx)` → `{name, description}[]`, read fresh.
+- `standing(name, ctx)` creates or returns the standing conversation and reconfigures it from the current definition;
+  unknown and non-resident names fail with the available names. The `standing {name}` action does the same.
+- `createChild(…)`: used by automations to start a run from a definition.
 
-Coordinator behaviour lives in `agents/coordinator.md`, which branches run with; the prompt section here only lists the available definitions (for agents with `subagent`, `branch` or `automation`) and, before each request, the running children. The shipped definitions are `coordinator`, `scout` (read-only reconnaissance on the tiny family, no isolate), `worker` (the fast family, in a worktree), `designer` (UI and design work on the design family, in a worktree), `reviewer`, `lander` and `watcher` (owns one script automation; automations start it).
+The `Standing` document (kind `ultimate.standing-agents`, on `ROOT_CONVERSATION_ID`) maps names to conversation ids.
+`ultimate.subagents` holds each conversation's children and actions. Each child's `ultimate.metadata` has `label` (the
+definition's name) and `title` (its task).
 
-### Review team
+Each conversation configured as an agent emits `subagents.started` (`Started` in `refs.ts`) in its creating commit:
+`{ id, agent, model?, thinking?, parent?, kind }`, `kind` `child` (a subagent or automation run), `standing` (a new
+standing conversation; refreshes emit none) or `branch` (emitted by lineage).
 
-The shipped `reviewer` reviews alone on the `review` family. For a team, add `reviewer-<name>.md` definitions: when any exist, the shipped `reviewer` leads them instead. It starts every one in parallel, only relays and merges, and returns one verdict, like this repository's `.ultimate/agents/reviewer-*.md`. Leaves need tools within the lead's (`read`, `bash`, `subagent`). Add a reviewer by copying a `reviewer-*` file under a new `reviewer-<name>` with another model; definitions are reread on every start, so no restart is needed.
+Actions for the Agents tab:
 
-## History forks
+- `definitions` returns the definitions (without instructions), files that failed to parse, the main conversation's
+  model, thinking and tools, the user and project folders, and whether the project's setup is local.
+- `definition {name}` returns the one that applies, its source, path and raw file, the scopes with a file of that name,
+  and a later file of that name that fails to parse.
+- `saveDefinition {name, scope: "project" | "user", frontmatter, instructions, create?}` validates and writes
+  atomically (`create` refuses an existing name); `deleteDefinition {name, scope}` removes a user or project file.
+- `standing {name}` opens a standing conversation.
 
-`start {agent, task, fork: true}` gives the child the parent's visible history up to the entry before the assistant message containing this call, excluding the pending call itself. The task text is still the child's first new input. Foreground/background waiting style, independent ownership, definition instructions, model, thinking, tools (`subagent` and its extension only with explicit definition opt-in, still subject to the parent tool subset), and isolates work exactly as for a fresh child.
+## Transcript
 
-A fork sends the parent's context and therefore costs more than a fresh child; the prompt cache usually covers the shared prefix. Conversation documents follow their declared fork policy: `pi.agent`, `codemode.store`, and `ultimate.ui` copy `asOf` the fork entry; `ultimate.subagents`, `ultimate.metadata`, `models.login`, and Pi's inbox, live state and usage start `initial`. No built-in conversation document uses `current`. The child agent configuration is then replaced with the current parent's configuration and definition overrides; metadata is set to the child's name/task. The child's `ultimate.ui` copy is left as-is: the web reads only the root conversation's UI document, so the unused child copy cannot affect the Agents tab. Its Subagents index starts empty. Codemode's stored values remain available as of the fork point.
+- A `subagent` call renders the agent, task, the child's workspace branch and state, whether it works, its plan task
+  chip, its answer, and "open #id".
+- Instructions to a child and reports from it are stored as `subagents.instruction` and `subagents.report` inputs and
+  render as compact cards with the sender and a **Source** button; message bodies show in full.
+- Source and Open add a header **Return** button back to where you came from. The core `ultimate:reveal-entry
+  {conversationId, entryId, toolCallId?}` web event reveals a row at the top of the view without auto-follow pulling
+  it back.
+- Queued instructions and reports above the composer show sender, kind, steer or follow-up, a preview, Source and
+  cancel.
+- Showing a child makes the composer steer, follow up and stop that child; the header leads back to main.
 
-## Isolates
-
-An isolate is where a child's tools run, separate from the parent. The workspaces extension owns its checkout and its record in the root `ultimate.workspaces` document. There are no sandboxes, containers or remote machines.
-
-`start {agent, task, isolate?: "none" | "worktree"}` overrides the definition's isolate. The default is none (the parent directory); the shipped worker uses worktree. Preparation creates `<home>/worktrees/<child id>` (or the project's `isolates.worktree.path`) from the parent's committed HEAD. The child's cwd and instructions point there, in the same subfolder as the parent's cwd; its first request waits for setup. The child and checkout are reused on replay.
-
-Optional project `.ultimate/settings.json` configuration:
-
-```json
-{
-  "isolates": {
-    "worktree": { "setup": ["pnpm install --frozen-lockfile --prefer-offline"] }
-  }
-}
-```
-
-Commands run in order with `sh -c`, closed stdin and a two-minute timeout. `ULTIMATE_SOURCE` is the parent checkout path. Interrupted setup repeats, so commands must be safe to repeat. Failure keeps the output tail and removes only a clean checkout; dirty output stays. Failed or removed workspaces block tool calls with an explanation, which the child's answer can report to its parent.
-
-Verify the child's commits, then `land {id}` fast-forwards its saved source branch. Both checkouts must be clean, and the child must have no live run or queued input. If the target changed or diverged, update the workspace onto it and verify again; landing never rebases or pushes. An integrated tip is a no-op. Results list commits and paths and report whether the running Ultimate clone needs restart. `discard {id}` removes only a clean, idle checkout and keeps its branch. See [workspaces](../workspaces/README.md).
-
-Isolation is by working directory, not a sandbox: absolute paths can still reach other checkouts. Children are instructed to work only in their isolate, commit clearly, and never push. There are no remote operations or cross-process landing locks.
-
-Each shipped definition names a model family (`family:`); the default family runs on the parent's model. To change what an agent runs on, move it to another family or change its family's model in the Agents panel. An overlay with `addTools: []` and `model` pins one agent to one model, as the exception.
-
-The extension document `ultimate.subagents` holds the ownership/action index. Each child gets the core's `ultimate.metadata` (`host.metadata`) with `label` set to its definition's name and `title` to its task, which the shell's header, breadcrumb, and window title show. Reporter request IDs and answer receipts prevent duplicate delivery across restarts; stop records its target run so a replay cannot abort a later run. The action `definitions` returns the definitions (without instructions), the files that failed to parse with their errors, the main conversation's model, thinking level and tools, the user and project folders, and whether the project's setup is local. `definition {name}` returns the definition that applies, its source, path and raw file, the scopes with a file of that name, and a later file of that name that fails to parse. `saveDefinition {name, scope: "project" | "user", frontmatter: {description, model?, thinking?, tools?, isolate?, resident?}, instructions, create?}` validates the file as discovery reads it and writes it atomically (`create` refuses an existing name); `deleteDefinition {name, scope}` removes a user or project file.
-
-`web.tsx` renders each `subagent` call (agent, task or message, the child's workspace branch and state from the root workspace document, whether the child is working, its plan task as the plan's `TaskChip` (also on report and instruction cards), its answer, and "open #id" to show the child; the result's details say whether the child is in the background) and adds the right panel's Agents tab (`overview.tsx`), which lists every agent definition and feature under the model family it runs on (each family's line edits its model, thinking and caps in place; see "Model families" in the models README), then those that pin a model, and invalid files with their errors, refetched when the window regains focus and when the config dialog closes. Each definition opens its config view (`definitions.tsx`, `fields.tsx`); its **move** menu saves it on another family as the config view would, an overlay for a built-in (`moveDefinition`). Showing a child makes the composer steer, follow up, and stop that child; the header leads back to main.
+To try it: start an instance, accept its project setup, ask it to delegate a small task to a worker, and use the
+card's Open button.

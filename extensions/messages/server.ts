@@ -319,7 +319,8 @@ export default function messages(host: ExtensionHost) {
           if (input.to !== 'user')
             return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
           // The message is @ultimate's answer: the run ends here instead of restating it, unless a reply it has read
-          // is owed. One still queued gets its own turn.
+          // is owed. One still queued gets its own turn. Pi ends the run only when every call of the tool round
+          // terminates, and codemode's nested calls never end it.
           const owed = await host
             .harness()
             .commit(

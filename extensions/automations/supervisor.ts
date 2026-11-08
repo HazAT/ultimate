@@ -427,6 +427,7 @@ export function supervisor(
     )
   }
   const readPid = (id: string) => readPidFile(join(folder(id), 'pid'))
+  /** Pause, relaunch, delete, disable/release and shutdown all stop a script here: SIGTERM, three seconds, SIGKILL. */
   function cleanup(id: string, pid: number, run?: Run): Promise<void> {
     if (run?.cleanup) return run.cleanup
     const work = (async () => {

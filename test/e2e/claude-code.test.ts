@@ -1,3 +1,7 @@
+// Claude Code against a temporary fake CLI and an isolated real server and harness, with no paid model requests:
+// availability, subscription accounting, status refresh, browser event reconnect, active source reload, durable
+// close/reopen, supervised release/close/reopen, disable, missing CLI, unreadable auth status, user cancellation,
+// permanent failure and worker cleanup.
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'

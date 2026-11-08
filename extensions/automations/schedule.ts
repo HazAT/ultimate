@@ -96,6 +96,12 @@ export function parseSchedule(input: string | Schedule, now = Date.now()): Sched
   return schedule
 }
 
+/**
+ * The next fire after `after`. Cron follows cron's rules: a restricted day of month and weekday match either (OR), a
+ * local minute that the spring daylight-saving gap skips never fires (it is not shifted), and a wall-clock minute that
+ * the autumn hour repeats fires once (`previous`'s wall time). The search stops at eight years, which covers leap-day
+ * schedules.
+ */
 export function nextAt(schedule: Schedule, after: number, previous = after): number {
   if (schedule.kind === 'at') return Date.parse(schedule.time)
   if (schedule.kind === 'every') return after + schedule.ms

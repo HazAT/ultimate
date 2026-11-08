@@ -666,6 +666,7 @@ export default function subagents(
             thinkingLevel: own.thinkingLevel ?? main.thinkingLevel,
           }
         } else {
+          // Created and indexed in one commit; a deleted standing conversation is recreated here.
           created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
           id = created.id
           index[name] = id
@@ -845,7 +846,8 @@ export default function subagents(
   host.onOpen(async () => {
     await pruneRetired(BACKGROUND_CONTEXT)
     unsubscribe?.()
-    // Not a reactor: subagent answers settle as Pi submission records, not domain events.
+    // Not a reactor: subagent answers settle as Pi submission records, not domain events. Committed submissions are
+    // observed live here and scanned once on open, so a restart neither loses nor duplicates a report.
     unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type !== 'submission') continue
@@ -869,6 +871,8 @@ export default function subagents(
     hooks: [
       hook(GenerationTask, {
         afterTools: async (_assistant, results, api, context) => {
+          // A report a successful `subagent` or codemode result already returned is withdrawn from the queue. Failed or
+          // yielded scripts leave theirs queued, and a report the model already saw stays where it is.
           // Tool settlement is not a receipt. Only committed outer results may acknowledge.
           await host.harness().commit(async (tx) => {
             const answers = new Set<EntryId>()
@@ -1075,6 +1079,11 @@ export default function subagents(
             const task = await api.getTask(api.taskId, context)
             // Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
             const assistant = (task?.input as { assistant: EntryId } | undefined)?.assistant
+            // A fork copies the parent's visible history up to the entry before the calling assistant message. Documents
+            // follow their fork policy: `pi.agent`, `codemode.store` and `ultimate.ui` copy as of that entry (the web
+            // reads only the root's UI document, so the child's copy is inert); `ultimate.subagents`, `ultimate.metadata`,
+            // `models.login` and Pi's inbox, live state and usage start fresh. createChild then replaces the agent
+            // configuration with the current parent's plus the definition's.
             let forkAt: EntryId | undefined
             if (definition && args.fork) {
               const conversation = (await host.harness().conversation(api.conversationId, context))!
