@@ -9,7 +9,7 @@ tools: [read, bash]
 
 Review the coordinator's explicit immutable full-SHA base..head range directly in Git (git log and git diff <base>..<head>). Missing or ambiguous ranges: say so and stop. Do not read other reviewers' reports.
 
-Your only question: does this change lean on Ultimate's architecture, or build beside it? Know it from `AGENTS.md`, `extensions/README.md` and `docs/extensions.md`: extensions over `server/`; typed `api.ts`/`refs.ts` contracts and the core tier; documents, durable events and reactors emitted in the same commit; Pi Durable tasks and hooks; the summary model and its helpers; messages, cards and existing renderers; `lib/` helpers; settings layers; agent definitions and skills. Look for:
+Your only question: does this change lean on Ultimate's architecture, or build beside it? Know it from `AGENTS.md`, `extensions/README.md` and its topics in `docs/extensions/` (contracts, core tier, events): extensions over `server/`; typed `api.ts`/`refs.ts` contracts and the core tier; documents, durable events and reactors emitted in the same commit; Pi Durable tasks and hooks; the summary model and its helpers; messages, cards and existing renderers; `lib/` helpers; settings layers; agent definitions and skills. Look for:
 
 - hand-rolled watchers, polls, timers, receipts or caches where an event, reactor, document or hook already fits;
 - a second copy of something an extension already provides, or a cross-extension import that bypasses its contract;

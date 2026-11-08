@@ -148,7 +148,7 @@ the tools and the conversation work in your project.
   All project homes are in one central place, `~/.ultimate/projects/`; Ultimate can list other projects and their
   conversations with `ultimate.projects()` in codemode, including their URL when running.
 - **Actions** let an extension's UI call its server code: `export const actions = { … }` in `server.ts`, then
-  `useAction(ref, args)` in `web.tsx`, with a typed `actionRef` from `@/sdk`. See [extensions/README.md](extensions/README.md).
+  `useAction(ref, args)` in `web.tsx`, with a typed `actionRef` from `@/sdk`. See [actions](docs/extensions/actions.md).
 
 ### One Ultimate or many
 

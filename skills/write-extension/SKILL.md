@@ -5,8 +5,8 @@ description: Build or change an Ultimate extension or surface (a panel, status-l
 
 # Write an Ultimate extension
 
-`extensions/README.md` (in the Ultimate clone) is the full reference, about 20k tokens. Do not read it whole: follow
-these steps and read only the sections named.
+`extensions/README.md` (in the Ultimate clone) is a short index; each topic is its own file in `docs/extensions/`.
+Follow these steps and open only the topics named.
 
 ## 1. Place it
 
@@ -20,7 +20,7 @@ The folder name is the extension name. New UI is a new folder, never a change to
 ## 2. Copy the closest extension
 
 Read the table at the top of `extensions/README.md` and open the extension it names for what you build
-(`status-line`, `models`, `info`, `coding-tools`, `plan`, the Commits example). Copy its shape; change the content.
+(`status-line`, `models`, `info`, `coding-tools`, `plan`, the Commits example in `docs/extensions/example-app.md`). Copy its shape; change the content.
 
 ## 3. Pick the facets
 
@@ -30,11 +30,13 @@ Read the table at the top of `extensions/README.md` and open the extension it na
 | `server.ts` | tools, prompt sections, hooks, documents, `actions`             | reinstalled on save |
 | `api.ts`    | a typed service other extensions call                           | with its importers  |
 | `refs.ts`   | typed refs of your actions and documents for the browser        | with its importers  |
+| `ui.tsx`    | components and hooks other extensions' browser code imports     | with its importers  |
 | `README.md` | required; first paragraph is one sentence the UI shows          | read on change      |
 
-Read in `extensions/README.md` only what you use: "Contributions" and its subsection (Slots, Panels, Surfaces, Tool
-renderers, Entry renderers, Commands, Documents), "Actions", "Extension APIs", "SDK", "Styling", "Conventions".
-For a full app, "Build an app, step by step".
+Open in `docs/extensions/` only what you use: `slots.md` (slots, panels), `renderers.md` (tool, entry, link and
+composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`, `contracts.md` (`api.ts`, `refs.ts`,
+`ui.tsx`), `events.md`, `server.md` (host, tools, prompt sections), `sdk.md`, `styling.md`. For a full app,
+`example-app.md`. The index's Topics table says what each covers.
 
 ## 4. Rules that bite
 
