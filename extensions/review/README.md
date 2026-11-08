@@ -30,7 +30,7 @@ in them, with control characters such as a newline written as`\n`.
 
 Links: `/?review=<spec>` opens Review at that spec, and the address carries `?review=` while Review is on screen;
 `&file=<path>&line=<n>` (and `&side=old`) scrolls to that line and marks it.
-`openReview(spec, at?)` from `ui.tsx` does the same from code. Review provides the `workspaces.review` point, so the
+`openReview(spec, at?)` from `link.tsx` does the same from code. Review provides the `workspaces.review` point, so the
 landing card, the Activity feed and a root's landed list open a landing's commit count here (DiffsHub stays as a small
 ↗ beside it), and a branch row's menu has **Review changes**. Without review those stay plain DiffsHub links.
 

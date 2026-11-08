@@ -40,6 +40,32 @@
 On a Pi upgrade, run `rg "Pi upstream:"` and recheck each marked item against the new version; test/e2e/pi-upstream.test.ts checks that every tracked marker matches the installed package version and its path appears in this list, and the backticked path each entry starts with is tracked and contains a marker; backticks later in an entry are prose.
 Delete copies and patches that Pi now exports or fixes, then update the remaining markers and this list after verification.
 
+## Searching Pi's code
+
+The Pi packages live under `node_modules/@earendil-works/<pkg>` (pnpm symlinks). Only pi-claude-code ships its TypeScript
+source; the others ship type declarations and compiled JS, so start in the `.d.ts` files, whose doc comments carry the
+contracts.
+
+| Package           | Types and compiled JS          | Also                                 |
+| ----------------- | ------------------------------ | ------------------------------------ |
+| `pi-durable`      | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `CHANGELOG.md`          |
+| `pi-ai`           | `dist/*.d.ts`, `dist/*.js`     | `README.md`                          |
+| `pi-coding-agent` | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `docs/`, `examples/`    |
+| `pi-claude-code`  | none: `src/*.ts` is the source | `README.md`, `ARCHITECTURE.md`       |
+| `chord`           | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `docs/`, `CHANGELOG.md` |
+| `pi-schema`       | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `CHANGELOG.md`          |
+| `pi-codemode`     | `dist/*.d.ts`, `dist/*.js`     | `README.md`                          |
+| `pi-mcp`          | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `CHANGELOG.md`          |
+
+A search from the repository root skips them, because `node_modules` is gitignored and its entries are symlinks. Follow
+symlinks, override the ignore files, and skip nested dependencies and source maps:
+
+```bash
+rg -L --no-ignore -g '!node_modules' -g '!*.map' -n '<term>' node_modules/@earendil-works
+```
+
+Narrow it to one package with `node_modules/@earendil-works/<pkg>`.
+
 ## Reference
 
 - Pi Durable README and examples: `node_modules/@earendil-works/pi-durable/README.md`, upstream

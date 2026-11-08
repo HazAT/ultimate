@@ -74,7 +74,6 @@ New UI is a new extension folder, not a change to `web/`: follow the `write-exte
 
 ## Developer reference — read when needed
 
-- [Architecture diagrams](docs/architecture/index.html): five pictures of how the browser, server, Pi Durable, extensions, events and agents fit together.
 - [Running the server](docs/running.md): before starting, debugging or testing a server or core swap.
 - [Worktrees and integration](docs/worktrees.md): before previewing an isolate, landing or recovering a rejected push.
 - [Discovery and settings](docs/settings.md): before changing configuration, trust, resources or `summaryModel` (titles, summaries, reply summaries and tree abstracts).
@@ -82,6 +81,7 @@ New UI is a new extension folder, not a change to `web/`: follow the `write-exte
 - [Extension mechanics and introspection](docs/extensions.md): before wiring facets, documents, events or runtime inspection.
 - [Subagents](docs/subagents.md): before delegating, changing definitions or configuring the review team.
 - [Borrowed from Pi](docs/pi-upstream.md): on Pi upgrades or changes to upstream couplings; includes upstream references.
+- [Searching Pi's code](docs/pi-upstream.md#searching-pis-code): before reading Pi internals; where each package's types live and the `rg` command that finds them.
 
 ## Push permission
 
