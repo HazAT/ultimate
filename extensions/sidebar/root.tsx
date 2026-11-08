@@ -5,7 +5,13 @@ import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/u
 import { Committed } from '../coding-tools/ui.tsx'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
-import { CommitCount, ProgressAction, Review, useWorkspaceIndex } from '../workspaces/ui.tsx'
+import {
+  CommitCount,
+  ProgressAction,
+  Review,
+  useWorkspaceConversations,
+  useWorkspaceIndex,
+} from '../workspaces/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
 import {
   AgentMark,
@@ -20,6 +26,7 @@ import { Section } from './section.tsx'
 import { SummaryHistory } from './summaries.tsx'
 import { useShell } from './state.tsx'
 import { workOf } from './work.ts'
+import { askedOn, busySubagents, deriveBlocker } from './waiting-on.ts'
 import type { Work } from './work.ts'
 
 /** When a branch last landed: its latest landed submission's last step. */
@@ -53,15 +60,23 @@ function useBranchState(
   parked = false,
 ) {
   const index = useWorkspaceIndex()
+  const conversations = useWorkspaceConversations()
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
   const runState = useOverview()[conversation.id]?.runState
   const primary = useDocOf(1, StandingDoc)?.ultimate
   const concludedSince = useConcludedSince()(conversation.id)
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
-  if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
-  if (queued) return { label: 'submitted', tone: 'success' } as const
+  // What it waits on, named, beside the state: the same state the row already reads.
+  const blocker = deriveBlocker({
+    asked: askedOn(log.messages, conversation.id),
+    submission: queued && { state: queued.state, steps: queued.steps },
+    subagents: busySubagents(conversations, conversation.id),
+    runState,
+  })
+  if (queued?.state === 'landing') return { label: 'landing', tone: 'success', blocker } as const
+  if (queued) return { label: 'submitted', tone: 'success', blocker } as const
   // A pause holds its run: nothing of it executes until Play.
-  if (parked) return { label: 'paused', tone: 'paused' } as const
+  if (parked) return { label: 'paused', tone: 'paused', blocker } as const
   // The sidebar's one conversation state; `working` also counts its subagents' runs.
   const state = working
     ? 'working'
@@ -73,11 +88,13 @@ function useBranchState(
     return {
       label: phase && !phase.waiting ? phase.word : 'working',
       tone: 'brand',
+      blocker,
     } as const
-  if (state === 'waits') return { label: 'waits on you', tone: 'waiting' } as const
-  if (state === 'awaiting') return { label: 'awaiting @ultimate', tone: 'waiting' } as const
-  if (state === 'failed') return { label: 'failed', tone: 'failed' } as const
-  return { label: 'idle', tone: 'quiet' } as const
+  if (state === 'waits') return { label: 'waits on you', tone: 'waiting', blocker } as const
+  if (state === 'awaiting')
+    return { label: 'awaiting @ultimate', tone: 'waiting', blocker } as const
+  if (state === 'failed') return { label: 'failed', tone: 'failed', blocker } as const
+  return { label: 'idle', tone: 'quiet', blocker } as const
 }
 
 const tones = {
@@ -225,6 +242,18 @@ function PhasedFlightRow({
             <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
               {feature && <FeatureTag feature={feature} />}
               <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
+              {!parked && state.blocker.kind !== 'none' && (
+                <>
+                  <span>·</span>
+                  <span
+                    className="min-w-0 truncate"
+                    data-ui="waiting-on"
+                    title={state.blocker.detail}
+                  >
+                    {state.blocker.label}
+                  </span>
+                </>
+              )}
               {latest > 0 && (
                 <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
                   {formatAgo(latest, now)}

@@ -66,7 +66,9 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   a landed branch that gets new work is open again). Each shows its title, its feature tag, a state (`submitted` or
   `landing` while the lander has it, the working phase while it works, amber `awaiting @ultimate` while a
   reply-enabled message it sent @ultimate is open, red `failed`, else `idle`) and its age; clicking opens it, and its `…` menu is the same as an Earlier row's (Rename, Compact
-  context, Conclude with the pending-work check). A branch
+  context, Conclude with the pending-work check). When the branch waits on something, the state line names it after
+  the state (`waiting-on.ts`, `data-ui="waiting-on"`, full text on hover): an open question's first question, the
+  landing's current step or running check, its busy subagent's name, or its queued input — in that order. A branch
   with a worktree also shows its work so far on a quiet line below (workspaces' `progress`): `N commits` not yet on
   its target, opening `branch:<name>` in Review, and `+ N edits` (uncommitted changed paths), opening
   `uncommitted:<id>`. A fresh worktree, or a branch without one, shows nothing. All rows are read in one call, again
