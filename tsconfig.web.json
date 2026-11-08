@@ -27,6 +27,7 @@
     "extensions/messages/caller.ts",
     "extensions/cloud/types.ts",
     "extensions/conversations/types.ts",
+    "extensions/dream/stage.ts",
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",
     "extensions/phase/types.ts",

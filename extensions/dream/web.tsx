@@ -64,7 +64,7 @@ function TimeToDream() {
   const actions = useUltimate()
   const awake = useAwake()
   if (ultimate === undefined || id !== ultimate || doc === undefined) return null
-  if (awake || (doc?.prepared && doc.sleep?.phase !== 'asleep')) return null
+  if (awake) return null
   if (!entries.some((entry) => entry.kind === 'pi.compaction')) return null
   const window = models?.models.find(
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,

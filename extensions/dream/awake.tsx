@@ -9,24 +9,28 @@ import { api, errorMessage, useDocOf, useUltimate } from '@/sdk'
 import { useConcludedSince } from '../conversations/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { DismissAction, DreamDoc, ReadyAction } from './refs.ts'
+import { dreamStage } from './stage.ts'
 
 /** The dialog the pinned line opens: the Fall asleep card. */
 export const nextDialog = 'dream.next'
 
-/**
- * Where the way into a fresh chapter stands: `woke` once the dream branch is concluded, `preparing` after the user
- * pressed Fall asleep, `prepared` while a prepared chapter waits; undefined when there is nothing to do.
- */
-export function useAwake() {
+/** The dream document and its stage (`dreamStage`); undefined until the document loads. */
+export function useDreamStage() {
   const doc = useDocOf(1, DreamDoc)
   const concluded = useConcludedSince()
-  if (!doc) return undefined
-  const { dream, prepared, sleep } = doc
-  if (prepared && sleep?.phase !== 'asleep' && (!dream || prepared.at > dream.at))
-    return { phase: 'prepared' as const, chapter: prepared.chapter }
-  if (!dream || dream.dismissed || concluded(dream.branch) !== Infinity) return undefined
-  if (sleep?.phase === 'asleep' && prepared && prepared.at > dream.at) return undefined
-  return { phase: dream.asked ? ('preparing' as const) : ('woke' as const), branch: dream.branch }
+  return doc && { doc, stage: dreamStage(doc, concluded) }
+}
+
+/**
+ * The sidebar cue's phase: `woke` and `preparing` as the stage says, `prepared` while a prepared chapter waits, falls
+ * asleep or failed to; undefined when there is nothing to do.
+ */
+export function useAwake() {
+  const { doc, stage } = useDreamStage() ?? {}
+  if (stage === 'woke' || stage === 'preparing') return { phase: stage }
+  if (stage === 'prepared' || stage === 'sleeping' || stage === 'failed')
+    return { phase: 'prepared' as const, chapter: doc!.prepared!.chapter }
+  return undefined
 }
 
 /** The sidebar's cue: what the dream left to do, and the button that does it; `onAct` after it did. */
