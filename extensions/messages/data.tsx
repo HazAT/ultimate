@@ -1,5 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { MessagesData, Message, Remote } from './refs.ts'
+import type { UserAction } from './user-actions.tsx'
 
 /** How another project's Ultimate is named; the server says the same in its model text. */
 export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
@@ -11,18 +12,23 @@ export function answeredMessages(messages: Message[], conversation: number, entr
 }
 
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
+
+/** Action deadlines do not need an agent turn or a document mutation to stop waiting. */
+export const liveUserActions = (actions: readonly UserAction[], now: number) =>
+  actions.filter((action) => action.expiresAt === undefined || action.expiresAt > now)
 /** What waits on the user: each question to the user they have neither answered nor dismissed. */
-export const waitingOnUser = (log: MessagesData) =>
+export const waitingOnUser = (log: MessagesData, actions: readonly UserAction[] = []) =>
   log.messages.filter(
     (message) => message.to === 'user' && message.reply && message.state === 'delivered',
-  ).length
+  ).length + actions.length
 
 /**
  * Where a conversation stands, the one state every view shows:
  * - `paused`: the host is paused and its run is parked: no task of it executes until Play;
  * - `working`: it runs, or has input queued;
  * - `waits`: the primary agent (@ultimate) counts every question open with the user; a non-subagent
- *   conversation has one of its own open. This is the state that asks the user to act;
+ *   conversation has one of its own open. Extension-owned pending user actions count too;
+ *   they remain in their provider's live document, not in the message log;
  * - `awaiting`: a conversation that is no subagent asked the primary agent (a branch asking @ultimate) and waits for
  *   the answer, or reported to it and has not heard from it since; a subagent's questions go to its parent, which
  *   answers them in its own run;
@@ -54,17 +60,19 @@ export function conversationState(
     concludedSince?: number
   },
   log: MessagesData,
+  actions: readonly UserAction[] = [],
 ): ConversationState {
   const { id, kind, runState } = conversation
   if (conversation.parked) return 'paused'
   if (conversation.busy || runState === 'working' || runState === 'queued') return 'working'
   if (
     kind === 'primary'
-      ? waitingOnUser(log) > 0
+      ? waitingOnUser(log, actions) > 0
       : kind !== 'subagent' &&
-        log.messages.some(
-          (m) => m.from === id && m.to === 'user' && m.reply && m.state === 'delivered',
-        )
+        (actions.some((action) => action.conversation === id) ||
+          log.messages.some(
+            (m) => m.from === id && m.to === 'user' && m.reply && m.state === 'delivered',
+          ))
   )
     return 'waits'
   if (

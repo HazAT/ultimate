@@ -15,3 +15,10 @@ export { MessagesDoc, MessageSent } from './refs.ts'
 export { accentOf } from './accent.tsx'
 export { Address, Body, Bubble, useAccentOf } from './cards.tsx'
 export { MessageAnswers } from './points.tsx'
+export {
+  PendingUserActions,
+  UserActionsProvider,
+  useUserActions,
+  useOpenUserAction,
+} from './user-actions.tsx'
+export type { PendingUserAction, UserAction } from './user-actions.tsx'

@@ -10,14 +10,21 @@ import {
   useUltimate,
   Wordmark,
 } from '@/sdk'
-import { MessagesDoc, emptyMessages, waitingOnUser } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  emptyMessages,
+  waitingOnUser,
+  UserActionsProvider,
+  useUserActions,
+  useOpenUserAction,
+} from '../messages/ui.tsx'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { primaryLabel } from './label.ts'
 
 /** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
-  return children(waitingOnUser(useDocOf(1, MessagesDoc) ?? emptyMessages))
+  return children(waitingOnUser(useDocOf(1, MessagesDoc) ?? emptyMessages, useUserActions()))
 }
 
 /** A busy standing agent's word: its classified phase, lower case like its idle line, else "working". */
@@ -46,9 +53,11 @@ export function UltimateWordmark() {
 export function UltimateButton() {
   return (
     <span className="contents md:hidden">
-      <Provided input={null} point={ParkedRuns}>
-        {(parked) => <Primary parked={parked} />}
-      </Provided>
+      <UserActionsProvider>
+        <Provided input={null} point={ParkedRuns}>
+          {(parked) => <Primary parked={parked} />}
+        </Provided>
+      </UserActionsProvider>
     </span>
   )
 }
@@ -56,6 +65,8 @@ export function UltimateButton() {
 const name = 'ultimate'
 
 function Primary({ parked }: { parked?: ReadonlySet<number> }) {
+  const pending = useUserActions()
+  const openUserAction = useOpenUserAction()
   const actions = useUltimate()
   const id = useDocOf(1, StandingDoc)?.[name]
   const tasks = useTasks()
@@ -89,7 +100,9 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
                     )}
                     data-ui="ultimate-button"
                     data-ultimate-button
-                    onClick={() => void talkToUltimate(actions)}
+                    onClick={() =>
+                      pending[0] ? openUserAction(pending[0]) : void talkToUltimate(actions)
+                    }
                     type="button"
                   >
                     <AgentMark

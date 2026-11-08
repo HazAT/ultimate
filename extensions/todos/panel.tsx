@@ -2,6 +2,7 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   ChevronRightIcon,
+  ClipboardListIcon,
   MessageCircleQuestionIcon,
   PlayIcon,
   PlusIcon,
@@ -10,7 +11,16 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api, cn, errorMessage, events, formatAgo, useDocOf, useNow, useUltimate } from '@/sdk'
-import { Address, MessagesDoc, emptyMessages, useAccentOf } from '../messages/ui.tsx'
+import {
+  Address,
+  MessagesDoc,
+  emptyMessages,
+  useAccentOf,
+  UserActionsProvider,
+  useUserActions,
+  useOpenUserAction,
+} from '../messages/ui.tsx'
+import type { UserAction } from '../messages/ui.tsx'
 import type { Question } from '../messages/refs.ts'
 import { waiting } from '../questions/ui.tsx'
 import { StandingAction } from '../subagents/ui.tsx'
@@ -39,6 +49,15 @@ const owners: { id: Todo['owner']; label: string }[] = [
  * where it was asked: its row opens that conversation at the message, whose card has the choices and Dismiss.
  */
 export function Todos() {
+  return (
+    <UserActionsProvider>
+      <TodoList />
+    </UserActionsProvider>
+  )
+}
+
+function TodoList() {
+  const approvals = useUserActions()
   const items = useDocOf(1, TodosDoc)?.items ?? []
   const questions = waiting((useDocOf(1, MessagesDoc) ?? emptyMessages).messages)
   const now = useNow(60_000)
@@ -47,7 +66,7 @@ export function Todos() {
   const yours = open.filter((todo) => todo.owner === 'user')
   const ultimate = open.filter((todo) => todo.owner === 'ultimate')
   const done = items.filter((todo) => todo.done).toReversed()
-  const count = questions.length + open.length
+  const count = questions.length + approvals.length + open.length
 
   const run = (action: Promise<unknown>) => {
     setError(undefined)
@@ -86,10 +105,20 @@ export function Todos() {
           {questions.length > 0 && (
             <span className="text-amber-700 dark:text-amber-300">
               {questions.length} {questions.length === 1 ? 'question' : 'questions'}
+              {(open.length > 0 || approvals.length > 0) && ' · '}
+            </span>
+          )}
+          {approvals.length > 0 && (
+            <span className="text-amber-700 dark:text-amber-300">
+              {approvals.length} {approvals.length === 1 ? 'action' : 'actions'}
               {open.length > 0 && ' · '}
             </span>
           )}
-          {open.length ? `${open.length} open` : questions.length ? '' : 'none open'}
+          {open.length
+            ? `${open.length} open`
+            : questions.length || approvals.length
+              ? ''
+              : 'none open'}
         </span>
       </div>
       <AddTodo add={(text, owner) => run(api.action(AddAction, { text, owner }))} />
@@ -101,7 +130,14 @@ export function Todos() {
         </p>
       ) : (
         <>
-          <Section title="For you" owner="user" empty={!questions.length && !yours.length}>
+          <Section
+            title="For you"
+            owner="user"
+            empty={!questions.length && !approvals.length && !yours.length}
+          >
+            {approvals.map((action) => (
+              <PendingActionRow key={`${action.conversation}:${action.id}`} action={action} />
+            ))}
             {questions.map((message) => (
               <QuestionRow key={`q${message.id}`} message={message} now={now} />
             ))}
@@ -130,6 +166,27 @@ export function Todos() {
         </details>
       )}
     </div>
+  )
+}
+
+function PendingActionRow({ action }: { action: UserAction }) {
+  const open = useOpenUserAction()
+  return (
+    <li data-todo-action={action.id}>
+      <button
+        type="button"
+        onClick={() => open(action)}
+        className="group/action flex w-full cursor-pointer items-start gap-2.5 rounded px-2 py-1.5 text-left hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <ClipboardListIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <span className="min-w-0 flex-1">
+          <span className="line-clamp-2 text-[13px] leading-snug">{action.label}</span>
+          <span className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+            <Address id={action.conversation} /> review <ArrowUpRightIcon className="size-3" />
+          </span>
+        </span>
+      </button>
+    </li>
   )
 }
 

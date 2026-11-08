@@ -15,7 +15,13 @@ import {
   useNow,
   useUltimate,
 } from '@/sdk'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  emptyMessages,
+  UserActionsProvider,
+  useUserActions,
+} from '../messages/ui.tsx'
 import { useConcludedSince, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { LaneTree } from './hierarchy.tsx'
@@ -38,8 +44,9 @@ function useLive() {
   return useUltimate().surface === 'system' && visible
 }
 
-/** Each lane's conversation state, the same the sidebar shows: only the primary agent can wait on you. */
+/** Each lane's conversation state, including extension-owned actions, the same the sidebar shows. */
 function useStates(parked: ReadonlySet<number>) {
+  const userActions = useUserActions()
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
   const conversations = useConversations()
@@ -59,6 +66,7 @@ function useStates(parked: ReadonlySet<number>) {
         concludedSince: concludedSince(id),
       },
       log,
+      userActions,
     )
     return laneState(lane, state, overview[id] !== undefined)
   }
@@ -105,9 +113,11 @@ const dot = 'inline-block size-1.5 rounded-full'
 /** Agent Lanes on top, the stream of everything below; both live while on screen. */
 function System() {
   return (
-    <Provided input={null} point={ParkedRuns}>
-      {(parked) => <Lanes parked={parked ?? noneParked} />}
-    </Provided>
+    <UserActionsProvider>
+      <Provided input={null} point={ParkedRuns}>
+        {(parked) => <Lanes parked={parked ?? noneParked} />}
+      </Provided>
+    </UserActionsProvider>
   )
 }
 const noneParked: ReadonlySet<number> = new Set()

@@ -18,6 +18,7 @@ import {
   threadRow,
   ultimateCompact,
   waitingOnUser,
+  liveUserActions,
 } from '../../extensions/messages/data.tsx'
 import type { Message } from '../../extensions/messages/refs.ts'
 
@@ -398,6 +399,30 @@ describe('conversation state', () => {
     expect(conversationState({ id: 3, kind: 'other', runState: 'answered' }, toUser)).not.toBe(
       'waits',
     )
+  })
+
+  it('keeps a standing agent waiting for its durable approval after its turn ends, until the last action resolves', () => {
+    const agent = { id: 7, kind: 'other' as const, runState: 'answered' as const }
+    const actions = [
+      { id: 'deploy:first', label: 'Deploy first', conversation: 7, entry: 100 },
+      { id: 'deploy:second', label: 'Deploy second', conversation: 7, entry: 101 },
+    ]
+    expect(conversationState(agent, messagesLog(), actions)).toBe('waits')
+    expect(conversationState(agent, messagesLog(), actions.slice(1))).toBe('waits')
+    expect(conversationState(agent, messagesLog(), [])).toBe('idle')
+    expect(conversationState(primary, messagesLog(), actions)).toBe('waits')
+    expect(waitingOnUser(messagesLog(), actions)).toBe(2)
+    expect(conversationState({ ...agent, id: 8 }, messagesLog(), actions)).toBe('idle')
+    expect(conversationState({ ...agent, busy: true }, messagesLog(), actions)).toBe('working')
+    expect(conversationState({ ...agent, parked: true }, messagesLog(), actions)).toBe('paused')
+    expect(conversationState({ ...agent, kind: 'subagent' }, messagesLog(), actions)).toBe('done')
+  })
+
+  it('stops waiting at an approval deadline without a new message or document update', () => {
+    const agent = { id: 7, kind: 'other' as const, runState: 'answered' as const }
+    const actions = [{ id: 'deploy:first', label: 'Deploy first', conversation: 7, expiresAt: 200 }]
+    expect(conversationState(agent, messagesLog(), liveUserActions(actions, 199))).toBe('waits')
+    expect(conversationState(agent, messagesLog(), liveUserActions(actions, 200))).toBe('idle')
   })
 
   it('awaits the primary agent while its reply-expected message to it is open', () => {

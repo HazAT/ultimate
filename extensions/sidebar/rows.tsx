@@ -21,7 +21,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { api, cn, errorMessage, formatAgo, Provided, useDocOf } from '@/sdk'
 import { useShell } from './state.tsx'
 import { store } from '@/sdk/client'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  emptyMessages,
+  useUserActions,
+  useOpenUserAction,
+} from '../messages/ui.tsx'
 import {
   AgentMark,
   ConversationEpic,
@@ -148,6 +154,8 @@ function PhasedRow({
   activity,
   displayPhase,
 }: RowProps & { displayPhase?: { label: ReactNode } }) {
+  const pending = useUserActions(conversation.id)
+  const openUserAction = useOpenUserAction()
   const hasActivity = !!(displayPhase || activity)
   // One indicator per row: the phase line's pulsing dot, else the leading mark's while no phase is known yet.
   const markWorking = displayPhase ? undefined : working
@@ -229,7 +237,11 @@ function PhasedRow({
           <button
             aria-current={shown ? 'true' : undefined}
             className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-            onClick={() => actions.switchConversation(conversation.id)}
+            onClick={() =>
+              state === 'waits' && pending[0]
+                ? openUserAction(pending[0])
+                : actions.switchConversation(conversation.id)
+            }
             ref={(element) => {
               if (!element || !refocus.current) return
               refocus.current = false

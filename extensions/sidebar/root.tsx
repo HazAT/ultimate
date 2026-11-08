@@ -3,7 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 import { cn, formatAgo, formatTokens, Provided, useAction, useDocOf, useEvents } from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  emptyMessages,
+  useUserActions,
+  useOpenUserAction,
+} from '../messages/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { CommitCount, ProgressAction, Review, useWorkspaceIndex } from '../workspaces/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
@@ -54,6 +60,7 @@ function useBranchState(
 ) {
   const index = useWorkspaceIndex()
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const userActions = useUserActions()
   const runState = useOverview()[conversation.id]?.runState
   const primary = useDocOf(1, StandingDoc)?.ultimate
   const concludedSince = useConcludedSince()(conversation.id)
@@ -68,6 +75,7 @@ function useBranchState(
     : conversationState(
         { id: conversation.id, kind: 'other', runState, primary, concludedSince },
         log,
+        userActions,
       )
   if (state === 'working')
     return {
@@ -159,6 +167,8 @@ function PhasedFlightRow({
   const [editing, setEditing] = useState(false)
   const cancelled = useRef(false)
   const feature = useOverview()[conversation.id]?.feature
+  const pending = useUserActions(conversation.id)
+  const openUserAction = useOpenUserAction()
   const state = useBranchState(conversation, working, phase, parked)
   const latest = Math.max(conversation.inputAt ?? 0, conversation.answerAt ?? 0)
   const title = conversation.title ?? `#${conversation.id}`
@@ -194,7 +204,11 @@ function PhasedFlightRow({
               shown && 'bg-sidebar-accent',
             )}
             data-in-flight={conversation.id}
-            onClick={() => actions.switchConversation(conversation.id)}
+            onClick={() =>
+              state.tone === 'waiting' && pending[0]
+                ? openUserAction(pending[0])
+                : actions.switchConversation(conversation.id)
+            }
             type="button"
           >
             <span className="flex w-full min-w-0 items-center gap-1.5 pr-5">

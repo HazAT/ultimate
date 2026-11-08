@@ -39,6 +39,9 @@ import { Row, ChildRow, EpicLine, StandingRow, SubagentLine } from './rows.tsx'
 import {
   MessagesDoc,
   conversationState,
+  UserActionsProvider,
+  useUserActions,
+  useOpenUserAction,
   emptyMessages,
   stateTone,
   stateWord,
@@ -190,6 +193,14 @@ const pinned = (conversation: ConversationSummary) =>
 
 /** The project tree, with owned subagents under each row and earlier/concluded work at the bottom. */
 export function Conversations() {
+  return (
+    <UserActionsProvider>
+      <ConversationList />
+    </UserActionsProvider>
+  )
+}
+
+function ConversationList() {
   const ultimateId = useDocOf(1, StandingDoc)?.ultimate
   return (
     <WaitingOnUser>
@@ -220,6 +231,8 @@ function Tree({
 }) {
   const overview = useOverview()
   const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const userActions = useUserActions()
+  const openUserAction = useOpenUserAction()
   const tasks = useTasks()
   const foreground = new Set<number>(
     Object.values(tasks?.tasks ?? {})
@@ -369,10 +382,22 @@ function Tree({
             primary: ultimateId,
           },
           log,
+          userActions,
         )
       : waiting > 0
         ? 'waits'
         : 'idle'
+    const ownApprovals = userActions.filter((action) => action.conversation === conversation?.id)
+    const waitingHere = isUltimate
+      ? waiting
+      : ownApprovals.length +
+        log.messages.filter(
+          (message) =>
+            message.from === conversation?.id &&
+            message.to === 'user' &&
+            message.reply &&
+            message.state === 'delivered',
+        ).length
     return (
       <StandingRow
         conversation={conversation}
@@ -381,11 +406,15 @@ function Tree({
         presence={
           state === 'working' || landing ? 'working' : state === 'waits' ? 'waiting' : 'idle'
         }
-        onOpen={() =>
-          conversation && !isUltimate
+        onOpen={() => {
+          const approval = isUltimate
+            ? userActions[0]
+            : userActions.find((a) => a.conversation === conversation?.id)
+          if (state === 'waits' && approval) return openUserAction(approval)
+          return conversation && !isUltimate
             ? actions.switchConversation(conversation.id)
             : void talkToUltimate(actions)
-        }
+        }}
         shown={shown}
       >
         {lander ? (
@@ -395,7 +424,12 @@ function Tree({
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
             ) : (
-              <span className={cn('shrink-0', stateTone[state])}>{stateWord(state, waiting)}</span>
+              <span
+                className={cn('shrink-0', stateTone[state])}
+                title={ownApprovals.map((action) => action.label).join('\n') || undefined}
+              >
+                {stateWord(state, waitingHere)}
+              </span>
             )}
             {latest > 0 && (
               <span
@@ -432,6 +466,7 @@ function Tree({
         concludedSince: concludedSince(conversation.id),
       },
       log,
+      userActions,
     )
     // Queued input counts as working too; subagents working below it say so.
     const state = working.get(conversation.id) ?? (derived === 'working' ? 'self' : undefined)
