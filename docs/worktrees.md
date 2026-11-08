@@ -18,7 +18,7 @@ fast-forwards the branch and pushes to `lander.push` (here `origin`), so keep wo
 A conflict or a check that failed twice comes back to the submitter as a waking report: fix it in the workspace (a
 flaky test at its cause, or delete it) and submit again. A landing is the end of the branch's work: its report is a
 note in the branch, the branch is concluded unless work is still under way (a subagent, a reply it waits for, queued
-input), whoever started it wakes with the landing card, and the concluded branch's checkout is freed.
+input, an automation it subscribed to that is still enabled), whoever started it wakes with the landing card, and the concluded branch's checkout is freed.
 Its progress shows live on the submit tool card, with expandable steps, and its report as an outcome card; the
 source's @lander conversation, pinned in the sidebar's agents group, keeps the full log and takes no input.
 For `server/` or `shared/` changes, an authorized `restart` works once the running clone is clean at the landed commit.

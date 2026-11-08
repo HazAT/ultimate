@@ -40,7 +40,8 @@ A project is a forest of conversation trees, like commit histories.
 - **State divergence.** Reports and `workspace submit` say how the result differs from the task as given: new
   agreements, a different approach or changed scope. Say "None" when it matches.
 - **Conclude** a conversation when its work is done; it stays readable and can be resumed. A branch whose submission
-  lands is concluded by the landing, unless work is still under way (a subagent, a reply it waits for, queued input),
+  lands is concluded by the landing, unless work is still under way (a subagent, a reply it waits for, queued input, an automation it subscribed to
+  that is still enabled),
   and whoever started it wakes with the landing card. A failed submission wakes the branch to fix it and submit again.
 - **UI polish lands when the user says so.** For small look-and-feel work (an animation, a loading state, spacing,
   a card), run preview rounds (the `ui-preview-round` skill) and do not `workspace submit` until the user has clicked

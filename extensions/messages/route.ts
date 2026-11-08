@@ -15,7 +15,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Messages } from './api.ts'
+import { Messages, Waits } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
@@ -76,14 +76,16 @@ async function underway(host: ExtensionHost, tx: Tx, id: ConversationId): Promis
       .checkpoint
     if (checkpoint?.phase === 'report' && checkpoint.conversationId === id) return true
   }
-  return working(tx, id)
+  return working(host, tx, id)
 }
 /**
  * Whether `id` has work of its own that will wake it: a run or queued input, a waking task, a busy subagent at any
- * depth, or a reply-enabled message it sent still waiting on its answer. The lander asks it before concluding.
+ * depth, a reply-enabled message it sent still waiting on its answer, or an automation subscribed to it that is still
+ * enabled and not done (a schedule, an `ask` watcher, an event). The lander asks it before concluding.
  */
-export async function working(tx: Tx, id: ConversationId): Promise<boolean> {
+export async function working(host: ExtensionHost, tx: Tx, id: ConversationId): Promise<boolean> {
   if (await busy(tx, id)) return true
+  if (await host.want(Waits)?.subscribed(tx, id)) return true
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   if (log.messages.some((m) => m.from === id && isOpen(m))) return true
   return children(tx, id)

@@ -180,7 +180,7 @@ export default function messages(host: ExtensionHost) {
   // What a landing asks about its branch, through workspaces' extension point, so workspaces does not depend on messages.
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),
-    working: (tx, id) => working(tx, id),
+    working: (tx, id) => working(host, tx, id),
   })
   host.implement(MessagesApi, {
     answer: (messageId, text, ctx, device) => answer(host, messageId, text, ctx, { device }),

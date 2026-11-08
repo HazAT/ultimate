@@ -4,7 +4,7 @@
  */
 import type { Context } from '@earendil-works/chord'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { EntryId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
@@ -92,5 +92,12 @@ export { MessageSent } from './refs.ts'
 export type { Question } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
+
+export type WaitsService = {
+  /** Inside `tx`: whether an enabled automation, not done, has conversation `id` among its subscribers. */
+  subscribed(tx: Tx, id: ConversationId): Promise<boolean>
+}
+/** What messages asks about the automations that would wake a conversation; automations provides it. `want` it. */
+export const Waits = defineApi<WaitsService>()('messages.waits')
 
 export const tier = 'core'

@@ -29,7 +29,7 @@ import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
 import { writeJson } from '../../lib/json-file.ts'
 import { SubagentsApi } from '../subagents/api.ts'
-import { MessagesApi } from '../messages/api.ts'
+import { MessagesApi, Waits } from '../messages/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { AutomationsApi } from './api.ts'
 import {
@@ -815,6 +815,13 @@ export default function automations(host: ExtensionHost) {
       const a = (await tx.doc(Automations)).automations[id]
       return a && json(a)
     },
+  })
+  // Enabled means not done: a fired `at`, a finished script, a paused or escalated one are disabled.
+  host.implement(Waits, {
+    subscribed: async (tx, id) =>
+      Object.values((await tx.doc(Automations)).automations).some(
+        (a) => a.enabled && a.subscribers.includes(id),
+      ),
   })
   api.trigger.install()
   host.onOpen(async () => {

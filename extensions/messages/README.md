@@ -31,8 +31,9 @@ report.**
 - **Notes.** A one-way message from a subagent to its parent, or from a branch to its starter (`board.started`), is
   written with `delivery: 'note'`: it starts no run; the recipient reads it with its next request.
 - **Reports.** After each run of a branch, its final answer goes to its starter, unless it already returned as a reply.
-  When nothing of the branch is under way (no run, queued input, busy subagent, pending submission or open
-  reply-enabled message), it goes as a one-way message with `report: true`, which wakes the starter; otherwise as a
+  When nothing of the branch is under way (no run, queued input, busy subagent, pending submission, open
+  reply-enabled message or enabled automation subscribed to it, which automations reports through the
+  `messages.waits` point), it goes as a one-way message with `report: true`, which wakes the starter; otherwise as a
   note, since the branch will run again. A landing concludes the branch and wakes the starter itself, asking through
   the `workspaces.branches` point this extension provides (`starter`, `underway`).
 - **Answers back down.** When every input of the primary agent's run was a branch's reply or report, its final answer

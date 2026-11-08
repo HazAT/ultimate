@@ -12,6 +12,7 @@ import type { JsonObject, TaskId } from '@earendil-works/pi-durable'
 import { context, prepareHarness } from '../server/harness.ts'
 import type { OpenHost } from '../server/harness.ts'
 import { Metadata } from '../server/metadata.ts'
+import { Waits } from '../extensions/messages/api.ts'
 import { Profile } from '../extensions/subagents/api.ts'
 import automations, { actions, Automations } from '../extensions/automations/server.ts'
 import type { Automation } from '../extensions/automations/server.ts'
@@ -120,6 +121,7 @@ async function fixture() {
       enabled = false
     },
     removeProfile: () => rm(join(root, 'agents/writer.md')),
+    provided,
     get opened() {
       return opened
     },
@@ -215,6 +217,39 @@ it('fires a subscriber-only schedule without creating a run conversation', async
       'automation',
     )
   }
+})
+
+it('answers whether a conversation still waits on an enabled automation subscribed to it', async () => {
+  const f = await fixture()
+  const [target, other] = await f.opened.harness.commit(async (tx) => {
+    const made = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      made.push(child)
+    }
+    return made
+  }, context)
+  const waits = f.provided.get(Waits.name) as {
+    subscribed: (tx: never, id: number) => Promise<boolean>
+  }
+  const waiting = (id: number) =>
+    f.opened.harness.commit((tx) => waits.subscribed(tx as never, id), context)
+  expect([await waiting(target.id), await waiting(other.id)]).toEqual([false, false])
+  // A one-shot schedule waits until it fires: enabled until then, disabled after, so nothing is left to wait on.
+  await f.action('create', { name: 'Once', schedule: 'in 2s', subscribers: [target.id] })
+  expect([await waiting(target.id), await waiting(other.id)]).toEqual([true, false])
+  await until(async () => (await f.records())[0].fires > 0)
+  expect(await waiting(target.id)).toBe(false)
+  // A recurring one waits until paused.
+  const every = (await f.action('create', {
+    name: 'Every',
+    schedule: 'every 2s',
+    subscribers: [target.id],
+  })) as Automation
+  expect(await waiting(target.id)).toBe(true)
+  await f.action('pause', { id: every.id })
+  expect(await waiting(target.id)).toBe(false)
 })
 
 it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {
