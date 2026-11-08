@@ -1,16 +1,13 @@
 import type { LanderStep } from './types.ts'
 
 /** A running check's line gives way to its result, which follows it. */
-export const runningStep = /^(?:checking|rerunning): (.*)$/s
-export const superseded = (row: LanderStep, later: readonly LanderStep[]) => {
-  const command = runningStep.exec(row.step)?.[1]
-  return command !== undefined && later.some((next) => next.check?.command === command)
-}
+export const superseded = (row: LanderStep, later: readonly LanderStep[]) =>
+  row.runs !== undefined && later.some((next) => next.check?.command === row.runs)
 
 /** A group's checks run together: a running check whose later rows all belong to its group still runs. */
 const pending = (row: LanderStep, later: readonly LanderStep[]) =>
-  runningStep.test(row.step) &&
-  later.every((next) => next.check !== undefined || runningStep.test(next.step))
+  row.runs !== undefined &&
+  later.every((next) => next.check !== undefined || next.runs !== undefined)
 
 /**
  * How long `row`, the step at `index` of the shown `rows`, took: until the next shown step starts; a check result's time is
@@ -23,9 +20,7 @@ export const tookFor = (
   steps: readonly LanderStep[],
 ) => {
   if (row.check) {
-    const start = steps.findLast(
-      (other) => other.at <= row.at && runningStep.exec(other.step)?.[1] === row.check!.command,
-    )
+    const start = steps.findLast((other) => other.at <= row.at && other.runs === row.check!.command)
     return start ? row.at - start.at : undefined
   }
   const next = rows[index + 1]

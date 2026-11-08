@@ -1285,6 +1285,7 @@ it.concurrent('lands two submissions in order onto a moved target and reports bo
     'fast-forwarding',
     'landed',
   ])
+  expect(firstLog[5].runs).toBe('test -f base.txt')
   expect(firstLog[6].check).toEqual({ command: 'test -f base.txt', result: 'passed' })
   const landedOne = firstLog.at(-1)!
   expect(landedOne).toMatchObject({ conversationId: first, outcome: 'landed' })

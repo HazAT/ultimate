@@ -46,6 +46,8 @@ export type LanderCheck = {
 export type LanderStep = {
   step: string
   at: number
+  /** The check command this step starts running; its `check` result row ends it. */
+  runs?: string
   check?: LanderCheck
 }
 /** How a submission ended. A push that failed after landing locally is `landed` with a `reason`. */
@@ -77,6 +79,7 @@ export type LanderEntry = {
   /** Submitting conversation breadcrumb, not the log timestamp. */
   sourceEntry?: number
   step?: string
+  runs?: string
   check?: LanderCheck
   /** On the submission's first line and its outcome. */
   subject?: ConversationSubject
