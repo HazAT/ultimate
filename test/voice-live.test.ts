@@ -352,6 +352,29 @@ it('speaks a tool-terminated question and answers it through Messages, without a
   expect((await f.entries(f.main)).some((e) => e.kind === 'board.message')).toBe(true)
 })
 
+it('answers no question by voice while several are open, since spoken words name no card', async () => {
+  const f = await fixture()
+  f.setAnswer('QUESTION')
+  await f.action('heard', { text: 'Please propose an approach' })
+  await f.waitAnswer(1)
+  const messages = async () =>
+    (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages
+  const first = (await messages()).findLast((m) => m.from === f.main && m.to === 'user')!
+  // A second card is open beside the first.
+  await f.server.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    log.messages.push({ ...first, id: log.next++, text: 'Another?' })
+  }, context)
+  f.setAnswer('Which one do you mean?')
+  await f.action('heard', { text: 'The small fix please' })
+  await f.waitAnswer(2)
+  expect((await messages()).filter((m) => m.state === 'delivered' && m.to === 'user')).toHaveLength(
+    2,
+  )
+  expect((await messages()).some((m) => m.from === 'user')).toBe(false)
+  expect((await f.entries(f.main)).filter((e) => e.kind === 'voice.utterance')).toHaveLength(2)
+})
+
 it('briefs each session, waits for the brief before the first line, and lets only the newest reach Voice', async () => {
   const f = await fixture()
   const briefs = async () => (await f.entries(f.voice)).filter((e) => e.kind === 'voice.context')
