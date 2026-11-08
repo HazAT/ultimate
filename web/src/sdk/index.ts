@@ -1,6 +1,6 @@
 /**
  * The extension SDK: everything a `web.tsx` needs besides components (`@/components/ui/*`, `@/components/ai/*`).
- * The guide is extensions/README.md.
+ * The guide is extensions/README.md; the hooks are in docs/extensions/sdk.md.
  */
 export {
   attention,
@@ -43,7 +43,7 @@ export type {
   UltimateContext,
   WebExtension,
 } from './types.ts'
-/** Building blocks of surfaces; see "Surfaces" in extensions/README.md. */
+/** Building blocks of surfaces; see docs/extensions/surfaces.md. */
 export {
   Conversation,
   Dock,

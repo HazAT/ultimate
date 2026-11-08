@@ -149,7 +149,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const message =
-          'Extension UI reaches the server through @/sdk: useDoc/useDocOf and the other hooks for live state, useAction or api.action for server code (extensions/README.md, SDK).'
+          'Extension UI reaches the server through @/sdk: useDoc/useDocOf and the other hooks for live state, useAction or api.action for server code (docs/extensions/sdk.md).'
         return {
           CallExpression(node: Node) {
             if (isGlobal(node.callee, 'fetch')) context.report({ node, message })
