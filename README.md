@@ -218,6 +218,7 @@ pnpm dev                          # the server alone, without the supervisor
 pnpm check                        # format, lint, types
 pnpm test                         # fast in-process tests on scripted model responses
 pnpm test:e2e                     # tests that spawn real supervisors and instances
+pnpm test extensions/<name>/      # one extension's tests (they live in its test/ folder)
 ```
 
 ## License

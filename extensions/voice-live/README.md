@@ -73,6 +73,6 @@ front/back sheet and tones remain browser-side: a quiet pulsing hum while connec
 (the ready tone, a low failed tone, End, page hide), and ready/pause/end tones. Closing waits for `session.closed`, records usage
 seconds and releases the microphone even on failure. No session survives its page.
 
-`test/voice-live.test.ts` exercises the agent/Ultimate round trip with faux models, including spoken question answers.
-`test/voice-live-relay.test.ts` exercises quiet-line joining, commentary suppression and idle tracking with a supplied
+`extensions/voice-live/test/voice-live.test.ts` exercises the agent/Ultimate round trip with faux models, including spoken question answers.
+`extensions/voice-live/test/voice-live-relay.test.ts` exercises quiet-line joining, commentary suppression and idle tracking with a supplied
 clock. Neither contacts OpenAI.

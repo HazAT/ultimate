@@ -33,4 +33,4 @@ Fast mode costs more. With the ChatGPT login it uses the plan's included usage a
 key it is billed at 2× Standard. The ChatGPT login reports `service_tier: "default"` even for priority requests, so
 displayed costs stay at Standard list prices.
 
-Verification: `pnpm vitest run test/fast.test.ts`.
+Verification: `pnpm vitest run extensions/fast/test/fast.test.ts`.

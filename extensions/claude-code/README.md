@@ -38,4 +38,4 @@ further requests when usage-credit overage is reported, but the first response m
 never sets `PI_CLAUDE_CODE_ALLOW_USAGE_CREDITS` or alters that guard. Read the
 [upstream documentation](https://github.com/earendil-works/pi-claude-code) before using it.
 
-Tests: `test/e2e/claude-code.test.ts`, against a fake CLI.
+Tests: `extensions/claude-code/test/e2e/claude-code.test.ts`, against a fake CLI.

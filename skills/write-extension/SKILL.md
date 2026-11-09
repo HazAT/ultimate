@@ -52,5 +52,6 @@ composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`,
 
 1. Server actions first: call them with codemode `ultimate.action(extension, action, args)`.
 2. `pnpm check` in the clone (format, lint, types, import boundaries, the dependency graph).
-3. Tests for behaviour behind it: fast tests in `test/`, no real waits.
+3. Tests for behaviour behind it: fast tests in the extension's own `test/` folder (`extensions/<name>/test/`), no
+   real waits; run them alone with `pnpm test extensions/<name>/` (see "Tests" in `extensions/README.md`).
 4. Look at it: follow the `verify-ui` skill (a preview of your checkout for anything outside the running host).
