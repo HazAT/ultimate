@@ -3,7 +3,8 @@ import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { definitionAgent, discoverAgents, hostDefaultModel } from '../../lib/agents.ts'
+import { definitionAgent, discoverAgents, hostDefaultModel, onFamily } from '../../lib/agents.ts'
+import { readFamilies } from '../../lib/families-settings.ts'
 import { LineageApi, Roots } from '../lineage/api.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter } from './images.ts'
@@ -17,11 +18,12 @@ export const branchTool = (host: ExtensionHost) =>
     name: 'branch',
     deferred: true,
     description:
-      "Start a lineage branch. Its answer returns to you as a reply. Give it a title: one short line naming the work (at most 60 characters), shown in the sidebar and the tally until its summary renames it; without one, the prompt's first 80 characters name it.",
+      "Start a lineage branch. Its answer returns to you as a reply. Give it a title: one short line naming the work (at most 60 characters), shown in the sidebar and the tally until its summary renames it; without one, the prompt's first 80 characters name it. family names a model family the coordinator runs on instead of its own.",
     parameters: obj({
       prompt: str({ minLength: 1 }),
       title: opt(str({ minLength: 1, maxLength: 60 })),
       root: opt(num()),
+      family: opt(str({ minLength: 1 })),
       isolated: opt(bool()),
       images: opt(imagesParameter),
     }),
@@ -47,8 +49,17 @@ export const branchTool = (host: ExtensionHost) =>
           host.userHome,
           host.modelRuntime,
         )
-        const coordinator = definitions.find((definition) => definition.name === 'coordinator')
-        if (!coordinator) throw new Error('Missing coordinator definition')
+        const definition = definitions.find((candidate) => candidate.name === 'coordinator')
+        if (!definition) throw new Error('Missing coordinator definition')
+        const coordinator =
+          input.family === undefined
+            ? definition
+            : onFamily(
+                definition,
+                input.family,
+                await readFamilies(host.userHome, host.projectRoot),
+                host.modelRuntime.getAvailableSnapshot(),
+              )
         // The model and thinking level the definition pins when its provider has a login here, thinking clamped to
         // what the model supports; without one, the current default model, never the one the root last stored.
         const rootAgent = await (await host

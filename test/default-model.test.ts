@@ -1,7 +1,8 @@
 import type { Agent } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { expect, it } from 'vitest'
-import { defaultModel, definitionAgent } from '../lib/agents.ts'
+import { defaultModel, definitionAgent, onFamily } from '../lib/agents.ts'
+import { mergeFamilies } from '../lib/families.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 
@@ -36,6 +37,19 @@ it('starts a branch on the configured default whose login is gone, never on the 
     model: defaultModel(available, settings, opus),
   } as unknown as Agent
   expect(definitionAgent(coordinator, parent, runtime).model).toEqual(opus)
+  // The branch tool's `family`: the coordinator runs on that family's model and thinking; an unknown one fails.
+  const families = mergeFamilies({
+    families: { lead: { model: 'anthropic/claude-fable-5', thinking: 'xhigh' } },
+    assign: {},
+  })
+  const lead = definitionAgent(onFamily(coordinator, 'lead', families, available), parent, runtime)
+  expect(lead).toMatchObject({
+    model: { provider: 'anthropic', modelId: 'claude-fable-5' },
+    thinkingLevel: 'xhigh',
+  })
+  expect(() => onFamily(coordinator, 'huge', families, available)).toThrow(
+    'Unknown family: huge. Families: default, review, fast, tiny, design, lead',
+  )
   // With nothing configured, a new conversation still starts on a model with a login.
   const none = { getDefaultProvider: () => undefined, getDefaultModel: () => undefined }
   expect(defaultModel(available, none)).toEqual({

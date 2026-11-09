@@ -10,7 +10,8 @@ import type { Source } from '../server/project.ts'
 import { writeTextAtomically } from './json-file.ts'
 import { isIconName, isMarkTint, markTints } from './marks.ts'
 import type { MarkTint } from './marks.ts'
-import { DEFAULT_FAMILY, definitionRuns, isFamilyName, refOf } from './families.ts'
+import { DEFAULT_FAMILY, definitionRuns, isFamilyName, refName, refOf } from './families.ts'
+import type { Families } from './families.ts'
 import { readFamilies } from './families-settings.ts'
 // oxlint-disable-next-line no-restricted-imports -- agent discovery follows the core project trust decision
 import { projectDecision, useProjectSetup } from '../server/project-setup.ts'
@@ -123,6 +124,25 @@ export const familyDefault = async (host: Pick<DefaultHost, 'userHome' | 'projec
 /** `defaultModel` for a host's model runtime, its project's default family and Pi settings. */
 export const hostDefaultModel = async (host: DefaultHost) =>
   defaultModel(host.modelRuntime.getAvailableSnapshot(), host.settings, await familyDefault(host))
+
+/**
+ * `definition` run on family `name`'s model and thinking instead of its own. Throws naming the families when `name` is
+ * unknown or, outside a preview, its model has no login here: the caller chose it, so it never falls back.
+ */
+export function onFamily(
+  definition: AgentDefinition,
+  name: string,
+  families: Families,
+  available: readonly Listed[],
+): AgentDefinition {
+  const names = Object.keys(families.families).join(', ')
+  if (!Object.hasOwn(families.families, name))
+    throw new Error(`Unknown family: ${name}. Families: ${names}`)
+  const runs = definitionRuns({ family: name }, families)
+  if (runs.model && !previewModel() && !hasLogin(available, runs.model))
+    throw new Error(`No login for ${refName(runs.model)} (family ${name}). Families: ${names}`)
+  return { ...definition, runs }
+}
 
 /**
  * The agent change a definition makes over `parent`: the explicit model, else the definition's pin when it has a login
