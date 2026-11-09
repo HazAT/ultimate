@@ -2,7 +2,9 @@ import { mkdir, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { beforeEach, expect, it } from 'vitest'
 import { git } from '../../lib/git.ts'
-import { fastForward, Refusal } from '../../lib/fast-forward.ts'
+import { fastForward, Refusal, standing } from '../../lib/fast-forward.ts'
+import type { Standing } from '../../lib/fast-forward.ts'
+import { conflictsPredicted, mergeUpstream, RESTORE_PREFIX } from '../../extensions/update/merge.ts'
 import { cloneState, fetchIfDue, layersOf, withLock } from '../../extensions/update/clone.ts'
 import { gitIn, installOwed } from '../../extensions/update/server.ts'
 import { temp } from '../helpers.ts'
@@ -20,6 +22,24 @@ async function push(files: Record<string, string>, message = 'change') {
   await git(upstream, 'add', '-A')
   await git(upstream, 'commit', '-q', '-m', message)
   return git(upstream, 'rev-parse', 'HEAD')
+}
+
+/** Commit `files` in the clone, so it has a commit of its own; returns its sha. */
+async function localCommit(files: Record<string, string>, message = 'local') {
+  for (const [name, body] of Object.entries(files)) {
+    const path = join(clone, name)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, body)
+  }
+  await git(clone, 'add', '-A')
+  await git(clone, 'commit', '-q', '-m', message)
+  return git(clone, 'rev-parse', 'HEAD')
+}
+
+/** Commit `files` upstream and fetch it into the clone, so its `origin/main` moves. */
+async function upstreamChange(files: Record<string, string>) {
+  await push(files)
+  await git(clone, 'fetch', '-q', 'origin')
 }
 
 beforeEach(async () => {
@@ -141,6 +161,64 @@ it('refuses a dirty, switched or diverged clone and leaves it alone', async () =
   expect(local).not.toBe(head)
   expect(await git(clone, 'rev-parse', 'HEAD')).toBe(local)
   expect((await cloneState(run, clone)).refused).toBe('main has diverged from origin/main')
+})
+
+it('merges a diverged clone with a restore ref, predicting conflicts first', async () => {
+  const run = gitIn(clone)
+  await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
+  // A clean pair: merge-tree says no conflict, and the merge brings both sides together.
+  expect(await conflictsPredicted(clone, 'origin/main')).toBe(false)
+  const merged = await mergeUpstream(
+    run,
+    await conflictsPredicted(clone, 'origin/main'),
+    await standing(run),
+  )
+  expect((await git(clone, 'cat-file', '-p', 'HEAD')).match(/^parent /gm)).toHaveLength(2)
+  expect(merged).toMatchObject({ before: mine, lockfile: false })
+  expect(merged.restore.startsWith(RESTORE_PREFIX)).toBe(true)
+  expect(await git(clone, 'rev-parse', merged.restore)).toBe(mine)
+  expect(await git(clone, 'merge-base', '--is-ancestor', 'origin/main', 'HEAD')).toBe('')
+})
+
+it('refuses a predicted conflict without touching the clone, and leaves no restore ref', async () => {
+  const run = gitIn(clone)
+  await upstreamChange({ 'README.md': 'upstream\n' })
+  const mine = await localCommit({ 'README.md': 'local\n' })
+  expect(await conflictsPredicted(clone, 'origin/main')).toBe(true)
+  await expect(
+    mergeUpstream(run, await conflictsPredicted(clone, 'origin/main'), await standing(run)),
+  ).rejects.toThrow('merging origin/main into main would conflict')
+  expect(await git(clone, 'rev-parse', 'HEAD')).toBe(mine)
+  expect(await git(clone, 'status', '--porcelain')).toBe('')
+  expect(await git(clone, 'for-each-ref', `${RESTORE_PREFIX}*`)).toBe('')
+})
+
+it('prunes restore refs older than 30 days when writing a new one', async () => {
+  const run = gitIn(clone)
+  await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
+  const old = `${RESTORE_PREFIX}20200101-000000-${mine.slice(0, 12)}`
+  await git(clone, 'update-ref', old, mine)
+  const merged = await mergeUpstream(run, false, await standing(run))
+  // The stale ref is gone; the one this merge wrote stays.
+  expect(await git(clone, 'rev-parse', '--verify', '--quiet', old).catch(() => 'gone')).toBe('gone')
+  expect(await git(clone, 'rev-parse', merged.restore)).toBe(mine)
+})
+
+it('hands a diverged clone to the diverged callback instead of refusing', async () => {
+  const run = gitIn(clone)
+  await upstreamChange({ 'extensions/a/web.tsx': 'x\n' })
+  const mine = await localCommit({ 'local.txt': 'mine\n' })
+  const seen: Standing[] = []
+  const moved = await fastForward(run, undefined, undefined, async (state) => {
+    seen.push(state)
+    return { ...state, before: mine, after: mine, lockfile: false }
+  })
+  expect(seen[0]).toMatchObject({ diverged: true, ahead: 1, behind: 1 })
+  expect(moved.behind).toBe(1)
+  // The callback moved the branch itself; nothing fast-forwarded behind its back.
+  expect(await git(clone, 'rev-parse', 'HEAD')).toBe(mine)
 })
 
 it('admits one holder of the clone lock among simultaneous ones, and recovers a stale sidecar', async () => {
