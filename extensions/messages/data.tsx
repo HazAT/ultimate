@@ -121,7 +121,7 @@ export const stateTone: Partial<Record<ConversationState, string>> = {
   paused: 'text-warning',
   working: 'text-brand',
   waits: 'text-amber-700 dark:text-amber-300',
-  awaiting: 'text-amber-700/80 dark:text-amber-300/70',
+  awaiting: 'text-brand',
   done: 'text-success',
   failed: 'text-error',
 }

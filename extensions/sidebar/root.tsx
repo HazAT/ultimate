@@ -75,7 +75,7 @@ function useBranchState(
       tone: 'brand',
     } as const
   if (state === 'waits') return { label: 'waits on you', tone: 'waiting' } as const
-  if (state === 'awaiting') return { label: 'awaiting @ultimate', tone: 'waiting' } as const
+  if (state === 'awaiting') return { label: 'awaiting @ultimate', tone: 'awaiting' } as const
   if (state === 'failed') return { label: 'failed', tone: 'failed' } as const
   return { label: 'idle', tone: 'quiet' } as const
 }
@@ -84,6 +84,7 @@ const tones = {
   failed: 'text-error',
   success: 'text-success',
   brand: 'text-brand',
+  awaiting: 'text-brand',
   waiting: 'text-amber-700 dark:text-amber-300',
   paused: 'text-warning',
   quiet: 'text-muted-foreground/70',
@@ -94,6 +95,7 @@ const statusOf = {
   failed: 'failed',
   success: 'done',
   brand: 'working',
+  awaiting: 'awaiting',
   waiting: 'waiting',
   paused: 'paused',
   quiet: 'idle',
@@ -203,13 +205,15 @@ function PhasedFlightRow({
                   'size-1.5 shrink-0 rounded-full',
                   state.tone === 'brand'
                     ? 'animate-pulse-dot bg-brand'
-                    : state.tone === 'waiting' || state.tone === 'paused'
-                      ? 'bg-amber-400'
-                      : state.tone === 'success'
-                        ? 'bg-success'
-                        : state.tone === 'failed'
-                          ? 'bg-error'
-                          : 'bg-muted-foreground/40',
+                    : state.tone === 'awaiting'
+                      ? 'bg-brand'
+                      : state.tone === 'waiting' || state.tone === 'paused'
+                        ? 'bg-amber-400'
+                        : state.tone === 'success'
+                          ? 'bg-success'
+                          : state.tone === 'failed'
+                            ? 'bg-error'
+                            : 'bg-muted-foreground/40',
                 )}
                 data-status={statusOf[state.tone]}
               />
