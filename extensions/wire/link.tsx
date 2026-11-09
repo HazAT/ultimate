@@ -6,15 +6,27 @@ import {
   useConversation,
   useExtensionUiState,
   useTranscript,
+  useUiState,
   useUltimate,
 } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import { cacheBusts } from '../../lib/context-usage.ts'
+import { SYSTEM_TAB_KEY } from '../system/ui.tsx'
 import { ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
 
 /** Which call Wire shows, for the conversation it was picked in. */
 export type Picked = { conversation: number; n: number }
+
+/** Wire is a tab of the System surface: a function that selects it there, then shows System. */
+export function useOpenWire() {
+  const [, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
+  const { showSurface } = useUltimate()
+  return () => {
+    setTab('wire')
+    showSurface('system')
+  }
+}
 
 /** A payload call starts when pi-ai sends; its message's timestamp is taken then too. Further apart is another call. */
 const NEAR = 60_000
@@ -54,7 +66,7 @@ export function WireLink({
   const calls = useAction(ListAction, null, { on: busy, onError: () => {} })
   const bust = cacheBusts(useTranscript()).has(entry.id)
   const [, setPicked] = useExtensionUiState<Picked | null>('picked', null)
-  const { showSurface } = useUltimate()
+  const openWire = useOpenWire()
   if (message?.role !== 'assistant' || (blocks && blocks[0] !== 0)) return core
   const call = calls.data && callFor(calls.data, message.responseId, message.timestamp)
   if (!call) return core
@@ -71,7 +83,7 @@ export function WireLink({
         data-wire-link={call.n}
         onClick={() => {
           setPicked({ conversation: entry.conversationId, n: call.n })
-          showSurface('wire')
+          openWire()
         }}
         title={`Open call #${call.n} in Wire: what was sent and what came back`}
         type="button"

@@ -1,4 +1,5 @@
 import { CableIcon, ChevronDownIcon } from 'lucide-react'
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import {
   DropdownMenu,
@@ -9,22 +10,23 @@ import {
 import {
   Conversation,
   Dock,
-  Header,
-  StatusLine,
   cn,
   defineWebExtension,
+  provide,
   formatBytes,
   formatDuration,
   formatTime,
   formatTokens,
   useAction,
   useConversation,
+  useDialog,
   useExtensionUiState,
   useViewport,
 } from '@/sdk'
 import { RawResponse, Raw, ReadableRequest, ReadableResponse } from './body.tsx'
 import { DiffView } from './diff-view.tsx'
-import { WireLink } from './link.tsx'
+import { useOpenWire, WireLink } from './link.tsx'
+import { SystemTab } from '../system/ui.tsx'
 import type { Picked } from './link.tsx'
 import { CallAction, ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
@@ -307,40 +309,42 @@ function Wire() {
       </>
     )
   return (
-    <>
-      <Header>
-        <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
-          <CableIcon className="size-4 text-muted-foreground" />
-          Wire
-        </span>
-        <span className="truncate font-mono text-[11px] text-muted-foreground">
-          #{conversationId} · what its model calls sent and got back
-        </span>
-      </Header>
-      <div className="flex min-h-0 flex-1">
-        {main}
-        <Dock>
-          <Conversation variant="dock" />
-        </Dock>
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/70 px-3 font-mono text-[11px] text-muted-foreground">
+          <CableIcon className="size-3.5" />
+          <span className="truncate">
+            #{conversationId} · what its model calls sent and got back
+          </span>
+        </div>
+        <div className="flex min-h-0 flex-1">{main}</div>
       </div>
-      <StatusLine />
-    </>
+      <Dock>
+        <Conversation variant="dock" />
+      </Dock>
+    </div>
   )
 }
 
+const openDialog = 'wire.open'
+
+/** The ⌘K command opens this pseudo-dialog; selecting System's Wire tab needs a hook, so a component does it. */
+function OpenOnCommand() {
+  const [open, setOpen] = useDialog(openDialog)
+  const openWire = useOpenWire()
+  useEffect(() => {
+    if (!open) return
+    setOpen(false)
+    openWire()
+  }, [open, setOpen, openWire])
+  return null
+}
+
+const tab = { id: 'wire', title: 'Wire', component: Wire }
+
 export default defineWebExtension({
-  surfaces: [
-    {
-      id: 'wire',
-      title: 'Wire',
-      icon: CableIcon,
-      description: 'What the shown conversation’s model calls sent and got back',
-      order: 70,
-      component: Wire,
-    },
-  ],
-  commands: [
-    { id: 'wire.open', title: 'Open Wire', run: (context) => context.showSurface('wire') },
-  ],
+  provides: [provide(SystemTab, () => tab)],
+  commands: [{ id: 'wire.open', title: 'Open Wire', run: (context) => context.open(openDialog) }],
+  slots: { overlay: [OpenOnCommand] },
   entries: { 'pi.assistant': WireLink },
 })

@@ -1,6 +1,8 @@
 import { ChevronRightIcon, GanttChartIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import {
+  AllProvided,
   api,
   cn,
   defineWebExtension,
@@ -13,8 +15,10 @@ import {
   useExtensionUiState,
   useConversations,
   useNow,
+  useUiState,
   useUltimate,
 } from '@/sdk'
+import { SYSTEM_TAB_KEY, SystemTab } from './ui.tsx'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
 import { useConcludedSince, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
@@ -102,17 +106,68 @@ type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: numbe
 
 const dot = 'inline-block size-1.5 rounded-full'
 
-/** Agent Lanes on top, the stream of everything below; both live while on screen. */
+/** Agents (lanes on top, the stream of everything below) and the tabs other extensions add, such as Wire. */
 function System() {
+  const [tab, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
   return (
-    <Provided input={null} point={ParkedRuns}>
-      {(parked) => <Lanes parked={parked ?? noneParked} />}
-    </Provided>
+    <AllProvided input={null} point={SystemTab}>
+      {(provided) => {
+        const tabs = provided.filter((item) => item !== undefined)
+        const open = tabs.find((item) => item.id === tab)
+        const bar = tabs.length > 0 && (
+          <span className="flex items-center gap-0.5 font-mono text-[11px]" role="tablist">
+            {[{ id: 'agents', title: 'Agents' }, ...tabs].map((item) => (
+              <button
+                aria-selected={(open?.id ?? 'agents') === item.id}
+                className={cn(
+                  'h-6 cursor-pointer rounded-md px-2 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  (open?.id ?? 'agents') === item.id
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                role="tab"
+                type="button"
+              >
+                {item.title}
+              </button>
+            ))}
+          </span>
+        )
+        if (!open)
+          return (
+            <Provided input={null} point={ParkedRuns}>
+              {(parked) => <Lanes parked={parked ?? noneParked} tabs={bar} />}
+            </Provided>
+          )
+        const Tab = open.component
+        return (
+          <>
+            <Header>
+              <Title />
+              {bar}
+            </Header>
+            <Tab />
+            <StatusLine />
+          </>
+        )
+      }}
+    </AllProvided>
   )
 }
 const noneParked: ReadonlySet<number> = new Set()
 
-function Lanes({ parked }: { parked: ReadonlySet<number> }) {
+function Title() {
+  return (
+    <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+      <GanttChartIcon className="size-4 text-muted-foreground" />
+      System
+    </span>
+  )
+}
+
+function Lanes({ parked, tabs }: { parked: ReadonlySet<number>; tabs: ReactNode }) {
   const live = useLive()
   const [stored, setWindow] = useExtensionUiState<WindowName>('window', '30m')
   const window: WindowName = Object.hasOwn(windows, stored) ? (stored as WindowName) : '30m'
@@ -136,10 +191,8 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
   return (
     <>
       <Header>
-        <span className="flex items-center gap-2 text-[13px] font-medium">
-          <GanttChartIcon className="size-4 text-muted-foreground" />
-          System
-        </span>
+        <Title />
+        {tabs}
       </Header>
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <section className="mx-auto max-w-6xl px-3 py-3 md:px-5">
