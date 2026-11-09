@@ -209,9 +209,11 @@ export default function workspaceExtension(host: ExtensionHost) {
     tasks: [service.Preparation, service.Lander],
     hooks: [
       hook(ToolTask, {
-        beforeTool: async (_call, api, caller) => {
+        beforeTool: async (call, api, caller) => {
+          // `message` never touches the checkout, and it is how a conversation reports that its workspace is gone.
+          if (call.name === 'message') return undefined
           const reason = await service.unavailable(api.conversationId, caller)
-          return reason ? { block: reason } : undefined
+          return reason ? { block: `${reason}. \`message\` still works, to report it.` } : undefined
         },
       }),
       // The lander conversation is its log: no model runs there.
