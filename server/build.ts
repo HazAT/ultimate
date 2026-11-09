@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BuildInfo } from '../shared/protocol.ts'
+import { inExtensionTests } from '../shared/extension-api.ts'
 
 function files(root: string, path: string): string[] {
   if (!existsSync(join(root, path))) return []
@@ -35,7 +36,10 @@ export function createBuild(root: string) {
   return {
     current: () => value,
     extension(name: string, path = join(root, 'extensions', name)) {
-      extensions[name] = hash(path, files(path, '.'))
+      extensions[name] = hash(
+        path,
+        files(path, '.').filter((file) => !inExtensionTests(`${name}${file.slice(1)}`)),
+      )
     },
     remove(name: string) {
       delete extensions[name]

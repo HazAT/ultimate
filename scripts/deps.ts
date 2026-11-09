@@ -1,10 +1,11 @@
 // The dependency graph between built-in extensions: prints it and fails on a cycle or on a core-tier extension that
 // depends on an optional one. Edges come from every import between `extensions/<name>/` folders (runtime, type and
-// dynamic, in .ts and .tsx) and from `host.need`/`host.want` of a token another extension declares. Usage: pnpm deps.
+// dynamic, in .ts and .tsx, outside its `test/` folder) and from `host.need`/`host.want` of a token another extension
+// declares. Usage: pnpm deps.
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { parseSync } from 'vite-plus'
-import { coreTier } from '../shared/extension-api.ts'
+import { coreTier, extensionTests } from '../shared/extension-api.ts'
 import { cycles } from '../server/extension-apis.ts'
 
 /** How one extension depends on another: a runtime import, a type-only import, or a need or want of its token. */
@@ -38,7 +39,9 @@ export function extensionGraph(directory: string): Graph {
       if (target && target !== name && graph.has(target))
         deps.set(target, (deps.get(target) ?? new Set()).add(kind))
     }
-    for (const file of sources(join(directory, name))) {
+    // Its tests are not part of an extension: what they set up is no dependency of it.
+    const tests = join(directory, name, extensionTests) + sep
+    for (const file of sources(join(directory, name)).filter((path) => !path.startsWith(tests))) {
       const text = readFileSync(file, 'utf8')
       // The extension folder a relative specifier lands in, if it is one.
       const owner = (specifier: string) => {

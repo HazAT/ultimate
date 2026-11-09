@@ -145,6 +145,10 @@ describe('server reload', () => {
     const folder = join(server.host.ultimateRoot, 'extensions/a')
     const file = join(folder, 'new.ts')
     const nested = join(folder, 'nested')
+    // Its test/ folder is not part of an extension: with a test in it, the build names the same extension as before.
+    const built = server.host.build().extensions.a
+    await mkdir(join(folder, 'test'))
+    await writeFile(join(folder, 'test/a.test.ts'), 'export const value = 1')
     for (const change of [
       () => writeFile(file, 'export const value = 1'),
       () => rm(file),
@@ -156,6 +160,7 @@ describe('server reload', () => {
       await until(() => loadedAt('a') !== aLoaded)
       expect(loadedAt('b')).toBe(bLoaded)
     }
+    await until(() => server.host.build().extensions.a === built)
   })
   it('keeps hot reloading extensions after a Vite config change restarts Vite', async () => {
     const { server } = await fixture(true)

@@ -31,6 +31,7 @@ import type { EventHost } from './events.ts'
 import { extensionApis } from './extension-apis.ts'
 import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
+import { inExtensionTests } from '../shared/extension-api.ts'
 import type { Device } from '../shared/events.ts'
 
 export type ExtensionHost = Pick<
@@ -724,6 +725,7 @@ export async function loadExtensions(
     }
     const directory = directories.find((root) => file.startsWith(root + '/'))
     if (!directory && !/\.[cm]?[jt]s$/.test(file)) return
+    if (directory && inExtensionTests(file.slice(directory.length + 1))) return
     if (graphLost) {
       graphLost = false
       enqueue(() => reload())
@@ -762,6 +764,7 @@ export async function loadExtensions(
   const onStructure = (file: string) => {
     const directory = directories.find((root) => file.startsWith(root + '/'))
     if (!directory) return onChange(file)
+    if (inExtensionTests(file.slice(directory.length + 1))) return
     if (graphLost) {
       graphLost = false
       enqueue(() => reload())

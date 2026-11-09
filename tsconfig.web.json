@@ -76,6 +76,7 @@
     "lib/message-state.ts",
     "lib/source-frames.ts",
     "extensions/subagents/message-types.ts",
-    "test/web"
+    "test/web",
+    "extensions/*/test/web"
   ]
 }
