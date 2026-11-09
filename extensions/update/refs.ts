@@ -44,7 +44,7 @@ export type UpdateState = {
   error?: string
   /** When origin was last fetched (ms), by any Ultimate on this clone. */
   fetchedAt?: number
-  /** `pnpm-lock.yaml` differs from the installed packages: an install is owed. */
+  /** `pnpm-lock.yaml` differs from the installed packages, or the last install failed: an install is owed. */
   install: boolean
   /** Packages were installed, or `server/` or `shared/` changed in HEAD, since this server started: a restart loads them. */
   restart: boolean

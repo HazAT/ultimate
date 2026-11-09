@@ -63,7 +63,7 @@ An extension reload, a web build or a restart must never read a checkout that gi
 
 The state is read from disk, never from an event, so every Ultimate on the clone waits the same way, whoever moved it: the lander, **Update now**, another Ultimate or a pull by hand. Calls while one runs join it.
 
-When the install fails, the item reads `install owed`, extensions and the web bundle load as they are with one notice, and a restart is refused with the install's last lines. The same lockfile is not installed again until **Retry pnpm install**. Once a later install succeeds, a facet that still has a load error goes to the automatic restart (see Status line).
+When the install fails, the item reads `install owed`, extensions and the web bundle load as they are with one notice, and a restart is refused with the install's last lines. The failure is remembered: the item keeps offering **Retry pnpm install** even when pnpm wrote its installed lockfile before failing, and the same lockfile is installed again only by that retry. Once a later install succeeds, a facet that still has a load error goes to the automatic restart (see Status line).
 
 ## After a landing
 

@@ -113,17 +113,31 @@ export function restartOnStaleLoad(options: {
   }
 }
 
-/** Install the lockfile's packages when they differ from the installed ones; the install's last lines when it fails. */
+/**
+ * Install the lockfile's packages when they differ from the installed ones, or when the last install failed (pnpm can
+ * write the installed lockfile and still fail after it); the install's last lines when it fails. A failure is
+ * remembered with its lockfile. After a success, a facet that still has a load error (it loaded while an install had
+ * failed) goes to the stale-load listener: packages changed under this process, so it restarts.
+ */
 async function installPackages(
-  root: string,
+  host: ExtensionHost,
 ): Promise<{ install: 'done' | 'failed' | 'skipped'; installError?: string }> {
-  if (!(await installOwed(root))) return { install: 'skipped' }
+  const shared = state(host)
+  const root = host.ultimateRoot
+  if (!shared.failed && !(await installOwed(root))) return { install: 'skipped' }
+  const lockfile = await read(join(root, 'pnpm-lock.yaml'))
   try {
     await exec('pnpm', ['install', '--frozen-lockfile'], { cwd: root, timeout: 10 * 60_000 })
-    return { install: 'done' }
   } catch (error) {
-    return { install: 'failed', installError: tail(error) }
+    const installError = tail(error)
+    shared.failed = { lockfile, error: installError }
+    return { install: 'failed', installError }
   }
+  shared.failed = undefined
+  const broken = host.extensions().find((extension) => extension.server?.error)?.name
+  // Not awaited: its restart waits for this very install to settle.
+  if (broken) shared.recover?.(broken)
+  return { install: 'done' }
 }
 
 /** How long a load waits for git to finish writing the checkout; a lock left by a crashed git must not block forever. */
@@ -137,13 +151,11 @@ const INSTALL_WAIT = 10 * 60_000
  * under the clone-wide lock when they are owed. Read from disk, never from an event, so every Ultimate on the clone
  * waits the same way whoever moved it: the lander, an update, another Ultimate, a pull by hand. Calls while one runs
  * join it. Throws when the install failed, and at once again for the same lockfile until **Retry pnpm install**.
- * A facet that still has a load error once an install succeeded (it loaded while an earlier install had failed) is
- * handed to `recover`, the stale-load listener: packages changed under this process, so it restarts.
  *
  * Origin: on 2026-11-09 three landings changed a patch (c16450c, 983ad97, e609be7). Extensions hot-reloaded while
  * `pnpm install` was still relinking the package and failed to load, which took the provider down with them.
  */
-export function loadable(host: ExtensionHost, recover?: (name: string) => void): Promise<void> {
+export function loadable(host: ExtensionHost): Promise<void> {
   const shared = state(host)
   const root = host.ultimateRoot
   shared.installing ??= (async () => {
@@ -153,27 +165,20 @@ export function loadable(host: ExtensionHost, recover?: (name: string) => void):
     )
     const deadline = Date.now() + CHECKOUT_WAIT
     if (index) while (existsSync(index) && Date.now() < deadline) await sleep(50)
-    const lockfile = await read(join(root, 'pnpm-lock.yaml'))
-    // Before comparing lockfiles: pnpm can write the installed lockfile and still fail after it.
+    const failure = (error: string) =>
+      new Error(`pnpm install failed, so the packages on disk are not the lockfile's:\n${error}`)
+    // Before comparing lockfiles: a failed install may have left them equal. Tried again for another lockfile only.
     const failed = shared.failed
-    if (failed && failed.lockfile === lockfile) throw new Error(failed.error)
-    if (!(await installOwed(root))) return
-    const result = await withLock(await lockOf(root), () => installPackages(root), INSTALL_WAIT)
+    if (failed && failed.lockfile === (await read(join(root, 'pnpm-lock.yaml'))))
+      throw failure(failed.error)
+    if (!failed && !(await installOwed(root))) return
+    const result = await withLock(await lockOf(root), () => installPackages(host), INSTALL_WAIT)
     // Shown by the status item either way: `updated · restart`, or `install owed`.
     await refresh(host, false).catch((error: unknown) =>
       host.notice(`Update check: ${String(error)}`),
     )
     if (!result) throw new Error('Another Ultimate is still installing packages into this clone')
-    if (result.install !== 'failed') {
-      shared.failed = undefined
-      const broken = host.extensions().find((extension) => extension.server?.error)?.name
-      // Not awaited: its restart waits for this very install to settle.
-      if (broken) recover?.(broken)
-      return
-    }
-    const error = `pnpm install failed, so the packages on disk are not the lockfile's:\n${result.installError}`
-    shared.failed = { lockfile, error }
-    throw new Error(error)
+    if (result.install === 'failed') throw failure(result.installError!)
   })().finally(() => {
     shared.installing = undefined
   })
@@ -236,7 +241,8 @@ export default function update(host: ExtensionHost) {
   })
   host.onLoadError(onLoadError)
   // Every extension reload, web build and restart waits for the checkout and its packages.
-  host.onBeforeLoad(() => loadable(host, onLoadError))
+  shared.recover = onLoadError
+  host.onBeforeLoad(() => loadable(host))
   const tick = () => {
     // Paused: no fetch starts until Play; the next tick after it catches up.
     if (host.want(PauseApi)?.paused()) return
@@ -252,7 +258,7 @@ export default function update(host: ExtensionHost) {
     'install-landed',
     [SubmissionLanded],
     async () => {
-      loadable(host, onLoadError).catch((error: unknown) =>
+      loadable(host).catch((error: unknown) =>
         host.notice(`Install after landing: ${String(error)}`),
       )
     },
@@ -275,8 +281,10 @@ type Shared = {
   checking: Promise<void> | undefined
   updating: Promise<UpdateResult> | undefined
   installing: Promise<void> | undefined
-  /** The lockfile whose install failed, and why. */
+  /** The lockfile whose install failed, and why; until an install succeeds. */
   failed: { lockfile: string | undefined; error: string } | undefined
+  /** The current facet's stale-load listener, set on each load. */
+  recover: ((name: string) => void) | undefined
   latest: UpdateState | undefined
   updated: (UpdateResult & { ok: true }) | undefined
 }
@@ -289,6 +297,7 @@ const state = (host: ExtensionHost) =>
     updating: undefined,
     installing: undefined,
     failed: undefined,
+    recover: undefined,
     latest: undefined,
     updated: undefined,
   }))
@@ -370,7 +379,7 @@ async function refresh(host: ExtensionHost, check: boolean, force = false) {
     ...(diverged && !landingNow && (await isProject(host)) ? { merge: true as const } : {}),
     ...(error ? { error } : {}),
     ...(repo && remoteHead ? { compare: compareUrl(repo, head, remoteHead) } : {}),
-    install: await installOwed(root),
+    install: !!shared.failed || (await installOwed(root)),
     restart:
       (await installedSince(root, startedAt)) ||
       (await coreChangedSince(git, await boot(host).head)),
@@ -463,7 +472,7 @@ async function apply(
     moved.before === moved.after ? '' : await git('diff', '--name-only', moved.before, moved.after)
   const layers = layersOf(files.split('\n').filter(Boolean))
   // Owed while the lockfile differs from the installed one: a failed install is retried by the next update.
-  const { install, installError } = await installPackages(root)
+  const { install, installError } = await installPackages(host)
   const result = {
     ok: true as const,
     from: moved.before.slice(0, 7),
@@ -507,8 +516,6 @@ export const actions = {
     const shared = state(host)
     if (preview()) return { ok: false, refused: 'A preview never updates the clone it runs from' }
     // One update at a time: a second click joins the first.
-    // Retry pnpm install is this action too: it tries a lockfile again whose install failed.
-    shared.failed = undefined
     shared.updating ??= run(host).finally(() => {
       shared.updating = undefined
     })
