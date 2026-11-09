@@ -137,11 +137,13 @@ const INSTALL_WAIT = 10 * 60_000
  * under the clone-wide lock when they are owed. Read from disk, never from an event, so every Ultimate on the clone
  * waits the same way whoever moved it: the lander, an update, another Ultimate, a pull by hand. Calls while one runs
  * join it. Throws when the install failed, and at once again for the same lockfile until **Retry pnpm install**.
+ * A facet that still has a load error once an install succeeded (it loaded while an earlier install had failed) is
+ * handed to `recover`, the stale-load listener: packages changed under this process, so it restarts.
  *
  * Origin: on 2026-11-09 three landings changed a patch (c16450c, 983ad97, e609be7). Extensions hot-reloaded while
  * `pnpm install` was still relinking the package and failed to load, which took the provider down with them.
  */
-export function loadable(host: ExtensionHost): Promise<void> {
+export function loadable(host: ExtensionHost, recover?: (name: string) => void): Promise<void> {
   const shared = state(host)
   const root = host.ultimateRoot
   shared.installing ??= (async () => {
@@ -151,17 +153,24 @@ export function loadable(host: ExtensionHost): Promise<void> {
     )
     const deadline = Date.now() + CHECKOUT_WAIT
     if (index) while (existsSync(index) && Date.now() < deadline) await sleep(50)
-    if (!(await installOwed(root))) return
     const lockfile = await read(join(root, 'pnpm-lock.yaml'))
+    // Before comparing lockfiles: pnpm can write the installed lockfile and still fail after it.
     const failed = shared.failed
     if (failed && failed.lockfile === lockfile) throw new Error(failed.error)
+    if (!(await installOwed(root))) return
     const result = await withLock(await lockOf(root), () => installPackages(root), INSTALL_WAIT)
     // Shown by the status item either way: `updated · restart`, or `install owed`.
     await refresh(host, false).catch((error: unknown) =>
       host.notice(`Update check: ${String(error)}`),
     )
     if (!result) throw new Error('Another Ultimate is still installing packages into this clone')
-    if (result.install !== 'failed') return
+    if (result.install !== 'failed') {
+      shared.failed = undefined
+      const broken = host.extensions().find((extension) => extension.server?.error)?.name
+      // Not awaited: its restart waits for this very install to settle.
+      if (broken) recover?.(broken)
+      return
+    }
     const error = `pnpm install failed, so the packages on disk are not the lockfile's:\n${result.installError}`
     shared.failed = { lockfile, error }
     throw new Error(error)
@@ -227,7 +236,7 @@ export default function update(host: ExtensionHost) {
   })
   host.onLoadError(onLoadError)
   // Every extension reload, web build and restart waits for the checkout and its packages.
-  host.onBeforeLoad(() => loadable(host))
+  host.onBeforeLoad(() => loadable(host, onLoadError))
   const tick = () => {
     // Paused: no fetch starts until Play; the next tick after it catches up.
     if (host.want(PauseApi)?.paused()) return
@@ -243,7 +252,7 @@ export default function update(host: ExtensionHost) {
     'install-landed',
     [SubmissionLanded],
     async () => {
-      loadable(host).catch((error: unknown) =>
+      loadable(host, onLoadError).catch((error: unknown) =>
         host.notice(`Install after landing: ${String(error)}`),
       )
     },

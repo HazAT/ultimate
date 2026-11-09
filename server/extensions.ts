@@ -299,10 +299,10 @@ export async function loadExtensions(
     return failed
   }
   let unprepared: string | undefined
-  /** `prepared` for a reload: it goes on either way, and each failure is said once, not on every save. */
+  /** `prepared` for a reload or a web build: it goes on either way, and each failure is said once, not on every save. */
   async function preparedToLoad() {
     const failed = await prepared()
-    if (failed && failed !== unprepared) notice(`Extensions reload as they are: ${failed}`)
+    if (failed && failed !== unprepared) notice(`Loading as it is: ${failed}`)
     unprepared = failed
   }
   const releasers = new Set<() => Promise<void>>()
@@ -806,6 +806,7 @@ export async function loadExtensions(
     catalogue: () => apis.catalogue(),
     trace: trace.reader,
     prepared,
+    preparedToLoad,
     /** The harness is open: run the `onOpen` callbacks. */
     async opened() {
       trace.open()
