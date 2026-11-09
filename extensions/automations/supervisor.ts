@@ -7,6 +7,7 @@ import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-d
 import type { Agent, ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
+import { FIRST_CHAPTER } from '../../lib/chapters.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import {
   closeOutput,
@@ -141,9 +142,18 @@ export function supervisor(
     closing: false,
   }))
   const { runs, launches, effects } = shared
-  // home is the stable project state directory (~/.ultimate/projects/<name>-<hash>), not a worktree cwd.
-  const folder = (id: string) =>
-    join(host.userHome, '.ultimate/automations', basename(host.home), id)
+  // home is the stable project state directory (~/.ultimate/projects/<name>-<hash>), not a worktree cwd. Ids restart in
+  // each chapter, so a later chapter keeps its scripts apart as `<key>@<chapter>`, like its cloud backup; the first
+  // chapter keeps the project key. Chapter and host restart together, so reading it here is stable.
+  const scriptsRoot = () =>
+    join(
+      host.userHome,
+      '.ultimate/automations',
+      host.chapter.name === FIRST_CHAPTER
+        ? basename(host.home)
+        : `${basename(host.home)}@${host.chapter.name}`,
+    )
+  const folder = (id: string) => join(scriptsRoot(), id)
   // A project automation's `run` and manifest are committed in the host checkout; its runtime stays in folder().
   const projectDir = (id: string) => join(host.projectRoot, '.ultimate/automations', id)
   const runPath = (sub: Pick<Automation, 'id' | 'scope'>) =>
@@ -764,9 +774,7 @@ export function supervisor(
     shared.closing = false
     let folders: Dirent[]
     try {
-      folders = await readdir(join(host.userHome, '.ultimate/automations', basename(host.home)), {
-        withFileTypes: true,
-      })
+      folders = await readdir(scriptsRoot(), { withFileTypes: true })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       folders = []

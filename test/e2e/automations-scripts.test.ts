@@ -10,6 +10,7 @@ import { Messages } from '../../extensions/messages/api.ts'
 import { launchHandshake, Automations } from '../../extensions/automations/server.ts'
 import { Done, Exited } from '../../extensions/automations/refs.ts'
 import type { Automation, AutomationListItem } from '../../extensions/automations/types.ts'
+import { requestChapter } from '../../lib/chapters.ts'
 import { context } from '../../server/harness.ts'
 import { eventHost, fauxServer, temp, until } from '../helpers.ts'
 
@@ -395,6 +396,30 @@ it('stops a recurring script that prints DONE and exits 0 without waking anyone;
       'investigating',
   )
   expect(await done()).toHaveLength(2)
+})
+
+it("keeps a later chapter's scripts in their own folder, apart from the first chapter's same id", async () => {
+  const first = await fixture()
+  const legacy = first.folder('A1')
+  await mkdir(join(legacy, 'state'), { recursive: true })
+  await writeFile(join(legacy, 'state/mark'), 'first chapter\n')
+  const { home, userHome } = first
+  await server?.close()
+  server = undefined
+  await requestChapter(home, 'next')
+  server = await fauxServer({ ...first.options, home, userHome })
+  const sub = await create(server)
+  expect(sub.id).toBe('A1')
+  const folder = join(userHome, '.ultimate/automations', `${basename(home)}@next`, 'A1')
+  await writeRun(folder, 'echo FIRE later; sleep 60')
+  await call(server, 'resume', sub.id)
+  await until(async () =>
+    (await readFile(join(folder, 'output.log'), 'utf8').catch(() => '')).includes('FIRE later'),
+  )
+  // The first chapter's folder is untouched: no run, no log, its state kept.
+  expect(await readFile(join(legacy, 'state/mark'), 'utf8')).toBe('first chapter\n')
+  await expect(readFile(join(legacy, 'output.log'), 'utf8')).rejects.toThrow('ENOENT')
+  await call(server, 'pause', sub.id)
 })
 
 it('keeps listing and supervising scripts after a reload bumps the ledger version', async () => {
