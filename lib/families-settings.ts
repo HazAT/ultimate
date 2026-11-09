@@ -1,7 +1,8 @@
 /**
  * Where model families live: `~/.ultimate/model-families.json` keeps each project's families (keyed like its trust
  * decision, so a linked worktree shares its main checkout's) and the most recently saved ones, which every project
- * without its own starts from. A project's `.ultimate/settings.json` `modelFamilies` applies over either, for a team.
+ * without its own starts from. A project's `.ultimate/settings.json` `modelFamilies` is the team's default: it applies
+ * over the most recent ones, and a person's own families for the project apply over it.
  */
 import { join, resolve } from 'node:path'
 import type { JsonObject } from '@earendil-works/pi-durable'
@@ -40,7 +41,7 @@ export type FamilyLayers = {
   /** The project's own families, else the most recent ones; `from` says which. */
   base: Layer
   from: 'project' | 'recent' | 'builtin'
-  /** The project's `.ultimate/settings.json` `modelFamilies`, over the base. */
+  /** The project's `.ultimate/settings.json` `modelFamilies`, over a base from `recent`, under the project's own. */
   project: Layer
   /** A layer that failed to parse counts as empty; its error is here. */
   errors: string[]
@@ -82,14 +83,17 @@ export async function readFamilyLayers(
   }
 }
 
-/** The effective families of `projectRoot`: the built-ins, its own (or the most recent) ones, its team settings. */
+/** The layers merged: the built-ins, then the most recent families, the team settings, the project's own families. */
+export const mergeLayers = ({ base, from, project }: FamilyLayers) =>
+  from === 'project' ? mergeFamilies(project, base) : mergeFamilies(base, project)
+
+/** The effective families of `projectRoot`. */
 export async function readFamilies(
   userHome: string,
   projectRoot: string,
   settings?: JsonObject,
 ): Promise<Families> {
-  const { base, project } = await readFamilyLayers(userHome, projectRoot, settings)
-  return mergeFamilies(base, project)
+  return mergeLayers(await readFamilyLayers(userHome, projectRoot, settings))
 }
 
 /** Save `value` as `projectRoot`'s families and as the most recent ones, which new projects start from. */

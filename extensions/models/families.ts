@@ -18,8 +18,8 @@ import {
   parseFamilies,
   refName,
 } from '../../lib/families.ts'
-import type { Feature, FamilySpec } from '../../lib/families.ts'
-import { readFamilyLayers, writeFamilies } from '../../lib/families-settings.ts'
+import type { Families, Feature, FamilySpec } from '../../lib/families.ts'
+import { mergeLayers, readFamilyLayers, writeFamilies } from '../../lib/families-settings.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { FamiliesView, FamilyUser, SaveFamilies } from './refs.ts'
 
@@ -58,7 +58,7 @@ const piDefault = (host: Pick<ExtensionHost, 'settings'>) => {
 async function read(host: ExtensionHost) {
   const project = await host.projectSettings()
   const layers = await readFamilyLayers(host.userHome, host.projectRoot, project)
-  const config = mergeFamilies(layers.base, layers.project)
+  const config = mergeLayers(layers)
   const { definitions } = await discoverAgents(
     host.ultimateRoot,
     host.projectRoot,
@@ -132,11 +132,11 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
   }
 }
 
-/** Only what differs from the built-in families, so a later change of a built-in default still applies. */
-function userFamilies(families: SaveFamilies['families']) {
+/** Only what differs from the defaults (built-ins and team settings), so a later change of a default still applies. */
+function userFamilies(families: SaveFamilies['families'], defaults: Families['families']) {
   const saved: Record<string, FamilySpec> = {}
   for (const [name, spec] of Object.entries(families)) {
-    const builtin = Object.hasOwn(BUILTIN_FAMILIES, name) ? BUILTIN_FAMILIES[name] : undefined
+    const builtin = Object.hasOwn(defaults, name) ? defaults[name] : undefined
     const own: FamilySpec = { model: spec.model, thinking: spec.thinking, color: spec.color }
     const changed = Object.fromEntries(
       Object.entries(own).filter(
@@ -157,7 +157,12 @@ function compact(value: { families: object; assign: object }): JsonObject {
 }
 
 export async function saveFamilies(host: ExtensionHost, args: SaveFamilies) {
-  const families = userFamilies(args.families)
+  const { project } = await readFamilyLayers(
+    host.userHome,
+    host.projectRoot,
+    await host.projectSettings(),
+  )
+  const families = userFamilies(args.families, mergeFamilies(project).families)
   const value = { families, assign: args.assign }
   // Throws on an invalid name or model before anything is written.
   parseFamilies(value)

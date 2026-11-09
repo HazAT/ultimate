@@ -22,7 +22,7 @@ produce a notice. To skip onboarding on a machine whose user knows Ultimate, set
 reminder, while the Extensions panel and ⌘K Get ready… stay available and an undecided project setup keeps its
 status-line reminder. Model families (⌘K Model families…, `extensions/models/README.md`) are kept per project in
 `~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; a
-project's `.ultimate/settings.json` `modelFamilies` applies over them. `summaryModel` (`"provider/id[:thinking]"`; project over user; without it the
+project's `.ultimate/settings.json` `modelFamilies` is the team's default: it applies over that start, and a person's own families for the project apply over it. `summaryModel` (`"provider/id[:thinking]"`; project over user; without it the
 summaries family's model, by default the tiny family's `openai-codex/gpt-6-luna:low`)
 pins the model for automatic titles, summaries, reply summaries and tree abstracts. Set it in either file or with
 the "Summary model…" command, and it applies to the next request. `fastModels` (`["openai-codex/<id>", …]`, or `openai/`; project over
