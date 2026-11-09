@@ -56,7 +56,7 @@ export type FamilyView = {
   follows?: string
   followsThinking?: ModelThinkingLevel
   builtin: boolean
-  /** The project's settings set something of it, over the user's. */
+  /** A value from the project's settings is in effect for it: one the person's own families for the project don't set. */
   project?: true
 }
 

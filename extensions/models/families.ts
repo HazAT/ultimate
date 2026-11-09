@@ -72,6 +72,13 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
   const { project, layers, config, definitions } = await read(host)
   const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
   const pi = piDefault(host)
+  // The project's settings change a family where one of its fields is in effect, not overridden by the person's own.
+  const own = layers.from === 'project' ? layers.base.families : {}
+  const projectApplies = (name: string) =>
+    Object.entries(layers.project.families[name] ?? {}).some(
+      ([field, value]) =>
+        value !== undefined && own[name]?.[field as keyof FamilySpec] === undefined,
+    )
   const families = Object.entries(config.families).map(([name, spec]) => {
     const follows = name === DEFAULT_FAMILY && !spec.model && pi.model
     return {
@@ -81,7 +88,7 @@ export async function familiesView(host: ExtensionHost): Promise<FamiliesView> {
       ...(spec.thinking ? { thinking: spec.thinking } : {}),
       ...(follows ? { follows: refName(pi.model!), followsThinking: pi.thinking } : {}),
       builtin: Object.hasOwn(BUILTIN_FAMILIES, name),
-      ...(Object.hasOwn(layers.project.families, name) ? { project: true as const } : {}),
+      ...(projectApplies(name) ? { project: true as const } : {}),
     }
   })
   const agents: FamilyUser[] = definitions.map((definition) => {
