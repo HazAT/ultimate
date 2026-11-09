@@ -817,7 +817,10 @@ function VoiceDock({ core }: { core: ReactNode }) {
   const off = mode.phase === 'off'
   const asleep = mode.phase === 'paused'
   return (
-    <div className="mx-auto w-full max-w-[46rem] px-3 pt-1 pb-3 sm:px-6" data-voice-live-dock>
+    <div
+      className="mx-auto w-full max-w-(--reading-width,46rem) px-3 pt-1 pb-3 sm:px-6"
+      data-voice-live-dock
+    >
       {mode.problem && (
         <p
           className="mb-2 flex items-start gap-1.5 rounded-md border border-error/30 bg-error/5 px-2.5 py-1.5 font-mono text-[11px] break-words text-error"
