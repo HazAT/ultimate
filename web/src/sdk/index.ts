@@ -30,6 +30,7 @@ export type {
   DocumentProps,
   EntryRenderer,
   InboxRenderer,
+  InlineCodeRenderer,
   LinkRenderer,
   PanelContribution,
   Point,

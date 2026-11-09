@@ -4,8 +4,8 @@ Part of the [extension guide](../../extensions/README.md).
 
 `defineWebExtension({ slots, panels, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, documents, commands })`; every key is optional. Extensions load
 in parallel, installing independently; contributions follow discovery order: built-in → user → project, then folder name within each source. Give a slot item `{ component, order }` to move it (default order 0, lower first).
-Renderers (`tools`, `toolLines`, `entries`, `link`, `codeBlocks`, `messageActions`, `messageDetails`, `answerLabels`,
-`userBubble`, `compact`, `inbox`, `composer`) are in [renderers](renderers.md), `documents` in
+Renderers (`tools`, `toolLines`, `entries`, `link`, `inlineCode`, `codeBlocks`, `messageActions`, `messageDetails`,
+`answerLabels`, `userBubble`, `compact`, `inbox`, `composer`) are in [renderers](renderers.md), `documents` in
 [documents](documents.md), `commands` in [commands](commands.md) and `provides` in [web points](contracts.md#web-points).
 
 ## Slots
