@@ -61,7 +61,8 @@ it("keeps each project's families and starts a project without its own from the 
   expect(await tiny(a)).toBe('project vllm/a')
   expect(await tiny(b)).toBe('project vllm/b')
   expect(await tiny(c)).toBe('recent vllm/b')
-  // The project's team settings apply over its own families.
+  // The project's team settings apply over the most recent families, and its own families apply over them.
   const team = { modelFamilies: { families: { tiny: { model: 'acme/team' } } } }
-  expect((await readFamilies(userHome, a, team)).families.tiny.model).toBe('acme/team')
+  expect((await readFamilies(userHome, c, team)).families.tiny.model).toBe('acme/team')
+  expect((await readFamilies(userHome, a, team)).families.tiny.model).toBe('vllm/a')
 })
