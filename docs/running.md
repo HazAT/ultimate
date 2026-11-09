@@ -17,8 +17,9 @@
 - UI and behaviour are verified on a preview: `instance start` runs a clean Ultimate with every agent on `instance.model` (default `openai-codex/gpt-6.1-sol`, fast; its own home; provider logins are read from `~/.pi/agent`, never copied). Its user config is a private copy in `<home>/user/.ultimate` (`ULTIMATE_USER_HOME`), taken at start with links resolved: settings, model families, agents, skills, trust, onboarding and secrets, so a preview's clicks never change the real `~/.ultimate`; user `extensions/` and the Tailscale registry stay shared through links. Seed it by prompting it as a user would, then look with screenshot or browser (the `verify-ui` skill has the checklist). It spends tokens; stop it when done.
 - Restart and chapter-switch flows need a supervised scratch server, since a preview runs `server/main.ts` without the
   supervisor and cannot restart. From the checkout under test, with the host's variables cleared (an agent's shell
-  inherits the live server's `ULTIMATE_*`):
-  `env $(env | grep -o '^ULTIMATE_[A-Z_]*' | sed 's/^/-u /') ULTIMATE_HOME=$(mktemp -d) pnpm start --port 4799 --no-open`.
+  inherits the live server's `ULTIMATE_*`), on an empty user home so the real user extensions in `~/.ultimate` do
+  not load into it:
+  `H=$(mktemp -d); env $(env | grep -o '^ULTIMATE_[A-Z_]*' | sed 's/^/-u /') ULTIMATE_HOME=$H ULTIMATE_USER_HOME=$H/user pnpm start --port 4799 --no-open`.
   The home must be its own: never the project's default home, which is the live server's. Tailscale follows user
   settings, so with it on there the scratch server publishes on its own tailnet port (`https://<machine>:4799`,
   registered under the scratch home) for the user to open remotely, and frees only that port when it stops; the live
