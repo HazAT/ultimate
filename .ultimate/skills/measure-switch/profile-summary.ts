@@ -1,5 +1,4 @@
-// Summarise a CDP CPU profile from switch.ts: busy time, the app functions it was spent under (inclusive), and how
-// much was React's development-only work.
+// Summarise a CDP CPU profile from switch.ts: busy time and the bundle functions it was spent under (inclusive).
 // Usage: node profile-summary.ts <file.cpuprofile> [top=30]
 import { readFileSync } from 'node:fs'
 
@@ -20,36 +19,27 @@ const parent = new Map<number, number>()
 for (const node of profile.nodes)
   for (const child of node.children ?? []) parent.set(child, node.id)
 
-// App code is served from web/src and extensions; dependencies come from Vite's prebundled deps.
-const app = (node: Node) =>
-  /\/(src|extensions)\//.test(node.callFrame.url) && !node.callFrame.url.includes('/deps/')
+// The page runs the production bundle from /assets/; the build keeps function names, so frames stay readable.
+const app = (node: Node) => node.callFrame.url.includes('/assets/')
 const name = (node: Node) =>
-  `${node.callFrame.functionName || '(anonymous)'} ${node.callFrame.url
-    .replace(/^.*?\/(src|extensions)\//, '$1/')
-    .replace(/\?.*$/, '')}:${node.callFrame.lineNumber + 1}`
-const devOnly =
-  /^(jsxDEV|jsxDEVImpl|exports\.jsxDEV|logComponentRender|logComponentEffect|validateProperty|validatePropertiesInDevelopment|warnUnknownProperties|addObjectDiffToProperties|updatedAncestorInfoDev)$/
+  `${node.callFrame.functionName || '(anonymous)'} ${node.callFrame.url.replace(/^.*\/assets\//, '')}:${node.callFrame.lineNumber + 1}`
 
 let busy = 0
-let dev = 0
 const inclusive = new Map<string, number>()
 profile.samples.forEach((sample, index) => {
   const ms = profile.timeDeltas[index] / 1000
   if (/^\((idle|program|root)\)$/.test(byId.get(sample)!.callFrame.functionName)) return
   busy += ms
   const seen = new Set<string>()
-  let isDev = false
   for (let id: number | undefined = sample; id !== undefined; id = parent.get(id)) {
     const node = byId.get(id)!
-    if (devOnly.test(node.callFrame.functionName)) isDev = true
     if (!app(node)) continue
     const key = name(node)
     if (seen.has(key)) continue
     seen.add(key)
     inclusive.set(key, (inclusive.get(key) ?? 0) + ms)
   }
-  if (isDev) dev += ms
 })
-console.log(`busy ${Math.round(busy)} ms, React development-only ${Math.round(dev)} ms`)
+console.log(`busy ${Math.round(busy)} ms`)
 for (const [key, ms] of [...inclusive].toSorted((a, b) => b[1] - a[1]).slice(0, Number(top)))
   console.log(`${String(Math.round(ms)).padStart(6)} ms  ${key}`)
