@@ -15,6 +15,7 @@ import {
   toolRenderers,
   linkRenderers,
   inlineCodeRenderers,
+  panelBadges,
   codeBlockLanguages,
   codeBlockRenderers,
   messageItems,
@@ -256,6 +257,7 @@ describe('web extension registry', () => {
           codeBlocks: { mermaid: First },
           entries: { 'pi.user': First },
           panels: [{ id: 'info', title: 'Info', component: First, order: 2 }],
+          panelBadges: { tasks: First },
           documents: [
             { kind: 'ultimate.plan', title: 'Plan', component: First },
             { kind: 'a.notes', title: 'Notes', component: First },
@@ -269,6 +271,7 @@ describe('web extension registry', () => {
           codeBlocks: { mermaid: Second, dot: Second },
           entries: { 'pi.compaction': Second, 'pi.user': Second },
           panels: [{ id: 'tasks', title: 'Tasks', component: Second, order: 1 }],
+          panelBadges: { tasks: Second },
           documents: [{ kind: 'ultimate.plan', title: 'My plan', component: Second }],
         }),
     })
@@ -292,6 +295,12 @@ describe('web extension registry', () => {
       { extension: 'b', version: 1, component: Second },
     ])
     expect(codeBlockLanguages(records)).toEqual(['mermaid', 'dot'])
+    // Any extension can badge any panel's tab, its own or another's.
+    expect(panelBadges(records, 'tasks')).toEqual([
+      { extension: 'a', version: 1, component: First },
+      { extension: 'b', version: 1, component: Second },
+    ])
+    expect(panelBadges(records, 'info')).toEqual([])
     // Entry renderers compose instead of replacing each other: all of them, in folder order.
     expect(entryRenderers(records, 'pi.user').map((renderer) => renderer.extension)).toEqual([
       'a',
