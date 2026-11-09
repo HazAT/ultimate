@@ -87,9 +87,7 @@ export function cleanEnv(extra: NodeJS.ProcessEnv = {}) {
     ...extra,
   }
 }
-// Tests run without the supervisor's ULTIMATE_* variables: removed once, not stubbed per test, so concurrent tests never
-// see them come back. Stubs a test leaves behind end with its file; stubbing restores to unset.
-for (const key of Object.keys(process.env)) if (key.startsWith('ULTIMATE_')) delete process.env[key]
+// Stubs a test leaves behind end with its file; stubbing restores to unset (test/setup.ts removed ULTIMATE_*).
 afterAll(() => vi.unstubAllEnvs())
 
 // Every temp() directory is removed once the test file finishes, so runs do not fill the tmpfs.
