@@ -120,10 +120,11 @@ export function fastStream(
       // Pi upstream: @earendil-works/pi-ai@1.5.0 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
       return api.streamSimple(model, context, {
         ...options,
-        onPayload: async (payload, payloadModel) => ({
-          ...(((await options?.onPayload?.(payload, payloadModel)) ?? payload) as object),
-          service_tier: 'priority',
-        }),
+        // The tier goes in first so the harness's beforeProviderRequest hooks (wire) see the body as sent.
+        onPayload: async (payload, payloadModel) => {
+          const tiered = { ...(payload as object), service_tier: 'priority' }
+          return (await options?.onPayload?.(tiered, payloadModel)) ?? tiered
+        },
       })
     })
 }

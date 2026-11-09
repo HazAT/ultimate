@@ -1,7 +1,16 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a8bba6c62 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..ee5c14da08ba9953504b49f03792571ea23c4e52 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
+@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
+ import { createInterface } from "node:readline";
+ import { spawn, type ChildProcess } from "node:child_process";
+ import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+-import { TurnRelay } from "./turn-relay.ts";
++import { TurnRelay, type RelayExchange } from "./turn-relay.ts";
+ import { usageCreditsAllowed, usageCreditsChargeError, type RateLimitInfo } from "./billing.ts";
+ import { envFlagEnabled } from "./env.ts";
+ import type { DiscoveredClaudeModel } from "./model-catalog.ts";
 @@ -19,7 +19,7 @@ import type {
    NativeResult,
    NativeUsage,
@@ -62,11 +71,11 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
 +    payload = JSON.parse(result.stdout) as typeof payload;
 +  } catch {
 +    payload = undefined;
-   }
++  }
 +  if (typeof payload?.loggedIn !== "boolean") {
 +    const detail = `claude auth status gave no status (exit ${result.code}): ${result.stderr.trim().slice(0, 300)}`;
 +    return { available: true, loggedIn: false, subscription: false, unknown: true, command, detail };
-+  }
+   }
 +  const loggedIn = payload.loggedIn;
 +  const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
 +  return {
@@ -89,7 +98,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (!status.loggedIn) {
      readyStatusCache.delete(key);
      throw new Error(LOGIN_HINT);
-@@ -316,6 +328,13 @@ export async function discoverClaudeModels(
+@@ -316,6 +328,25 @@ export async function discoverClaudeModels(
    }
  }
  
@@ -100,10 +109,22 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
 +  launch = start;
 +}
 +
++export interface ExchangeTap {
++  (call: { sessionId?: string; model: string; exchange: RelayExchange; message?: NativeMessage }): void;
++}
++
++let tap: ExchangeTap | undefined;
++
++/** Hand every relayed request and its raw answer to `next` once the turn ends; undefined stops keeping them. */
++export function useExchangeTap(next: ExchangeTap | undefined): void {
++  tap = next;
++  TurnRelay.keepExchange = next !== undefined;
++}
++
  function spawnCommand(
    command: string,
    args: string[],
-@@ -324,23 +343,31 @@ function spawnCommand(
+@@ -324,23 +355,31 @@ function spawnCommand(
    if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
      const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
      const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
@@ -141,7 +162,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -544,15 +571,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -544,15 +583,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -172,7 +193,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +677,11 @@ export function rewriteInitialRequest(
+@@ -642,6 +689,11 @@ export function rewriteInitialRequest(
    };
    let messages = payload.messages;
    const first = messages?.[0];
@@ -184,7 +205,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +706,11 @@ export function rewriteInitialRequest(
+@@ -666,9 +718,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -197,7 +218,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +768,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +780,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -218,7 +239,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -976,11 +1032,7 @@ class ClaudeProcess {
+@@ -976,11 +1044,7 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -231,7 +252,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1042,6 @@ class ClaudeProcess {
+@@ -990,13 +1054,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
@@ -245,6 +266,22 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
        const usage = message.usage ?? result.usage;
        if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
          throw new Error("Claude Code response did not include complete token usage");
+@@ -1027,6 +1084,15 @@ class ClaudeProcess {
+     } finally {
+       input.signal?.removeEventListener("abort", abort);
+       this.relay.finishTurn();
++      const exchange = this.relay.exchange;
++      this.relay.exchange = undefined;
++      if (exchange && tap) {
++        try {
++          tap({ sessionId: input.sessionId, model: input.model, exchange, message: this.relay.capture.message });
++        } catch {
++          // An observer must never fail the turn it observes.
++        }
++      }
+     }
+   }
+ 
 diff --git a/src/provider.ts b/src/provider.ts
 index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd527226d0eed53 100644
 --- a/src/provider.ts
@@ -537,10 +574,10 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
    };
  }
 diff --git a/src/turn-relay.ts b/src/turn-relay.ts
-index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..676ff71b59693a6f3688849cb24f703433a21f8d 100644
+index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..374041954b403e4dd8117e92129b6bf375207963 100644
 --- a/src/turn-relay.ts
 +++ b/src/turn-relay.ts
-@@ -111,7 +111,18 @@ const STRIPPED_REQUEST_HEADERS = new Set([
+@@ -111,7 +111,51 @@ const STRIPPED_REQUEST_HEADERS = new Set([
  
  const STRIPPED_RESPONSE_HEADERS = new Set(["connection", "transfer-encoding", "server", "date"]);
  
@@ -552,15 +589,71 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..676ff71b59693a6f3688849cb24f7034
 +  return TRANSPORT_ERROR_CODES.has(code) || code.startsWith("ERR_SSL_") || /socket hang up|SSL routines/u.test(String(error));
 +}
 +
++/** Request headers never handed to an exchange tap: credentials and anything named like one. */
++const SECRET_HEADER = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key)$|token|secret|key/iu;
++
++function headerRecord(headers: http.OutgoingHttpHeaders | http.IncomingHttpHeaders): Record<string, string> {
++  const record: Record<string, string> = {};
++  for (const [name, value] of Object.entries(headers)) {
++    if (value === undefined) continue;
++    record[name] = SECRET_HEADER.test(name) ? "[redacted]" : Array.isArray(value) ? value.join(", ") : String(value);
++  }
++  return record;
++}
++
++/** One relayed request and its answer, as sent and received upstream; credentials redacted. */
++export interface RelayExchange {
++  url: string;
++  startedAt: number;
++  endedAt: number;
++  requestHeaders: Record<string, string>;
++  /** The body sent upstream, after the turn's transformRequest. */
++  requestBody: Buffer;
++  status?: number;
++  responseHeaders: Record<string, string>;
++  /** The response bytes as received (the SSE stream, or an error body), capped at RESPONSE_CAP. */
++  response: Buffer;
++  failure?: string;
++}
++
++const RESPONSE_CAP = 32 * 1024 * 1024;
++
  export class TurnRelay {
 +  /** Backoff before each retry of a request that failed in transport before any response byte reached Claude Code. */
 +  static transportRetryDelaysMs = [250, 1_000, 2_000];
++  /** Set by useExchangeTap: keep each turn's exchange so the caller can hand it on. */
++  static keepExchange = false;
++
++  exchange?: RelayExchange;
 +
    capture: AnthropicCapture;
    used = false;
    denied = 0;
-@@ -284,22 +295,35 @@ export class TurnRelay {
+@@ -177,6 +221,7 @@ export class TurnRelay {
+     this.errorBody = Buffer.alloc(0);
+     this.originalRequestBody = undefined;
+     this.requestBody = undefined;
++    this.exchange = undefined;
+     this.transformRequest = transformRequest;
+     this.requestBetas = requestBetas;
+     this.cancelled = false;
+@@ -257,6 +302,11 @@ export class TurnRelay {
+     this.sockets.add(response);
  
+     let upstreamRequest: http.ClientRequest | undefined;
++    const startedAt = Date.now();
++    let sentHeaders: http.OutgoingHttpHeaders = {};
++    let receivedHeaders: http.IncomingHttpHeaders = {};
++    const received: Buffer[] = [];
++    let receivedBytes = 0;
+     try {
+       let body = await this.readBody(request);
+       this.originalRequestBody = Buffer.from(body);
+@@ -282,26 +332,41 @@ export class TurnRelay {
+         ].join(",");
+       }
+ 
++      sentHeaders = headers;
        const pathPrefix = this.upstream.pathname.replace(/\/$/u, "");
        const transport = this.upstream.protocol === "https:" ? https : http;
 -      upstreamRequest = transport.request({
@@ -610,8 +703,22 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..676ff71b59693a6f3688849cb24f7034
 +      }
        this.sockets.add(upstreamResponse);
        this.status = upstreamResponse.statusCode;
++      receivedHeaders = upstreamResponse.headers;
        this.requestId =
-@@ -323,7 +347,7 @@ export class TurnRelay {
+         String(upstreamResponse.headers["request-id"] ?? upstreamResponse.headers["x-request-id"] ?? "") || undefined;
+ 
+@@ -314,6 +379,10 @@ export class TurnRelay {
+ 
+       for await (const rawChunk of upstreamResponse) {
+         const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
++        if (TurnRelay.keepExchange && receivedBytes < RESPONSE_CAP) {
++          received.push(chunk);
++          receivedBytes += chunk.length;
++        }
+         if (this.status === 200) this.capture.feed(chunk);
+         else if (this.errorBody.length < 65_536) {
+           this.errorBody = Buffer.concat([this.errorBody, chunk]).subarray(0, 65_536);
+@@ -323,10 +392,23 @@ export class TurnRelay {
        if (this.status === 200) this.capture.finish();
        response.end();
      } catch (error) {
@@ -620,3 +727,19 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..676ff71b59693a6f3688849cb24f7034
        if (!response.headersSent) response.writeHead(this.cancelled ? 499 : 502).end();
        else response.destroy();
      } finally {
++      if (TurnRelay.keepExchange && this.requestBody) {
++        this.exchange = {
++          url: `${this.upstream.origin}${this.upstream.pathname.replace(/\/$/u, "")}/v1/messages${requestUrl.search}`,
++          startedAt,
++          endedAt: Date.now(),
++          requestHeaders: headerRecord(sentHeaders),
++          requestBody: this.requestBody,
++          status: this.status,
++          responseHeaders: headerRecord(receivedHeaders),
++          response: Buffer.concat(received),
++          failure: this.failure,
++        };
++      }
+       if (upstreamRequest) this.sockets.delete(upstreamRequest);
+       this.sockets.delete(request);
+       this.sockets.delete(response);
