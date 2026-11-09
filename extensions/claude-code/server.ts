@@ -184,6 +184,15 @@ export default function claudeCode(host: ExtensionHost) {
   // The replacement factory runs before the old facet closes. Keep its models
   // registered throughout that handoff, including disposal of a failed reload.
   host.modelRuntime.registerNativeProvider(provider)
+  // Ask the CLI for its catalog once all extensions registered theirs: a refresh any of them starts would cancel it.
+  // Refreshes without network only restore the stored catalog, so a model released since then never appeared.
+  host.onOpen(async () => {
+    void getClaudeStatus(claudeCodeEnv())
+      .then((status) => discover(host, status))
+      .catch((error: unknown) =>
+        host.notice(`Claude Code model discovery failed: ${String(error)}`),
+      )
+  })
   return defineExtension({
     name: 'claude-code',
     hooks: [
@@ -201,6 +210,26 @@ export default function claudeCode(host: ExtensionHost) {
   })
 }
 
+/**
+ * Run the provider's model discovery when Claude Code is logged in: a local `claude` process whose catalog Pi stores.
+ * Pi runs it only on a refresh that allows network; every other refresh restores the stored catalog, so without this
+ * a model released since the last discovery never appears (#542940). A failure keeps the stored catalog.
+ */
+async function discover(
+  host: Pick<ExtensionHost, 'modelRuntime' | 'notice'>,
+  status: { loggedIn: boolean },
+  signal?: AbortSignal,
+) {
+  if (!status.loggedIn) return
+  const refreshed = await host.modelRuntime.refresh({
+    allowNetwork: true,
+    providers: ['claude-code'],
+    signal,
+  })
+  const error = refreshed.errors.get('claude-code')
+  if (error) host.notice(`Claude Code model discovery failed: ${String(error)}`)
+}
+
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) => {
     signal.throwIfAborted()
@@ -209,6 +238,8 @@ export const actions = {
       throw new Error('Claude Code status refresh failed')
     // `claudeCodeEnv()` is upstream's provider-scoped environment, the one its auth checks remembered.
     const status = await getClaudeStatus(claudeCodeEnv(), signal)
+    await discover(host, status, signal)
+    signal.throwIfAborted()
     // Only expose status metadata, never CLI output or account identity.
     return {
       available: status.available,
