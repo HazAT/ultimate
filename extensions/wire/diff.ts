@@ -8,6 +8,16 @@ import type { WireDiff } from './refs.ts'
 type Segment = { path: string; json: string }
 type Body = Record<string, unknown>
 
+/**
+ * The JSON compared for a segment: without `cache_control`. Claude Code moves its markers to the newest message each
+ * turn, and the cache still reads the whole earlier prefix (seen on a real pair of calls: cache read 29,358 = the
+ * previous read 28,762 + write 596), so a moved marker is no break.
+ */
+const comparable = (json: string) =>
+  JSON.stringify(
+    JSON.parse(json, (key, value: unknown) => (key === 'cache_control' ? undefined : value)),
+  )
+
 const list = (value: unknown) => (Array.isArray(value) ? (value as unknown[]) : [])
 
 /** Each message is split into its content blocks, so a change points at the block, not the whole message. */
@@ -65,7 +75,7 @@ export function diffBodies(previous: Body, current: Body, previousN: number): Wi
   while (
     same < before.prefix.length &&
     same < after.prefix.length &&
-    before.prefix[same].json === after.prefix[same].json
+    comparable(before.prefix[same].json) === comparable(after.prefix[same].json)
   )
     same += 1
   const prefixBytes = after.prefix
@@ -91,14 +101,16 @@ export function diffBodies(previous: Body, current: Body, previousN: number): Wi
   const old = before.prefix[same]
   const now = after.prefix[same]
   if (old && now) {
+    const was = comparable(old.json)
+    const is = comparable(now.json)
     let offset = 0
-    while (offset < old.json.length && old.json[offset] === now.json[offset]) offset += 1
+    while (offset < was.length && was[offset] === is[offset]) offset += 1
     diff.firstChange = {
       path: now.path,
       offset,
-      lead: now.json.slice(Math.max(0, offset - CONTEXT), offset),
-      before: old.json.slice(offset, offset + CONTEXT),
-      after: now.json.slice(offset, offset + CONTEXT),
+      lead: is.slice(Math.max(0, offset - CONTEXT), offset),
+      before: was.slice(offset, offset + CONTEXT),
+      after: is.slice(offset, offset + CONTEXT),
     }
   }
   return diff
