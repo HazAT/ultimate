@@ -15,6 +15,10 @@ process.env.PI_CLAUDE_CODE_COMMAND = join(testTmpdir, 'no-claude')
 // scripted one: tests see only the logins they create.
 for (const key of Object.keys(process.env))
   if (/_API_KEY$|_OAUTH_TOKEN$/.test(key)) delete process.env[key]
+// Tests run without the supervisor's ULTIMATE_* variables: removed once for every file, not stubbed per test, so
+// concurrent tests never see them come back. Inside a preview ULTIMATE_MODEL would otherwise override every model a test
+// expects (#537493: test/default-model.test.ts, which imports no helpers, failed a preview's suite).
+for (const key of Object.keys(process.env)) if (key.startsWith('ULTIMATE_')) delete process.env[key]
 // Test servers, and the previews they start, must never publish on this machine's tailnet: they find no Tailscale CLI.
 process.env.TAILSCALE_COMMAND = join(testTmpdir, 'no-tailscale')
 // Instance startup sweeps must never inspect the machine's real preview homes during tests.
