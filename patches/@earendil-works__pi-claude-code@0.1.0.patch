@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dcb07d3cb5 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..7adce93f01fc7cc2ece9afc39b7ca8d34f038c01 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
@@ -109,7 +109,17 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
    const command = await resolveClaudeExecutable(env);
    if (!command) throw new Error(INSTALL_HINT);
  
-@@ -316,6 +332,24 @@ export async function discoverClaudeModels(
+@@ -272,6 +288,9 @@ export async function discoverClaudeModels(
+   }, timeoutMs);
+ 
+   const requestId = `pi-models-${Date.now()}`;
++  // A probe that exits before taking its input fails these writes with EPIPE; its exit code reports the failure, and an
++  // unheard stream error would crash the host instead (Ultimate #547832, test/e2e/claude-code.test.ts).
++  child.stdin?.on("error", () => {});
+   child.stdin?.write(
+     `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
+   );
+@@ -316,6 +335,24 @@ export async function discoverClaudeModels(
    }
  }
  
@@ -134,7 +144,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
  function spawnCommand(
    command: string,
    args: string[],
-@@ -324,23 +358,31 @@ function spawnCommand(
+@@ -324,23 +361,31 @@ function spawnCommand(
    if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
      const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
      const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
@@ -172,7 +182,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -544,15 +586,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -544,15 +589,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -203,7 +213,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +692,11 @@ export function rewriteInitialRequest(
+@@ -642,6 +695,11 @@ export function rewriteInitialRequest(
    };
    let messages = payload.messages;
    const first = messages?.[0];
@@ -215,7 +225,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +721,11 @@ export function rewriteInitialRequest(
+@@ -666,9 +724,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -228,7 +238,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +783,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +786,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -249,7 +259,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -912,6 +983,8 @@ class ClaudeProcess {
+@@ -912,6 +986,8 @@ class ClaudeProcess {
          : undefined,
        input.betas,
      );
@@ -258,7 +268,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
  
      const abort = () => {
        this.relay.abort();
-@@ -976,11 +1049,7 @@ class ClaudeProcess {
+@@ -976,11 +1052,7 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -271,7 +281,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1059,6 @@ class ClaudeProcess {
+@@ -990,13 +1062,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
@@ -286,7 +296,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
        if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
          throw new Error("Claude Code response did not include complete token usage");
 diff --git a/src/model-catalog.ts b/src/model-catalog.ts
-index a174cad..6b1a7a6 100644
+index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3d58dfacc 100644
 --- a/src/model-catalog.ts
 +++ b/src/model-catalog.ts
 @@ -99,6 +99,14 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
