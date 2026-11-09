@@ -33,6 +33,7 @@ minimumReleaseAgeExclude:
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts (70abb65186592ca788b29b3db22c3160d629c41f) — rebuild replay cache markers within Claude's four-block limit; word an incomplete response without stderr so pi-ai retries it; src/stream.ts — resolve a tool named without its MCP prefix instead of ending the turn; src/transcript.ts — define later tools inline (inline-tools beta) instead of falling back to one merged system prompt after a tool redefinition. Drop when upstream fixes this.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — useSpawn() sets how Claude Code's processes start (lib/spawn.ts). Drop when upstream accepts a spawn function.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — childExit() settles for a child that already exited: model discovery reads stdout to its end first, and 'exit' can precede that, which hung discovery until the next refresh. Drop when upstream fixes this.
+# Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/turn-relay.ts — retry a request up to 3 times (250 ms, 1 s, 2 s) when its connection fails in transport (TLS alert, ECONNRESET, EPIPE, socket hang up, ETIMEDOUT) before any response byte reached Claude Code; never an HTTP status or a cancelled turn (anthropics/claude-code#106197). Drop when upstream fixes this.
 # Dependabot GHSA-587h-7wmj-h5pm and siblings: @tailwindcss/vite and @vitejs/plugin-react resolve vite 8.3.1 on their own. Drop when they peer on >= 8.3.3.
 overrides:
   vite: 8.3.5
