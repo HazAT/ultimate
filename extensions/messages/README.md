@@ -55,8 +55,9 @@ open, @ultimate's message to the user answers it and, with `questions`, stays op
 another.
 
 A reply-expected message to the user stays open, and its sender shows as awaiting reply, until the user answers that
-message: a Reply with `re` (the answer card or a typed Reply). Dismissing it closes it with a one-way note to the
-sender. A branch's question also puts an attention pointer (`board.asked`) in @ultimate's conversation, and the user's
+message: a Reply with `re` (the answer card or a typed Reply). The delivered input reads `Answer to message N:` before
+the reply, so an asker with several cards open never guesses which one it answers; a spoken (voice) reply answers no
+card while several are open. Dismissing it closes it with a one-way note to the sender. A branch's question also puts an attention pointer (`board.asked`) in @ultimate's conversation, and the user's
 answer a `board.answered` note there; neither starts a run. A branch with an open question shows as `waits on you`.
 
 `questions` (checked in `questions.ts`) render under the message as the questions extension's answer card; see

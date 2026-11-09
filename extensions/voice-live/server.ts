@@ -236,12 +236,14 @@ export function answerTask(host: ExtensionHost) {
           userLine(input),
           `voice:line:${input.request}`,
         )
-        // The open question this utterance answers, chosen once: after our own answer it is no longer open.
+        // The open question this utterance answers, chosen once: after our own answer it is no longer open. Spoken
+        // words name no card, so with several open none is guessed: the utterance goes in as plain input, and the
+        // agent sees its open questions by number.
         let question = await runtime.memo<number | false>('question', ctx)
         if (question === undefined) {
           const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-          const open = log?.messages.findLast((m) => m.from === main && openQuestion(m))
-          question = await runtime.memo('question', open?.id ?? false, ctx)
+          const open = (log?.messages ?? []).filter((m) => m.from === main && openQuestion(m))
+          question = await runtime.memo('question', open.length === 1 ? open[0].id : false, ctx)
         }
         let receipt
         // A crash after answer() finds this utterance's own reply by its text, never another answer to the question.

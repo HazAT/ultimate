@@ -725,6 +725,13 @@ it('answers questions to the user through answer cards or input in the sender co
   await f.opened.harness.waitForIdle(context)
   expect(await state(first.id)).toBe('answered')
   expect(await state(second.id)).toBe('delivered')
+  // With two cards open the answer reads as the answer to its own: the asker never has to guess which.
+  await until(async () =>
+    f.observed.some((t) =>
+      t.includes(`Answer to message ${first.id}:\nQ: Which command?\nA: Both`),
+    ),
+  )
+  expect(f.observed.filter((t) => t.includes(`Answer to message ${second.id}`))).toEqual([])
   // Each answer is the user's input to the asker, recorded once with its reply's message and never its text.
   const inputs = await eventHost(() => f.opened.harness, 'test').eventLog.recent({
     events: [UserInputEvent],
@@ -1366,7 +1373,9 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(JSON.stringify(answered.model)).toContain('A: Yes')
   const reply = (await f.log())!.messages.find((m) => m.from === 'user' && m.re === question.id)!
   expect(reply).toMatchObject({ to: b.id, text, state: 'answered', entry: expect.any(Number) })
-  expect(f.observed).toContainEqual(expect.stringContaining(`Message from user:\n${text}`))
+  expect(f.observed).toContainEqual(
+    expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
+  )
   // The user's answer is input, so the branch's final result still reports to its starter.
   expect((await b.from()).find((m) => m.report)).toMatchObject({
     to: 1,
