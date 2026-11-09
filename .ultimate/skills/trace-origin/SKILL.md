@@ -21,7 +21,7 @@ its `source` (`#conversation/entry`) is the starting point.
 
 The conversation may live in an earlier chapter: in codemode, try `ultimate.entries(id)` and then
 `ultimate.entries(id, {chapter})` for each chapter name from `ultimate.conversations` errors or the handoff.
-`ultimate.search('"branch":<id>', {chapter, kinds: ['event.lineage.branched'], full: true})` finds its
+`ultimate.search('"branch":<id>', {chapter, kinds: ['lineage.branched'], full: true})` finds its
 `lineage.branched` event, stored in the root: `data.at` (the
 entry in the starter that started it), `data.intent` (the prompt's opening), and its text names the starter
 (`#<id> started by #<starter> … from #<root>/<at>`).

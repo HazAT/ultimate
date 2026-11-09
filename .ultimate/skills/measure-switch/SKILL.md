@@ -50,8 +50,6 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
   stream and a switch only resubscribes on it, so `streams` (new streams during the switch) should stay 0.
 - Compare before and after in one session, on one instance home: run main, stop, apply the change, start again on the
   same home. Numbers drift between sessions with machine load; repeat runs and compare medians.
-- Previews run React in development mode: about 30–45% of busy time is `jsxDEV` and render logging, which the summary
-  reports separately. Gains in app code show up proportionally in production.
 - Server changes (`server/`, `shared/`) need the instance restarted; web and extension changes hot-reload.
 
 ## 4. Clean up
