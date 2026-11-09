@@ -114,7 +114,9 @@ function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const landers = Object.values(useWorkspaceIndex().landerConversations)
   if (id === undefined || !landers.includes(id)) return core
   return (
-    <div className={`${dock ? 'w-full px-4' : 'mx-auto w-full max-w-[46rem] px-3 sm:px-6'} pb-3`}>
+    <div
+      className={`${dock ? 'w-full px-4' : 'mx-auto w-full max-w-(--reading-width,46rem) px-3 sm:px-6'} pb-3`}
+    >
       <div
         className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5 text-[12.5px] text-muted-foreground"
         data-lander-log={id}
