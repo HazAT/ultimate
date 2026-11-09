@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { expect, it } from 'vitest'
 import { discoverClaudeModels, useSpawn } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
+import { modelFromDiscovery } from '@earendil-works/pi-claude-code/src/model-catalog.ts'
 import { until } from './helpers.ts'
 
 // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — childExit() settles for a child that already
@@ -54,6 +55,17 @@ it('asks Claude Code for the account catalog, not its built-in list', async () =
   child.emit('exit', 0, null)
   stdout.end()
   await expect(discovery).rejects.toThrow(/no selectable models/)
+})
+
+// #544597: Fable 5.2, newer than Pi's built-in list, fell back to 200k / 64k; Claude Code reports 1M / 128k for it.
+it('gives a model newer than the built-in list its family limits', () => {
+  const fable = modelFromDiscovery({
+    value: 'fable',
+    resolvedModel: 'claude-fable-5-2',
+    displayName: 'Fable 5.2',
+    description: 'For your toughest challenges',
+  })
+  expect([fable.contextWindow, fable.maxTokens]).toEqual([1_000_000, 128_000])
 })
 
 it('settles model discovery when Claude Code exits before its output ends', async () => {

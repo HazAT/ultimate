@@ -285,6 +285,36 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e9398574acf814be1dc1c9ec9c65c0dc
        const usage = message.usage ?? result.usage;
        if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
          throw new Error("Claude Code response did not include complete token usage");
+diff --git a/src/model-catalog.ts b/src/model-catalog.ts
+index a174cad..6b1a7a6 100644
+--- a/src/model-catalog.ts
++++ b/src/model-catalog.ts
+@@ -99,6 +99,14 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+   const thinkingLevelMap = supported?.length
+     ? (Object.fromEntries(supported.map((level) => [level, level])) as ClaudeCodeModel["thinkingLevelMap"])
+     : undefined;
++  // A model released after Pi's built-in list (Fable 5.2) takes the limits of its family's newest known model; Claude
++  // Code's discovery reports no window, and the 200k guess was wrong for Fable 5.2 (1M, 128k output per modelUsage).
++  const family = /^claude-[a-z]+-/u.exec(id)?.[0];
++  const sibling = family
++    ? Object.values(BUILTIN_ANTHROPIC_MODELS)
++        .filter((model) => model.id.startsWith(family))
++        .sort((a, b) => b.id.localeCompare(a.id, "en", { numeric: true }))[0]
++    : undefined;
+   return {
+     id,
+     name: `${info.displayName} (Claude Code)`,
+@@ -109,8 +117,8 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+     input: ["text", "image"],
+     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+-    contextWindow: /\b1M context\b/iu.test(info.description) ? 1_000_000 : 200_000,
+-    maxTokens: 64_000,
++    contextWindow: /\b1M context\b/iu.test(info.description) ? 1_000_000 : (sibling?.contextWindow ?? 200_000),
++    maxTokens: sibling?.maxTokens ?? 64_000,
+   };
+ }
+ 
 diff --git a/src/provider.ts b/src/provider.ts
 index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd527226d0eed53 100644
 --- a/src/provider.ts
