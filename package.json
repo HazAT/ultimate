@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "node server/main.ts",
     "start": "node bin/ultimate.ts",
-    "check": "vp check && node scripts/deps.ts",
+    "check": "vp check && node scripts/deps.ts && node scripts/pi-upstream.ts",
     "deps": "node scripts/deps.ts",
     "weigh": "node scripts/weigh.ts",
     "test": "MIMALLOC_ALLOW_THP=0 MIMALLOC_PURGE_DELAY=0 vp test",
