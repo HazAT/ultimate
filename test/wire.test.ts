@@ -18,7 +18,7 @@ it('keeps the relayed request as sent and the raw stream, never the credentials'
   TurnRelay.keepExchange = true
   const stream = 'event: message_stop\ndata: {"type":"message_stop"}\n\n'
   const upstream = createServer(async (request, response) => {
-    for await (const _chunk of request);
+    for await (const chunk of request) void chunk
     response
       .writeHead(200, { 'content-type': 'text/event-stream', 'set-cookie': 'a=b' })
       .end(stream)
