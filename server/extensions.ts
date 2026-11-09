@@ -304,6 +304,13 @@ export async function loadExtensions(
     const failed = await prepared()
     if (failed && failed !== unprepared) notice(`Loading as it is: ${failed}`)
     unprepared = failed
+    // Vite's resolver remembers where each package resolved to. pnpm installs a changed (patched) package into a new
+    // folder and moves the link, so a facet reloaded after an install kept importing the old folder: "useUrl is not a
+    // function" in 19 of 56 patch landings on a scratch host (#545608). Telling the resolver that node_modules
+    // changed makes it look again; that costs a few stats per reload.
+    const modules = join(host.ultimateRoot, 'node_modules')
+    for (const environment of Object.values(vite.environments))
+      await environment.pluginContainer.watchChange(modules, { event: 'create' })
   }
   const releasers = new Set<() => Promise<void>>()
   let open = false
