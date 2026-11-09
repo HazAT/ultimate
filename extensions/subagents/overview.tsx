@@ -242,6 +242,12 @@ function FamilyGroup({
           <span className="min-w-0 truncate text-muted-foreground">
             {model ? short(model) : 'no model'}
             {thinking && <span className="text-muted-foreground/70"> · {thinking}</span>}
+            {family.suggested && family.suggested !== model && (
+              <span className="text-muted-foreground/60">
+                {' '}
+                · project suggests {short(family.suggested)}
+              </span>
+            )}
           </span>
           <span className="ml-auto shrink-0 pl-2 text-[10.5px] text-muted-foreground/60 opacity-0 transition-opacity group-hover/family:opacity-100">
             edit

@@ -11,9 +11,17 @@ export type ModelRef = { provider: string; modelId: string }
 /** One family as settings hold it: `model` is `provider/id`; the default family's model is Pi's default model. */
 export type FamilySpec = { model?: string; thinking?: ModelThinkingLevel; color?: string }
 
+/** One settings layer's `modelFamilies`: its families, feature assignments and, on the project's, `enforce`. */
+export type FamiliesLayer = {
+  families: Record<string, FamilySpec>
+  assign: Record<string, string>
+  enforce?: true
+}
+
 /** The `modelFamilies` setting, merged over the built-in defaults. */
 export type Families = {
-  families: Record<string, FamilySpec & { color: string }>
+  /** `suggested` is the project's model for the family, when the person's choice comes first. */
+  families: Record<string, FamilySpec & { color: string; suggested?: string }>
   /** Which family each feature runs on (`summaries`, `preview`); an agent's family is in its definition. */
   assign: Record<string, string>
 }
@@ -71,14 +79,13 @@ export const isFamilyName = (name: string) => /^[a-z][a-z0-9-]{0,23}$/.test(name
 const isRef = (value: string) => /^[^/\s]+\/\S+$/.test(value)
 
 /** One settings layer's `modelFamilies`, checked; throws naming the first invalid field. */
-export function parseFamilies(value: unknown): {
-  families: Record<string, FamilySpec>
-  assign: Record<string, string>
-} {
+export function parseFamilies(value: unknown): FamiliesLayer {
   if (value === undefined) return { families: {}, assign: {} }
   if (!isObject(value)) throw new Error('modelFamilies must be an object')
   const families: Record<string, FamilySpec> = {}
   const assign: Record<string, string> = {}
+  if (value.enforce !== undefined && typeof value.enforce !== 'boolean')
+    throw new Error('modelFamilies.enforce must be a boolean')
   if (value.families !== undefined && !isObject(value.families))
     throw new Error('modelFamilies.families must be an object')
   for (const [name, spec] of Object.entries(value.families ?? {})) {
@@ -109,20 +116,41 @@ export function parseFamilies(value: unknown): {
       throw new Error(`modelFamilies.assign.${user} must be a family name`)
     assign[user] = family
   }
-  return { families, assign }
+  return { families, assign, ...(value.enforce ? { enforce: true } : {}) }
 }
 
-/** The built-in families, then each layer's (user, then project), field by field; later layers win. */
-export function mergeFamilies(...layers: ReturnType<typeof parseFamilies>[]): Families {
+/**
+ * The built-in families, the person's own (or most recent), then the project's team settings. The project owns which
+ * families exist, their colors, thinking levels and feature assignments; a model it names is a suggestion
+ * (`suggested`), the person's choice comes first, and `enforce: true` pins it over the person's instead.
+ */
+export function mergeFamilies(
+  base: FamiliesLayer = parseFamilies(undefined),
+  project: FamiliesLayer = parseFamilies(undefined),
+): Families {
   const families: Families['families'] = structuredClone(BUILTIN_FAMILIES)
   const assign: Record<string, string> = {}
   const palette = Object.keys(FAMILY_COLORS)
-  for (const layer of layers) {
-    for (const [name, spec] of Object.entries(layer.families)) {
-      const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
-      families[name] = { ...families[name], ...spec, color: spec.color ?? color }
+  for (const [name, spec] of Object.entries(base.families)) {
+    const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
+    families[name] = { ...families[name], ...spec, color: spec.color ?? color }
+  }
+  Object.assign(assign, base.assign)
+  for (const [name, spec] of Object.entries(project.families)) {
+    const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
+    families[name] = {
+      ...families[name],
+      ...(spec.thinking ? { thinking: spec.thinking } : {}),
+      color: spec.color ?? color,
+      ...(spec.model && !project.enforce ? { suggested: spec.model } : {}),
     }
-    Object.assign(assign, layer.assign)
+  }
+  Object.assign(assign, project.assign)
+  // The family's model: the person's choice, else the project's (pinned under `enforce`), else the built-in's.
+  for (const [name, spec] of Object.entries(project.families)) {
+    if (!spec.model) continue
+    const model = project.enforce ? spec.model : (base.families[name]?.model ?? spec.model)
+    families[name] = { ...families[name], model }
   }
   return { families, assign }
 }

@@ -16,13 +16,13 @@ Read `.ultimate/settings.json` and every file in `.ultimate/agents/`. In one `me
 explain each piece in one or two plain lines: what it is, why Ultimate has it, and what it would be here. End with one
 multi-select question listing the pieces below, plus **None, thanks**.
 
-| Piece             | Ultimate's files                                                                       | Why it exists                                                                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model families    | `settings.json` `modelFamilies` (`lead`, `review`, `fast`; `assign.preview`)           | Committed families name each model, so every clone runs the team on the same models whatever its own families say; agents name a family, not a model.                       |
-| Review team       | `agents/reviewer-correctness.md`, `reviewer-simplicity.md`, `reviewer-architecture.md` | The shipped `reviewer` starts every `reviewer-*` in parallel and merges one verdict; each has its own focus, on more than one model, so one model's blind spots get caught. |
-| Coordinator model | `agents/coordinator.md` (an overlay: `addTools: []`, `family: lead`)                   | Branches plan, decide and verify; the strongest model pays off there.                                                                                                       |
-| Lander            | `settings.json` `lander.checks` and `lander.push`                                      | Every landing runs the project's checks on the merged result and pushes; a failure goes back to the submitting branch to fix.                                               |
-| Worktree setup    | `settings.json` `isolates.worktree.setup`                                              | Each branch works in a fresh worktree without dependencies; setup installs them before the first tool call.                                                                 |
+| Piece             | Ultimate's files                                                                       | Why it exists                                                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model families    | `settings.json` `modelFamilies` (`lead`, `review`, `fast`; `assign.preview`)           | Committed families own the team's roles and suggest each family's model, adopted with one click; `enforce: true` pins them so every clone runs the same models. Agents name a family, not a model. |
+| Review team       | `agents/reviewer-correctness.md`, `reviewer-simplicity.md`, `reviewer-architecture.md` | The shipped `reviewer` starts every `reviewer-*` in parallel and merges one verdict; each has its own focus, on more than one model, so one model's blind spots get caught.                        |
+| Coordinator model | `agents/coordinator.md` (an overlay: `addTools: []`, `family: lead`)                   | Branches plan, decide and verify; the strongest model pays off there.                                                                                                                              |
+| Lander            | `settings.json` `lander.checks` and `lander.push`                                      | Every landing runs the project's checks on the merged result and pushes; a failure goes back to the submitting branch to fix.                                                                      |
+| Worktree setup    | `settings.json` `isolates.worktree.setup`                                              | Each branch works in a fresh worktree without dependencies; setup installs them before the first tool call.                                                                                        |
 
 Not part of the tour, never copied: `extensions.enable` (`voice-live` is a personal choice), `assign.preview` (only for
 projects that preview their own extensions), `skills/ultimate-provider-smoke` and `README.md` (both about Ultimate
@@ -36,7 +36,9 @@ commands or people may survive.
 
 - **Logins first.** Before naming any model, list the models the user can run (codemode `ultimate.models()`) and use
   only those. Agents name a family (`family:`, keeping their own `thinking` and `fast` where they differ from it);
-  the models go in the project's `modelFamilies`, reusing family names the user already has (codemode
+  the models go in the project's `modelFamilies` as suggestions (each person adopts theirs with one click in the
+  Agents panel; `enforce: true` pins them over a person's choice for teams that must run identical models), reusing
+  family names the user already has (codemode
   `ultimate.agents()` and the Agents panel show them). Sol (`openai-codex/gpt-6.1-sol`) keeps `fast: true`; other
   models drop it. With one provider, use different models or thinking levels per reviewer and say the team lost its
   model diversity.
