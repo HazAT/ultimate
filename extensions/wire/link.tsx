@@ -19,14 +19,16 @@ export type Picked = { conversation: number; n: number }
 /** A payload call starts when pi-ai sends; its message's timestamp is taken then too. Further apart is another call. */
 const NEAR = 60_000
 
-/** The kept call behind a response: by its provider id, else the call that started nearest to it. */
+/**
+ * The kept call behind a response: by its provider id; only a response without one goes by the call that started
+ * nearest to it. A response whose id no kept call has left the window, and must not point at a neighbour.
+ */
 export function callFor(
   calls: readonly WireSummary[],
   responseId: string | undefined,
   at: number,
 ): WireSummary | undefined {
-  const exact = responseId ? calls.find((call) => call.responseId === responseId) : undefined
-  if (exact) return exact
+  if (responseId) return calls.find((call) => call.responseId === responseId)
   let best: WireSummary | undefined
   for (const call of calls)
     if (!best || Math.abs(call.startedAt - at) < Math.abs(best.startedAt - at)) best = call

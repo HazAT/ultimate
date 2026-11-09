@@ -3,19 +3,15 @@ import type { AddressInfo } from 'node:net'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { TurnRelay } from '@earendil-works/pi-claude-code/src/turn-relay.ts'
+import type { RelayExchange } from '@earendil-works/pi-claude-code/src/turn-relay.ts'
 import { diffBodies } from '../extensions/wire/diff.ts'
 import { list, load, PER_CONVERSATION, save } from '../extensions/wire/store.ts'
 
 // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/turn-relay.ts — the patched relay keeps each turn's exchange
 // for useExchangeTap (Wire). Drop with the patch when upstream exposes the relay's exchanges.
-afterEach(() => {
-  TurnRelay.keepExchange = false
-})
-
 it('keeps the relayed request as sent and the raw stream, never the credentials', async () => {
-  TurnRelay.keepExchange = true
   const stream = 'event: message_stop\ndata: {"type":"message_stop"}\n\n'
   const upstream = createServer(async (request, response) => {
     for await (const chunk of request) void chunk
@@ -27,6 +23,8 @@ it('keeps the relayed request as sent and the raw stream, never the credentials'
   const relay = new TurnRelay(`http://127.0.0.1:${(upstream.address() as AddressInfo).port}`, 1_000)
   const url = await relay.start()
   relay.beginTurn(undefined, (body) => Buffer.from(body.toString().replace('1', '2')), ['beta-x'])
+  const exchanges: RelayExchange[] = []
+  relay.onExchange = (exchange) => exchanges.push(exchange)
   try {
     const response = await fetch(`${url}/v1/messages?beta=true`, {
       method: 'POST',
@@ -35,7 +33,7 @@ it('keeps the relayed request as sent and the raw stream, never the credentials'
     })
     await response.text()
     await relay.settled()
-    const exchange = relay.exchange!
+    const [exchange] = exchanges
     expect(exchange.requestBody.toString()).toBe('{"turn":2}')
     expect(exchange.response.toString()).toBe(stream)
     expect(exchange.url).toMatch(/\/v1\/messages\?beta=true$/)
@@ -48,6 +46,39 @@ it('keeps the relayed request as sent and the raw stream, never the credentials'
     expect(JSON.stringify(exchange)).not.toMatch(/secret|"k"/)
   } finally {
     await relay.close()
+    upstream.close()
+  }
+})
+
+// Review of #540587: the exchange was read when the turn ended, before an aborted request's handler had recorded it.
+it('hands over an aborted request once its handler ends', async () => {
+  let reached: () => void
+  const started = new Promise<void>((resolve) => (reached = resolve))
+  const upstream = createServer(async (request, response) => {
+    for await (const chunk of request) void chunk
+    response.writeHead(200, { 'content-type': 'text/event-stream' }).write('event: ping\n\n')
+    reached()
+  })
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
+  const relay = new TurnRelay(`http://127.0.0.1:${(upstream.address() as AddressInfo).port}`, 1_000)
+  const url = await relay.start()
+  relay.beginTurn()
+  const exchanges: RelayExchange[] = []
+  relay.onExchange = (exchange) => exchanges.push(exchange)
+  try {
+    const response = fetch(`${url}/v1/messages`, { method: 'POST', body: '{}' }).catch(
+      () => undefined, // The abort below cuts the connection; only the relay's record matters here.
+    )
+    await started
+    relay.abort()
+    await response
+    await relay.settled()
+    expect(exchanges).toHaveLength(1)
+    expect(exchanges[0].requestBody.toString()).toBe('{}')
+    expect(exchanges[0].failure).toMatch(/aborted/)
+  } finally {
+    await relay.close()
+    upstream.closeAllConnections()
     upstream.close()
   }
 })
@@ -87,6 +118,7 @@ it('points at the first change in cache order, not JSON order', () => {
 })
 
 it('keeps the newest calls of a conversation', async () => {
+  const queue = { tail: Promise.resolve() as Promise<unknown> }
   const home = await mkdtemp(join(tmpdir(), 'wire-'))
   try {
     const call = {
@@ -98,7 +130,7 @@ it('keeps the newest calls of a conversation', async () => {
       endedAt: 1,
       request: '{}',
     }
-    for (let i = 0; i < PER_CONVERSATION + 2; i++) await save(home, call)
+    for (let i = 0; i < PER_CONVERSATION + 2; i++) await save(queue, home, call)
     const kept = await list(home, 7)
     expect(kept.map((summary) => summary.n)).toEqual(
       Array.from({ length: PER_CONVERSATION }, (_, i) => i + 3),

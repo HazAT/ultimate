@@ -14,10 +14,10 @@ export const TOTAL_BYTES = 300 * 1024 * 1024
 export const folder = (home: string) => join(home, 'wire')
 const name = (n: number) => `${String(n).padStart(8, '0')}.json.gz`
 const summaryName = (n: number) => `${String(n).padStart(8, '0')}.summary.json`
-/** A call's file and its summary beside it. */
-const drop = async (path: string) => {
-  await rm(path.replace(/\.json\.gz$/u, '.summary.json'), { force: true })
-  await rm(path, { force: true })
+/** A call's file goes first: a call is listed by its file, so the summary left a moment longer is never missed. */
+const drop = async (dir: string, n: number) => {
+  await rm(join(dir, name(n)), { force: true })
+  await rm(join(dir, summaryName(n)), { force: true })
 }
 const numberOf = (file: string) => Number(/^(\d{8})\.json\.gz$/.exec(file)?.[1] ?? NaN)
 
@@ -34,16 +34,19 @@ async function calls(dir: string): Promise<number[]> {
     .toSorted((a, b) => a - b)
 }
 
-/** Every write runs after the one before, so call numbers never collide and pruning never races a write. */
-let writes: Promise<unknown> = Promise.resolve()
+/**
+ * The tail of the write queue. The caller keeps it in a resource that outlives facet reloads, so the old and new
+ * code never write at once: call numbers never collide and pruning never races a write.
+ */
+export type Queue = { tail: Promise<unknown> }
 
 /**
  * Store `call` as its conversation's next one, drop the conversation's calls past the window and keep the folder
  * under `TOTAL_BYTES`; returns its number.
  */
-export function save(home: string, call: Omit<WireCall, 'n'>): Promise<number> {
+export function save(queue: Queue, home: string, call: Omit<WireCall, 'n'>): Promise<number> {
   const dir = join(folder(home), String(call.conversationId))
-  const run = writes
+  const run = queue.tail
     .catch(() => {
       // The previous write's caller got its failure; this one still runs.
     })
@@ -51,14 +54,15 @@ export function save(home: string, call: Omit<WireCall, 'n'>): Promise<number> {
       await mkdir(dir, { recursive: true })
       const existing = await calls(dir)
       const n = (existing.at(-1) ?? 0) + 1
+      // The summary goes first: a call is listed by its file, which then always has one.
       await writeFile(join(dir, summaryName(n)), JSON.stringify(summarize({ ...call, n })))
       await writeFile(join(dir, name(n)), gzipSync(JSON.stringify({ ...call, n })))
       for (const old of existing.slice(0, Math.max(0, existing.length + 1 - PER_CONVERSATION)))
-        await drop(join(dir, name(old)))
+        await drop(dir, old)
       await prune(home)
       return n
     })
-  writes = run
+  queue.tail = run
   return run
 }
 
@@ -79,11 +83,19 @@ export async function load(
 /** The conversation's stored calls, oldest first, without their bodies (read from each call's small summary file). */
 export async function list(home: string, conversationId: number): Promise<WireSummary[]> {
   const dir = join(folder(home), String(conversationId))
-  return Promise.all(
-    (await calls(dir)).map(
-      async (n) => JSON.parse(await readFile(join(dir, summaryName(n)), 'utf8')) as WireSummary,
+  const summaries = await Promise.all(
+    (await calls(dir)).map((n) =>
+      readFile(join(dir, summaryName(n)), 'utf8').then(
+        (text) => JSON.parse(text) as WireSummary,
+        (error: NodeJS.ErrnoException) => {
+          // Pruned between the directory read and this one: the call is gone, so it is not listed.
+          if (error.code === 'ENOENT') return undefined
+          throw error
+        },
+      ),
     ),
   )
+  return summaries.filter((summary) => summary !== undefined)
 }
 
 export function summarize(call: WireCall): WireSummary {
@@ -105,20 +117,22 @@ export function summarize(call: WireCall): WireSummary {
 /** Delete the oldest calls across conversations until the folder holds at most `limit` bytes; returns bytes kept. */
 export async function prune(home: string, limit = TOTAL_BYTES): Promise<number> {
   const root = folder(home)
-  const files: { path: string; size: number; at: number }[] = []
+  const kept: { dir: string; n: number; size: number; at: number }[] = []
   for (const conversation of await readdir(root).catch(missingAsEmpty)) {
     const dir = join(root, conversation)
     for (const n of await calls(dir)) {
-      const path = join(dir, name(n))
-      const info = await stat(path)
-      files.push({ path, size: info.size, at: info.mtimeMs })
+      const [file, summary] = await Promise.all([
+        stat(join(dir, name(n))),
+        stat(join(dir, summaryName(n))),
+      ])
+      kept.push({ dir, n, size: file.size + summary.size, at: file.mtimeMs })
     }
   }
-  let total = files.reduce((sum, file) => sum + file.size, 0)
-  for (const file of files.toSorted((a, b) => a.at - b.at)) {
+  let total = kept.reduce((sum, call) => sum + call.size, 0)
+  for (const call of kept.toSorted((a, b) => a.at - b.at)) {
     if (total <= limit) break
-    await drop(file.path)
-    total -= file.size
+    await drop(call.dir, call.n)
+    total -= call.size
   }
   return total
 }

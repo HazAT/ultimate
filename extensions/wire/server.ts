@@ -64,8 +64,11 @@ export default function wire(host: ExtensionHost) {
     'wire.pending',
     () => new Map<number, { payload: unknown; at: number; sessionId?: string }>(),
   )
+  const queue = host.resource('wire.writes', () => ({
+    tail: Promise.resolve() as Promise<unknown>,
+  }))
   const store = (call: Omit<WireCall, 'n'>) => {
-    save(host.home, call).catch((error: unknown) => {
+    save(queue, host.home, call).catch((error: unknown) => {
       // Wire only observes: a failed write must never fail or delay the agent's generation.
       console.error('wire: storing a call failed:', error)
     })

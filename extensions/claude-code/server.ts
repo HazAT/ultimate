@@ -63,7 +63,7 @@ export default function claudeCode(host: ExtensionHost) {
   useSpawn(spawn)
   // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useExchangeTap (patched). Hands each relayed
   // request and its raw answer to whoever implements ClaudeCodeExchanges (wire), with credentials redacted.
-  useExchangeTap(({ sessionId, model, exchange, message }) => {
+  useExchangeTap(({ sessionId, model, exchange }) => {
     const exchanges = host.want(ClaudeCodeExchanges)
     if (!exchanges) return
     exchanges.record({
@@ -78,7 +78,7 @@ export default function claudeCode(host: ExtensionHost) {
       responseHeaders: exchange.responseHeaders,
       response: exchange.response.toString('utf8'),
       ...(exchange.failure === undefined ? {} : { failure: exchange.failure }),
-      ...(message === undefined ? {} : { message }),
+      ...(exchange.message === undefined ? {} : { message: exchange.message }),
     })
   })
   // Browser refresh, facet reload and host restart are distinct. A landing can replace this facet through its import
