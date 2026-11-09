@@ -5,7 +5,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { ClaudeCodeExchanges } from '../claude-code/api.ts'
 import type { ClaudeCodeExchange } from '../claude-code/api.ts'
-import { CallAction, ListAction } from './refs.ts'
+import { diffBodies } from './diff.ts'
+import { CallAction, DiffAction, ListAction } from './refs.ts'
 import type { WireCall, WireUsage } from './refs.ts'
 import { list, load, save } from './store.ts'
 
@@ -130,13 +131,48 @@ const conversationOf = (id: number | undefined) => {
   return id
 }
 
+const numberArg = (args: unknown) => {
+  const n =
+    args && typeof args === 'object' && !Array.isArray(args)
+      ? (args as { n?: unknown }).n
+      : undefined
+  if (!Number.isSafeInteger(n)) throw new Error('Expected { n }')
+  return n as number
+}
+
+const parsed = (text: string) => {
+  try {
+    const value: unknown = JSON.parse(text)
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined
+  } catch {
+    // A body that is not JSON (a truncated or non-JSON request) has nothing to compare.
+    return undefined
+  }
+}
+
 export const actions = {
   list: implementAction(ListAction, (_args, { host, conversationId }) =>
     list(host.home, conversationOf(conversationId)),
   ),
-  call: implementAction(CallAction, async (args, { host, conversationId }) => {
-    const n = args && typeof args === 'object' && !Array.isArray(args) ? args.n : undefined
-    if (!Number.isSafeInteger(n)) throw new Error('Expected { n }')
-    return (await load(host.home, conversationOf(conversationId), n as number)) ?? null
+  call: implementAction(
+    CallAction,
+    async (args, { host, conversationId }) =>
+      (await load(host.home, conversationOf(conversationId), numberArg(args))) ?? null,
+  ),
+  diff: implementAction(DiffAction, async (args, { host, conversationId }) => {
+    const id = conversationOf(conversationId)
+    const n = numberArg(args)
+    const earlier = (await list(host.home, id)).filter((call) => call.n < n).at(-1)
+    if (!earlier) return null
+    const [before, after] = await Promise.all([
+      load(host.home, id, earlier.n),
+      load(host.home, id, n),
+    ])
+    if (!before || !after || before.api !== after.api) return null
+    const previous = parsed(before.request)
+    const current = parsed(after.request)
+    return previous && current ? diffBodies(previous, current, earlier.n) : null
   }),
 }

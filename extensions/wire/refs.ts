@@ -46,7 +46,37 @@ export type WireSummary = Omit<
   'request' | 'response' | 'message' | 'requestHeaders' | 'responseHeaders'
 > & { requestBytes: number; responseBytes?: number }
 
+/**
+ * How a request differs from the conversation's previous one, comparing the cacheable prefix in the order the provider
+ * caches it (Anthropic: tools, system, messages; OpenAI Responses: instructions, tools, input), segment by segment.
+ */
+export type WireDiff = {
+  /** The call it is compared with. */
+  previous: number
+  /** Segments in this request's prefix, and how many lead it unchanged. */
+  segments: number
+  same: number
+  /** JSON characters of the unchanged leading segments. */
+  prefixBytes: number
+  /**
+   * The first segment present in both that changed, where the cached prefix breaks: its path, the offset of the first
+   * differing character in its JSON, the text before that point and both sides after it. Absent for a pure append.
+   */
+  firstChange?: { path: string; offset: number; lead: string; before: string; after: string }
+  /** This request's segments from the first difference on, in order. */
+  added: { path: string; json: string }[]
+  /** The previous request's segment paths from the first difference on. */
+  removed: string[]
+  /** Request settings outside the prefix (model, max_tokens, thinking …) that changed, as JSON. */
+  settings: { key: string; before?: string; after?: string }[]
+}
+
 /** No arguments → the shown conversation's stored calls, oldest first, without bodies. */
 export const ListAction = actionRef<null, WireSummary[]>('wire', 'list')
 /** `{ n }` → that call of the shown conversation in full, or null once it left the window. */
 export const CallAction = actionRef<{ n: number }, WireCall | null>('wire', 'call')
+/**
+ * `{ n }` → how call `n` differs from the conversation's call before it, or null when there is no earlier call still
+ * kept, the two went to different APIs, or a body is not JSON.
+ */
+export const DiffAction = actionRef<{ n: number }, WireDiff | null>('wire', 'diff')

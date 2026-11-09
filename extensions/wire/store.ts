@@ -13,6 +13,12 @@ export const TOTAL_BYTES = 300 * 1024 * 1024
 
 export const folder = (home: string) => join(home, 'wire')
 const name = (n: number) => `${String(n).padStart(8, '0')}.json.gz`
+const summaryName = (n: number) => `${String(n).padStart(8, '0')}.summary.json`
+/** A call's file and its summary beside it. */
+const drop = async (path: string) => {
+  await rm(path.replace(/\.json\.gz$/u, '.summary.json'), { force: true })
+  await rm(path, { force: true })
+}
 const numberOf = (file: string) => Number(/^(\d{8})\.json\.gz$/.exec(file)?.[1] ?? NaN)
 
 const missingAsEmpty = (error: NodeJS.ErrnoException) => {
@@ -45,9 +51,10 @@ export function save(home: string, call: Omit<WireCall, 'n'>): Promise<number> {
       await mkdir(dir, { recursive: true })
       const existing = await calls(dir)
       const n = (existing.at(-1) ?? 0) + 1
+      await writeFile(join(dir, summaryName(n)), JSON.stringify(summarize({ ...call, n })))
       await writeFile(join(dir, name(n)), gzipSync(JSON.stringify({ ...call, n })))
       for (const old of existing.slice(0, Math.max(0, existing.length + 1 - PER_CONVERSATION)))
-        await rm(join(dir, name(old)), { force: true })
+        await drop(join(dir, name(old)))
       await prune(home)
       return n
     })
@@ -69,14 +76,14 @@ export async function load(
   return bytes && (JSON.parse(gunzipSync(bytes).toString('utf8')) as WireCall)
 }
 
-/** The conversation's stored calls, oldest first, without their bodies. */
+/** The conversation's stored calls, oldest first, without their bodies (read from each call's small summary file). */
 export async function list(home: string, conversationId: number): Promise<WireSummary[]> {
-  const summaries: WireSummary[] = []
-  for (const n of await calls(join(folder(home), String(conversationId)))) {
-    const call = await load(home, conversationId, n)
-    if (call) summaries.push(summarize(call))
-  }
-  return summaries
+  const dir = join(folder(home), String(conversationId))
+  return Promise.all(
+    (await calls(dir)).map(
+      async (n) => JSON.parse(await readFile(join(dir, summaryName(n)), 'utf8')) as WireSummary,
+    ),
+  )
 }
 
 export function summarize(call: WireCall): WireSummary {
@@ -110,7 +117,7 @@ export async function prune(home: string, limit = TOTAL_BYTES): Promise<number> 
   let total = files.reduce((sum, file) => sum + file.size, 0)
   for (const file of files.toSorted((a, b) => a.at - b.at)) {
     if (total <= limit) break
-    await rm(file.path, { force: true })
+    await drop(file.path)
     total -= file.size
   }
   return total
