@@ -537,10 +537,81 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
    };
  }
 diff --git a/src/turn-relay.ts b/src/turn-relay.ts
-index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..b3aa4007e5154b2d9cd21e8d2ad8fbc622f919c8 100644
+index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..676ff71b59693a6f3688849cb24f703433a21f8d 100644
 --- a/src/turn-relay.ts
 +++ b/src/turn-relay.ts
-@@ -323,7 +323,7 @@ export class TurnRelay {
+@@ -111,7 +111,18 @@ const STRIPPED_REQUEST_HEADERS = new Set([
+ 
+ const STRIPPED_RESPONSE_HEADERS = new Set(["connection", "transfer-encoding", "server", "date"]);
+ 
++const TRANSPORT_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"]);
++
++/** A socket or TLS failure (a corrupted record on a flaky network path), as opposed to an answer from the server. */
++function isTransportError(error: unknown): boolean {
++  const code = (error as NodeJS.ErrnoException | undefined)?.code ?? "";
++  return TRANSPORT_ERROR_CODES.has(code) || code.startsWith("ERR_SSL_") || /socket hang up|SSL routines/u.test(String(error));
++}
++
+ export class TurnRelay {
++  /** Backoff before each retry of a request that failed in transport before any response byte reached Claude Code. */
++  static transportRetryDelaysMs = [250, 1_000, 2_000];
++
+   capture: AnthropicCapture;
+   used = false;
+   denied = 0;
+@@ -284,22 +295,35 @@ export class TurnRelay {
+ 
+       const pathPrefix = this.upstream.pathname.replace(/\/$/u, "");
+       const transport = this.upstream.protocol === "https:" ? https : http;
+-      upstreamRequest = transport.request({
+-        protocol: this.upstream.protocol,
+-        hostname: this.upstream.hostname,
+-        port: this.upstream.port || undefined,
+-        method: "POST",
+-        path: `${pathPrefix}/v1/messages${requestUrl.search}`,
+-        headers,
+-        timeout: this.timeoutMs,
+-      });
+-      this.sockets.add(upstreamRequest);
+-
+-      const upstreamResponse = await new Promise<http.IncomingMessage>((resolve, reject) => {
+-        upstreamRequest!.once("response", resolve);
+-        upstreamRequest!.once("error", reject);
+-        upstreamRequest!.end(body);
+-      });
++      let upstreamResponse: http.IncomingMessage;
++      for (let attempt = 0; ; attempt += 1) {
++        upstreamRequest = transport.request({
++          protocol: this.upstream.protocol,
++          hostname: this.upstream.hostname,
++          port: this.upstream.port || undefined,
++          method: "POST",
++          path: `${pathPrefix}/v1/messages${requestUrl.search}`,
++          headers,
++          timeout: this.timeoutMs,
++        });
++        this.sockets.add(upstreamRequest);
++        try {
++          upstreamResponse = await new Promise<http.IncomingMessage>((resolve, reject) => {
++            upstreamRequest!.once("response", resolve);
++            upstreamRequest!.once("error", reject);
++            upstreamRequest!.end(body);
++          });
++          break;
++        } catch (error) {
++          // Nothing has reached Claude Code yet, so the same body can go again; an HTTP status never lands here.
++          const delay = TurnRelay.transportRetryDelaysMs[attempt];
++          if (this.cancelled || delay === undefined || !isTransportError(error)) throw error;
++          this.sockets.delete(upstreamRequest);
++          upstreamRequest.destroy();
++          await new Promise((resolve) => setTimeout(resolve, delay));
++          if (this.cancelled) throw error;
++        }
++      }
+       this.sockets.add(upstreamResponse);
+       this.status = upstreamResponse.statusCode;
+       this.requestId =
+@@ -323,7 +347,7 @@ export class TurnRelay {
        if (this.status === 200) this.capture.finish();
        response.end();
      } catch (error) {
