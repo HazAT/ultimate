@@ -484,8 +484,10 @@ export function useAction<Args, T>(
   ref: ActionRef<Args, T>,
   ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
 ): ActionState<T> {
-  const conversationId = useContext(ConversationIdContext)
-  const read = reads.get(ref.extension, ref.name, args, conversationId)
+  // The conversation the call acts on, scoped or shown, keys the read: answers of another conversation never serve it.
+  const scoped = useContext(ConversationIdContext)
+  const shown = useStore((state) => state.view?.conversation.id ?? state.requested ?? ROOT)
+  const read = reads.get(ref.extension, ref.name, args, scoped ?? shown)
   const state = useSyncExternalStore(read.subscribe, read.get)
   const enabled = options.enabled !== false
   const reader = useRef<Reader>({}).current

@@ -61,6 +61,12 @@ export function createReads(api: Api, store: Store) {
         if ([...read.readers].some((reader) => reader.focus)) void read.refetch()
     })
 
+  /** Forget the oldest reads nobody reads beyond `IDLE`, disabled ones included. */
+  function evict() {
+    const idle = [...reads].filter(([, other]) => !other.readers.size)
+    for (const [stale] of idle.slice(0, Math.max(0, idle.length - IDLE))) reads.delete(stale)
+  }
+
   function create(
     key: string,
     extension: string,
@@ -89,6 +95,8 @@ export function createReads(api: Api, store: Store) {
       clearTimeout(poll)
       const own = new AbortController()
       controller = own
+      // The readers' reporting as the call starts: one that leaves meanwhile still keeps its failure quiet.
+      const onError = [...readers].find((reader) => reader.onError)?.onError
       set({ loading: true })
       try {
         const data = await api.action(
@@ -103,8 +111,8 @@ export function createReads(api: Api, store: Store) {
         if (own.signal.aborted) return undefined
         const failure = error as ActionError
         set({ error: failure, loading: false, settled: true })
-        const handlers = [...readers].flatMap((reader) => reader.onError ?? [])
-        if (handlers.length) for (const handler of handlers) handler(failure)
+        // One report per failed call: the first reader's handler, else a notice.
+        if (onError) onError(failure)
         else store.notify({ level: 'error', message: actionMessage(failure) })
         return undefined
       } finally {
@@ -138,8 +146,7 @@ export function createReads(api: Api, store: Store) {
           if (readers.size) return repoll()
           // A call in flight finishes: a component remounting at once, as the shell does while its facets load, takes it.
           clearTimeout(poll)
-          const idle = [...reads].filter(([, other]) => !other.readers.size)
-          for (const [stale] of idle.slice(0, Math.max(0, idle.length - IDLE))) reads.delete(stale)
+          evict()
         }
       },
       refetch() {
@@ -163,6 +170,7 @@ export function createReads(api: Api, store: Store) {
       if (!read) {
         read = create(key, extension, name, args, conversationId)
         reads.set(key, read)
+        evict()
       }
       return read
     },

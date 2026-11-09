@@ -34,9 +34,11 @@ import {
 
 function useIsolation() {
   const workspaces = useExtensions().some((extension) => extension.name === 'workspaces')
-  // A run may have set up Git: read again when it starts or ends.
+  // A run may have set up Git: read again when one ends.
   const busy = useConversation((conversation) => conversation.busy)
-  const isolation = useAction(IsolationAction, null, { enabled: workspaces, on: busy })
+  const [runs, setRuns] = useState({ busy, ended: 0 })
+  if (busy !== runs.busy) setRuns({ busy, ended: runs.ended + (busy ? 0 : 1) })
+  const isolation = useAction(IsolationAction, null, { enabled: workspaces, on: runs.ended })
   useEvent('onboarding:git', () => {
     // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
     if (workspaces) void isolation.refetch()
