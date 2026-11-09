@@ -10,6 +10,7 @@ import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
+import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { weightDelta } from '../../lib/token-weight.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -548,7 +549,7 @@ export function createLander(
           if (pushed.retry) return pushed.retry
           const needsRestart =
             (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
-            landed.paths.some((path) => /^(server|shared)\//.test(path))
+            restartNeeded(landed.paths)
           return finish(
             [summary(landed, sha), pushed.text, ...(needsRestart ? ['Needs restart.'] : [])].join(
               '\n',

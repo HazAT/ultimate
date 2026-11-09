@@ -174,6 +174,7 @@ async function fixture(
       onRelease: () => {},
       onClose: () => {},
       onLoadError: () => {},
+      onBeforeLoad: () => {},
       harness: () => {
         throw new Error('Not used')
       },

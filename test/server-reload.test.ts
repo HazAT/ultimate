@@ -217,4 +217,38 @@ describe('server reload', () => {
     await until(() => !server.extensions.info().some((extension) => extension.name === 'added'))
     expect(server.host.registry.snapshot().extension('added')).toBeUndefined()
   })
+  // Landing c16450c (2026-11-09) changed a patch together with the extension using it: the extension hot-reloaded while
+  // pnpm install was still relinking the package and failed with "useExchangeTap is not a function".
+  it('loads no extension while an onBeforeLoad callback still waits, such as for an install', async () => {
+    const install = { installed: true, waiting: 0, finish: () => {} }
+    ;(globalThis as { testInstall?: typeof install }).testInstall = install
+    const { server } = await fixture(false, {
+      gate: `import { defineExtension } from '@earendil-works/pi-durable'
+export default host => {
+  const install = globalThis.testInstall
+  host.onBeforeLoad(async () => {
+    if (install.installed) return
+    install.waiting++
+    await new Promise(resolve => { install.finish = resolve })
+  })
+  return defineExtension({ name: 'gate' })
+}`,
+      user: `import { defineExtension } from '@earendil-works/pi-durable'
+if (!globalThis.testInstall.installed) throw new Error('useExchangeTap is not a function')
+export default defineExtension({ name: 'user' })`,
+    })
+    const path = join(server.host.ultimateRoot, 'extensions/user/server.ts')
+    const entry = () => server.extensions.info().find((extension) => extension.name === 'user')!
+    const loaded = entry().server!.loadedAt
+    // The landing: the facet changes while the package it needs is being installed.
+    install.installed = false
+    await writeFile(path, `${await readFile(path, 'utf8')}\n`)
+    await until(() => install.waiting > 0)
+    expect(entry().server).toMatchObject({ loadedAt: loaded })
+    expect(entry().server!.error).toBeUndefined()
+    install.installed = true
+    install.finish()
+    await until(() => entry().server!.loadedAt !== loaded)
+    expect(entry().server!.error).toBeUndefined()
+  })
 })

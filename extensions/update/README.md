@@ -21,8 +21,8 @@ While the clone is behind, the status line shows `↓ 5 new · update` (`↓ 5 n
 - what the range touches: extensions and web, server, lockfile, bin;
 - what each of those needs after an update:
   - extensions and web reload by themselves;
-  - server or a changed lockfile need a restart of every Ultimate running from the clone;
-  - a changed lockfile also needs `pnpm install`;
+  - server, a changed lockfile or a changed patch need a restart of every Ultimate running from the clone;
+  - a changed lockfile or patch also needs `pnpm install`;
   - bin needs a supervisor restart.
 
 **Update now** runs the update. After an update that needs a restart, the item reads `updated · restart`, and the popover offers **Restart now** (the core swap, as `core changed · restart` does). Every Ultimate on the clone shows it once packages were installed after it started, or once the clone's `HEAD` differs in `server/` or `shared/` from the commit it started from (a landing or another Ultimate's update), also when another one updated. While `pnpm-lock.yaml` differs from the installed packages, the item reads `install owed` and offers **Retry pnpm install**.
@@ -53,9 +53,21 @@ When the clone's only refusal is a diverged branch (commits of its own plus new 
 
 Where the clone is not the project (a project run from a separate Ultimate clone), nothing is offered: a branch lives in the project's repository and the lander lands into the project, so it cannot merge into the clone. That clone keeps the plain refusal; merge it by hand.
 
+## Before anything loads
+
+An extension reload, a web build or a restart must never read a checkout that git is still writing, or packages that `pnpm install` is still linking. The extension registers `host.onBeforeLoad` (`loadable` in `server.ts`), which the core awaits before each of the three:
+
+1. It waits until git's `index.lock` is gone (at most 60 s): a fast-forward holds it until every file is written.
+2. When `pnpm-lock.yaml` differs from the installed `node_modules/.pnpm/lock.yaml`, it runs the same install under the clone-wide lock, waiting up to 10 minutes for another Ultimate that holds it. A patch-only change counts: its hash sits in the lockfile's `patchedDependencies`.
+3. Then the reload, build or restart goes on.
+
+The state is read from disk, never from an event, so every Ultimate on the clone waits the same way, whoever moved it: the lander, **Update now**, another Ultimate or a pull by hand. Calls while one runs join it.
+
+When the install fails, the item reads `install owed`, extensions reload as they are with a notice, and a restart is refused with the install's last lines. The same lockfile is not installed again until **Retry pnpm install**.
+
 ## After a landing
 
-The lander fast-forwards the host's checkout itself, so a landing that changes packages would leave the old ones on disk. On each `workspaces.landed` whose range changes `pnpm-lock.yaml` or `patches/`, and whose commit the clone's `HEAD` holds (the landing went into this clone's checkout), the extension runs the same install under the clone-wide lock, after the lander's checks and outside its timing. A patch-only change counts too: its hash sits in the lockfile's `patchedDependencies`, so the lockfile differs from the installed one. The item then reads `updated · restart`, or `install owed` when the install failed. Nothing restarts by itself; previews never install.
+The lander fast-forwards the host's checkout itself. A landing that changes only `patches/` or `pnpm-lock.yaml` touches no file the extension watcher reloads for, so on each `workspaces.landed` the extension runs the step above at once. The item then reads `updated · restart`, and the landing card says "Needs restart." (`needsRestart` in `lib/layers.ts`, the rule `layersOf` shares): packages a process already imported stay loaded, so only a restart runs the new ones. The landing itself restarts nothing; previews never install.
 
 ## Events
 

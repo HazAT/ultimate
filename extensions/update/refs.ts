@@ -8,7 +8,7 @@ export type Layers = {
   core: boolean
   /** `bin/`: a human restart of the supervisor. */
   bin: boolean
-  /** `pnpm-lock.yaml`: an install, then a restart. */
+  /** `pnpm-lock.yaml` or `patches/`: an install, then a restart. */
   lockfile: boolean
   /** Anything else (`extensions/`, `web/`, `lib/`, `agents/`, docs): hot reload. */
   live: boolean

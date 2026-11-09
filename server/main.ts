@@ -195,6 +195,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     userHome: host.userHome,
     home: host.home,
     watch,
+    before: () => extensions.prepared(),
     pages: () => api?.pages() ?? 0,
     changed: () => void system?.changed(),
     notice: (message) => notice({ level: 'error', message }),

@@ -13,6 +13,7 @@ import {
 import type { ConversationId, Cursor, TaskId, Tx } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branches } from './api.ts'
@@ -773,7 +774,7 @@ export function workspaces(host: Host) {
           })
         const needsRestart =
           (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
-          files.some(({ path }) => /^(server|shared)\//.test(path))
+          restartNeeded(files.map((file) => file.path))
         await git(source, 'merge', '--ff-only', tip)
         result = {
           text: `Landed commits:\n${commits.join('\n')}\nChanged files:\n${files.map((file) => `${file.path} +${file.added} -${file.removed}`).join('\n')}${needsRestart ? '\nNeeds restart.' : ''}`,
