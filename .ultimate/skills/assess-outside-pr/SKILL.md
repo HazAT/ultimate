@@ -50,7 +50,8 @@ reference, titled "Feature: …" with the `feature` label. Report the verdict an
 
 The first decision card is the only one: it always carries, next to the verdict question, a **post/skip question
 for the comment** whose "post" option has the drafted comment, in full, as its `preview`. Never leave the comment
-for a later card.
+for a later card. Store the draft on the PR's record with codemode `ultimate.action('pr-triage', 'set', {number,
+draft})`, so the post or close Daniel picks sends exactly that text.
 
 ## 5. Merge, if it merges
 
