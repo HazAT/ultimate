@@ -1,6 +1,6 @@
 // Adapted from vercel/ai-elements packages/elements/src/message.tsx (Apache-2.0, see LICENSE).
 // Changes: `from` is a plain role, no branches or actions; only the code plugin; denser typography; links go through
-// the extensions' `link` renderers.
+// the extensions' `link` renderers, inline code through their `inlineCode` renderers.
 import { cn } from 'cn'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
 import { memo, useMemo } from 'react'
@@ -14,7 +14,12 @@ import {
 import type { CustomRendererProps, ExtraProps } from 'streamdown'
 import { ExtensionBoundary } from '../../app/boundary.tsx'
 import { useExtensions } from '../../sdk/hooks.ts'
-import { codeBlockLanguages, codeBlockRenderers, linkRenderers } from '../../sdk/registry.ts'
+import {
+  codeBlockLanguages,
+  codeBlockRenderers,
+  inlineCodeRenderers,
+  linkRenderers,
+} from '../../sdk/registry.ts'
 import { codePlugin } from './code-block.tsx'
 import { mentionHref, parseMention, remarkMentions, splitMentions } from './mentions.ts'
 
@@ -87,7 +92,30 @@ export function MentionText({ text }: { text: string }) {
   )
 }
 
-const components = { a: Link }
+const CoreCode = defaultComponents.code
+/** An inline code span as the `inlineCode` renderers compose it, starting with Streamdown's. */
+function InlineCode(props: ComponentProps<'code'> & ExtraProps) {
+  const renderers = inlineCodeRenderers(useExtensions())
+  const { children } = props
+  const core = <CoreCode {...props} />
+  if (typeof children !== 'string') return core
+  return renderers.reduce<ReactNode>(
+    (inner, { extension, version, component: Renderer }) => (
+      <ExtensionBoundary
+        extension={extension}
+        fallback={inner}
+        key={extension}
+        variant="inline"
+        version={version}
+      >
+        <Renderer code={children} core={inner} />
+      </ExtensionBoundary>
+    ),
+    core,
+  )
+}
+
+const components = { a: Link, inlineCode: InlineCode }
 // After GFM, so autolinked URLs are links already and keep their `#fragment`.
 const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkMentions]
 
