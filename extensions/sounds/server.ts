@@ -1,3 +1,4 @@
+import diagnostics from 'node:diagnostics_channel'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -37,7 +38,35 @@ export function speak(key: string, text: string, signal: AbortSignal) {
       reject(error)
     }
     signal.addEventListener('abort', () => fail(new Error('Speaking timed out')), { once: true })
-    socket.addEventListener('error', () => fail(new Error('Could not reach OpenAI realtime')))
+    // Node's WebSocket (undici) fires an empty `error` when the handshake or socket fails; the HTTP status or network
+    // error behind it reaches only undici's diagnostics channels. Origin: #534625, nine bare "Could not reach" failures.
+    let detail = ''
+    const realtime = (request?: { origin?: unknown; path?: string }) =>
+      String(request?.origin).includes('api.openai.com') &&
+      request?.path?.startsWith('/v1/realtime')
+    const listeners: [string, (message: any) => void][] = [
+      [
+        'undici:request:headers',
+        ({ request, response }) => {
+          if (realtime(request) && response.statusCode !== 101)
+            detail = `HTTP ${response.statusCode}`
+        },
+      ],
+      [
+        'undici:request:error',
+        ({ request, error }) => {
+          if (realtime(request)) detail = error.message
+        },
+      ],
+      ['undici:websocket:socket_error', (error) => (detail = error.message)],
+    ]
+    for (const [name, listener] of listeners) diagnostics.subscribe(name, listener)
+    socket.addEventListener('close', () => {
+      for (const [name, listener] of listeners) diagnostics.unsubscribe(name, listener)
+    })
+    socket.addEventListener('error', () =>
+      fail(new Error(`Could not reach OpenAI realtime${detail ? `: ${detail}` : ''}`)),
+    )
     socket.addEventListener('open', () => {
       for (const event of [
         {
