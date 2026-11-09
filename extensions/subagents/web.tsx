@@ -235,7 +235,7 @@ function Landed({ output }: { output: string }) {
             : 'Nothing new to land'}
         </p>
         {result.needsRestart && (
-          <p className="text-warning">Needs restart to apply server/ or shared/ changes.</p>
+          <p className="text-warning">Needs restart to apply core or package changes.</p>
         )}
       </ToolSection>
       {commits.length > 0 && (

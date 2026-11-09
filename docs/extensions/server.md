@@ -52,6 +52,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
 - `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.
+- `onBeforeLoad(callback)`: run and await `callback()` before each extension reload, web build and restart, so none reads a checkout or packages still being written (`update` waits for git and installs owed packages there). When it throws, a reload or build goes on with a notice and a restart is refused with the message; facet-scoped.
 
 ## Lifecycle
 

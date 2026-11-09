@@ -173,8 +173,8 @@ lander's sidebar row shows the feature it lands or landed last.
    moved meanwhile it starts again, at most three attempts.
 5. With `lander.push`, pushes the target branch (never forced); a rejection integrates again once, then is reported.
 6. Records `landed`, emitting `workspaces.landed` in the same commit, then reports (request id `lander:<submission>`
-   for each write): the landed commit and commits, flaky checks, whether it pushed, "Needs restart." for `server/`
-   or `shared/` changes to the running clone, and the lander conversation id for the full log.
+   for each write): the landed commit and commits, flaky checks, whether it pushed, "Needs restart." for `server/`,
+   `shared/`, `patches/` or `pnpm-lock.yaml` changes to the running clone (`needsRestart` in `lib/layers.ts`), and the lander conversation id for the full log.
    - A failure is a waking input to the submitter (a `workspaces.lander-report` entry): it fixes the cause in its
      workspace and submits again.
    - A landing is the end of the branch's work. The report is a note in the submitter, which starts no run. In one
@@ -204,5 +204,5 @@ when the harness opens, on each reload of the extension, and at once when a task
 of the current code's own task waits for the next submit or open, so a deterministic fault does not loop.
 
 Top-level mains use `workspace status` and `workspace submit` for their own checkout.
-Landing reports commits and changed paths, with a restart hint for core changes to the running clone.
+Landing reports commits and changed paths, with a restart hint for core or package changes to the running clone.
 Landing never restarts Ultimate.

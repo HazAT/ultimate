@@ -21,7 +21,7 @@ note in the branch, the branch is concluded unless work is still under way (a su
 input), whoever started it wakes with the landing card, and the concluded branch's checkout is freed.
 Its progress shows live on the submit tool card, with expandable steps, and its report as an outcome card; the
 source's @lander conversation, pinned in the sidebar's agents group, keeps the full log and takes no input.
-For `server/` or `shared/` changes, an authorized `restart` works once the running clone is clean at the landed commit.
+For `server/`, `shared/`, `patches/` or `pnpm-lock.yaml` changes, an authorized `restart` works once the running clone is clean at the landed commit.
 
 ### Standing permission to push this repository
 
