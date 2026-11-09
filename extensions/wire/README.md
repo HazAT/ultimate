@@ -1,4 +1,4 @@
-Wire shows what a conversation's model calls actually sent to the provider and what came back: the raw request body, headers without credentials, the response stream and usage, for the last calls of each conversation. Nothing to switch on. It is a tab of the System surface; disabling this extension removes the tab, the transcript links and the capture.
+Wire shows what a conversation's model calls actually sent to the provider and what came back: the raw request body, headers without credentials, the response stream and usage, for the last calls of each conversation. Off by default: turn it on with `extensions.enable: ["wire"]` (the Extensions tab does it), and it records from then on without further setup. It is a tab of the System surface; disabling this extension removes the tab, the transcript links and the capture.
 
 ## In the UI
 
