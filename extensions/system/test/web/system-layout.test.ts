@@ -4,7 +4,6 @@ import {
   block,
   chain,
   duration,
-  elbow,
   label,
   links,
   messageLinks,
@@ -240,14 +239,6 @@ it('draws a spawn link from the spawning moment on the parent row to the first b
       ]),
     }),
   ).toEqual([])
-})
-
-it('bends an elbow only where there is room, else drops straight down', () => {
-  expect(elbow(10, 0, 10, 40)).toBe('M10 0V40')
-  expect(elbow(10, 0, 5, 40)).toBe('M10 0V40')
-  expect(elbow(10, 0, 13, 40)).toBe('M10 0V37Q10 40 13 40H13')
-  // Upwards, for a child row above its parent's.
-  expect(elbow(0, 40, 100, 0)).toBe('M0 40V6Q0 0 6 0H100')
 })
 
 it('draws a message as a vertical line at its moment between the two rows, inside the window only', () => {

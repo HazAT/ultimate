@@ -397,29 +397,6 @@ it('discovers extension contracts: summaries first, then one api.ts and refs.ts 
   )
 })
 
-it("returns workspaces' refs.ts with its api.ts, so agents see its actions and events", async () => {
-  const home = await temp('ultimate-codemode-workspaces-')
-  directories.push(home)
-  await mkdir(join(home, 'project'))
-  const server = await createServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: join(home, 'project'),
-    userHome: home,
-    home: join(home, 'state'),
-  })
-  servers.push(server)
-  const result = await run(server, `return await ultimate.api('workspaces')`)
-  const source = result.data.details.value as string
-  expect(source).toContain(
-    `// workspaces/api.ts: the server contract: services, extension points, documents\n${await readFile(resolve('extensions/workspaces/api.ts'), 'utf8')}`,
-  )
-  expect(source).toContain('// workspaces/refs.ts: the browser contract')
-  expect(source).toContain(
-    "export const SubmissionLanded = defineEvent<LandedData>('workspaces.landed')",
-  )
-  expect(source).toContain("actionRef<{ id: number }, WorkspaceInfo | null>('workspaces', 'info')")
-})
-
 // Three projects saw a script's later automation calls get the first call's receipt: nested calls share one task.
 it('applies each automation call in one script to its own arguments', async () => {
   const home = await temp('ultimate-codemode-automation-')

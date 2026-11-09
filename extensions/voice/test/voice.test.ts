@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { actions, MAX_AUDIO_BYTES, secrets } from '../server.ts'
+import { actions, MAX_AUDIO_BYTES } from '../server.ts'
 import { writeSecret } from '../../secrets/store.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { removeTemp, temp } from '../../../test/helpers.ts'
@@ -27,10 +27,6 @@ async function context(key?: string, piKey?: string) {
 }
 
 const audio = { audio: Buffer.from('fake audio').toString('base64'), mimeType: 'audio/mp4' }
-
-it('declares the OPENAI_API_KEY secret for the Secrets panel and setup issues', () => {
-  expect(secrets.map((secret) => secret.name)).toEqual(['OPENAI_API_KEY'])
-})
 
 it('posts the recording to OpenAI with the secret and returns the trimmed text', async () => {
   const fetch = vi

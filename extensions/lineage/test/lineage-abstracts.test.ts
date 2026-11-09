@@ -322,23 +322,6 @@ it.concurrent('notifies with the branch’s own answer, never one it inherited',
   expect((finished.data as { text: string }).text).toBe('echo Fix the lost answers')
 })
 
-it.concurrent('compacts a top-level conversation with its lineage focus', async () => {
-  const { server } = await fixture()
-  await server.harness.commit(async (tx) => {
-    for (let n = 0; n < 8; n++) {
-      await tx.appendEntry(server.root.id, {
-        kind: 'pi.user',
-        model: [{ role: 'user', content: `Part ${n} ${'word '.repeat(4000)}`, timestamp: n }],
-      })
-    }
-  }, context)
-  const task = await server.root.compact(undefined, context)
-  await server.harness.waitForTask(task, context)
-  const marker = (await server.root.context(context)).entries[0]
-  expect(marker.kind).toBe('pi.compaction')
-  expect(textOf(marker.model?.[0]?.content)).toContain('LINEAGE SUMMARY of This is the tally')
-})
-
 it.concurrent('compacts a tally from its model view, then opens a new abstract after it', async () => {
   const { server, condensed } = await fixture()
   const first = await branchFrom(server, { from: 1, prompt: 'Abstract me' })

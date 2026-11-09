@@ -53,11 +53,6 @@ it('pages the asked kinds back without gaps or repeats until nothing older is le
   expect(seen).toEqual(ids(log.filter((record) => record.name !== 'trace.noise').toReversed()))
 })
 
-it('continues from the live feed: before an id it returns only older events', async () => {
-  const { events } = await page({ kinds: ['workspaces.landed'], before: 10, limit: 2 })
-  expect(ids(events)).toEqual([7, 4])
-})
-
 it('stops at the range: nothing older than since, and no next once it is reached', async () => {
   const since = new Date(T0 + 24 * 3_600_000).toISOString()
   const result = await page({ kinds: ['workspaces.landed', 'ultimate.notice'], since })

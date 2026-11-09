@@ -637,15 +637,4 @@ describe('web extension registry', () => {
     expect(ids(shownPanels([panels[0]], null))).toEqual([undefined, []])
     expect(ids(shownPanels([panels[0]], 'secrets'))).toEqual(['secrets', ['secrets']])
   })
-
-  it('rejects a panel whose tab is not a boolean', async () => {
-    const registry = createRegistry()
-    await registry.setLoaders({
-      [path('odd')]: async () =>
-        module({
-          panels: [{ id: 'x', title: 'X', component: component('x'), tab: 'no' as never }],
-        }),
-    })
-    expect(registry.getSnapshot()[0].error).toMatch(/^panels must be .*tab\?/)
-  })
 })

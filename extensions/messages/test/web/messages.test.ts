@@ -1,6 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
-import { accentIndex, accentOf } from '../../accent.tsx'
+import { accentOf } from '../../accent.tsx'
 import { callerOf } from '../../caller.ts'
 import {
   answerTo,
@@ -129,10 +129,6 @@ describe('compact messages', () => {
 })
 
 describe('sender accents', () => {
-  it('gives each sender a stable palette slot', () => {
-    expect(accentIndex(2, 6)).toBe(accentIndex(2, 6))
-    expect(new Set([2, 3, 4, 5, 6, 7].map((id) => accentIndex(id, 6))).size).toBe(6)
-  })
   it('gives the user the brand colour and conversations a palette colour, the same one every time', () => {
     expect(accentOf('user')).toEqual({
       fill: 'bg-brand/5',

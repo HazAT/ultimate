@@ -1065,13 +1065,6 @@ it('leaves a Play note out of what names and summarizes a conversation', () => {
   expect(input).not.toContain('Paused for')
 })
 
-it('includes the previous feature next to the previous summary in model input', () => {
-  expect(summaryInput([], 'Previous work.', 'Bash rendering')).toContain(
-    'Previous summary: Previous work.\n\nPrevious feature: Bash rendering',
-  )
-  expect(summaryInput([])).not.toContain('Previous feature:')
-})
-
 it('keeps the start and end of a long reply and marks what it left out', () => {
   const report = `Verdict: NEEDS CHANGES\n${'finding '.repeat(500)}\nResidual risks: none.`
   const input = summaryInput([

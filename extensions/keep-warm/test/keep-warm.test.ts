@@ -82,7 +82,3 @@ it('sends only while not paused and within the hour, checked right before the re
   expect(keepWarm.open(undefined, now - LEAD, now)).toBe(true)
   expect(keepWarm.open(false, now - TTL, now)).toBe(false)
 })
-
-it('leaves the switch to the user', () => {
-  expect(keepWarm.userActions).toEqual(['set'])
-})

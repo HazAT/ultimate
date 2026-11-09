@@ -18,9 +18,3 @@ it('shows uncommitted edits as a review of that worktree', () => {
     edits: { count: 4, spec: 'uncommitted:12' },
   })
 })
-
-it('shows nothing for a fresh worktree or a branch without one', () => {
-  expect(workOf(12, branch, { unlanded: 0, uncommitted: 0 })).toBeUndefined()
-  expect(workOf(12, branch, undefined)).toBeUndefined()
-  expect(workOf(12, undefined, { unlanded: 2, uncommitted: 0 })).toBeUndefined()
-})

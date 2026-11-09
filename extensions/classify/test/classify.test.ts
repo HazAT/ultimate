@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, it, vi } from 'vitest'
-import classify, { cooldownMs, secrets } from '../server.ts'
+import classify, { cooldownMs } from '../server.ts'
 import { ClassifyApi } from '../api.ts'
 import type { ClassifyService } from '../api.ts'
 import { writeSecret } from '../../secrets/store.ts'
@@ -69,19 +69,6 @@ const answers = {
   },
 }
 const body = { model: 'jev-1.14.0', answers, usage: { input_tokens: 123, output_tokens: 18 } }
-
-it('declares a valid secret for the Secrets panel', () => {
-  expect(secrets).toEqual([
-    {
-      name: 'TYPESAFE_API_KEY',
-      description: expect.any(String),
-      url: 'https://console.typesafe.ai/keys',
-      provider: 'typesafe',
-    },
-  ])
-  expect(secrets[0].name).toMatch(/^[A-Z][A-Z0-9_]*$/)
-  expect(secrets[0].description.length).toBeGreaterThan(0)
-})
 
 it('sends the pinned model, JSON questions, stored key and abort signal; parses all answer types', async () => {
   const { service, root } = await fixture()

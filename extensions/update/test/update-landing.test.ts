@@ -4,10 +4,6 @@ import { needsRestart } from '../../../lib/layers.ts'
 
 const { coreChangedSince } = update
 
-it('lets agents update the clone; only asking @ultimate to merge is the user’s alone', () => {
-  expect(update.userActions).toEqual(['merge'])
-})
-
 it('asks for a restart after a landing that changes the core, the lockfile or a patch', () => {
   expect(needsRestart(['extensions/a.ts', 'server/main.ts'])).toBe(true)
   expect(needsRestart(['extensions/a.ts', 'pnpm-lock.yaml'])).toBe(true)

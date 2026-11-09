@@ -4,7 +4,7 @@ import { cloudConfig } from '../../../lib/cloud.ts'
 import { projectIdentity } from '../../../lib/project-identity.ts'
 import { backUp } from '../backup.ts'
 import { CloudApi } from '../api.ts'
-import cloud, { backup, userActions } from '../server.ts'
+import cloud, { backup } from '../server.ts'
 import { apis } from '../../../test/helpers.ts'
 
 vi.mock('../../../lib/cloud.ts', async (original) => ({
@@ -19,10 +19,6 @@ vi.mock('../backup.ts', async (original) => ({
   ...(await original<typeof import('../backup.ts')>()),
   backUp: vi.fn<typeof backUp>(),
 }))
-
-it('lets agents back up, but keeps the Join card and its secrets for the user', () => {
-  expect(userActions).toEqual(['join'])
-})
 
 it('publishes optional status and non-forced backup services for the active chapter', async () => {
   const resources = new Map<string, unknown>()

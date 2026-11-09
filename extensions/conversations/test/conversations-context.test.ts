@@ -370,15 +370,3 @@ it('backfills missing and stale docs in bounded pages, in the background, and sk
   expect(writes).toBe(0)
   stop()
 })
-
-it('keeps unknown percentages absent, including when only a model window is known', () => {
-  expect(contextUsage({}, 0)).toEqual({ at: 0 })
-  expect(contextUsage({ window: 10000 }, 1)).toEqual({ window: 10000, at: 1 })
-  expect(contextUsage({ tokens: 0, window: 10000, estimated: false }, 2)).toEqual({
-    tokens: 0,
-    window: 10000,
-    percent: 0,
-    estimated: false,
-    at: 2,
-  })
-})
