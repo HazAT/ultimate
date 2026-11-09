@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { cn, useAction, useSystem } from '@/sdk'
 import type { ExtensionInfo, SystemInfo } from '@/sdk'
@@ -23,16 +22,8 @@ export const sources: Record<ExtensionInfo['source'], string> = {
  */
 export function useDescribed() {
   const system = useSystem()
-  const described = useAction(ExtensionsAction)
-  const folders = system?.extensions.map((extension) => extension.path).join('\n')
-  const seen = useRef(folders)
-  const { refetch } = described
-  useEffect(() => {
-    if (folders === seen.current) return
-    seen.current = folders
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [folders, refetch])
+  const folders = system?.extensions.map((extension) => extension.path)
+  const described = useAction(ExtensionsAction, null, { on: folders })
   const entry = (name: string) => described.data?.find((candidate) => candidate.name === name)
   return {
     /** With `source`, the line of that folder: a built-in a project folder replaces has its own. */

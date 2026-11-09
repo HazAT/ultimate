@@ -7,7 +7,7 @@ import {
   ShieldCheckIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -49,21 +49,14 @@ const problems: Record<Problem, { title: string; link?: { href: string; label: s
 function useStatus() {
   const system = useSystem()
   // Failures show where the status does, not as notices: the status line reads it on every page.
-  const status = useAction(StatusAction, null, { onError: () => {} })
-  const signature = JSON.stringify([
-    system?.access.origins,
-    system?.extensionDiagnostics,
-    system?.extensions.find((extension) => extension.name === 'tailscale')?.server?.loadedAt,
-  ])
-  const seen = useRef(signature)
-  const { refetch } = status
-  useEffect(() => {
-    if (signature === seen.current) return
-    seen.current = signature
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [signature, refetch])
-  return status
+  return useAction(StatusAction, null, {
+    onError: () => {},
+    on: [
+      system?.access.origins,
+      system?.extensionDiagnostics,
+      system?.extensions.find((extension) => extension.name === 'tailscale')?.server?.loadedAt,
+    ],
+  })
 }
 
 /** A shell command to copy, as a code chip. */

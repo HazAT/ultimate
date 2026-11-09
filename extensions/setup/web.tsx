@@ -1,5 +1,4 @@
 import { TriangleAlertIcon } from 'lucide-react'
-import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -71,28 +70,20 @@ function Row({ issue }: { issue: SetupIssue }) {
  */
 function Setup() {
   const system = useSystem()
+  const signature = system?.extensions.map((extension) => [
+    extension.name,
+    extension.enabled,
+    extension.server?.error,
+  ])
+  // A login or provider health change re-checks at once; the minute poll covers the file-backed areas.
+  const latest = useEvents({ events: [LoginChanged, HealthChanged], limit: 1 })?.[0]?.id
   const { data, refetch } = useAction(
     CheckAction,
     null,
     // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {} },
+    { onError: () => {}, on: [signature, latest], every: 60_000 },
   )
-  const signature = JSON.stringify(
-    system?.extensions.map((extension) => [
-      extension.name,
-      extension.enabled,
-      extension.server?.error,
-    ]),
-  )
-  useEffect(() => void refetch(), [signature, refetch])
-  useEffect(() => {
-    const timer = setInterval(() => void refetch(), 60_000)
-    return () => clearInterval(timer)
-  }, [refetch])
   useEvent('secrets:changed', () => void refetch())
-  // A login or provider health change re-checks at once; the minute poll covers the file-backed areas.
-  const latest = useEvents({ events: [LoginChanged, HealthChanged], limit: 1 })?.[0]?.id
-  useEffect(() => void refetch(), [latest, refetch])
   const warnings = data?.filter((issue) => issue.status === 'warn') ?? []
   if (!warnings.length) return null
   return (

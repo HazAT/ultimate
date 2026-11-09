@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { api, events, formatAgo, useStore } from '@/sdk'
-import { store } from '@/sdk/client'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { events, formatAgo, useStore } from '@/sdk'
+import { reads, store } from '@/sdk/client'
+import type { ReadState } from '@/sdk/reads'
 import { RecentAction, TallyDoc } from '../lineage/ui.tsx'
 import { groupLandings, groupRange } from './landings.ts'
 import type { Landing, LandingGroup } from './landings.ts'
@@ -25,30 +26,57 @@ export function useLandings(roots: readonly number[]) {
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
       .join(','),
   )
-  const [landings, setLandings] = useState<Landing[]>([])
-  useEffect(() => {
-    let live = true
-    void Promise.all(
-      roots.map((root) =>
-        api
-          .action(RecentAction, { id: root, types: ['landed'], limit: 20 })
-          .then((recent) => (recent as Landing[]).map((event) => ({ ...event, root })))
-          // A root that cannot list its landings (one just unlisted) only leaves them out; the next entry reads again.
-          .catch(() => [] as Landing[]),
+  // The page's shared reads (`useAction`'s, one per root): a remounted sidebar, such as a phone's, shows them at once.
+  const list = useMemo(
+    () =>
+      roots.map((id) =>
+        reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
       ),
-    )
-      .then((all) => {
-        if (live) setLandings(all.flat().toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)))
-      })
-      .catch(() => {
-        // Each root's call already settles to a list, so nothing reaches here.
-      })
-    return () => {
-      live = false
-    }
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-  }, [key, tokens])
-  return landings
+    [key],
+  )
+  useEffect(() => {
+    // A root that cannot list its landings (one just unlisted) only leaves them out; the next entry reads again.
+    const releases = list.map((read) => read.use({ onError: () => {} }))
+    return () => releases.forEach((release) => release())
+  }, [list])
+  const seen = useRef(tokens)
+  useEffect(() => {
+    if (seen.current === tokens) return
+    seen.current = tokens
+    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
+    for (const read of list) void read.refetch()
+  }, [list, tokens])
+  const last = useRef<ReadState[]>([])
+  const states = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => {
+        const stops = list.map((read) => read.subscribe(listener))
+        return () => stops.forEach((stop) => stop())
+      },
+      [list],
+    ),
+    () => {
+      const next = list.map((read) => read.get())
+      const same =
+        next.length === last.current.length && next.every((state, i) => state === last.current[i])
+      if (!same) last.current = next
+      return last.current
+    },
+  )
+  return useMemo(
+    () =>
+      states
+        .flatMap((state, index) =>
+          ((state.data as Landing[] | undefined) ?? []).map((event) => ({
+            ...event,
+            root: roots[index],
+          })),
+        )
+        .toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)),
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `states` follows `list`, which follows `key`
+    [states],
+  )
 }
 
 const FIRST = 5

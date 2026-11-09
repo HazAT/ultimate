@@ -60,11 +60,8 @@ function Pinned({ id }: { id: number }) {
     CurrentPromptAction,
     seen === null ? {} : { since: seen },
     // Without a prompt there is nothing to pin; a failure leaves the pin out rather than raising a notice.
-    { onError: () => {} },
+    { onError: () => {}, on: latest },
   )
-  const { refetch } = shown
-  // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-  useEffect(() => void refetch(), [latest, refetch])
   const current = shown.data
   useEffect(() => {
     if (seen === null && current?.at !== undefined) setSeen(current.at)

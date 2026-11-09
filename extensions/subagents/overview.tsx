@@ -28,19 +28,21 @@ import {
 } from '../models/ui.tsx'
 import type { FamiliesView, FamilyView } from '../models/ui.tsx'
 import { definitionDialog, moveDefinition, parseError, useOpenDefinition } from './definitions.tsx'
-import { Heading, Tag, useRefresh } from './parts.tsx'
+import { Heading, Tag } from './parts.tsx'
 import { DefinitionsAction } from './refs.ts'
 import type { Definition, Discovery } from './refs.ts'
 
 const short = (ref: string) => ref.slice(ref.indexOf('/') + 1)
 
 export function AgentsOverview() {
-  const { data, refetch } = useAction(DefinitionsAction)
   const families = useFamilies()
   const [editing] = useDialog(definitionDialog)
   const system = useSystem()
   // A landing or a settings change broadcasts new system info: definitions may have changed with it.
-  useRefresh(refetch, `${editing} ${system?.code.sha} ${JSON.stringify(system?.project.settings)}`)
+  const { data, refetch } = useAction(DefinitionsAction, null, {
+    on: [editing, system?.code.sha, system?.project.settings],
+    focus: true,
+  })
   const show = useOpenDefinition()
   // What the last move wrote, until the next one.
   const [wrote, setWrote] = useState<string>()

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { cn, formatAgo, formatTokens, Provided, useAction, useDocOf, useEvents } from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
@@ -274,12 +274,6 @@ function PhasedFlightRow({
  */
 function useFlightWork(branches: ConversationSummary[]) {
   const ids = branches.filter((branch) => branch.workspace?.state === 'ready').map((b) => b.id)
-  const progress = useAction(
-    ProgressAction,
-    { ids },
-    { enabled: ids.length > 0, onError: () => {} },
-  )
-  const { refetch } = progress
   // A worktree becoming ready or going changes `ids`, which refetches by itself.
   const commit = useEvents({ events: [Committed], limit: 1 })?.[0]?.id
   const busy = branches.filter((branch) => branch.busy).map((branch) => branch.id)
@@ -290,17 +284,11 @@ function useFlightWork(branches: ConversationSummary[]) {
       busy,
       ended: runs.ended + (runs.busy.some((id) => !busy.includes(id)) ? 1 : 0),
     })
-  const { ended } = runs
-  const first = useRef(true)
-  useEffect(() => {
-    if (first.current) {
-      first.current = false
-      return
-    }
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    if (ids.length > 0) void refetch()
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- a changed id set refetches in useAction itself
-  }, [commit, ended, refetch])
+  const progress = useAction(
+    ProgressAction,
+    { ids },
+    { enabled: ids.length > 0, onError: () => {}, on: [commit, runs.ended] },
+  )
   const byId = new Map((progress.data ?? []).map((item) => [item.id, item]))
   return new Map(
     branches.map((branch) => [

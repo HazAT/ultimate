@@ -60,10 +60,13 @@ check their handlers against them with `implementAction` (see [contracts](contra
 
 Call actions from the UI in one of two ways:
 
-- `useAction(ref, args?, { enabled?, onError? })` reads. It calls on mount and again whenever the action or `args`
-  (compared as JSON) change, unless `enabled` is false; a newer call aborts the older one. It returns
-  `{ data, error, loading, refetch }`: `data` stays while a refetch runs and resets when the args change; `refetch()`
-  calls again, also when not `enabled`. A failure shows as a notice unless you pass `onError`.
+- `useAction(ref, args?, { enabled?, onError?, on?, every?, focus? })` reads. It calls on mount and again whenever
+  the action or `args` (compared as JSON) change, when `on` changes (a document, an event id, a busy flag: anything
+  that means the answer may be stale), every `every` ms, on window focus with `focus`, and after the server restarts;
+  never while `enabled` is false. Every component reading the same action and args shares one call and one result,
+  so a remount shows the last answer at once while it asks again. It returns `{ data, error, loading, refetch }`:
+  `data` stays while a refetch runs; `refetch()` calls again, also when not `enabled`. A failure shows as a notice
+  unless a reader passes `onError`. Pass the signal as `on` rather than calling `refetch()` from an effect.
 - `api.action(ref, args?, { conversationId?, signal?, keepalive? })` acts, once: a click that saves,
   closes, or labels something; `keepalive` lets a call sent on `pagehide` outlive the page. It returns a promise of
   the result; afterwards, `refetch()` what changed. A rejection (an `ActionError` with `extension`, `action`,

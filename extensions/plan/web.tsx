@@ -138,21 +138,6 @@ function Note({ note, clamp }: { note: Task['notes'][number]; clamp?: boolean })
   )
 }
 
-/** Calls `refetch` when the window regains focus and when `key` changes after mount. */
-function useRefresh(refetch: () => unknown, key: string) {
-  const last = useRef(key)
-  useEffect(() => {
-    if (last.current === key) return
-    last.current = key
-    void refetch()
-  }, [key, refetch])
-  useEffect(() => {
-    const refresh = () => void refetch()
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  }, [refetch])
-}
-
 /**
  * The linked child's workspace: branch, state and commits ahead. Refetched when the child or its parent settles,
  * since either may have committed or landed.
@@ -161,12 +146,11 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
   const conversations = useConversations()
   const parentBusy = conversations.find((conversation) => conversation.id === parent)?.busy
   const recorded = useWorkspaces()[String(child.id)]
-  const { data: isolate, refetch } = useAction(
+  const { data: isolate } = useAction(
     InfoAction,
     { id: child.id },
-    { enabled: !!recorded },
+    { enabled: !!recorded, on: [child.busy, parentBusy], focus: true },
   )
-  useRefresh(() => recorded && refetch(), `${child.busy} ${parentBusy}`)
   if (!isolate) return null
   return (
     <div className="font-mono text-[11px] text-muted-foreground">

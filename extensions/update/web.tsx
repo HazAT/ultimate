@@ -5,7 +5,7 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -355,16 +355,12 @@ function Update() {
     StateAction,
     null,
     // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {} },
+    { onError: () => {}, every: 60_000 },
   )
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
   const { showSurface, switchConversation } = useUltimate()
-  useEffect(() => {
-    const timer = setInterval(() => void refetch(), 60_000)
-    return () => clearInterval(timer)
-  }, [refetch])
   const state = data
   if (!state) return null
   const item = itemOf(state)

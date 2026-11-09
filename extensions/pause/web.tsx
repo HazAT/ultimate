@@ -1,5 +1,5 @@
 import { HourglassIcon, PauseIcon, PlayIcon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -46,16 +46,12 @@ function usePauseState() {
   const doc = useDocOf(1, PauseDoc)
   const live = useTasks()
   const graph = doc?.paused ? live : undefined
-  const { data, refetch } = useAction(
+  const { data } = useAction(
     StateAction,
     null,
     // A failed poll keeps the last state; the next change asks again.
-    { onError: () => {} },
+    { onError: () => {}, on: [doc, graph] },
   )
-  useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [doc, graph, refetch])
   return data
 }
 

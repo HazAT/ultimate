@@ -41,7 +41,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
     fetch: harness.fetch,
     retryMs: 5,
   })
-  return { store, api: createApi(store, { fetch: harness.fetch }), registry: createRegistry() }
+  const { createReads } = await import('../../web/src/sdk/reads.ts')
+  const api = createApi(store, { fetch: harness.fetch })
+  return { store, api, reads: createReads(api, store), registry: createRegistry() }
 })
 vi.mock('../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
 vi.mock('@/components/ai/prompt-input', () => ({

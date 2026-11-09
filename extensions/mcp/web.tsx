@@ -21,15 +21,16 @@ import type { McpServerStatus } from './refs.ts'
  * one, and every minute otherwise.
  */
 function useServers(enabled = true) {
-  const status = useAction(StatusAction, null, { enabled, onError: () => {} })
-  const settling = status.data?.some((server) => server.state === 'connecting') ?? false
-  const now = useNow(settling ? 2_000 : 60_000)
+  const [settling, setSettling] = useState(false)
+  const status = useAction(StatusAction, null, {
+    enabled,
+    onError: () => {},
+    every: settling ? 2_000 : 60_000,
+  })
+  const connecting = status.data?.some((server) => server.state === 'connecting') ?? false
+  if (connecting !== settling) setSettling(connecting)
   const retry = Math.min(...(status.data ?? []).map((server) => server.retryAt ?? Infinity))
   const { refetch } = status
-  useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    if (enabled) void refetch()
-  }, [enabled, now, refetch])
   useEffect(() => {
     if (!enabled || retry === Infinity) return undefined
     // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.

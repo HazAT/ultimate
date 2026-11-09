@@ -44,23 +44,15 @@ const subscribe = (listener: () => void) => {
 function useSecrets() {
   const system = useSystem()
   // Failures show inline in the panel, not as notices: the status line reads the list on every page.
-  const secrets = useAction(ListAction, null, { onError: () => {} })
-  const signature = JSON.stringify(
-    system?.extensions.map((extension) => [
+  const secrets = useAction(ListAction, null, {
+    onError: () => {},
+    on: system?.extensions.map((extension) => [
       extension.name,
       extension.enabled,
       extension.server?.secrets,
     ]),
-  )
-  const seen = useRef(signature)
-  const { refetch } = secrets
-  useEffect(() => {
-    if (signature === seen.current) return
-    seen.current = signature
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [signature, refetch])
-  useEvent('secrets:changed', () => void refetch())
+  })
+  useEvent('secrets:changed', () => void secrets.refetch())
   return secrets
 }
 

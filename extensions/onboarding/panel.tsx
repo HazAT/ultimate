@@ -7,7 +7,7 @@ import {
   ReplaceIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -213,19 +213,11 @@ const openSecrets = (name?: string) => events.emit('secrets:open', name ? { name
  */
 function useSecrets(system: SystemInfo | undefined) {
   // A failure only hides the secret lines; the Secrets panel shows it.
-  const secrets = useAction(ListAction, null, { onError: () => {} })
-  const { refetch } = secrets
-  const signature = JSON.stringify(
-    system?.extensions.map((extension) => [extension.name, extension.enabled]),
-  )
-  const seen = useRef(signature)
-  useEffect(() => {
-    if (signature === seen.current) return
-    seen.current = signature
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [signature, refetch])
-  useEvent('secrets:changed', () => void refetch())
+  const secrets = useAction(ListAction, null, {
+    onError: () => {},
+    on: system?.extensions.map((extension) => [extension.name, extension.enabled]),
+  })
+  useEvent('secrets:changed', () => void secrets.refetch())
   return secrets.data
 }
 
