@@ -1,8 +1,8 @@
 // Encrypted, chunked project backups in the cloud's private R2: a consistent database copy plus a bundle of the
 // `ultimate/*` branches. Everything is compressed and sealed on the machine; the Worker stores only ciphertext.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdtemp, rename, rm, stat } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { mkdtemp, open as openFile, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
@@ -254,6 +254,10 @@ async function open(
 ) {
   const hash = createHash('sha256')
   let bytes = 0
+  // Open before the pipeline starts: createWriteStream(path) opens the file later on the threadpool, so a first chunk
+  // that fails verification at once can reject the pipeline first, and the queued open recreates an empty file after
+  // the caller's rm (seen as a leftover .part in the 'rejects reordered chunks' test under load).
+  const out = await openFile(file, 'w')
   await pipeline(
     Readable.from(
       (async function* () {
@@ -272,7 +276,7 @@ async function open(
         yield data
       }
     },
-    createWriteStream(file),
+    out.createWriteStream(),
     { signal: o.signal },
   )
   if (bytes !== part.bytes || hash.digest('hex') !== part.sha256)
