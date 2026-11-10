@@ -462,6 +462,7 @@ function Control() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Play the sound of agents demo': 'エージェントの音のデモを再生' } },
   slots: { overlay: [Player], 'statusline.right': [{ component: Control, order: -1 }] },
   commands: [
     {

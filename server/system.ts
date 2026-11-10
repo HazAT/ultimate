@@ -14,11 +14,13 @@ import { relative, basename, join } from 'node:path'
 import { projectSkills } from './skills.ts'
 import { projectSetup, projectSettings } from './project-setup.ts'
 import { loadProjectContextFiles } from '@earendil-works/pi-coding-agent'
+import type { JsonObject } from '@earendil-works/pi-durable'
 import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
 import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
+import { readSettings, userSettingsPath } from '../lib/settings.ts'
 
 /** The skills the Info tab lists, with their scope and overrides, and Pi's load diagnostics as text. */
 export function skillInfo({
@@ -98,6 +100,11 @@ export async function createSystem(
       settingsError = message
       notice(message)
     })
+    // Invalid user settings JSON is reported where extension settings load; here it counts as unset.
+    const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
+    const language = [settings.language, user.language].find(
+      (setting): setting is string => typeof setting === 'string',
+    )
     value = {
       build: host.build(),
       project: {
@@ -135,6 +142,7 @@ export async function createSystem(
         walBytes: await bytes(host.database + '-wal'),
       },
       execution: { kind: 'node-local', defaultCwd: host.projectRoot },
+      ...(language ? { language } : {}),
       code,
       web: web(),
       extensions: registry(),

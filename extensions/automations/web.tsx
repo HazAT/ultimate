@@ -189,6 +189,7 @@ export function AutomationCall({ call }: { call: ToolCallView }) {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Automations…': 'オートメーション…' } },
   tools: { automation: AutomationCall },
   slots: {
     'statusline.right': [{ component: Chip, order: -2 }],

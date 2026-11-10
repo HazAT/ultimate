@@ -468,6 +468,12 @@ function useParked() {
 }
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      'Pause: stop starting new work': '一時停止: 新しい作業を始めない',
+      'Play: continue paused work': '再開: 止めた作業を続ける',
+    },
+  },
   provides: [provide(ParkedRuns, useParked)],
   slots: {
     'statusline.right': [

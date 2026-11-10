@@ -714,6 +714,7 @@ function Roots() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { Memory: 'メモリー' } },
   tools: { note: NoteCall, notify: NotifyCall, memory: MemoryCall, remember: RememberCall },
   entries: {
     'lineage.branched': Branched,

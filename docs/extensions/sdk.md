@@ -28,6 +28,7 @@ are watched with `useDocOf` (the shown one included), replays their changes, and
 | `useRestart()`                                                            | `api.restart()` with its outcome: `run`, `busy`, `pending` generation, and `error` when a check or boot failed or an activation was rolled back                                                                          |
 | `getConversation()`, `getState()`                                         | The same data now, outside React: in commands and callbacks. Components use the hooks.                                                                                                                                   |
 | `useNotices()`, `useCommands()`, `useExtensions()`, `useNow(ms, active?)` | Server and client notices, all commands, installed web facets, a clock ticking every `ms` while `active`                                                                                                                 |
+| `useT()`                                                                  | `t(text, values?)`, English `text` in the UI's language (see [translations](#translations))                                                                                                                              |
 | `useDocumentRenderers()`                                                  | Registered document renderers by kind (see [documents](documents.md))                                                                                                                                                    |
 | `useStore(select)`                                                        | Any slice of the client state (`State`), re-rendering when it changes                                                                                                                                                    |
 | `useTranscriptScroll()`                                                   | In `transcript.*` slots: `{ scrollRef, contentRef, atBottom }`, the transcript's scroller, the element whose children are its rows (`data-entry-id`), and whether it follows its newest row                              |
@@ -42,6 +43,31 @@ Helpers: `cn()` for class names, `formatTokens`, `formatBytes`, `formatDuration`
 (`now`, `5m`, `3h`, `2d`, then a date; `{ ago: true }` reads `just now`, `5m ago`), `shortenPath(path, { cwd, home })`
 (`home` is `useSystem().machine.home`), `elidePath`, `formatKeys`, and `errorMessage(error)` for a caught value. Types
 for everything above are exported too (`EntryRecord`, `AssistantMessage`, `SystemInfo`, …).
+
+## Translations
+
+The UI's text is English, and English is the key of its translations. `useT()` returns `t(text, values?)` for the
+`language` setting (see [settings](../settings.md)): the translation of `text`, or `text` itself when no language is
+set or nothing translates it. `{name}` placeholders are filled from `values`:
+
+```tsx
+const t = useT()
+return <span>{t('{count} files changed', { count })}</span>
+```
+
+An extension ships its translations with `messages`, by language; a later extension in discovery order wins a text,
+over the core's (`web/src/sdk/locales/`). So a folder in `~/.ultimate/extensions/` can be a translation pack for a
+language, or correct a built-in's wording, without touching the clone:
+
+```tsx
+export default defineWebExtension({
+  messages: { ja: { 'Compact now': '今すぐ圧縮' } },
+  commands: [{ id: 'hello.compact', title: 'Compact now', run: () => api.compact() }],
+})
+```
+
+The command palette translates command titles, group names and surface names this way; other places adopt `t()` as
+they are converted. Dates and numbers already follow the browser's locale.
 
 Keep UI state that should survive a reload in `useExtensionUiState`; keep throwaway state (hover, an open menu) in
 `useState`. The shell keeps its own layout there too (`shell.conversation`, `shell.surface`, `shell.shownSurface`,

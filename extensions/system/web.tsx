@@ -286,6 +286,7 @@ function Lanes({ parked, tabs }: { parked: ReadonlySet<number>; tabs: ReactNode 
 }
 
 export default defineWebExtension({
+  messages: { ja: { System: 'システム', 'Open System': 'システムを開く' } },
   surfaces: [
     {
       id: 'system',

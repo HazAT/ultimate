@@ -133,6 +133,7 @@ function DocumentsPanel() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { "Show the conversation's documents": '会話のドキュメントを表示' } },
   panels: [
     {
       id: 'documents',

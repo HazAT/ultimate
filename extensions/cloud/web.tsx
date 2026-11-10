@@ -283,6 +283,7 @@ function CloudStatus() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Join cloud backups': 'クラウドバックアップに参加' } },
   slots: { 'statusline.right': [CloudStatus], overlay: [JoinDialog] },
   commands: [
     { id: 'cloud.join', title: 'Join cloud backups', run: (context) => context.open(joinDialog) },

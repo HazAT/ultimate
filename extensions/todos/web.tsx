@@ -4,6 +4,7 @@ import { TodoCall } from './call.tsx'
 import { Todos } from './panel.tsx'
 
 export default defineWebExtension({
+  messages: { ja: { 'Show to-dos': 'ToDo を表示' } },
   tools: { todo: TodoCall },
   // @ultimate's changed-list reminder is model context, not something to read in the transcript.
   entries: { 'todos.note': () => null },

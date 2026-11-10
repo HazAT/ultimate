@@ -1,5 +1,7 @@
 import { registry, replaceNextSelection, store, uiState } from './client.ts'
 import { errorMessage } from './format.ts'
+import { translator } from './i18n.ts'
+import type { Translate } from './i18n.ts'
 import {
   HOME,
   commandApplies,
@@ -203,13 +205,19 @@ const coreCommands: CommandItem[] = core.map((command) => ({
   extension: 'core',
 }))
 
-/** Core commands, a switch per surface (`mod+1…9` for the first nine), then extension commands; later wins an id. */
-export function allCommands(records = registry.getSnapshot()): CommandItem[] {
+/**
+ * Core commands, a switch per surface (`mod+1…9` for the first nine), then extension commands; later wins an id. `t`
+ * translates the switches' titles, which are built here rather than written by an extension.
+ */
+export function allCommands(
+  records = registry.getSnapshot(),
+  t: Translate = translator(undefined, []),
+): CommandItem[] {
   return commandItems(records, [
     ...coreCommands,
     ...surfaceItems(records).map((surface, index) => ({
       id: `ultimate.surface.${surface.id}`,
-      title: `Switch to ${surface.title}`,
+      title: t('Switch to {surface}', { surface: t(surface.title) }),
       keys: index < 9 ? `mod+${index + 1}` : undefined,
       group: 'Surfaces',
       extension: surface.extension,

@@ -393,6 +393,7 @@ function Opener() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Secrets…': 'シークレット…' } },
   slots: { overlay: [Opener] },
   panels: [
     // Opened from ⌘K and missing-secret prompts.

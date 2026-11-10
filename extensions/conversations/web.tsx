@@ -4,6 +4,7 @@ import { SummaryAction } from './summary-entry.tsx'
 import { MentionLink } from './mention.tsx'
 
 export default defineWebExtension({
+  messages: { ja: { Conversations: '会話', 'Summary model…': '要約モデル…' } },
   link: MentionLink,
   entries: {
     'conversations.identity': () => null,

@@ -11,7 +11,7 @@ import {
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { actions, applies, currentContext } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
-import { useCommands, useStore } from '../sdk/hooks.ts'
+import { useCommands, useStore, useT } from '../sdk/hooks.ts'
 import { formatKeys } from '../sdk/keys.ts'
 
 export function Shortcut({ keys }: { keys: string }) {
@@ -33,6 +33,7 @@ export function Shortcut({ keys }: { keys: string }) {
 export function CommandPalette() {
   const open = useStore((state) => state.ui.paletteOpen)
   const commands = useCommands()
+  const t = useT()
   const context = currentContext()
   // The palette itself and a switch to the shown surface would do nothing here.
   const hidden = new Set(['ultimate.palette', `ultimate.surface.${context.surface}`])
@@ -47,26 +48,27 @@ export function CommandPalette() {
       open={open}
       showCloseButton={false}
     >
-      <CommandInput className="text-[13px]" placeholder="Run a command…" />
+      <CommandInput className="text-[13px]" placeholder={t('Run a command…')} />
       <CommandList className="max-h-[50vh]" data-ui="palette">
         <CommandEmpty className="py-6 text-center text-[12px] text-muted-foreground">
-          No matching command.
+          {t('No matching command.')}
         </CommandEmpty>
         {[...groups].map(([group, items]) => (
           <Fragment key={group}>
-            <CommandGroup heading={group}>
+            <CommandGroup heading={t(group)}>
               {items.map((command) => (
                 <CommandItem
                   className="text-[12.5px]"
                   key={command.id}
-                  keywords={[command.id, command.extension]}
+                  // The English title stays searchable when the shown one is translated.
+                  keywords={[command.title, command.id, command.extension]}
                   onSelect={() => {
                     store.setUi({ paletteOpen: false })
                     actions.runCommand(command.id)
                   }}
-                  value={`${command.title} ${command.id}`}
+                  value={`${t(command.title)} ${command.id}`}
                 >
-                  <span className="truncate">{command.title}</span>
+                  <span className="truncate">{t(command.title)}</span>
                   {command.keys && (
                     <CommandShortcut>
                       <Shortcut keys={command.keys} />

@@ -343,6 +343,7 @@ function OpenOnCommand() {
 const tab = { id: 'wire', title: 'Wire', component: Wire }
 
 export default defineWebExtension({
+  messages: { ja: { 'Open Wire': 'Wire を開く' } },
   provides: [provide(SystemTab, () => tab)],
   commands: [{ id: 'wire.open', title: 'Open Wire', run: (context) => context.open(openDialog) }],
   slots: { overlay: [OpenOnCommand] },

@@ -68,6 +68,15 @@ const commands: CommandContribution[] = [
 ]
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      Agent: 'エージェント',
+      'Stop the run': '実行を止める',
+      'Compact the context': 'コンテキストを圧縮',
+      'Focus the composer': '入力欄にフォーカス',
+      'Show the main conversation': 'メインの会話を表示',
+    },
+  },
   // After the other items, just before the command palette button.
   slots: { 'titlebar.right': [{ component: PanelActions, order: 100 }] },
   surfaces: [
