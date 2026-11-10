@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   BrainIcon,
+  CheckIcon,
   ChevronRightIcon,
   CircleCheckIcon,
   CodeIcon,
@@ -46,11 +47,14 @@ import {
 } from '@/sdk'
 import type { EntryRecord, ToolCallView } from '@/sdk'
 import { store } from '@/sdk/client'
-import { ConversationRef, Unsummarized } from '../conversations/ui.tsx'
+import { ConversationRef, FeatureTag, Unsummarized } from '../conversations/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
-import { Open, useGithubRepo } from '../workspaces/ui.tsx'
-import { ForgetAction, MemoryDoc, OpenEditorAction, TallyDoc } from './refs.ts'
+import { CommitCount, Open, useGithubRepo } from '../workspaces/ui.tsx'
+import { ForgetAction, MemoryDoc, OpenEditorAction, RecentAction, TallyDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
+import { landingFeed } from './landings.ts'
+import type { LandingItem } from './landings.ts'
+import type { RootEvent } from './types.ts'
 import { column, MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.tsx'
 import { GoBackAction, Rewound, RewoundDependent } from './rewind.tsx'
@@ -377,6 +381,142 @@ function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   return core
 }
 
+/** The root's newest landings, the same read the sidebar's Landed section makes; read again when the tally grows. */
+function useLanded(id: number) {
+  // A landing adds entries to the tally, so its token count is the feed's refresh trigger.
+  const tokens = useDocOf(id, TallyDoc)?.tokens
+  const [landings, setLandings] = useState<RootEvent[]>([])
+  useEffect(() => {
+    let live = true
+    void api
+      .action(RecentAction, { id, types: ['landed'], limit: 20 })
+      .then((recent) => {
+        if (live) setLandings(recent)
+      })
+      .catch(() => {
+        // Keep the last read: an unlisted root or a restarting server only pauses the refresh.
+      })
+    return () => {
+      live = false
+    }
+  }, [id, tokens])
+  return landings
+}
+
+const LANDING_DAYS = 3
+
+/** What the agent landed lately, grouped by day, in its own card under the History banner: read-only, nothing to fill in. */
+function LandingFeed({ id }: { id: number }) {
+  const landings = useLanded(id)
+  const now = useNow(60_000)
+  const days = landingFeed(landings, now)
+  const [all, setAll] = useState(false)
+  if (!days.length) return null
+  const shown = all ? days : days.slice(0, LANDING_DAYS)
+  return (
+    <section
+      className="mt-2.5 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5"
+      data-ui="landing-feed"
+    >
+      <h3 className="section-label flex items-center gap-1.5">
+        <CheckIcon className="size-3 shrink-0 text-success" />
+        Landed
+        <span className="ml-auto">{landings.length}</span>
+      </h3>
+      <ol>
+        {shown.map((day) => (
+          <li key={day.at}>
+            <p className="section-label pt-2.5">{day.label}</p>
+            <ul className="flex flex-col">
+              {day.items.map((item) => (
+                <LandingRow item={item} key={item.entry} root={id} />
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
+      {shown.length < days.length && (
+        <button
+          className="section-label mt-2 cursor-pointer text-left hover:text-foreground"
+          onClick={() => setAll(true)}
+          type="button"
+        >
+          Show {days.length - shown.length} earlier{' '}
+          {days.length - shown.length === 1 ? 'day' : 'days'}
+        </button>
+      )}
+    </section>
+  )
+}
+
+/** One landing in the feed: what and when, from which conversation, how it diverged, and its commits. */
+function LandingRow({ item, root }: { item: LandingItem; root: number }) {
+  const { switchConversation } = useUltimate()
+  const open = () => {
+    if (item.conversation !== undefined) switchConversation(item.conversation)
+    else events.emit('messages:open', { conversation: root, entry: item.entry })
+  }
+  const opened =
+    item.conversation !== undefined
+      ? `Open #${item.conversation}`
+      : `Show the landing note in #${root}/${item.entry}`
+  return (
+    <li
+      className="flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 font-mono text-[0.6875rem] text-muted-foreground hover:bg-muted/40"
+      data-lineage-landing={item.sha}
+    >
+      <button
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onClick={open}
+        title={opened}
+        type="button"
+      >
+        <time
+          className="shrink-0 tabular-nums"
+          dateTime={new Date(item.at).toISOString()}
+          title={new Date(item.at).toLocaleString()}
+        >
+          {formatTime(item.at)}
+        </time>
+        {item.feature !== undefined && <FeatureTag className="shrink-0" feature={item.feature} />}
+        <span className="min-w-0 truncate font-sans text-[0.8125rem] text-foreground">
+          {item.title ?? 'Landed'}
+        </span>
+        {item.divergence !== undefined && (
+          <span
+            className="min-w-0 flex-1 truncate font-sans text-[0.78125rem] text-muted-foreground"
+            title={item.divergence}
+          >
+            Diverged: {item.divergence}
+          </span>
+        )}
+        {item.conversation !== undefined ? (
+          <ConversationRef
+            className={cn('shrink-0', item.divergence === undefined && 'ml-auto')}
+            id={item.conversation}
+          />
+        ) : (
+          <span
+            className={cn('shrink-0', item.divergence === undefined && 'ml-auto')}
+            title="The landing note in the tally"
+          >
+            #{root}/{item.entry}
+          </span>
+        )}
+      </button>
+      {item.compare !== undefined && item.commits !== undefined ? (
+        <CommitCount className="text-muted-foreground" count={item.commits} href={item.compare} />
+      ) : (
+        item.sha !== undefined && (
+          <span className="shrink-0" title={item.sha}>
+            {item.sha.slice(0, 7)}
+          </span>
+        )
+      )}
+    </li>
+  )
+}
+
 /** A root is the project's history: read-only, with the way back to @ultimate in place of its composer. */
 function RootComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
@@ -445,6 +585,7 @@ function HistoryBanner({ id, dock }: { id: number; dock?: boolean }) {
           </Button>
         </div>
       </div>
+      <LandingFeed id={id} />
     </div>
   )
 }

@@ -1080,6 +1080,7 @@ function rootEvent(entry: EntryRecord): RootEvent | undefined {
     sha?: unknown
     base?: unknown
     commits?: unknown
+    divergence?: unknown
     more?: unknown
     feature?: unknown
     title?: unknown
@@ -1106,6 +1107,9 @@ function rootEvent(entry: EntryRecord): RootEvent | undefined {
       commits: listed + (typeof data.more === 'number' ? data.more : 0),
       ...(typeof data.feature === 'string' && data.feature ? { feature: data.feature } : {}),
       ...(typeof data.title === 'string' && data.title ? { title: data.title } : {}),
+      ...(typeof data.divergence === 'string' && data.divergence
+        ? { divergence: data.divergence }
+        : {}),
       ...(from === undefined ? {} : { from }),
     }
   }
