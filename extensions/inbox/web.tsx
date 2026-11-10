@@ -345,9 +345,12 @@ function Inbox() {
   const selected = selection(items, picked, index)
   const at = items.findIndex((candidate) => candidate.id === selected)
   const item = items[at]
+  // Hold on to the item shown, also one that took an answered item's place, so a later change elsewhere in the list
+  // does not move the selection (and drop a half-answered card).
   useEffect(() => {
     if (at >= 0) setIndex(at)
-  }, [at])
+    if (selected !== undefined && selected !== picked) setPicked(selected)
+  }, [at, selected, picked])
   const select = (id: number) => {
     setPicked(id)
     setOpen(true)
@@ -366,10 +369,15 @@ function Inbox() {
       const target = event.target as HTMLElement | null
       if (
         event.defaultPrevented ||
+        event.isComposing ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
-        target?.closest('input, textarea, select, [contenteditable="true"]')
+        target?.closest('input, textarea, select, [contenteditable="true"]') ||
+        // A dialog, menu or popover (the palette, a picker) owns the keys while it is open.
+        document.querySelector(
+          '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+        )
       )
         return
       const current = keys.current
@@ -397,8 +405,9 @@ function Inbox() {
       )}
     </span>
   )
+  // Keyed by message: each item starts fresh, its images included.
   const reading = item && (
-    <Reading item={item} now={now} onBack={() => setOpen(false)} phone={phone} />
+    <Reading item={item} key={item.id} now={now} onBack={() => setOpen(false)} phone={phone} />
   )
   return (
     <div className="flex min-h-0 flex-1">

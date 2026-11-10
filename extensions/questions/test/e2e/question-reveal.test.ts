@@ -120,12 +120,13 @@ async function drift(page: Page, id: number) {
 
 it('brings the question card to the top of the view below the pinned strip', async () => {
   const { server, other, asked, browser } = await setup()
-  await post(server, '/api/ui', { set: { 'shell.panel': 'todos', 'shell.panelOpen': true } })
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${other}`)
-  // From another conversation, then within the branch.
+  // From another conversation, then within the branch: the Inbox's Open in branch.
   for (const { id } of asked) {
-    await page.locator(`[data-todo-question="${id}"] button`).click()
+    await page.locator('[data-inbox-sidebar]').click()
+    await page.locator(`[data-inbox-row="${id}"]`).click()
+    await page.locator(`[data-inbox-item="${id}"] button:has-text("Open in branch")`).click()
     expect(await drift(page, id)).toBeLessThan(4)
   }
 })
