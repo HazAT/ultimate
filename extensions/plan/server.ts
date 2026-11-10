@@ -175,7 +175,8 @@ export default (host: ExtensionHost) => {
                 (task.child !== undefined ? ` child:${task.child}` : ''),
             ),
           ])
-        return lines.length ? lines.join('\n') : undefined
+        // Pi upstream: @earendil-works/pi-durable@1.5.0 dist/harness/prompt.js — planSections removes and re-adds every section when an omitted one returns before sections already shown, rewriting the whole system prompt as cache writes. Drop the idle line when Pi stops re-adding on that.
+        return lines.length ? lines.join('\n') : 'No open epics.'
       }),
     ],
     tools: [
