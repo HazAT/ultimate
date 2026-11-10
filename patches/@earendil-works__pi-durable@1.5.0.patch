@@ -231,6 +231,48 @@ index 5ff8c1703808c5ffd703164e6c339150e1f1e131..ec4cf6d5adc599e5fe428514a7cd7e0d
  }
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export function pickInputEntry({ kind, data }) {
+diff --git a/dist/harness/prompt.js b/dist/harness/prompt.js
+index d9433a8..e3d303e 100644
+--- a/dist/harness/prompt.js
++++ b/dist/harness/prompt.js
+@@ -43,13 +43,12 @@ export async function renderSections(sections, input, shown, report, context) {
+ }
+ /**
+  * Plan the `pi.system` entries that make the replayed sections and tools of `view` equal `desired` and `tools` in values
+- * and order.
++ * and, after a baseline, order.
+  *
+  * - A head marker with no later `pi.system` entry in context: one complete baseline that omits every retained earlier
+  *   `pi.system` entry, written even when it restates the replayed values.
+- * - Otherwise, when a minimal section patch would leave a different order: remove every shown section, then re-add
+- *   every desired section in order.
+- * - Otherwise the minimal patch of changed values and `null` removals, or nothing.
++ * - Otherwise the minimal patch of changed values and `null` removals, or nothing: a section that is new or returns is
++ *   appended, whatever its place among the agent's sections, and takes that place at the next baseline.
+  *
+  * Tool changes ride on the last planned entry, or on one entry of their own.
+  */
+@@ -96,16 +95,11 @@ function planTools(offered, desired) {
+         toolsAdded: added.map(toToolDeclaration),
+     };
+ }
+-/** Section patches: none, the minimal patch, or a remove-all/re-add-all pair when the order would differ. */
++/**
++ * Section patches: none, or the minimal patch. Ultimate: upstream removed and re-added every section when the patch
++ * would leave another order, which sent the whole system prompt again each time one returned (#558178).
++ */
+ function planSections(shown, desired) {
+-    const patchedOrder = [
+-        ...[...shown.keys()].filter((key) => desired.has(key)),
+-        ...[...desired.keys()].filter((key) => !shown.has(key)),
+-    ];
+-    const desiredOrder = [...desired.keys()];
+-    if (patchedOrder.some((key, index) => key !== desiredOrder[index])) {
+-        return [Object.fromEntries([...shown.keys()].map((key) => [key, null])), Object.fromEntries(desired)];
+-    }
+     const patch = {};
+     for (const [key, value] of shown) {
+         const next = desired.get(key);
 diff --git a/dist/harness/scheduler.d.ts b/dist/harness/scheduler.d.ts
 index f6189edb71ac0557060b623625fc4be4bec5e904..269a3c4ab1676da22db5a723f30d2974f84b6bea 100644
 --- a/dist/harness/scheduler.d.ts

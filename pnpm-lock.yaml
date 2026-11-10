@@ -10,7 +10,7 @@ overrides:
 patchedDependencies:
   '@earendil-works/chord@1.5.0': 0a84e0316a4ce02b090b6c94540148771592890bc6f0869d75243fa34e5d3f25
   '@earendil-works/pi-claude-code@0.1.0': 1b429cc82e5c171e4368af52b8b1198aadf6c395d2ec00df660126113df3ed9a
-  '@earendil-works/pi-durable@1.5.0': 09e491562a6693b902069a1c3eaf2d3ffdd88880665315653e0010b9d75ba90a
+  '@earendil-works/pi-durable@1.5.0': 21ecab67dfe3f8d350dc47073b71c6eb37745ab9cb694ddef605804dc5869433
 
 importers:
 
@@ -33,7 +33,7 @@ importers:
         version: 1.5.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)
       '@earendil-works/pi-durable':
         specifier: 1.5.0
-        version: 1.5.0(patch_hash=09e491562a6693b902069a1c3eaf2d3ffdd88880665315653e0010b9d75ba90a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(esbuild@0.28.2)(undici@8.10.2)
+        version: 1.5.0(patch_hash=21ecab67dfe3f8d350dc47073b71c6eb37745ab9cb694ddef605804dc5869433)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(esbuild@0.28.2)(undici@8.10.2)
       '@earendil-works/pi-mcp':
         specifier: 1.5.0
         version: 1.5.0
@@ -3750,7 +3750,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-durable@1.5.0(patch_hash=09e491562a6693b902069a1c3eaf2d3ffdd88880665315653e0010b9d75ba90a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(esbuild@0.28.2)(undici@8.10.2)':
+  '@earendil-works/pi-durable@1.5.0(patch_hash=21ecab67dfe3f8d350dc47073b71c6eb37745ab9cb694ddef605804dc5869433)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(esbuild@0.28.2)(undici@8.10.2)':
     dependencies:
       '@earendil-works/chord': 1.5.0(patch_hash=0a84e0316a4ce02b090b6c94540148771592890bc6f0869d75243fa34e5d3f25)(esbuild@0.28.2)
       '@earendil-works/pi-ai': 1.5.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)

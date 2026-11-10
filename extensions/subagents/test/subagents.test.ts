@@ -1179,35 +1179,11 @@ describe('subagents', () => {
             (message) =>
               message.role === 'system' && Object.hasOwn(message.sections ?? {}, 'subagent_state'),
           ),
-      ).toMatchObject({
-        sections: { subagent_state: '<subagent_state>\nNo subagents running.\n</subagent_state>' },
-      })
+      ).toMatchObject({ sections: { subagent_state: null } })
       await call(f.opened, { action: 'wait', id })
       expect(await reports(f.opened)).toHaveLength(1)
     },
   )
-  it('shows subagent_state when a child starts without rewriting the whole system prompt', async () => {
-    const f = await gatedFixture()
-    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
-    const [child] = await children(f.opened)
-    await until(async () => f.holding.has(child.conversationId))
-    const pending = await startCall(f.opened, { action: 'list' })
-    await pending.wait(context)
-    const patches = f.requests
-      .at(-1)!
-      .messages.flatMap((message) =>
-        message.role === 'system' && message.sections !== undefined ? [message.sections] : [],
-      )
-    const [baseline, ...later] = patches
-    expect(Object.keys(baseline)).toContain('subagent_state')
-    expect(later.length).toBeGreaterThan(0)
-    for (const patch of later) {
-      expect(Object.keys(patch)).toEqual(['subagent_state'])
-      expect(patch.subagent_state).toContain('Still running subagents')
-    }
-    f.childGate.release()
-    await f.opened.harness.waitForIdle(context)
-  })
   it('does not wake for followUp, but does wake for an already queued steer', async () => {
     const f = await gatedFixture()
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
