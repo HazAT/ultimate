@@ -17,7 +17,9 @@ function fakeClaude() {
     stdin,
     stdout,
     stderr: new PassThrough(),
-    pid: 1,
+    // Never a real number: the provider ends a process with process.kill(-pid), and -1 is every process of the user
+    // (it ended a desktop session from the neighbouring test, #562356).
+    pid: undefined,
     exitCode: null as number | null,
     signalCode: null,
   })

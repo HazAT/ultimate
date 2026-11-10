@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..7adce93f01fc7cc2ece9afc39b7ca8d34f038c01 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f79970c95e5b6 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
@@ -243,16 +243,16 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..7adce93f01fc7cc2ece9afc39b7ca8d3
  }
  
 +/**
-+ * Claude Code ended a turn without its full response. Without stderr this is a
-+ * transient stream ending, worded to match pi-ai's retryable "ended without"
-+ * pattern; with stderr, Claude Code's reason decides.
++ * Claude Code ended a turn without its full response and without an error of
++ * its own: a transient stream ending, worded to match pi-ai's retryable "ended
++ * without" pattern. Stderr is detail only. Claude Code also prints warnings
++ * there (2.1.319: `[claude-code:unrecognized_model]` once per process), so its
++ * presence says nothing about why the turn ended (Ultimate #562356).
 + */
 +export function incompleteResponseError(stderr: string): Error {
 +  const detail = stderr.trim();
 +  return new Error(
-+    detail
-+      ? `Incomplete Claude Code response: assistant, message_stop and one result required (${detail.slice(-500)})`
-+      : "Incomplete Claude Code response: stream ended without assistant, message_stop and one result",
++    `Incomplete Claude Code response: stream ended without assistant, message_stop and one result${detail ? ` (stderr: ${detail.slice(-500)})` : ""}`,
 +  );
 +}
 +
@@ -268,7 +268,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..7adce93f01fc7cc2ece9afc39b7ca8d3
  
      const abort = () => {
        this.relay.abort();
-@@ -976,11 +1052,7 @@ class ClaudeProcess {
+@@ -976,11 +1052,14 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -276,12 +276,18 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..7adce93f01fc7cc2ece9afc39b7ca8d3
 -        throw new Error(
 -          `Incomplete Claude Code response: assistant, message_stop and one result required${this.stderr ? ` (${this.stderr.trim().slice(-500)})` : ""}`,
 -        );
--      }
++      // Claude Code can refuse a turn itself, without a request: a synthetic
++      // assistant error and an is_error result, e.g. "Prompt is too long" from
++      // its own context check in a warm process. That is its reason, not an
++      // incomplete response (Ultimate #562356).
++      if (!this.relay.used && nativeError !== undefined && result.is_error) {
++        throw new Error(`Claude Code request failed: ${nativeError}`);
+       }
 +      if (!message || !sawMessageStop || !result) throw incompleteResponseError(this.stderr);
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1062,6 @@ class ClaudeProcess {
+@@ -990,13 +1069,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
