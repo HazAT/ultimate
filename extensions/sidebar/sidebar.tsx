@@ -433,8 +433,11 @@ function Tree({
       },
       log,
     )
-    // Queued input counts as working too; subagents working below it say so.
-    const state = working.get(conversation.id) ?? (derived === 'working' ? 'self' : undefined)
+    // Queued input counts as working too; subagents working below it say so. A question to the user outranks both.
+    const state =
+      derived === 'waits'
+        ? undefined
+        : (working.get(conversation.id) ?? (derived === 'working' ? 'self' : undefined))
     return (
       <Row
         activity={overview[conversation.id]?.activity}

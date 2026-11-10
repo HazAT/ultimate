@@ -63,12 +63,10 @@ function useBranchState(
   // A pause holds its run: nothing of it executes until Play.
   if (parked) return { label: 'paused', tone: 'paused' } as const
   // The sidebar's one conversation state; `working` also counts its subagents' runs.
-  const state = working
-    ? 'working'
-    : conversationState(
-        { id: conversation.id, kind: 'other', runState, primary, concludedSince },
-        log,
-      )
+  const state = conversationState(
+    { id: conversation.id, kind: 'other', runState, busy: working, primary, concludedSince },
+    log,
+  )
   if (state === 'working')
     return {
       label: phase && !phase.waiting ? phase.word : 'working',

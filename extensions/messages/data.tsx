@@ -18,11 +18,12 @@ export const emptyMessages: MessagesData = { messages: [], next: 1 }
 export const waitingOnUser = (log: MessagesData) => log.messages.filter(openQuestion).length
 
 /**
- * Where a conversation stands, the one state every view shows:
+ * Where a conversation stands, the one state every view shows, first match wins:
  * - `paused`: the host is paused and its run is parked: no task of it executes until Play;
+ * - `waits` (own question): a non-subagent conversation has a question of its own open with the user, even while it or
+ *   a subagent of it works: the question asks the user to act, and its subagents' lines still say they work;
  * - `working`: it runs, or has input queued;
- * - `waits`: the primary agent (@ultimate) counts every question open with the user; a non-subagent
- *   conversation has one of its own open. This is the state that asks the user to act;
+ * - `waits`: the primary agent (@ultimate) counts every question open with the user once it stops working;
  * - `awaiting`: a conversation that is no subagent asked the primary agent (a branch asking @ultimate) and waits for
  *   the answer, or reported to it and has not heard from it since; a subagent's questions go to its parent, which
  *   answers them in its own run;
@@ -57,16 +58,13 @@ export function conversationState(
 ): ConversationState {
   const { id, kind, runState } = conversation
   if (conversation.parked) return 'paused'
-  if (conversation.busy || runState === 'working' || runState === 'queued') return 'working'
   if (
-    kind === 'primary'
-      ? waitingOnUser(log) > 0
-      : kind !== 'subagent' &&
-        log.messages.some(
-          (m) => m.from === id && m.to === 'user' && m.reply && m.state === 'delivered',
-        )
+    kind === 'other' &&
+    log.messages.some((m) => m.from === id && m.to === 'user' && m.reply && m.state === 'delivered')
   )
     return 'waits'
+  if (conversation.busy || runState === 'working' || runState === 'queued') return 'working'
+  if (kind === 'primary' && waitingOnUser(log) > 0) return 'waits'
   if (
     kind !== 'subagent' &&
     awaitsPrimary(id, conversation.primary, log, () => conversation.concludedSince)
