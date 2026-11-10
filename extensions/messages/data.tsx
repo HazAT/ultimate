@@ -365,3 +365,22 @@ export function outgoingState(message: Message | undefined, toUser: boolean, run
   if (!message.reply) return 'delivered'
   return toUser ? 'awaiting your reply' : 'awaiting reply'
 }
+
+/** Where an open question's card is, against the transcript's view. */
+export type Place = 'above' | 'visible' | 'below'
+
+/** A direction's pointer: how many questions wait that way, and the nearest one, which a click goes to. */
+export type Pointer<T> = { count: number; nearest: T }
+
+/**
+ * The pointers to open questions out of view, from each question's place in transcript order (oldest first): one up
+ * when any is above, aiming at the lowest of them, and one down when any is below, aiming at the highest.
+ */
+export function offscreen<T>(questions: readonly { key: T; place: Place }[]) {
+  const above = questions.filter((q) => q.place === 'above')
+  const below = questions.filter((q) => q.place === 'below')
+  return {
+    up: above.length ? { count: above.length, nearest: above.at(-1)!.key } : undefined,
+    down: below.length ? { count: below.length, nearest: below[0].key } : undefined,
+  } satisfies Record<'up' | 'down', Pointer<T> | undefined>
+}

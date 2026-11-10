@@ -32,6 +32,7 @@ import {
 import { callerOf } from './caller.ts'
 import { OpenMessages } from './open.tsx'
 import { QuestionPointer } from './pointer.tsx'
+import { OffscreenQuestions } from './waiting.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { MessagesDoc, CallerAction } from './refs.ts'
 import type { MessagesData } from './refs.ts'
@@ -128,7 +129,12 @@ function MessageNavigation() {
 }
 
 export default defineWebExtension({
-  slots: { overlay: [MessageNavigation], 'composer.status': [OpenMessages] },
+  slots: {
+    overlay: [MessageNavigation],
+    'composer.status': [OpenMessages],
+    // Under the pinned prompt, which comes first, so a mark never covers it.
+    'transcript.top': [{ component: OffscreenQuestions, order: 1 }],
+  },
   entries: {
     'board.message': MessageInput,
     'board.reply': MessageInput,
