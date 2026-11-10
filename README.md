@@ -55,14 +55,15 @@ and extensions/claude-code/README.md.
 Then:
 1. Check the prerequisites from README "Start": Node 26, pnpm, Git 2.54 or newer, and a Chromium for the screenshot tools. Tell me
    what is missing and how to install it on my system; ask before installing anything system-wide.
-2. Clone the repository unless I'm already in it, run `pnpm install`, then `pnpm add -g .` so I get the
+2. Clone the repository unless I'm already in it, run `pnpm install`, then `pnpm add -g "$PWD"` so I get the
    `ultimate` command; if pnpm's global bin is not on my PATH yet, `pnpm setup` adds it.
 3. Model login, per "Recommended models": for Claude Code, install the CLI and let me run `claude auth login`
    myself; otherwise I log in from Ultimate's command palette (Ctrl+K, ⌘K on macOS) → "Log in to a provider".
    Never read, copy or handle my credentials.
-4. Start it: `pnpm start` runs Ultimate on its own repository, `ultimate` inside one of my projects runs it there.
-   Tell me to open the URL it prints (http://127.0.0.1:4747 for the first one), where Get ready asks for a login
-   and a model the first time.
+4. Start it: give me the command to run in my own terminal, `pnpm start` for Ultimate on its own repository or
+   `ultimate` inside one of my projects; don't keep it running as your background task, since your shell may kill
+   it and the page stops answering. It opens a window and prints its URL (the first free port from 4747, so not
+   always 4747), where Get ready asks for a login and a model the first time.
 5. In a few sentences, using AGENTS.md "How work is organised", explain what I'll see: @ultimate in the first
    sidebar row, the command palette, and branches doing the work. Then suggest a first prompt, such as "Walk me through how you
    work" or a small real task in my project.
@@ -83,7 +84,7 @@ screenshot and browser tools need a Chromium: `/usr/bin/chromium`, Google Chrome
 
 ```bash
 pnpm install
-pnpm add -g .       # once, in this clone, to get the `ultimate` command (`pnpm setup` first if pnpm's global bin is not on PATH)
+pnpm add -g "$PWD"  # once, in this clone, to get the `ultimate` command (`pnpm setup` first if pnpm's global bin is not on PATH)
 pnpm start          # Ultimate on its own repository; opens http://127.0.0.1:4747
 cd ~/Projects/app && ultimate  # or Ultimate on one of your projects
 ```
