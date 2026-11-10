@@ -2,7 +2,7 @@
 
 Part of the [extension guide](../../extensions/README.md).
 
-`defineWebExtension({ slots, panels, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, documents, commands })`; every key is optional. Extensions load
+`defineWebExtension({ slots, panels, panelBadges, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, documents, commands })`; every key is optional. Extensions load
 in parallel, installing independently; contributions follow discovery order: built-in → user → project, then folder name within each source. Give a slot item `{ component, order }` to move it (default order 0, lower first).
 Renderers (`tools`, `toolLines`, `entries`, `link`, `inlineCode`, `codeBlocks`, `messageActions`, `messageDetails`,
 `answerLabels`, `userBubble`, `compact`, `inbox`, `composer`) are in [renderers](renderers.md), `documents` in
@@ -45,6 +45,16 @@ Tabs of the right panel (toggle: `mod+alt+b`).
 ```tsx
 import { InfoIcon } from 'lucide-react'
 panels: [{ id: 'info', title: 'Info', icon: InfoIcon, component: InfoPanel }]
+```
+
+`panelBadges` puts a small component after a tab's label (or its icon, when the row is too narrow for labels), by
+panel id: your own panel's or another extension's, such as a count of what waits there. Badges render in discovery
+order; render nothing to show none.
+
+```tsx
+panelBadges: {
+  todos: OpenCount
+}
 ```
 
 Open one from code with `useUltimate().openPanel('info')`. A panel with `tab: false` stays out of the tab row until
