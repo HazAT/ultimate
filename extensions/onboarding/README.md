@@ -28,11 +28,16 @@ quiet `onboarding.start` input with `{ root, instructions?, facts }`: project na
 project setup, Git isolation reason (if any), root id and emptiness. Model text names the event, lists those facts
 and preserves the instructions. Request id `onboarding:<root>` ensures one input per root; repeated calls return
 `{ id }` without sending again: the root conversation's `onboarding.starts` document maps roots to that standing id.
+A start whose run failed before answering (`no_model`, or a `model_error` such as an expired login) has not begun:
+while @ultimate is idle, its newest run failed that way and nothing since the start was answered (a message typed
+meanwhile may have failed too), a repeated call continues it instead, checked and admitted in one commit, so two calls
+start one run. Once @ultimate answered anything after the start, onboarding is under way and a call sends nothing.
 
 Start here is a card above @ultimate's composer (`survey.tsx`, through the SDK's `composer` renderer) until
 onboarding has run for the project's root: `onboarding.starts` names the root, or the root carries memories (a new
 chapter's root, set up long ago; `onboarded.ts`). Its one button, **Set up with @ultimate**, calls `start { root }`,
-like Get ready's Continue; once that records the root, the card is gone for good. Its × calls the user-only
+like Get ready's Continue; once that records the root, the card is gone for good. While @ultimate's model has no
+login or is unavailable, the button opens Get ready instead, whose Continue then starts setup. Its × calls the user-only
 `dismiss`, which sets `dismissed` on `onboarding.starts` and hides the card for the project on every device; ⌘K
 **Get ready…** still starts setup. The History page (the root) takes
 no input.
