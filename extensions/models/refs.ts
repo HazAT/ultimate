@@ -115,3 +115,9 @@ export type SaveFamilies = {
  * use them; open ones keep their model.
  */
 export const SaveFamiliesAction = actionRef<SaveFamilies, null>('models', 'saveFamilies')
+
+/**
+ * `{ model }` (`provider/id`) → null: make it the default family's model, at the recommended thinking level, and run
+ * the calling conversation on that family. Get ready's Continue calls it, so the first branch starts on the choice.
+ */
+export const SetDefaultAction = actionRef<{ model: string }, null>('models', 'setDefault')

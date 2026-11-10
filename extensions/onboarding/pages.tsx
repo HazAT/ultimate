@@ -28,6 +28,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { MessageResponse } from '@/components/ai/message'
 import type { Isolation } from '../workspaces/refs.ts'
+import { refreshFamilies, runsOn, SetDefaultAction, useFamilies } from '../models/ui.tsx'
+import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'
 
@@ -44,12 +46,28 @@ export function FirstRun({
   onClosed: () => void
 }) {
   const models = useModels()
-  const { agent } = useConversation()
+  const { id: conversationId, agent, loading } = useConversation()
   const commands = useCommands()
   const ui = useUltimate()
-  const model = models?.models.find(
-    (m) => m.provider === agent.model?.provider && m.id === agent.model?.modelId,
-  )
+  const families = useFamilies()
+  const named = (name: string | undefined) =>
+    models?.models.find((m) => `${m.provider}/${m.id}` === name)
+  const own = agent.model && `${agent.model.provider}/${agent.model.modelId}`
+  // The conversation's model as the dialog opened: another one since is the user's pick here.
+  const [opened, setOpened] = useState<{ own: string | undefined }>()
+  if (open && !loading && !opened) setOpened({ own })
+  if (!open && opened) setOpened(undefined)
+  const picked = !!opened && opened.own !== own
+  const fallback = families?.families.find((family) => family.name === DEFAULT_FAMILY)
+  // While no default model is configured, the recommended one with a login here, else the first with one.
+  const suggested =
+    fallback && !runsOn(fallback)
+      ? (RECOMMENDED_MODELS.map(named).find((m) => m?.available) ??
+        models?.models.find((m) => m.available))
+      : undefined
+  /** What Continue saves as the default: the user's pick here, else the suggestion; nothing over a configured one. */
+  const chosen = picked ? named(own) : suggested
+  const model = chosen ?? named(own)
   const connected = models?.providers.some((p) => p.status.configured)
   const opus = models?.models.find(
     (m) => m.provider === 'claude-code' && m.id === 'claude-opus-5-5',
@@ -75,6 +93,14 @@ export function FirstRun({
     if (busy) return
     setBusy(true)
     try {
+      if (!skipped && chosen) {
+        await api.action(
+          SetDefaultAction,
+          { model: `${chosen.provider}/${chosen.id}` },
+          { conversationId },
+        )
+        await refreshFamilies()
+      }
       await onDone(skipped)
       await api.action(FirstRunDoneAction)
     } catch (failure) {
@@ -144,9 +170,14 @@ export function FirstRun({
                   ? `${Math.round(model.contextWindow / 1000)}k context. @ultimate works best with 1M+.`
                   : '1M+ context recommended for @ultimate.'}
               </span>
+              {chosen && (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  @ultimate, new conversations and branches start on it, thinking high.
+                </span>
+              )}
               {(model?.provider !== 'claude-code' || model.id !== 'claude-opus-5-5') && (
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Recommended: Claude Code Opus 5.5 for @ultimate.
+                  Recommended: Opus 5.5 through Claude Code.
                   {!opus?.available && commands.some((c) => c.id === 'claude-code.panel') && (
                     <>
                       {' '}

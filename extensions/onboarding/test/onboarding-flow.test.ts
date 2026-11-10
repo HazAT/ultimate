@@ -1,12 +1,17 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId, JsonObject } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { Memory } from '../../lineage/memory.ts'
 import { Messages } from '../../messages/api.ts'
+import { Family } from '../../models/api.ts'
 import { Tally } from '../../lineage/server.ts'
 import { Starts } from '../server.ts'
 import { context } from '../../../server/harness.ts'
@@ -187,6 +192,69 @@ it('onboards once per root with facts, choices, reading, first memories and a co
     ).messages.find((message) => message.role === 'user')
     expect(JSON.stringify(brief)).toContain('<project_memory root=\\"#1\\">')
     expect(JSON.stringify(brief)).toContain('user-instructions')
+  } finally {
+    await server.close()
+    await removeTemp(home)
+  }
+})
+
+it("starts the first branch on Get ready's model and thinking level, not on the first model with a login", async () => {
+  // Newcomer test, 2026-11-10 (#550720): the model chosen in Get ready configured only @ultimate's conversation, so
+  // the first coordinator ran on the first logged-in model with thinking off.
+  const home = await temp('ultimate-onboarding-model-')
+  const faux = fauxProvider({ models: [{ id: 'first' }, { id: 'chosen', reasoning: true }] })
+  // Its own project: this repository's settings put the coordinator on another family.
+  const project = join(home, 'project')
+  await mkdir(project, { recursive: true })
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: project,
+    userHome: home,
+    home: join(home, 'state'),
+    faux,
+  })
+  const provider = faux.getModel().provider
+  const answer: FauxResponseFactory = (transcript) => {
+    faux.appendResponses([answer])
+    const last = transcript.messages.findLast((message) => message.role !== 'system')!
+    return last.role === 'user' && text(last.content) === 'Build it'
+      ? call('branch', { root: 1, prompt: 'Build it', isolated: false })
+      : fauxAssistantMessage('Done.')
+  }
+  faux.setResponses([answer])
+  try {
+    const standing = await post(server, '/api/extensions/subagents/actions/standing', {
+      args: { name: 'ultimate' },
+    })
+    const id = standing.data.result as ConversationId
+    const saved = await post(server, '/api/extensions/models/actions/setDefault', {
+      args: { model: `${provider}/chosen` },
+      conversationId: id,
+    })
+    expect(saved.status).toBe(200)
+    const chosen = { model: { provider, modelId: 'chosen' }, thinkingLevel: 'high' }
+    const ultimate = (await server.harness.conversation(id, context))!
+    expect(await ultimate.agent(context)).toMatchObject(chosen)
+    expect(await server.harness.snapshot(Family, id, context)).toEqual({ name: 'default' })
+    await ultimate.submit({ type: 'input', content: 'Build it' }, context)
+    await server.harness.waitForIdle(context)
+    const branch = (await server.harness.snapshot(
+      Messages,
+      ROOT_CONVERSATION_ID,
+      context,
+    ))!.messages.find((message) => message.from === id && message.text === 'Build it')!
+      .to as ConversationId
+    expect(
+      await (await server.harness.conversation(branch, context))!.agent(context),
+    ).toMatchObject(chosen)
+    expect(await server.harness.snapshot(Family, branch, context)).toEqual({ name: 'default' })
+    // What it ran on, from its answer rather than its configuration.
+    const ran = (
+      await (await server.harness.conversation(branch, context))!.context(context)
+    ).entries
+      .flatMap((entry) => entry.model ?? [])
+      .find((message) => message.role === 'assistant')
+    expect(ran).toMatchObject({ model: 'chosen', thinkingLevel: 'high' })
   } finally {
     await server.close()
     await removeTemp(home)

@@ -61,6 +61,13 @@ export const FEATURES = {
 } as const
 export type Feature = keyof typeof FEATURES
 
+/**
+ * What Get ready pre-selects while no default model is configured: the first of these with a login here, at
+ * `RECOMMENDED_THINKING` (clamped to what the model supports). Without either, the first model with a login.
+ */
+export const RECOMMENDED_MODELS = ['claude-code/claude-opus-5-5', 'openai-codex/gpt-6-astra']
+export const RECOMMENDED_THINKING: ModelThinkingLevel = 'high'
+
 /** The assignment key of an agent definition. */
 export const agentUser = (name: string) => `agent/${name}`
 

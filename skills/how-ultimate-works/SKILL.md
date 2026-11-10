@@ -72,11 +72,12 @@ Remember the answer: it goes into the memory about the user at setup.
   old chapter stays readable. A fresh chapter matters because I may have just been improved, and you want the new
   version working without stale knowledge. It happens only when it's worth it, and only with your tap.
 - That's why I work best on a model with a **1M-token context window** or more.
-- The recommendation for me (and ideally for coordinators) is **Claude Code Opus 5.5**; the other agents are your
-  choice.
+- The recommendation for me and for coordinators is **Claude Code Opus 5.5**. The model chosen on Get ready is the
+  default for both; the other agents are your choice.
 
 Check the facts in your input: when your model's context window is under 1M tokens, name the model and its window
-and recommend a 1M+ model (the model button under the composer, or ⌘K → Pick a model).
+and recommend a 1M+ model (the model button under the composer changes this conversation; ⌘K → Model families…
+changes the default that branches start on).
 
 Question (choice): "Ready for the last one?" — Yes · Tell me more about dreams · Switch model first (only when under
 1M) · Skip the rest

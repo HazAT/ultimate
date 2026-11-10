@@ -13,4 +13,4 @@ export {
   useFamilies,
 } from './families.tsx'
 export type { FamiliesView, FamilyView } from './refs.ts'
-export { LoginChanged } from './refs.ts'
+export { LoginChanged, SetDefaultAction } from './refs.ts'

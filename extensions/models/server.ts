@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { AuthEvent, AuthPrompt, AuthType } from '@earendil-works/pi-ai'
 import {
+  configure,
   defineDoc,
   defineExtension,
   GenerationTask,
@@ -22,10 +23,12 @@ import {
   LoginDoc,
   LogoutAction,
   SaveFamiliesAction,
+  SetDefaultAction,
   SetFamilyAction,
 } from './refs.ts'
 import type { SaveFamilies } from './refs.ts'
-import { familiesView, saveFamilies } from './families.ts'
+import { DEFAULT_FAMILY } from '../../lib/families.ts'
+import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
 
 /** A Pi type as a document holds it: plain JSON, arrays mutable. */
@@ -126,6 +129,18 @@ export const actions = {
       if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
       ;(await tx.doc(Family, id)).name = family
     }, context)
+    return null
+  }),
+  /** Get ready's choice: the default family's model and thinking, and the calling conversation on that family. */
+  setDefault: implementAction(SetDefaultAction, async (args, { host, conversationId }) => {
+    const change = await setDefault(host, text(args, 'model'))
+    if (conversationId !== undefined)
+      await host.harness().commit(async (tx) => {
+        const id = conversationId as ConversationId
+        if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
+        await configure(tx, id, change)
+        ;(await tx.doc(Family, id)).name = DEFAULT_FAMILY
+      }, context)
     return null
   }),
   /** Start a login flow for the calling conversation and resolve with its id; the document shows its progress. */

@@ -3,7 +3,12 @@ Inline setup choices, the first-run prerequisites, and the Extensions panel that
 ## First run
 
 The first run has only **Get ready**: connect a provider and choose an available model. The model row recommends a
-1M+ context window for @ultimate, and names the chosen model's window when it is smaller. ⌘K **Get ready…** opens it
+1M+ context window for @ultimate, and names the chosen model's window when it is smaller. While no default model is
+configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.ts`: Opus 5.5 through Claude Code, then
+`openai-codex/gpt-6-astra`) with a login, else the first model with one, and links to Claude Code's setup while that is
+logged out. Continue saves the pre-selection, or a model picked in the dialog, as the default family's model with
+thinking high (the models extension's `setDefault`), so @ultimate, new conversations and branches start on it; a
+configured default is only replaced by a pick made in the dialog. ⌘K **Get ready…** opens it
 again whatever the recorded state, e.g. on a preview (which has its own copy of `onboarding.json`); its
 Continue starts onboarding once per root, as above. Continue waits for both, starts onboarding with @ultimate through `onDone`, then records `firstRunDone`;
 there is no second page. Escape or the close button records completion without changing settings. Closing returns
