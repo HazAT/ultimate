@@ -33,10 +33,20 @@ Messages, never copied; a click opens the Inbox, which lists and answers them), 
 user, `Work on to-do #<id>: <text>` (`Help me with to-do #<id>: …` for the user's own), after its current run if
 it is busy, and opens its conversation. ⌘K “Show open questions” opens this tab.
 
+## Extensions
+
+Server code adds with `host.want(TodosApi)?.add({ text, owner, key? })` (`api.ts`), which returns the to-do. It is
+not core tier: to-dos are optional, and nothing in the core needs them.
+
+A `key` (nonempty, at most 200 characters) makes an add idempotent: the same key again adds nothing and returns the
+to-do it added, as it is now or, once ticked out of the list, as it was when added. The `todos.keys` document on
+conversation 1 records each key with its to-do in the same commit and keeps the newest 500; a key older than that is
+forgotten, and using it again adds a new to-do. Without a key every add adds.
+
 ## Actions
 
-All user-only, for the panel.
+All user-only, for the panel; the HTTP endpoint still calls them.
 
-- `add { text, owner }` → the new to-do.
+- `add { text, owner, key? }` → the new to-do, or the one `key` already added (above).
 - `done { id }` → the to-do, ticked.
 - `reopen { id }` → the to-do, open again.
