@@ -396,6 +396,14 @@ describe('conversation state', () => {
     )
   })
 
+  it('waits on the user over working while a branch has its own question open', () => {
+    // The bug: a branch whose worker ran showed `working` and hid the question it had asked the user.
+    const branch = { id: 2, kind: 'other' as const }
+    expect(conversationState({ ...branch, busy: true }, toUser)).toBe('waits')
+    expect(conversationState({ ...branch, runState: 'working' }, toUser)).toBe('waits')
+    expect(conversationState({ ...branch, busy: true }, messagesLog())).toBe('working')
+  })
+
   it('awaits the primary agent while its reply-expected message to it is open', () => {
     const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
     for (const state of ['sent', 'delivered'] as const)
