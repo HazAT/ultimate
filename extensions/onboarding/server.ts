@@ -7,12 +7,13 @@ import {
   defineEntry,
   defineExtension,
   defineTool,
+  LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
+import type { Conversation, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
@@ -148,6 +149,31 @@ async function declared(path: string) {
 
 const marker = (userHome: string) => join(userHome, '.ultimate/onboarding.json')
 
+/** Whether the conversation answered anything after entry `from`: a reply that is no error or abort. */
+async function answeredSince(tx: Tx, conversationId: ConversationId, from: EntryId) {
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries(
+      { conversationId, minEntryId: from, order: 'ascending' },
+      100,
+      cursor,
+    )
+    if (
+      page.items.some((entry) => {
+        const message = entry.model?.[0]
+        return (
+          message?.role === 'assistant' &&
+          message.stopReason !== 'error' &&
+          message.stopReason !== 'aborted'
+        )
+      })
+    )
+      return true
+    cursor = page.next
+  } while (cursor)
+  return false
+}
+
 /** The walkthrough's model fact: @ultimate's model and context window, so beat 4 can recommend 1M+. */
 async function modelLine(host: ExtensionHost, conversation: Conversation) {
   const ref = (await conversation.agent(context)).model
@@ -207,10 +233,31 @@ export const actions: Record<string, ExtensionAction> = {
       (conversationId === undefined ? undefined : await lineage.rootOf(conversationId, context)) ??
       1
     const harness = host.harness()
+    const requestId = `onboarding:${root}`
     const existing = (await harness.snapshot(Starts, ROOT_CONVERSATION_ID, context))?.roots[
       String(root)
     ]
-    if (existing !== undefined) return { id: existing }
+    if (existing !== undefined) {
+      // A start whose run failed before answering (no model, an expired login, a provider error) never began. While
+      // @ultimate's newest run failed that way and nothing since the start was answered (inputs typed meanwhile may
+      // have failed too), continue it. Checked and admitted in one commit, so a second call finds it busy (#552022: a
+      // start without a model was a dead end).
+      const conversation = (await harness.conversation(existing as ConversationId, context))!
+      await harness.commit(async (tx) => {
+        const sent = await tx.submissionByRequest(conversation.id, requestId)
+        const { run, runFailure } = await tx.doc(LiveDoc, conversation.id)
+        if (
+          sent?.status !== 'unanswered' ||
+          sent.entry === undefined ||
+          run !== undefined ||
+          !['no_model', 'model_error'].includes(runFailure?.reason ?? '') ||
+          (await answeredSince(tx, conversation.id, sent.entry))
+        )
+          return
+        await conversation.submit(tx, { type: 'continue' })
+      }, context)
+      return { id: existing }
+    }
     if ((await lineage.rootOf(root, context)) !== root) throw new Error('Expected a project root')
     const id = await host.need(SubagentsApi).standing('ultimate', context)
     const project = await host.projectSetup()
@@ -247,7 +294,7 @@ export const actions: Record<string, ExtensionAction> = {
           kind: StartEntry.kind,
           data: { root, ...(instructions === undefined ? {} : { instructions }), facts },
         },
-        requestId: `onboarding:${root}`,
+        requestId,
         whenBusy: 'followUp',
       },
       context,
