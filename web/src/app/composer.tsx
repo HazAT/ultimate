@@ -55,8 +55,7 @@ const alt = isMac ? '⌥' : 'Alt'
 
 function blockedBy(agent: AgentState, models: ModelsResponse | undefined): string | undefined {
   const model = agent.model
-  if (!model)
-    return `No model yet. Log in to a provider: press ${isMac ? '⌘K' : 'Ctrl+K'} and choose Log in, or pick a model below.`
+  if (!model) return `No model yet: ${isMac ? '⌘K' : 'Ctrl+K'} → Log in`
   const found = models?.models.find(
     (candidate) => candidate.provider === model.provider && candidate.id === model.modelId,
   )
