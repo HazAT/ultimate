@@ -25,7 +25,7 @@ import {
   useRegionOpen,
   useUiState,
 } from '../sdk/hooks.ts'
-import { slotItems } from '../sdk/registry.ts'
+import { panelBadges, slotItems } from '../sdk/registry.ts'
 import type { PanelItem } from '../sdk/registry.ts'
 import { overlays, useViewport } from '../sdk/viewport.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
@@ -229,6 +229,15 @@ type Fit = { compact: boolean; overflow: Set<string> }
 
 const key = (panel: PanelItem) => `${panel.extension}:${panel.id}`
 
+/** The badges extensions put on panel `id`'s tab (`panelBadges`), each in its own boundary. */
+function TabBadges({ id }: { id: string }) {
+  return panelBadges(useExtensions(), id).map(({ extension, version, component: Badge }) => (
+    <ExtensionBoundary extension={extension} key={extension} variant="inline" version={version}>
+      <Badge />
+    </ExtensionBoundary>
+  ))
+}
+
 /**
  * A tab per extension panel. When not every label fits, the tabs other than the shown one keep only their icon and
  * name themselves in a tooltip; when even the icons do not fit, the last ones move into a `⋯` menu. The shown tab
@@ -286,9 +295,11 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
                 <span className={tab} data-measure={`label:${key(panel)}`}>
                   {Icon && <Icon className="size-3.5" />}
                   {panel.title}
+                  <TabBadges id={panel.id} />
                 </span>
                 <span className={tab} data-measure={`icon:${key(panel)}`}>
                   {Icon ? <Icon className="size-3.5" /> : panel.title}
+                  <TabBadges id={panel.id} />
                 </span>
               </span>
             )
@@ -312,6 +323,7 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
             >
               {Icon && <Icon className="size-3.5" />}
               {!iconOnly && panel.title}
+              <TabBadges id={panel.id} />
             </button>
           )
           return iconOnly ? (
@@ -346,6 +358,7 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
                   >
                     {Icon && <Icon className="size-3.5" />}
                     {panel.title}
+                    <TabBadges id={panel.id} />
                   </DropdownMenuItem>
                 )
               })}
