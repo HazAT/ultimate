@@ -13,8 +13,14 @@ export type Todo = {
 /** `{ next, items }` on conversation 1: every open to-do and the last 50 done ones, oldest first. */
 export const TodosDoc = docRef<{ next: number; items: Todo[] }>('todos')
 
-/** `{ text, owner }` → the new to-do. User-only; @ultimate uses its `todo` tool. */
-export const AddAction = actionRef<{ text: string; owner: Todo['owner'] }, Todo>('todos', 'add')
+/**
+ * `{ text, owner, key? }` → the new to-do, or the one `key` already added. User-only; @ultimate uses its `todo`
+ * tool, server code `TodosApi`.
+ */
+export const AddAction = actionRef<{ text: string; owner: Todo['owner']; key?: string }, Todo>(
+  'todos',
+  'add',
+)
 /** `{ id }` → the to-do, ticked. User-only. */
 export const DoneAction = actionRef<{ id: number }, Todo>('todos', 'done')
 /** `{ id }` → the to-do, open again. User-only. */

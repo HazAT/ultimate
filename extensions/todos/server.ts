@@ -18,12 +18,16 @@ import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
+import { TodosApi } from './api.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
 
 /** Done to-dos kept; older ones are dropped when another is ticked. */
 export const DONE_LIMIT = 50
 const TEXT_CHARS = 300
+/** Idempotency keys kept; adding past this forgets the oldest, and its key then adds a new to-do. */
+export const KEY_LIMIT = 500
+const KEY_CHARS = 200
 
 export const Todos = defineDoc<{ next: number; items: Todo[] }>({
   kind: TodosDoc.kind,
@@ -44,11 +48,41 @@ const Seen = defineDoc<{ key?: string }>({
   fork: 'initial',
   initial: () => ({}),
 })
-export const docs = [Todos]
+/** The to-do each idempotency key added, oldest first, as it was when added. */
+const Keys = defineDoc<{ keys: { key: string; todo: Todo }[] }>({
+  kind: 'todos.keys',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ keys: [] }),
+})
+export const docs = [Todos, Keys]
 
 const OWNERS = ['user', 'ultimate'] as const
 
-export async function add(tx: Tx, text: unknown, owner: unknown) {
+/**
+ * Add a to-do. A `key` seen before adds nothing and returns the to-do it added: as it is now, or as it was when
+ * added once it has left the list.
+ */
+export async function add(tx: Tx, text: unknown, owner: unknown, key?: unknown): Promise<Todo> {
+  if (key !== undefined && key !== null) {
+    if (typeof key !== 'string' || !key || key.length > KEY_CHARS)
+      throw new Error(`key must be a nonempty string of at most ${KEY_CHARS} characters`)
+    const keys = await tx.doc(Keys, ROOT_CONVERSATION_ID)
+    const known = keys.keys.find((record) => record.key === key)
+    if (known) {
+      const now = (await tx.doc(Todos, ROOT_CONVERSATION_ID)).items.find(
+        (item) => item.id === known.todo.id,
+      )
+      return { ...(now ?? known.todo) }
+    }
+    const todo = await add(tx, text, owner)
+    keys.keys.push({ key, todo: { ...todo } })
+    keys.keys.splice(0, keys.keys.length - KEY_LIMIT)
+    return todo
+  }
   if (typeof text !== 'string' || !text.trim()) throw new Error('text must be nonempty')
   if (text.trim().length > TEXT_CHARS)
     throw new Error(`text must be at most ${TEXT_CHARS} characters`)
@@ -62,7 +96,8 @@ export async function add(tx: Tx, text: unknown, owner: unknown) {
     at: Date.now(),
   }
   todos.items.push(todo)
-  return todo
+  // A copy: the document's overlay is unusable once the commit settles, and callers reply with this.
+  return { ...todo }
 }
 
 /** Tick to-do `id` (or open it again), keeping only the newest `DONE_LIMIT` done ones. */
@@ -132,7 +167,12 @@ const field = (args: unknown, name: string) =>
 export const userActions = ['add', 'done', 'reopen']
 export const actions = {
   add: implementAction(AddAction, (args, { host }) =>
-    host.harness().commit((tx) => add(tx, field(args, 'text'), field(args, 'owner')), context),
+    host
+      .harness()
+      .commit(
+        (tx) => add(tx, field(args, 'text'), field(args, 'owner'), field(args, 'key')),
+        context,
+      ),
   ),
   done: implementAction(DoneAction, (args, { host }) =>
     host.harness().commit((tx) => mark(tx, field(args, 'id'), true), context),
@@ -146,6 +186,10 @@ const standing = (tx: Tx, id: ConversationId) =>
   tx.doc(Standing, ROOT_CONVERSATION_ID).then((doc) => doc.ultimate === id)
 
 export default function todosExtension(host: ExtensionHost) {
+  host.implement(TodosApi, {
+    add: ({ text, owner, key }) =>
+      host.harness().commit((tx) => add(tx, text, owner, key), context),
+  })
   return defineExtension({
     name: 'todos',
     hooks: [
