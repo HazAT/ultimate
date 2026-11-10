@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
+  AllProvided,
   defineWebExtension,
   formatDuration,
   formatTokens,
@@ -19,6 +20,7 @@ import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } fro
 import type { Diff } from './breakdown.ts'
 import { DiffBody, Header, signed } from './parts.tsx'
 import { PinnedPrompt } from './pinned.tsx'
+import { CacheRebuiltDetail } from './ui.tsx'
 
 /** The breakdown of the context starting at entry index `anchor`; nothing until its first system prompt. */
 function ContextAt({ anchor }: { anchor: number }) {
@@ -120,7 +122,8 @@ const causes: Record<CacheBust['cause'], (bust: CacheBust) => string> = {
 
 /**
  * A response that rebuilt the prompt cache: a quiet warning line above it with what it wrote fresh, what it still read
- * against the prompt before, and why. A response split over several rows shows it on its first.
+ * against the prompt before, and why, then what other extensions add (`CacheRebuiltDetail`). A response split over
+ * several rows shows it on its first.
  */
 function CacheRebuilt({
   entry,
@@ -145,6 +148,19 @@ function CacheRebuilt({
             cache rebuilt · {formatTokens(bust.written)} written · {formatTokens(bust.read)} of{' '}
             {formatTokens(bust.before)} read · {causes[bust.cause](bust)}
           </span>
+          <AllProvided input={{ entry, bust }} point={CacheRebuiltDetail}>
+            {(details) =>
+              details.map(
+                (detail, index) =>
+                  detail && (
+                    // oxlint-disable-next-line react/no-array-index-key -- providers keep discovery order; two may share a text.
+                    <span className="shrink-0 tabular-nums" key={index} title={detail.title}>
+                      · {detail.text}
+                    </span>
+                  ),
+              )
+            }
+          </AllProvided>
         </span>
       </div>
       {core}
