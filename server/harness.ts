@@ -16,12 +16,11 @@ import { UiState } from './ui-state.ts'
 import { listModels } from './models.ts'
 import { guardToolArguments, modelTrace } from './tool-arguments.ts'
 import { readFamilies } from '../lib/families-settings.ts'
-import { refOf } from '../lib/families.ts'
 import { callTrace } from './trace.ts'
 import { projectSkills } from './skills.ts'
 import { requestSwap } from './supervisor-protocol.ts'
 import { activeChapter, finishChapterSwitch } from '../lib/chapters.ts'
-import { defaultModel } from '../lib/agents.ts'
+import { defaultAgent } from '../lib/agents.ts'
 import type {
   ConversationId,
   Cursor,
@@ -165,11 +164,13 @@ export async function prepareHarness(options: HostOptions) {
     runtime.registerNativeProvider(faux.provider)
     await runtime.refresh({ allowNetwork: false })
   }
-  /** The default model, read when the harness opens, after extensions registered theirs. */
+  /** The default model and thinking level, read when the harness opens, after extensions registered theirs. */
   const preferred = async () => {
-    if (faux) return { provider: faux.getModel().provider, modelId: faux.getModel().id }
     const family = (await readFamilies(userHome, projectRoot)).families.default
-    return defaultModel(await modelRuntime.getAvailable(), settings, refOf(family.model))
+    const agent = defaultAgent(await modelRuntime.getAvailable(), settings, family)
+    return faux
+      ? { ...agent, model: { provider: faux.getModel().provider, modelId: faux.getModel().id } }
+      : agent
   }
   let active:
     | {
@@ -273,17 +274,13 @@ export async function prepareHarness(options: HostOptions) {
           },
           context,
         )
-        const model = await preferred()
-        // The default family's thinking, else Pi's default level.
-        const thinkingLevel =
-          (await readFamilies(userHome, projectRoot)).families.default.thinking ??
-          settings.getDefaultThinkingLevel()
-        const root = await harness.root(context, { agent: { cwd: projectRoot, thinkingLevel } })
+        const preferredAgent = await preferred()
+        const root = await harness.root(context, { agent: { cwd: projectRoot } })
         await root.commit(async (tx) => {
           await tx.doc(UiState, root.id)
           // The root runs no turns, but what reads its agent (tally compaction, inheriting callers) gets a model with a
-          // login: it follows the default each time it opens, not the one it stored when created.
-          if (model) (await tx.doc(AgentDoc, root.id)).model = model
+          // login and its thinking level: both follow the default each time it opens, not what it stored when created.
+          Object.assign(await tx.doc(AgentDoc, root.id), preferredAgent)
         }, context)
         active = { harness, root, storage }
         const openedHarness = harness

@@ -517,6 +517,14 @@ it.concurrent('keeps a model whose login check is pending or failed, and never t
   expect(await model()).toEqual({ provider: 'openrouter', modelId: dead })
   expect(await fallbacks()).toEqual([])
   check.mockRestore()
+  // #534457/543286: with the claude-code provider not loaded during an outage, its login type was unknown, so the
+  // subscription rule did not apply and a conversation moved to a pay-per-token provider. A provider that is not
+  // registered is no evidence of a missing login: the model stays and nothing is said.
+  const unloaded = { provider: 'not-loaded', modelId: 'faux-1' }
+  await f.server.harness.commit((tx) => configure(tx, dice, { model: unloaded }), context)
+  await ask(f.server, dice, 'unloaded')
+  expect(await model()).toEqual(unloaded)
+  expect(await fallbacks()).toEqual([])
   // A subscription whose login is really gone takes neither the pay-per-token default nor any first model in the
   // list: it keeps its model and asks once.
   const subscription = { provider: 'openai-codex', modelId: 'gpt-6.1-sol' }

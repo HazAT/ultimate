@@ -42,7 +42,7 @@ import {
   deleteDefinition,
   discoverAgents,
   hasLogin,
-  hostDefaultModel,
+  hostDefault,
   previewModel,
   saveDefinition,
   saveOverlay,
@@ -656,15 +656,15 @@ export default function subagents(
         const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
         let id = Object.hasOwn(index, name) ? index[name] : undefined
         let created: ConversationRecord | undefined
-        // A new conversation starts on the default model; an existing one keeps the model and thinking level chosen
-        // in it, so a refresh changes them only where the definition pins them.
-        let base = { ...main, model: await hostDefaultModel(host) }
+        // A new conversation starts on the default model and thinking level; an existing one keeps those chosen in
+        // it, so a refresh changes them only where the definition pins them.
+        let base = { ...main, ...(await hostDefault(host)) }
         if (id !== undefined && (await tx.conversation(id))) {
           const own = await tx.doc(AgentDoc, id)
           base = {
-            ...main,
-            model: own.model ?? base.model,
-            thinkingLevel: own.thinkingLevel ?? main.thinkingLevel,
+            ...base,
+            ...(own.model ? { model: own.model } : {}),
+            ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
           }
         } else {
           // Created and indexed in one commit; a deleted standing conversation is recreated here.

@@ -37,9 +37,12 @@ export async function fallback(
   // Nothing has a login yet (an empty snapshot says nothing about this model), or this one still has one.
   if (!agent.model || !available.length || hasLogin(available, agent.model)) return undefined
   const from = agent.model
-  // Certain evidence only: the snapshot has no login for it and a fresh check agrees. A provider still registering,
-  // or a check that fails or times out, leaves the model as it is; its request fails with its own error.
-  if (runtime.getProvider(from.provider) && (await mayHaveLogin(host, from.provider)))
+  // Certain evidence only: its provider is registered, the snapshot has no login for it and a fresh check agrees. A
+  // provider that is not registered (still registering, or its extension failed to load), or a check that fails or
+  // times out, leaves the model as it is; its request fails with its own error. An unregistered provider's login
+  // type is unknown too, so nothing could say whether it was a subscription (#534457/543286: with claude-code not
+  // loaded during an outage, a conversation moved to the pay-per-token anthropic provider).
+  if (!runtime.getProvider(from.provider) || (await mayHaveLogin(host, from.provider)))
     return undefined
   const fresh = runtime.getAvailableSnapshot()
   const paid = wasSubscription(host, from.provider)
@@ -98,8 +101,8 @@ async function mayHaveLogin(host: ExtensionHost, provider: string) {
 }
 
 /**
- * Pi's subscription mark of a provider whose login is gone, so its login type is no longer known: its OAuth method
- * says `isSubscription`.
+ * Pi's subscription mark of a registered provider whose login is gone, so its login type is no longer known: its OAuth
+ * method says `isSubscription`.
  */
 function wasSubscription(host: ExtensionHost, provider: string) {
   return (

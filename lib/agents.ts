@@ -110,9 +110,13 @@ export function configuredModel(
   return configured(settings, family).find((ref) => hasLogin(available, ref))
 }
 
+type DefaultSettings = Pick<
+  SettingsManager,
+  'getDefaultProvider' | 'getDefaultModel' | 'getDefaultThinkingLevel'
+>
 type DefaultHost = {
   modelRuntime: Pick<ModelRuntime, 'getAvailableSnapshot'>
-  settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>
+  settings: DefaultSettings
   userHome: string
   projectRoot: string
 }
@@ -121,9 +125,28 @@ type DefaultHost = {
 export const familyDefault = async (host: Pick<DefaultHost, 'userHome' | 'projectRoot'>) =>
   refOf((await readFamilies(host.userHome, host.projectRoot)).families[DEFAULT_FAMILY].model)
 
-/** `defaultModel` for a host's model runtime, its project's default family and Pi settings. */
-export const hostDefaultModel = async (host: DefaultHost) =>
-  defaultModel(host.modelRuntime.getAvailableSnapshot(), host.settings, await familyDefault(host))
+/**
+ * What a conversation runs on when nothing pins it, as agent fields: `defaultModel`, and the default family's thinking
+ * level, else Pi's default one. The one answer the root and every starter take, so the model and its thinking level
+ * come from the same place (#552043: a branch got the default model with the root's stored thinking).
+ */
+export function defaultAgent(
+  available: readonly Listed[],
+  settings: DefaultSettings,
+  family: Families['families'][string],
+): { model?: ModelRef; thinkingLevel?: ModelThinkingLevel } {
+  const model = defaultModel(available, settings, refOf(family.model))
+  const thinkingLevel = family.thinking ?? settings.getDefaultThinkingLevel()
+  return { ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) }
+}
+
+/** `defaultAgent` for a host's model runtime, its project's default family and Pi settings. */
+export const hostDefault = async (host: DefaultHost) =>
+  defaultAgent(
+    host.modelRuntime.getAvailableSnapshot(),
+    host.settings,
+    (await readFamilies(host.userHome, host.projectRoot)).families[DEFAULT_FAMILY],
+  )
 
 /**
  * `definition` run on family `name`'s model and thinking instead of its own. Throws naming the families when `name` is

@@ -1,7 +1,13 @@
 import type { Agent } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { expect, it } from 'vitest'
-import { defaultModel, definitionAgent, definitionFamily, onFamily } from '../lib/agents.ts'
+import {
+  defaultAgent,
+  defaultModel,
+  definitionAgent,
+  definitionFamily,
+  onFamily,
+} from '../lib/agents.ts'
 import { mergeFamilies } from '../lib/families.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
@@ -59,4 +65,26 @@ it('starts a branch on the configured default whose login is gone, never on the 
     provider: 'anthropic',
     modelId: 'claude-fable-5',
   })
+})
+
+it('answers the default model and its thinking level together', () => {
+  // #552043: Get ready saved a default model and thinking level, but a branch took the model from the default and the
+  // thinking level from what the root had stored.
+  const available = [{ provider: opus.provider, id: opus.modelId }]
+  const pi = {
+    getDefaultProvider: () => 'openai-codex',
+    getDefaultModel: () => 'gpt-6.1-sol',
+    getDefaultThinkingLevel: () => 'low' as const,
+  }
+  expect(
+    defaultAgent(available, pi, {
+      model: 'claude-code/claude-opus-5-5',
+      thinking: 'high',
+      color: 'sky',
+    }),
+  ).toEqual({ model: opus, thinkingLevel: 'high' })
+  // A default family without a thinking level of its own follows Pi's.
+  expect(
+    defaultAgent(available, pi, { model: 'claude-code/claude-opus-5-5', color: 'sky' }),
+  ).toEqual({ model: opus, thinkingLevel: 'low' })
 })
