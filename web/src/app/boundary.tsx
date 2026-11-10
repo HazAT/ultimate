@@ -288,6 +288,41 @@ export function AllProvided<Input, Value>({
   }
   return chain(0, [])
 }
+/**
+ * Renders `children`, the caller's own rendering of `input`, through every facet providing `point`, in discovery order:
+ * each provider gets the rendering so far as `core` and returns it, wraps it or replaces it, as entry renderers do. A
+ * provider that throws shows an inline error card before the rendering it got.
+ */
+export function Rendered<Input extends object>({
+  point,
+  input,
+  children,
+}: {
+  point: Point<Input & { core: ReactNode }, ReactNode>
+  input: Input
+  children: ReactNode
+}) {
+  const caller = useContext(ExtensionNameContext)
+  return provisionsOf(useExtensions(), point.point).reduce<ReactNode>(
+    (core, provision) => (
+      <ExtensionBoundary
+        extension={provision.extension}
+        fallback={core}
+        key={provision.extension}
+        variant="inline"
+        version={provision.version}
+      >
+        <Provide
+          input={{ ...input, core }}
+          key={provision.version}
+          render={(rendered) => rendered}
+          use={provision.use as (input: Input & { core: ReactNode }) => ReactNode}
+        />
+      </ExtensionBoundary>
+    ),
+    <ExtensionNameContext.Provider value={caller}>{children}</ExtensionNameContext.Provider>,
+  )
+}
 function Provide<Input, Value>({
   use,
   input,

@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatTokens,
   plural,
+  Rendered,
   setAsideIds,
   useConversation,
   useFold,
@@ -19,6 +20,7 @@ import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } fro
 import type { Diff } from './breakdown.ts'
 import { DiffBody, Header, signed } from './parts.tsx'
 import { PinnedPrompt } from './pinned.tsx'
+import { CacheRebuiltLine } from './ui.tsx'
 
 /** The breakdown of the context starting at entry index `anchor`; nothing until its first system prompt. */
 function ContextAt({ anchor }: { anchor: number }) {
@@ -120,7 +122,8 @@ const causes: Record<CacheBust['cause'], (bust: CacheBust) => string> = {
 
 /**
  * A response that rebuilt the prompt cache: a quiet warning line above it with what it wrote fresh, what it still read
- * against the prompt before, and why. A response split over several rows shows it on its first.
+ * against the prompt before, and why; other extensions may redraw it (`CacheRebuiltLine`). A response split over
+ * several rows shows it on its first.
  */
 function CacheRebuilt({
   entry,
@@ -135,18 +138,20 @@ function CacheRebuilt({
   if (!bust || (blocks && blocks[0] !== 0)) return core
   return (
     <div className="flex flex-col gap-3">
-      <div
-        className="flex items-center gap-3 font-mono text-[11px] text-warning/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
-        data-cache-rebuilt={entry.id}
-      >
-        <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">
-          <DatabaseZapIcon className="size-3 shrink-0" />
-          <span className="truncate">
-            cache rebuilt · {formatTokens(bust.written)} written · {formatTokens(bust.read)} of{' '}
-            {formatTokens(bust.before)} read · {causes[bust.cause](bust)}
+      <Rendered input={{ entry, bust }} point={CacheRebuiltLine}>
+        <div
+          className="flex items-center gap-3 font-mono text-[11px] text-warning/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
+          data-cache-rebuilt={entry.id}
+        >
+          <span className="flex max-w-[85%] min-w-0 items-center gap-1.5">
+            <DatabaseZapIcon className="size-3 shrink-0" />
+            <span className="truncate">
+              cache rebuilt · {formatTokens(bust.written)} written · {formatTokens(bust.read)} of{' '}
+              {formatTokens(bust.before)} read · {causes[bust.cause](bust)}
+            </span>
           </span>
-        </span>
-      </div>
+        </div>
+      </Rendered>
       {core}
     </div>
   )
