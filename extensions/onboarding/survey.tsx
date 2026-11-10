@@ -2,10 +2,20 @@ import { CompassIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { api, errorMessage, useAction, useConversation, useDocOf, useSystem } from '@/sdk'
+import {
+  api,
+  errorMessage,
+  useAction,
+  useConversation,
+  useDialog,
+  useDocOf,
+  useModels,
+  useSystem,
+} from '@/sdk'
 import { column, MemoryDoc, useRoots } from '../lineage/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { onboarded } from './onboarded.ts'
+import { firstRunDialog } from './parts.tsx'
 import { DismissAction, StartAction, StartsDoc, StatusAction } from './refs.ts'
 
 /** Above @ultimate's composer until onboarding has run for the project: one click starts it. */
@@ -27,6 +37,13 @@ function StartHere({ dock }: { dock?: boolean }) {
   const memories = useDocOf(root ?? 1, MemoryDoc)
   const project = useSystem()?.project.name
   const status = useAction(StatusAction).data
+  // @ultimate's model, as Get ready checks it: without a login and an available model, setup opens Get ready first.
+  const models = useModels()
+  const agent = useConversation((conversation) => conversation.agent.model)
+  const ready = models?.models.some(
+    (model) => model.provider === agent?.provider && model.id === agent.modelId && model.available,
+  )
+  const [, openGetReady] = useDialog(firstRunDialog)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string>()
   if (root === undefined || starts === undefined || memories === undefined || !status) return null
@@ -62,7 +79,9 @@ function StartHere({ dock }: { dock?: boolean }) {
         <div className="ml-auto flex items-center gap-1">
           <Button
             disabled={sending}
-            onClick={() => void run(() => api.action(StartAction, { root }))}
+            onClick={() =>
+              ready ? void run(() => api.action(StartAction, { root })) : openGetReady(true)
+            }
           >
             {sending ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <CompassIcon />}
             Set up with @ultimate

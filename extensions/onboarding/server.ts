@@ -7,6 +7,7 @@ import {
   defineEntry,
   defineExtension,
   defineTool,
+  LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
@@ -207,10 +208,28 @@ export const actions: Record<string, ExtensionAction> = {
       (conversationId === undefined ? undefined : await lineage.rootOf(conversationId, context)) ??
       1
     const harness = host.harness()
+    const requestId = `onboarding:${root}`
     const existing = (await harness.snapshot(Starts, ROOT_CONVERSATION_ID, context))?.roots[
       String(root)
     ]
-    if (existing !== undefined) return { id: existing }
+    if (existing !== undefined) {
+      // A start whose run failed before answering (no model, an expired login, a provider error) never began:
+      // while the newest run of @ultimate is still that failed one, continue it. Checked and admitted in one commit, so
+      // a second call finds it busy (#552022: a start without a model was a dead end).
+      const conversation = (await harness.conversation(existing as ConversationId, context))!
+      await harness.commit(async (tx) => {
+        const sent = await tx.submissionByRequest(conversation.id, requestId)
+        const { run, runFailure } = await tx.doc(LiveDoc, conversation.id)
+        if (
+          sent !== undefined &&
+          run === undefined &&
+          runFailure?.inputs.includes(sent.id) &&
+          ['no_model', 'model_error'].includes(runFailure.reason)
+        )
+          await conversation.submit(tx, { type: 'continue' })
+      }, context)
+      return { id: existing }
+    }
     if ((await lineage.rootOf(root, context)) !== root) throw new Error('Expected a project root')
     const id = await host.need(SubagentsApi).standing('ultimate', context)
     const project = await host.projectSetup()
@@ -247,7 +266,7 @@ export const actions: Record<string, ExtensionAction> = {
           kind: StartEntry.kind,
           data: { root, ...(instructions === undefined ? {} : { instructions }), facts },
         },
-        requestId: `onboarding:${root}`,
+        requestId,
         whenBusy: 'followUp',
       },
       context,
