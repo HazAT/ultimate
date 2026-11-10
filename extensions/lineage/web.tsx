@@ -24,6 +24,7 @@ import {
   api,
   Card,
   cn,
+  column,
   defineWebExtension,
   events,
   errorMessage,
@@ -51,7 +52,7 @@ import { talkToUltimate } from '../subagents/ui.tsx'
 import { Open, useGithubRepo } from '../workspaces/ui.tsx'
 import { ForgetAction, MemoryDoc, OpenEditorAction, TallyDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
-import { column, MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
+import { MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.tsx'
 import { GoBackAction, Rewound, RewoundDependent } from './rewind.tsx'
 

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   api,
+  column,
   errorMessage,
   useAction,
   useConversation,
@@ -12,7 +13,7 @@ import {
   useModels,
   useSystem,
 } from '@/sdk'
-import { column, MemoryDoc, useRoots } from '../lineage/ui.tsx'
+import { MemoryDoc, useRoots } from '../lineage/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { onboarded } from './onboarded.ts'
 import { firstRunDialog } from './parts.tsx'

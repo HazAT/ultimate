@@ -58,6 +58,8 @@ export {
 export { ProjectChip, projectTitle, Wordmark } from '../app/titlebar.tsx'
 /** Isolates another extension's component you render, such as a document renderer: it throws into an error card. */
 export { ExtensionBoundary } from '../app/boundary.tsx'
+/** The transcript's and composer's reading column classes, for a card that sits in that column. */
+export { column } from '../app/layout.ts'
 /** The transcript's card: a bordered section with the brand accent on its left edge. */
 export { Card } from '../app/card.tsx'
 /** A card that folds to one quiet line in compact mode, and whether one is open; the reader's choice survives reloads. */

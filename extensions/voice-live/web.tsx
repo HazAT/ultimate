@@ -22,6 +22,7 @@ import { Kbd } from '@/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   cn,
+  column,
   Conversation,
   ConversationScope,
   defineWebExtension,
@@ -415,9 +416,13 @@ function Stage() {
       (child): child is HTMLElement => child instanceof HTMLElement && !child.contains(ref.current),
     )
     const still = reduced()
-    const column = Math.min(736, width)
+    // The column as laid out, so a `--reading-width` set by the user moves it to the same resting place.
+    const reading = layers
+      .map((layer) => layer.querySelector<HTMLElement>('[data-ui="transcript"]'))
+      .find(Boolean)
+    const columnWidth = reading?.offsetWidth ?? width
     const scale = phone ? 0.92 : 0.88
-    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (column / 2) * scale))
+    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (columnWidth / 2) * scale))
     for (const layer of layers) {
       layer.style.transition = still
         ? `opacity ${duration}ms ease`
@@ -817,10 +822,7 @@ function VoiceDock({ core }: { core: ReactNode }) {
   const off = mode.phase === 'off'
   const asleep = mode.phase === 'paused'
   return (
-    <div
-      className="mx-auto w-full max-w-(--reading-width,46rem) px-3 pt-1 pb-3 sm:px-6"
-      data-voice-live-dock
-    >
+    <div className={cn(column(), 'pt-1 pb-3')} data-voice-live-dock>
       {mode.problem && (
         <p
           className="mb-2 flex items-start gap-1.5 rounded-md border border-error/30 bg-error/5 px-2.5 py-1.5 font-mono text-[11px] break-words text-error"
