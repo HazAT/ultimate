@@ -1,5 +1,5 @@
 import { request } from 'node:http'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
@@ -221,6 +221,36 @@ describe('server reload', () => {
     await rm(folder, { recursive: true })
     await until(() => !server.extensions.info().some((extension) => extension.name === 'added'))
     expect(server.host.registry.snapshot().extension('added')).toBeUndefined()
+  })
+  // 2026-11-10 (#561727): a landing deleted a linked user extension's folder and a script then removed the link; its
+  // ENOENT stayed on every instance of the machine until a settings file changed.
+  it('drops a linked extension whose folder was deleted once its dangling link is removed', async () => {
+    const { server, options } = await fixture(true)
+    const info = (name: string) =>
+      server.extensions.info().find((extension) => extension.name === name)
+    const entry = () => info('linked')
+    const target = join(options.userHome, 'elsewhere/linked')
+    const link = join(options.userHome, '.ultimate/extensions/linked')
+    await mkdir(target, { recursive: true })
+    await writeFile(join(target, 'server.ts'), orderedSource('linked'))
+    await mkdir(join(link, '..'), { recursive: true })
+    await symlink(target, link)
+    await until(() => !!entry()?.server?.loadedAt)
+    const gone = new Promise<void>((resolve) => {
+      server.vite.watcher.on('unlink', (file) => {
+        if (file === join(link, 'server.ts')) resolve()
+      })
+    })
+    await rm(target, { recursive: true })
+    await until(() => !!entry()?.server?.error?.includes('ENOENT'))
+    // The watcher's last event for the deleted folder, and the reload it queued: reloads run in order, so a later one
+    // that finished means no earlier one is left to notice the removed link by accident.
+    await gone
+    await writeFile(join(server.host.ultimateRoot, 'extensions/web-only/README.md'), 'Settled')
+    await until(() => info('web-only')?.readme === 'Settled')
+    await rm(link)
+    await until(() => !entry())
+    expect(server.host.registry.snapshot().extension('linked')).toBeUndefined()
   })
   // Landing c16450c (2026-11-09) changed a patch together with the extension using it: the extension hot-reloaded while
   // pnpm install was still relinking the package and failed with "useExchangeTap is not a function".

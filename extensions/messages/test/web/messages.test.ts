@@ -10,6 +10,7 @@ import {
   counterparts,
   stateWord,
   messageStatus,
+  offscreen,
   openMessages,
   outgoingState,
   scriptMessaged,
@@ -33,6 +34,21 @@ const response = (id: number, calls: string[]) =>
       },
     ],
   }) as unknown as EntryRecord
+
+describe('offscreen', () => {
+  it('points each way at the nearest question out of view, counting those that way, never at those in view', () => {
+    expect(
+      offscreen([
+        { key: 1, place: 'above' },
+        { key: 2, place: 'above' },
+        { key: 3, place: 'visible' },
+        { key: 4, place: 'below' },
+        { key: 5, place: 'below' },
+      ]),
+    ).toEqual({ up: { count: 2, nearest: 2 }, down: { count: 2, nearest: 4 } })
+    expect(offscreen([{ key: 1, place: 'visible' }])).toEqual({ up: undefined, down: undefined })
+  })
+})
 
 describe('callerOf', () => {
   const entries = [response(1, ['a']), response(2, ['b', 'c'])]
