@@ -12,6 +12,7 @@ import type {
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
+import { hostDefault } from '../lib/agents.ts'
 import { expandSkillCommand } from './skills.ts'
 import type { Extensions } from './extensions.ts'
 import { context } from './harness.ts'
@@ -547,11 +548,10 @@ export async function createApi(
         if (url.pathname === '/api/conversations') {
           const cwd = data.cwd === undefined ? host.projectRoot : text(data.cwd, 'cwd')
           const title = data.title === undefined ? undefined : text(data.title, 'title')
-          const agent = await root.agent(context)
           const created = await harness.createConversation(
             {
               ownership: { kind: 'ownerless' },
-              agent: { cwd, model: agent.model, thinkingLevel: agent.thinkingLevel },
+              agent: { cwd, ...(await hostDefault(host)) },
             },
             context,
           )

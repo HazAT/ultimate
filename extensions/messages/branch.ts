@@ -7,7 +7,7 @@ import {
   definitionAgent,
   definitionFamily,
   discoverAgents,
-  hostDefaultModel,
+  hostDefault,
   onFamily,
 } from '../../lib/agents.ts'
 import { Family } from '../models/api.ts'
@@ -68,13 +68,14 @@ export const branchTool = (host: ExtensionHost) =>
                 host.modelRuntime.getAvailableSnapshot(),
               )
         // The model and thinking level the definition pins when its provider has a login here, thinking clamped to
-        // what the model supports; without one, the current default model, never the one the root last stored.
+        // what the model supports; without one, the current default model and thinking level, never what the root
+        // last stored.
         const rootAgent = await (await host
           .harness()
           .conversation(root as ConversationId, ctx))!.agent(ctx)
         const change = definitionAgent(
           coordinator,
-          { ...rootAgent, model: await hostDefaultModel(host) },
+          { ...rootAgent, ...(await hostDefault(host)) },
           host.modelRuntime,
         )
         const { model, thinkingLevel, modelTools } = change
