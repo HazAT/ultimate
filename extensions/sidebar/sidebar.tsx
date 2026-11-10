@@ -400,7 +400,8 @@ function Tree({
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
             ) : (
-              <span className={cn('shrink-0', stateTone[state])}>{stateWord(state, waiting)}</span>
+              // No count: the Inbox row under it carries how many wait on the user.
+              <span className={cn('shrink-0', stateTone[state])}>{stateWord(state)}</span>
             )}
             {latest > 0 && (
               <span

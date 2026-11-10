@@ -113,6 +113,13 @@ function Pusher() {
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
+      // A question opens the Inbox at it, where it is answered.
+      const asked = Number(url.searchParams.get('inbox'))
+      if (url.searchParams.has('inbox') && Number.isSafeInteger(asked)) {
+        events.emit('inbox:open', { message: asked })
+        showSurface('inbox')
+        return
+      }
       const id = Number(url.searchParams.get('conversation'))
       if (!Number.isSafeInteger(id) || id <= 0) return
       const message = Number(url.searchParams.get('message'))

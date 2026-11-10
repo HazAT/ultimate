@@ -1,32 +1,13 @@
-import {
-  ArrowUpRightIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  MessageCircleQuestionIcon,
-  PlayIcon,
-  PlusIcon,
-} from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, InboxIcon, PlayIcon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api, cn, errorMessage, events, formatAgo, useDocOf, useNow, useUltimate } from '@/sdk'
-import { Address, MessagesDoc, emptyMessages, useAccentOf } from '../messages/ui.tsx'
-import type { Question } from '../messages/refs.ts'
+import { MessagesDoc, emptyMessages, stateTone } from '../messages/ui.tsx'
 import { waiting } from '../questions/ui.tsx'
 import { StandingAction } from '../subagents/ui.tsx'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
-
-/** The fields of a waiting message a question row shows. */
-type Asked = {
-  id: number
-  from: number | 'user' | 'remote'
-  text: string
-  at: number
-  call?: string
-  remote?: { project: string; machine: string }
-  questions?: Question[]
-}
 
 const owners: { id: Todo['owner']; label: string }[] = [
   { id: 'user', label: 'you' },
@@ -34,9 +15,9 @@ const owners: { id: Todo['owner']; label: string }[] = [
 ]
 
 /**
- * The project's to-dos: what waits on you (questions asked of you, read live from Messages, then your own to-dos), what
- * @ultimate is still on, a field to add one for either of you, and the done ones folded away. A question is answered
- * where it was asked: its row opens that conversation at the message, whose card has the choices and Dismiss.
+ * The project's to-dos: what waits on you (one Inbox row for the questions asked of you, read live from Messages, then
+ * your own to-dos), what @ultimate is still on, a field to add one for either of you, and the done ones folded away.
+ * Questions are answered in the Inbox.
  */
 export function Todos() {
   const items = useDocOf(1, TodosDoc)?.items ?? []
@@ -102,9 +83,7 @@ export function Todos() {
       ) : (
         <>
           <Section title="For you" owner="user" empty={!questions.length && !yours.length}>
-            {questions.map((message) => (
-              <QuestionRow key={`q${message.id}`} message={message} now={now} />
-            ))}
+            {questions.length > 0 && <InboxRow count={questions.length} />}
             {yours.map((todo) => (
               <TodoRow key={todo.id} todo={todo} now={now} toggle={toggle} start={start} />
             ))}
@@ -224,69 +203,23 @@ function TodoRow({
   )
 }
 
-/**
- * One question waiting on you: its gist, who asks and how long ago. A click opens the asker's conversation at the
- * message, where its answer card offers the choices, a reply and Dismiss.
- */
-function QuestionRow({ message, now }: { message: Asked; now: number }) {
-  const questions = message.questions ?? []
-  const { showSurface, switchConversation } = useUltimate()
-  const accent = useAccentOf(message.from)
-  const more = questions.length > 1 ? ` +${questions.length - 1}` : ''
-  const from = typeof message.from === 'number' ? message.from : undefined
-  const open = () => {
-    if (from === undefined) return
-    if (message.call) events.emit('messages:open', { conversation: from, call: message.call })
-    showSurface('agent')
-    switchConversation(from)
-  }
+/** The questions waiting on you, as one row: a click opens the Inbox, where each is answered. */
+function InboxRow({ count }: { count: number }) {
+  const { showSurface } = useUltimate()
   return (
-    <li data-todo-question={message.id}>
+    <li data-todo-inbox>
       <button
-        className="group/question flex w-full cursor-pointer items-start gap-2.5 rounded px-2 py-1.5 text-left hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-default"
-        disabled={from === undefined}
-        onClick={open}
-        title={from === undefined ? undefined : `Answer in #${from}`}
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded px-2 py-1.5 text-left hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        onClick={() => showSurface('inbox')}
         type="button"
       >
-        <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-[13px] leading-snug">
-            {questions[0]?.text ?? gist(message.text)}
-            {more && (
-              <span className="ml-1 font-mono text-[11px] text-muted-foreground">{more}</span>
-            )}
-          </span>
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[11px]">
-            <span className={cn('flex min-w-0 font-semibold', accent.name)}>
-              <Address id={message.from} remote={message.remote} />
-            </span>
-            {from !== undefined && (
-              <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground/70 transition-colors group-hover/question:text-foreground">
-                answer
-                <ArrowUpRightIcon className="size-3" />
-              </span>
-            )}
-          </span>
-        </span>
-        <time
-          className="shrink-0 pt-px font-mono text-[11px] text-muted-foreground/70"
-          dateTime={new Date(message.at).toISOString()}
-          title={`Asked ${new Date(message.at).toLocaleString()}`}
-        >
-          {formatAgo(message.at, now)}
-        </time>
+        <InboxIcon className={cn('size-4 shrink-0', stateTone.waits)} />
+        <span className={cn('min-w-0 flex-1 text-[13px]', stateTone.waits)}>Inbox · {count}</span>
+        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
       </button>
     </li>
   )
 }
-
-/** A message's first line of prose, without Markdown marks. */
-const gist = (text: string) =>
-  (text.split('\n').find((line) => line.trim()) ?? '')
-    .replace(/^[#>\-*\s]+/, '')
-    .replace(/[*_`]/g, '')
-    .trim()
 
 /** The add field: text, whose it is, Enter adds; the owner stays as last chosen. */
 function AddTodo({ add }: { add: (text: string, owner: Todo['owner']) => Promise<boolean> }) {

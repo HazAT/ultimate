@@ -54,9 +54,9 @@ card, on another control or in the panel, whose cards take no global keys.
 
 ## Where open questions wait
 
-The To-dos tab lists every message that waits on the user at its top, newest first, named by its first question; a
-row opens the asking conversation at the message, where this card answers or dismisses it. ⌘K “Show open
-questions" opens the tab; meanwhile @ultimate's mark is amber, and an asking branch's row says `waits on you`.
+The Inbox (`extensions/inbox`) lists every message that waits on the user, oldest first, and shows this card under the
+selected one, so it is answered or dismissed there; the To-dos tab keeps one `Inbox · N` row that opens it. ⌘K “Show
+open questions" opens the To-dos tab; meanwhile @ultimate's mark is amber, and an asking branch's row says `waits on you`.
 
 ## Actions
 

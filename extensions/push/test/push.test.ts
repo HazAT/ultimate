@@ -84,7 +84,7 @@ it('offers Approve only when every question has a recommended answer', () => {
   expect(both).toMatchObject({
     title: 'Phone layout',
     message: 7,
-    path: '/?conversation=12&message=7',
+    path: '/?inbox=7',
     approve: [
       { question: 'Layout?', answer: 'Flat' },
       { question: 'Land it?', answer: 'Yes' },

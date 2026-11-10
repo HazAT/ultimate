@@ -67,7 +67,7 @@ export function questionPush(
           : message.text,
     ),
     tag: `message:${message.id}`,
-    path: `/?conversation=${message.from}&message=${message.id}`,
+    path: `/?inbox=${message.id}`,
     message: message.id,
     ...(approve && { approve }),
     urgency: 'high',
