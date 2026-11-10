@@ -2,7 +2,6 @@ import type { LiveState } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { primaryLabel } from '../../label.ts'
 
 // The real hooks and client connect to a server; LiveLines needs only a clock, and whether it asks for one is the point.
 const clock = vi.hoisted(() => ({ ticking: [] as boolean[] }))
@@ -63,13 +62,4 @@ it('counts the working clock from the run’s saved start, also for a run first 
   )
   expect(unknown).toContain('working…')
   expect(unknown).not.toMatch(/\d+s</)
-})
-
-it('says paused on the @ultimate button for a parked run, before working or idle', () => {
-  expect(primaryLabel({ paused: true, working: false, word: 'working', waiting: 0 })).toBe('paused')
-  expect(primaryLabel({ paused: true, working: false, word: 'working', waiting: 2 })).toBe('paused')
-  expect(primaryLabel({ paused: false, working: true, word: 'editing', waiting: 0 })).toBe(
-    'editing',
-  )
-  expect(primaryLabel({ paused: false, working: false, word: 'working', waiting: 0 })).toBe('idle')
 })

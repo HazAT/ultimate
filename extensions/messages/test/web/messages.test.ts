@@ -373,9 +373,20 @@ describe('conversation state', () => {
   })
 
   it('is working while it runs or has input queued, before anything else', () => {
-    expect(conversationState({ ...primary, busy: true }, toUser)).toBe('working')
-    expect(conversationState({ ...primary, runState: 'working' }, toUser)).toBe('working')
+    expect(conversationState({ ...primary, busy: true }, messagesLog())).toBe('working')
+    expect(conversationState({ ...primary, runState: 'working' }, messagesLog())).toBe('working')
     expect(conversationState({ ...primary, runState: 'queued' }, messagesLog())).toBe('working')
+  })
+
+  it('waits on the user over working while any question to the user is open for the primary agent', () => {
+    // The bug: @ultimate's row and phone button said `working` and hid the questions branches had asked the user.
+    const asked = messagesLog({ from: 5, to: 'user' }, { from: 6, to: 'user' })
+    const state = conversationState({ ...primary, busy: true }, asked)
+    expect(stateWord(state, waitingOnUser(asked))).toBe('2 waiting on you')
+    // A branch's question to @ultimate waits on it, not on the user.
+    expect(conversationState({ ...primary, busy: true }, messagesLog({ from: 5, to: 2 }))).toBe(
+      'working',
+    )
   })
 
   it('waits for the primary agent with an open question to the user', () => {

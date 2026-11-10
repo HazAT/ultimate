@@ -378,8 +378,13 @@ function Tree({
         conversation={conversation}
         key={conversation?.id ?? 'ultimate'}
         name={name}
+        // Its mark keeps pulsing while it works, also when its word says what waits on you.
         presence={
-          state === 'working' || landing ? 'working' : state === 'waits' ? 'waiting' : 'idle'
+          state === 'working' || landing || (busy && state === 'waits')
+            ? 'working'
+            : state === 'waits'
+              ? 'waiting'
+              : 'idle'
         }
         onOpen={() =>
           conversation && !isUltimate

@@ -10,10 +10,16 @@ import {
   useUltimate,
   Wordmark,
 } from '@/sdk'
-import { MessagesDoc, emptyMessages, waitingOnUser } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  emptyMessages,
+  stateTone,
+  stateWord,
+  waitingOnUser,
+} from '../messages/ui.tsx'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
-import { primaryLabel } from './label.ts'
 
 /** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
@@ -40,8 +46,8 @@ export function UltimateWordmark() {
 }
 
 /**
- * The title bar's way to @ultimate on phones, where the sidebar with its row is hidden: its state, the mark amber while
- * questions wait on you.
+ * The title bar's way to @ultimate on phones, where the sidebar with its row is hidden: its state as its sidebar row
+ * says it (`conversationState`), the mark pulsing while it works and amber while questions wait on you.
  */
 export function UltimateButton() {
   return (
@@ -59,6 +65,7 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
   const actions = useUltimate()
   const id = useDocOf(1, StandingDoc)?.[name]
   const tasks = useTasks()
+  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
   const runState = useOverview()[id ?? -1]?.runState
   const shown = useStore((state) => state.view?.conversation.id ?? state.requested)
   const paused = id !== undefined && parked?.has(id) === true
@@ -69,47 +76,53 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
       Object.values(tasks?.tasks ?? {}).some(
         (task) => !task.background && task.conversationId === id,
       ))
+  const state = conversationState(
+    { id: id ?? -1, kind: 'primary', runState, busy: working, parked: paused },
+    log,
+  )
+  const waiting = waitingOnUser(log)
   const active = id !== undefined && shown === id && actions.surface === 'agent'
   return (
-    <WaitingOnUser>
-      {(waiting) => (
-        <Provided input={working ? id : undefined} point={ConversationPhase}>
-          {(phase) => {
-            const word = workingWord(phase)
-            const label = primaryLabel({ paused, working, word, waiting })
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    aria-current={active ? 'page' : undefined}
-                    aria-label={`Talk to @${name} (${label})`}
-                    className={cn(
-                      'flex h-5 shrink-0 items-center gap-1.5 rounded-sm px-1.5 transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
-                      active && 'text-foreground',
-                    )}
-                    data-ui="ultimate-button"
-                    data-ultimate-button
-                    onClick={() => void talkToUltimate(actions)}
-                    type="button"
-                  >
-                    <AgentMark
-                      name={name}
-                      presence={working ? 'working' : waiting ? 'waiting' : undefined}
-                      size="sm"
-                    />
-                    @{name}
-                    {working && word !== 'working' && <span className="text-brand">{word}</span>}
-                    {paused && <span className="text-warning">paused</span>}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Talk to @{name} · {label}
-                </TooltipContent>
-              </Tooltip>
-            )
-          }}
-        </Provided>
-      )}
-    </WaitingOnUser>
+    <Provided input={working ? id : undefined} point={ConversationPhase}>
+      {(phase) => {
+        const word = workingWord(phase)
+        const label = state === 'working' ? word : stateWord(state, waiting)
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-current={active ? 'page' : undefined}
+                aria-label={`Talk to @${name} (${label})`}
+                className={cn(
+                  'flex h-5 shrink-0 items-center gap-1.5 rounded-sm px-1.5 transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+                  active && 'text-foreground',
+                )}
+                data-ui="ultimate-button"
+                data-ultimate-button
+                onClick={() => void talkToUltimate(actions)}
+                type="button"
+              >
+                <AgentMark
+                  name={name}
+                  presence={working ? 'working' : state === 'waits' ? 'waiting' : undefined}
+                  size="sm"
+                />
+                @{name}
+                {state === 'working' && word !== 'working' && (
+                  <span className="text-brand">{word}</span>
+                )}
+                {/* The bare count: the phone bar has no room for its words, which the label carries. */}
+                {(state === 'paused' || state === 'waits') && (
+                  <span className={stateTone[state]}>{state === 'waits' ? waiting : 'paused'}</span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Talk to @{name} · {label}
+            </TooltipContent>
+          </Tooltip>
+        )
+      }}
+    </Provided>
   )
 }
