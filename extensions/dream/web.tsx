@@ -130,6 +130,7 @@ function WakeUp() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Dream…': 'ドリーム…', 'Chapters…': 'チャプター…' } },
   entries: {
     'dream.requested': RequestedCard,
     'dream.ready': ReadyCard,

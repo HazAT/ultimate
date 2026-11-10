@@ -1,6 +1,7 @@
 import { defineWebExtension, getState } from '@/sdk'
 
 export default defineWebExtension({
+  messages: { ja: { 'Toggle light and dark theme': 'ライトとダークのテーマを切り替え' } },
   commands: [
     {
       id: 'theme.toggle',

@@ -303,6 +303,9 @@ export const provide = <Input, Value>(
   useValue: (input: Input) => Value,
 ): Provision => ({ point: point.point, use: useValue })
 
+/** Translations keyed by the English source text, such as `{ 'Show to-dos': 'ToDo を表示' }`. */
+export type Messages = Readonly<Record<string, string>>
+
 /** The browser facet of an extension: `extensions/<name>/web.tsx` default-exports one. */
 export interface WebExtension {
   slots?: Partial<Record<SlotName, Contribution | readonly Contribution[]>>
@@ -338,6 +341,8 @@ export interface WebExtension {
   commands?: readonly CommandContribution[]
   /** Values for other extensions' points; the last facet in discovery order providing a point wins. */
   provides?: readonly Provision[]
+  /** Translations by language (`{ ja: { … } }`) for `useT()`; a later facet wins a text, over the core's. */
+  messages?: Readonly<Record<string, Messages>>
 }
 
 export function defineWebExtension(extension: WebExtension): WebExtension {

@@ -44,6 +44,8 @@ recent context and start compacting in the background earlier. `compaction.model
 are read when the server starts.
 User config is independent of `ULTIMATE_HOME`. A project's `isolates.worktree` sets its checkouts' `setup` commands and, optionally, where they live (`path`) and
 how they are made and removed (`add`, `remove`); see `extensions/workspaces/README.md`.
+`language` (such as `"ja"`; project over user) is the language the UI shows; without it, or for text nothing
+translates yet, the UI shows English. Extensions ship translations with `messages` ([SDK](extensions/sdk.md#translations)).
 This repository's `.ultimate/settings.json` holds its isolate setup,
 lander checks and preview model.
 

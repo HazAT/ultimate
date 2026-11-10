@@ -128,6 +128,8 @@ store.subscribe(() => {
   // The theme is a preference of this browser.
   localStorage.setItem('ultimate.theme', ui.theme)
   document.documentElement.classList.toggle('dark', ui.theme === 'dark')
+  // Screen readers, hyphenation and fonts follow the language the UI shows.
+  if (system) document.documentElement.lang = system.language ?? 'en'
   // The browser bar and the installed app's chrome take the page background (web/index.html).
   document
     .querySelector('meta[name=theme-color]')

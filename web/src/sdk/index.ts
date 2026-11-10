@@ -34,6 +34,7 @@ export type {
   LinkRenderer,
   PanelContribution,
   Point,
+  Messages,
   Provision,
   SlotName,
   SurfaceContribution,
@@ -79,6 +80,7 @@ export { api, bundle, switched } from './client.ts'
 export { ActionError } from './api.ts'
 export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'
+export type { Translate } from './i18n.ts'
 /** Typed refs for a project extension's own documents and actions; built-ins keep theirs in `refs.ts`. */
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
@@ -89,6 +91,7 @@ export {
   useAction,
   useCompact,
   useCommands,
+  useT,
   useConnection,
   useConversation,
   useConversations,

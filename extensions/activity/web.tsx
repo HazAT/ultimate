@@ -226,6 +226,7 @@ function Older({
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Show recent activity': '最近のアクティビティを表示' } },
   panels: [
     { id: 'activity', title: 'Activity', icon: ActivityIcon, component: ActivityPanel, order: 2 },
   ],

@@ -24,6 +24,7 @@ function ReviewSurface() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { Review: 'レビュー', 'Open Review': 'レビューを開く' } },
   surfaces: [
     {
       id: 'review',

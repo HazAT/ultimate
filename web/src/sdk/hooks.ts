@@ -39,6 +39,8 @@ import {
 } from './registry.ts'
 import type { State } from './store.ts'
 import { errorMessage, formatDuration } from './format.ts'
+import { translator } from './i18n.ts'
+import type { Translate } from './i18n.ts'
 import type { CompactRow, ToolCallView, UltimateContext } from './types.ts'
 import { useViewport } from './viewport.ts'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
@@ -369,10 +371,17 @@ export function useDocumentRenderers() {
   const records = useExtensions()
   return useMemo(() => documentItems(records), [records])
 }
+/** `t(text, values?)` for the `language` setting: the translation of English `text`, else `text` itself. */
+export function useT(): Translate {
+  const language = useStore((state) => state.system?.language)
+  const records = useExtensions()
+  return useMemo(() => translator(language, records), [language, records])
+}
 /** Core and extension commands. */
 export function useCommands() {
   const records = useExtensions()
-  return useMemo(() => allCommands(records), [records])
+  const t = useT()
+  return useMemo(() => allCommands(records, t), [records, t])
 }
 
 export interface Restart {

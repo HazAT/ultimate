@@ -137,6 +137,8 @@ export interface SystemInfo {
   access: { origins: string[] }
   persistence: { kind: 'sqlite'; path: string; sizeBytes: number; walBytes: number }
   execution: { kind: 'node-local'; defaultCwd: string }
+  /** The UI's `language` setting (project over user), such as `ja`; English when unset. */
+  language?: string
   project: {
     root: string
     name: string

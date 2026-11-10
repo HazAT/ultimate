@@ -26,6 +26,7 @@ function HandsOff() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Go hands-off…': 'ハンズオフで任せる…' } },
   tools: { goal: GoalCall },
   entries: {
     'goal.started': StartedCard,

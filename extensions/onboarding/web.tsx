@@ -308,6 +308,13 @@ function Instructions({ text }: { text: string }) {
 }
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      'Extensions…': '拡張機能…',
+      'Get ready…': '準備…',
+      'Walk me through Ultimate': 'Ultimate の使い方を案内',
+    },
+  },
   tools: { setup: attention(SetupCall) },
   // Until onboarding has run, @ultimate's composer carries the card that starts it.
   composer: StartComposer,

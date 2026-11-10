@@ -462,6 +462,7 @@ function InfoPanel() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Show system info': 'システム情報を表示', 'Run a skill': 'スキルを実行' } },
   panels: [{ id: 'info', title: 'Info', icon: InfoIcon, component: InfoPanel, order: 5 }],
   slots: { overlay: [SkillPicker] },
   commands: [

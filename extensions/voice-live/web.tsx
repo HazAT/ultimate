@@ -1393,6 +1393,14 @@ const AgentRow: EntryRenderer = ({ core }) => {
 }
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      'Start voice relay': '音声リレーを開始',
+      'Voice relay: bring to front or send back': '音声リレー: 前面に出す / 背面に戻す',
+      'Voice relay: mute or unmute': '音声リレー: ミュート / ミュート解除',
+      'End voice relay': '音声リレーを終了',
+    },
+  },
   slots: {
     'composer.actions': [StartButton],
     'titlebar.right': [LiveIndicator],

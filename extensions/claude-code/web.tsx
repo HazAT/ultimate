@@ -71,6 +71,7 @@ function ClaudeCodePanel() {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Claude Code setup…': 'Claude Code のセットアップ…' } },
   panels: [
     {
       id: 'claude-code',

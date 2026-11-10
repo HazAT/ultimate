@@ -226,6 +226,15 @@ function FellBack({ entry }: { entry: EntryRecord }) {
 }
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      'Model families…': 'モデルファミリー…',
+      'Pick a model': 'モデルを選ぶ',
+      'Set the thinking level': '思考レベルを設定',
+      'Cycle the thinking level': '思考レベルを切り替え',
+      'Log in to a provider': 'プロバイダーにログイン',
+    },
+  },
   entries: { 'pi.assistant': Switched, 'models.fallback': FellBack },
   slots: { 'composer.toolbar': [ModelButton, ThinkingButton], overlay: [ModelPicker, LoginDialog] },
   commands: [

@@ -515,6 +515,7 @@ function useRunStart(id: number | undefined): number | undefined {
 }
 
 export default defineWebExtension({
+  messages: { ja: { 'Show the task graph': 'タスクグラフを表示' } },
   provides: [provide(RunStart, useRunStart)],
   panels: [{ id: 'tasks', title: 'Tasks', icon: ListTreeIcon, component: TasksPanel, order: 1 }],
   commands: [

@@ -354,6 +354,12 @@ function LandOnUltimate() {
 }
 
 export default defineWebExtension({
+  messages: {
+    ja: {
+      'Talk to @ultimate': '@ultimate と話す',
+      'Show agent definitions': 'エージェント定義を表示',
+    },
+  },
   tools: { subagent: SubagentCall },
   panels: [
     { id: agentsPanel, title: 'Agents', icon: NetworkIcon, component: AgentsOverview, order: 3 },

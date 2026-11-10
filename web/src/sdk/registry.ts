@@ -178,6 +178,10 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
     arrayOf(fields({ point: isString, use: isFunction })),
     'an array of provide(Point, useValue)',
   ],
+  messages: [
+    objectOf(objectOf(isString)),
+    'an object of language → an object of English text → translation',
+  ],
 }
 
 function validate(module: unknown): WebExtension {
