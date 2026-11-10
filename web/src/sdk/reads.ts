@@ -44,8 +44,21 @@ const FRESH = 2000
  */
 export function createReads(api: Api, store: Store) {
   const reads = new Map<string, Read & { readers: Set<Reader> }>()
+  /** Reads whose last call never reached the server (status 0), asked again once the page is back. */
+  const missed = new Set<Read & { readers: Set<Reader> }>()
+  function retryMissed() {
+    for (const read of missed)
+      // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
+      if (read.readers.size) void read.refetch()
+  }
   let process: string | undefined
+  let connection = store.getState().connection.status
   store.subscribe(() => {
+    const status = store.getState().connection.status
+    if (status !== connection) {
+      connection = status
+      if (status === 'open') retryMissed()
+    }
     const system = store.getState().system
     const next = system && `${system.process.pid}:${system.process.generation}`
     if (next === process) return
@@ -59,6 +72,11 @@ export function createReads(api: Api, store: Store) {
       for (const read of reads.values())
         // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
         if ([...read.readers].some((reader) => reader.focus)) void read.refetch()
+    })
+  if (typeof window !== 'undefined') window.addEventListener('online', retryMissed)
+  if (typeof document !== 'undefined')
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') retryMissed()
     })
 
   /** Forget the oldest reads nobody reads beyond `IDLE`, disabled ones included. */
@@ -105,11 +123,21 @@ export function createReads(api: Api, store: Store) {
         )
         if (own.signal.aborted) return undefined
         answered = Date.now()
+        missed.delete(read)
         set({ data, error: undefined, loading: false, settled: true })
         return data
       } catch (error) {
         if (own.signal.aborted) return undefined
         const failure = error as ActionError
+        // The request never reached the server: a sleeping tab, the network gone, or the server down (which the
+        // status line shows as reconnecting). Nobody asked for this read by hand, so keep the last answer and ask again
+        // when the page is back instead of reporting it (#555684).
+        if (failure.status === 0) {
+          missed.add(read)
+          set({ loading: false })
+          return undefined
+        }
+        missed.delete(read)
         set({ error: failure, loading: false, settled: true })
         // One report per failed call: the first reader's handler, else a notice.
         if (onError) onError(failure)
@@ -146,6 +174,7 @@ export function createReads(api: Api, store: Store) {
           if (readers.size) return repoll()
           // A call in flight finishes: a component remounting at once, as the shell does while its facets load, takes it.
           clearTimeout(poll)
+          missed.delete(read)
           evict()
         }
       },
