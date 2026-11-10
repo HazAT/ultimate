@@ -53,7 +53,9 @@ it('keeps a read quiet when its request never reached the server, and asks again
   const reads = createReads({ action } as unknown as Api, store as never)
 
   // A tab put to sleep: the browser cancels the request before it reaches the server.
-  action.mockResolvedValueOnce('first').mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
+  action
+    .mockResolvedValueOnce('first')
+    .mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
   const read = reads.get('test', 'status', null)
   read.use({})
   await vi.waitFor(() => expect(read.get().data).toBe('first'))
