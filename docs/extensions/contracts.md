@@ -119,7 +119,23 @@ export default defineWebExtension({ provides: [provide(Phase, (id) => usePhaseWo
 The provider's function is a hook, run once per `<Provided>`; the last facet in discovery order providing a point wins,
 and while none does the render prop gets `undefined`. A point that combines its providers (the sidebar's rows under
 @ultimate) renders `<AllProvided point input>{(values) => …}</AllProvided>` instead: every provider's value in discovery
-order, a throwing one left out behind its inline error card. The web core declares its own points in the SDK: `ParkedRuns`
+order, a throwing one left out behind its inline error card.
+
+A piece of UI other extensions may redraw (a line, a header, a row) renders through `<Rendered point input>` with its
+own rendering as children. Its point's input carries `core`, the rendering so far, and each provider in discovery order
+returns it, wraps it or replaces it, as entry renderers do; one that throws falls back to the rendering it got:
+
+```tsx
+// context/ui.tsx
+export const CacheRebuiltLine = definePoint<
+  { entry: EntryRecord; bust: CacheBust; core: ReactNode },
+  ReactNode
+>('context.cache-rebuilt')
+// context/web.tsx: <Rendered point={CacheRebuiltLine} input={{ entry, bust }}>{line}</Rendered>
+// my-extension/web.tsx: provide(CacheRebuiltLine, ({ bust, core }) => (bust.written > 100_000 ? <MyLine bust={bust} /> : core))
+```
+
+The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
 branches `branch · coordinator`) and `MessageReference` (the copyable reference to a stored message; codemode). The
 server's counterpart is the extension point above.
