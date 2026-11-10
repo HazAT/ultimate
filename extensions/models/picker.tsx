@@ -34,6 +34,7 @@ import {
   authLabel,
   dialogs,
   formatWindow,
+  notePick,
   openLogin,
   price,
   selectModel,
@@ -180,7 +181,10 @@ export function ModelPicker() {
       .configure({ model: { provider, modelId }, ...(level ? { thinkingLevel: level } : {}) }, id)
       .then(() => api.action(SetFamilyAction, { family: family.name }, { conversationId: id }))
       .then(
-        () => setOpen(false),
+        () => {
+          notePick()
+          setOpen(false)
+        },
         (failure: unknown) => setError(errorMessage(failure)),
       )
   }

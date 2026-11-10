@@ -182,16 +182,30 @@ export async function setDefault(host: ExtensionHost, name: string) {
   )
     throw new Error(`Model ${name} is not available`)
   const thinkingLevel = clampThinkingLevel(model, RECOMMENDED_THINKING)
-  const { base } = await readFamilyLayers(
+  const layers = await readFamilyLayers(
     host.userHome,
     host.projectRoot,
     await host.projectSettings(),
   )
-  const families = {
-    ...base.families,
-    [DEFAULT_FAMILY]: { ...base.families[DEFAULT_FAMILY], model: name, thinking: thinkingLevel },
-  }
-  await writeFamilies(host.userHome, host.projectRoot, compact({ families, assign: base.assign }))
+  const effective = mergeLayers(layers).families
+  // Saved like the panel's families: what differs from the team's defaults. The most recent families become this
+  // project's own, which apply over the team's, so an assignment the team makes stays the team's.
+  const families = userFamilies(
+    {
+      ...effective,
+      [DEFAULT_FAMILY]: { ...effective[DEFAULT_FAMILY], model: name, thinking: thinkingLevel },
+    },
+    mergeFamilies(layers.project).families,
+  )
+  const assign =
+    layers.from === 'project'
+      ? layers.base.assign
+      : Object.fromEntries(
+          Object.entries(layers.base.assign).filter(
+            ([user]) => !Object.hasOwn(layers.project.assign, user),
+          ),
+        )
+  await writeFamilies(host.userHome, host.projectRoot, compact({ families, assign }))
   return { model: ref, thinkingLevel }
 }
 

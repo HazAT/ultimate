@@ -44,6 +44,29 @@ export function useCurrentModel(target?: number) {
 export async function selectModel(model: ModelInfo, id: number | undefined) {
   await api.configure({ model: { provider: model.provider, modelId: model.id } }, id)
   await api.action(SetFamilyAction, { family: null }, { conversationId: id })
+  notePick()
+}
+
+/**
+ * How many models or families were picked in the picker on this page. Get ready tells the user's pick from its own
+ * suggestion by it: picking the model the conversation already runs changes nothing else.
+ */
+let picks = 0
+const pickListeners = new Set<() => void>()
+export function notePick() {
+  picks++
+  for (const listener of pickListeners) listener()
+}
+export function usePicks() {
+  return useSyncExternalStore(
+    (listener) => {
+      pickListeners.add(listener)
+      return () => {
+        pickListeners.delete(listener)
+      }
+    },
+    () => picks,
+  )
 }
 
 /**
