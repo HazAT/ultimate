@@ -53,6 +53,10 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
     const withoutSelf = await render()
     expect(withoutSelf.self).toBeUndefined()
     expect(withoutSelf.building_blocks).toContain('- self:')
+    // The search programs are the ones that exist here: a missing one exits 127 with no output, which reads as an empty result.
+    expect(withoutSelf.tools).toContain('searches (`grep -rn`, `find`, `ls`)')
+    expect(withoutSelf.tools).not.toMatch(/\brg\b/)
+    expect(withoutSelf.tools).toContain('exits 127 with no output')
 
     await writeFile(settings, '{}')
     server.vite.watcher.emit('change', settings)
