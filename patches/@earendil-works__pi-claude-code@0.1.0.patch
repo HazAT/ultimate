@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f79970c95e5b6 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4d41c85f9 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
@@ -182,7 +182,19 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -544,15 +589,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -350,6 +395,11 @@ export function killProcessTree(child: ChildProcess): void {
+     return;
+   }
+   try {
++    // Only an integer above 1 names a process group: kill(-1) signals every
++    // process of the user and kill(-0) the caller's own group. Any other pid
++    // ends the child alone, below (Ultimate #562356: a test's fake child with
++    // pid 1 ended a desktop session here).
++    if (!Number.isSafeInteger(child.pid) || child.pid <= 1) throw new Error(`Not a process group: ${child.pid}`);
+     process.kill(-child.pid, "SIGKILL");
+   } catch {
+     try {
+@@ -544,15 +594,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -213,7 +225,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +695,11 @@ export function rewriteInitialRequest(
+@@ -642,6 +700,11 @@ export function rewriteInitialRequest(
    };
    let messages = payload.messages;
    const first = messages?.[0];
@@ -225,7 +237,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +724,11 @@ export function rewriteInitialRequest(
+@@ -666,9 +729,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -238,7 +250,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +786,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +791,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -259,7 +271,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -912,6 +986,8 @@ class ClaudeProcess {
+@@ -912,6 +991,8 @@ class ClaudeProcess {
          : undefined,
        input.betas,
      );
@@ -268,7 +280,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
  
      const abort = () => {
        this.relay.abort();
-@@ -976,11 +1052,14 @@ class ClaudeProcess {
+@@ -976,11 +1057,14 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -287,7 +299,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..842bec57dd905bee7fb1583ef16f7997
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1069,6 @@ class ClaudeProcess {
+@@ -990,13 +1074,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  

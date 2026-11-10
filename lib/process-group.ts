@@ -24,6 +24,17 @@ export type Group = { child: GroupProcess; ended: Promise<boolean>; closed: Prom
  * it is polled every few milliseconds, never across a gap.
  */
 
+/**
+ * The `process.kill` target for the whole group `pid` leads. Every group signal goes through here: only an integer above
+ * 1 names a group of ours. `kill(-1)` signals every process of the user and `kill(-0)` the caller's own group, so a
+ * wrong pid throws instead of reaching the kernel (#562356: a test's fake child with pid 1 ended a desktop session
+ * through the Claude Code provider's own group kill).
+ */
+export function groupTarget(pid: number) {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`Not a process group: ${pid}`)
+  return -pid
+}
+
 /** Who process `pid` is, the same on every read while it lives (its start time), or undefined once it is gone. */
 export function identify(pid: number): string | undefined {
   if (process.platform === 'darwin') {
@@ -63,7 +74,7 @@ function darwinEnded(pid: number, denied: unknown) {
     if (found) return true
     // A group may disappear during ps; an empty snapshot alone is not proof.
     try {
-      process.kill(-pid, 0)
+      process.kill(groupTarget(pid), 0)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true
       throw error
@@ -78,8 +89,9 @@ function darwinEnded(pid: number, denied: unknown) {
 /** Whether group `pid` still exists, excluding Darwin's zombie-only groups. */
 export function groupAlive(pid?: number) {
   if (!pid) return false
+  const target = groupTarget(pid)
   try {
-    process.kill(-pid, 0)
+    process.kill(target, 0)
     return true
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ESRCH' || darwinEnded(pid, error)) return false
@@ -99,8 +111,9 @@ function probe(pid: number) {
 }
 
 function send(pid: number, name: NodeJS.Signals) {
+  const target = groupTarget(pid)
   try {
-    process.kill(-pid, name)
+    process.kill(target, name)
   } catch (error) {
     // The group may empty between the check and the signal.
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH' && !darwinEnded(pid, error)) throw error

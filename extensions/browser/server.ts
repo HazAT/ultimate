@@ -19,7 +19,7 @@ import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
-import { identify } from '../../lib/process-group.ts'
+import { groupTarget, identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
@@ -119,8 +119,9 @@ async function browserProcess(browser: Browser) {
  */
 function killGroup(owner: { pid: number; start: string } | undefined) {
   if (!owner || identify(owner.pid) !== owner.start) return
+  const target = groupTarget(owner.pid)
   try {
-    process.kill(-owner.pid, 'SIGKILL')
+    process.kill(target, 'SIGKILL')
   } catch {
     // The group exited since (ESRCH), or only zombies are left of it (EPERM on Darwin).
   }
