@@ -456,7 +456,7 @@ export default host => { host.resource('cleanup.process',()=>{
     expect(JSON.stringify(events)).not.toContain('secret')
     await server.root.abort(context)
   })
-  it('orders live-added sections and tools deterministically across reopen', async () => {
+  it('appends a live-added section, orders tools, and plans nothing more after reopen', async () => {
     const { server, options } = await fixture(false, {
       a: orderedSource('a'),
       prompt: orderedSource('prompt', -100),
@@ -478,7 +478,8 @@ export default host => { host.resource('cleanup.process',()=>{
     const message = systems.at(-1)!.model![0]
     expect(message.role).toBe('system')
     if (message.role !== 'system') throw new Error('Expected system message')
-    expect(Object.keys(message.sections!)).toEqual(['prompt', 'new', 'a'])
+    // Appended by the pi-durable patch, not re-added with every other section in declared order.
+    expect(Object.keys(message.sections!)).toEqual(['new'])
     expect(message.toolsAdded!.map((tool) => tool.name)).toEqual(['prompt', 'new', 'a'])
     const lastId = systems.at(-1)!.id
     await server.vite.watcher.close()
