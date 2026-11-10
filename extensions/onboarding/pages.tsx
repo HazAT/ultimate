@@ -33,7 +33,8 @@ import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'
 
-import { extensionOptions, recommended } from './choices.tsx'
+import { extensionOptions, offered } from './choices.tsx'
+import { Line, useDescribed } from './parts.tsx'
 
 /** Only the prerequisites remain modal. Setup choices belong in the conversation. */
 export function FirstRun({
@@ -241,13 +242,16 @@ export function Recommended({
   const [changed, setChanged] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const core = (useSystem()?.extensions ?? []).flatMap((info) => (info.core ? [info.name] : []))
-  const options = extensionOptions(status?.user ?? { enable: [], disable: [] }, changed, core)
+  const { line } = useDescribed()
+  const options = extensionOptions(status?.user ?? { enable: [], disable: [] }, changed)
+  // Everything else that runs already: one quiet line, read-only; the Extensions panel changes them.
+  const on = (useSystem()?.extensions ?? [])
+    .filter((info) => info.enabled && !offered.some((entry) => entry.name === info.name))
+    .toSorted((a, b) => a.name.localeCompare(b.name))
   const checked = Object.fromEntries(options.map(({ name, checked: value }) => [name, value]))
   const check = (name: string, enabled: boolean) => {
-    if (core.includes(name)) return
     const next = { ...checked, [name]: enabled }
-    for (const entry of recommended) {
+    for (const entry of offered) {
       if (enabled && entry.name === name && entry.needs) next[entry.needs] = true
       if (!enabled && entry.needs === name) next[entry.name] = false
     }
@@ -257,8 +261,8 @@ export function Recommended({
     if (busy || !status) return
     setBusy(true)
     try {
-      const extensions = { ...changed, ...checked }
-      for (const entry of recommended)
+      const extensions = { ...checked }
+      for (const entry of offered)
         if (entry.needs && checked[entry.name]) extensions[entry.needs] = true
       await onDone({ extensions })
     } catch (failure) {
@@ -268,43 +272,54 @@ export function Recommended({
   }
   return (
     <div className="space-y-4 p-4">
-      <p className="text-xs text-muted-foreground">
-        Turn on what you want; change it any time under Extensions.
+      <p className="text-sm text-foreground/85">
+        Everything you need is on already. These extras are optional: tick any you want, or just
+        continue. You can change them any time under ⌘K → Extensions.
       </p>
       <ul className="divide-y divide-border/70 rounded-md border border-border/70">
         {options.map((entry) => (
           <li key={entry.name}>
-            <label
-              className={cn(
-                'flex items-center gap-3 px-3 py-3',
-                !entry.required && 'cursor-pointer hover:bg-accent/40',
-              )}
-            >
+            <label className="flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-accent/40">
               <Checkbox
-                disabled={entry.required || busy || !status}
+                className="mt-0.5"
+                disabled={busy || !status}
                 checked={entry.checked}
                 onCheckedChange={(value) => check(entry.name, value === true)}
               />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-                <span className="font-mono text-xs sm:w-24 sm:shrink-0">{entry.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {entry.line}
-                  {entry.hint && (
-                    <span className="mt-0.5 block font-mono text-[10.5px] text-muted-foreground/70 sm:hidden">
-                      {entry.hint}
-                    </span>
-                  )}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <Line className="text-sm" text={line(entry.name) || entry.name} />
+                <span className="font-mono text-[11px] text-muted-foreground/70">
+                  {entry.name}
+                  {entry.needs && ` · turns on ${entry.needs} too`}
                 </span>
               </span>
-              {entry.hint && (
-                <span className="hidden font-mono text-[10.5px] text-muted-foreground/70 sm:block">
-                  {entry.hint}
-                </span>
-              )}
             </label>
           </li>
         ))}
       </ul>
+      {on.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1.5 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+            {on.length} more are on already
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="mt-2 space-y-1 pl-5">
+              {on.map((info) => (
+                <li className="flex min-w-0 items-baseline gap-3 text-xs" key={info.name}>
+                  <span className="w-24 shrink-0 truncate font-mono text-muted-foreground">
+                    {info.name}
+                  </span>
+                  <Line
+                    className="min-w-0 truncate text-muted-foreground/80"
+                    text={line(info.name, info.source)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
       {error && <p className="text-xs text-error">{error}</p>}
       <div className="flex justify-end">
         <Button disabled={busy || !status} size="sm" onClick={() => void apply()}>

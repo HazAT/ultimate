@@ -1,4 +1,4 @@
-# Phase
+Shows what each agent is doing right now (exploring, editing, verifying…) next to its name (needs a TypeSafe key).
 
 Working-phase labels, classified by Jev after each tool round. It needs `classify`, which needs `TYPESAFE_API_KEY` in Secrets. Transcript excerpts leave the machine (see [classify](../classify/README.md)).
 

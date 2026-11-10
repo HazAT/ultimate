@@ -1,4 +1,4 @@
-Search the public web and fetch clean page content with parallel.ai through `web_search` and `web_fetch`. It needs `secrets` on as well.
+Lets agents search the web and read web pages (needs a Parallel API key). It searches the public web and fetches clean page content with parallel.ai through `web_search` and `web_fetch`, and needs `secrets` on as well.
 
 Set `PARALLEL_API_KEY` in the Secrets panel (⌘K → Secrets), obtained from https://platform.parallel.ai. The user-global secret store takes priority over `PARALLEL_API_KEY` in the server environment. Missing credentials produce a tool error and one process-local notice, never an in-chat credential form.
 

@@ -1,4 +1,4 @@
-import { BlocksIcon, CheckIcon, FolderCogIcon, GitBranchIcon } from 'lucide-react'
+import { BlocksIcon, CheckIcon, FolderCogIcon, GitBranchIcon, LoaderCircleIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
   api,
@@ -241,28 +241,95 @@ function ChoiceCard({ entry }: { entry: EntryRecord }) {
   )
 }
 
+/** Whether @ultimate has said anything to the user since `entry`: text, or a message call. */
+const spokeSince = (transcript: readonly EntryRecord[], entry: EntryRecord) =>
+  transcript.some((later) => {
+    const message = later.model?.[0]
+    return (
+      later.id > entry.id &&
+      message?.role === 'assistant' &&
+      message.content.some(
+        (block) =>
+          (block.type === 'text' && block.text.trim()) ||
+          (block.type === 'toolCall' && block.name === 'message'),
+      )
+    )
+  })
+
+/**
+ * The start of onboarding or the walkthrough: while @ultimate prepares its first message, a card that says what is
+ * happening; afterwards a quiet record of when it started.
+ */
+function StartCard({
+  entry,
+  title,
+  preparing: text,
+  instructions,
+}: {
+  entry: EntryRecord
+  title: string
+  /** What @ultimate is doing until its first message. */
+  preparing: string
+  instructions?: string
+}) {
+  const busy = useConversation((conversation) => conversation.busy)
+  const transcript = useTranscript()
+  const preparing = busy && !spokeSince(transcript, entry)
+  return preparing ? (
+    <Card className="flex items-start gap-3 px-4 py-3">
+      <LoaderCircleIcon className="mt-0.5 size-4 shrink-0 animate-spin text-brand" />
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm font-medium">Getting ready…</p>
+        <p className="text-sm text-muted-foreground">{text}</p>
+        {instructions && <Instructions text={instructions} />}
+      </div>
+    </Card>
+  ) : (
+    <section className="text-xs text-muted-foreground">
+      <p className="flex items-center gap-2">
+        <CheckIcon className="size-3.5 shrink-0 text-brand/70" />
+        {title}
+      </p>
+      {instructions && (
+        <div className="mt-1 pl-5.5">
+          <Instructions text={instructions} />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Instructions({ text }: { text: string }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Your instructions: <span className="whitespace-pre-wrap text-foreground/85">{text}</span>
+    </p>
+  )
+}
+
 export default defineWebExtension({
   tools: { setup: attention(SetupCall) },
   // Until onboarding has run, @ultimate's composer carries the card that starts it.
   composer: StartComposer,
   entries: {
     'onboarding.choice': ChoiceCard,
-    'onboarding.start': ({ entry }) => {
-      const data = entry.data as { root: number; instructions?: string }
-      return (
-        <section className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <span className="font-mono">Onboarding started · root #{data.root}</span>
-          {data.instructions && (
-            <p className="mt-1 whitespace-pre-wrap text-foreground/85">{data.instructions}</p>
-          )}
-        </section>
-      )
-    },
-    'walkthrough.start': () => (
-      <section className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-mono">Walkthrough started</span>
-      </section>
-    ),
+    // Marked `attention` so the start stays in @ultimate's thread instead of folding into the stretch before its first
+    // message: it is all a newcomer sees while that first turn runs (#554687).
+    'onboarding.start': attention(({ entry }) => (
+      <StartCard
+        entry={entry}
+        instructions={(entry.data as { instructions?: string }).instructions}
+        title="Onboarding started"
+        preparing="@ultimate is reading your project. In a moment it starts a short walkthrough of how Ultimate works, with a few questions you answer here."
+      />
+    )),
+    'walkthrough.start': attention(({ entry }) => (
+      <StartCard
+        entry={entry}
+        title="Walkthrough started"
+        preparing="@ultimate is preparing a short walkthrough of how Ultimate works, with a few questions you answer here."
+      />
+    )),
   },
   slots: {
     overlay: [Onboarding],

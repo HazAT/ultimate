@@ -115,6 +115,9 @@ export function ModelPicker() {
   const families = useFamilies()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string>()
+  // The highlighted row: the reader's, once they move it; until then the current family or model, which may load after
+  // the picker opens (cmdk reads `defaultValue` only on mount and otherwise highlights the first row).
+  const [highlighted, setHighlighted] = useState<string>()
   const providers = useMemo(
     () => new Map((models?.providers ?? []).map((provider) => [provider.id, provider])),
     [models],
@@ -196,6 +199,7 @@ export function ModelPicker() {
         if (!next) {
           setQuery('')
           setError(undefined)
+          setHighlighted(undefined)
         }
       }}
       open={open}
@@ -211,8 +215,16 @@ export function ModelPicker() {
         </DialogDescription>
         <Command
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:section-label"
-          defaultValue={ref ? `${ref.provider}/${ref.modelId}` : undefined}
+          onValueChange={setHighlighted}
           shouldFilter={false}
+          value={
+            highlighted ??
+            (current && shownFamilies.includes(current)
+              ? `family/${current.name}`
+              : ref
+                ? `${ref.provider}/${ref.modelId}`
+                : undefined)
+          }
         >
           <CommandInput
             className="text-[13px]"

@@ -1,4 +1,4 @@
-Tracks whether each model provider works on this machine, from every real response, and reports a failing one to the `setup` status-line item.
+Warns you in the status line when a model provider stops working on this machine. It tracks whether each model provider works on this machine, from every real response, and reports a failing one to the `setup` status-line item.
 
 ## What is stored
 

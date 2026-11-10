@@ -1,4 +1,4 @@
-# Sounds
+Plays a short, soft sound when @ultimate needs you, answers or lands work.
 
 Short, soft notification sounds when @ultimate talks to you: a question (needs input), a
 finished answer, or a failed run, and when work lands; an opt-in **narrator** that says what each one is about; and an
