@@ -150,7 +150,7 @@ async function agentsArea(host: CheckHost): Promise<SetupIssue[]> {
       impact:
         'It no longer follows updates to the built-in instructions. Make it an overlay: name, addTools, the settings you change and your additions (docs/subagents.md).',
     })
-  if (!issues.length)
+  if (!issues.length && loggedIn(host))
     issues.push({ area: 'Agent models', status: 'ok', summary: 'every pinned model has a login' })
   return issues
 }
