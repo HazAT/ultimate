@@ -215,7 +215,8 @@ export async function readPidFile(path: string) {
   const value = await text(path)
   if (value === undefined) return undefined
   const pid = Number(value)
-  if (!Number.isSafeInteger(pid) || pid < 1) throw new Error(`Invalid pid file ${path}`)
+  // 1 is init, never a group of ours; stopGroup would signal -1, every process of the user.
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error(`Invalid pid file ${path}`)
   return pid
 }
 
