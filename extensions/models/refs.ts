@@ -45,6 +45,16 @@ export type Fallback = { from: string; to?: string; reason: 'same' | 'pin' | 'de
  */
 export const LoginChanged = defineEvent<{ provider: string }>('models.login-changed')
 
+/**
+ * The family a conversation runs as, on that conversation: the one its definition or the `branch` call named when it
+ * started, or the one picked for it in the model picker; null when nothing named one. Two families can share a model, so
+ * the model alone never says which. The label shows it with the model the conversation actually runs (a preview runs
+ * every family on one model).
+ */
+export const FamilyDoc = docRef<{ name: string | null }>('models.family')
+/** `{ family }` → null: record the family the calling conversation now runs as (null: none, a model picked by id). */
+export const SetFamilyAction = actionRef<{ family: string | null }, null>('models', 'setFamily')
+
 /** One model family as the Agents panel shows it. */
 export type FamilyView = {
   name: string

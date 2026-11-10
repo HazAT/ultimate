@@ -28,6 +28,7 @@ import {
   thinkingOf,
   useFamilies,
 } from './families.tsx'
+import { SetFamilyAction } from './refs.ts'
 import type { FamilyView } from './refs.ts'
 import {
   authLabel,
@@ -102,7 +103,14 @@ export function ModelRow({
 export function ModelPicker() {
   const [open, setOpen] = useDialog(dialogs.picker)
   const actions = useUltimate()
-  const { id, ref, thinking, models, loading } = useCurrentModel(usePickerTarget())
+  const {
+    id,
+    ref,
+    thinking,
+    family: recorded,
+    models,
+    loading,
+  } = useCurrentModel(usePickerTarget())
   const families = useFamilies()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string>()
@@ -133,7 +141,7 @@ export function ModelPicker() {
       .slice(0, LIMIT)
     return [...Map.groupBy(found, (model) => model.provider)]
   }, [models, query])
-  const current = familyOf(families, ref, thinking)
+  const current = familyOf(families, ref, thinking, recorded)
   const shownFamilies = (families?.families ?? []).filter((family) => {
     const haystack = `${family.name} ${runsOn(family) ?? ''} ${thinkingOf(family) ?? ''}`
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
@@ -170,6 +178,7 @@ export function ModelPicker() {
     const level = thinkingOf(family)
     api
       .configure({ model: { provider, modelId }, ...(level ? { thinkingLevel: level } : {}) }, id)
+      .then(() => api.action(SetFamilyAction, { family: family.name }, { conversationId: id }))
       .then(
         () => setOpen(false),
         (failure: unknown) => setError(errorMessage(failure)),

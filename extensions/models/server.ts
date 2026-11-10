@@ -11,7 +11,7 @@ import {
 import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { LoginChanged } from './api.ts'
+import { Family, LoginChanged } from './api.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import {
@@ -22,6 +22,7 @@ import {
   LoginDoc,
   LogoutAction,
   SaveFamiliesAction,
+  SetFamilyAction,
 } from './refs.ts'
 import type { SaveFamilies } from './refs.ts'
 import { familiesView, saveFamilies } from './families.ts'
@@ -54,7 +55,7 @@ export const Logins = defineDoc<{ flows: Record<string, LoginFlow> }>({
   fork: 'initial',
   initial: () => ({ flows: {} }),
 })
-export const docs = [Logins]
+export const docs = [Logins, Family]
 
 /** A running flow: process-local, so a flow the document shows running without one here died with its process. */
 interface Flow {
@@ -114,6 +115,18 @@ export const actions = {
     if (!args || typeof args !== 'object' || Array.isArray(args))
       throw new Error('Expected families')
     return saveFamilies(host, args as SaveFamilies)
+  }),
+  /** Record the family the calling conversation runs as after the picker configured it; null for a model by id. */
+  setFamily: implementAction(SetFamilyAction, async (args, { host, conversationId }) => {
+    const family = field(args, 'family')
+    if (family !== null && (typeof family !== 'string' || !family))
+      throw new Error('Expected family: a family name or null')
+    const id = (conversationId ?? ROOT_CONVERSATION_ID) as ConversationId
+    await host.harness().commit(async (tx) => {
+      if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
+      ;(await tx.doc(Family, id)).name = family
+    }, context)
+    return null
   }),
   /** Start a login flow for the calling conversation and resolve with its id; the document shows its progress. */
   login: implementAction(LoginAction, async (args, { host, conversationId }) => {

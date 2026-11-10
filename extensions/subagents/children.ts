@@ -10,7 +10,8 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { definitionAgent } from '../../lib/agents.ts'
+import { definitionAgent, definitionFamily } from '../../lib/agents.ts'
+import { Family } from '../models/api.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Started } from './refs.ts'
@@ -75,6 +76,10 @@ export async function createChild(
     ...change,
     cwd: options.cwd ?? parent.cwd ?? null,
   })
+  // An explicit model is no family's; a fork would otherwise keep its parent's.
+  ;(await tx.doc(Family, child.id)).name = options.model
+    ? null
+    : definitionFamily(definition, change)
   Object.assign(await tx.doc(options.metadata, child.id), {
     label: options.label,
     title: options.title,

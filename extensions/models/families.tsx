@@ -71,17 +71,24 @@ export const runsOn = (family: FamilyView) => family.model ?? family.follows
 export const thinkingOf = (family: FamilyView) =>
   family.thinking ?? (family.model ? undefined : family.followsThinking)
 
-/** The family a conversation runs as: only one whose model and thinking level are both the conversation's. */
+/**
+ * The family a conversation runs as: the one recorded for it (`FamilyDoc`), whatever model it runs (a preview runs
+ * every family on one). Without a record nothing named a family, so it is the default family while it runs that
+ * family's model and thinking level. Never worked out from the model alone: two families can share one.
+ */
 export function familyOf(
   families: FamiliesView | undefined,
   ref: { provider: string; modelId: string } | undefined,
   thinking: string | undefined,
+  recorded: string | null | undefined,
 ) {
   if (!ref) return undefined
-  const name = `${ref.provider}/${ref.modelId}`
-  return families?.families.find(
-    (family) => runsOn(family) === name && (thinkingOf(family) ?? thinking) === thinking,
-  )
+  const family = families?.families.find((item) => item.name === (recorded ?? DEFAULT_FAMILY))
+  if (!family || recorded) return family
+  return runsOn(family) === `${ref.provider}/${ref.modelId}` &&
+    (thinkingOf(family) ?? thinking) === thinking
+    ? family
+    : undefined
 }
 
 export const modelIdOf = (ref: string) => ref.slice(ref.indexOf('/') + 1)

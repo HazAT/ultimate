@@ -38,6 +38,7 @@ import type { Source } from '../../server/project.ts'
 import {
   agentRoots,
   definitionAgent,
+  definitionFamily,
   deleteDefinition,
   discoverAgents,
   hasLogin,
@@ -54,7 +55,7 @@ import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
-import { Pin } from '../models/api.ts'
+import { Family, Pin } from '../models/api.ts'
 import { Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
 import { definitionRuns, refName, refOf } from '../../lib/families.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
@@ -673,6 +674,7 @@ export default function subagents(
         }
         const change = definitionAgent(definition, base, host.modelRuntime)
         await configure(tx, id, { ...change, cwd: host.projectRoot })
+        ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
         Object.assign(await tx.doc(host.metadata, id), { label: 'agent', title: `@${name}` })
         // A standing agent keeps its `@name`: no automatic title, summary or reply activity.
         await conversations.setAutomaticSummaries(tx, id, false)

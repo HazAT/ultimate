@@ -145,6 +145,27 @@ export function onFamily(
 }
 
 /**
+ * The family a conversation configured with `change` from `definition` runs as, for the models extension's `Family`
+ * document: the definition's family (or the one `onFamily` put it on) while it runs that family's model, null for a
+ * pinned model or when it fell back to another. In a preview, which runs every family on its one model, the family
+ * stays. Recorded at the
+ * start because two families can share a model: worked out from the model, a Lead coordinator on Opus showed as Design
+ * or, while the default family was on Opus, as Ultimate (#550837).
+ */
+export function definitionFamily(
+  definition: AgentDefinition | undefined,
+  change: Pick<AgentChange, 'model'>,
+): string | null {
+  const runs = definition?.runs
+  if (runs?.via !== 'family' || !runs.family) return null
+  if (!runs.model || previewModel()) return runs.family
+  const model = change.model
+  return model?.provider === runs.model.provider && model.modelId === runs.model.modelId
+    ? runs.family
+    : null
+}
+
+/**
  * The agent change a definition makes over `parent`: the explicit model, else the definition's pin when it has a login
  * here, else the parent's. In a preview, its model replaces every other choice.
  */

@@ -1,7 +1,7 @@
 import type { Agent } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { expect, it } from 'vitest'
-import { defaultModel, definitionAgent, onFamily } from '../lib/agents.ts'
+import { defaultModel, definitionAgent, definitionFamily, onFamily } from '../lib/agents.ts'
 import { mergeFamilies } from '../lib/families.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
@@ -47,6 +47,9 @@ it('starts a branch on the configured default whose login is gone, never on the 
     model: { provider: 'anthropic', modelId: 'claude-fable-5' },
     thinkingLevel: 'xhigh',
   })
+  // It runs as the family it was started on, recorded for its label (#550837), the default one too.
+  expect(definitionFamily(onFamily(coordinator, 'lead', families, available), lead)).toBe('lead')
+  expect(definitionFamily(coordinator, { model: opus })).toBe('default')
   expect(() => onFamily(coordinator, 'huge', families, available)).toThrow(
     'Unknown family: huge. Families: default, review, fast, tiny, design, lead',
   )

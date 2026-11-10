@@ -28,8 +28,8 @@ const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
 
 function ModelButton() {
-  const { ref, thinking, loading } = useCurrentModel()
-  const family = familyOf(useFamilies(), ref, thinking)
+  const { ref, thinking, family: recorded, loading } = useCurrentModel()
+  const family = familyOf(useFamilies(), ref, thinking, recorded)
   const actions = useUltimate()
   return (
     <button

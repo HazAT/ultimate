@@ -9,7 +9,7 @@ import { AgentDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryDraft, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { configuredModel, familyDefault, hasLogin } from '../../lib/agents.ts'
-import { Pin } from './api.ts'
+import { Family, Pin } from './api.ts'
 import type { Fallback } from './refs.ts'
 
 type Ref = { provider: string; modelId: string }
@@ -63,6 +63,8 @@ export async function fallback(
   if (found) {
     const to = found[0]!
     agent.model = { provider: to.provider, modelId: to.modelId }
+    // Another model than its family's: it runs as that family no more.
+    ;(await tx.doc(Family, conversationId)).name = null
     const model = runtime.getModel(to.provider, to.modelId)
     if (model && agent.thinkingLevel)
       agent.thinkingLevel = clampThinkingLevel(model, agent.thinkingLevel)

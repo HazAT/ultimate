@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
-import { api, getConversation, useConversation, useModels, useStore } from '@/sdk'
+import { api, getConversation, useConversation, useDocOf, useModels, useStore } from '@/sdk'
 import type { ModelsResponse, UltimateActions } from '@/sdk'
+import { FamilyDoc, SetFamilyAction } from './refs.ts'
 
 export type ModelInfo = ModelsResponse['models'][number]
 export type ProviderInfo = ModelsResponse['providers'][number]
@@ -14,12 +15,16 @@ export const dialogs = {
 /** The thinking popover of conversation `id`'s toolbar: a side chat's has its own, apart from main's. */
 export const thinkingDialog = (id: number | undefined) => `models.thinking.${id}`
 
-/** The scoped (or shown) conversation's model and thinking, or those of `target`, and its id to configure. */
+/**
+ * The scoped (or shown) conversation's model, thinking and recorded family, or those of `target`, and its id to
+ * configure.
+ */
 export function useCurrentModel(target?: number) {
   const own = useConversation()
   const other = useStore(() => (target === undefined ? undefined : getConversation(target)))
   const { id, agent, loading } = other ?? own
   const models = useModels()
+  const family = useDocOf(id, FamilyDoc)?.name
   const ref = agent.model
   const model = models?.models.find(
     (candidate) => candidate.provider === ref?.provider && candidate.id === ref.modelId,
@@ -29,13 +34,16 @@ export function useCurrentModel(target?: number) {
     ref,
     model,
     thinking: agent.thinkingLevel,
+    family,
     models,
     loading,
   }
 }
 
-export function selectModel(model: ModelInfo, id: number | undefined) {
-  return api.configure({ model: { provider: model.provider, modelId: model.id } }, id)
+/** Run conversation `id` on `model`, picked by id: it runs as no family now. */
+export async function selectModel(model: ModelInfo, id: number | undefined) {
+  await api.configure({ model: { provider: model.provider, modelId: model.id } }, id)
+  await api.action(SetFamilyAction, { family: null }, { conversationId: id })
 }
 
 /**
