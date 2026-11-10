@@ -81,7 +81,7 @@ async function checkHost(options: { logins: string[]; secrets?: string[] }) {
     faux: undefined,
     modelRuntime: {
       getModels: () => [codex],
-      getAvailableSnapshot: () => [],
+      getAvailableSnapshot: () => options.logins.map((provider) => model(provider, 'm')),
       hasConfiguredAuth: (provider: string) => options.logins.includes(provider),
       getProviderAuthStatus: (provider: string) => ({
         configured: options.logins.includes(provider),
@@ -166,6 +166,36 @@ it("lets a provider's configured auth stand in for the secret that names it", as
   })
 })
 
+it('warns only about the login on a fresh install, and offers default-on secrets as optional', async () => {
+  const host = await checkHost({ logins: [] })
+  const voice = {
+    name: 'voice',
+    enabled: true,
+    layer: 'default',
+    server: {
+      tools: [],
+      sections: [],
+      hooks: 0,
+      docs: [],
+      secrets: [{ name: 'OPENAI_API_KEY', description: '' }],
+    },
+  }
+  const issues = await check({ ...host, extensions: () => [voice] as never })
+  expect(issues.filter((issue) => issue.status === 'warn').map((issue) => issue.area)).toEqual([
+    'Login',
+  ])
+  expect(issues.find((issue) => issue.area === 'Secrets')).toMatchObject({
+    status: 'info',
+    summary: 'optional: OPENAI_API_KEY for voice',
+  })
+  // The user turned it on: its missing key is a real problem again.
+  const chosen = await check({
+    ...host,
+    extensions: () => [{ ...voice, layer: 'user' }] as never,
+  })
+  expect(chosen.find((issue) => issue.area === 'Secrets')?.status).toBe('warn')
+})
+
 it('names each file that replaces a built-in definition whole, but not an overlay', async () => {
   const host = await checkHost({ logins: ['openrouter', 'openai-codex'] })
   const builtin = '---\nname: NAME\ndescription: Built in\ntools: [read]\n---\nBuilt-in body.\n'
@@ -237,6 +267,7 @@ it('warns about a listed root without memories until it has one', async () => {
   const docs: Record<string, Record<number, JsonObject>> = {
     'lineage.roots': { 1: { roots: [1] } },
     'lineage.memory': { 1: { memories: {} } },
+    'lineage.tally': { 1: { tokens: 0 } },
   }
   const row = async () =>
     (
@@ -245,6 +276,9 @@ it('warns about a listed root without memories until it has one', async () => {
         async (doc, id) => docs[(doc as unknown as { kind: string }).kind][id],
       )
     ).find((issue) => issue.area === 'Project memory')
+  // A root that never branched (a fresh project) has nothing to warn about yet.
+  expect(await row()).toBeUndefined()
+  docs['lineage.tally'][1] = { tokens: 0, since: 3 }
   expect(await row()).toMatchObject({
     status: 'warn',
     summary: 'none in root #1',
