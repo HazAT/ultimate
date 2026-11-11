@@ -43,8 +43,10 @@ project is Ultimate itself, that is `.ultimate/extensions/` in the clone, not `e
 
 Extensions outside the clone import exactly what built-ins import (`@/sdk`, `@/components/…`, `react`,
 `lucide-react`, any package installed in the clone): Ultimate resolves those from its clone, and Tailwind picks up their
-classes. In the clone, `pnpm check` type-checks and lints `extensions/` and `.ultimate/extensions/`; extensions of
-other projects are not checked by anything, so try them in the browser. Agents live in the same three places
+classes. In the clone, `pnpm check` type-checks and lints `extensions/` and `.ultimate/extensions/`. Elsewhere,
+`node <clone>/scripts/check-extension.ts [folder…]` type-checks them against the clone (default: the current project's
+`.ultimate/extensions/*`; pass a user extension's folder to check it) and writes nothing into the clone or the project.
+Never copy an extension into the clone to check it: the running host would load it. Agents live in the same three places
 (`agents/`); an enabled extension may also ship an `agents/` folder. Those definitions load as built-ins before
 user/project definitions and overlays, and disappear when the extension is disabled. Skills load as [Discovery and settings](../settings.md) describes, later scopes winning by name. A project's `.ultimate/settings.json` may set `defaultSurface` (see
 [Surfaces](surfaces.md)).
