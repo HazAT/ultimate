@@ -406,14 +406,15 @@ function StackedError({
 }
 
 /**
- * A fixed stack, top right under the headers, clear of the composer and the home indicator: extensions whose web facet
+ * A fixed stack, top right under the headers and the phone's question pointer (`extensions/messages/waiting.tsx`), clear
+ * of the composer and the home indicator; notices draw over it while they last. It lists extensions whose web facet
  * failed to load, until it loads again, then the failed items of slots outside the sized shell, which `ref` receives
  * the stack for. Empty, it takes no room and no clicks.
  */
 export function ExtensionErrors({ ref }: { ref?: Ref<HTMLDivElement> }) {
   const failed = useExtensions().filter((record) => record.error !== undefined)
   return (
-    <div className="pointer-events-none fixed top-[calc(env(safe-area-inset-top)+3rem)] right-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2 md:top-24">
+    <div className="pointer-events-none fixed top-[calc(env(safe-area-inset-top)+6rem)] right-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
       {failed.map((record) => (
         <StackedError
           extension={record.name}
