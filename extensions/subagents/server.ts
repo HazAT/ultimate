@@ -856,8 +856,8 @@ export default function subagents(
     for (const { name } of await residentDefinitions())
       if (name !== 'ultimate')
         await service
-        .standing(name, BACKGROUND_CONTEXT)
-        .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
+          .standing(name, BACKGROUND_CONTEXT)
+          .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
     unsubscribe?.()
     // Not a reactor: subagent answers settle as Pi submission records, not domain events. Committed submissions are
     // observed live here and scanned once on open, so a restart neither loses nor duplicates a report.
