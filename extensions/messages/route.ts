@@ -96,12 +96,13 @@ async function children(tx: Tx, id: ConversationId): Promise<boolean> {
 }
 
 /**
- * Where the starter's final answer to its run `answered` goes, when every input was a branch's report or reply, or the
- * card of its landing: to each branch that is not concluded and that the starter did not message during the run, and,
- * for a concluded branch that serves an agent's request (`Started.serves`), to that agent, unless the run messaged it.
- * Replies arriving close together share one run (a reply steers a busy starter), so every branch in it hears the
- * answer, or one of them would wait on it forever. An echo (a branch's answer to a routed answer) routes nowhere, so
- * routing goes back and forth at most once; any other input (the user's) leaves the answer local.
+ * Where the starter's final answer to its run `answered` goes: to each of its branches whose report, reply or landing
+ * card was an input of the run, when that branch is not concluded and the starter did not message it during the run,
+ * and, for a concluded branch that serves an agent's request (`Started.serves`), to that agent, unless the run
+ * messaged it. Each input is judged on its own, as `board.delivery` judges reply-enabled messages: an input that is
+ * no branch's (the user's, another Ultimate's, a card) neither receives the answer nor keeps it from a branch. Under
+ * the earlier rule one such input left every branch in the run waiting unseen (#567641). An echo (a branch's answer
+ * to a routed answer) routes nowhere, so routing goes back and forth at most once.
  */
 async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
@@ -117,17 +118,15 @@ async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: 
       const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
       const branch = results[String(data?.id)]?.conversationId
       if (branch === undefined || (await tx.doc(Started, branch as ConversationId)).by !== starter)
-        return { branches: [], askers: [] }
+        continue
       const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
       latest.set(branch, Math.max(latest.get(branch) ?? 0, last))
       continue
     }
     const report =
       entry?.kind === 'board.reply' || (entry?.kind === 'board.message' && data?.reply === false)
-    if (!report || typeof data?.from !== 'number') return { branches: [], askers: [] }
-    if (data.echo === true) continue
-    if ((await tx.doc(Started, data.from as ConversationId)).by !== starter)
-      return { branches: [], askers: [] }
+    if (!report || typeof data?.from !== 'number' || data.echo === true) continue
+    if ((await tx.doc(Started, data.from as ConversationId)).by !== starter) continue
     latest.set(data.from, Math.max(latest.get(data.from) ?? 0, Number(data.id ?? 0)))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
@@ -177,7 +176,7 @@ interface Route {
  * After a branch's run, its final answer reaches the conversation that started it, unless it already goes back as the
  * answer to a reply-enabled message, the starter's or another conversation's. A branch that stops with nothing under way reports: its answer wakes
  * the starter. One that still waits on work (subagents, the lander, a reply) leaves it as a note. With `down`, after a
- * run of the starter, its final answer to one branch's report or reply goes to that branch and wakes it (`reported`).
+ * run of the starter, its final answer goes to each branch whose report or reply the run read and wakes it (`reported`).
  * Each routed message is one-way, and an answer to a routed answer is an echo that routes no further: no ping-pong.
  */
 export function route(host: ExtensionHost) {
