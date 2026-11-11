@@ -17,6 +17,7 @@ import { Started } from '../extensions/messages/addresses.ts'
 import { Messages } from '../extensions/messages/api.ts'
 import type { Question } from '../extensions/messages/api.ts'
 import { checkQuestions } from '../extensions/messages/questions.ts'
+import { send } from '../extensions/messages/send.ts'
 import questionsExtension, {
   actions,
   answerText,
@@ -183,6 +184,7 @@ async function fixture() {
   }
   return {
     opened,
+    host,
     hear: (fn: typeof heard) => (heard = fn),
     ultimate,
     branch,
@@ -478,6 +480,15 @@ describe('settling for the user', () => {
     await f.settled()
     const answer = (await f.log()).messages.find((m) => m.re === message!.id)!
     expect(answer).toMatchObject({ text: '3: No', images: { count: 1 } })
+    // A dismissal carries no images, nor does a settle that names no image or a bad reference.
+    const other = (await f.ask(asker, { text: 'And the footer?' })).message!
+    await expect(
+      f.settle(id, { messageId: other.id, text: 'moot', dismiss: true, images: 'latest' }),
+    ).rejects.toThrow('go only with an answer')
+    await expect(f.settle(id, { messageId: other.id, text: 'x', images: 0 })).rejects.toThrow(
+      'images must be "latest" or',
+    )
+    expect((await f.log()).messages.find((m) => m.id === other.id)?.state).toBe('delivered')
     expect(imagesIn(await placed(f, asker, answer.id))).toEqual([png(0)])
   })
 })
@@ -552,6 +563,55 @@ describe('screenshots with an answer', () => {
       'At most 4 images',
     )
     expect((await f.log()).messages.find((m) => m.id === message!.id)?.state).toBe('delivered')
+    // Only the user's answer carries attached images: not a plain user message, nor a dismissal.
+    const plain = { to: `#${asker}`, text: 'Hi', attached: [png(0)] }
+    await expect(send(f.host, 'user', plain, context)).rejects.toThrow(
+      'only an answer carries attached images',
+    )
+    await expect(
+      send(f.host, 'user', { ...plain, re: message!.id, dismiss: true }, context, {
+        answerId: message!.id,
+      }),
+    ).rejects.toThrow('only an answer carries attached images')
+    await expect(
+      send(f.host, 'user', { to: `#${asker}`, text: 'Hi', images: 'latest' }, context),
+    ).rejects.toThrow('your images go along with what you submit')
+    expect((await f.log()).messages.find((m) => m.id === message!.id)?.state).toBe('delivered')
+  })
+
+  it('places the same images once when a delivery runs again after a restart', async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const asker = await f.branch(id)
+    const { message } = await f.ask(asker, { text: 'How does it look?' })
+    const { id: reply } = await f.answer({ messageId: message!.id, text: 'See', images: [png(0)] })
+    await f.settled()
+    // Replaying the task's placement: its request id already placed it, so no second input appears.
+    const task = await f.opened.harness.commit(
+      async (tx) =>
+        (await tx.scanTasks({}, 1000)).items.find(
+          (t) => (t.input as { message?: { id: number } }).message?.id === reply,
+        ),
+      context,
+    )
+    expect((task!.input as { attached: unknown[] }).attached).toEqual([png(0)])
+    const conversation = (await f.opened.harness.conversation(asker, context))!
+    const again = await conversation.submit(
+      {
+        type: 'input',
+        requestId: `board:${reply}`,
+        whenBusy: 'followUp',
+        entry: { kind: 'board.message', data: { id: reply } },
+        content: 'replayed',
+      },
+      context,
+    )
+    await again.wait(context)
+    const inputs = (await f.entries(asker)).filter(
+      (e) => e.kind === 'board.message' && (e.data as { id: number }).id === reply,
+    )
+    expect(inputs).toHaveLength(1)
+    expect(imagesIn(inputs[0])).toEqual([png(0)])
   })
 })
 

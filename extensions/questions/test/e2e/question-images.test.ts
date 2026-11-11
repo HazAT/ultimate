@@ -102,15 +102,41 @@ it('sends a screenshot picked or pasted on the card with the answer', async () =
       .dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true }))
   }, shot.toString('base64'))
   await card.getByRole('img', { name: 'Pasted image 2' }).waitFor()
+  // A third dropped on the card is the card's, not the composer's; removing it leaves two.
+  await page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([bytes], 'dropped.png', { type: 'image/png' }))
+    document
+      .querySelector('#app [data-questions-card]')!
+      .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
+  }, shot.toString('base64'))
+  await card.getByRole('img', { name: 'Pasted image 3' }).waitFor()
+  expect(await page.locator('#app [data-ui="composer"] img').count()).toBe(0)
+  await card.getByRole('button', { name: 'Remove image 3' }).click()
+  await card.getByRole('img', { name: 'Pasted image 3' }).waitFor({ state: 'detached' })
   await card.locator('textarea[data-note]').fill('The tooltip still stacks:')
   await card.getByRole('button', { name: /change something first/ }).click()
   if (shots) await card.screenshot({ path: join(shots, '2-attached.png') })
 
+  const sent = page.waitForRequest((r) => r.url().includes('/questions/actions/answer'))
   await card.getByRole('button', { name: 'Send', exact: true }).click()
   await card.getByRole('button', { name: 'Undo' }).waitFor()
+  expect(await card.getByText('2 images').count()).toBe(1)
+  // Keepalive cannot carry the images, so leaving the page while it waits asks first.
+  expect(
+    await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }),
+  ).toBe(true)
   if (shots) await card.screenshot({ path: join(shots, '3-sending.png') })
   const answer = async () =>
     (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  expect(((await sent).postDataJSON() as { args: { images: unknown[] } }).args.images).toHaveLength(
+    2,
+  )
   await until(async () => (await answer())?.entry !== undefined)
   expect(await answer()).toMatchObject({
     text: '1b. Approve the hover card?: change something first\n\nNote: The tooltip still stacks:',

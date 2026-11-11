@@ -124,7 +124,10 @@ function useAttached(disabled: () => boolean) {
     error,
     reading,
     clear: () => setImages([]),
-    remove: (index: number) => setImages((old) => old.filter((_, i) => i !== index)),
+    remove: (index: number) => {
+      setError(undefined)
+      setImages((old) => old.filter((_, i) => i !== index))
+    },
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>) =>
       // oxlint-disable-next-line typescript/no-floating-promises -- paste reports failures in `error`.
       void paste(event as ClipboardEvent<HTMLTextAreaElement>),
@@ -396,6 +399,14 @@ function Card({
       flush()
     }
   }, [])
+  // An answer with images cannot go out as the page closes (keepalive's budget is too small): the browser asks first.
+  const holding = images.length > 0 && (phase === 'undo' || phase === 'sending')
+  useEffect(() => {
+    if (!holding) return undefined
+    const ask = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [holding])
 
   const focusField = (index: number) =>
     requestAnimationFrame(() =>
