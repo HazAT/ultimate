@@ -337,22 +337,30 @@ export default function prompt(host: ExtensionHost) {
           ? `${listed}\nWhen a task matches a listed skill, read it before you start; it carries the steps the project expects.`
           : undefined
       }),
-      section('building_blocks', () => {
-        const off = host.extensions().filter((extension) => !extension.enabled)
-        if (!off.length) return undefined
-        return [
-          `Available but off building blocks live in ${host.ultimateRoot}/extensions/:`,
-          ...off.map((extension) => {
-            const sentence = extension.readme
-              ?.trim()
-              .split(/(?<=[.!?])\s/)[0]
-              ?.replace(/\s+/g, ' ')
-            return `- ${extension.name}: ${sentence ?? ''}`
-          }),
-          'Enable names with "extensions": { "enable": [...] } in ~/.ultimate/settings.json (this machine) or <project>/.ultimate/settings.json (the host project). Changes apply live with no restart.',
-          `The running host uses ${host.projectRoot}/.ultimate/settings.json and ${host.projectRoot}/.ultimate/extensions/; editing these in a separate work checkout does not change the host's configuration or hot-reload its extensions.`,
-        ].join('\n')
-      }),
+      // Empty, not undefined, when nothing is off: the slot keeps its place, so coming back patches only this section
+      // (Pi re-sends every section when one would land out of order, #573861).
+      section(
+        'building_blocks',
+        () => {
+          const off = host.extensions().filter((extension) => !extension.enabled)
+          if (!off.length) return ''
+          return [
+            '<building_blocks>',
+            `Available but off building blocks live in ${host.ultimateRoot}/extensions/:`,
+            ...off.map((extension) => {
+              const sentence = extension.readme
+                ?.trim()
+                .split(/(?<=[.!?])\s/)[0]
+                ?.replace(/\s+/g, ' ')
+              return `- ${extension.name}: ${sentence ?? ''}`
+            }),
+            'Enable names with "extensions": { "enable": [...] } in ~/.ultimate/settings.json (this machine) or <project>/.ultimate/settings.json (the host project). Changes apply live with no restart.',
+            `The running host uses ${host.projectRoot}/.ultimate/settings.json and ${host.projectRoot}/.ultimate/extensions/; editing these in a separate work checkout does not change the host's configuration or hot-reload its extensions.`,
+            '</building_blocks>',
+          ].join('\n')
+        },
+        { tag: false },
+      ),
       section('environment', (input) => {
         const cwd = input.env?.cwd ?? input.agent.cwd ?? host.projectRoot
         const os = process.platform === 'darwin' ? 'macOS' : process.platform

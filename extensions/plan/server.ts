@@ -162,21 +162,27 @@ export default (host: ExtensionHost) => {
       }),
     ],
     sections: [
-      section('plan', async ({ read, conversationId }, context) => {
-        const plan = await read.snapshot(Plan, conversationId, context)
-        const lines = Object.values(plan?.epics ?? {})
-          .filter((epic) => epic.status !== 'done')
-          .flatMap((epic) => [
-            `${epic.key} ${epic.status} ${epic.title}`,
-            ...Object.values(epic.tasks).map(
-              (task) =>
-                `${task.key} ${task.status} ${task.title}` +
-                (task.deps.length ? ` deps:${task.deps.join(',')}` : '') +
-                (task.child !== undefined ? ` child:${task.child}` : ''),
-            ),
-          ])
-        return lines.length ? lines.join('\n') : undefined
-      }),
+      // Empty, not undefined, without open epics: the slot keeps its place, so coming back patches only this section
+      // (Pi re-sends every section when one would land out of order, #573861).
+      section(
+        'plan',
+        async ({ read, conversationId }, context) => {
+          const plan = await read.snapshot(Plan, conversationId, context)
+          const lines = Object.values(plan?.epics ?? {})
+            .filter((epic) => epic.status !== 'done')
+            .flatMap((epic) => [
+              `${epic.key} ${epic.status} ${epic.title}`,
+              ...Object.values(epic.tasks).map(
+                (task) =>
+                  `${task.key} ${task.status} ${task.title}` +
+                  (task.deps.length ? ` deps:${task.deps.join(',')}` : '') +
+                  (task.child !== undefined ? ` child:${task.child}` : ''),
+              ),
+            ])
+          return lines.length ? `<plan>\n${lines.join('\n')}\n</plan>` : ''
+        },
+        { tag: false },
+      ),
     ],
     tools: [
       defineTool({

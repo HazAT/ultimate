@@ -846,13 +846,19 @@ export default function automations(host: ExtensionHost) {
       }),
     ],
     sections: [
-      section('automations', async ({ read }, context) => {
-        const state = await read.snapshot(Automations, context)
-        const lines = Object.values(state?.automations ?? {})
-          .filter((a) => a.enabled)
-          .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
-        return lines.length ? lines.join('\n') : undefined
-      }),
+      // Empty, not undefined, with none enabled: the slot keeps its place, so coming back patches only this section
+      // (Pi re-sends every section when one would land out of order, #573861).
+      section(
+        'automations',
+        async ({ read }, context) => {
+          const state = await read.snapshot(Automations, context)
+          const lines = Object.values(state?.automations ?? {})
+            .filter((a) => a.enabled)
+            .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
+          return lines.length ? `<automations>\n${lines.join('\n')}\n</automations>` : ''
+        },
+        { tag: false },
+      ),
     ],
     tools: [
       defineTool({

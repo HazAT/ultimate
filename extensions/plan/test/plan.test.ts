@@ -348,9 +348,9 @@ it('indexes linked children with their task and renames them after it', async ()
   }
 })
 
-// The pi-durable patch (planSections in patches/): without it Pi removes and re-adds every section when one returns
-// ahead of a section already shown, sending the whole system prompt again (40 times in two days, #558178).
-it('patches only the plan section when it appears, leaves and returns ahead of a later section', async () => {
+// Pi removes and re-adds every section when one would land out of order, sending the whole system prompt again (40 times
+// in two days, #558178); the plan keeps an empty slot instead (#573861).
+it('patches only the plan section, in its declared place, when it appears, leaves and returns', async () => {
   const directory = await temp('ultimate-plan-prompt-')
   const prepared = await prepareHarness({
     ultimateRoot: directory,
@@ -387,9 +387,10 @@ it('patches only the plan section when it appears, leaves and returns ahead of a
       message.role === 'system' && message.sections !== undefined ? [message.sections] : [],
     )
     const [baseline, ...later] = patches
-    expect(Object.keys(baseline)).toEqual(['tail'])
-    expect(later.map((patch) => patch.plan === null)).toEqual([false, true, false])
+    expect(baseline).toEqual({ plan: '', tail: '<tail>\nAlways here.\n</tail>' })
+    expect(later.map((patch) => patch.plan === '')).toEqual([false, true, false])
     for (const patch of later) expect(Object.keys(patch)).toEqual(['plan'])
+    expect(later.at(-1)!.plan).toMatch(/^<plan>\nE2 planning Two\n<\/plan>$/)
   } finally {
     await opened.close()
     await removeTemp(directory)

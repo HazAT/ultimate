@@ -933,32 +933,39 @@ export default function subagents(
       }),
     ],
     sections: [
-      section('subagent_state', async (input, context) => {
-        const state = await input.read.snapshot(Subagents, input.conversationId, context)
-        const running: string[] = []
-        const pending = new Set<ConversationId>()
-        for (const action of Object.values(state?.actions ?? {}))
-          if (
-            action.status === undefined &&
-            (await host.harness().getTask(action.reporter, context))?.state.status !== 'terminal'
-          )
-            pending.add(action.conversationId)
-        const queued: string[] = []
-        for (const agent of Object.values(state?.agents ?? {})) {
-          const label = `${agent.conversationId} (${agent.agent})`
-          if (
-            (await input.read.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined
-          )
-            running.push(label)
-          else if (pending.has(agent.conversationId)) queued.push(label)
-        }
-        if (!running.length && !queued.length) return undefined
-        return [
-          ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
-          ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
-          'A yielded wait is not a child answer. Use message, stop, or wait with these IDs; parent stop does not stop them. Queued inputs are delivered only at the normal boundary; do not act on them early.',
-        ].join(' ')
-      }),
+      // Empty, not undefined, when idle: the slot keeps its place, so coming back patches only this section
+      // (Pi re-sends every section when one would land out of order, #573861).
+      section(
+        'subagent_state',
+        async (input, context) => {
+          const state = await input.read.snapshot(Subagents, input.conversationId, context)
+          const running: string[] = []
+          const pending = new Set<ConversationId>()
+          for (const action of Object.values(state?.actions ?? {}))
+            if (
+              action.status === undefined &&
+              (await host.harness().getTask(action.reporter, context))?.state.status !== 'terminal'
+            )
+              pending.add(action.conversationId)
+          const queued: string[] = []
+          for (const agent of Object.values(state?.agents ?? {})) {
+            const label = `${agent.conversationId} (${agent.agent})`
+            if (
+              (await input.read.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined
+            )
+              running.push(label)
+            else if (pending.has(agent.conversationId)) queued.push(label)
+          }
+          if (!running.length && !queued.length) return ''
+          const text = [
+            ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
+            ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
+            'A yielded wait is not a child answer. Use message, stop, or wait with these IDs; parent stop does not stop them. Queued inputs are delivered only at the normal boundary; do not act on them early.',
+          ].join(' ')
+          return `<subagent_state>\n${text}\n</subagent_state>`
+        },
+        { tag: false },
+      ),
       section('subagents', async (input) => {
         const usesDefinitions = input.agent.tools.some((tool) =>
           ['subagent', 'branch', 'automation'].includes(tool.name),

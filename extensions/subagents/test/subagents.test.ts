@@ -1180,7 +1180,7 @@ describe('subagents', () => {
             (message) =>
               message.role === 'system' && Object.hasOwn(message.sections ?? {}, 'subagent_state'),
           ),
-      ).toMatchObject({ sections: { subagent_state: null } })
+      ).toMatchObject({ sections: { subagent_state: '' } })
       await call(f.opened, { action: 'wait', id })
       expect(await reports(f.opened)).toHaveLength(1)
     },
