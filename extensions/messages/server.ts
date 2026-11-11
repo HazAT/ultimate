@@ -205,7 +205,7 @@ export default function messages(host: ExtensionHost) {
     working: (tx, id) => working(tx, id),
   })
   host.implement(MessagesApi, {
-    answer: (messageId, text, ctx, device, images) => {
+    answer: async (messageId, text, ctx, device, images) => {
       const attached = checkImages(images)
       return answer(host, messageId, text, ctx, {
         device,
