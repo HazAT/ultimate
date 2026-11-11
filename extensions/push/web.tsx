@@ -37,19 +37,30 @@ const json = (subscription: PushSubscription): Subscription => ({
 const bytes = (key: string) =>
   Uint8Array.from(atob(key.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0))
 
+/**
+ * Whether this browser can show pushes. Every path goes through it: without it the extension does nothing. An Android
+ * WebView (react-native-webview 13.16.1, 2026-11-11) has service workers but no Notifications or Push API, and once
+ * threw "getNotifications is not a function" on every page.
+ */
+const supported =
+  'serviceWorker' in navigator &&
+  'Notification' in window &&
+  'pushManager' in ServiceWorkerRegistration.prototype &&
+  'getNotifications' in ServiceWorkerRegistration.prototype
+
 let launched = false
 /**
  * The service worker (registering it again is a no-op beside the share extension's); a subscribed browser sends its
  * subscription again, in case the server lost it.
  */
 function launch() {
-  if (launched || !('serviceWorker' in navigator)) return
+  if (launched || !supported) return
   launched = true
   navigator.serviceWorker
     .register('/sw.js')
     .then(async (registration) => {
       update({ registration })
-      const subscription = await registration.pushManager?.getSubscription()
+      const subscription = await registration.pushManager.getSubscription()
       if (!subscription || Notification.permission !== 'granted') return
       update({ subscription })
       await api.action(SubscribeAction, { subscription: json(subscription) })
@@ -109,7 +120,7 @@ function Pusher() {
       .catch((error: unknown) => console.warn('Closing answered notifications', error))
   }, [settled, registration])
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return undefined
+    if (!supported) return undefined
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
@@ -136,7 +147,7 @@ function Pusher() {
 
 /** Why this browser cannot get pushes, or nothing. */
 function blocked() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window))
+  if (!supported)
     return "This browser can't receive push notifications; install Ultimate as an app first."
   if (Notification.permission === 'denied')
     return 'Notifications are blocked for this app; allow them in its settings.'
