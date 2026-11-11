@@ -54,6 +54,63 @@ export function searchHit(entry: EntryRecord, text: string, options: SearchOptio
   }
 }
 
+export type EntriesOptions = { kinds?: string[]; limit?: number; before?: number; full?: boolean }
+
+const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text)
+
+/**
+ * What `entries` returns for `entry` without `full`: who said what, without thinking, usage or provider diagnostics,
+ * which made 1000 raw entries 7.5 MB (#572080). Message text stays whole; tool results keep their start and end
+ * (where an exit code is), tool arguments and `data` are cut. Content is a string or an array of blocks.
+ */
+export function compactEntry(entry: EntryRecord) {
+  const message = entry.model?.[0] as
+    | {
+        role?: string
+        content?: unknown
+        timestamp?: number
+        toolName?: string
+        stopReason?: string
+        errorMessage?: string
+        isError?: boolean
+      }
+    | undefined
+  const content = message?.content
+  const blocks = (
+    typeof content === 'string'
+      ? [{ type: 'text', text: content }]
+      : Array.isArray(content)
+        ? content
+        : []
+  ) as { type?: string; text?: string; name?: string; arguments?: unknown }[]
+  let text = blocks
+    .filter((block) => block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n')
+  if (message?.role === 'toolResult' && text.length > 1000)
+    text = `${text.slice(0, 300)}\n…\n${text.slice(-700)}`
+  const tools = blocks
+    .filter((block) => block.type === 'toolCall')
+    .map((block) => ({ name: block.name, args: cut(JSON.stringify(block.arguments ?? {}), 200) }))
+  const stop = message?.stopReason
+  const error = message?.errorMessage ?? (message?.isError ? true : undefined)
+  return {
+    id: entry.id,
+    kind: entry.kind,
+    ...(typeof message?.timestamp === 'number' && {
+      at: new Date(message.timestamp).toISOString(),
+    }),
+    ...(message?.role && { role: message.role }),
+    ...(message?.toolName && { tool: message.toolName }),
+    ...(text && { text }),
+    ...(tools.length > 0 && { tools }),
+    ...(stop && stop !== 'stop' && stop !== 'toolUse' && { stopReason: stop }),
+    ...(error !== undefined && { error }),
+    ...(entry.data !== undefined &&
+      !entry.kind.startsWith('pi.') && { data: cut(JSON.stringify(entry.data), 500) }),
+  }
+}
+
 /** Undefined means the live chapter; unknown names fail before any database is opened. */
 export async function closedChapter(home: string, active: string, options: unknown) {
   if (
@@ -156,10 +213,11 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
     }
     const matches: unknown[] = []
     if (op === 'entries') {
-      const options = (args[1] ?? {}) as { kinds?: string[]; limit?: number; before?: number }
+      const options = (args[1] ?? {}) as EntriesOptions
       const count = limit(options.limit)
       for (const entry of entries(args[0], options.before)) {
-        if (!options.kinds || options.kinds.includes(entry.kind)) matches.push(entry)
+        if (!options.kinds || options.kinds.includes(entry.kind))
+          matches.push(options.full ? entry : compactEntry(entry))
         if (matches.length === count) break
       }
     } else {

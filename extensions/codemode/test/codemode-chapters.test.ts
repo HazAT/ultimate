@@ -61,6 +61,7 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
       })
     }, context)
     const live = await read('entries', [fork.id])
+    const full = await read('entries', [fork.id, { full: true }])
     const filtered = await read('entries', [fork.id, { kinds: ['chapter.note'], limit: 1 }])
     const before = await read('entries', [
       fork.id,
@@ -98,6 +99,7 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
     const database = chapterFiles(home, 'next').database
     const bytes = await readFile(database)
     expect(await read('entries', [fork.id, { chapter: 'next' }])).toEqual(live)
+    expect(await read('entries', [fork.id, { chapter: 'next', full: true }])).toEqual(full)
     expect(
       await read('entries', [fork.id, { chapter: 'next', kinds: ['chapter.note'], limit: 1 }]),
     ).toEqual(filtered)

@@ -25,7 +25,6 @@ import type {
   ConversationId,
   Cursor,
   EntryId,
-  EntryRecord,
   JsonObject,
   ToolExecutionApi,
   ToolRegistration,
@@ -41,8 +40,8 @@ import type { ActionContext } from '../../server/actions.ts'
 import { READS, readProject } from './projects.ts'
 import { REMOTE_BYTES } from '../../lib/remote.ts'
 import type { Read } from './projects.ts'
-import { closedChapter, id, limit, readChapter, searchHit } from './chapters.ts'
-import type { HistoryRead, SearchOptions } from './chapters.ts'
+import { closedChapter, compactEntry, id, limit, readChapter, searchHit } from './chapters.ts'
+import type { EntriesOptions, HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
@@ -98,13 +97,10 @@ function localReads(host: ExtensionHost, context: Context) {
       } while (cursor)
       return items
     }, context)
-  const entries = async (
-    conversation: unknown,
-    options: { kinds?: string[]; limit?: number; before?: number } = {},
-  ) => {
+  const entries = async (conversation: unknown, options: EntriesOptions = {}) => {
     const found = await host.harness().conversation(id(conversation), context)
     if (!found) throw new Error('Unknown conversation')
-    const items: EntryRecord[] = []
+    const items: unknown[] = []
     let cursor: Cursor | undefined
     const count = limit(options.limit)
     do {
@@ -119,7 +115,8 @@ function localReads(host: ExtensionHost, context: Context) {
         context,
       )
       for (const entry of page.items) {
-        if (!options.kinds || options.kinds.includes(entry.kind)) items.push(entry)
+        if (!options.kinds || options.kinds.includes(entry.kind))
+          items.push(options.full ? entry : compactEntry(entry))
         if (items.length === count) return items
       }
       cursor = page.next
@@ -182,7 +179,7 @@ function localReads(host: ExtensionHost, context: Context) {
   return {
     conversations: history('conversations', 0, () => listed()),
     entries: history('entries', 1, ([conversation, options]) =>
-      entries(conversation, options as Parameters<typeof entries>[1]),
+      entries(conversation, options as EntriesOptions),
     ),
     search: history('search', 1, ([text, options]) => search(text, options as SearchOptions)),
     trace: ([query]) => host.trace.query(query ?? {}),
@@ -374,9 +371,9 @@ function globals(
     {
       name: 'entries',
       description:
-        'Newest-first fork-aware stored history, including before resets and compactions. before is an exclusive entry ID.',
+        'Newest-first fork-aware stored history, including before resets and compactions. before is an exclusive entry ID. Entries are compact: message text whole, tool results kept at start and end, args and data cut, no thinking; full returns stored entries.',
       signature:
-        '(conversationId: number, options?: { kinds?: string[]; limit?: number; before?: number; project?: string; machine?: string; chapter?: string }): Promise<unknown[]>',
+        '(conversationId: number, options?: { kinds?: string[]; limit?: number; before?: number; full?: boolean; project?: string; machine?: string; chapter?: string }): Promise<{ id: number; kind: string; at?: string; role?: string; tool?: string; text?: string; tools?: { name: string; args: string }[]; stopReason?: string; error?: string | true; data?: string }[]>',
       execute: read('entries', 1),
     },
     {

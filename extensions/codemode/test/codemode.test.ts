@@ -108,7 +108,7 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
   const result = await run(
     next,
     `return {
-    entries: await ultimate.entries(${server.root.id}, { chapter: '${FIRST_CHAPTER}', kinds: ['chapter.note'] }),
+    entries: await ultimate.entries(${server.root.id}, { chapter: '${FIRST_CHAPTER}', kinds: ['chapter.note'], full: true }),
     search: await ultimate.search('closed-chapter-needle', { chapter: '${FIRST_CHAPTER}', limit: 1, full: true }),
     conversations: await ultimate.conversations({ chapter: '${FIRST_CHAPTER}' })
   };`,
