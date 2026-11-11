@@ -1,23 +1,19 @@
 ---
 name: ultimate-provider-smoke
-description: Check a change whose behaviour depends on the provider or model itself (latency, streaming of tool arguments, a pinned agent model, login or fallback, prompt caching) on the models it is meant for, with one short real turn on a preview started with `instance.model` null. Use when a normal preview cannot show it because it runs every agent on one model; fall back to a supervised scratch server only for restart, core swap or other process-level behaviour.
+description: Check a change whose behaviour depends on the provider or model itself (latency, streaming of tool arguments, a pinned agent model, login or fallback, prompt caching) on the models it is meant for, with one short real turn on a preview started with `model: null`. Use when a normal preview cannot show it because it runs every agent on one model; fall back to a supervised scratch server only for restart, core swap or other process-level behaviour.
 ---
 
 # Smoke-test the real provider
 
 A preview (`instance start`) normally runs every agent on `instance.model` through `ULTIMATE_MODEL`, which overrides
-agent pins, the root model and `summaryModel`. With `"instance": { "model": null }` it sets no `ULTIMATE_MODEL`, so
+agent pins, the root model and `summaryModel`. Started with `model: null` it sets no `ULTIMATE_MODEL`, so
 each agent runs on its configured model and provider (`extensions/instance/README.md`). That covers latency,
 streaming, pinned agent models, login or fallback, and prompt caching. Spend one or two short turns.
 
 ## Start a preview on the configured models
 
-The setting is read when the preview starts: project settings of the host's project, then `~/.ultimate/settings.json`.
-A branch cannot edit the host's project settings, so set it in user settings and restore them right after the start:
-
-1. Add `"instance": { "model": null }` to `~/.ultimate/settings.json` (create the key; keep everything else).
-2. `instance start` from your workspace. Note its URL and home.
-3. Put `~/.ultimate/settings.json` back as it was. The running preview keeps the configured models.
+`instance start` with `model: null` from your workspace; note its URL and home. The argument applies to this preview
+only: never edit `~/.ultimate/settings.json` for it, since every other preview started meanwhile would read the change.
 
 To try a different model, set it the way a user would: an agent definition or a project setting in the checkout,
 or the composer's model picker in the preview. Logins are read from `~/.pi/agent` and Claude Code's own login, never
@@ -75,7 +71,7 @@ trace also lists background calls such as titles and summaries on `summaryModel`
 
 ## Clean up
 
-- Preview: `instance stop`, and check `~/.ultimate/settings.json` is back as it was (step 3).
+- Preview: `instance stop`.
 - Scratch server: `kill <supervisor pid>` (not `pkill -f`: the pattern matches your own shell), then
   `rm -rf $H $H.log`.
 

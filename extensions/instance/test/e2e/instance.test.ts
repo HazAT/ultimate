@@ -316,6 +316,26 @@ it('previews a workspace of another project on the host Ultimate', async () => {
     await f.close()
   }
 }, 120000)
+it('starts a preview on the model given to start, over the instance.model setting', async () => {
+  const f = await fixture()
+  try {
+    await writeFile(
+      join(f.root, '.ultimate/settings.json'),
+      JSON.stringify({
+        extensions: { disable: ['tailscale'] },
+        instance: { model: 'scripted/scripted-1' },
+      }),
+    )
+    const main = await f.main()
+    const preview = JSON.parse(await f.run({ action: 'start', model: null }, main.id)) as Preview
+    // The preview's own environment: no ULTIMATE_MODEL, so its agents run their configured models.
+    const environ = await readFile(`/proc/${preview.pid}/environ`, 'utf8')
+    expect(environ.split('\0').filter((line) => line.startsWith('ULTIMATE_MODEL='))).toEqual([])
+    await f.run({ action: 'stop', id: preview.id })
+  } finally {
+    await f.close()
+  }
+}, 120000)
 it('cleans up a failed or aborted preview and allows its home to be reused', async () => {
   const f = await fixture()
   try {
