@@ -76,3 +76,17 @@ it('leaves out what an extension that is off owns', async () => {
     extensions,
   })
 })
+
+it('still answers when Update fails, as while origin has no default branch', async () => {
+  const failing = host()
+  const update = {
+    state: async () => {
+      throw new Error('origin has no default branch; run git remote set-head origin --auto')
+    },
+  }
+  failing.want = ((api: { name: string }) =>
+    api.name === 'update' ? update : services[api.name]) as ExtensionHost['want']
+  const result = await status(failing, 940, 1000)
+  expect(result.head).toBeUndefined()
+  expect(result.questions.count).toBe(2)
+})

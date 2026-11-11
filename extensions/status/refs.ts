@@ -6,7 +6,7 @@ export type Status = {
   at: number
   /**
    * The clone Ultimate runs from, from Update's last check (origin is fetched hourly, never per call). Absent while
-   * Update is off or on a preview.
+   * Update is off, on a preview, or cannot read the clone (origin has no default branch).
    */
   head?: {
     sha: string
