@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4d41c85f9 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..8ca8c2642dfd860aaa6ffdc3677dd99ce06153d6 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
@@ -194,7 +194,47 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
      process.kill(-child.pid, "SIGKILL");
    } catch {
      try {
-@@ -544,15 +594,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -488,9 +538,23 @@ function requestMessages(body: Buffer | undefined): NativeRequestMessage[] | und
+   }
+ }
+ 
++/**
++ * Where the request's leading user messages end. Claude Code can put user
++ * messages of its own in front of the initial one: since 2.1.319 a mention of
++ * an existing path ("@notes.md") arrives as a "Called the Read tool" message
++ * ahead of it (Ultimate #566809). The last of the run is Pi's initial user
++ * message, and the initial system messages follow the run.
++ */
++function leadingUserEnd(messages: NativeRequestMessage[] | undefined): number {
++  let end = 0;
++  while (messages?.[end]?.role === "user") end += 1;
++  return end;
++}
++
+ function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unknown[]): unknown[] | undefined {
+   if (canonicalContent.length === 0) return undefined;
+-  const actual = requestMessages(body)?.[0];
++  const messages = requestMessages(body);
++  const actual = messages?.[leadingUserEnd(messages) - 1];
+   if (actual?.role !== "user" || !Array.isArray(actual.content) || actual.content.length < canonicalContent.length) {
+     return undefined;
+   }
+@@ -501,10 +565,11 @@ function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unk
+ 
+ function deriveInitialSystemMessages(body: Buffer | undefined): unknown[] | undefined {
+   const messages = requestMessages(body);
+-  if (messages?.[0]?.role !== "user") return undefined;
+-  let end = 1;
++  const start = leadingUserEnd(messages);
++  if (!messages || start === 0) return undefined;
++  let end = start;
+   while (messages[end]?.role === "system") end += 1;
+-  const systems = messages.slice(1, end);
++  const systems = messages.slice(start, end);
+ 
+   // A replayed history from an older carrier has the date reminder at the
+   // moving tail rather than in the initial environment reminder. Snapshot it
+@@ -544,15 +609,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -225,10 +265,22 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +700,11 @@ export function rewriteInitialRequest(
+@@ -563,7 +636,7 @@ function removeRepeatedUserReminders(messages: NativeRequestMessage[], prefix: u
+   if (!reminder || !prefix) return;
+   const normalizedPrefix = JSON.stringify(prefix.map(withoutCacheControl));
+ 
+-  for (let index = 1; index < messages.length; index++) {
++  for (let index = leadingUserEnd(messages); index < messages.length; index++) {
+     const message = messages[index];
+     if (message?.role !== "user" || !Array.isArray(message.content)) continue;
+     const leading = message.content.slice(0, prefix.length).map(withoutCacheControl);
+@@ -641,16 +714,28 @@ export function rewriteInitialRequest(
+     system?: unknown;
    };
    let messages = payload.messages;
-   const first = messages?.[0];
+-  const first = messages?.[0];
++  const leadingEnd = leadingUserEnd(messages);
++  const first = messages?.[leadingEnd - 1];
 +  // Replaying a history whose first message starts with "/", Claude Code sends
 +  // that message as a bare string without its reminder blocks.
 +  if (first?.role === "user" && typeof first.content === "string") {
@@ -237,7 +289,24 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +729,11 @@ export function rewriteInitialRequest(
+   if (prefix) first.content = [...structuredClone(prefix), ...structuredClone(canonicalContent)];
+ 
+   if (initialSystemMessages?.length && messages) {
+-    let systemEnd = 1;
++    // A system message must precede an assistant message or end the array, so
++    // the initial ones go after the whole leading user run, never inside it.
++    let systemEnd = leadingEnd;
+     while (messages[systemEnd]?.role === "system") systemEnd += 1;
+-    messages.splice(1, systemEnd - 1, ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]));
++    messages.splice(
++      leadingEnd,
++      systemEnd - leadingEnd,
++      ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]),
++    );
+ 
+     const initialText = initialSystemMessages
+       .map((message) => contentText((message as NativeRequestMessage).content))
+@@ -666,9 +751,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -250,7 +319,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +791,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +813,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -271,7 +340,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -912,6 +991,8 @@ class ClaudeProcess {
+@@ -912,6 +1013,8 @@ class ClaudeProcess {
          : undefined,
        input.betas,
      );
@@ -280,7 +349,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
  
      const abort = () => {
        this.relay.abort();
-@@ -976,11 +1057,14 @@ class ClaudeProcess {
+@@ -976,11 +1079,14 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -299,7 +368,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..e4df529f2ee6fb74b8ae2e0b7eb85db4
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1074,6 @@ class ClaudeProcess {
+@@ -990,13 +1096,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
