@@ -128,6 +128,14 @@ function killGroup(owner: { pid: number; start: string } | undefined) {
 }
 
 async function capture(page: Page, file: string, selector?: string, fullPage = false) {
+  // Chromium 155: DOMContentLoaded can precede the page's first compositor surface, and captureScreenshot then fails
+  // with "Unable to capture screenshot". Cross a rendering update first; the first rAF itself still runs before paint.
+  await page.evaluate(
+    () =>
+      new Promise<void>((painted) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => painted())),
+      ),
+  )
   await mkdir(dirname(file), { recursive: true })
   const target = selector ? page.locator(selector) : page
   const png = await target.screenshot({
