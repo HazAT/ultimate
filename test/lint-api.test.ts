@@ -49,7 +49,7 @@ function lint(rule: Rule, file: string, source: string) {
 const api = `/**
  * Echo: says things back. Other extensions ask it to repeat text.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Message } from '../messages/api.ts'
@@ -126,7 +126,7 @@ export { EchoLine } from './line.ts'
 const refs = `/**
  * Echo in the browser: the echo log and the action that echoes. Browser-safe.
  */
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ProviderHealth } from '../../shared/protocol.ts'

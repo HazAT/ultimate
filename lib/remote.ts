@@ -4,7 +4,7 @@
  * Codemode reads through it and Messages’ Ultimate-to-Ultimate messages travel it. Nothing falls back to a copy.
  */
 import { hostname } from 'node:os'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { cloudConfig, fetchRegister } from './cloud.ts'
 import type { Register } from './cloud.ts'
 import { projectIdentity } from './project-identity.ts'

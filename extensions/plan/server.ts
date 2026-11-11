@@ -146,7 +146,7 @@ export default (host: ExtensionHost) => {
   return defineExtension({
     name: 'plan',
     hooks: [
-      // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
+      // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
       // A lineage branch starts with an empty plan, not the one it forked with: emptied in the commit that places its
       // first input, so its first request never sees the inherited plan. A branch that answered before it was marked
       // started (one made before this hook) keeps its own.

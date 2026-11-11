@@ -1,4 +1,4 @@
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../server/extensions.ts'
 

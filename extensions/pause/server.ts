@@ -126,7 +126,7 @@ async function state(host: Host): Promise<PauseState> {
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 /**
  * Hold the scheduler, then record the pause and each run mid-turn now (its task and first input), which Play notes;
  * `limit` when a rate limit pauses it, also into a pause already recorded, so the limit shows.

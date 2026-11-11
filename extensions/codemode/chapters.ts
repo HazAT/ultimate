@@ -75,7 +75,7 @@ export async function closedChapter(home: string, active: string, options: unkno
   return chapter === active ? undefined : chapterFiles(home, chapter).database
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/storage/sqlite/migrations.ts — conversation/entry JSON records and document revisions; fork cutoffs follow src/storage/sqlite/storage.ts. Drop when Pi's SQLite storage opens over a read-only connection: 1.5.0's readOnly Harness still sets WAL mode, runs migrations and checkpoints the file on close.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/storage/sqlite/migrations.ts — conversation/entry JSON records and document revisions; fork cutoffs follow src/storage/sqlite/storage.ts. Drop when Pi's SQLite storage opens over a read-only connection: 1.5.2's readOnly Harness still sets WAL mode, runs migrations and checkpoints the file on close.
 export function readChapter(database: string, op: HistoryRead, args: unknown[]) {
   const db = new DatabaseSync(database, { readOnly: true })
   try {

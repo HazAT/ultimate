@@ -1,4 +1,4 @@
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 
 /** Ids of the work an event happened in, from the call trace: a reactor's run continues `traceId` under `parentCall`. */
 export type EventContext = {

@@ -1,7 +1,7 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent'
 import { useEffect, useRef } from 'react'
 
-// Pi upstream: @earendil-works/pi-coding-agent@1.5.0 src/core/event-bus.ts — adapted: Pi's bus uses node:events; use browser-safe sets. Drop when Pi ships a browser-safe bus.
+// Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/core/event-bus.ts — adapted: Pi's bus uses node:events; use browser-safe sets. Drop when Pi ships a browser-safe bus.
 const channels = new Map<string, Set<(data: unknown) => Promise<void>>>()
 export const events: EventBus = {
   emit: (channel, data) => {

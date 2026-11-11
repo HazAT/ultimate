@@ -4,7 +4,7 @@
  * its id, its checkout and its files; nothing runs until the next input. Entries up to the point keep their exact
  * contributions, so the next request repeats the old prefix and a warm provider cache can hit.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Message } from '@earendil-works/pi-ai'
 import { serializeConversation } from '@earendil-works/pi-coding-agent'
@@ -29,7 +29,7 @@ import { Started } from '../subagents/api.ts'
 import { isAbsolute, relative } from 'node:path'
 import { getOrThrow } from '@earendil-works/pi-durable/env'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { EventData, EventRecord, EventToken } from '../../shared/events.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Roots } from './api.ts'
@@ -114,7 +114,7 @@ export function rewindPlan(current: View, past: View, at: number) {
 
 const rows = (text: string) => text.split('\n').filter(Boolean)
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/tools/path-utils.ts — copied unexported normalizeToolPath (unicode spaces, leading @), which edit and write apply before env.absolutePath. Drop when Pi exports resolveToolPath's normalization.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/tools/path-utils.ts — copied unexported normalizeToolPath (unicode spaces, leading @), which edit and write apply before env.absolutePath. Drop when Pi exports resolveToolPath's normalization.
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g
 function normalizeToolPath(path: string) {
   const normalized = path.replace(UNICODE_SPACES, ' ')

@@ -1,5 +1,5 @@
 import { applyImmutable } from '@earendil-works/chord/delta'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { JsonObject, TaskGraph } from '@earendil-works/pi-durable'
 import type {
   ConversationSummary,

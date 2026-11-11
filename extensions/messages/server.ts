@@ -29,7 +29,7 @@ import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
@@ -201,7 +201,7 @@ export default function messages(host: ExtensionHost) {
     tasks: [delivery(host), route(host), notice(host)],
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
         onYield: async (_answer, api, ctx) => {
           // A branch's answers go up to its starter; the primary agent's answers to a branch go down to it.

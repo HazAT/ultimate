@@ -194,7 +194,7 @@ export default function todosExtension(host: ExtensionHost) {
     name: 'todos',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         // A per-input note when the list changed, never a system-prompt section, keeps the prompt cached.
         beforeInput: async (_input, { tx, conversationId }) =>
           (await standing(tx, conversationId))

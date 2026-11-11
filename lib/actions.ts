@@ -1,5 +1,5 @@
 /** Server action handlers checked against their refs in `refs.ts`, so the browser's types and the server can't drift. */
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { ActionContext } from '../server/actions.ts'
 import type { ActionRef } from '../shared/extension-api.ts'
 

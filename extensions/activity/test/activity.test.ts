@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { actions } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'

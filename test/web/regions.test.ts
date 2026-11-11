@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { UiState } from '../../web/src/sdk/store.ts'
 
 const { shared, ui, width } = vi.hoisted(() => {

@@ -9,7 +9,7 @@ import { extensionSettingsFiles } from './extension-settings.ts'
 import { watchRoots } from './watch-roots.ts'
 import { actionExec } from './actions.ts'
 import type { ExtensionAction } from './actions.ts'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { join, resolve } from 'node:path'
 import type {
   ConversationDocToken,

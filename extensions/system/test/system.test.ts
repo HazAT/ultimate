@@ -1,7 +1,7 @@
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { actions, lanes } from '../server.ts'
 import type { SystemRow } from '../refs.ts'
 import type { ActionContext } from '../../../server/actions.ts'

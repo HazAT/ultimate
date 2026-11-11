@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/prompt.ts — internal remove-all pi.system entry immediately precedes a reordered re-add, folded into the re-add's diff here. Drop when Pi exposes prompt reorder metadata instead of requiring entry-sequence inference.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/harness/prompt.ts — internal remove-all pi.system entry immediately precedes a reordered re-add, folded into the re-add's diff here. Drop when Pi exposes prompt reorder metadata instead of requiring entry-sequence inference.
 import type { Message, SystemMessage } from '@earendil-works/pi-ai'
 import {
   estimateMessageTokens,

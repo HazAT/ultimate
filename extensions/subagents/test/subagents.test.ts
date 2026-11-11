@@ -21,7 +21,8 @@ import {
   LiveDoc,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Extension, Task, ToolRegistration } from '@earendil-works/pi-durable'
-import type { Context, JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { obj } from '@earendil-works/pi-schema'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
