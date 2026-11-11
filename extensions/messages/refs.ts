@@ -57,6 +57,8 @@ export type Message = {
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
   images?: { entry: number; count: number }
+  /** How many images the user attached to this answer: placed in the recipient's input, so `entry` holds them. */
+  attached?: number
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
   /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
@@ -93,9 +95,11 @@ export const CallerAction = actionRef<{ conversation: number; call: string }, { 
  * `messageId` for them, from what they said in its chat: `text` is their answer, in their words or the picks read
  * from them, sent to the asker as the user's reply; with `dismiss`, `text` says why it no longer matters and the
  * asker gets a note. The answer records `via`, so the card shows @ultimate settled it. Refused from anyone else.
+ * `images` forwards images from the caller's conversation with the answer, as the `message` tool's `images` does:
+ * `latest` for those of its current turn (the screenshot the user pasted with their decision), or an entry id.
  */
 export const SettleAction = actionRef<
-  { messageId: number; text: string; dismiss?: boolean },
+  { messageId: number; text: string; dismiss?: boolean; images?: 'latest' | number },
   { id: number }
 >('messages', 'settle')
 

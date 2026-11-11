@@ -1,9 +1,17 @@
-import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
+import {
+  CornerDownRightIcon,
+  MessageCircleQuestionIcon,
+  PaperclipIcon,
+  Undo2Icon,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { ClipboardEvent, DragEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { ImagePreviews, useImagePaste } from '@/components/image-paste'
+import type { PastedImage } from '@/components/image-paste'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { api, cn, errorMessage, useConversation, useDocOf, useViewport } from '@/sdk'
+import { imageMimeTypes } from '../../shared/protocol.ts'
 import type { Question } from '../messages/refs.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { keyCard, openQuestions, waitsOnUser } from './open.tsx'
@@ -67,17 +75,102 @@ export function MessageQuestions({
       card={card}
       questions={questions}
       keys={questions.length > 0 && (keys ?? shown)}
-      submit={(answers, note, keepalive) =>
+      submit={(answers, note, keepalive, images) =>
         api.action(
           AnswerAction,
-          { messageId: message.id, answers, ...(note ? { note } : {}) },
-          { keepalive },
+          {
+            messageId: message.id,
+            answers,
+            ...(note ? { note } : {}),
+            ...(images.length ? { images: bare(images) } : {}),
+          },
+          // Keepalive bodies share a budget of about 64 KiB: images never fit it.
+          { keepalive: keepalive && !images.length },
         )
       }
-      reply={(text) => api.action(AnswerAction, { messageId: message.id, text })}
+      reply={(text, images) =>
+        api.action(AnswerAction, {
+          messageId: message.id,
+          text,
+          ...(images.length ? { images: bare(images) } : {}),
+        })
+      }
       dismiss={() => api.action(DismissAction, { messageId: message.id })}
       {...(className === undefined ? {} : { className })}
     />
+  )
+}
+
+/** The attached images as the action takes them, without the composer's resize note. */
+const bare = (images: PastedImage[]) => images.map(({ data, mimeType }) => ({ data, mimeType }))
+const imageCount = (count: number) => `${count} image${count === 1 ? '' : 's'}`
+
+/**
+ * Screenshots for an answer: pasted into its field, dropped on the card or picked with the paperclip, shown under the
+ * field until sent. Only images attach, within the composer's limits.
+ */
+function useAttached(disabled: () => boolean) {
+  const [images, setImages] = useState<PastedImage[]>([])
+  const [error, setError] = useState<string>()
+  const { paste, drop, attach, reading } = useImagePaste({
+    images,
+    setImages: (change) => setImages(change),
+    setFiles: () => undefined,
+    setError,
+    disabled,
+  })
+  return {
+    images,
+    error,
+    reading,
+    clear: () => setImages([]),
+    remove: (index: number) => setImages((old) => old.filter((_, i) => i !== index)),
+    onPaste: (event: ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>) =>
+      // oxlint-disable-next-line typescript/no-floating-promises -- paste reports failures in `error`.
+      void paste(event as ClipboardEvent<HTMLTextAreaElement>),
+    // The page's composer takes drops anywhere else; one on the card (`data-takes-drops`) is the card's.
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in `error`.
+      if (event.dataTransfer.types.includes('Files')) void drop(event)
+    },
+    attach,
+  }
+}
+
+/** The paperclip that picks screenshots for an answer. */
+function Attach({
+  disabled,
+  onPick,
+  className,
+}: {
+  disabled: boolean
+  onPick: (files: File[]) => unknown
+  className?: string
+}) {
+  return (
+    <label
+      aria-label="Attach images"
+      title="Attach images (or paste or drop them here)"
+      className={cn(
+        'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
+        disabled && 'pointer-events-none opacity-50',
+        className,
+      )}
+    >
+      <PaperclipIcon className="size-3.5" />
+      <input
+        accept={imageMimeTypes.join(',')}
+        className="sr-only"
+        disabled={disabled}
+        multiple
+        type="file"
+        onChange={(event) => {
+          const picked = Array.from(event.target.files ?? [])
+          event.target.value = ''
+          onPick(picked)
+        }}
+      />
+    </label>
   )
 }
 
@@ -130,10 +223,12 @@ function Summary({
   questions,
   drafts,
   note,
+  images,
 }: {
   questions: Question[]
   drafts: Record<number, Draft>
   note: string
+  images: number
 }) {
   // One column for the tags, as wide as the widest ("2a,b,c", "note"), so every answer starts at the same place.
   const widest = Math.max(
@@ -174,6 +269,14 @@ function Summary({
           <span className="min-w-0 whitespace-pre-wrap text-foreground">{note.trim()}</span>
         </li>
       )}
+      {images > 0 && (
+        <li className="flex min-w-0 items-baseline gap-2 motion-safe:animate-fade-in">
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground" style={tag}>
+            +
+          </span>
+          <span className="min-w-0 text-foreground">{imageCount(images)}</span>
+        </li>
+      )}
     </ul>
   )
 }
@@ -188,23 +291,28 @@ function Note({
   hint,
   onChange,
   onSend,
+  onPaste,
+  onAttach,
 }: {
   value: string
   disabled: boolean
   hint: boolean
   onChange: (value: string) => void
   onSend: () => void
+  onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void
+  onAttach: (files: File[]) => unknown
 }) {
   return (
     <div className="relative">
       <textarea
         data-note
         aria-label="A note to send with your answer"
-        placeholder="Anything else? Sent with your answers, or on its own…"
+        placeholder="Anything else? Sent with your answers, or on its own; paste a screenshot…"
         rows={1}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
+        onPaste={onPaste}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return
           if (event.key === 'Enter' && !event.shiftKey) {
@@ -216,13 +324,14 @@ function Note({
             event.currentTarget.blur()
           }
         }}
-        className="field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 pr-8 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/60 hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11"
+        className="field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 pr-14 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/60 hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11 max-md:pr-11"
       />
-      {hint && !value && (
-        <Key className="pointer-events-none absolute top-2.5 right-2.5 bg-transparent text-muted-foreground/60">
-          /
-        </Key>
-      )}
+      <span className="absolute top-1 right-1 flex items-center gap-0.5">
+        {hint && !value && (
+          <Key className="pointer-events-none bg-transparent text-muted-foreground/60">/</Key>
+        )}
+        <Attach disabled={disabled} onPick={onAttach} />
+      </span>
     </div>
   )
 }
@@ -239,8 +348,13 @@ function Card({
   card: string
   questions: Question[]
   keys: boolean
-  submit: (answers: Answer[], note?: string, keepalive?: boolean) => Promise<unknown>
-  reply: (text: string) => Promise<unknown>
+  submit: (
+    answers: Answer[],
+    note: string | undefined,
+    keepalive: boolean,
+    images: PastedImage[],
+  ) => Promise<unknown>
+  reply: (text: string, images: PastedImage[]) => Promise<unknown>
   dismiss: () => Promise<unknown>
   className?: string
 }) {
@@ -251,7 +365,10 @@ function Card({
   const [current, setCurrent] = useState(0)
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const [failed, setError] = useState<string>()
+  const attached = useAttached(() => busy || phase !== 'answering')
+  const error = failed ?? attached.error
+  const images = attached.images
   // The send waiting out its undo window, and the click that folds a chosen question away.
   const pending = useRef<{
     timer: ReturnType<typeof setTimeout>
@@ -342,13 +459,19 @@ function Card({
   }
   const send = (list: Answer[] = ready) => {
     const extra = note.trim()
-    if ((!list.length && !extra) || pending.current || phase !== 'answering') return
+    if (
+      (!list.length && !extra && !images.length) ||
+      attached.reading ||
+      pending.current ||
+      phase !== 'answering'
+    )
+      return
     clearTimeout(advance.current)
     const fire = (keepalive = false) => {
       pending.current = undefined
       setPhase('sending')
       setError(undefined)
-      submit(list, extra || undefined, keepalive).then(
+      submit(list, extra || undefined, keepalive, images).then(
         () => setPhase('sent'),
         (failure: unknown) => {
           setPhase('answering')
@@ -457,10 +580,16 @@ function Card({
       <form
         className={cn(className, 'flex flex-wrap items-center gap-2 px-3 py-2.5')}
         data-questions-card={card}
+        data-takes-drops
+        onDrop={attached.onDrop}
         onSubmit={(event) => {
           event.preventDefault()
-          // oxlint-disable-next-line typescript/no-floating-promises -- run catches reply failures and displays them with setError.
-          if (text.trim()) void run(() => reply(text.trim()))
+          if ((text.trim() || images.length) && !attached.reading)
+            // oxlint-disable-next-line typescript/no-floating-promises -- run catches reply failures and displays them with setError.
+            void run(async () => {
+              await reply(text.trim(), images)
+              attached.clear()
+            })
         }}
       >
         <MessageCircleQuestionIcon className="size-3.5 shrink-0 text-brand" />
@@ -470,8 +599,10 @@ function Card({
           value={text}
           disabled={busy}
           onChange={(event) => setText(event.target.value)}
+          onPaste={attached.onPaste}
           className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
         />
+        <Attach disabled={busy} onPick={attached.attach} />
         <Button
           variant="ghost"
           size="sm"
@@ -482,9 +613,19 @@ function Card({
         >
           Dismiss
         </Button>
-        <Button size="sm" type="submit" disabled={!text.trim() || busy}>
+        <Button
+          size="sm"
+          type="submit"
+          disabled={(!text.trim() && !images.length) || busy || attached.reading}
+        >
           {busy ? 'Sending…' : 'Send'}
         </Button>
+        <ImagePreviews
+          className="w-full px-0 pt-1"
+          disabled={busy}
+          images={images}
+          remove={attached.remove}
+        />
         {error && (
           <p role="alert" className="w-full text-xs text-error">
             {error}
@@ -516,7 +657,7 @@ function Card({
           )}
           {phase === 'sending' && <span className="ml-auto">sending…</span>}
         </div>
-        <Summary questions={questions} drafts={drafts} note={note} />
+        <Summary questions={questions} drafts={drafts} note={note} images={images.length} />
         {phase === 'undo' && (
           <div className="mt-2.5 h-0.5 overflow-hidden rounded-full bg-border/60">
             <div
@@ -535,7 +676,13 @@ function Card({
   const shownKeys = shown ? [0, 1].flatMap((i) => keyOf(shown, i) ?? []) : []
   const unanswered = questions.length - ready.length
   return (
-    <div className={className} data-questions-card={card} ref={root}>
+    <div
+      className={className}
+      data-questions-card={card}
+      data-takes-drops
+      onDrop={attached.onDrop}
+      ref={root}
+    >
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1 font-mono text-[11px] text-muted-foreground">
         <MessageCircleQuestionIcon className="size-3.5 text-brand" />
         <span className="text-foreground">
@@ -570,7 +717,21 @@ function Card({
         ))}
       </div>
       <div className="px-3 pt-2">
-        <Note value={note} disabled={busy} hint={hints} onChange={setNote} onSend={() => send()} />
+        <Note
+          value={note}
+          disabled={busy}
+          hint={hints}
+          onChange={setNote}
+          onSend={() => send()}
+          onPaste={attached.onPaste}
+          onAttach={attached.attach}
+        />
+        <ImagePreviews
+          className="px-0 pt-2"
+          disabled={busy}
+          images={images}
+          remove={attached.remove}
+        />
       </div>
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
         {hints && (
@@ -628,10 +789,10 @@ function Card({
           )}
           <Button
             size="sm"
-            disabled={(!ready.length && !note.trim()) || busy}
+            disabled={(!ready.length && !note.trim() && !images.length) || busy || attached.reading}
             onClick={() => send()}
           >
-            {!ready.length && note.trim()
+            {!ready.length && (note.trim() || images.length)
               ? 'Send note'
               : unanswered && ready.length
                 ? `Send ${ready.length} of ${questions.length}`

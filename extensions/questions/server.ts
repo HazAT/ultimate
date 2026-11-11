@@ -65,30 +65,40 @@ export const actions = {
       answers?: Answer[]
       note?: unknown
       text?: unknown
+      images?: unknown
     }
     const text = typeof data?.text === 'string' ? data.text.trim() : undefined
     const note = typeof data?.note === 'string' ? data.note.trim() : undefined
     const answers = data?.answers ?? []
+    // Messages checks each image; an answer with any may leave out its words.
+    if (data?.images !== undefined && !Array.isArray(data.images))
+      throw new Error('images must be a list')
+    const images = (data?.images ?? []) as { data: string; mimeType: string }[]
     if (
       !data ||
       !Number.isSafeInteger(data.messageId) ||
       (text === undefined
-        ? !validAnswers(answers) || (!answers.length && !note)
-        : !text || data.answers !== undefined || note)
+        ? !validAnswers(answers) || (!answers.length && !note && !images.length)
+        : (!text && !images.length) || data.answers !== undefined || note)
     )
       throw new Error('Invalid answers')
     const reply = await host.harness().commit(async (tx) => {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
       const message = log.messages.find((m) => m.id === data.messageId)
       if (!message || !open(message)) throw new Error(NOT_OPEN)
-      if (text !== undefined) return text
+      if (text) return text
       checkAnswers(answers, message.questions ?? [])
       return answerText(answers, message.questions ?? [], note)
     }, context)
     return {
-      id: await host
-        .need(MessagesApi)
-        .answer(data.messageId, reply, withAbortSignal(signal, context), device),
+      id: await host.need(MessagesApi).answer(
+        data.messageId,
+        // Images alone still say what they are, since a message has text.
+        reply || `(${images.length === 1 ? 'an image' : `${images.length} images`} attached)`,
+        withAbortSignal(signal, context),
+        device,
+        images,
+      ),
     }
   }),
   /** Close an open message to the user unanswered; its sender gets a one-way note. */

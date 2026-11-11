@@ -20,6 +20,7 @@ import { locate, postAction } from '../../lib/remote.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
+import type { Image } from './images.ts'
 import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
 
@@ -43,6 +44,8 @@ export function delivery(host: ExtensionHost) {
       toLabel: string
       /** Another project's Ultimate answered `message`: deliver only this reply. */
       reply?: { message: Message; failed: boolean; stopped?: boolean }
+      /** The images the user attached to their answer: kept here until placed, since the user has no entry to hold them. */
+      attached?: Image[]
     },
     | { phase: 'deliver' }
     /** `stopped`: the recipient's run was stopped before it answered; `failed` is set too, as for any non-answer. */
@@ -69,7 +72,7 @@ export function delivery(host: ExtensionHost) {
         // Entries never change, so a replayed delivery attaches the same images.
         const images = m.images
           ? imagesOf(await host.harness().commit((tx) => tx.entry(m.images!.entry), ctx))
-          : []
+          : (task.input.attached ?? [])
         const entry = {
           kind: 'board.message',
           data: {

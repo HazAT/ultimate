@@ -42,6 +42,33 @@ export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef
       throw new Error(`images: entry ${entry.id} has an unsupported image or one over 2 MiB`)
   return { entry: entry.id, count: images.length }
 }
+/** An image as a message's input carries it. */
+export type Image = { type: 'image'; data: string; mimeType: string }
+
+/**
+ * The images the user attached to an answer, checked as a submitted input's are: at most `maxImages`, each a supported
+ * type in canonical base64 of at most 2 MiB.
+ */
+export function checkImages(value: unknown): Image[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error('images must be a list')
+  if (value.length > maxImages) throw new Error(`At most ${maxImages} images go with an answer`)
+  return value.map((image: unknown) => {
+    const { data, mimeType } = (image ?? {}) as Record<string, unknown>
+    if (
+      typeof mimeType !== 'string' ||
+      !imageMimeTypes.includes(mimeType) ||
+      typeof data !== 'string' ||
+      !data ||
+      data.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(data) ||
+      Buffer.from(data, 'base64').toString('base64') !== data
+    )
+      throw new Error('Each image must be a PNG, JPEG, WebP or GIF in base64')
+    if (Buffer.byteLength(data, 'base64') > maxImageBytes) throw new Error('An image exceeds 2 MiB')
+    return { type: 'image' as const, data, mimeType }
+  })
+}
 export const imagesParameter = union([lit('latest'), int({ minimum: 1 })], {
   description:
     'Forward images from your conversation: "latest" for those of this turn (your current input, or a tool result such as a screenshot since; it fails when there are none), or an entry id for older ones.',

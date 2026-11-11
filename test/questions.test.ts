@@ -98,7 +98,10 @@ async function fixture() {
   const route: FauxResponseFactory = async (transcript) => {
     prepared.faux!.appendResponses([route])
     const last = transcript.messages.at(-1)!
-    const text = typeof last.content === 'string' ? last.content : ''
+    const text =
+      typeof last.content === 'string'
+        ? last.content
+        : last.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
     observed.push(text)
     await heard?.(text)
     if (last.role === 'user' && text.startsWith('SEND '))
@@ -161,8 +164,10 @@ async function fixture() {
     ({ host, conversationId, signal: new AbortController().signal }) as ActionContext
   const answer = (args: Parameters<typeof actions.answer>[0]) => actions.answer(args, action())
   const dismiss = (messageId: number) => actions.dismiss({ messageId }, action())
-  const settle = (by: number, args: { messageId: number; text: string; dismiss?: boolean }) =>
-    messageActions.settle(args, action(by))
+  const settle = (
+    by: number,
+    args: { messageId: number; text: string; dismiss?: boolean; images?: 'latest' | number },
+  ) => messageActions.settle(args, action(by))
   /** A branch that @ultimate `by` started. */
   const branch = async (by: ConversationId) => {
     const conversation = await opened.harness.createConversation(
@@ -451,6 +456,98 @@ describe('settling for the user', () => {
     await expect(f.settle(id, { messageId: message!.id, text: 'No' })).rejects.toThrow(
       'These questions are no longer open',
     )
+  })
+
+  it("forwards the screenshot the user pasted in @ultimate's chat with the answer it settles", async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const asker = await f.branch(id)
+    const { message } = await f.ask(asker, { text: 'Look right?', questions: [decisions[2]] })
+    f.hear(async (text) =>
+      text === 'no, see this'
+        ? f.settle(id, { messageId: message!.id, text: '3: No', images: 'latest' })
+        : undefined,
+    )
+    const chat = (await f.opened.harness.conversation(id, context))!
+    await (
+      await chat.submit(
+        { type: 'input', content: [{ type: 'text', text: 'no, see this' }, png(0)] },
+        context,
+      )
+    ).wait(context)
+    await f.settled()
+    const answer = (await f.log()).messages.find((m) => m.re === message!.id)!
+    expect(answer).toMatchObject({ text: '3: No', images: { count: 1 } })
+    expect(imagesIn(await placed(f, asker, answer.id))).toEqual([png(0)])
+  })
+})
+
+const png = (n: number) => ({
+  type: 'image' as const,
+  mimeType: 'image/png',
+  data: Buffer.from(`png ${n}.`).toString('base64'),
+})
+const imagesIn = (entry: { model?: readonly { content: unknown }[] } | undefined) => {
+  const content = entry?.model?.[0]?.content
+  return Array.isArray(content)
+    ? content.filter((part: { type: string }) => part.type === 'image')
+    : []
+}
+/** The input that message `id` placed in conversation `to`. */
+const placed = async (f: Awaited<ReturnType<typeof fixture>>, to: ConversationId, id: number) =>
+  (await f.entries(to)).find(
+    (entry) => entry.kind === 'board.message' && (entry.data as { id: number }).id === id,
+  )
+
+describe('screenshots with an answer', () => {
+  it("reach the asking branch's input with the answer, a note or free text, or on their own", async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const asker = await f.branch(id)
+    const { message } = await f.ask(asker, { text: 'Ship it?', questions: [decisions[2]] })
+    const { id: reply } = await f.answer({
+      messageId: message!.id,
+      answers: [{ question: 'Land it?', answer: 'No' }],
+      note: 'The hover card overlaps:',
+      images: [png(0), png(1)],
+    })
+    await f.settled()
+    expect((await f.log()).messages.find((m) => m.id === reply)).toMatchObject({
+      from: 'user',
+      to: asker,
+      attached: 2,
+    })
+    const entry = await placed(f, asker, reply)
+    expect(entry?.data).toMatchObject({ images: 2 })
+    expect(imagesIn(entry)).toEqual([png(0), png(1)])
+    // Images alone answer a message without questions; they say so in words.
+    const plain = (await f.ask(asker, { text: 'How does it look?' })).message!
+    const { id: alone } = await f.answer({ messageId: plain.id, text: '', images: [png(2)] })
+    await f.settled()
+    expect((await f.log()).messages.find((m) => m.id === alone)?.text).toBe('(an image attached)')
+    expect(imagesIn(await placed(f, asker, alone))).toEqual([png(2)])
+  })
+
+  it('refuses images that are not images, too large or too many, and leaves the question open', async () => {
+    const f = await fixture()
+    const id = await f.ultimate()
+    const asker = await f.branch(id)
+    const { message } = await f.ask(asker, { text: 'How does it look?' })
+    const answer = (images: unknown) =>
+      f.answer({ messageId: message!.id, text: 'See', images } as never)
+    await expect(answer('nope')).rejects.toThrow('images must be a list')
+    await expect(answer([{ ...png(0), mimeType: 'image/svg+xml' }])).rejects.toThrow(
+      'PNG, JPEG, WebP or GIF',
+    )
+    await expect(answer([{ ...png(0), data: 'not base64!' }])).rejects.toThrow(
+      'PNG, JPEG, WebP or GIF',
+    )
+    const big = Buffer.alloc(2 * 1024 * 1024 + 3).toString('base64')
+    await expect(answer([{ ...png(0), data: big }])).rejects.toThrow('exceeds 2 MiB')
+    await expect(answer([png(0), png(1), png(2), png(3), png(4)])).rejects.toThrow(
+      'At most 4 images',
+    )
+    expect((await f.log()).messages.find((m) => m.id === message!.id)?.state).toBe('delivered')
   })
 })
 

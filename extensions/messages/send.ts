@@ -12,7 +12,7 @@ import { isOwed } from '../../lib/message-state.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
-import type { ImagesRef } from './images.ts'
+import type { Image, ImagesRef } from './images.ts'
 import { append } from './log.ts'
 import { parentOf, resolve, senderName, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
@@ -55,6 +55,8 @@ export async function send(
     images?: ImagesRef
     /** Images belong to the caller, even when another conversation is credited as sender. */
     imagesFrom?: ConversationId
+    /** The images the user attached to their answer, checked already: delivery places them with it. */
+    attached?: Image[]
     /** The user's reply `re` dismisses that question instead of answering it. */
     dismiss?: boolean
     /** With `to: 'user'`, the decisions the message asks, as its answer card shows them. */
@@ -133,8 +135,11 @@ export async function send(
       if (!original || !openQuestion(original))
         throw new Error('These questions are no longer open')
     }
-    if (input.images !== undefined && from === 'user')
+    // The user's images go along with what they submit or with an answer; @ultimate settling one forwards its own.
+    if (input.images !== undefined && from === 'user' && !via)
       throw new Error('your images go along with what you submit, not with a message')
+    if (input.attached?.length && (from !== 'user' || answerId === undefined || input.dismiss))
+      throw new Error('only an answer carries attached images')
     const images =
       input.images === undefined
         ? undefined
@@ -198,6 +203,7 @@ export async function send(
       ...(re === undefined ? {} : { re }),
       ...(callId === undefined ? {} : { call: callId }),
       ...(images ? { images } : {}),
+      ...(input.attached?.length ? { attached: input.attached.length } : {}),
       ...(questions ? { questions } : {}),
       ...(options.report ? { report: true as const } : {}),
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
@@ -279,6 +285,7 @@ export async function send(
           note: options.note ?? (starter === to && input.reply === false),
           fromLabel,
           toLabel,
+          ...(input.attached?.length ? { attached: input.attached } : {}),
         },
         {
           conversationId: ROOT_CONVERSATION_ID,

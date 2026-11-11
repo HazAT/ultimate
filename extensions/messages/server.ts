@@ -23,7 +23,8 @@ import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
-import { imagesParameter, SCAN_PAGE } from './images.ts'
+import { checkImages, imagesParameter, SCAN_PAGE } from './images.ts'
+import type { Image, ImagesRef } from './images.ts'
 import { parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
@@ -48,7 +49,14 @@ async function answer(
   messageId: number,
   text: string,
   ctx: Context,
-  options: { device?: Device; via?: { via: Via; primary: number } } = {},
+  options: {
+    device?: Device
+    via?: { via: Via; primary: number }
+    /** The images the user attached to their answer, checked. */
+    attached?: Image[]
+    /** With `via`, images @ultimate forwards from its conversation. */
+    images?: ImagesRef
+  } = {},
 ) {
   const message = await openMessage(host, messageId, ctx)
   // @ultimate settling its own question has the answer already: a one-way note, not another turn.
@@ -56,7 +64,16 @@ async function answer(
   return send(
     host,
     'user',
-    { to: `#${message.from}`, text, re: messageId, ...(own ? { reply: false } : {}) },
+    {
+      to: `#${message.from}`,
+      text,
+      re: messageId,
+      ...(own ? { reply: false } : {}),
+      ...(options.attached?.length ? { attached: options.attached } : {}),
+      ...(options.via && options.images !== undefined
+        ? { images: options.images, imagesFrom: options.via.via.conversation as ConversationId }
+        : {}),
+    },
     ctx,
     {
       answerId: messageId,
@@ -129,12 +146,14 @@ export const actions = {
     }, BACKGROUND_CONTEXT)
   }),
   settle: implementAction(SettleAction, async (args, { host, conversationId }) => {
-    const { messageId, text, dismiss: closing } = (args ?? {}) as Record<string, unknown>
+    const { messageId, text, dismiss: closing, images } = (args ?? {}) as Record<string, unknown>
     if (!Number.isSafeInteger(messageId)) throw new Error('messageId must be a message id')
     if (typeof text !== 'string' || !text.trim())
       throw new Error("text must hold the user's answer, or why the question no longer matters")
     if (closing !== undefined && typeof closing !== 'boolean')
       throw new Error('dismiss must be a boolean')
+    if (images !== undefined && (closing || (images !== 'latest' && !Number.isSafeInteger(images))))
+      throw new Error('images must be "latest" or an entry id, and go only with an answer')
     const ctx = BACKGROUND_CONTEXT
     const primary = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
     if (
@@ -148,7 +167,10 @@ export const actions = {
     return {
       id: closing
         ? await dismiss(host, messageId as number, ctx, { via, reason: text.trim() })
-        : await answer(host, messageId as number, text.trim(), ctx, { via: { via, primary } }),
+        : await answer(host, messageId as number, text.trim(), ctx, {
+            via: { via, primary },
+            ...(images === undefined ? {} : { images: images as ImagesRef }),
+          }),
     }
   }),
   remote: remoteAction,
@@ -183,7 +205,13 @@ export default function messages(host: ExtensionHost) {
     working: (tx, id) => working(tx, id),
   })
   host.implement(MessagesApi, {
-    answer: (messageId, text, ctx, device) => answer(host, messageId, text, ctx, { device }),
+    answer: (messageId, text, ctx, device, images) => {
+      const attached = checkImages(images)
+      return answer(host, messageId, text, ctx, {
+        device,
+        ...(attached.length ? { attached } : {}),
+      })
+    },
     openQuestions: async (ctx) =>
       (
         (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages ?? []

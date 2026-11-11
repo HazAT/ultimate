@@ -338,8 +338,9 @@ function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
       depth = 0
       setDragging(false)
       const on = event.target instanceof Element ? event.target : null
-      // Every composer's editor takes its own drops, a side chat's too.
-      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')) return
+      // Every composer's editor takes its own drops, a side chat's too, and so does an answer card.
+      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea, [data-takes-drops]'))
+        return
       // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
       void dropRef.current(event)
     }
