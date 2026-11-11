@@ -4,7 +4,7 @@
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'

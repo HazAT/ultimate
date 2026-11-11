@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve } from 'node:path'
 import { onCommit } from '../../lib/commits.ts'
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type {
@@ -440,7 +440,7 @@ export async function tallyText(
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
 /** The note, baseline and first input commit together, before any request can see them. */
 export async function catchup(
   host: ExtensionHost,

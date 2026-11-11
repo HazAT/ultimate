@@ -8,7 +8,7 @@ the UI calls them through a typed ref, JSON in and JSON out.
 
 ```ts
 // server.ts
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
 

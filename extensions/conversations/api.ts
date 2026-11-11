@@ -2,7 +2,7 @@
  * Conversations: titles, summaries, the summary model and concluding conversations. Other extensions read what a
  * conversation is about and ask the summary model through this service.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'

@@ -2,7 +2,7 @@
  * Subagents: conversations delegated to agent definitions, and the standing agents. Other extensions create
  * configured child conversations and open standing agents here; definitions themselves are read with `lib/agents.ts`.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'

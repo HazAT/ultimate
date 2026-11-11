@@ -1,4 +1,4 @@
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'

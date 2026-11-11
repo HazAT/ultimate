@@ -1,5 +1,6 @@
 import { withAbortSignal } from '@earendil-works/chord/context'
-import type { Context, JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { obj, str } from '@earendil-works/pi-schema'
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {

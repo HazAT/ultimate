@@ -1,5 +1,5 @@
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 
 export const UiState = defineDoc<Record<string, JsonValue>>({
   kind: 'ultimate.ui',

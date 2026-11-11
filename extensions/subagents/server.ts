@@ -3,8 +3,8 @@ import { onCommit } from '../../lib/commits.ts'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
-import type { Context } from '@earendil-works/chord'
-import type { JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { arr, bool, int, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import type { AssistantMessage, ModelThinkingLevel } from '@earendil-works/pi-ai'
@@ -1079,7 +1079,7 @@ export default function subagents(
                 ? '\nWarning: parent has uncommitted changes; they are not in the worktree.'
                 : ''
             const task = await api.getTask(api.taskId, context)
-            // Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
+            // Pi upstream: @earendil-works/pi-durable@1.5.2 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
             const assistant = (task?.input as { assistant: EntryId } | undefined)?.assistant
             // A fork copies the parent's visible history up to the entry before the calling assistant message. Documents
             // follow their fork policy: `pi.agent`, `codemode.store` and `ultimate.ui` copy as of that entry (the web

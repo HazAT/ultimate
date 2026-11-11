@@ -1,4 +1,4 @@
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import type {
   Api,
@@ -226,7 +226,7 @@ export function guardStream(
           const call = event.partial.content[event.contentIndex]
           const name = call?.type === 'toolCall' ? `${call.name} ` : ''
           // Pi's retry classification matches "you can retry your request"; a new sample rarely degenerates again.
-          // Pi upstream: @earendil-works/pi-ai@1.5.0 src/utils/retry.ts — RETRYABLE_PROVIDER_ERROR_PATTERN decides which errors a generation retries. Drop when Pi Durable lets a stream mark its error retryable.
+          // Pi upstream: @earendil-works/pi-ai@1.5.2 src/utils/retry.ts — RETRYABLE_PROVIDER_ERROR_PATTERN decides which errors a generation retries. Drop when Pi Durable lets a stream mark its error retryable.
           const errorMessage = `Aborted degenerate tool-call arguments: ${name}arguments contain more than ${MAX_WHITESPACE_RUN} whitespace characters in a row; you can retry your request`
           fail(errorMessage)
           return

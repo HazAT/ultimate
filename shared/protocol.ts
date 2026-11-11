@@ -1,4 +1,4 @@
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { Op } from '@earendil-works/chord/delta'
 import type { AuthType, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type {

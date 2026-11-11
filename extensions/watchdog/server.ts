@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry'
 import {

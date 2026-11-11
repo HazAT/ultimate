@@ -3,7 +3,7 @@
 // event exists exactly when the state change it describes does. A reactor's cursor advances in the transaction its
 // handler writes in: its `tx` writes happen exactly once per event across crashes, reloads and failures; side effects
 // outside `tx` (files, processes, network) are at least once.
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'

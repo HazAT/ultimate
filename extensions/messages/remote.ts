@@ -1,6 +1,7 @@
 /** Messaging another project's Ultimate: `tell` out, and the `remote` and `remoteReply` actions it posts in. */
 import { randomUUID } from 'node:crypto'
-import type { Context, JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { EntryId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'

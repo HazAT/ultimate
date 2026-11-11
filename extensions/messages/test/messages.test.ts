@@ -27,7 +27,8 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Task, TaskId } from '@earendil-works/pi-durable'
-import type { Context, JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'

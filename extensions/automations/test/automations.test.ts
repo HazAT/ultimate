@@ -1,6 +1,6 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { join } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'

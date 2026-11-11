@@ -82,7 +82,7 @@ export async function requestChapter(home: string, to: string, by?: number) {
 /** Conversations of `database` with a live foreground task: work that resumes when it opens. */
 export function inFlight(database: string): number[] {
   if (!existsSync(database)) return []
-  // Pi upstream: @earendil-works/pi-durable@1.5.0 src/storage/sqlite/migrations.ts — tasks.status is terminal once a task ended; background tasks (schedules, watchers) always live. Drop when Pi Durable reads a closed store's task graph.
+  // Pi upstream: @earendil-works/pi-durable@1.5.2 src/storage/sqlite/migrations.ts — tasks.status is terminal once a task ended; background tasks (schedules, watchers) always live. Drop when Pi Durable reads a closed store's task graph.
   const db = new DatabaseSync(database, { readOnly: true })
   try {
     // A file a crash left without its schema holds no work.
@@ -147,7 +147,7 @@ export async function continueChapterIds(home: string, name: string) {
 
 /** Raise `to`'s next record id to the highest of `from`'s. */
 function continueIds(from: string[], to: string) {
-  // Pi upstream: @earendil-works/pi-durable@1.5.0 src/storage/sqlite/migrations.ts — durable_metadata.next_id (TEXT) is the next record id; storage reads it on open. Drop when Pi Durable takes a first record id when it creates storage.
+  // Pi upstream: @earendil-works/pi-durable@1.5.2 src/storage/sqlite/migrations.ts — durable_metadata.next_id (TEXT) is the next record id; storage reads it on open. Drop when Pi Durable takes a first record id when it creates storage.
   let next = 0
   for (const file of from) {
     if (!existsSync(file)) continue

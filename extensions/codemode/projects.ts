@@ -2,7 +2,7 @@
  * Reads of another project's stored history, for codemode's `{ project }` option: only from a running instance of it,
  * through lib/remote.ts. Nothing falls back to a copy.
  */
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { locate, postAction } from '../../lib/remote.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 

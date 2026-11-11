@@ -1,4 +1,4 @@
-import { copyJson } from '@earendil-works/chord'
+import { copyJson } from '@earendil-works/chord/json'
 import {
   defineDoc,
   defineEntry,

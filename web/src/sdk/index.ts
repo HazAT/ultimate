@@ -161,7 +161,7 @@ export type {
   ToolSlot,
   UsageState,
 } from '@earendil-works/pi-durable'
-export type { JsonValue } from '@earendil-works/chord'
+export type { JsonValue } from '@earendil-works/chord/json'
 export type {
   AssistantMessage,
   AuthEvent,

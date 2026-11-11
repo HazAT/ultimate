@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/tools/bash.ts and src/tools/edit.ts — internal bash exit_code diagnostic message drives exitOf and untyped details.patch/details.diff drive Edit. Drop when Pi exports structured bash outcomes and structured diff rows for rendering.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/tools/bash.ts and src/tools/edit.ts — internal bash exit_code diagnostic message drives exitOf and untyped details.patch/details.diff drive Edit. Drop when Pi exports structured bash outcomes and structured diff rows for rendering.
 import { XIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnsiOutput } from '@/components/ai/ansi-output'

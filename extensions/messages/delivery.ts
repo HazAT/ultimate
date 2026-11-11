@@ -5,7 +5,7 @@
  * its answer and a recorded answer awaiting delivery both survive a restart without a duplicate reply. One-way inputs
  * also wait for their answer (kept in `answer`, the state stays `delivered`); notes complete once placed.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import {
   AssistantEntry,

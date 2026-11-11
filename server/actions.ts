@@ -1,5 +1,5 @@
 import { exec } from '../lib/exec.ts'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { Device } from '../shared/events.ts'
 import type { ExtensionHost } from './extensions.ts'
 

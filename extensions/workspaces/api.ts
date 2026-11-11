@@ -2,7 +2,7 @@
  * Workspaces: isolated Git worktrees for conversations and the lander that merges them into their target branch.
  * Other extensions create, look up, land and discard a conversation's worktree through this service.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { git } from '../../lib/git.ts'

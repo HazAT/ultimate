@@ -462,7 +462,7 @@ export default function setup(host: ExtensionHost) {
     name: 'setup',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         // Only the primary agent hears about setup, and only when its warnings change: a per-input note, never a
         // system-prompt section, keeps the prompt cached.
         beforeInput: async (_input, { tx, conversationId }) => {

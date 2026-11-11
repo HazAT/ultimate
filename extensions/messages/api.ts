@@ -2,7 +2,7 @@
  * Messages: messages between conversations and the user, delivered as inputs or notes. Other extensions send one-way
  * messages and answer the user's open questions here.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import type { EntryId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'

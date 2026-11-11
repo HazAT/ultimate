@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, realpath, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import {
   configure,
   defineDoc,

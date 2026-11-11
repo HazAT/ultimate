@@ -59,7 +59,7 @@ export function projectSkills(
  * request. Any other text, or an unknown skill, comes back as it was.
  */
 export function expandSkillCommand(text: string, skills: readonly Skill[]) {
-  // Pi upstream: @earendil-works/pi-coding-agent@1.5.0 src/core/agent-session.ts _expandSkillCommand — copied block format. Drop when Pi exports the expansion.
+  // Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/core/agent-session.ts _expandSkillCommand — copied block format. Drop when Pi exports the expansion.
   const match = /^\/skill:(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim())
   const skill = match && skills.find((candidate) => candidate.name === match[1])
   if (!match || !skill) return text

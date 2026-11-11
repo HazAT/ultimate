@@ -2,7 +2,7 @@
  * Lineage: the project's conversation trees. Roots keep a tally of what happened, branches fork from them for one
  * feature or fix, and notes carry news between conversations without waking them.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import { RootsDoc } from './refs.ts'

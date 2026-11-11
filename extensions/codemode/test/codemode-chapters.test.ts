@@ -1,5 +1,5 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { readFile } from 'node:fs/promises'
 import { expect, it } from 'vitest'
 import { actions } from '../server.ts'

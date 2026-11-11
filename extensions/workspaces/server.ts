@@ -1,4 +1,4 @@
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { obj, opt, str } from '@earendil-works/pi-schema'
