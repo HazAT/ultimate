@@ -807,7 +807,7 @@ export default function codemode(host: ExtensionHost) {
             (agent.tools.some((tool) => tool.name === 'restart')
               ? ' Call restart only at top level.'
               : '') +
-            ' Only text(), images and return values enter context; filter to concise findings.' +
+            ' Only text(), image() and return values enter context; filter to concise findings. The sandbox has no setTimeout or setInterval: wait with a bash sleep.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action. ' +
             'tools.<name>(args) uses the top-level tool schemas and rules (same arguments and results). Available: ' +
             declarations(agent.tools)

@@ -235,6 +235,8 @@ interface Instance {
   child: GroupProcess
   group: Group
   output: string
+  /** A stop under way, so a start of the same home waits for it instead of finding the home still owned. */
+  stopping?: Promise<void>
 }
 
 const info = ({ id, url, home, pid, conversationId }: Instance) => ({
@@ -299,9 +301,17 @@ export function remember(
   for (const port of [...byPort.keys()].slice(0, -50)) byPort.delete(port)
   writeFileSync(join(host.home, 'previews.json'), JSON.stringify([...byPort.values()]))
 }
-async function stop(instances: Map<string, Instance>, id: string) {
+function stop(instances: Map<string, Instance>, id: string) {
   const instance = instances.get(id)
-  if (!instance) throw new Error(`Unknown instance: ${id}`)
+  if (!instance) return Promise.reject(new Error(`Unknown instance: ${id}`))
+  // A failed stop can be tried again.
+  instance.stopping ??= stopInstance(instances, instance).catch((error: unknown) => {
+    instance.stopping = undefined
+    throw error
+  })
+  return instance.stopping
+}
+async function stopInstance(instances: Map<string, Instance>, instance: Instance) {
   // The whole group: the preview and whatever it started without a group of its own. Its unreaped leader proves the
   // group is still ours; once it exited, the group stopped with it.
   if (instance.child.pid !== undefined)
@@ -312,7 +322,7 @@ async function stop(instances: Map<string, Instance>, id: string) {
     })
     await cleanPreview(instance.home)
   }
-  instances.delete(id)
+  instances.delete(instance.id)
 }
 
 /**
@@ -463,6 +473,14 @@ export default function instanceExtension(
       }
       if (home === (await realpath(host.home)))
         throw new Error('A test instance cannot share the running server home')
+      // A stop and a start of the same home in one tool round run side by side (omarchy-config #78009); wait for the
+      // stop.
+      for (const item of instances.values())
+        if (item.home === home)
+          await item.stopping?.catch(
+            // A failed stop reaches its own caller and leaves the instance live: the check below reports the home owned.
+            () => undefined,
+          )
       if ([...instances.values()].some((item) => item.home === home && live(item)))
         throw new Error('Home is already owned by an instance')
       context.abortSignal?.throwIfAborted()
