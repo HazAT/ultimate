@@ -19,13 +19,12 @@ Exactly one per automation:
   counts from the condition's own last crossing, not manual runs. With `idleFor` (ms) it also waits until the user gave
   `of` no input for that long (`idleFor: 0` on update removes it). Dream ships two of these on `@ultimate`
   (`extensions/dream/README.md`).
-- **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it by hand until one check succeeds and calls
-  `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
+- **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it by hand until one
+  check succeeds and calls `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
   makes the first FIRE finish the automation. A recurring script may print `DONE [text]` and exit 0 to stop cleanly.
   Any other unplanned exit wakes only the watcher, to repair or escalate. The third failure in a row (a FIRE or an hour
   of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
-  `failed`, subscribers get `automations.escalated`, and @ultimate a message. The supervisor sees only output and
-  exits, so a script whose checks fail while it keeps running looks healthy; a deadline in it must count failed checks.
+  `failed`, subscribers get `automations.escalated`, and @ultimate a message.
 
 ## Actions
 
@@ -65,9 +64,9 @@ Lifecycle events: `automations.started`, `.fired` `{id, text, fire}`, `.done`, `
 
 User scripts live in `~/.ultimate/automations/<project>/<id>/`: executable `run`, persistent `state/`, `output.log`
 (about 2000 lines / 256 KiB) and `pid`. A user script starts in this folder, not in a repository, so it passes the
-repository or path explicitly (`gh --repo`, `git -C`, absolute paths). Ids restart in every chapter, so a chapter after the first keeps its scripts
-in `<project>@<chapter>/<id>/` instead; the first chapter's folders stay where they were, and switching chapters never
-shares a folder. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
+repository or path explicitly (`gh --repo`, `git -C`, absolute paths). Ids restart in every chapter, so a chapter after
+the first keeps its scripts in `<project>@<chapter>/<id>/` instead; the first chapter's folders stay where they were,
+and switching chapters never shares a folder. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
 `secrets` from Secrets; records never hold their values. Script state must survive a restart: open stops leftover
 processes and relaunches enabled running scripts.
 
