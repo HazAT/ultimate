@@ -18,7 +18,7 @@ import { basename, join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Context } from '@earendil-works/chord/context'
-import { int, obj, opt, str } from '@earendil-works/pi-schema'
+import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import type { ConversationId, ToolExecutionApi } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
@@ -439,7 +439,7 @@ export default function instanceExtension(
     })
   })
   async function start(
-    args: { home?: string },
+    args: { home?: string; model?: string | null },
     context: Context,
     prepare: () => Promise<{ cwd: string; project: string; conversationId?: number }>,
     output: (text: string) => void = () => {},
@@ -495,7 +495,9 @@ export default function instanceExtension(
         project,
         userHome,
         ownerPid: process.pid,
-        model: await previewModelSetting(host),
+        // An explicit model, or null for none, wins over the setting for this start only.
+        model:
+          args.model === undefined ? await previewModelSetting(host) : (args.model ?? undefined),
         git: await previewGit(project, home),
       })
       // No pid file: a preview exits by itself once its owner is gone (ULTIMATE_INSTANCE_OWNER).
@@ -663,12 +665,13 @@ export default function instanceExtension(
       defineTool({
         name: 'instance',
         description:
-          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree.',
+          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree. model on start pins every agent to one provider/id, or null runs each on its own configured model; omitted, the instance.model setting applies.',
         parameters: obj({
           action: strEnum(['start', 'stop', 'logs', 'list']),
           id: opt(str()),
           home: opt(str()),
           subagent: opt(int({ minimum: 1 })),
+          model: opt(nullable(str({ pattern: '^[^/\\s]+/\\S+$' }))),
         }),
         async execute(args, api, context) {
           try {
