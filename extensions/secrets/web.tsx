@@ -1,6 +1,13 @@
-import { ExternalLinkIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, LoaderCircleIcon } from 'lucide-react'
+import {
+  ExternalLinkIcon,
+  EyeIcon,
+  EyeOffIcon,
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   api,
@@ -59,6 +66,9 @@ function useSecrets() {
 const missing = (secrets: readonly Secret[] | undefined) =>
   secrets?.filter((secret) => !secret.set && !secret.via && secret.declaredBy.length > 0) ?? []
 
+/** The rule `set` enforces (`lib/secrets.ts` `validateName`), checked here so the form can say so before saving. */
+const validName = /^[A-Z][A-Z0-9_]*$/
+
 const dot = (tone: string) => <span className={cn('size-1.5 shrink-0 rounded-full', tone)} />
 const small = 'h-7 gap-1.5 px-2 font-mono text-[11.5px]'
 
@@ -71,30 +81,47 @@ function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) 
   )
 }
 
+const field =
+  'h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
+
 /**
  * The value, typed or pasted, hidden unless shown. It lives only in this component and is cleared after a save. No
  * <form> and a one-time-code field, as in the models login: browsers must not offer to save a key as a password.
+ * Without a `name` it adds a new secret and asks for the name first; `taken` are the names already listed.
  */
 function ValueInput({
-  name,
+  name: fixed,
   replacing,
+  taken = [],
   onDone,
 }: {
-  name: string
+  name?: string
   replacing: boolean
+  taken?: readonly string[]
   onDone: () => void
 }) {
+  const [typed, setTyped] = useState('')
   const [value, setValue] = useState('')
   const [shown, setShown] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const field = useRef<HTMLInputElement>(null)
+  const first = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    field.current?.focus({ preventScroll: true })
-    field.current?.scrollIntoView({ block: 'nearest' })
+    first.current?.focus({ preventScroll: true })
+    first.current?.scrollIntoView({ block: 'nearest' })
   }, [])
+  const name = fixed ?? typed
+  const nameError =
+    fixed || !typed
+      ? undefined
+      : !validName.test(typed)
+        ? 'Start with a letter; use only A–Z, 0–9 and _'
+        : taken.includes(typed)
+          ? `${typed} is already listed; use its Replace`
+          : undefined
+  const ready = !!value.trim() && !!name && !nameError && !busy
   const save = async () => {
-    if (!value.trim() || busy) return
+    if (!ready) return
     setBusy(true)
     setError(undefined)
     try {
@@ -107,33 +134,50 @@ function ValueInput({
       setBusy(false)
     }
   }
+  const keys = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
+      void save()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onDone()
+    }
+  }
   return (
     <div className="mt-2 flex flex-col gap-1.5">
+      {!fixed && (
+        <input
+          aria-invalid={!!nameError}
+          aria-label="Name of the new secret"
+          autoComplete="off"
+          className={cn(field, 'flex-none', nameError && 'border-error')}
+          disabled={busy}
+          onChange={(event) => setTyped(event.target.value.toUpperCase())}
+          onKeyDown={keys}
+          placeholder="MY_API_KEY"
+          ref={first}
+          spellCheck={false}
+          value={typed}
+        />
+      )}
+      {nameError && <p className="font-mono text-[11px] leading-snug text-error">{nameError}</p>}
       <div className="flex items-center gap-1.5">
         <input
-          aria-label={`${replacing ? 'New value' : 'Value'} for ${name}`}
+          aria-label={fixed ? `${replacing ? 'New value' : 'Value'} for ${fixed}` : 'Value'}
           autoComplete="one-time-code"
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className={field}
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
           disabled={busy}
           onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
-              void save()
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              event.stopPropagation()
-              onDone()
-            }
-          }}
+          onKeyDown={keys}
           placeholder={replacing ? 'Paste the new value' : 'Paste the value'}
-          ref={field}
+          ref={fixed ? first : undefined}
           spellCheck={false}
           type={shown ? 'text' : 'password'}
           value={value}
@@ -154,7 +198,7 @@ function ValueInput({
       <div className="flex items-center gap-1.5">
         <Button
           className={small}
-          disabled={!value.trim() || busy}
+          disabled={!ready}
           onClick={() => void save()}
           size="sm"
           type="button"
@@ -327,7 +371,9 @@ function Row({
 function SecretsPanel() {
   const { data, error, loading } = useSecrets()
   const now = useNow(30000)
-  const [open, setOpen] = useState<Mode>()
+  // One form at a time: a row's, or the new-secret form's.
+  const [open, setOpen] = useState<Mode | 'add'>()
+  const row = open === 'add' ? undefined : open
   // A row another facet asked for opens for editing once the list has it.
   const target = useSyncExternalStore(subscribe, () => requested)
   useEffect(() => {
@@ -349,7 +395,38 @@ function SecretsPanel() {
     ) : undefined
   return (
     <section className="pt-3 pb-3.5">
-      <Heading meta={meta}>Secrets</Heading>
+      <Heading
+        meta={
+          <>
+            {meta}
+            {data && (
+              <Button
+                aria-label="Add a secret"
+                aria-pressed={open === 'add'}
+                className="-my-1 -mr-1.5 size-6 text-muted-foreground"
+                onClick={() => setOpen(open === 'add' ? undefined : 'add')}
+                size="icon-sm"
+                title="Add a secret"
+                type="button"
+                variant="ghost"
+              >
+                <PlusIcon className="size-3.5" />
+              </Button>
+            )}
+          </>
+        }
+      >
+        Secrets
+      </Heading>
+      {data && open === 'add' && (
+        <div className="px-3 pb-2.5">
+          <ValueInput
+            onDone={() => setOpen(undefined)}
+            replacing={false}
+            taken={data.map((secret) => secret.name)}
+          />
+        </div>
+      )}
       {error && (
         <p className="mx-3 mt-2.5 font-mono text-[11px] leading-snug break-words text-error">
           {errorMessage(error)}
@@ -365,7 +442,7 @@ function SecretsPanel() {
           {data.map((secret) => (
             <Row
               key={secret.name}
-              mode={open?.name === secret.name ? open.mode : undefined}
+              mode={row?.name === secret.name ? row.mode : undefined}
               now={now}
               onMode={(mode) => setOpen(mode ? { name: secret.name, mode } : undefined)}
               secret={secret}
