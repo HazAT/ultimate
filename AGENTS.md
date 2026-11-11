@@ -81,7 +81,7 @@ New UI is a new extension folder, not a change to `web/`: follow the `write-exte
 - [Extension topics](extensions/README.md#topics): before wiring facets, contracts, documents, events or runtime inspection.
 - [Subagents](docs/subagents.md): before delegating, changing definitions or configuring the review team.
 - [Borrowed from Pi](docs/pi-upstream.md): on Pi upgrades or changes to upstream couplings; includes upstream references.
-- [Searching Pi's code](docs/pi-upstream.md#searching-pis-code): before reading Pi internals; where each package's types live and the `rg` command that finds them.
+- [Searching Pi's code](docs/pi-upstream.md#searching-pis-code): before reading Pi internals; where each package's types live and the `grep -R` command that finds them.
 
 ## Push permission
 

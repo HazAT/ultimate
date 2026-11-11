@@ -41,7 +41,7 @@
 - `extensions/subagents/server.ts` — internal ToolTaskInput.assistant locates the calling assistant for history forks. Drop when ToolExecutionApi exposes the calling assistant entry ID.
 - `server/skills.ts` — copies AgentSession's unexported _expandSkillCommand block format for /skill:name invocation. Drop when Pi exports the skill command expansion.
 
-On a Pi upgrade, run `rg "Pi upstream:"` and recheck each marked item against the new version; `scripts/pi-upstream.ts` (part of `pnpm check`) checks that every tracked marker matches the installed package version and its path appears in this list, and the backticked path each entry starts with is tracked and contains a marker; backticks later in an entry are prose.
+On a Pi upgrade, run `grep -rn 'Pi upstream:' .` and recheck each marked item against the new version; `scripts/pi-upstream.ts` (part of `pnpm check`) checks that every tracked marker matches the installed package version and its path appears in this list, and the backticked path each entry starts with is tracked and contains a marker; backticks later in an entry are prose.
 Delete copies and patches that Pi now exports or fixes, then update the remaining markers and this list after verification.
 
 ## Searching Pi's code
@@ -62,10 +62,10 @@ contracts.
 | `pi-mcp`          | `dist/*.d.ts`, `dist/*.js`     | `README.md`, `CHANGELOG.md`          |
 
 A search from the repository root skips them, because `node_modules` is gitignored and its entries are symlinks. Follow
-symlinks, override the ignore files, and skip nested dependencies and source maps:
+symlinks (`grep -R`, not `-r`), and skip nested dependencies and source maps:
 
 ```bash
-rg -L --no-ignore -g '!node_modules' -g '!*.map' -n '<term>' node_modules/@earendil-works
+grep -Rn --exclude-dir=node_modules --exclude='*.map' '<term>' node_modules/@earendil-works
 ```
 
 Narrow it to one package with `node_modules/@earendil-works/<pkg>`.
