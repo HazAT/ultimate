@@ -40,7 +40,7 @@ export async function filesAt(cwd: string, rev: string) {
   return files
 }
 
-/** Lines and estimated tokens `base..sha` adds and removes, over counted files only. */
+/** Lines and estimated tokens `base..sha` adds and removes, over counted files only. Lists every file at both revisions. */
 export async function weightDelta(cwd: string, base: string, sha: string) {
   const [before, after, numstat] = await Promise.all([
     filesAt(cwd, base),
@@ -59,3 +59,14 @@ export async function weightDelta(cwd: string, base: string, sha: string) {
   }
   return { added, removed, tokens: tokensOf(total(after)) - tokensOf(total(before)) }
 }
+
+/**
+ * `weightDelta` for a landing card, or undefined when it cannot be taken. The weight is decoration, so a repository too
+ * large to list (a monorepo whose tree listing passes `filesAt`'s buffer: 2.3 million files here) leaves it out and the
+ * landing goes ahead, instead of failing on it.
+ */
+export const landingWeight = (cwd: string, base: string, sha: string) =>
+  weightDelta(cwd, base, sha).catch(() => {
+    // The listing is the only thing that can fail, and it says nothing about whether the landing is fine.
+    return undefined
+  })
