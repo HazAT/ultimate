@@ -850,9 +850,12 @@ export default function subagents(
   host.onOpen(async () => {
     await pruneRetired(BACKGROUND_CONTEXT)
     // Every resident definition has its conversation from the start, in a fresh project and a new chapter alike, so
-    // the sidebar lists each one before anything addresses it. Creating one runs no turn.
+    // the sidebar lists each one before anything addresses it (#568566). Creating one runs no turn. @ultimate keeps its
+    // own start: its row shows before it exists, the first page or Get ready makes it, and its start brings dream's
+    // automations.
     for (const { name } of await residentDefinitions())
-      await service
+      if (name !== 'ultimate')
+        await service
         .standing(name, BACKGROUND_CONTEXT)
         .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
     unsubscribe?.()
