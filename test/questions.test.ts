@@ -534,7 +534,11 @@ describe('screenshots with an answer', () => {
     const asker = await f.branch(id)
     const { message } = await f.ask(asker, { text: 'How does it look?' })
     const answer = (images: unknown) =>
-      f.answer({ messageId: message!.id, text: 'See', images } as never)
+      f.answer({
+        messageId: message!.id,
+        text: 'See',
+        images: images as { data: string; mimeType: string }[],
+      })
     await expect(answer('nope')).rejects.toThrow('images must be a list')
     await expect(answer([{ ...png(0), mimeType: 'image/svg+xml' }])).rejects.toThrow(
       'PNG, JPEG, WebP or GIF',
