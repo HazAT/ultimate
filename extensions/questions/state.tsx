@@ -64,16 +64,21 @@ export const pickDraft = (question: Question): Draft => {
   return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }
 }
 
-/** What a draft answers, in words; empty while it answers nothing. A multiple choice joins its labels. */
-export function answerOf(question: Question, draft: Draft | undefined) {
-  if (!draft) return ''
+/** The labels a draft chose, then its typed "Something else…" when a multiple choice ticks it. */
+function picked(question: Question, draft: Draft) {
   const list = choices(question)
   const typed = draft.text?.trim() ?? ''
-  if (question.kind === 'text') return typed
   const labels = draft.chosen.flatMap((i) => (list[i] && !list[i].custom ? [list[i].label] : []))
-  if (question.kind === 'multi')
-    return [...labels, ...(draft.other && typed ? [typed] : [])].join(', ')
-  return draft.other ? typed : (labels[0] ?? '')
+  return question.kind === 'multi' && draft.other && typed ? [...labels, typed] : labels
+}
+
+/** What a draft answers, in words; empty while it answers nothing. A multiple choice shows its labels joined. */
+export function answerOf(question: Question, draft: Draft | undefined) {
+  if (!draft) return ''
+  if (question.kind === 'text' || (question.kind !== 'multi' && draft.other))
+    return draft.text?.trim() ?? ''
+  const labels = picked(question, draft)
+  return question.kind === 'multi' ? labels.join(', ') : (labels[0] ?? '')
 }
 
 /** The recommended answer of every question that has one, by question index. */
@@ -85,11 +90,17 @@ export function picks(questions: Question[]): Record<number, string> {
   )
 }
 
-/** The answers ready to send, in question order; empty and unanswered questions stay out. */
-export const answered = (questions: Question[], answers: Record<number, string>) =>
-  questions.flatMap((question, index) =>
-    answers[index]?.trim() ? [{ question: question.text, answer: answers[index].trim() }] : [],
-  )
+/**
+ * The answers ready to send, in question order: a multiple choice as its list of labels, so a label may hold a comma;
+ * unanswered questions stay out.
+ */
+export const answered = (questions: Question[], drafts: Record<number, Draft | undefined>) =>
+  questions.flatMap((question, index) => {
+    const draft = drafts[index]
+    const answer =
+      question.kind === 'multi' && draft ? picked(question, draft) : answerOf(question, draft)
+    return answer.length ? [{ question: question.text, answer }] : []
+  })
 
 /** A question's position label: its own number when the message gave one, else its place on the card. */
 export const position = (question: Question, index: number) => question.ref ?? String(index + 1)

@@ -250,10 +250,6 @@ describe('questions on a message', () => {
       [{ text: 'One?', kind: 'choice', options: [{ label: 'x' }, { label: ' ' }] }],
       'has an option without a label',
     )
-    await refused(
-      [{ text: 'Which?', kind: 'multi', options: [{ label: 'unit, fast' }, { label: 'e2e' }] }],
-      'its labels hold no ", "',
-    )
     await refused([{ text: 'Rate', kind: 'scale' }], 'needs scale')
     await refused([{ text: 'Rate', kind: 'scale', scale: { min: 1, max: 20 } }], 'at most 10 steps')
     await refused(
@@ -300,7 +296,7 @@ describe('questions on a message', () => {
         messageId: message!.id,
         answers: [
           { question: 'Scope', answer: 'the format only' },
-          { question: 'Suites', answer: 'unit, lint' },
+          { question: 'Suites', answer: ['unit', 'lint'] },
           { question: 'Land it?', answer: 'Yes' },
           { question: 'How finished is it?', answer: '4' },
           { question: 'Name', answer: 'Questions' },
@@ -469,6 +465,22 @@ describe('answer text', () => {
         decisions,
       ),
     ).toBe('1a. Scope: all of it\n\n2b. Suites: e2e\n\n5: only the keyboard one')
+    // A multi answer is a list, so a label may hold a comma; regression for life#25770's refused "Finance, coarse only".
+    expect(
+      answerText(
+        [{ question: 'Suites', answer: ['unit, fast', 'lint'] }],
+        [
+          {
+            ...decisions[1],
+            options: [
+              { label: 'unit, fast', key: 'a' },
+              { label: 'unit', key: 'b' },
+              { label: 'lint', key: 'c' },
+            ],
+          },
+        ],
+      ),
+    ).toBe('2a,c. Suites: unit, fast, lint')
     // A typed "Something else…" names no option: the number alone.
     expect(answerText([{ question: 'Scope', answer: 'neither' }], decisions)).toBe('1: neither')
     expect(

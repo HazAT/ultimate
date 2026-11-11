@@ -262,7 +262,7 @@ function Card({
   const phone = useViewport() === 'phone'
   const hints = keys && !phone
   const words = questions.map((question, index) => answerOf(question, drafts[index]))
-  const ready = answered(questions, words)
+  const ready = answered(questions, drafts)
   const open = questions.flatMap((question, index) =>
     !words[index] && pickIndices(question).length ? [index] : [],
   )
@@ -326,10 +326,7 @@ function Card({
     for (const [index, question] of questions.entries())
       if (indices.includes(index)) next[index] = pickDraft(question)
     setDrafts(next)
-    return answered(
-      questions,
-      questions.map((question, index) => answerOf(question, next[index])),
-    )
+    return answered(questions, next)
   }
   const run = async (action: () => Promise<unknown>) => {
     if (busy) return

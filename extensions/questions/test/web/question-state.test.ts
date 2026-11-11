@@ -39,12 +39,23 @@ describe('the answer card state', () => {
     expect(picks([confirm])).toEqual({})
   })
 
-  it('sends only answered questions, in order, trimmed', () => {
+  it('sends only answered questions, in order, a multiple choice as a list', () => {
+    const multi: Question = {
+      text: 'Areas',
+      kind: 'multi',
+      options: [{ label: 'Finance, coarse only' }, { label: 'Health' }],
+    }
     expect(
-      answered([lettered, confirm, plain], { 2: ' Spacious ', 0: 'One line', 1: '  ' }),
+      answered([lettered, confirm, plain, multi], {
+        2: { chosen: [1] },
+        0: { chosen: [0] },
+        1: { chosen: [], other: true, text: '  ' },
+        3: { chosen: [0], other: true, text: ' Work ' },
+      }),
     ).toEqual([
       { question: 'Branch starts', answer: 'One line' },
       { question: 'Which layout?', answer: 'Spacious' },
+      { question: 'Areas', answer: ['Finance, coarse only', 'Work'] },
     ])
   })
 

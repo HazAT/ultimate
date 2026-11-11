@@ -49,9 +49,8 @@ export const questionsParameter = arr(
 
 /**
  * The questions as the message stores them, or the reason they cannot be asked: text and labels must not be blank, a
- * choice needs two options with distinct labels and keys (a multi answer joins its labels with ", ", so they hold
- * none), a scale an ascending range of at most 10 steps, and the questions and their numbers must be distinct. Fields
- * that do not apply to a kind are dropped.
+ * choice needs two options with distinct labels and keys, a scale an ascending range of at most 10 steps, and the
+ * questions and their numbers must be distinct. Fields that do not apply to a kind are dropped.
  */
 export function checkQuestions(questions: Question[]): Question[] {
   if (!questions.length) throw new Error('questions must name at least one question')
@@ -90,10 +89,6 @@ export function checkQuestions(questions: Question[]): Question[] {
       if (new Set(keys).size !== keys.length) throw new Error(`${where} repeats an option key`)
       if (options.some((o) => /^(something else|other)[.…]*$/i.test(o.label)))
         throw new Error(`${where}: the card offers "Something else…" itself; leave that option out`)
-      if (question.kind === 'multi' && options.some((o) => o.label.includes(', ')))
-        throw new Error(
-          `${where}: a multi answer joins its labels with ", ", so its labels hold no ", "`,
-        )
       kept.options = options
     } else if (question.kind === 'scale') {
       const scale = question.scale

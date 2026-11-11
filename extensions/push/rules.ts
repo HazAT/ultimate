@@ -2,6 +2,7 @@
 import type { OverviewRow } from '../conversations/types.ts'
 import type { Message, Question } from '../messages/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
+import type { Answer } from '../questions/refs.ts'
 
 /** A push's JSON, as the service worker (web/public/sw.js) shows it. */
 export type Push = {
@@ -14,7 +15,7 @@ export type Push = {
   /** A question's message id: the notification gets a Reply action. */
   message?: number
   /** The recommended answers, sent as they are by the Approve action (`questions/answer`'s `answers`). */
-  approve?: { question: string; answer: string }[]
+  approve?: Answer[]
   urgency: 'high' | 'normal'
 }
 
@@ -29,10 +30,10 @@ const preview = (text: string) => {
 }
 
 /** The recommended answer of a question, as its card would send it; none when the asker recommends nothing. */
-function recommended(question: Question) {
+function recommended(question: Question): Answer['answer'] | undefined {
   if (question.kind === 'confirm') return 'Yes'
   const picks = (question.options ?? []).filter((option) => option.recommended)
-  if (question.kind === 'multi' && picks.length) return picks.map((pick) => pick.label).join(', ')
+  if (question.kind === 'multi' && picks.length) return picks.map((pick) => pick.label)
   return question.kind === 'choice' && picks.length === 1 ? picks[0].label : undefined
 }
 
@@ -43,9 +44,7 @@ export function approval(questions: Question[] | undefined) {
     question: question.text,
     answer: recommended(question),
   }))
-  return answers.every((each) => each.answer !== undefined)
-    ? (answers as { question: string; answer: string }[])
-    : undefined
+  return answers.every((each) => each.answer !== undefined) ? (answers as Answer[]) : undefined
 }
 
 /** A question to the user from any conversation, titled by the asking branch, or `Ultimate`. */

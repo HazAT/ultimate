@@ -62,10 +62,9 @@ open questions" opens the To-dos tab; meanwhile @ultimate's mark is amber, and a
 
 Both are user-only.
 
-- `answer { messageId, answers: [{ question, answer }], note? }` validates against the message's questions, refusing
+- `answer { messageId, answers: [{ question, answer }], note? }`, a multi answer as its list of labels, validates against the message's questions, refusing
   unknown or duplicate answers, and posts a normal user reply to the sender with `re: messageId`, one paragraph per
-  answer in the message's own numbering: `1a. Topic: option` for an option, `2a,c. Topic: a, c` for several (a multi
-  answer joins its labels with ", "), `3: text` for typed text or a rating (`Topic: answer` when the message numbered
+  answer in the message's own numbering: `1a. Topic: option` for an option, `2a,c. Topic: a, c` for several, `3: text` for typed text or a rating (`Topic: answer` when the message numbered
   nothing), then `Note: …`; with no answers the note alone is the reply. Returns `{ id }`. `answer { messageId, text }`
   posts `text` instead, for a message with or without questions. Messages admission atomically verifies that the
   original remains open, so concurrent answers produce exactly one reply; normal Messages delivery wakes the sender.
