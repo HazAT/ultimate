@@ -1,4 +1,4 @@
-import { Component, useEffect } from 'react'
+import { Component, useEffect, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { shellKeys } from '../sdk/actions.ts'
@@ -150,6 +150,9 @@ export function App() {
   const shown = useStore((state) => state.ui.surface)
   const viewed = useStore((state) => state.view !== undefined)
   useDocumentTitle(shown)
+  // Overlays sit outside the 100dvh shell, the rail outside any sized panel: a failed item shows in the fixed error
+  // stack, not below the shell (#565199: a page one card taller than the window) or as a column squeezing the app.
+  const [errors, setErrors] = useState<HTMLDivElement | null>(null)
   // The surface and its conversation are on screen: what a reload resumes, and what a resumed reload uncovers.
   useEffect(() => {
     if (loaded && !pending && viewed) rendered()
@@ -178,7 +181,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <div className="safe-area flex">
-        {loaded && !embedded && <Slot name="shell.rail" />}
+        {loaded && !embedded && <Slot errors={errors} name="shell.rail" />}
         <div className="flex min-w-0 flex-1 flex-col">
           {loaded && !embedded && <TitleBar />}
           {loaded && !pending && <Surfaces surfaces={line} />}
@@ -186,8 +189,8 @@ export function App() {
       </div>
       {loaded && <Shortcuts />}
       <CommandPalette />
-      <ExtensionErrors />
-      <Slot name="overlay" />
+      <ExtensionErrors ref={setErrors} />
+      <Slot errors={errors} name="overlay" />
     </TooltipProvider>
   )
 }

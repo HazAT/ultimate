@@ -1,7 +1,8 @@
 import { cn } from 'cn'
 import { MessageSquareShareIcon, PuzzleIcon, TriangleAlertIcon } from 'lucide-react'
 import { Component, Fragment, useContext } from 'react'
-import type { ErrorInfo, ReactNode } from 'react'
+import type { ErrorInfo, ReactNode, Ref } from 'react'
+import { createPortal } from 'react-dom'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import type { SystemInfo } from '../../../shared/protocol.ts'
 import { errorMessage, shortenPath } from '../sdk/format.ts'
@@ -164,6 +165,11 @@ export class ExtensionBoundary extends Component<
     variant?: 'inline' | 'block'
     /** Rendered after the error card, such as the core renderer of the same data. */
     fallback?: ReactNode
+    /**
+     * The fixed stack `ExtensionErrors` draws, for components outside the sized shell: their error card goes there
+     * instead of into the page's flow, where it would make the document taller than the window.
+     */
+    errors?: HTMLElement | null
     children: ReactNode
   },
   { error?: string; stack?: string; version: number }
@@ -195,10 +201,23 @@ export class ExtensionBoundary extends Component<
           {this.props.children}
         </ExtensionNameContext.Provider>
       )
+    const { extension, errors } = this.props
+    if (errors)
+      return createPortal(
+        <StackedError extension={extension} footer="a component threw">
+          <ErrorCard
+            className="border-none bg-transparent"
+            error={this.state.error}
+            extension={extension}
+            stack={this.state.stack}
+          />
+        </StackedError>,
+        errors,
+      )
     return (
       <>
         <ErrorCard
-          extension={this.props.extension}
+          extension={extension}
           error={this.state.error}
           stack={this.state.stack}
           variant={this.props.variant}
@@ -341,12 +360,15 @@ export function Slot({
   variant = 'block',
   separator,
   phone,
+  errors,
 }: {
   name: SlotName
   variant?: 'inline' | 'block'
   separator?: ReactNode
   /** Only the items marked `phone` (true) or only the others (false); all by default. */
   phone?: boolean
+  /** Where failed items show, for a slot outside the sized shell; see `ExtensionBoundary`. */
+  errors?: HTMLElement | null
 }) {
   const items = slotItems(useExtensions(), name).filter(
     (item) => phone === undefined || item.phone === phone,
@@ -354,23 +376,48 @@ export function Slot({
   return items.map(({ key, extension, version, component: Item }, index) => (
     <Fragment key={key}>
       {index > 0 && separator}
-      <ExtensionBoundary extension={extension} version={version} variant={variant}>
+      <ExtensionBoundary errors={errors} extension={extension} version={version} variant={variant}>
         <Item />
       </ExtensionBoundary>
     </Fragment>
   ))
 }
 
-/** Extensions whose web facet failed to load, until it loads again. */
-export function ExtensionErrors() {
-  const failed = useExtensions().filter((record) => record.error !== undefined)
+/** One card of the fixed error stack: the error, then the extension's `web.tsx` and what became of it. */
+function StackedError({
+  extension,
+  footer,
+  children,
+}: {
+  extension: string
+  footer: string
+  children: ReactNode
+}) {
   const system = useSystem()
-  if (failed.length === 0) return null
   return (
-    <div className="pointer-events-none fixed right-3 bottom-10 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
+    <div className="pointer-events-auto rounded-md border border-error/30 bg-popover/95 shadow-lg backdrop-blur">
+      {children}
+      <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
+        <PuzzleIcon className="size-3" />
+        {extensionPath(system, extension, '/web.tsx')} · {footer}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A fixed stack, top right under the headers, clear of the composer and the home indicator: extensions whose web facet
+ * failed to load, until it loads again, then the failed items of slots outside the sized shell, which `ref` receives
+ * the stack for. Empty, it takes no room and no clicks.
+ */
+export function ExtensionErrors({ ref }: { ref?: Ref<HTMLDivElement> }) {
+  const failed = useExtensions().filter((record) => record.error !== undefined)
+  return (
+    <div className="pointer-events-none fixed top-[calc(env(safe-area-inset-top)+3rem)] right-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2 md:top-24">
       {failed.map((record) => (
-        <div
-          className="pointer-events-auto rounded-md border border-error/30 bg-popover/95 shadow-lg backdrop-blur"
+        <StackedError
+          extension={record.name}
+          footer={record.extension ? 'previous version still running' : 'not loaded'}
           key={record.name}
         >
           <ErrorCard
@@ -383,13 +430,9 @@ export function ExtensionErrors() {
             error={record.error ?? ''}
             extension={record.name}
           />
-          <div className="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
-            <PuzzleIcon className="size-3" />
-            {extensionPath(system, record.name, '/web.tsx')}
-            {record.extension ? ' · previous version still running' : ' · not loaded'}
-          </div>
-        </div>
+        </StackedError>
       ))}
+      <div className="contents" ref={ref} />
     </div>
   )
 }
