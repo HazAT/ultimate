@@ -272,6 +272,12 @@ async function fixture(
     // A branch's reply that keeps @ultimate busy, so another branch's reply steers into the same run.
     if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('STALL'))
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
+    // @ultimate answers a branch's reply with only a message to the user.
+    if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('TELLUSER'))
+      return fauxAssistantMessage(
+        [fauxToolCall('message', { to: 'user', text: 'Correction', reply: false })],
+        { stopReason: 'toolUse' },
+      )
     // @ultimate (#1) answers a branch's reply or report only to weigh in: any other final answer would go down to it.
     const fromBranch = /^(Reply|Message) from #(\d+)/.exec(text)
     if (
@@ -968,12 +974,14 @@ async function codemodeFixture() {
   await mkdir(join(home, 'extensions/core-stand-ins'), { recursive: true })
   await writeFile(
     join(home, 'extensions/core-stand-ins/server.ts'),
-    `import { SubagentsApi } from ${JSON.stringify(resolve('extensions/subagents/api.ts'))}
+    `import { ConversationsApi } from ${JSON.stringify(resolve('extensions/conversations/api.ts'))}
+import { SubagentsApi } from ${JSON.stringify(resolve('extensions/subagents/api.ts'))}
 import { WorkspacesApi } from ${JSON.stringify(resolve('extensions/workspaces/api.ts'))}
 import { Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
 export default (host) => {
   host.implement(SubagentsApi, { residents: async () => [] })
   host.implement(WorkspacesApi, { doc: Workspaces })
+  host.implement(ConversationsApi, { concludedIn: async () => new Set() })
   return { name: 'core-stand-ins' }
 }
 `,
@@ -1316,7 +1324,8 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
   const before = (await replies(f)).length
   await until(async () => (await replies(f)).length === before + 1)
   await f.opened.root.waitForIdle(context)
-  const id = (await f.log())!.messages.findLast((m) => m.from === 1)!.to as number
+  const id = (await f.log())!.messages.findLast((m) => m.from === 1 && m.to !== 'user')!
+    .to as number
   const branch = (await f.opened.harness.conversation(id as ConversationId, context))!
   await branch.waitForIdle(context)
   const from = async () => (await f.log())!.messages.filter((m) => m.from === id)
@@ -1589,6 +1598,20 @@ it("sends @ultimate's answer to a branch it concluded to the agent whose request
       reply: false,
       text: `Result of #${id}, which worked on your message ${asked.id}:\n\nDone`,
     }),
+  ])
+})
+it("routes @ultimate's answer to a branch whose reply it read even when it messaged the user first", async () => {
+  // omarchy-config #69721: @ultimate read #70136's assessment and only messaged the user; the run ended there, no
+  // answer went down, and #70136 waited 35 minutes.
+  const f = await fixture()
+  const b = await branched(f, 'Explore, then TELLUSER')
+  await f.opened.root.waitForIdle(context)
+  await b.settled()
+  const log = (await f.log())!.messages
+  expect(log.filter((m) => m.from === 1).map((m) => [m.to, m.routed !== undefined])).toEqual([
+    [b.id, false],
+    ['user', false],
+    [b.id, true],
   ])
 })
 it("routes @ultimate's final answer to every branch whose reply shared its run", async () => {
