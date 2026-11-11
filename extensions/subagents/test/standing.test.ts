@@ -231,6 +231,18 @@ it('keeps one ownerless standing conversation, refreshes its definition and recr
   ])
 })
 
+// #568566: a new chapter opened with an empty Standing document, so resident agents vanished until addressed.
+it('gives every resident definition its conversation when the project opens, once', async () => {
+  const { host, reopen } = await fixture()
+  expect(await host.harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)).toBeUndefined()
+  await reopen()
+  const index = await host.harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
+  expect(index).toEqual({ x: expect.any(Number) })
+  expect(await host.harness.snapshot(Metadata, index!.x, ctx)).toMatchObject({ title: '@x' })
+  await reopen()
+  expect(await host.harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)).toEqual(index)
+})
+
 it('retires a standing agent whose definition is deleted on the next open, only once every definition parses', async () => {
   const { service, host, path, file, reopen } = await fixture()
   const id = await service.standing('x', ctx)

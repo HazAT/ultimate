@@ -57,6 +57,7 @@ import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Family, Pin } from '../models/api.ts'
 import { Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
+import type { SubagentsService } from './api.ts'
 import { definitionRuns, refName, refOf } from '../../lib/families.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import {
@@ -632,7 +633,7 @@ export default function subagents(
       return definition?.runs ? definition.runs.model : definition?.model
     },
   })
-  host.implement(SubagentsApi, {
+  const service: SubagentsService = {
     async createChild(tx, options) {
       const child = await createChild(host, tx, options)
       await started(host, tx, child, options.definition?.name ?? options.label, 'child')
@@ -686,7 +687,8 @@ export default function subagents(
         return id
       }, ctx)
     },
-  })
+  }
+  host.implement(SubagentsApi, service)
   /**
    * The definition a `start` runs: the named one with the call's family, model and thinking over its own, or, without
    * `agent`, one made on the fly from the call (`label`, neutral instructions plus the caller's, the parent's tools or a
@@ -847,6 +849,15 @@ export default function subagents(
   })
   host.onOpen(async () => {
     await pruneRetired(BACKGROUND_CONTEXT)
+    // Every resident definition has its conversation from the start, in a fresh project and a new chapter alike, so
+    // the sidebar lists each one before anything addresses it (#568566). Creating one runs no turn. @ultimate keeps its
+    // own start: its row shows before it exists, the first page or Get ready makes it, and its start brings dream's
+    // automations.
+    for (const { name } of await residentDefinitions())
+      if (name !== 'ultimate')
+        await service
+          .standing(name, BACKGROUND_CONTEXT)
+          .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
     unsubscribe?.()
     // Not a reactor: subagent answers settle as Pi submission records, not domain events. Committed submissions are
     // observed live here and scanned once on open, so a restart neither loses nor duplicates a report.

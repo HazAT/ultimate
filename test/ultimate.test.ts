@@ -134,14 +134,15 @@ it.concurrent('ships a resident Ultimate definition with valid tools; standing a
   const rootTools = (await f.server.root.agent(context)).tools.map((tool) => tool.name)
   expect(rootTools).not.toContain('branch')
   expect(rootTools).not.toContain('debug')
-  expect(
-    (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.dice,
-  ).toBeUndefined()
+  // A resident definition has its conversation from the open, before anything addresses it.
+  const opened = (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.dice
+  expect(opened).toEqual(expect.any(Number))
   await ask(f.server, ultimate, 'SEND ' + JSON.stringify({ to: '@dice', text: 'Roll' }))
   await until(async () =>
     (await entries(f.server, ultimate)).some((entry) => entry.kind === 'board.reply'),
   )
   const dice = (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.dice
+  expect(dice).toBe(opened)
   expect((await entries(f.server, dice)).some((entry) => entry.kind === 'board.message')).toBe(true)
   expect(f.requests.some((text) => text.startsWith(`Message from #${ultimate} (@ultimate):`))).toBe(
     true,
