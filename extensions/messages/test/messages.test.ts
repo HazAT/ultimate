@@ -1615,6 +1615,36 @@ it("routes @ultimate's final answer to every branch whose reply shared its run",
   expect(new Set(routed.map((m) => m.to))).toEqual(new Set([a.id, b.id]))
   expect(routed[0].text).toContain(`answers #${a.id} and #${b.id} together`)
 })
+it("routes @ultimate's final answer to a branch whose reply shared its run with other inputs", async () => {
+  // #567641: #566457's reply shared @ultimate's run with a landing card and two one-way messages from another
+  // project's Ultimate; the weigh-in reached no one and the branch waited 36 minutes.
+  const f = await remoteFixture()
+  const b = await branched(f)
+  await sendMessage(f.host, 1, { to: `#${b.id}`, text: 'STALL', reply: true }, context, {
+    requestId: 'ask',
+  })
+  await until(f.holding)
+  const queued = async () =>
+    (await f.opened.harness.snapshot(InboxDoc, f.opened.root.id, context))!.items.length
+  await f.opened.root.submit(
+    {
+      type: 'input',
+      whenBusy: 'steer',
+      entry: { kind: 'workspaces.lander-report', data: { id: 'another-tree' } },
+      content: 'Landed',
+    },
+    context,
+  )
+  for (const key of ['bug', 'addendum'])
+    await actions.remote({ key, text: 'FYI', reply: false, from }, f.action())
+  await until(async () => (await queued()) === 3)
+  f.hold.release()
+  await until(async () => (await f.log())!.messages.some((m) => m.from === 1 && m.routed))
+  await b.settled()
+  expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toMatchObject([
+    { to: b.id, reply: false },
+  ])
+})
 it("marks only a branch's reply as awaiting @ultimate, never a standing agent's", async () => {
   // life: @google answered @ultimate's question and showed as awaiting @ultimate, which no routed answer ever cleared.
   const f = await fixture()
