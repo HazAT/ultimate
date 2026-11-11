@@ -1,6 +1,7 @@
 import { ActionError, actionMessage, createApi } from './api.ts'
 import { createReads } from './reads.ts'
-import { createRegistry } from './registry.ts'
+import { linkedConversation } from './link.ts'
+import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
 import type { TestHook } from './test-hook.ts'
@@ -114,6 +115,10 @@ store.subscribe(() => {
         if (id === undefined) uiState.delete('shell.conversation')
         else uiState.set('shell.conversation', id)
       }
+      const navigation = performance.getEntriesByType('navigation')[0] as
+        | PerformanceNavigationTiming
+        | undefined
+      if (linkedConversation(initialUrl, navigation?.type)) uiState.set('shell.surface', HOME)
       initialized = true
       followSelection()
     } else if (!detached) uiState.receive(shared)
