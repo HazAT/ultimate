@@ -5,7 +5,7 @@
  */
 import { api, errorMessage, events } from '@/sdk'
 import type { ActionRef } from '@/sdk'
-import { playNotes } from '../sounds/ui.tsx'
+import { playNotes, voiceQuestions } from '../sounds/ui.tsx'
 import type { Note } from '../sounds/ui.tsx'
 import { StatusAction } from './refs.ts'
 import type { VoiceStatus } from './refs.ts'
@@ -144,6 +144,8 @@ function set(next: Partial<VoiceMode>, failed = false) {
   if (next.phase === 'starting' && mode.phase !== 'starting') startHum()
   else if (next.phase && next.phase !== 'starting') stopHum()
   mode = { ...mode, ...next }
+  // While voice mode is on, Voice announces questions; the narrator keeps only their sound.
+  voiceQuestions(mode.phase !== 'off')
   // The indicator already shows the phase; a cue the browser refuses is only worth a warning.
   if (cue) playNotes(cue, 0.08).catch((error: unknown) => console.warn('Voice cue failed', error))
   for (const listener of listeners) listener()

@@ -167,6 +167,7 @@ async function fixture() {
   const voice = await startSession()
   const requests: string[][] = []
   const answers: string[] = []
+  const announced: string[] = []
   let answer = 'The tests pass.'
   const call = (name: string, args: JsonObject) =>
     fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' })
@@ -182,7 +183,16 @@ async function fixture() {
           m.role === 'user' && typeof m.content === 'string' ? [m.content] : [],
         ),
       )
+      if (text.startsWith('A new question for the user arrived')) {
+        announced.push(text)
+        return call('voice_say', { text: 'A branch has a question. Want it now?' })
+      }
+      if (last.role === 'toolResult' && last.toolName === 'voice_answer')
+        return call('voice_say', { text: 'Sent. Nothing else waits.' })
       if (last.role === 'toolResult') return call('voice_say', { text: 'Passing that on.' })
+      const settle = /^.*answer message (\d+): (.+)$/s.exec(text)
+      if (settle)
+        return call('voice_answer', { message: Number(settle[1]), text: settle[2].trim() })
       if (text.startsWith('@ultimate answered')) {
         answers.push(text)
         return call('voice_say', { text: 'The spoken answer. Details are on screen.' })
@@ -243,6 +253,7 @@ async function fixture() {
     action,
     entries,
     answers,
+    announced,
     waitAnswer,
     setAnswer: (text: string) => {
       answer = text
@@ -275,9 +286,12 @@ it('answers a connection check itself in the standing Voice conversation, with i
   const agent = await (await f.server.harness.conversation(f.voice, context))!.agent(context)
   expect(agent.tools.map((t) => t.name).toSorted()).toEqual([
     'codemode',
+    'voice_answer',
     'voice_ask_ultimate',
     'voice_note',
+    'voice_question',
     'voice_say',
+    'voice_show',
   ])
   expect((await f.server.harness.snapshot(Summaries, f.voice, context))?.automatic).toBe(false)
   await f.action('heard', { text: 'can you hear me' })
@@ -340,7 +354,8 @@ it('speaks a tool-terminated question and answers it through Messages, without a
   expect(f.answers[0]).toContain('a: Small fix')
   expect(f.answers[0]).toContain('b: Rewrite')
   f.setAnswer('I will use the small fix.')
-  await f.action('heard', { text: 'The small fix please' })
+  // Voice names the card it answers; @ultimate's reply to it comes back to Voice to speak.
+  await f.action('heard', { text: `answer message ${question.id}: The small fix please` })
   await f.waitAnswer(2)
   expect(f.answers[1]).toContain('I will use the small fix.')
   expect(
@@ -352,27 +367,44 @@ it('speaks a tool-terminated question and answers it through Messages, without a
   expect((await f.entries(f.main)).some((e) => e.kind === 'board.message')).toBe(true)
 })
 
-it('answers no question by voice while several are open, since spoken words name no card', async () => {
+it('announces a branch question that opens during a session and settles exactly the card Voice names', async () => {
   const f = await fixture()
-  f.setAnswer('QUESTION')
-  await f.action('heard', { text: 'Please propose an approach' })
-  await f.waitAnswer(1)
   const messages = async () =>
     (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages
-  const first = (await messages()).findLast((m) => m.from === f.main && m.to === 'user')!
-  // A second card is open beside the first.
-  await f.server.harness.commit(async (tx) => {
-    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-    log.messages.push({ ...first, id: log.next++, text: 'Another?' })
-  }, context)
-  f.setAnswer('Which one do you mean?')
-  await f.action('heard', { text: 'The small fix please' })
-  await f.waitAnswer(2)
-  expect((await messages()).filter((m) => m.state === 'delivered' && m.to === 'user')).toHaveLength(
-    2,
-  )
-  expect((await messages()).some((m) => m.from === 'user')).toBe(false)
-  expect((await f.entries(f.main)).filter((e) => e.kind === 'voice.utterance')).toHaveLength(2)
+  // Two branch questions are open: the one Voice names is answered, the other stays (#576596: a question that
+  // arrived mid-session went unannounced, and a spoken answer only reached a card when exactly one was open).
+  const ask = (text: string) =>
+    f.server.harness.commit(async (tx) => {
+      const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+      const id = log.next++
+      log.messages.push({
+        id,
+        from: f.voice,
+        to: 'user',
+        text,
+        at: Date.now(),
+        reply: true,
+        state: 'delivered',
+        questions: [{ ref: '1', text, kind: 'confirm' }],
+      })
+      return id
+    }, context)
+  const first = await ask('Ship it?')
+  const second = await ask('Rename it?')
+  await f.action('asked', { message: second })
+  await f.action('asked', { message: second })
+  await until(() => f.announced.length === 1)
+  expect(f.announced[0]).toContain(`message ${second}`)
+  expect((await f.entries(f.voice)).filter((e) => e.kind === 'voice.question')).toHaveLength(1)
+  await f.action('heard', { text: `answer message ${second}: 1. yes` })
+  await until(async () => (await messages()).find((m) => m.id === second)?.state === 'answered')
+  const states = Object.fromEntries((await messages()).map((m) => [m.id, m.state]))
+  expect([states[first], states[second]]).toEqual(['delivered', 'answered'])
+  expect((await messages()).find((m) => m.from === 'user')).toMatchObject({
+    re: second,
+    text: '1. yes',
+  })
+  expect((await f.entries(f.main)).filter((e) => e.kind === 'voice.utterance')).toHaveLength(0)
 })
 
 it('briefs each session, waits for the brief before the first line, and lets only the newest reach Voice', async () => {

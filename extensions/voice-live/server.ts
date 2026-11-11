@@ -9,19 +9,41 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, ToolTaskInput, Tx } from '@earendil-works/pi-durable'
-import { obj, str } from '@earendil-works/pi-schema'
+import type {
+  ConversationId,
+  Cursor,
+  ToolExecutionApi,
+  ToolTaskInput,
+  Tx,
+} from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import { bool, int, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { formatAgo } from '../../lib/ago.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
-import type { Question } from '../messages/api.ts'
+import type { Message, Question } from '../messages/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { LineageApi } from '../lineage/api.ts'
-import { EndAction, HeardAction, LogAction, StartAction, StatusAction } from './refs.ts'
-import type { VoiceAnswer, VoiceContext, VoiceLine, VoiceSession } from './refs.ts'
+import {
+  AskedAction,
+  EndAction,
+  HeardAction,
+  LogAction,
+  StartAction,
+  StatusAction,
+} from './refs.ts'
+import type {
+  VoiceAnswer,
+  VoiceContext,
+  VoiceGo,
+  VoiceLine,
+  VoiceQuestion,
+  VoiceSession,
+} from './refs.ts'
 import { voiceBrief } from './brief.ts'
 
 const SECRET = 'OPENAI_API_KEY'
@@ -65,7 +87,7 @@ const Forwarded = defineDoc<{ scheduled: boolean }>({
   scope: 'task',
   initial: () => ({ scheduled: false }),
 })
-export const userActions = ['status', 'start', 'heard', 'log', 'end']
+export const userActions = ['status', 'start', 'heard', 'asked', 'log', 'end']
 const terminal = {
   status: 'terminal',
   outcome: { status: 'completed', result: null },
@@ -166,7 +188,7 @@ function questionsText(questions: Question[]) {
         `${q.ref ?? i + 1}. ${q.text}`,
         ...(q.options ?? []).map(
           (o, j) =>
-            `${o.key ?? String.fromCharCode(97 + j)}: ${o.label}${o.detail ? ` — ${o.detail}` : ''}`,
+            `${o.key ?? String.fromCharCode(97 + j)}: ${o.label}${o.detail ? ` — ${o.detail}` : ''}${o.recommended ? ' (the asker’s pick)' : ''}`,
         ),
         ...(q.scale
           ? [
@@ -177,6 +199,48 @@ function questionsText(questions: Question[]) {
     )
     .join('\n\n')
 }
+
+/** Who asks `message`, for Voice to say: @ultimate, or the branch by title and id. */
+function askerOf(host: ExtensionHost, message: Pick<Message, 'from'>, main: number | undefined) {
+  if (message.from === main) return '@ultimate'
+  const title = host.conversations().find((c) => c.id === message.from)?.title
+  return `#${message.from}${title ? ` "${title}"` : ''}`
+}
+
+/** One open question to the user in full, the way Voice reads it out. */
+function questionText(host: ExtensionHost, message: Message, main: number | undefined) {
+  return [
+    `Message ${message.id} from ${askerOf(host, message, main)}, asked ${formatAgo(message.at, Date.now(), { ago: true })}:`,
+    message.text,
+    ...(message.questions?.length ? ['', `Questions:\n${questionsText(message.questions)}`] : []),
+  ].join('\n')
+}
+
+/** The open questions to the user, oldest first (the Inbox's order), one line each, the way their cards head them. */
+export async function openList(host: ExtensionHost, ctx: Context) {
+  const [open, standing] = await Promise.all([
+    host.need(MessagesApi).openQuestions(ctx),
+    host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx),
+  ])
+  const now = Date.now()
+  return open.length
+    ? open
+        .map(
+          (q) =>
+            `- message ${q.message} from ${askerOf(host, { from: q.conversation }, standing?.ultimate)}: ${q.text} (asked ${formatAgo(q.at, now, { ago: true })})`,
+        )
+        .join('\n')
+    : 'No open questions.'
+}
+
+/** The one-line gist of open question `message`, as its card heads it; undefined once it is not open. */
+async function gistOf(host: ExtensionHost, message: number, ctx: Context) {
+  return (await host.need(MessagesApi).openQuestions(ctx)).find((q) => q.message === message)?.text
+}
+
+/** Voice's spoken line for tool `taskId`, when a tool speaks and ends Voice's turn in one call. */
+const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: number) =>
+  write(host, id, 'voice.line', { role: 'ultimate', text, speech: true }, `voice:say:${taskId}`)
 
 /** Both writers share one request id, so the first write's time is the one kept. */
 const userLine = (input: { text: string }): VoiceLine => ({
@@ -217,6 +281,8 @@ export function answerTask(host: ExtensionHost) {
       request: string
       text: string
       firstMessage: number
+      /** @ultimate's open question this utterance answers, named by Voice (voice_answer). */
+      message?: number
     },
     { phase: 'answer' },
     null
@@ -236,15 +302,8 @@ export function answerTask(host: ExtensionHost) {
           userLine(input),
           `voice:line:${input.request}`,
         )
-        // The open question this utterance answers, chosen once: after our own answer it is no longer open. Spoken
-        // words name no card, so with several open none is guessed: the utterance goes in as plain input, and the
-        // agent sees its open questions by number.
-        let question = await runtime.memo<number | false>('question', ctx)
-        if (question === undefined) {
-          const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-          const open = (log?.messages ?? []).filter((m) => m.from === main && openQuestion(m))
-          question = await runtime.memo('question', open.length === 1 ? open[0].id : false, ctx)
-        }
+        // The question Voice named with voice_answer; none is guessed. Without one the utterance goes in as plain input.
+        const question = input.message ?? false
         let receipt
         // A crash after answer() finds this utterance's own reply by its text, never another answer to the question.
         const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
@@ -506,6 +565,37 @@ export const actions = {
     )
     return {}
   }),
+  asked: implementAction(AskedAction, async (args, { host }) => {
+    const id = args && typeof args === 'object' && !Array.isArray(args) ? args.message : undefined
+    if (typeof id !== 'number') throw new Error('Expected a message id')
+    const voice = await voiceId(host)
+    const [open, standing] = await Promise.all([
+      host.need(MessagesApi).openQuestions(context),
+      host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context),
+    ])
+    const question = open.find((q) => q.message === id)
+    // Answered before the user paused: nothing to announce.
+    if (!question) return {}
+    const data: VoiceQuestion = {
+      message: id,
+      from: question.conversation,
+      title: askerOf(host, { from: question.conversation }, standing?.ultimate),
+      gist: question.text,
+    }
+    const conversation = (await host.harness().conversation(voice, context))!
+    // Once per message, however many times the page asks.
+    await conversation.submit(
+      {
+        type: 'input',
+        requestId: `voice:asked:${id}`,
+        whenBusy: 'steer',
+        entry: { kind: 'voice.question', data },
+        content: `A new question for the user arrived: message ${id} from ${data.title}: ${data.gist}`,
+      },
+      context,
+    )
+    return {}
+  }),
   log: implementAction(LogAction, async (args, { host }) => {
     const { role, text } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if ((role !== 'live' && role !== 'notice') || typeof text !== 'string' || !text.trim())
@@ -543,6 +633,45 @@ export const actions = {
 }
 
 export default (host: ExtensionHost) => {
+  /**
+   * Pass `text` to @ultimate as the user's forwarded line, answering its open question `message` when given; the answer
+   * task brings @ultimate's answer back to Voice.
+   */
+  async function forward(api: ToolExecutionApi, ctx: Context, text: string, message?: number) {
+    const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
+    if (!main) throw new Error('@ultimate is not available')
+    const input = {
+      voice: api.conversationId,
+      main,
+      request: String(api.taskId),
+      text,
+      ...(message !== undefined ? { message } : {}),
+    }
+    // Record and create atomically: a crash after scheduling never creates a second answer task.
+    await api.commit(async (tx) => {
+      const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+      const receipt = await tx.doc(Forwarded, api.taskId)
+      if (receipt.scheduled) return
+      await tx.createTask(
+        answerTask(host),
+        { ...input, firstMessage: log.next },
+        {
+          conversationId: api.conversationId,
+          ownership: { kind: 'conversation' },
+          background: true,
+        },
+      )
+      receipt.scheduled = true
+    }, ctx)
+    host.harness().resume()
+    await write(
+      host,
+      api.conversationId,
+      'voice.line',
+      userLine(input),
+      `voice:line:${input.request}`,
+    )
+  }
   host.need(MessagesApi)
   host.need(SubagentsApi)
   host.need(LineageApi)
@@ -648,43 +777,157 @@ export default (host: ExtensionHost) => {
         async execute({ request }, api, ctx) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice forwards requests')
-          const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
-          if (!main) throw new Error('@ultimate is not available')
-          const input = {
-            voice: api.conversationId,
-            main,
-            request: String(api.taskId),
-            text: request,
-          }
-          // Record and create atomically: a crash after scheduling never creates a second answer task.
-          await api.commit(async (tx) => {
-            const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-            const receipt = await tx.doc(Forwarded, api.taskId)
-            if (receipt.scheduled) return
-            await tx.createTask(
-              answerTask(host),
-              { ...input, firstMessage: log.next },
-              {
-                conversationId: api.conversationId,
-                ownership: { kind: 'conversation' },
-                background: true,
-              },
-            )
-            receipt.scheduled = true
-          }, ctx)
-          host.harness().resume()
-          await write(
-            host,
-            api.conversationId,
-            'voice.line',
-            userLine(input),
-            `voice:line:${input.request}`,
-          )
+          await forward(api, ctx, request)
           return {
             output: [
               {
                 type: 'text',
                 text: 'Passed to @ultimate. Its answer will arrive as input.',
+              },
+            ],
+          }
+        },
+      }),
+      defineTool({
+        name: 'voice_show',
+        deferred: true,
+        description:
+          'Show something on the user’s screen: a surface (`surface`, its id or title: agent, inbox, memory, review, system, pr-triage…), a conversation (`conversation`, its id), or an open question in the Inbox (`message`). Give exactly one. With `say`, also speak that short line and end your turn.',
+        parameters: obj({
+          surface: opt(str({ minLength: 1 })),
+          conversation: opt(int()),
+          message: opt(int()),
+          say: opt(str({ minLength: 1 })),
+        }),
+        // Stable request ids write each line once.
+        replay: 'safe',
+        async execute({ surface, conversation, message, say }, api, ctx) {
+          if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice navigates')
+          if ([surface, conversation, message].filter((v) => v !== undefined).length !== 1)
+            throw new Error('Give exactly one of surface, conversation or message')
+          let go: VoiceGo
+          let label: string
+          if (message !== undefined) {
+            const gist = await gistOf(host, message, ctx)
+            if (gist === undefined)
+              throw new Error(`Message ${message} is not an open question to the user`)
+            go = { message }
+            label = `Inbox · ${gist}`
+          } else if (conversation !== undefined) {
+            const found = host.conversations().find((c) => c.id === conversation)
+            if (!found) throw new Error(`No conversation #${conversation}`)
+            go = { conversation }
+            label = `#${conversation}${found.title ? ` ${found.title}` : ''}`
+          } else {
+            // The page knows its surfaces; it reports one it does not have as a notice.
+            go = { surface: surface! }
+            label = surface!
+          }
+          await write(
+            host,
+            api.conversationId,
+            'voice.line',
+            { role: 'action', text: label, go },
+            `voice:show:${api.taskId}`,
+          )
+          if (!say) return { output: [{ type: 'text', text: `Showing ${label}.` }] }
+          await speak(host, api.conversationId, say, api.taskId)
+          return {
+            output: [{ type: 'text', text: 'Shown and spoken.' }],
+            control: { terminate: true },
+          }
+        },
+      }),
+      defineTool({
+        name: 'voice_question',
+        deferred: true,
+        description:
+          'Read the questions waiting on the user. Without `message`: every open one, oldest first (the Inbox order). With `message`: that one in full (who asks, its text, each numbered question with lettered options and the asker’s picks) and, unless `show` is false, its card shown in the Inbox.',
+        parameters: obj({ message: opt(int()), show: opt(bool()) }),
+        // Reads, and one navigation line under the tool task's stable request id.
+        replay: 'safe',
+        async execute({ message, show }, api, ctx) {
+          if (api.conversationId !== (await voiceId(host)))
+            throw new Error('Only Voice reads questions')
+          if (message === undefined)
+            return { output: [{ type: 'text', text: await openList(host, ctx) }] }
+          const [log, standing, gist] = await Promise.all([
+            api.snapshot(Messages, ROOT_CONVERSATION_ID, ctx),
+            api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx),
+            gistOf(host, message, ctx),
+          ])
+          const found = log?.messages.find((m) => m.id === message)
+          if (!found || gist === undefined)
+            return {
+              output: [
+                {
+                  type: 'text',
+                  text: `Message ${message} is no longer open.\n\nStill open:\n${await openList(host, ctx)}`,
+                },
+              ],
+            }
+          if (show !== false)
+            await write(
+              host,
+              api.conversationId,
+              'voice.line',
+              { role: 'action', text: `Inbox · ${gist}`, go: { message } },
+              `voice:show:${api.taskId}`,
+            )
+          return {
+            output: [{ type: 'text', text: questionText(host, found, standing?.ultimate) }],
+          }
+        },
+      }),
+      defineTool({
+        name: 'voice_answer',
+        deferred: true,
+        description:
+          'Settle open question `message` with the user’s answer `text` (numbered parts with their letters, in their words), or close it unanswered with `dismiss`. Only after you read the answer back and the user confirmed it. Returns the questions still open.',
+        parameters: obj({
+          message: int(),
+          text: opt(str({ minLength: 1 })),
+          dismiss: opt(bool()),
+        }),
+        // The settled reply is memoized; a replay after a crash finds the message no longer open and goes on.
+        replay: 'safe',
+        async execute({ message, text, dismiss }, api, ctx) {
+          if (api.conversationId !== (await voiceId(host)))
+            throw new Error('Only Voice answers questions')
+          if (!dismiss && !text) throw new Error('Give the answer text, or dismiss')
+          const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
+          const found = (await api.snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages.find(
+            (m) => m.id === message,
+          )
+          const done = await api.memo<boolean>('settled', ctx)
+          if (!done) {
+            if (!found || !openQuestion(found))
+              throw new Error(`Message ${message} is not an open question to the user`)
+            if (dismiss) await host.need(MessagesApi).dismiss(message, ctx)
+            else if (found.from === main) {
+              // @ultimate's own question: its answer follows, and comes back to Voice to speak.
+              await forward(api, ctx, text!, message)
+            } else await host.need(MessagesApi).answer(message, text!, ctx)
+            await api.memo('settled', true, ctx)
+          }
+          if (dismiss || found?.from !== main)
+            await write(
+              host,
+              api.conversationId,
+              'voice.line',
+              {
+                role: 'action',
+                text: dismiss
+                  ? `Dismissed message ${message}`
+                  : `Answered message ${message}: ${text}`,
+              },
+              `voice:answered:${api.taskId}`,
+            )
+          return {
+            output: [
+              {
+                type: 'text',
+                text: `${dismiss ? 'Dismissed' : 'Answered'}${found?.from === main && !dismiss ? '; @ultimate’s reply will arrive as input' : ''}.\n\nStill open:\n${await openList(host, ctx)}`,
               },
             ],
           }

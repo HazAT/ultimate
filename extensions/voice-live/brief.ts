@@ -11,6 +11,7 @@ import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { LineageApi } from '../lineage/api.ts'
+import { MessagesApi } from '../messages/api.ts'
 import type { VoiceContext } from './refs.ts'
 
 const REQUESTS = 5
@@ -118,11 +119,17 @@ export async function voiceBrief(
   main: ConversationId,
   ctx: Context,
 ): Promise<VoiceContext> {
-  const [memory, requests, branches] = await Promise.all([
+  const [memory, requests, branches, questions] = await Promise.all([
     host.need(LineageApi).memoryBrief(main, ctx),
     recentRequests(host, main, ctx),
     openBranches(host, ctx),
+    host.need(MessagesApi).openQuestions(ctx),
   ])
+  const now = Date.now()
+  const asker = (id: number) =>
+    id === main
+      ? '@ultimate'
+      : `#${id} "${clip(host.conversations().find((c) => c.id === id)?.title ?? 'untitled', 80)}"`
   const text = [
     '<voice_context>',
     'Context for this voice session: background for understanding what the user refers to, not a request.',
@@ -135,6 +142,15 @@ export async function voiceBrief(
     branches.length
       ? `Open branches (conversations @ultimate started for a feature or fix):\n${branches.join('\n')}`
       : 'No open branches.',
+    '',
+    questions.length
+      ? `Open questions waiting on the user, oldest first (the Inbox order):\n${questions
+          .map(
+            (q) =>
+              `- message ${q.message} from ${asker(q.conversation)}: ${q.text} (asked ${formatAgo(q.at, now, { ago: true })})`,
+          )
+          .join('\n')}`
+      : 'No open questions.',
     '</voice_context>',
   ].join('\n')
   return {
@@ -142,6 +158,7 @@ export async function voiceBrief(
     memories: memory?.memories ?? 0,
     requests: requests.length,
     branches: branches.length,
+    questions: questions.length,
     tokens: estimateTextTokens(text),
     at: Date.now(),
   }

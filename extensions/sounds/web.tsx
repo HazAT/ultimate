@@ -33,6 +33,7 @@ import { spoken } from './narration.ts'
 import type { Line } from './narration.ts'
 import { speaker } from './speaker.ts'
 import { SayAction } from './refs.ts'
+import { questionsSpoken } from './ui.tsx'
 
 const playedKey = 'ultimate.sounds.played'
 
@@ -85,7 +86,7 @@ async function claim(cues: readonly Cue[]) {
 
 /** Says one line after its notification sound; a line OpenAI's voice cannot say is said by the browser's. */
 async function sayLine(line: Line) {
-  if (!line.text) return tones.play(line.sound)
+  if (!line.text || (line.sound === 'input' && questionsSpoken())) return tones.play(line.sound)
   const { audio } = await api.action(SayAction, { text: line.text }).catch((error: unknown) => {
     console.warn('Narrator voice failed', error)
     return { audio: null }

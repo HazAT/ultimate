@@ -15,7 +15,8 @@ agent uses `openai-codex/gpt-6-luna` through Pi's existing ChatGPT login, low th
    (`gpt-live-1`, voice `marin`). It seeds at most ten recent Voice lines, each clipped to 200 characters.
 2. While the session connects, `start` also puts together Voice's **context brief** in code, without a model
    (`brief.ts`): the project memory a branch starts from (`LineageApi.memoryBrief`), the user's last five requests
-   to @ultimate with the first line of each answer, and up to eight open branches with their state. It goes into
+   to @ultimate with the first line of each answer, up to eight open branches with their state, and the open questions
+   to the user, oldest first (`MessagesApi.openQuestions`). It goes into
    Voice's transcript as a `voice.context` write after the session divider, a quiet folded card ("Context · memory
    N · N recent requests · N open branches") that opens to the text Voice was given. Every session start, a reopen
    after the idle-close included, places a fresh one. Its edit omits the previous brief, so only the newest reaches
@@ -34,12 +35,22 @@ agent uses `openai-codex/gpt-6-luna` through Pi's existing ChatGPT login, low th
    GPT-Live's `output_transcript.delta` reads it out. Every finished user line goes through `heard` as a
    `voice.heard` input to Voice (`whenBusy: 'steer'`). GPT-Live's own speech can be logged as `live` lines;
    commentary output is not logged twice. Delegation events are ignored.
-5. `extensions/voice-live/agents/voice.md` configures the standing agent with three deferred tools and codemode:
+5. `extensions/voice-live/agents/voice.md` configures the standing agent with six deferred tools and codemode:
    - `voice_say {text}` writes an `ultimate` `voice.line` with `speech: true`. The browser sends it as commentary.
-   - `voice_ask_ultimate {request}` writes a forwarded user line and schedules the durable answer task. It answers
-     @ultimate's newest open question through Messages, or submits a typed `voice.utterance` with the clean request.
+   - `voice_ask_ultimate {request}` writes a forwarded user line and schedules the durable answer task. It submits a
+     typed `voice.utterance` with the clean request, or, given a `message` by `voice_answer`, answers that open
+     question of @ultimate's through Messages.
      The task follows that specific input receipt, including Messages delivery, not idle or an arbitrary delay.
    - `voice_note {text}` writes a quiet `note` line, forwarded by the browser as `session.thinking.append`.
+   - `voice_show {surface | conversation | message, say?}` writes an `action` line with `go`. The page holding the
+     session carries it out the way a click does (`showSurface`, `switchConversation`, `inbox:open` at a question),
+     so every tab and device follows the shared UI state; it also sends the Voice sheet back. A surface the page does
+     not have becomes a notice. With `say` it also speaks and ends Voice's turn: one tool call per navigation.
+   - `voice_question {message?, show?}` lists the open questions, oldest first, or returns one in full (asker, text,
+     numbered questions, lettered options, the asker's picks) and shows its card in the Inbox.
+   - `voice_answer {message, text | dismiss}` settles that card after Voice read the answer back and the user said
+     yes: `MessagesApi.answer` or `dismiss` for a branch's question; @ultimate's own goes through the answer task
+     (below, with `message`), so its reply comes back to speak. No question is ever guessed from spoken words.
      Tool names are prefixed to avoid colliding with other agents' tools (especially lineage's `note`).
    - `codemode` answers status questions (what is running, did something land, open to-dos) with one script of
      `ultimate.*` reads, then `voice_say`, without an @ultimate turn. It stays read-only by instruction, not by a
@@ -51,6 +62,13 @@ agent uses `openai-codex/gpt-6-luna` through Pi's existing ChatGPT login, low th
    Failed/unanswered inputs leave a notice linked to the forwarded line and tell Voice to explain the failure.
    `voice_say` derives `re` from the input preceding its own tool round, so speech answers the right forwarded line.
    Request ids and a transactional scheduling receipt keep forwards and answer delivery safe across task replay.
+
+## Questions during a session
+
+While voice mode is on, the page watches the Messages log; each question to the user that opens then goes to Voice
+through `asked` once the user and GPT-Live have been quiet for two seconds, as a `voice.question` input (once per
+message). Voice announces it in one line and reads it only when asked. The sounds narrator keeps the question's tone
+but leaves its words to Voice while voice mode is on in that tab (`voiceQuestions` in `sounds/ui.tsx`).
 
 ## Browser and transcript
 
