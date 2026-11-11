@@ -12,6 +12,7 @@ import {
   useConversations,
   useDocOf,
   useEvents,
+  switched,
   useExtensionUiState,
   useNow,
 } from '@/sdk'
@@ -28,7 +29,9 @@ import { tracker, variants } from './agents.ts'
 import type { Variant } from './agents.ts'
 import * as conductor from './conductor.ts'
 import * as tones from './tones.ts'
-import { linesOf, spoken } from './narration.ts'
+import { spoken } from './narration.ts'
+import type { Line } from './narration.ts'
+import { speaker } from './speaker.ts'
 import { SayAction } from './refs.ts'
 
 const playedKey = 'ultimate.sounds.played'
@@ -80,48 +83,22 @@ async function claim(cues: readonly Cue[]) {
   })
 }
 
-/** How long the narrator gathers cues before speaking, so what arrives together becomes one line. */
-const gatherMs = 1500
+/** Says one line after its notification sound; a line OpenAI's voice cannot say is said by the browser's. */
+async function sayLine(line: Line) {
+  if (!line.text) return tones.play(line.sound)
+  const { audio } = await api.action(SayAction, { text: line.text }).catch((error: unknown) => {
+    console.warn('Narrator voice failed', error)
+    return { audio: null }
+  })
+  const pcm = audio ? Uint8Array.from(atob(audio), (c) => c.charCodeAt(0)).buffer : undefined
+  await tones.say(line.sound, line.text, pcm)
+}
 
-/**
- * Speaks lines one at a time, each after its notification sound: cues that arrive while it gathers or speaks join the
- * next line. A line OpenAI's voice cannot say is said by the browser's.
- */
-function speaker() {
-  let waiting: Cue[] = []
-  let busy = false
-  const run = async () => {
-    busy = true
-    try {
-      while (waiting.length) {
-        await new Promise((resolve) => setTimeout(resolve, gatherMs))
-        const cues = waiting
-        waiting = []
-        for (const line of linesOf(cues)) {
-          if (!line.text) {
-            await tones.play(line.sound)
-            continue
-          }
-          const { audio } = await api
-            .action(SayAction, { text: line.text })
-            .catch((error: unknown) => {
-              console.warn('Narrator voice failed', error)
-              return { audio: null }
-            })
-          const pcm = audio
-            ? Uint8Array.from(atob(audio), (c) => c.charCodeAt(0)).buffer
-            : undefined
-          await tones.say(line.sound, line.text, pcm)
-        }
-      }
-    } finally {
-      busy = false
-    }
-  }
-  return (cues: readonly Cue[]) => {
-    waiting.push(...cues)
-    if (!busy) run().catch((error: unknown) => console.warn('Narrator failed', error))
-  }
+/** The narrator, which says what this tab claimed before it switched to a new bundle. */
+function narratorOfTab() {
+  const narrate = speaker(sayLine, sessionStorage)
+  narrate.resume(Boolean(switched))
+  return narrate.add
 }
 
 /**
@@ -137,7 +114,7 @@ function Player() {
   const conversations = useConversations()
   const { muted, off, volume, agents, narrator: narrating, branches } = useSettings()
   const [hear] = useState(listener)
-  const [narrate] = useState(speaker)
+  const [narrate] = useState(narratorOfTab)
   // The narrator speaks while the tab is hidden too; only a reconnect or the tab opening counts as catching up.
   const catchingUp = useCatchingUp(narrating)
   useEffect(() => tones.setVolume(muted ? 0 : volume), [muted, volume])

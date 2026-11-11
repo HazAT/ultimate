@@ -41,7 +41,9 @@ Off by default. Turned on, each notification's sound leads into a short spoken l
 It gathers cues for 1.5 s and speaks one line per kind, questions first, one line at a time; what arrives meanwhile
 joins the next. A title is cut to its first eight words. Unlike the other sounds it speaks while the tab is hidden, but
 nothing that happened while the stream was down or before the tab opened. Tabs of one browser share a claim; tabs on
-several machines each speak.
+several machines each speak. A tab keeps the lines it claimed in its session until they are said, so a line cut off
+when the page reloads onto a new web bundle (a landing that changes the UI) is said after the switch; any other reload
+drops them.
 
 The `say` action (`server.ts`) speaks a line with OpenAI's `gpt-realtime-2.1-mini` over one realtime WebSocket
 response, with the `OPENAI_API_KEY` secret that voice input uses (or an API key Pi's `openai` provider holds), and keeps

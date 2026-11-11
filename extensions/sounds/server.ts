@@ -33,11 +33,24 @@ export function speak(key: string, text: string, signal: AbortSignal) {
       `openai-insecure-api-key.${key}`,
     ])
     const chunks: Buffer[] = []
+    // Reject before closing: closing a socket that still connects fires its `error` at once, which would otherwise
+    // win with undici's "The operation was aborted." for our own abort (#572100).
     const fail = (error: Error) => {
-      socket.close()
       reject(error)
+      socket.close()
     }
-    signal.addEventListener('abort', () => fail(new Error('Speaking timed out')), { once: true })
+    signal.addEventListener(
+      'abort',
+      () =>
+        fail(
+          new Error(
+            signal.reason?.name === 'TimeoutError'
+              ? 'Speaking timed out'
+              : 'Cancelled: the page left',
+          ),
+        ),
+      { once: true },
+    )
     // Node's WebSocket (undici) fires an empty `error` when the handshake or socket fails; the HTTP status or network
     // error behind it reaches only undici's diagnostics channels. Origin: #534625, nine bare "Could not reach" failures.
     let detail = ''
