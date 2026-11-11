@@ -104,7 +104,7 @@ async function children(tx: Tx, id: ConversationId): Promise<boolean> {
  * the earlier rule one such input left every branch in the run waiting unseen (#567641). An echo (a branch's answer
  * to a routed answer) routes nowhere, so routing goes back and forth at most once.
  */
-async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
+export async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   // Each branch with the newest message of it the run answers: the starter's messages after it are the run's own.
   const latest = new Map<number, number>()

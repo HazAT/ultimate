@@ -86,9 +86,10 @@ async function fixture() {
       throw new Error(message)
     },
   } as unknown as ExtensionHost
-  // Messages’ core dependencies: no standing agents to list, no worktrees.
+  // Messages’ core dependencies: no standing agents to list, no worktrees, no concluded conversations.
   services.set('subagents', { residents: async () => [] } satisfies Partial<SubagentsService>)
   services.set('workspaces', { doc: Workspaces })
+  services.set('conversations', { concludedIn: async () => new Set() })
   prepared.registry.install(messagesExtension(host))
   prepared.registry.install(questionsExtension(host))
   const observed: string[] = []

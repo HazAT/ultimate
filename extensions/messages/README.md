@@ -50,7 +50,8 @@ message to @ultimate open; @ultimate messaging or concluding it clears that.
 ### Messages to the user
 
 A message to `user` shows in the sender's transcript and starts no run. For @ultimate it is its answer: the run ends
-without restating it, unless a reply-enabled message it has read is still open. While a user's message it has read is
+without restating it, unless a reply-enabled message it has read is still open or a branch whose reply or report the
+run read still waits for its answer: the run goes on to its final answer, which routing sends there. While a user's message it has read is
 open, @ultimate's message to the user answers it and, with `questions`, stays open itself, so it can ask one card after
 another.
 
