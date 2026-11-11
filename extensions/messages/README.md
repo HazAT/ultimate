@@ -20,7 +20,8 @@ conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
   answer and ends your run. A message still queued is unread and never owed. `reply: false` is one-way: it wakes the
   recipient and returns nothing.
 - **Images.** `images` forwards images from the sender's own conversation: `'latest'` takes the newest entry with
-  images (a pasted input or a screenshot tool result), a number names that entry. At most `maxImages`, each at most
+  images in the current turn (its input, or a tool result such as a screenshot since) and fails when there is none; an
+  entry id names an older one. At most `maxImages`, each at most
   `maxImageBytes`. `branch` takes `images` for its first message too.
 
 ### Waking upward: notes and reports
