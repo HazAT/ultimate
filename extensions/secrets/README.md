@@ -8,10 +8,11 @@ Other server facets import `readSecret(userHome, name)` from `lib/secrets.ts`. A
 
 ## UI
 
-The Secrets panel (palette: `Secrets…`) lists every secret an enabled extension declares and every stored one. It reads `list` when it opens, after each save or delete, and when the enabled extensions change in system info.
+The Secrets panel (palette: `Secrets…`) lists every secret an enabled extension declares and every stored one, and adds your own. It reads `list` when it opens, after each save or delete, and when the enabled extensions change in system info.
 
 - **Rows:** the name, the description, `needed by <extensions>` (or that no enabled extension needs it), a "Get a key" link for a declared `url`, and the status: `set · 5m ago` from `updatedAt`, or `missing`.
 - **Add or Replace:** a password field with a show toggle, Save and Cancel (Enter and Escape). The value lives only in that component's state, goes to `set`, and is cleared after the save; nothing reads it back. There is no `<form>` and the field is a one-time code, so browsers do not offer to save it as a password.
+- **Add a secret:** the `+` beside the heading, for a name no extension declares (a token your own scripts read). The same form with a name field first, upper-cased as you type and checked inline against `set`'s rule (`^[A-Z][A-Z0-9_]*$`); a name already listed points to its Replace. Saved, it lists like any stored secret.
 - **Delete:** asks first, with focus on Cancel.
 - **Errors:** inline, with the action's message.
 
