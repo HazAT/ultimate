@@ -112,6 +112,8 @@ it('sends a screenshot picked or pasted on the card with the answer', async () =
       .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
   }, shot.toString('base64'))
   await card.getByRole('img', { name: 'Pasted image 3' }).waitFor()
+  // The composer would read a taken file asynchronously: give it time before checking it took none.
+  await page.waitForTimeout(500)
   expect(await page.locator('#app [data-ui="composer"] img').count()).toBe(0)
   await card.getByRole('button', { name: 'Remove image 3' }).click()
   await card.getByRole('img', { name: 'Pasted image 3' }).waitFor({ state: 'detached' })

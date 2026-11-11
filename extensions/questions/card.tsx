@@ -400,7 +400,7 @@ function Card({
     }
   }, [])
   // An answer with images cannot go out as the page closes (keepalive's budget is too small): the browser asks first.
-  const holding = images.length > 0 && (phase === 'undo' || phase === 'sending')
+  const holding = images.length > 0 && (busy || phase === 'undo' || phase === 'sending')
   useEffect(() => {
     if (!holding) return undefined
     const ask = (event: BeforeUnloadEvent) => event.preventDefault()

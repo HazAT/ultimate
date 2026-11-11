@@ -586,7 +586,8 @@ describe('screenshots with an answer', () => {
     const { message } = await f.ask(asker, { text: 'How does it look?' })
     const { id: reply } = await f.answer({ messageId: message!.id, text: 'See', images: [png(0)] })
     await f.settled()
-    // Replaying the task's placement: its request id already placed it, so no second input appears.
+    // The task keeps the images, and a re-run places by the same request id (delivery.ts): such a placement adds no
+    // second input, and the placed one keeps its images.
     const task = await f.opened.harness.commit(
       async (tx) =>
         (await tx.scanTasks({}, 1000)).items.find(
