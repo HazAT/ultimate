@@ -76,6 +76,7 @@ it('keeps system messages behind every leading user message Claude Code sends', 
   await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
 
   let started = 0
+  let mentions: string | undefined
   useSpawn(((_command: string, args: string[], options: { env: Record<string, string> }) => {
     const stdin = new PassThrough()
     const stdout = new PassThrough()
@@ -100,6 +101,7 @@ it('keeps system messages behind every leading user message Claude Code sends', 
       return child
     }
     const messages = requests[started++]
+    mentions = options.env.CLAUDE_CODE_DISABLE_FILE_MENTIONS
     createInterface({ input: stdin }).on('line', (line) => {
       const frame = JSON.parse(line) as { type: string; shouldQuery?: boolean }
       if (frame.type !== 'user') return
@@ -154,6 +156,8 @@ it('keeps system messages behind every leading user message Claude Code sends', 
     upstream.close()
   }
 
+  // Claude Code is told not to expand "@name" into a file's content or a folder listing at all.
+  expect(mentions).toBe('1')
   const second = relayed[1]
   // The API's rule: a system message precedes an assistant message or ends the array.
   expect(second.map((message) => message.role)).toEqual([
