@@ -44,8 +44,11 @@ import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 const directories: string[] = []
 const hosts: OpenHost[] = []
 afterEach(async () => {
-  for (const host of hosts.splice(0)) await host.close()
-  for (const path of directories.splice(0)) await removeTemp(path)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's folders.
+  const closing = hosts.splice(0)
+  const taken = directories.splice(0)
+  for (const host of closing) await host.close()
+  for (const path of taken) await removeTemp(path)
 })
 const definition = (body = 'Original instructions') =>
   `---\nname: scout\ndescription: Search\ntools: [read, bash]\n---\n${body}\n`

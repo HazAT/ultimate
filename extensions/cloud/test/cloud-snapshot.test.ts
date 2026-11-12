@@ -14,6 +14,9 @@ const key = 'github.com/o/project'
 const stub = cloudStub()
 const stored = stub.objects
 const remote = { url: 'ws://127.0.0.1:8787', token: 'dev', secret: 'snapshot secret', key }
+// Long enough that the ciphertext scan below cannot find it by chance: a 4-byte 'desk' turned up in about 17 MiB of
+// random ciphertext once every few hundred runs.
+const machine = 'snapshot-test-desk'
 /** sha256 of a `VACUUM INTO` copy: the plaintext a manifest hashes. */
 async function contentHash(path: string) {
   const copy = join(await temp('ultimate-snapshot-hash-'), 'copy.sqlite')
@@ -96,13 +99,16 @@ beforeAll(async () => {
   writer = new DatabaseSync(database)
   writer.exec(`PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;
     CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); CREATE TABLE blobs (data BLOB);`)
+  // One transaction, not 500 autocommits: each would fsync, which takes seconds on a busy disk-backed TMPDIR.
   const note = writer.prepare('INSERT INTO notes (body) VALUES (?)')
+  writer.exec('BEGIN')
   for (let i = 0; i < 500; i++) note.run(`note ${i}`)
+  writer.exec('COMMIT')
   writer.prepare('INSERT INTO blobs VALUES (?)').run(randomBytes(17 * 1024 * 1024))
   progress = []
   manifest = await uploadSnapshot({
     ...remote,
-    machine: 'desk',
+    machine,
     database,
     repo: source,
     progress: (done, total, uploaded) => progress.push([done, total, uploaded]),
@@ -114,7 +120,7 @@ afterAll(() => {
 })
 
 it('round-trips the database and fetches branches without force, keeping conflicting ones aside', async () => {
-  expect(manifest).toMatchObject({ key, machine: 'desk', database: { chunks: 2 } })
+  expect(manifest).toMatchObject({ key, machine, database: { chunks: 2 } })
   expect(manifest.bundle?.chunks).toBe(1)
   expect(await contentHash(database)).toBe(manifest.database.sha256)
   expect(progress.at(-1)).toEqual([
@@ -172,7 +178,7 @@ it('stores only ciphertext in R2', () => {
   )
   for (const bytes of stored.values()) {
     const text = Buffer.from(bytes)
-    for (const plain of ['SQLite format 3', 'git bundle', key, manifest.id, 'desk'])
+    for (const plain of ['SQLite format 3', 'git bundle', key, manifest.id, machine])
       expect(text.includes(plain)).toBe(false)
     expect(() => JSON.parse(text.toString())).toThrow(SyntaxError)
   }

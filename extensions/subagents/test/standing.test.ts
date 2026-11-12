@@ -28,8 +28,11 @@ const ctx = BACKGROUND_CONTEXT
 const directories: string[] = []
 const opened: OpenHost[] = []
 afterEach(async () => {
-  for (const host of opened.splice(0)) await host.close()
-  for (const path of directories.splice(0)) await removeTemp(path)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's folders.
+  const closing = opened.splice(0)
+  const taken = directories.splice(0)
+  for (const host of closing) await host.close()
+  for (const path of taken) await removeTemp(path)
 })
 const definition = (body: string, extra = '') =>
   `---\nname: x\ndescription: Test\nresident: true\ntools: [read, t]\nisolate: worktree\n${extra}---\n${body}\n`

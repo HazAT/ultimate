@@ -53,8 +53,12 @@ import { UiState } from '../../../server/ui-state.ts'
 const homes: string[] = []
 const hosts: OpenHost[] = []
 afterEach(async () => {
-  for (const host of hosts.splice(0)) await host.close()
-  for (const home of homes.splice(0)) await removeTemp(home)
+  // Take both lists before the first await: a hook still running past its timeout must not delete the next test's
+  // homes (ENOENT under load).
+  const closing = hosts.splice(0)
+  const taken = homes.splice(0)
+  for (const host of closing) await host.close()
+  for (const home of taken) await removeTemp(home)
 })
 /** Stands in for a subagent's report on its way to the branch: live until the test releases it. */
 const pendingReport = Promise.withResolvers<void>()
@@ -298,7 +302,9 @@ async function fixture(
     const current = opened
     const close = current.close.bind(current)
     current.close = async () => {
-      hosts.splice(hosts.indexOf(current), 1)
+      // afterEach may already own this host; never splice(-1) out of the next test's list.
+      const index = hosts.indexOf(current)
+      if (index !== -1) hosts.splice(index, 1)
       for (const cleanup of closers) await cleanup()
       await close()
     }
