@@ -13,15 +13,20 @@ export type RateLimit = {
   conversationId: number
 }
 
+/** An extension's hold: the extension that asked (its name, e.g. `guard`) and why, one short line saying it. */
+export type Hold = { source: string; reason: string }
+
 /**
  * The pause on conversation 1: `since` when it began; `runs` each conversation mid-turn then, by id, with its run's
- * generation task and first input submission, so Play notes that run only; `limit` when a rate limit paused it.
+ * generation task and first input submission, so Play notes that run only; `limit` when a rate limit paused it;
+ * `held` when an extension held it.
  */
 export type PauseDocState = {
   paused: boolean
   since?: number
   runs?: Record<string, { task: number; input?: number }>
   limit?: RateLimit
+  held?: Hold
   /** The user pressed Pause during this pause: it never plays by itself. */
   manual?: boolean
   /** The user's setting: minutes after a rate-limit pause began that Ultimate presses Play by itself; unset is off. */
@@ -45,6 +50,8 @@ export type PauseState = {
   since?: number
   /** The rate limit that paused Ultimate, if one did. */
   limit?: RateLimit
+  /** The extension that held Ultimate, if one did. */
+  held?: Hold
   /** Minutes after a rate-limit pause began that Play is pressed by itself; unset is off. */
   autoPlay?: number
   /** When this pause plays by itself (ms): a rate-limit pause the user did not also pause, with the setting on. */

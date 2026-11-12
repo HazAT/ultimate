@@ -130,6 +130,7 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
       actions.autoPlay({ minutes }, { host } as unknown as ActionContext),
     autoPlay: (now: number) => autoPlay(host, now),
     paused: () => services.want(PauseApi)!.paused(),
+    hold: (request: { source: string; reason: string }) => services.want(PauseApi)!.hold(request),
     get opened() {
       return opened!
     },
@@ -195,6 +196,56 @@ it('lets a running tool finish, starts no generation after it while paused, and 
   const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
   expect(notes).toHaveLength(1)
   expect(notes[0].model?.[0]?.content).toMatch(/^Paused for \d+s; the run continued after Play\.$/)
+})
+
+it('pauses when an extension holds it, showing its reason, and play continues as usual', async () => {
+  const f = await fixture()
+  let responses = 0
+  f.prepared.faux!.setResponses([
+    () => {
+      responses++
+      return fauxAssistantMessage([fauxToolCall('work', {})], { stopReason: 'toolUse' })
+    },
+    () => {
+      responses++
+      return fauxAssistantMessage([fauxText('done')])
+    },
+  ])
+  const { root, harness } = await f.open()
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await until(() => f.finish !== undefined)
+
+  const reason = "the day's spend passed $5.00"
+  const held = await f.hold({ source: 'guard', reason })
+  expect(held).toMatchObject({ paused: true, held: { source: 'guard', reason } })
+  expect(f.paused()).toBe(true)
+  expect((await harness.inspect(context)).scheduling).toBe('paused')
+  const { since } = held
+
+  // A second hold joins the pause: neither its start nor the reason shown changes.
+  const again = await f.hold({ source: 'guard', reason: 'still over' })
+  expect(again).toMatchObject({ paused: true, since, held: { source: 'guard', reason } })
+
+  f.finish!()
+  await until(async () => (await f.action('state')).running.length === 0)
+  expect(responses).toBe(1)
+
+  const played = await f.action('play')
+  expect(played).toMatchObject({ paused: false })
+  expect(played.held).toBeUndefined()
+  expect(f.paused()).toBe(false)
+  await submission.wait(context)
+  expect(responses).toBeGreaterThanOrEqual(2)
+  const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
+  expect(notes).toHaveLength(1)
+  expect(notes[0].model?.[0]?.content).toMatch(
+    /^Paused for \d+s \(guard: the day's spend passed \$5\.00\); the run continued after Play\.$/,
+  )
+  // A hold is an extension's: it never plays by itself, and it needs its reason.
+  await expect(f.hold({ source: 'guard', reason: '  ' })).rejects.toThrow(
+    'hold needs { source, reason }',
+  )
+  expect(f.paused()).toBe(false)
 })
 
 it('reopens paused: nothing starts until play', async () => {

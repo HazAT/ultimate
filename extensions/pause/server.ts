@@ -12,6 +12,7 @@ import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from '
 import type {
   AutoPlayed,
   HeldNote,
+  Hold,
   PauseDocState,
   PauseNote,
   PauseState,
@@ -120,6 +121,7 @@ async function state(host: Host): Promise<PauseState> {
     paused: doc.paused,
     ...(doc.since === undefined ? {} : { since: doc.since }),
     ...(doc.limit === undefined ? {} : { limit: doc.limit }),
+    ...(doc.held === undefined ? {} : { held: doc.held }),
     ...(doc.autoPlay === undefined ? {} : { autoPlay: doc.autoPlay }),
     ...(autoPlayAt(doc) === undefined ? {} : { autoPlayAt: autoPlayAt(doc) }),
     running: await running(host),
@@ -129,20 +131,20 @@ async function state(host: Host): Promise<PauseState> {
 // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 /**
  * Hold the scheduler, then record the pause and each run mid-turn now (its task and first input), which Play notes;
- * `limit` when a rate limit pauses it, also into a pause already recorded, so the limit shows.
+ * `cause` is why: a rate limit, or an extension's hold. A pause already recorded keeps its start and the explanation
+ * shown, and gains the cause's if it had none.
  */
-async function hold(host: Host, limit?: RateLimit) {
+async function hold(host: Host, cause?: Cause) {
   const harness = host.harness()
   harness.hold()
   flag(host).paused = true
   await harness.commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (doc.paused) {
-      if (limit && !doc.limit) doc.limit = limit
-      // The user pressed Pause too: this pause waits for them.
-      if (!limit) doc.manual = true
-      return
-    }
+    // Only a rate limit plays by itself: the user's Pause and an extension's hold wait for Play.
+    if (!(cause && 'limit' in cause)) doc.manual = true
+    if (cause && 'limit' in cause && !doc.limit) doc.limit = cause.limit
+    if (cause && 'held' in cause && !doc.held) doc.held = cause.held
+    if (doc.paused) return
     const runs: NonNullable<PauseDocState['runs']> = {}
     // Sleeping: a generation waiting out its retry backoff, as one that just hit a rate limit does.
     for (const status of ['pending', 'running', 'waiting', 'sleeping'] as const) {
@@ -157,18 +159,35 @@ async function hold(host: Host, limit?: RateLimit) {
         cursor = page.next
       } while (cursor)
     }
-    Object.assign(doc, {
-      paused: true,
-      since: Date.now(),
-      runs,
-      ...(limit ? { limit } : { manual: true }),
-    })
+    Object.assign(doc, { paused: true, since: Date.now(), runs })
   }, context)
   arm(host, await read(host))
 }
 
 async function pause(host: Host) {
   await hold(host)
+  return state(host)
+}
+
+/** Why the host is held: a rate limit that paused it, or an extension's hold. */
+type Cause = { limit: RateLimit } | { held: Hold }
+
+/** An extension holds the host with its reason, as the user's Pause does; serialized with Play so the two never race. */
+async function holdBy(host: Host, request: Hold) {
+  const { source, reason } = (request ?? {}) as Partial<Hold>
+  if (typeof source !== 'string' || !source.trim() || typeof reason !== 'string' || !reason.trim())
+    throw new Error('hold needs { source, reason }: the extension holding the pause, and why')
+  const wasPaused = flag(host).paused
+  try {
+    await hold(host, { held: { source: source.trim(), reason: reason.trim() } })
+  } catch (error) {
+    // The commit recorded nothing, so nothing would show the hold or offer Play: release what it took, as `limited` does.
+    if (!wasPaused) {
+      flag(host).paused = false
+      host.harness().release()
+    }
+    throw error
+  }
   return state(host)
 }
 
@@ -265,7 +284,7 @@ async function setAutoPlay(host: Host, minutes: unknown) {
  */
 async function limited(host: Host, limit: RateLimit) {
   try {
-    await hold(host, limit)
+    await hold(host, { limit })
   } catch (error) {
     // The commit recorded nothing, so nothing shows the pause or offers Play: let the work go on rather than hold it
     // unseen. Pi's retry and the watchdog's report still stand.
@@ -357,7 +376,13 @@ async function play(host: Host, auto = false) {
   const doc = await read(host)
   if (doc.paused && doc.since !== undefined) {
     const until = Date.now()
-    const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
+    const span = `${lasted(until - doc.since)}${
+      doc.limit
+        ? ` (${doc.limit.provider} rate limited ${doc.limit.model})`
+        : doc.held
+          ? ` (${doc.held.source}: ${doc.held.reason})`
+          : ''
+    }`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
       const id = Number(key) as ConversationId
       const how = await noted(host, id, recorded)
@@ -393,6 +418,7 @@ async function play(host: Host, auto = false) {
     delete current.since
     delete current.runs
     delete current.limit
+    delete current.held
     delete current.manual
   }, context)
   arm(host, await read(host))
@@ -402,7 +428,10 @@ async function play(host: Host, auto = false) {
 }
 
 export default function pauseExtension(host: Host) {
-  host.implement(PauseApi, { paused: () => flag(host).paused })
+  host.implement(PauseApi, {
+    paused: () => flag(host).paused,
+    hold: (request) => serial(host, () => holdBy(host, request)),
+  })
   let unsubscribe: (() => void) | undefined
   const close = async () => {
     unsubscribe?.()
