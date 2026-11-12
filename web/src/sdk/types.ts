@@ -276,6 +276,14 @@ export const ComposerPlaceholder = definePoint<
   string | undefined
 >('ultimate.composerPlaceholder')
 /**
+ * What conversation `conversation`'s transcript shows before its first message, in place of the core's card of repo,
+ * model, extensions and host (`conversations` provides it: a standing agent's mark and title). Each provider gets the
+ * rendering so far as `core` and returns it, wraps it or replaces it.
+ */
+export const EmptyTranscript = definePoint<{ conversation: number; core: ReactNode }, ReactNode>(
+  'ultimate.emptyTranscript',
+)
+/**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */

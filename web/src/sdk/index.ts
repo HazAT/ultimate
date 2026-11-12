@@ -8,6 +8,7 @@ export {
   ConversationKind,
   defineWebExtension,
   definePoint,
+  EmptyTranscript,
   ErrorReport,
   FileUpload,
   MessageReference,

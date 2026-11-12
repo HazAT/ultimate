@@ -1,5 +1,6 @@
-import { ComposerPlaceholder, defineWebExtension, provide } from '@/sdk'
+import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk'
 import { SummaryModelDialog, summaryModelDialog } from './dialogs.tsx'
+import { useStandingEmpty } from './empty.tsx'
 import { useStandingName } from './feature.tsx'
 import { standingPlaceholder, useAgentTitle } from './marks.tsx'
 import { SummaryAction } from './summary-entry.tsx'
@@ -12,7 +13,10 @@ function useStandingPlaceholder({ conversation, busy }: { conversation: number; 
 }
 
 export default defineWebExtension({
-  provides: [provide(ComposerPlaceholder, useStandingPlaceholder)],
+  provides: [
+    provide(ComposerPlaceholder, useStandingPlaceholder),
+    provide(EmptyTranscript, useStandingEmpty),
+  ],
   link: MentionLink,
   entries: {
     'conversations.identity': () => null,
