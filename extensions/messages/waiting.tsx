@@ -19,9 +19,9 @@ type Question = {
 
 /**
  * The questions waiting on the user in conversation `id`, in transcript order: those it asked, and in @ultimate the
- * branches' questions its `board.asked` pointers show. Decided from the message log only.
+ * branches' questions its own `board.asked` pointers show, never pointers inherited by a fork.
  */
-function questionsOf(
+export function questionsOf(
   id: number,
   messages: readonly Message[],
   entries: readonly EntryRecord[],
@@ -38,7 +38,10 @@ function questionsOf(
     }))
   const pointed = entries
     .filter(
-      (e) => e.kind === 'board.asked' && open.has((e.data as { message: number }).message ?? -1),
+      (e) =>
+        e.conversationId === id &&
+        e.kind === 'board.asked' &&
+        open.has((e.data as { message: number }).message ?? -1),
     )
     .map((e) => ({
       key: `p${e.id}`,

@@ -1,5 +1,5 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { accentOf } from '../../accent.tsx'
 import { callerOf } from '../../caller.ts'
 import {
@@ -21,6 +21,9 @@ import {
   waitingOnUser,
 } from '../../data.tsx'
 import type { Message } from '../../refs.ts'
+import { questionsOf } from '../../waiting.tsx'
+
+vi.mock('@/sdk', () => ({ events: { emit: vi.fn<() => void>() } }))
 
 const response = (id: number, calls: string[]) =>
   ({
@@ -48,6 +51,36 @@ describe('offscreen', () => {
     ).toEqual({ up: { count: 2, nearest: 2 }, down: { count: 2, nearest: 4 } })
     expect(offscreen([{ key: 1, place: 'visible' }])).toEqual({ up: undefined, down: undefined })
   })
+})
+
+it('keeps inherited branch questions out of a side chat, but still tracks its own questions', () => {
+  const branchQuestion: Message = {
+    id: 1,
+    from: 4,
+    to: 'user',
+    text: 'Approve?',
+    at: 0,
+    reply: true,
+    state: 'delivered',
+  }
+  const pointer = {
+    id: 10,
+    conversationId: 2,
+    kind: 'board.asked',
+    data: { message: branchQuestion.id },
+  } as unknown as EntryRecord
+  expect(questionsOf(2, [branchQuestion], [pointer]).map((q) => q.key)).toEqual(['p10'])
+  expect(questionsOf(7, [branchQuestion], [pointer])).toEqual([])
+
+  const ownQuestion = { ...branchQuestion, id: 2, from: 7, call: 'ask/message' }
+  const ownResponse = response(11, ['ask'])
+  expect(
+    questionsOf(7, [branchQuestion, ownQuestion], [pointer, ownResponse]).map((q) => ({
+      key: q.key,
+      entry: q.entry,
+      card: q.card,
+    })),
+  ).toEqual([{ key: 'm2', entry: 11, card: '[data-message-outgoing="2"]' }])
 })
 
 describe('callerOf', () => {
