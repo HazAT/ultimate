@@ -12,12 +12,13 @@ import type { CardState } from './state.tsx'
  * drops an answered item without rendering its card once more.
  */
 function CardSweep() {
-  const [, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
   const messages = useDocOf(1, MessagesDoc)?.messages
+  // `cards` too: the log can arrive before the stored state, and the cards that came with it still have to go.
   useEffect(() => {
-    // Nothing is settled until the log is there: a starting server shows no messages for a moment.
-    if (messages) setCards((old) => forgetSettled(old, messages))
-  }, [messages, setCards])
+    // Nothing is settled until both are there: a starting server shows no messages for a moment.
+    if (messages && Object.keys(cards).length) setCards((old) => forgetSettled(old, messages))
+  }, [cards, messages, setCards])
   return null
 }
 

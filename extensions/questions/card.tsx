@@ -337,13 +337,16 @@ function Card({
     if (click && !choice.custom && index < questions.length - 1)
       advance.current = setTimeout(() => go(index + 1), 320)
   }
-  /** Takes @ultimate's picks for questions `indices`, returning the answers that are ready then. */
-  const takePicks = (indices: number[]) => {
+  /**
+   * Takes @ultimate's picks for questions `indices`: the answers ready then and the drafts they came from, so the
+   * card can show the summary of what it sends before the store has the new drafts.
+   */
+  const takePicks = (indices: number[]): { answers: Answer[]; drafts: Record<number, Draft> } => {
     const next = { ...drafts }
     for (const [index, question] of questions.entries())
       if (indices.includes(index)) next[index] = pickDraft(question)
     setState((old) => ({ ...old, drafts: next }))
-    return answered(questions, next)
+    return { answers: answered(questions, next), drafts: next }
   }
   const run = async (action: () => Promise<unknown>) => {
     if (busy) return
@@ -357,11 +360,11 @@ function Card({
       setBusy(false)
     }
   }
-  const send = (list: Answer[] = ready) => {
+  const send = (list: Answer[] = ready, picked: Record<number, Draft> = drafts) => {
     const extra = note.trim()
     if ((!list.length && !extra) || pending.current || phase !== 'answering') return
     clearTimeout(advance.current)
-    setSent({ drafts, note })
+    setSent({ drafts: picked, note })
     const fire = (keepalive = false) => {
       pending.current = undefined
       setPhase('sending')
@@ -385,14 +388,17 @@ function Card({
     setPhase('answering')
   }
   /** Every pick for the questions still open, sent at once: the one-keystroke path. */
-  const acceptAndSend = () => send(takePicks(open))
+  const acceptAndSend = () => {
+    const picks = takePicks(open)
+    send(picks.answers, picks.drafts)
+  }
   /** Enter: take the pick of an open question, move on, and send from the last one or once all are answered. */
   const enter = () => {
     if (phase === 'undo') return now()
     if (phase !== 'answering') return
     if (!words[current] && open.includes(current)) {
-      const list = takePicks([current])
-      return current < questions.length - 1 ? go(current + 1) : send(list)
+      const picks = takePicks([current])
+      return current < questions.length - 1 ? go(current + 1) : send(picks.answers, picks.drafts)
     }
     if (current < questions.length - 1 && ready.length < questions.length) return go(current + 1)
     send()
