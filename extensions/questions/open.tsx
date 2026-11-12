@@ -1,5 +1,6 @@
 import { openQuestion } from '../../lib/message-state.ts'
 import type { Question } from '../messages/refs.ts'
+import type { CardState } from './state.tsx'
 
 /** The fields of a message the answer card reads. */
 export type Message = {
@@ -32,4 +33,16 @@ export function newestAsked(messages: readonly Message[]) {
 export const keyCard = (conversation: number | undefined, messages: readonly Message[]) => {
   const id = newestAsked(messages.filter((message) => message.from === conversation))
   return id === undefined ? undefined : `message:${id}`
+}
+
+/**
+ * What the user did on cards whose message no longer waits on them is dropped: answered, dismissed, or settled for
+ * them by @ultimate, also from another window. The same object when nothing settled, so it writes nothing.
+ */
+export function forgetSettled(cards: Record<string, CardState>, messages: readonly Message[]) {
+  const open = new Set(
+    messages.flatMap((message) => (waitsOnUser(message) ? [`message:${message.id}`] : [])),
+  )
+  const kept = Object.entries(cards).filter(([card]) => open.has(card))
+  return kept.length === Object.keys(cards).length ? cards : Object.fromEntries(kept)
 }
