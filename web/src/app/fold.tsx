@@ -17,10 +17,11 @@ export function writeFold(key: string, open: boolean) {
 
 /**
  * Card `card` of the shown conversation: in compact mode it `folds` to one line, closed until the reader opens it, and stays
- * open across reloads; elsewhere it never folds and is always open.
+ * open across reloads; elsewhere it never folds and is always open, unless it folds `always`.
  */
-export function useFold(card: string | number) {
-  const folds = !!useCompact()
+export function useFold(card: string | number, always = false) {
+  const compact = !!useCompact()
+  const folds = always || compact
   const key = foldKey(
     useConversation((conversation) => conversation.id),
     card,
@@ -39,20 +40,22 @@ export function useFold(card: string | number) {
 
 /**
  * A card that folds in compact mode to `summary`, one quiet line like a folded run of work: what it is, who, its status. A
- * click opens the full card beneath it. Outside compact mode, or when `keep`, it renders the card alone.
+ * click opens the full card beneath it. Outside compact mode, unless `always`, or when `keep`, it renders the card alone.
  */
 export function Fold({
   card,
   summary,
   keep = false,
+  always = false,
   children,
 }: {
   card: string | number
   summary: ReactNode
   keep?: boolean
+  always?: boolean
   children: ReactNode
 }) {
-  const { folds, open, setOpen } = useFold(card)
+  const { folds, open, setOpen } = useFold(card, always)
   if (!folds || keep) return children
   return (
     <div className="min-w-0" data-fold={open ? 'open' : 'closed'}>
