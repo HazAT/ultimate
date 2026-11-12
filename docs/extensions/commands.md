@@ -27,7 +27,7 @@ must work in the composer too sets `whileTyping: true`, as Escape (`agent.stop`)
 key to an open dialog, which closes or moves focus with it. To let a command open UI an extension renders, such as a
 popover, use a dialog id: the command calls `context.open(id)` and the component reads `useDialog(id)` as its open state
 (see `models`). Set `keepOpen: true` for a command that adjusts a setting in place: the palette stays open after it runs,
-so its updated state is visible and the command can run again. Its `title` can be a function returning the current label;
+so its updated state is visible and the command can run again. Use `get title()` to read the current UI state for a label;
 the command's `id` stays the same so keyboard selection survives a label change. Other commands close the palette before
 running.
 

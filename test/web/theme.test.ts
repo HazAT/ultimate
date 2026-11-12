@@ -1,22 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyTheme, resolveTheme, storedTheme, watchSystemTheme } from '../../web/src/sdk/theme.ts'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { applyTheme, storedTheme, watchSystemTheme } from '../../web/src/sdk/theme.ts'
 
-/** The inline script `index.html` runs before any module paints the first load in its appearance. */
+/** The inline script paints before any module loads. */
 const paint = /<script>\s*(\/\/ Before the app loads[\s\S]*?)<\/script>/.exec(
   readFileSync(new URL('../../web/index.html', import.meta.url), 'utf8'),
 )![1]
-
 const storage = new Map<string, string>()
-const classes = new Set(['dark'])
+const classes = new Set<string>()
 const meta = {
   content: '#111112',
   setAttribute: (_name: string, value: string) => {
     meta.content = value
   },
 }
-/** The device's own appearance, and the listener the page registered on it. */
 const device = { dark: true, listener: undefined as (() => void) | undefined }
 
 beforeEach(() => {
@@ -53,76 +51,36 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-describe('theme preference', () => {
-  it('keeps an explicit choice from before System existed', () => {
-    storage.set('ultimate.theme', 'light')
-    expect(storedTheme()).toBe('light')
-    storage.set('ultimate.theme', 'dark')
-    expect(storedTheme()).toBe('dark')
-  })
+function expectAppearance(theme: 'light' | 'dark') {
+  expect(classes.has('dark')).toBe(theme === 'dark')
+  expect(meta.content).toBe(theme === 'dark' ? '#111112' : '#f9fafb')
+}
 
-  it('follows the device when the browser never chose', () => {
-    expect(storedTheme()).toBe('system')
-    expect(resolveTheme('system', true)).toBe('dark')
-    expect(resolveTheme('system', false)).toBe('light')
-    expect(resolveTheme('light', true)).toBe('light')
-    expect(resolveTheme('dark', false)).toBe('dark')
-  })
+it.each([
+  // Stored choice, device darkness, first appearance, appearance after the device switches.
+  [null, true, 'dark', 'light'],
+  [null, false, 'light', 'dark'],
+  ['light', true, 'light', 'light'],
+  ['dark', false, 'dark', 'dark'],
+] as const)('prepaints and follows %s with device dark=%s', (stored, dark, initial, changed) => {
+  if (stored) storage.set('ultimate.theme', stored)
+  device.dark = dark
+  const preference = storedTheme()
+  expect(preference).toBe(stored ?? 'system')
+  runInNewContext(paint, { localStorage, matchMedia, document })
+  expectAppearance(initial)
 
-  it('paints the device appearance until someone chooses', () => {
-    applyTheme('system')
-    expect(classes.has('dark')).toBe(true)
-    expect(meta.content).toBe('#111112')
-    device.dark = false
-    applyTheme('system')
-    expect(classes.has('dark')).toBe(false)
-    expect(meta.content).toBe('#f9fafb')
-    expect(storage.get('ultimate.theme')).toBe('system')
-  })
-
-  it('paints an explicit choice whatever the device does', () => {
-    device.dark = false
-    applyTheme('dark')
-    expect(classes.has('dark')).toBe(true)
-    expect(meta.content).toBe('#111112')
-    device.dark = true
-    applyTheme('light')
-    expect(classes.has('dark')).toBe(false)
-    expect(meta.content).toBe('#f9fafb')
-  })
-
-  it('switches with the device while the page is open', () => {
-    applyTheme('system')
-    const stop = watchSystemTheme(() => applyTheme('system'))
-    expect(classes.has('dark')).toBe(true)
-    device.dark = false
-    device.listener!()
-    expect(classes.has('dark')).toBe(false)
-    stop()
-    expect(device.listener).toBeUndefined()
-  })
-})
-
-describe('the first paint', () => {
-  const run = (stored: string | null, dark: boolean) => {
-    if (stored) storage.set('ultimate.theme', stored)
-    device.dark = dark
-    runInNewContext(paint, {
-      localStorage: { getItem: (key: string) => storage.get(key) ?? null },
-      matchMedia: () => ({ matches: device.dark }),
-      document,
-    })
-    return classes.has('dark')
-  }
-
-  it('shows what the app will show, before it loads', () => {
-    expect(run(null, true)).toBe(true)
-    expect(run(null, false)).toBe(false)
-    storage.clear()
-    classes.add('dark')
-    expect(run('light', true)).toBe(false)
-    storage.clear()
-    classes.add('dark')
-    expect(run('dark', false)).toBe(true)
-  })
+  // Check the app's painter independently, starting from the opposite appearance.
+  if (initial === 'dark') classes.delete('dark')
+  else classes.add('dark')
+  meta.content = ''
+  applyTheme(preference)
+  expectAppearance(initial)
+  const stop = watchSystemTheme(() => applyTheme(preference))
+  device.dark = !dark
+  device.listener!()
+  expectAppearance(changed)
+  expect(storage.get('ultimate.theme')).toBe(preference)
+  stop()
+  expect(device.listener).toBeUndefined()
 })

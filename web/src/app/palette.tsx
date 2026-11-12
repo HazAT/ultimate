@@ -56,28 +56,25 @@ export function CommandPalette() {
         {[...groups].map(([group, items]) => (
           <Fragment key={group}>
             <CommandGroup heading={group}>
-              {items.map((command) => {
-                const title = typeof command.title === 'function' ? command.title() : command.title
-                return (
-                  <CommandItem
-                    className="text-[12.5px]"
-                    key={command.id}
-                    keywords={[title, command.extension]}
-                    onSelect={() => {
-                      if (!command.keepOpen) store.setUi({ paletteOpen: false })
-                      actions.runCommand(command.id)
-                    }}
-                    value={command.id}
-                  >
-                    <span className="truncate">{title}</span>
-                    {command.keys && (
-                      <CommandShortcut>
-                        <Shortcut keys={command.keys} />
-                      </CommandShortcut>
-                    )}
-                  </CommandItem>
-                )
-              })}
+              {items.map((command) => (
+                <CommandItem
+                  className="text-[12.5px]"
+                  key={command.id}
+                  keywords={[command.title, command.extension]}
+                  onSelect={() => {
+                    if (!command.keepOpen) store.setUi({ paletteOpen: false })
+                    actions.runCommand(command.id)
+                  }}
+                  value={command.id}
+                >
+                  <span className="truncate">{command.title}</span>
+                  {command.keys && (
+                    <CommandShortcut>
+                      <Shortcut keys={command.keys} />
+                    </CommandShortcut>
+                  )}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </Fragment>
         ))}

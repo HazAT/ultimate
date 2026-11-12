@@ -4,7 +4,7 @@ export default defineWebExtension({
   commands: [
     {
       id: 'theme.toggle',
-      title: () => {
+      get title() {
         const theme = getState().ui.theme
         return `Toggle theme (current: ${theme[0].toUpperCase() + theme.slice(1)})`
       },

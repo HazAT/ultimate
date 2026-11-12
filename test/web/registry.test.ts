@@ -233,7 +233,7 @@ describe('web extension registry', () => {
     ]
     expect(
       commandItems(registry.getSnapshot(), base).map(
-        (command) => `${command.extension}:${command.id}:${String(command.title)}`,
+        (command) => `${command.extension}:${command.id}:${command.title}`,
       ),
     ).toEqual([
       'core:ultimate.palette:Command palette',

@@ -44,8 +44,11 @@ export const store = createStore({
 })
 /** Server commands; conversation commands default to the shown conversation. */
 export const api = createApi(store)
-// A browser on `system` switches with the device, without a reload; an explicit choice ignores it (theme.ts).
-watchSystemTheme(() => applyTheme(store.getState().ui.theme))
+// Notify the existing theme readers and painter together; explicit choices ignore device changes.
+watchSystemTheme(() => {
+  const { theme } = store.getState().ui
+  if (theme === 'system') store.setUi({ theme })
+})
 /** The page's shared action reads behind `useAction`. */
 export const reads = createReads(api, store)
 /**

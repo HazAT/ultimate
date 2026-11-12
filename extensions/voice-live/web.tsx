@@ -407,8 +407,7 @@ function navigate(go: VoiceGo, actions: UltimateActions, commands: ReturnType<ty
   const surface = commands.find(
     (command) =>
       command.id === `ultimate.surface.${wanted}` ||
-      (typeof command.title === 'function' ? command.title() : command.title).toLowerCase() ===
-        `switch to ${wanted}`,
+      command.title.toLowerCase() === `switch to ${wanted}`,
   )
   if (surface) return actions.showSurface(surface.id.slice('ultimate.surface.'.length))
   api

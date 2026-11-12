@@ -165,7 +165,7 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
     arrayOf(
       fields({
         id: isString,
-        title: (value) => isString(value) || isFunction(value),
+        title: isString,
         keys: optional(isString),
         group: optional(isString),
         keepOpen: optional((value) => typeof value === 'boolean'),

@@ -148,7 +148,7 @@ export function runCommand(id: string, context: UltimateContext = currentContext
     .catch((error: unknown) =>
       store.notify({
         level: 'error',
-        message: `${typeof command.title === 'string' ? command.title : command.id}${command.extension === 'core' ? '' : ` (${command.extension})`}: ${errorMessage(error)}`,
+        message: `${command.title}${command.extension === 'core' ? '' : ` (${command.extension})`}: ${errorMessage(error)}`,
       }),
     )
 }

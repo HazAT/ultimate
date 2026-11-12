@@ -176,8 +176,7 @@ export interface UltimateContext extends UltimateActions {
 
 export interface CommandContribution {
   id: string
-  /** A label, or its current value for a command that reflects changing UI state. */
-  title: string | (() => string)
+  title: string
   /** Shortcut: `mod+shift+m`, or a sequence such as `mod+k m` (`mod` is ⌘ on macOS, Ctrl elsewhere). */
   keys?: string
   /** Palette group; defaults to the extension name. */

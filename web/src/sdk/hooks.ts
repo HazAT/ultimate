@@ -41,8 +41,7 @@ import type { State } from './store.ts'
 import { errorMessage, formatDuration } from './format.ts'
 import type { CompactRow, ToolCallView, UltimateContext } from './types.ts'
 import { useViewport } from './viewport.ts'
-import { resolveTheme, systemDark, watchSystemTheme } from './theme.ts'
-import type { Theme } from './theme.ts'
+import { resolveTheme } from './theme.ts'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
 export { TranscriptContext } from './conversation-scope.tsx'
 
@@ -144,11 +143,7 @@ export const getConversation = (id?: number): ConversationState => {
 export const getState = (): State => store.getState()
 export const useSystem = () => useStore((state) => state.system)
 /** The appearance on screen: the device's while the browser follows it, live; an explicit choice never moves. */
-export function useTheme(): Theme {
-  const preference = useStore((state) => state.ui.theme)
-  const dark = useSyncExternalStore(watchSystemTheme, systemDark)
-  return resolveTheme(preference, dark)
-}
+export const useTheme = () => useStore((state) => resolveTheme(state.ui.theme))
 export const useConversations = () => useStore((state) => state.conversations)
 /**
  * One conversation's summary: it re-renders only when that row changes, not when another conversation's busy, title or
@@ -380,7 +375,7 @@ export function useDocumentRenderers() {
 /** Core and extension commands. */
 export function useCommands() {
   const records = useExtensions()
-  return useMemo(() => allCommands(records), [records])
+  return allCommands(records)
 }
 
 export interface Restart {
