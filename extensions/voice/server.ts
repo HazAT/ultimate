@@ -1,6 +1,7 @@
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { openaiError } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
@@ -15,6 +16,7 @@ export const secrets = [
     name: SECRET,
     description: 'OpenAI API key for voice input in the composer (speech to text)',
     url: 'https://platform.openai.com/api-keys',
+    provider: 'openai',
   },
 ]
 
@@ -50,17 +52,16 @@ export async function openaiTranscribe(
     body: form,
     signal,
   })
-  const body = await response.text()
-  let answer: { text?: unknown; error?: { message?: unknown } } | undefined
+  if (!response.ok) {
+    const { status, message } = await openaiError(response)
+    return { status, detail: message }
+  }
+  let answer: { text?: unknown } | undefined
   try {
-    answer = JSON.parse(body)
+    answer = await response.json()
   } catch {
     // An HTML or truncated page instead of JSON: a proxy or an outage answered.
     answer = undefined
-  }
-  if (!response.ok) {
-    const message = answer?.error?.message
-    return { status: response.status, detail: typeof message === 'string' ? message : undefined }
   }
   return typeof answer?.text === 'string'
     ? { status: response.status, text: answer.text }

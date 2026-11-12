@@ -469,3 +469,44 @@ it('briefs each session, waits for the brief before the first line, and lets onl
   const seen = f.requests.at(-1)!.filter((m) => m.startsWith('<voice_context>'))
   expect(seen).toEqual([(second.data as { text: string }).text])
 })
+
+it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP status or the key', async () => {
+  const f = await fixture()
+  const original = globalThis.fetch
+  const sessions = 'https://api.openai.com/v1/live/sessions'
+  // OpenAI's real 429 for an account with no credits, whose reason a bare status threw away. The second answer is a
+  // proxy page instead of OpenAI's JSON, which leaves only the status to report.
+  const answers = [
+    () =>
+      Response.json(
+        {
+          error: {
+            message:
+              'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/',
+            type: 'insufficient_quota',
+            code: 'insufficient_quota',
+          },
+        },
+        { status: 429 },
+      ),
+    () => new Response('<html>bad gateway</html>', { status: 502 }),
+  ]
+  const fetch = vi
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation((url, init) =>
+      url === sessions ? Promise.resolve(answers.shift()!()) : original(url, init),
+    )
+  const start = () =>
+    post(f.server, '/api/extensions/voice-live/actions/start', { args: { sdp: 'fake-offer' } })
+  try {
+    const refused = await start()
+    expect(refused.status).not.toBe(200)
+    expect(refused.data.error).toContain(
+      'OpenAI live session failed (HTTP 429 insufficient_quota): You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/',
+    )
+    expect(refused.data.error).not.toContain('sk-test-not-real')
+    expect((await start()).data.error).toContain('OpenAI live session failed (HTTP 502)')
+  } finally {
+    fetch.mockRestore()
+  }
+})
