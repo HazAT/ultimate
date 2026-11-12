@@ -24,6 +24,13 @@ export function useAgentTitle(name: string) {
   return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
 }
 
+/**
+ * What standing agent `name`'s composer says, by the `title` `useAgentTitle` gives ("Message Coach…"), while it is
+ * idle; undefined, the core's text, for @ultimate, a busy agent, any other conversation, and before the title arrives.
+ */
+export const standingPlaceholder = (name: string | undefined, title: string, busy: boolean) =>
+  name && name !== 'ultimate' && title && !busy ? `Message ${title}…` : undefined
+
 /** A standing agent's display name, as `useAgentTitle` gives it. */
 export const AgentTitle = ({ name }: { name: string }) => useAgentTitle(name).title
 
@@ -104,7 +111,7 @@ export function AgentMark({
   presence,
 }: {
   name: string
-  size?: 'xs' | 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   presence?: Presence
 }) {
   const marks = useDocOf(1, MarksDoc)
@@ -125,6 +132,7 @@ export function AgentMark({
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center rounded-[5px] ring-1 ring-inset',
         tile.tint,
+        size === 'lg' && 'size-10 rounded-[8px] text-[18px]',
         size === 'md' && 'size-6 text-[12px]',
         size === 'sm' && 'size-4 rounded-[4px] text-[9.5px]',
         size === 'xs' && 'size-3.5 rounded-[3px] text-[8.5px]',

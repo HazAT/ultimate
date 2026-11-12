@@ -4,9 +4,11 @@
  */
 export {
   attention,
+  ComposerPlaceholder,
   ConversationKind,
   defineWebExtension,
   definePoint,
+  EmptyTranscript,
   ErrorReport,
   FileUpload,
   MessageReference,
