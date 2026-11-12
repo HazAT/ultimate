@@ -9,7 +9,7 @@ export default defineWebExtension({
     const next = cycle[(index + 1) % cycle.length]
     return {
       id: `theme.${theme}`,
-      title: `Theme: ${label(theme)} → ${label(next)}`,
+      title: `Theme: ${label(theme)}`,
       group: 'Ultimate',
       when: () => getState().ui.theme === theme,
       run: (context) => context.setTheme(next),
