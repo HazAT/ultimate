@@ -482,16 +482,17 @@ export default function ReviewSurface() {
   const [stored, setLayout] = useExtensionUiState('layout', 'split')
   const layout = stored === 'unified' ? 'unified' : 'split'
   const phone = useViewport() === 'phone'
-  // The diff runs in the project checkout: no conversation's worktree, so drafts are the project's for this spec.
-  const args: { spec: string; conversation?: number } = { spec }
+  const { conversationId, switchConversation, showSurface } = useUltimate()
+  // Review reads the checkout of the conversation you are in: a project root that is no repository of its own keeps
+  // its work in subfolder repositories, and the one to review is your conversation's.
+  const args: { spec: string; conversation?: number } = { spec, conversation: conversationId }
   const diff = useAction(DiffAction, args, { onError: () => undefined })
   const github = useGithubRepo()
-  const [drafts, update] = useDrafts(draftsKey(spec, args.conversation))
-  const suggested = useAction(RecipientAction, { spec }, { onError: () => undefined })
+  const [drafts, update] = useDrafts(draftsKey(spec, conversationId))
+  const suggested = useAction(RecipientAction, args, { onError: () => undefined })
   const to = drafts.to ?? suggested.data?.conversation
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState<{ conversation: number } | { error: string }>()
-  const { switchConversation, showSurface } = useUltimate()
   const data = diff.data?.spec === spec ? diff.data : undefined
   // A branch gone without a landing shows another spec: follow it rather than ask for the deleted ref again.
   const moved = diff.data && diff.data.spec !== spec ? diff.data.spec : undefined
@@ -565,6 +566,7 @@ export default function ReviewSurface() {
       controls={
         <>
           <Selector
+            conversation={conversationId}
             onChange={(next) => {
               setSent(undefined)
               setSpec(next)
@@ -632,6 +634,7 @@ export default function ReviewSurface() {
         ) : (
           <Diffs
             diff={data}
+            key={`${conversationId}:${data.spec}`}
             parsed={parsed}
             drafts={drafts}
             footer={footer}
