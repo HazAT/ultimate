@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
-import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
@@ -157,11 +157,39 @@ export const sweepChecks = async (home: string) => {
  * that test suites fill (EDQUOT) when interrupted runs leave their directories behind.
  */
 export const checkTemp = (home: string) => join(home, 'lander-tmp')
+/** Where failed check runs keep their whole output; the tail in the log and report is cut to 3000 characters. */
+export const checkLogs = (home: string) => join(home, 'lander-logs')
+/** Failed check logs kept, newest first. */
+const keptLogs = 20
+/**
+ * The most characters of a check's output a log keeps, its end: about 70 times a failing fast suite's 146 KB. It
+ * bounds memory and disk, not an exact size: multibyte text writes up to three bytes per character.
+ */
+const logLimit = 10_000_000
+/** Remove all but the newest `keptLogs` files in `directory`. */
+const pruneLogs = async (directory: string) => {
+  const names = await readdir(directory)
+  const files = await Promise.all(
+    names.map(async (name) => ({
+      path: join(directory, name),
+      at:
+        (
+          await stat(join(directory, name)).catch(
+            // A concurrent check of the same group pruned it already; it sorts oldest and its rm is forced.
+            () => undefined,
+          )
+        )?.mtimeMs ?? 0,
+    })),
+  )
+  for (const { path } of files.toSorted((a, b) => b.at - a.at).slice(keptLogs))
+    await rm(path, { force: true })
+}
 
 /**
  * Run `command` with bash in its own process group, recorded in `pids` while it runs, with `TMPDIR` set to a fresh
  * directory in `temp` that is removed when it ends. The watchdog and task cancellation both stop the whole group:
- * TERM, then KILL after a short grace.
+ * TERM, then KILL after a short grace. With `logFile`, a failed check writes its whole output there (its last
+ * `logLimit` characters, ANSI stripped) and returns it as `log`.
  */
 export async function runLanderCheck(
   path: string,
@@ -170,10 +198,28 @@ export async function runLanderCheck(
   pids: string,
   temp: string,
   limits: CheckLimits = checkLimits,
-) {
+  logFile?: string,
+): Promise<{ failure?: string; log?: string; timedOut?: boolean; summary?: string }> {
   // Synchronous, so the watchdog's timers start in the same tick as the call.
   mkdirSync(temp, { recursive: true })
   const tmp = mkdtempSync(join(temp, `${process.pid}-`))
+  /** The output's end, at most `logLimit` characters, for a failed check's log. */
+  const whole: string[] = []
+  let size = 0
+  /** Write the failed check's log, written only now so no open or partial file exists while checks run. */
+  const keepLog = async (): Promise<{ log?: string }> => {
+    if (!logFile) return {}
+    try {
+      await mkdir(dirname(logFile), { recursive: true })
+      const text = whole.join('')
+      await writeFile(logFile, stripVTControlCharacters(text.slice(-logLimit)), { mode: 0o600 })
+      await pruneLogs(dirname(logFile))
+      return { log: logFile }
+    } catch {
+      // The log is a diagnostic aid: a full disk must not change the check's result, only drop the link.
+      return {}
+    }
+  }
   let output = ''
   let partial = ''
   const failed = new Set<string>()
@@ -200,6 +246,12 @@ export async function runLanderCheck(
     return [reason, ...(tests.length ? [heading, ...tests] : []), output].join('\n').trim()
   }
   const onOutput = (text: string) => {
+    if (logFile) {
+      whole.push(text)
+      size += text.length
+      // Keep whole chunks while the rest still reaches the limit; keepLog cuts the last one.
+      while (size - whole[0].length >= logLimit) size -= whole.shift()!.length
+    }
     output = (output + text).slice(-3000)
     const split = (partial + text).split('\n')
     partial = split.pop()!.slice(-1000)
@@ -223,11 +275,17 @@ export async function runLanderCheck(
       })
     } catch (error) {
       context.abortSignal?.throwIfAborted()
-      return { failure: `${output}\n${String(error)}`.trim() }
+      return { failure: `${output}\n${String(error)}`.trim(), ...(await keepLog()) }
     }
     context.abortSignal?.throwIfAborted()
-    if (stopped) return { failure: report(stopped, 'Failed tests so far:'), timedOut: true }
-    if (exitCode !== 0) return { failure: report(`exit ${exitCode}`, 'Failed tests:') }
+    if (stopped)
+      return {
+        failure: report(stopped, 'Failed tests so far:'),
+        timedOut: true,
+        ...(await keepLog()),
+      }
+    if (exitCode !== 0)
+      return { failure: report(`exit ${exitCode}`, 'Failed tests:'), ...(await keepLog()) }
     const last = lines(stripVTControlCharacters(output)).findLast((line) => line.trim())
     return { summary: last?.trim().slice(0, 200) }
   } finally {
@@ -390,11 +448,13 @@ export function createLander(
             runs,
             result,
             output,
+            log: full,
             ran,
           }: {
             runs?: string
             result?: LanderEntry['check']
             output?: string
+            log?: string
             ran?: { ms: number; timedOut?: boolean }
           } = {},
         ) =>
@@ -408,6 +468,7 @@ export function createLander(
               ...(runs ? { runs } : {}),
               ...(result ? { check: result } : {}),
               ...(output ? { output } : {}),
+              ...(full ? { log: full } : {}),
             })
             if (result && ran)
               await host.emit(tx, CheckRan, {
@@ -494,14 +555,18 @@ export function createLander(
          * Report `reason`, with `output` (conflicting paths, a check's output tail) and what to do next.
          * Once the submission landed locally, a later failure only means its push failed.
          */
-        const fail = async (reason: string, output?: string, hint?: string) => {
+        const fail = async (reason: string, output?: string, hint?: string, full?: string) => {
           const landed = await recorded()
-          const detail = [output ? `${reason}:\n${output}` : reason, ...(hint ? [hint] : [])].join(
-            '\n',
-          )
+          // The submitting agent reads the report text; the card shows `log` under its Output.
+          const detail = [
+            output ? `${reason}:\n${output}` : reason,
+            ...(full ? [`Full output: ${full}`] : []),
+            ...(hint ? [hint] : []),
+          ].join('\n')
           const facts = {
             reason: landed ? `Push failed: ${reason}` : reason,
             ...(output ? { output } : {}),
+            ...(full ? { log: full } : {}),
             ...(hint ? { hint } : {}),
           }
           return landed
@@ -650,7 +715,7 @@ export function createLander(
             for (const [position, group] of settings.checks.entries()) {
               const members = Array.isArray(group) ? group : [group]
               const commands = members.map((check) => check.command)
-              const run = (command: string, member: number) =>
+              const run = (command: string, member: number, name: string) =>
                 runLanderCheck(
                   path,
                   command,
@@ -658,23 +723,27 @@ export function createLander(
                   checkPids(host.home),
                   checkTemp(host.home),
                   limitsFor(members[member], limits),
+                  join(checkLogs(host.home), `${name}.log`),
                 )
               /** One command: its first run, then one rerun when that failed; its output tail if it failed twice. */
               const settle = async (command: string, member: number) => {
                 // Outcomes are durable (memos are first-writer-wins, so the rerun has its own key): a resume
                 // neither reruns a passed check nor grants another rerun, and keeps the flaky note.
-                const key = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
+                const where = Array.isArray(group) ? `${position}.${member}` : position
+                const key = `check:${id}:${attempt}:${where}`
+                const logName = `${id}-${attempt}-${where}`
                 let first = await runtime.memo<'passed' | 'failed'>(key, context)
                 if (!first) {
                   await step(`checking: ${command}`, { runs: command })
                   const began = performance.now()
-                  const ran = await run(command, member)
+                  const ran = await run(command, member, logName)
                   const result = ran.failure === undefined ? 'passed' : 'failed'
                   // Logged before the memo: a crash in between reruns the check and logs it again, as it ran.
                   // A failure keeps its output tail, so a check that passes on its rerun can still be diagnosed.
                   await step(`checked: ${command}`, {
                     result: { command, result, ...(ran.summary ? { summary: ran.summary } : {}) },
                     output: ran.failure,
+                    log: ran.log,
                     ran: { ms: performance.now() - began, timedOut: ran.timedOut },
                   })
                   first = await runtime.memo(key, result, context)
@@ -682,11 +751,14 @@ export function createLander(
                 if (first === 'passed') return {}
                 // The rerun's outcome is durable either way: a resume while the group's other commands still run
                 // neither grants a third run nor loses the failure.
-                let rerun = await runtime.memo<{ failure?: string }>(`${key}:rerun`, context)
+                let rerun = await runtime.memo<{ failure?: string; log?: string }>(
+                  `${key}:rerun`,
+                  context,
+                )
                 if (!rerun) {
                   await step(`rerunning: ${command}`, { runs: command })
                   const began = performance.now()
-                  const ran = await run(command, member)
+                  const ran = await run(command, member, `${logName}-rerun`)
                   const timing = { ms: performance.now() - began, timedOut: ran.timedOut }
                   if (ran.failure === undefined)
                     await step(`checked: ${command}`, {
@@ -706,13 +778,17 @@ export function createLander(
                         ms: Math.round(timing.ms),
                       })
                     }, context)
-                  rerun = await runtime.memo<{ failure?: string }>(
+                  rerun = await runtime.memo<{ failure?: string; log?: string }>(
                     `${key}:rerun`,
-                    ran.failure === undefined ? {} : { failure: ran.failure },
+                    ran.failure === undefined
+                      ? {}
+                      : { failure: ran.failure, ...(ran.log ? { log: ran.log } : {}) },
                     context,
                   )
                 }
-                return rerun.failure === undefined ? { flaky: true } : { failure: rerun.failure }
+                return rerun.failure === undefined
+                  ? { flaky: true }
+                  : { failure: rerun.failure, log: rerun.log }
               }
               // Every command settles before a failure hands over, so none still runs in the checkout.
               const settled = await Promise.allSettled(commands.map(settle))
@@ -721,12 +797,15 @@ export function createLander(
                 return outcome.value
               })
               const failed = results.findIndex((result) => result.failure !== undefined)
-              if (failed !== -1)
+              if (failed !== -1) {
+                const last = results[failed] as { failure: string; log?: string }
                 return await fail(
                   `check failed twice: ${commands[failed]}`,
-                  results[failed].failure,
+                  last.failure,
                   'Fix it at its cause (a flaky test too: fix or delete it), verify and submit again.',
+                  last.log,
                 )
+              }
               flaky.push(...commands.filter((_command, member) => results[member].flaky))
             }
             // Only the commit every check ran on lands: nothing may have moved or touched the checkout meanwhile.

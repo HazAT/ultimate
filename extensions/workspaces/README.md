@@ -168,7 +168,10 @@ lander's sidebar row shows the feature it lands or landed last.
    command of its group settled. Each command keeps its own memo, steps and flaky note. A passed or flaky check records its last
    output line (ANSI stripped, at most 200 characters) as `summary`, shown muted after the command on its step row.
    A failed run's log entry keeps its output tail as `output` (not in `steps`), under a collapsed "Output" in the
-   lander's log, so a check that then passed as flaky can still be diagnosed.
+   lander's log, so a check that then passed as flaky can still be diagnosed. Its whole output (ANSI stripped, its
+   last 10 million characters at most, mode 0600) is written to `<home>/lander-logs/<submission>-<attempt>-<check>[-rerun].log`,
+   named as `log` on the entry and the outcome and as "Full output" in the report text, and shown as a copyable
+   "Full log" path under "Output". Only the newest 20 are kept; failing to write one only drops the link.
 4. Fast-forwards the target branch in the source checkout (`merge --ff-only` when it is checked out). If the target
    moved meanwhile it starts again, at most three attempts.
 5. With `lander.push`, pushes the target branch (never forced); a rejection integrates again once, then is reported.
