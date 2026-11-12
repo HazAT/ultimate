@@ -116,17 +116,26 @@ function track(host: ExtensionHost, work: Promise<unknown>) {
   shared.sending.add(sending)
 }
 
-/** Pushes to every subscribed browser not showing the app. Never awaited in a reactor's transaction. */
+const closed = async (host: ExtensionHost, tag: string) =>
+  (await host.harness().snapshot(Closed, ROOT_CONVERSATION_ID, context))?.tags.includes(tag) ??
+  false
+
+/**
+ * Pushes to every subscribed browser not showing the app, unless `close` took its tag meanwhile. Never awaited in a
+ * reactor's transaction.
+ */
 function deliver(host: ExtensionHost, push: Push) {
   const { shown } = state(host)
   track(
     host,
-    subscriptions(host).then((all) =>
-      Promise.all(
-        all
-          .filter((each) => Date.now() - (shown.get(each.endpoint) ?? 0) >= 15_000)
-          .map((each) => send(host, each, push)),
-      ),
+    subscriptions(host).then(async (all) =>
+      (await closed(host, push.tag))
+        ? []
+        : Promise.all(
+            all
+              .filter((each) => Date.now() - (shown.get(each.endpoint) ?? 0) >= 15_000)
+              .map((each) => send(host, each, push)),
+          ),
     ),
   )
 }

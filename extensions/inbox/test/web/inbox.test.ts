@@ -37,7 +37,7 @@ const item = (key: string, at: number): InboxItem => ({
 
 it('lists the open questions to the user and the provided items, oldest first', () => {
   expect(inboxItems(log).map((entry) => entry.key)).toEqual(['message:1', 'message:3', 'message:7'])
-  const merged = inboxItems(log, [[item('shell:a', 350)], undefined, [item('mail:b', 50)]])
+  const merged = inboxItems(log, [[item('shell:a', 350)], [item('mail:b', 50)]])
   expect(merged.map((entry) => entry.key)).toEqual([
     'mail:b',
     'message:1',

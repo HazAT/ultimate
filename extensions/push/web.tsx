@@ -121,14 +121,20 @@ function Pusher() {
     ...closed,
   ].join('\n')
   useEffect(() => {
-    if (!settled || !registration) return
+    if (!settled || !registration) return undefined
     const tags = new Set(settled.split('\n'))
+    // A newer list (a tag reopened by a new push) replaces this scan: it must not close the new notification.
+    let current = true
     registration
       .getNotifications()
       .then((shown) => {
+        if (!current) return
         for (const notification of shown) if (tags.has(notification.tag)) notification.close()
       })
       .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    return () => {
+      current = false
+    }
   }, [settled, registration])
   useEffect(() => {
     if (!supported) return undefined

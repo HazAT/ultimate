@@ -362,24 +362,31 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   const now = useNow(60_000)
   const openBranch = useOpenBranch()
   // What the user picked, and where it stood: when it leaves (answered), the one now at that place is shown.
-  const [picked, setPicked] = useState<string | null>(() => wanted ?? null)
+  const [picked, setPicked] = useState<string | null>(null)
+  // A linked or clicked key, held until it is listed: a provider or the Messages log may still be loading.
+  const [pending, setPending] = useState(() => wanted)
   const [index, setIndex] = useState(0)
   // On a phone the list comes first; an item opens full screen only once tapped or linked.
   const [open, setOpen] = useState(() => wanted !== undefined)
   useEffect(() => {
     wanted = undefined
   }, [])
-  const selected = selection(items, picked, index)
+  const selected = selection(items, pending ?? picked, index)
   const at = items.findIndex((candidate) => candidate.key === selected)
   const item = items[at]
   // Hold on to the item shown, also one that took an answered item's place, so a later change elsewhere in the list
   // does not move the selection (and drop a half-answered card).
   useEffect(() => {
     if (at >= 0) setIndex(at)
-    if (selected !== undefined && selected !== picked) setPicked(selected)
-  }, [at, selected, picked])
+    if (pending !== undefined) {
+      if (selected === pending) {
+        setPicked(pending)
+        setPending(undefined)
+      }
+    } else if (selected !== undefined && selected !== picked) setPicked(selected)
+  }, [at, selected, picked, pending])
   const select = (key: string) => {
-    setPicked(key)
+    setPending(key)
     setOpen(true)
   }
   useEvent('inbox:show', (key) => {
@@ -415,7 +422,7 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
         event.preventDefault()
         const step = event.key === 'j' ? 1 : -1
         const next = Math.max(0, Math.min(current.items.length - 1, current.at + step))
-        setPicked(current.items[next].key)
+        setPending(current.items[next].key)
       }
     }
     // Capture: a choice letter j or k on the card stays j/k here, the Inbox's own navigation.

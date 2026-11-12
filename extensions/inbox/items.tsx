@@ -25,7 +25,7 @@ export function keyOf(value: unknown): string | undefined {
 /** Every message that waits on the user and every provided item, oldest first: the Inbox's entries. */
 export const inboxItems = (
   messages: readonly Message[],
-  provided: readonly (readonly InboxItem[] | undefined)[] = [],
+  provided: readonly (readonly InboxItem[])[] = [],
 ): Entry[] =>
   [
     ...waiting(messages).map((message) => ({
@@ -33,9 +33,7 @@ export const inboxItems = (
       at: message.at,
       message,
     })),
-    ...provided
-      .flatMap((items) => items ?? [])
-      .map((item) => ({ key: item.key, at: item.at, item })),
+    ...provided.flat().map((item) => ({ key: item.key, at: item.at, item })),
   ].toSorted((a, b) => a.at - b.at)
 
 /**
