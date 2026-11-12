@@ -9,6 +9,7 @@ import type {
   StreamedView,
   SystemInfo,
 } from '../../../shared/protocol.ts'
+import type { ThemePreference } from './theme.ts'
 
 export interface Connection {
   /** `connecting` before the first open, `reconnecting` after a drop. */
@@ -20,7 +21,7 @@ export interface Connection {
 export interface UiState {
   paletteOpen: boolean
   dialogs: Readonly<Record<string, boolean | undefined>>
-  theme: 'dark' | 'light'
+  theme: ThemePreference
   /** The surface on screen, which the host records as it renders: the shown one, or the next in line after it failed. */
   surface?: { id: string; title: string }
   /**

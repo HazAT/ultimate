@@ -5,6 +5,7 @@ import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
 import type { TestHook } from './test-hook.ts'
+import { applyTheme, storedTheme, watchSystemTheme } from './theme.ts'
 
 declare global {
   interface Window {
@@ -34,7 +35,7 @@ function writeConversation(id: number, replace: boolean) {
 /** The page's one live stream and its replica. */
 export const store = createStore({
   ui: {
-    theme: localStorage.getItem('ultimate.theme') === 'light' ? 'light' : 'dark',
+    theme: storedTheme(),
   },
   onFallback: () => {
     replaceSelection = true
@@ -43,6 +44,8 @@ export const store = createStore({
 })
 /** Server commands; conversation commands default to the shown conversation. */
 export const api = createApi(store)
+// A browser on `system` switches with the device, without a reload; an explicit choice ignores it (theme.ts).
+watchSystemTheme(() => applyTheme(store.getState().ui.theme))
 /** The page's shared action reads behind `useAction`. */
 export const reads = createReads(api, store)
 /**
@@ -130,13 +133,8 @@ store.subscribe(() => {
     writeConversation(view.conversation.id, true)
     replaceSelection = false
   }
-  // The theme is a preference of this browser.
-  localStorage.setItem('ultimate.theme', ui.theme)
-  document.documentElement.classList.toggle('dark', ui.theme === 'dark')
-  // The browser bar and the installed app's chrome take the page background (web/index.html).
-  document
-    .querySelector('meta[name=theme-color]')
-    ?.setAttribute('content', ui.theme === 'dark' ? '#111112' : '#f9fafb')
+  // The theme is a preference of this browser (theme.ts).
+  applyTheme(ui.theme)
 })
 /** The next selection replaces the current history entry rather than pushing one, as a redirect does. */
 export function replaceNextSelection() {

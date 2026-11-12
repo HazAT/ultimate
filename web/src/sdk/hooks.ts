@@ -41,6 +41,7 @@ import type { State } from './store.ts'
 import { errorMessage, formatDuration } from './format.ts'
 import type { CompactRow, ToolCallView, UltimateContext } from './types.ts'
 import { useViewport } from './viewport.ts'
+import { systemDark, watchSystemTheme } from './theme.ts'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
 export { TranscriptContext } from './conversation-scope.tsx'
 
@@ -141,6 +142,12 @@ export const getConversation = (id?: number): ConversationState => {
 /** The whole client state now, outside React (`useStore` inside). */
 export const getState = (): State => store.getState()
 export const useSystem = () => useStore((state) => state.system)
+/** The appearance on screen: `system` follows the device, live; an explicit choice never does. */
+export function useDarkTheme(): boolean {
+  const preference = useStore((state) => state.ui.theme)
+  const dark = useSyncExternalStore(watchSystemTheme, systemDark)
+  return preference === 'system' ? dark : preference === 'dark'
+}
 export const useConversations = () => useStore((state) => state.conversations)
 /**
  * One conversation's summary: it re-renders only when that row changes, not when another conversation's busy, title or
