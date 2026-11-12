@@ -474,7 +474,7 @@ it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP sta
   const f = await fixture()
   const original = globalThis.fetch
   const sessions = 'https://api.openai.com/v1/live/sessions'
-  // The real 429 behind #20115: an account with no credits, whose reason a bare status threw away. The second answer is a
+  // OpenAI's real 429 for an account with no credits, whose reason a bare status threw away. The second answer is a
   // proxy page instead of OpenAI's JSON, which leaves only the status to report.
   const answers = [
     () =>
