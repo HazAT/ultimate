@@ -400,8 +400,11 @@ export default function browserExtension(host: ExtensionHost) {
     const outcomes: string[] = []
     let isolated: BrowserContext | undefined
     const stepMs = args.timeoutMs ?? stepTimeoutMs
+    // Launching the shared browser and opening this call's page are not steps: a short timeoutMs must not fail them
+    // (a cold launch under load took seconds, and a 1 s call failed before its first step).
+    const setupMs = Math.max(stepMs, stepTimeoutMs)
     const totalMs = 4 * stepMs + waits
-    const deadline = Date.now() + totalMs
+    let deadline = Infinity
     /** `work` within one step's limit (plus a wait it asks for) and what is left of the call's. */
     const guard = <T>(work: Promise<T>, extraMs = 0) => {
       const left = deadline - Date.now()
@@ -445,16 +448,18 @@ export default function browserExtension(host: ExtensionHost) {
           })
         state.launched = launched
       }
-      const browser = await guard(state.launched)
+      const browser = await within(setupMs, state.launched)
       context.abortSignal?.throwIfAborted()
-      isolated = await guard(
+      isolated = await within(
+        setupMs,
         browser.newContext({
           viewport: { width: args.width ?? 1440, height: args.height ?? 900 },
           colorScheme: args.theme,
         }),
       )
       context.abortSignal?.addEventListener('abort', abort, { once: true })
-      const page = await guard(isolated.newPage())
+      const page = await within(setupMs, isolated.newPage())
+      deadline = Date.now() + totalMs
       page.setDefaultTimeout(stepMs)
       page.setDefaultNavigationTimeout(stepMs)
       context.abortSignal?.throwIfAborted()
