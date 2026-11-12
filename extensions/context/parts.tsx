@@ -287,7 +287,7 @@ export function Header({
       <CollapsibleTrigger className="flex h-8 w-full cursor-pointer items-center gap-2 px-2.5 text-left text-muted-foreground transition-colors hover:bg-accent/40">
         <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/context:rotate-90" />
         <AgentMark name={identity.mark} size="sm" />
-        <span className="shrink-0 text-foreground/90">{identity.name}</span>
+        <span className="truncate text-foreground/90">{identity.name}</span>
         {model && (
           <span className="min-w-0 flex-1 truncate">
             · {model}

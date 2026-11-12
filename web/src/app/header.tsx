@@ -109,7 +109,7 @@ function Trail() {
           <Provided input={summary} point={ConversationKind}>
             {(kind) =>
               (kind ?? summary?.label) && (
-                <span className="shrink-0 font-mono text-[12px] text-brand">
+                <span className="max-w-1/2 shrink-0 truncate font-mono text-[12px] text-brand">
                   {kind ?? summary?.label}
                 </span>
               )
