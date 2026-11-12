@@ -13,7 +13,7 @@ where the project's `isolates.worktree.path` says, made by its `add` and `remove
 Read worker reports and diffs; rerun checks only for missing or thin evidence, reported failures, changes crossing
 workers, `server/` or `shared/` changes, or surprises in the diff, then land and call `workspace submit`.
 The lander is the final gate and the only way to main: code, no model. It runs every configured check (here
-`pnpm check`, then `pnpm test` and `pnpm test:e2e` in parallel) on the merged result, a failing check once more, then
+`pnpm check`, `pnpm test`, then `pnpm test:e2e`) on the merged result, a failing check once more, then
 fast-forwards the branch and pushes to `lander.push` (here `origin`), so keep working while it runs.
 A conflict or a check that failed twice comes back to the submitter as a waking report: fix it in the workspace (a
 flaky test at its cause, or delete it) and submit again. A landing is the end of the branch's work: its report is a
