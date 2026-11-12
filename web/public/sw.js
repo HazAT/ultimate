@@ -23,15 +23,27 @@ self.addEventListener('push', (event) => {
     actions.push({ action: 'reply', type: 'text', title: 'Reply', placeholder: 'Reply…' })
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Ultimate', {
-      body: typeof data.body === 'string' ? data.body : undefined,
-      tag: typeof data.tag === 'string' ? data.tag : undefined,
-      icon: '/icons/icon-192.png',
-      actions,
-      data,
-    }),
+    self.registration
+      .showNotification(data.title || 'Ultimate', {
+        body: typeof data.body === 'string' ? data.body : undefined,
+        tag: typeof data.tag === 'string' ? data.tag : undefined,
+        icon: '/icons/icon-192.png',
+        actions,
+        data,
+      })
+      .then(announce),
   )
 })
+
+/**
+ * Tells open pages a notification showed, so they close it if it was answered or closed while it was on its way (the
+ * push extension's page).
+ */
+async function announce() {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- A Client's postMessage has no target origin.
+  for (const client of windows) client.postMessage({ type: 'ultimate:shown' })
+}
 
 self.addEventListener('notificationclick', (event) => {
   const notification = event.notification

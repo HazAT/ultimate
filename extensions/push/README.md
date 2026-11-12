@@ -34,7 +34,8 @@ subscription; other failures become notices. Encryption (RFC 8291) and VAPID sig
 
 ## Service worker
 
-`web/public/sw.js`, registered by the always-on `share` extension, shows the pushes and handles the actions. It caches
+`web/public/sw.js`, registered by the always-on `share` extension, shows the pushes and handles the actions. After
+showing one it posts `ultimate:shown` to open pages, which close it again if it was answered or closed on its way. It caches
 nothing and handles no fetch but the share target's POST, so a reload still lands on the newest bundle.
 
 Adapted from mjaverto/ultimate's notifications extension (MIT, https://github.com/mjaverto/ultimate).

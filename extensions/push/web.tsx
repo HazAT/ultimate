@@ -125,15 +125,24 @@ function Pusher() {
     const tags = new Set(settled.split('\n'))
     // A newer list (a tag reopened by a new push) replaces this scan: it must not close the new notification.
     let current = true
-    registration
-      .getNotifications()
-      .then((shown) => {
-        if (!current) return
-        for (const notification of shown) if (tags.has(notification.tag)) notification.close()
-      })
-      .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    const scan = () => {
+      registration
+        .getNotifications()
+        .then((shown) => {
+          if (!current) return
+          for (const notification of shown) if (tags.has(notification.tag)) notification.close()
+        })
+        .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    }
+    // A push still on its way when the list changed shows later: the service worker says so, and it is scanned again.
+    const arrived = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === 'ultimate:shown') scan()
+    }
+    scan()
+    navigator.serviceWorker.addEventListener('message', arrived)
     return () => {
       current = false
+      navigator.serviceWorker.removeEventListener('message', arrived)
     }
   }, [settled, registration])
   useEffect(() => {
