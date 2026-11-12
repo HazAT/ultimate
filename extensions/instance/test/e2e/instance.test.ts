@@ -18,6 +18,7 @@ import { Subagents } from '../../../subagents/api.ts'
 import workspaceExtension from '../../../workspaces/server.ts'
 import { workspaces } from '../../../workspaces/workspaces.ts'
 import { git } from '../../../../lib/git.ts'
+import { exec } from '../../../../lib/exec.ts'
 import { projectSettings } from '../../../../server/project-setup.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
@@ -328,9 +329,16 @@ it('starts a preview on the model given to start, over the instance.model settin
     )
     const main = await f.main()
     const preview = JSON.parse(await f.run({ action: 'start', model: null }, main.id)) as Preview
-    // The preview's own environment: no ULTIMATE_MODEL, so its agents run their configured models.
-    const environ = await readFile(`/proc/${preview.pid}/environ`, 'utf8')
-    expect(environ.split('\0').filter((line) => line.startsWith('ULTIMATE_MODEL='))).toEqual([])
+    // The preview's own environment: no ULTIMATE_MODEL, so its agents run their configured models. macOS has no
+    // /proc; its ps prints a process's environment after the command with -E.
+    const environ =
+      process.platform === 'linux'
+        ? (await readFile(`/proc/${preview.pid}/environ`, 'utf8')).split('\0')
+        : (
+            await exec('ps', ['-E', '-ww', '-o', 'command=', '-p', String(preview.pid)])
+          ).stdout.split(/\s+/)
+    expect(environ).toContain('ULTIMATE_NO_OPEN=1')
+    expect(environ.filter((line) => line.startsWith('ULTIMATE_MODEL='))).toEqual([])
     await f.run({ action: 'stop', id: preview.id })
   } finally {
     await f.close()
