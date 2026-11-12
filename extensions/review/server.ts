@@ -178,6 +178,7 @@ async function recipient(host: ExtensionHost, spec: string, cwd: string): Promis
       return Number(items.find(([, item]) => item.branch === branch)?.[0]) || undefined
     }
     const range = /^[^.]+\.\.\.([^.]+)$/.exec(spec)
+    let head = spec
     if (range) {
       const landings = await host.eventLog.recent({ events: [SubmissionLanded], limit: 200 })
       const sha = await git(
@@ -188,7 +189,10 @@ async function recipient(host: ExtensionHost, spec: string, cwd: string): Promis
         '--end-of-options',
         `${range[1]}^{commit}`,
       )
-      return landings.find(({ data }) => data.sha === sha)?.data.conversationId
+      const landed = landings.find(({ data }) => data.sha === sha)?.data.conversationId
+      if (landed !== undefined) return landed
+      // Not landed (a pull request, say): the head commit's trailer names its branch.
+      head = range[1]
     }
     if (spec === 'uncommitted' || spec.startsWith('-')) return undefined
     const trailer = await git(
@@ -197,7 +201,7 @@ async function recipient(host: ExtensionHost, spec: string, cwd: string): Promis
       '-1',
       '--format=%(trailers:key=Ultimate-Conversation,valueonly)',
       '--end-of-options',
-      spec,
+      head,
     )
     return Number(trailer.split('\n')[0]) || undefined
   }
