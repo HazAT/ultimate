@@ -111,7 +111,7 @@ export function AgentMark({
   presence,
 }: {
   name: string
-  size?: 'xs' | 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   presence?: Presence
 }) {
   const marks = useDocOf(1, MarksDoc)
@@ -132,6 +132,7 @@ export function AgentMark({
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center rounded-[5px] ring-1 ring-inset',
         tile.tint,
+        size === 'lg' && 'size-10 rounded-[8px] text-[18px]',
         size === 'md' && 'size-6 text-[12px]',
         size === 'sm' && 'size-4 rounded-[4px] text-[9.5px]',
         size === 'xs' && 'size-3.5 rounded-[3px] text-[8.5px]',
