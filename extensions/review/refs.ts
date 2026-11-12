@@ -57,24 +57,31 @@ export type ReviewRange = {
 }
 
 /**
- * `{ spec, conversation? }` → the diff of `spec` in the project's checkout, or in conversation `conversation`'s
- * worktree while it has one. A `branch:<name>` whose ref is gone shows its latest landing, else `uncommitted`, and says
- * so in `spec`. Throws on a spec or ref Git does not know as a commit, and on any part starting with `-`.
+ * `{ spec, conversation? }` → the diff of `spec` in conversation `conversation`'s checkout (its ready worktree, its
+ * repository, its cwd), or in the project's checkout with no conversation. A `branch:<name>` whose ref is gone shows its
+ * latest landing, else `uncommitted`, and says so in `spec`. Throws on a spec or ref Git does not know as a commit, and
+ * on any part starting with `-`.
  */
 export const DiffAction = actionRef<{ spec: string; conversation?: number }, ReviewDiff>(
   'review',
   'diff',
 )
-/** No arguments → recent specs to choose from: uncommitted, open `ultimate/*` branches, landings and commits. */
-export const RangesAction = actionRef<null, ReviewRange[]>('review', 'ranges')
 /**
- * `{ spec }` → the conversation a review of `spec` goes to by default: a branch's owner, a landing's submitter, the
- * conversation a commit's `Ultimate-Conversation` trailer names, else the primary agent's.
+ * `{ conversation? }` → recent specs to choose from, read in conversation `conversation`'s checkout (the project's with
+ * none): uncommitted, open `ultimate/*` branches, landings and commits.
  */
-export const RecipientAction = actionRef<{ spec: string }, { conversation: number }>(
+export const RangesAction = actionRef<{ conversation?: number } | null, ReviewRange[]>(
   'review',
-  'recipient',
+  'ranges',
 )
+/**
+ * `{ spec, conversation? }` → the conversation a review of `spec` goes to by default: a branch's owner, a landing's
+ * submitter, the conversation a commit's `Ultimate-Conversation` trailer names, else the primary agent's.
+ */
+export const RecipientAction = actionRef<
+  { spec: string; conversation?: number },
+  { conversation: number }
+>('review', 'recipient')
 /**
  * User only: `{ conversation, spec, comments, note? }` → one `review.comments` input into `conversation`, which wakes
  * or steers it like a typed message. Throws on an unknown conversation or a review over the limits in comments.ts.
