@@ -3,8 +3,8 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api, cn, errorMessage, events, formatAgo, useDocOf, useNow, useUltimate } from '@/sdk'
-import { MessagesDoc, emptyMessages, stateTone } from '../messages/ui.tsx'
-import { waiting } from '../questions/ui.tsx'
+import { Waiting } from '../inbox/ui.tsx'
+import { stateTone } from '../messages/ui.tsx'
 import { StandingAction } from '../subagents/ui.tsx'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
@@ -15,13 +15,16 @@ const owners: { id: Todo['owner']; label: string }[] = [
 ]
 
 /**
- * The project's to-dos: what waits on you (one Inbox row for the questions asked of you, read live from Messages, then
- * your own to-dos), what @ultimate is still on, a field to add one for either of you, and the done ones folded away.
- * Questions are answered in the Inbox.
+ * The project's to-dos: what waits on you (one Inbox row for the questions asked of you and the other extensions'
+ * Inbox items, then your own to-dos), what @ultimate is still on, a field to add one for either of you, and the done
+ * ones folded away. Inbox entries are answered in the Inbox.
  */
 export function Todos() {
+  return <Waiting>{(entries) => <List questions={entries} />}</Waiting>
+}
+
+function List({ questions }: { questions: readonly unknown[] }) {
   const items = useDocOf(1, TodosDoc)?.items ?? []
-  const questions = waiting((useDocOf(1, MessagesDoc) ?? emptyMessages).messages)
   const now = useNow(60_000)
   const [error, setError] = useState<string>()
   const open = items.filter((todo) => !todo.done)
@@ -66,7 +69,7 @@ export function Todos() {
         <span className="ml-auto text-muted-foreground/70">
           {questions.length > 0 && (
             <span className="text-amber-700 dark:text-amber-300">
-              {questions.length} {questions.length === 1 ? 'question' : 'questions'}
+              {questions.length} in Inbox
               {open.length > 0 && ' · '}
             </span>
           )}

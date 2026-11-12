@@ -4,7 +4,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { api, cn, defineWebExtension, errorMessage, events, useDocOf, useUltimate } from '@/sdk'
 import { isOpen, MessagesDoc } from '../messages/ui.tsx'
-import { KeyAction, PresentAction, SubscribeAction, TestAction, UnsubscribeAction } from './refs.ts'
+import {
+  ClosedDoc,
+  KeyAction,
+  PresentAction,
+  SubscribeAction,
+  TestAction,
+  UnsubscribeAction,
+} from './refs.ts'
 import type { Subscription } from './refs.ts'
 
 /** This browser's service worker and push subscription, once known; `error` says why the last step failed. */
@@ -103,31 +110,50 @@ function Pusher() {
       window.removeEventListener('pagehide', hide)
     }
   }, [endpoint])
-  // A question answered on its card or another device takes its notification with it.
+  // A question answered on its card or another device takes its notification with it, as does a tag another
+  // extension closed (`PushApi.close`).
   const log = useDocOf(1, MessagesDoc)
-  const settled = log?.messages
-    .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
-    .map((m) => `message:${m.id}`)
-    .join(' ')
+  const closed = useDocOf(1, ClosedDoc)?.tags ?? []
+  const settled = [
+    ...(log?.messages ?? [])
+      .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
+      .map((m) => `message:${m.id}`),
+    ...closed,
+  ].join('\n')
   useEffect(() => {
-    if (!settled || !registration) return
-    const tags = new Set(settled.split(' '))
-    registration
-      .getNotifications()
-      .then((shown) => {
-        for (const notification of shown) if (tags.has(notification.tag)) notification.close()
-      })
-      .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    if (!settled || !registration) return undefined
+    const tags = new Set(settled.split('\n'))
+    // A newer list (a tag reopened by a new push) replaces this scan: it must not close the new notification.
+    let current = true
+    const scan = () => {
+      registration
+        .getNotifications()
+        .then((shown) => {
+          if (!current) return
+          for (const notification of shown) if (tags.has(notification.tag)) notification.close()
+        })
+        .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    }
+    // A push still on its way when the list changed shows later: the service worker says so, and it is scanned again.
+    const arrived = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === 'ultimate:shown') scan()
+    }
+    scan()
+    navigator.serviceWorker.addEventListener('message', arrived)
+    return () => {
+      current = false
+      navigator.serviceWorker.removeEventListener('message', arrived)
+    }
   }, [settled, registration])
   useEffect(() => {
     if (!supported) return undefined
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
-      // A question opens the Inbox at it, where it is answered.
-      const asked = Number(url.searchParams.get('inbox'))
-      if (url.searchParams.has('inbox') && Number.isSafeInteger(asked)) {
-        events.emit('inbox:open', { message: asked })
+      // A question or another Inbox item opens the Inbox at it, where it is answered.
+      const key = url.searchParams.get('inbox')
+      if (key) {
+        events.emit('inbox:open', { key })
         showSurface('inbox')
         return
       }

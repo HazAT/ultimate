@@ -14,7 +14,15 @@ import { SecretsApi } from '../secrets/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { SubmissionLanded } from '../workspaces/api.ts'
 import { newKey, publicKey, sendPush } from './push.ts'
-import { KeyAction, PresentAction, SubscribeAction, TestAction, UnsubscribeAction } from './refs.ts'
+import { PushApi } from './api.ts'
+import {
+  ClosedDoc,
+  KeyAction,
+  PresentAction,
+  SubscribeAction,
+  TestAction,
+  UnsubscribeAction,
+} from './refs.ts'
 import type { Subscription } from './refs.ts'
 import { failedPush, landingPush, questionPush } from './rules.ts'
 import type { Push } from './rules.ts'
@@ -32,6 +40,28 @@ const Subscriptions = defineDoc<{ subscriptions: Subscription[] }>({
   fork: 'initial',
   initial: () => ({ subscriptions: [] }),
 })
+
+/** Tags kept in `push.closed`; an older one's notification is long gone or closed by hand. */
+const CLOSED_LIMIT = 50
+const Closed = defineDoc<{ tags: string[] }>({
+  kind: ClosedDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ tags: [] }),
+})
+export const docs = [Closed]
+
+/** Marks `tag` closed, or open again for a new push with it, so the pages leave that one shown. */
+const mark = (host: ExtensionHost, tag: string, closed: boolean) =>
+  host.harness().commit(async (tx) => {
+    const doc = await tx.doc(Closed, ROOT_CONVERSATION_ID)
+    if (doc.tags.includes(tag) === closed) return
+    const rest = doc.tags.filter((each) => each !== tag)
+    doc.tags = closed ? [...rest, tag].slice(-CLOSED_LIMIT) : rest
+  }, context)
 
 const state = (host: ExtensionHost) =>
   host.resource('push.state', () => ({
@@ -77,24 +107,51 @@ async function send(host: ExtensionHost, subscription: Subscription, push: Push)
   return result.status
 }
 
-/** Pushes to every subscribed browser not showing the app. Never awaited in a reactor's transaction. */
-function deliver(host: ExtensionHost, push: Push) {
+/** Runs `work` in the background: a failure becomes a notice, and closing waits for it. */
+function track(host: ExtensionHost, work: Promise<unknown>) {
   const shared = state(host)
-  const sending = subscriptions(host)
-    .then((all) =>
-      Promise.all(
-        all
-          .filter((each) => Date.now() - (shared.shown.get(each.endpoint) ?? 0) >= 15_000)
-          .map((each) => send(host, each, push)),
-      ),
-    )
+  const sending = work
     .catch((error: unknown) => host.notice(`Push: ${String(error)}`))
     .finally(() => shared.sending.delete(sending))
   shared.sending.add(sending)
 }
 
+const closed = async (host: ExtensionHost, tag: string) =>
+  (await host.harness().snapshot(Closed, ROOT_CONVERSATION_ID, context))?.tags.includes(tag) ??
+  false
+
+/**
+ * Pushes to every subscribed browser not showing the app, unless `close` took its tag meanwhile. Never awaited in a
+ * reactor's transaction.
+ */
+function deliver(host: ExtensionHost, push: Push) {
+  const { shown } = state(host)
+  track(
+    host,
+    subscriptions(host).then(async (all) =>
+      (await closed(host, push.tag))
+        ? []
+        : Promise.all(
+            all
+              .filter((each) => Date.now() - (shown.get(each.endpoint) ?? 0) >= 15_000)
+              .map((each) => send(host, each, push)),
+          ),
+    ),
+  )
+}
+
 export default function pushExtension(host: ExtensionHost) {
   host.need(SecretsApi)
+  host.implement(PushApi, {
+    notify: (push) => {
+      // A tag closed before is open again before it shows, so the pages leave the new notification shown.
+      track(
+        host,
+        mark(host, push.tag, false).then(() => deliver(host, push)),
+      )
+    },
+    close: (tag) => track(host, mark(host, tag, true)),
+  })
   host.react(
     'questions',
     [MessageSent],

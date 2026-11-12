@@ -2,7 +2,10 @@
  * Push notifications in the browser: the actions the status line's bell uses to subscribe this browser to the
  * project's pushes, test them and report while the app is on screen. Browser-safe.
  */
-import { actionRef } from '../../shared/extension-api.ts'
+import { actionRef, docRef } from '../../shared/extension-api.ts'
+
+/** The tags `PushApi.close` closed, newest last; open pages close their notifications. On the root. */
+export const ClosedDoc = docRef<{ tags: string[] }>('push.closed')
 
 /** A browser's push subscription, as `PushSubscription.toJSON()` gives it, with the page origin it subscribed from. */
 export type Subscription = {

@@ -1,21 +1,52 @@
-/** What the Inbox lists and how its selection moves: pure, over the Messages log. */
+/** What the Inbox lists and how its selection moves: pure, over the Messages log and the provided items. */
 import { waiting } from '../questions/ui.tsx'
 import type { Message } from '../messages/refs.ts'
+import type { InboxItem } from './ui.tsx'
 
-/** Every message that waits on the user, oldest first: the Inbox's items. */
-export const inboxItems = (messages: readonly Message[]) => waiting(messages).toReversed()
+/** One row of the Inbox: a question to the user (`message`) or another extension's item (`item`). */
+export type Entry = { key: string; at: number } & (
+  | { message: Message; item?: undefined }
+  | { item: InboxItem; message?: undefined }
+)
+
+/** A question's key; a provided item keeps its own. */
+export const messageKey = (id: number) => `message:${id}`
 
 /**
- * The item to show: `selected` while it still waits, else the one that took its place (`index`, where it was), so
- * answering an item moves on to the next oldest; the newest when it was the last. None on an empty Inbox.
+ * What `?inbox=` or `inbox:open` names: a plain number is a message id (older push links), anything else an item's
+ * key.
+ */
+export function keyOf(value: unknown): string | undefined {
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? messageKey(value) : undefined
+  if (typeof value !== 'string' || !value) return undefined
+  return /^\d+$/.test(value) ? messageKey(Number(value)) : value
+}
+
+/** Every message that waits on the user and every provided item, oldest first: the Inbox's entries. */
+export const inboxItems = (
+  messages: readonly Message[],
+  provided: readonly (readonly InboxItem[])[] = [],
+): Entry[] =>
+  [
+    ...waiting(messages).map((message) => ({
+      key: messageKey(message.id),
+      at: message.at,
+      message,
+    })),
+    ...provided.flat().map((item) => ({ key: item.key, at: item.at, item })),
+  ].toSorted((a, b) => a.at - b.at)
+
+/**
+ * The entry to show: `selected` while it still waits, else the one that took its place (`index`, where it was), so
+ * answering an entry moves on to the next oldest; the newest when it was the last. None on an empty Inbox.
  */
 export function selection(
-  items: readonly { id: number }[],
-  selected: number | null,
+  entries: readonly { key: string }[],
+  selected: string | null,
   index: number,
 ) {
-  if (selected !== null && items.some((item) => item.id === selected)) return selected
-  return items[Math.min(Math.max(index, 0), items.length - 1)]?.id
+  if (selected !== null && entries.some((entry) => entry.key === selected)) return selected
+  return entries[Math.min(Math.max(index, 0), entries.length - 1)]?.key
 }
 
 /** A local preview the text links to (`http://127.0.0.1:…` or `localhost`), which makes the item a preview. */
