@@ -1,12 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  applyTheme,
-  resolvedTheme,
-  storedTheme,
-  watchSystemTheme,
-} from '../../web/src/sdk/theme.ts'
+import { applyTheme, resolveTheme, storedTheme, watchSystemTheme } from '../../web/src/sdk/theme.ts'
 
 /** The inline script `index.html` runs before any module paints the first load in its appearance. */
 const paint = /<script>\s*(\/\/ Before the app loads[\s\S]*?)<\/script>/.exec(
@@ -68,9 +63,10 @@ describe('theme preference', () => {
 
   it('follows the device when the browser never chose', () => {
     expect(storedTheme()).toBe('system')
-    expect(resolvedTheme('system')).toBe('dark')
-    device.dark = false
-    expect(resolvedTheme('system')).toBe('light')
+    expect(resolveTheme('system', true)).toBe('dark')
+    expect(resolveTheme('system', false)).toBe('light')
+    expect(resolveTheme('light', true)).toBe('light')
+    expect(resolveTheme('dark', false)).toBe('dark')
   })
 
   it('paints the device appearance until someone chooses', () => {

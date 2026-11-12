@@ -17,13 +17,13 @@ export function storedTheme(): ThemePreference {
 /** Whether the device asks for a dark appearance. */
 export const systemDark = () => matchMedia('(prefers-color-scheme: dark)').matches
 
-/** The appearance `preference` asks for, now. */
-export const resolvedTheme = (preference: ThemePreference): Theme =>
-  preference === 'system' ? (systemDark() ? 'dark' : 'light') : preference
+/** The appearance `preference` asks for: the device's while it is `system`, otherwise its own. */
+export const resolveTheme = (preference: ThemePreference, dark: boolean): Theme =>
+  preference === 'system' ? (dark ? 'dark' : 'light') : preference
 
 /** Paint the page in `preference`'s appearance and remember it for the next load. */
 export function applyTheme(preference: ThemePreference) {
-  const theme = resolvedTheme(preference)
+  const theme = resolveTheme(preference, systemDark())
   localStorage.setItem('ultimate.theme', preference)
   document.documentElement.classList.toggle('dark', theme === 'dark')
   // The browser bar and the installed app's chrome take the page background (web/index.html).

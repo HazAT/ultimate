@@ -27,8 +27,8 @@ import {
   cn,
   errorMessage,
   useAction,
-  useDarkTheme,
   useExtensionUiState,
+  useTheme,
   useUltimate,
   useViewport,
 } from '@/sdk'
@@ -346,7 +346,7 @@ function Diffs({
   update: (change: (drafts: Drafts) => Drafts) => boolean
   footer: ReactNode
 }) {
-  const theme = useDarkTheme() ? 'dark' : 'light'
+  const theme = useTheme()
   const [writing, setWriting] = useState<Writing>()
   const target = useTarget()
   const [marked, setMarked] = useState<ReviewTarget>()
