@@ -15,6 +15,7 @@ export const secrets = [
     name: SECRET,
     description: 'OpenAI API key for voice input in the composer (speech to text)',
     url: 'https://platform.openai.com/api-keys',
+    provider: 'openai',
   },
 ]
 
