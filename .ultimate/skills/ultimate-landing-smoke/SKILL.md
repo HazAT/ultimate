@@ -26,15 +26,13 @@ Run it in codemode; it returns steps 1 to 3 as one small object. Add the feature
 
 ```js
 const sh = async (command) => (await tools.bash({ command })).trim()
-const clone = await sh(
-  'cd /home/haza/Projects/ultimate && git log --oneline -1 && git status --short',
-)
+const sys = await ultimate.system()
+const clone = await sh(`cd ${sys.code.ultimateRoot} && git log --oneline -1 && git status --short`)
 const claudeCode = JSON.parse(
   await sh(
-    `curl -s http://127.0.0.1:4747/api/models | jq -c '{configured: (.providers[] | select(.id=="claude-code") | .status.configured), models: [.models[] | select(.provider=="claude-code")] | length}'`,
+    `curl -s ${sys.process.url}/api/models | jq -c '{configured: (.providers[] | select(.id=="claude-code") | .status.configured), models: [.models[] | select(.provider=="claude-code")] | length}'`,
   ),
 )
-const sys = await ultimate.system()
 const ext = await ultimate.extensions()
 const previews = (await ultimate.action('instance', 'list')).filter((i) => i.running)
 const busy = (await ultimate.conversations()).filter((c) => c.busy && !c.concluded)
@@ -54,8 +52,8 @@ return {
 }
 ```
 
-Use the host's clone path and UI port from your environment. `/api/models` is large; keep it in `jq`, out of your
-context. Run the snippet before a restart (previews and busy branches) and again after it (build and health).
+`ultimate.system()` gives the host's clone (`code.ultimateRoot`) and URL (`process.url`). `/api/models` is large;
+keep it in `jq`, out of your context. Run the snippet before a restart (previews and busy branches) and again after it (build and health).
 
 ## Report
 
