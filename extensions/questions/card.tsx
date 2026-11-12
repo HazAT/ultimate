@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
-import { api, cn, errorMessage, useConversation, useDocOf, useViewport } from '@/sdk'
+import { api, cn, errorMessage, useConversation, useDocOf, useUiState, useViewport } from '@/sdk'
 import type { Question } from '../messages/refs.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { keyCard, openQuestions, waitsOnUser } from './open.tsx'
@@ -14,13 +14,15 @@ import type { Answer } from './refs.ts'
 import {
   answered,
   answerOf,
+  cardOf,
+  CARDS_KEY,
   choiceForKey,
   choices,
   keyOf,
   pickDraft,
   pickIndices,
 } from './state.tsx'
-import type { Draft } from './state.tsx'
+import type { CardState, Draft } from './state.tsx'
 
 /** How long a sent card can still be taken back before the answer goes out. */
 const UNDO_MS = 3000
@@ -43,6 +45,18 @@ function useKeys(card: string) {
   const messages = useDocOf(1, MessagesDoc)?.messages ?? []
   const conversation = useConversation((value) => value.id)
   return keyCard(conversation, messages) === card
+}
+
+/**
+ * The card's state in durable UI state, by card: leaving the surface for another, a reload or another window find the
+ * picks and the note where they were. questions' web.tsx drops it once the message settles.
+ */
+function useCard(card: string) {
+  const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const state = cardOf(cards, card)
+  const change = (edit: (old: CardState) => CardState) =>
+    setCards((old) => ({ ...old, [card]: edit(cardOf(old, card)) }))
+  return [state, change] as const
 }
 
 /**
@@ -244,11 +258,11 @@ function Card({
   dismiss: () => Promise<unknown>
   className?: string
 }) {
-  const [text, setText] = useState('')
-  const [note, setNote] = useState('')
+  const [state, setState] = useCard(card)
+  const { drafts, note, current, text } = state
   const root = useRef<HTMLDivElement>(null)
-  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
-  const [current, setCurrent] = useState(0)
+  // What went out, kept while the card settles: the store drops the card's state as soon as the message settles.
+  const [sent, setSent] = useState<{ drafts: Record<number, Draft>; note: string }>()
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -289,16 +303,19 @@ function Card({
   const go = (index: number) => {
     clearTimeout(advance.current)
     const next = Math.min(questions.length - 1, Math.max(0, index))
-    setCurrent(next)
+    setState((old) => ({ ...old, current: next }))
     if (questions[next]?.kind === 'text') focusField(next)
   }
   const draft = (index: number, change: (old: Draft) => Draft) =>
-    setDrafts((old) => ({ ...old, [index]: change(old[index] ?? { chosen: [] }) }))
+    setState((old) => ({
+      ...old,
+      drafts: { ...old.drafts, [index]: change(old.drafts[index] ?? { chosen: [] }) },
+    }))
   const select = (index: number, option: number, click = false) => {
     const question = questions[index]
     const choice = question && choices(question)[option]
     if (!question || !choice) return
-    setCurrent(index)
+    setState((old) => ({ ...old, current: index }))
     if (question.kind === 'multi')
       return draft(index, (old) =>
         choice.custom
@@ -325,7 +342,7 @@ function Card({
     const next = { ...drafts }
     for (const [index, question] of questions.entries())
       if (indices.includes(index)) next[index] = pickDraft(question)
-    setDrafts(next)
+    setState((old) => ({ ...old, drafts: next }))
     return answered(questions, next)
   }
   const run = async (action: () => Promise<unknown>) => {
@@ -344,6 +361,7 @@ function Card({
     const extra = note.trim()
     if ((!list.length && !extra) || pending.current || phase !== 'answering') return
     clearTimeout(advance.current)
+    setSent({ drafts, note })
     const fire = (keepalive = false) => {
       pending.current = undefined
       setPhase('sending')
@@ -381,7 +399,7 @@ function Card({
   }
   const clear = () => {
     clearTimeout(advance.current)
-    setDrafts((old) => ({ ...old, [current]: { chosen: [] } }))
+    setState((old) => ({ ...old, drafts: { ...old.drafts, [current]: { chosen: [] } } }))
   }
   const focusNote = () =>
     root.current?.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.focus()
@@ -469,7 +487,7 @@ function Card({
           placeholder="Your answer…"
           value={text}
           disabled={busy}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => setState((old) => ({ ...old, text: event.target.value }))}
           className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
         />
         <Button
@@ -516,7 +534,7 @@ function Card({
           )}
           {phase === 'sending' && <span className="ml-auto">sending…</span>}
         </div>
-        <Summary questions={questions} drafts={drafts} note={note} />
+        <Summary questions={questions} drafts={sent?.drafts ?? drafts} note={sent?.note ?? note} />
         {phase === 'undo' && (
           <div className="mt-2.5 h-0.5 overflow-hidden rounded-full bg-border/60">
             <div
@@ -570,7 +588,13 @@ function Card({
         ))}
       </div>
       <div className="px-3 pt-2">
-        <Note value={note} disabled={busy} hint={hints} onChange={setNote} onSend={() => send()} />
+        <Note
+          value={note}
+          disabled={busy}
+          hint={hints}
+          onChange={(value) => setState((old) => ({ ...old, note: value }))}
+          onSend={() => send()}
+        />
       </div>
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
         {hints && (
