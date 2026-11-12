@@ -53,6 +53,7 @@ export const secrets = [
     name: SECRET,
     description: 'OpenAI API key for live voice',
     url: 'https://platform.openai.com/api-keys',
+    provider: 'openai',
   },
 ]
 

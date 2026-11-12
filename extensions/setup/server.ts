@@ -59,6 +59,10 @@ type CheckHost = Pick<
 const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   host.modelRuntime.getProviderAuthStatus(provider).configured
 
+/** Whether `provider` holds an API key that stands in for a secret naming it; an OAuth login is no API key. */
+const providerKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
+  configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
+
 /** Whether any model has a login here. Without one nothing runs, so that is the only model-related warning. */
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
@@ -196,7 +200,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (!set.has(name) && !(provider && configured(host, provider)))
+      if (!set.has(name) && !(provider && providerKey(host, provider)))
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)

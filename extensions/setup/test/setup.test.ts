@@ -6,6 +6,7 @@ import { fallbackModel, summaryModelStatus } from '../../conversations/summary-m
 import { check, noteFor } from '../server.ts'
 import type { SetupIssue } from '../refs.ts'
 import { git } from '../../../lib/git.ts'
+import { writeSecret } from '../../secrets/store.ts'
 import { removeTemps, temp } from '../../../test/helpers.ts'
 
 afterEach(removeTemps)
@@ -65,7 +66,7 @@ it('falls back to the cheapest model when no known-good one is available', () =>
   expect(fallbackModel([])).toBeUndefined()
 })
 
-async function checkHost(options: { logins: string[]; secrets?: string[] }) {
+async function checkHost(options: { logins: string[]; oauth?: string[] }) {
   const userHome = await temp('ultimate-setup-check-')
   const projectRoot = join(userHome, 'project')
   await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
@@ -86,6 +87,7 @@ async function checkHost(options: { logins: string[]; secrets?: string[] }) {
       getProviderAuthStatus: (provider: string) => ({
         configured: options.logins.includes(provider),
       }),
+      isUsingOAuth: (provider: string) => options.oauth?.includes(provider) ?? false,
     },
     projectSettings: async () => ({ lander: { checks: ['pnpm check'] } }),
     extensions: () => [
@@ -164,6 +166,31 @@ it("lets a provider's configured auth stand in for the secret that names it", as
     status: 'warn',
     summary: 'OTHER_API_KEY missing',
   })
+})
+
+it("lets an openai API key stand in for voice's OPENAI_API_KEY, but not an OAuth login", async () => {
+  const voice = {
+    name: 'voice-live',
+    enabled: true,
+    layer: 'user',
+    server: {
+      tools: [],
+      sections: [],
+      hooks: 0,
+      docs: [],
+      secrets: [{ name: 'OPENAI_API_KEY', description: '', provider: 'openai' }],
+    },
+  }
+  const secrets = async (options: Parameters<typeof checkHost>[0], stored?: string) => {
+    const host = await checkHost(options)
+    if (stored) await writeSecret(host.userHome, 'OPENAI_API_KEY', stored)
+    const issues = await check({ ...host, extensions: () => [voice] as never })
+    return issues.find((issue) => issue.area === 'Secrets')?.status
+  }
+  expect(await secrets({ logins: [] }, 'sk-stored')).toBe('ok')
+  expect(await secrets({ logins: ['openai'] })).toBe('ok')
+  expect(await secrets({ logins: ['openai'], oauth: ['openai'] })).toBe('warn')
+  expect(await secrets({ logins: [] })).toBe('warn')
 })
 
 it('warns only about the login on a fresh install, and offers default-on secrets as optional', async () => {
