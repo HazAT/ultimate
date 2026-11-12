@@ -266,6 +266,16 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
+ * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
+ * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;
+ * a `ComposerRedirect`'s placeholder comes first.
+ */
+export const ComposerPlaceholder = definePoint<
+  { conversation: number; busy: boolean },
+  string | undefined
+>('ultimate.composerPlaceholder')
+/**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */
