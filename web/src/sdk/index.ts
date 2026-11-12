@@ -4,6 +4,7 @@
  */
 export {
   attention,
+  ComposerPlaceholder,
   ConversationKind,
   defineWebExtension,
   definePoint,

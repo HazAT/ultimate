@@ -137,5 +137,6 @@ export const CacheRebuiltLine = definePoint<
 
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
-branches `branch · coordinator`) and `MessageReference` (the copyable reference to a stored message; codemode). The
-server's counterpart is the extension point above.
+branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
+winning; conversations addresses a standing agent by its definition's `title`) and `MessageReference` (the copyable
+reference to a stored message; codemode). The server's counterpart is the extension point above.

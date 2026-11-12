@@ -24,6 +24,13 @@ export function useAgentTitle(name: string) {
   return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
 }
 
+/**
+ * What standing agent `name`'s composer says, by the `title` `useAgentTitle` gives ("Message Coach…"), while it is
+ * idle; undefined, the core's text, for @ultimate, a busy agent, any other conversation, and before the title arrives.
+ */
+export const standingPlaceholder = (name: string | undefined, title: string, busy: boolean) =>
+  name && name !== 'ultimate' && title && !busy ? `Message ${title}…` : undefined
+
 /** A standing agent's display name, as `useAgentTitle` gives it. */
 export const AgentTitle = ({ name }: { name: string }) => useAgentTitle(name).title
 

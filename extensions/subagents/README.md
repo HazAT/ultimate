@@ -84,7 +84,8 @@ Fields (others are errors):
 - `fast`: the priority tier for `openai-codex/` and `openai/` models (see the fast README).
 - `summaries: false` turns off automatic titles, summaries, reply activity lines and tree abstracts for its
   conversations; explicit summary calls still work ([conversations](../conversations/README.md)).
-- `title`, `icon`, `tint`: a standing agent's display name (its `@name` stays its address) and mark, a
+- `title`, `icon`, `tint`: a standing agent's display name (its `@name` stays its address; its idle composer reads
+  "Message <title>…") and mark, a
   [lucide](https://lucide.dev/icons) icon name and one of `violet`, `blue`, `green`, `amber`, `red`, `pink`, `teal`,
   `grey`.
 - `addTools` marks an **overlay** (below).

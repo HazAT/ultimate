@@ -165,6 +165,9 @@ as fallback. These renderers can use `useTranscript()` for the shown conversatio
 Lineage uses this to show a root's read-only History banner, with the way back to @ultimate, instead of a composer.
 To send what the composer submits elsewhere, wrap `core` in `<ComposerRedirect to={{ placeholder, send }}>` (from `@/sdk`):
 while `to` is set, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
-sending states (side-chat forks @ultimate this way). Only the shown conversation's composer takes typing shortcuts
+sending states (side-chat forks @ultimate this way). A redirect also sets aside images, `composer.actions` and steer
+and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
+`provide(ComposerPlaceholder, ({ conversation, busy }) => (conversation === mine ? 'Ask the coach…' : undefined))`.
+Only the shown conversation's composer takes typing shortcuts
 (Escape, Shift+Tab); a scoped one does not.
 `switchConversation(id, { replace: true })` takes the current history entry instead of adding one, as a redirect does.
