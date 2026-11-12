@@ -315,6 +315,8 @@
  * Streamdown puts on its elements.
  */
 .markdown {
+  /* A long path, hash range or URL breaks inside its line instead of widening the transcript on a phone. */
+  overflow-wrap: break-word;
   & > :first-child {
     @apply mt-0;
   }
