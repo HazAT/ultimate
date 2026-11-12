@@ -267,6 +267,7 @@ async function commit(path: string, name = 'change.txt') {
 /**
  * Hold the first `git <command>` in the repository at `path` (and its worktrees) at its first ref update, with a
  * reference-transaction hook, until `release`; with `fail`, that update then fails, after the command changed the files.
+ * The command may show as `/path/to/git`: Apple's `/usr/bin/git` runs Xcode's git by its full path.
  */
 async function holdGit(path: string, command: string, fail = false) {
   const started = join(path, `.git/${command}-started`)
@@ -276,7 +277,7 @@ async function holdGit(path: string, command: string, fail = false) {
     `#!/bin/sh
 cat >/dev/null
 [ "$1" = prepared ] && [ ! -f '${started}' ] || exit 0
-case "$(ps -ww -p "$PPID" -o args=)" in "git ${command} "*) ;; *) exit 0 ;; esac
+case "$(ps -ww -p "$PPID" -o args=)" in "git ${command} "* | */"git ${command} "*) ;; *) exit 0 ;; esac
 mkfifo '${gate}'
 touch '${started}'
 read release < '${gate}'
@@ -2339,7 +2340,7 @@ it.concurrent('a persistent branch deletion failure blocks tools with its reason
     `#!/bin/sh
 cat >/dev/null
 [ "$1" = prepared ] || exit 0
-case "$(ps -ww -p "$PPID" -o args=)" in "git branch -D "*) exit 1 ;; esac
+case "$(ps -ww -p "$PPID" -o args=)" in "git branch -D "* | */"git branch -D "*) exit 1 ;; esac
 `,
     { mode: 0o755 },
   )
