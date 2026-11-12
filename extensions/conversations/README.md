@@ -15,9 +15,9 @@ reads this extension's overview, titles and actions. `ui.tsx` declares the point
 `ConversationPhase` (a working conversation's phase) and `ConversationTask` (the plan task a child works on).
 
 It provides the core's `ComposerPlaceholder`: an idle standing agent's composer reads "Message <title>…" by its
-definition's `title` (`standingPlaceholder` in `marks.tsx`), in the dock, the full view and on a phone alike; @ultimate's
+definition's `title` (`standing.tsx`), in the dock, the full view and on a phone alike; @ultimate's
 keeps the core's text. It also provides `EmptyTranscript`: before its first message, a standing agent's transcript shows
-its mark, title and `@name` (`empty.tsx`) instead of the core's card of repo, model and host.
+its mark, title and `@name` (`standing.tsx`) instead of the core's card of repo, model and host.
 
 ## Server facet
 

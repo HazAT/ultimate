@@ -1,7 +1,25 @@
 import type { ReactNode } from 'react'
 import { ConversationEmptyState } from '@/components/ai/conversation'
 import { useStandingName } from './feature.tsx'
-import { AgentMark, useAgentTitle } from './marks.tsx'
+import { AgentMark, standingPlaceholder, useAgentTitle } from './marks.tsx'
+
+/** Conversation `id`'s standing agent as definitions and marks know it (without the `@`), and its display title. */
+function useStandingAgent(id: number) {
+  const name = useStandingName(id)?.replace(/^@/, '')
+  return { name, title: useAgentTitle(name ?? '').title }
+}
+
+/** What an idle standing agent's composer says: "Message <title>…"; the core's text everywhere else. */
+export function useStandingPlaceholder({
+  conversation,
+  busy,
+}: {
+  conversation: number
+  busy: boolean
+}) {
+  const { name, title } = useStandingAgent(conversation)
+  return standingPlaceholder(name, title, busy)
+}
 
 /**
  * A standing agent's transcript before its first message: its mark, title and `@name`, in the dock, the full view and
@@ -14,9 +32,7 @@ export function useStandingEmpty({
   conversation: number
   core: ReactNode
 }) {
-  // The standing name is the `@name` address; definitions and marks know it without the `@`.
-  const name = useStandingName(conversation)?.replace(/^@/, '')
-  const { title } = useAgentTitle(name ?? '')
+  const { name, title } = useStandingAgent(conversation)
   if (!name || name === 'ultimate') return core
   return (
     <ConversationEmptyState className="min-h-[55vh]">

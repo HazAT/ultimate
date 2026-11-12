@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import { useStandingEmpty } from '../../empty.tsx'
+import { useStandingEmpty } from '../../standing.tsx'
 
 const summaries = vi.hoisted(() => [
   { id: 2, label: 'agent', title: '@ultimate' },
