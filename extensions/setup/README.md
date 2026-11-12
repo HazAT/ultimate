@@ -8,7 +8,7 @@ button (a ⌘K command, or the Secrets panel at the missing secret).
 | Summary model     | the configured model has no login here (the default falls back, see below)                                                    | Summary model…    |
 | Agent models      | a definition pins a model whose provider has no login here                                                                    | Log in            |
 | Agent definitions | a definition file fails to parse, or a user or project file replaces a built-in whole instead of extending it with `addTools` |                   |
-| Providers         | a provider's latest call on this machine failed (`health`)                                                                    | Log in again      |
+| Providers         | a provider's latest call on this machine failed (`health`); a credit limit (402) only says to add credits                     | Log in again      |
 | Secrets           | an extension the user turned on lacks a secret it declares; `info` (optional) for a built-in that is on by default            | the Secrets panel |
 | Extensions        | an enabled extension's server facet failed to load                                                                            | Extensions panel  |
 | Cloud backup      | `cloud.url` is set but `ULTIMATE_CLOUD_TOKEN` or the snapshot key is missing; `info` while unset                              | Join              |

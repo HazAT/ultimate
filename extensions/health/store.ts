@@ -28,6 +28,11 @@ const STAMPS = ['lastOk', 'lastFail', 'lastUsed', 'lastAuth'] as const
 export const STREAK = 3
 /** A transient failure this long after the first of its streak, with no success between, turns it failing too. */
 export const STREAK_WINDOW = 5 * 60_000
+/**
+ * A streak failure this old no longer counts when health is read: a provider nobody called since says nothing about
+ * now, and its warning would otherwise stay until its next success (a 402 from a provider the user stopped using).
+ */
+export const STALE = 24 * 60 * 60_000
 
 /**
  * The only words an error summary may contain: provider and OAuth error codes, network errors and a few plain words.
@@ -117,32 +122,44 @@ const CAPACITY = new Set([
 ])
 
 /**
- * What a failure says about the provider, from its `sanitize` summary: `auth` (the login is broken), `capacity` (the
- * provider is busy or rate-limited; never the login) or `transient` (timeouts, network errors, anything else).
+ * What a failure says about the provider, from its `sanitize` summary: `auth` (the login is broken), `billing` (402:
+ * the account hit a credit or spending limit; never the login), `capacity` (the provider is busy or rate-limited) or
+ * `transient` (timeouts, network errors, anything else).
  */
-export function failureKind(error: string): 'auth' | 'capacity' | 'transient' {
+export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 'transient' {
   const parts = sanitize(error).split(' ')
   if (parts.some((part) => AUTH.has(part))) return 'auth'
+  if (parts.includes('402')) return 'billing'
   if (parts.some((part) => CAPACITY.has(part))) return 'capacity'
   return 'transient'
 }
 
 /**
- * `failing` after an auth failure newer than the last success, or a transient streak of `STREAK` failures or one
- * spanning `STREAK_WINDOW`; capacity failures never count. Otherwise `ok` once it has a success, else `unknown`.
+ * Why a provider is failing, or `undefined` when it is not: `auth` after an auth failure newer than the last success,
+ * else a streak of `STREAK` transient or billing failures, or one spanning `STREAK_WINDOW`, newer than both the last
+ * success and `since` (`billing` when the newest failure is one, else `transient`); capacity failures never count.
  */
-export function state(entry: HealthEntry): ProviderHealth['state'] {
+export function failingCause(
+  entry: HealthEntry,
+  since = -Infinity,
+): ProviderHealth['cause'] | undefined {
   const ok = entry.lastOk ?? -Infinity
-  if (entry.lastAuth !== undefined && entry.lastAuth > ok) return 'failing'
-  const streak = (entry.transient ?? []).filter((at) => at > ok)
+  if (entry.lastAuth !== undefined && entry.lastAuth > ok) return 'auth'
+  const streak = (entry.transient ?? []).filter((at) => at > ok && at > since)
   if (streak.length >= STREAK || (streak.length && streak.at(-1)! - streak[0] >= STREAK_WINDOW))
-    return 'failing'
+    return failureKind(entry.error ?? '') === 'billing' ? 'billing' : 'transient'
+  return undefined
+}
+
+/** `failing` when it has a `failingCause`, otherwise `ok` once it has a success, else `unknown`. */
+export function state(entry: HealthEntry, since?: number): ProviderHealth['state'] {
+  if (failingCause(entry, since)) return 'failing'
   return entry.lastOk !== undefined ? 'ok' : 'unknown'
 }
 
 /**
- * `before` with `update` merged, its failure counted by kind: an auth failure stamps `lastAuth`, a transient one joins
- * `transient`, a capacity one only `lastFail` and `error`. A success clears nothing: `state` counts only failures newer
+ * `before` with `update` merged, its failure counted by kind: an auth failure stamps `lastAuth`, a transient or
+ * billing one joins `transient`, a capacity one only `lastFail` and `error`. A success clears nothing: `state` counts only failures newer
  * than `lastOk`, so writes arriving out of order still count right.
  */
 export function apply(before: HealthEntry, update: HealthEntry): HealthEntry {
@@ -152,7 +169,7 @@ export function apply(before: HealthEntry, update: HealthEntry): HealthEntry {
   return merge(before, {
     ...update,
     ...(kind === 'auth' ? { lastAuth: failed } : {}),
-    ...(kind === 'transient' ? { transient: [failed] } : {}),
+    ...(kind === 'transient' || kind === 'billing' ? { transient: [failed] } : {}),
   })
 }
 
@@ -216,17 +233,19 @@ export async function readFileHealth(userHome: string): Promise<HealthFile> {
   return { providers }
 }
 
-export const toHealth = (file: HealthFile): ProviderHealth[] =>
+/** Each provider's health at `now`: streak failures older than `STALE` no longer count. */
+export const toHealth = (file: HealthFile, now: number): ProviderHealth[] =>
   Object.entries(file.providers)
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([provider, entry]) => {
       // The counting fields decide the state; they are not part of what a provider's health shows.
       const { lastAuth: _auth, transient: _transient, ...shown } = entry
-      return { provider, state: state(entry), ...shown }
+      const cause = failingCause(entry, now - STALE)
+      return { provider, state: state(entry, now - STALE), ...(cause ? { cause } : {}), ...shown }
     })
 
-export async function readHealth(userHome: string): Promise<ProviderHealth[]> {
-  return toHealth(await readFileHealth(userHome))
+export async function readHealth(userHome: string, now = Date.now()): Promise<ProviderHealth[]> {
+  return toHealth(await readFileHealth(userHome), now)
 }
 
 const writes = new Map<string, Promise<unknown>>()

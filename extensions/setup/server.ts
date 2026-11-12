@@ -170,16 +170,21 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
   const providers = await host.want(HealthApi)?.providers()
   if (!providers?.length) return undefined
   const failing = providers.filter((provider) => provider.state === 'failing')
-  if (failing.length)
+  if (failing.length) {
+    // A credit limit is not a login problem: logging in again does not fix it.
+    const billing = failing.every((provider) => provider.cause === 'billing')
     return {
       area: 'Providers',
       status: 'warn',
       summary: failing
         .map((provider) => `${provider.provider} ✗ ${provider.error ?? 'failed'}`)
         .join(' · '),
-      impact: 'Its login was refused, or its calls kept failing on this machine.',
-      fix: { label: 'Log in again', command: 'auth.login' },
+      impact: billing
+        ? 'It refused calls for payment: the account hit a credit or spending limit. Add credits or raise the limit with the provider.'
+        : 'Its login was refused, or its calls kept failing on this machine.',
+      ...(billing ? {} : { fix: { label: 'Log in again', command: 'auth.login' } }),
     }
+  }
   return {
     area: 'Providers',
     status: 'ok',
