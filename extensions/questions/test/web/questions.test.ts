@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { keyCard, newestAsked, openQuestions, waiting } from '../../open.tsx'
+import { forgetSettled, keyCard, newestAsked, openQuestions, waiting } from '../../open.tsx'
+import { EMPTY_CARD } from '../../state.tsx'
 
 const question = { text: 'Keep the preview?', kind: 'confirm' as const }
 const open = {
@@ -47,5 +48,20 @@ describe('open questions in To-dos', () => {
       { ...open, id: 10 },
     ]
     expect(waiting(messages).map((message) => message.id)).toEqual([10, 5])
+  })
+})
+
+describe('what the user did on a card', () => {
+  const cards = { 'message:5': EMPTY_CARD, 'message:6': EMPTY_CARD }
+
+  it('is dropped once its message settles, wherever that happened', () => {
+    for (const state of ['answered', 'dismissed'] as const)
+      expect(forgetSettled(cards, [open, { ...open, id: 6, state }])).toEqual({
+        'message:5': EMPTY_CARD,
+      })
+  })
+
+  it('stays, as the same object, while every message still waits on the user', () => {
+    expect(forgetSettled(cards, [open, { ...open, id: 6 }])).toBe(cards)
   })
 })

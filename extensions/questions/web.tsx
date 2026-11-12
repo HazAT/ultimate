@@ -1,8 +1,29 @@
-import { defineWebExtension, provide } from '@/sdk'
-import { MessageAnswers } from '../messages/ui.tsx'
+import { useEffect } from 'react'
+import { defineWebExtension, provide, useDocOf, useUiState } from '@/sdk'
+import { MessageAnswers, MessagesDoc } from '../messages/ui.tsx'
 import { MessageQuestions } from './card.tsx'
+import { forgetSettled } from './open.tsx'
+import { CARDS_KEY } from './state.tsx'
+import type { CardState } from './state.tsx'
+
+/**
+ * Drops the picks and notes of cards whose message settled — answered in its card, dismissed, or settled for the user
+ * by @ultimate, also from another window or device. It reads the whole Messages log in every surface, since the Inbox
+ * drops an answered item without rendering its card once more.
+ */
+function CardSweep() {
+  const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const messages = useDocOf(1, MessagesDoc)?.messages
+  // `cards` too: the log can arrive before the stored state, and the cards that came with it still have to go.
+  useEffect(() => {
+    // Nothing is settled until both are there: a starting server shows no messages for a moment.
+    if (messages && Object.keys(cards).length) setCards((old) => forgetSettled(old, messages))
+  }, [cards, messages, setCards])
+  return null
+}
 
 export default defineWebExtension({
+  slots: { overlay: [CardSweep] },
   entries: {
     // Retired cards have no interaction; hide them instead of exposing their raw JSON.
     'questions.asked': () => null,

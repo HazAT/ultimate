@@ -104,3 +104,26 @@ export const answered = (questions: Question[], drafts: Record<number, Draft | u
 
 /** A question's position label: its own number when the message gave one, else its place on the card. */
 export const position = (question: Question, index: number) => question.ref ?? String(index + 1)
+
+/**
+ * What a card holds while it is answered: each question's draft, the note, the question that is open, and the typed
+ * answer of a message that asks none. It lives in durable UI state, so leaving the surface, a reload or another
+ * window find it where the user left it.
+ */
+export type CardState = {
+  drafts: Record<number, Draft>
+  note: string
+  current: number
+  text: string
+}
+
+export const EMPTY_CARD: CardState = { drafts: {}, note: '', current: 0, text: '' }
+
+/** The durable UI state key of every card being answered, by card (`message:12`). */
+export const CARDS_KEY = 'ext.questions.cards'
+
+/** A card's state as the store holds it; an empty card while the user has not touched it. */
+export const cardOf = (cards: Record<string, CardState> | undefined, card: string): CardState => ({
+  ...EMPTY_CARD,
+  ...cards?.[card],
+})
