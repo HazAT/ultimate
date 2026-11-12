@@ -349,6 +349,13 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
           text={answer.text}
         />
       )}
+      {/* Your screenshots: placed in the asker's input with it, or forwarded from @ultimate's chat. */}
+      {answer.attached && typeof answer.to === 'number' && answer.entry !== undefined ? (
+        <MessageImages conversation={answer.to} entry={answer.entry} />
+      ) : (
+        answer.images &&
+        via && <MessageImages conversation={via.conversation} entry={answer.images.entry} />
+      )}
     </div>
   )
 }

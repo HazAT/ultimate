@@ -327,7 +327,10 @@ function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
   useEffect(() => {
     if (scoped !== undefined) return undefined
     let depth = 0
-    const carriesFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
+    // A drop on an answer card is the card's, so the composer does not light up for it.
+    const carriesFiles = (event: DragEvent) =>
+      !!event.dataTransfer?.types.includes('Files') &&
+      !(event.target instanceof Element && event.target.closest('[data-takes-drops]'))
     const enter = (event: DragEvent) => {
       if (carriesFiles(event)) setDragging(++depth > 0)
     }
@@ -338,8 +341,9 @@ function ComposerEditor({ dock, upload }: { dock?: boolean; upload: Upload }) {
       depth = 0
       setDragging(false)
       const on = event.target instanceof Element ? event.target : null
-      // Every composer's editor takes its own drops, a side chat's too.
-      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')) return
+      // Every composer's editor takes its own drops, a side chat's too, and so does an answer card.
+      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea, [data-takes-drops]'))
+        return
       // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
       void dropRef.current(event)
     }

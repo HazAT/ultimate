@@ -45,7 +45,11 @@ a note field is always there: whatever it holds goes after the answer lines, or 
 changes a pick. **Accept picks** chooses every pick still open; Send sends what is answered (“Send 2 of 5”). Sending
 opens a 3 s window with Undo before the answer goes out, then the card settles into the summary of what was sent, the
 note on its own line. Dismiss closes the message without an answer. A message without questions gets a one-line answer
-field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
+field (sent as a Reply to that message) and Dismiss. Screenshots go with either: paste them into the note or answer
+field, drop them on the card, or pick them with its paperclip (up to 4, within the composer's limits). They show as
+thumbnails until sent, reach the asker's input with the answer (images alone send as a note), and show under the
+answered message. An answer with images never uses keepalive, since they exceed its budget: while one waits out its
+undo window or sends, leaving the page asks first. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
 for Something else) chooses, ↑/↓ moves between questions, Enter takes the open question's pick or goes to the next,
 and sends from the last one; ⇧Enter accepts every pick and sends; `/` focuses the note field, where Enter sends and
 ⇧Enter breaks a line; Esc clears an answer, leaves the note field or, while sending, undoes. Only the shown

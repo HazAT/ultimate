@@ -10,10 +10,17 @@ export type Answer = { question: string; answer: string | string[] }
 /**
  * `{ messageId, answers?, note? }` or `{ messageId, text }` → `{ id }`: answer open message `messageId` with a reply
  * to its sender, from its questions (`note` goes after the answer lines) or as free text; `id` is the reply's message
- * id. Fails when the message no longer waits on the user.
+ * id. Fails when the message no longer waits on the user. `images` (at most 4 PNG, JPEG, WebP or GIF, 2 MiB each, as
+ * base64) go along in the asker's input; with them the answers, note or text may be left out.
  */
 export const AnswerAction = actionRef<
-  { messageId: number; answers?: Answer[]; note?: string; text?: string },
+  {
+    messageId: number
+    answers?: Answer[]
+    note?: string
+    text?: string
+    images?: { data: string; mimeType: string }[]
+  },
   { id: number }
 >('questions', 'answer')
 /**

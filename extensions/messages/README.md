@@ -121,8 +121,13 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
   recent top-level conversation summaries.
 - `settle({ messageId, text, dismiss? }) → { id }`: from @ultimate's conversation or its side chat, settles the user's
   open question for them from what they said there. `text` is their answer (with `dismiss`, why it no longer matters);
-  the reply records `via`, so the card reads "@ultimate answered for you". Refused for other callers and closed
-  messages.
+  the reply records `via`, so the card reads "@ultimate answered for you". `images` (`'latest'` or an entry id, as the
+  `message` tool's) forwards images from the caller's conversation with the answer, such as the screenshot the user
+  pasted with their decision. Refused for other callers and closed messages.
+- The user's own answer (questions' `answer`, the service's `answer`) may carry images they attached: checked as a
+  submitted input's, kept in the delivery task's input (the user has no entry to hold them; at most about 11 MiB, kept
+  with the task's record), and placed in the asker's input; the message records `attached: n` and its `entry` holds
+  them. A user message that is not an answer carries none.
 
 There is no user posting action: users type in a conversation or answer a card. `host.want(MessagesApi)` (`api.ts`)
 exposes `send`, a one-way message from a conversation, and `answer`, the user's reply to an open message.

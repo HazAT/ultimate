@@ -28,6 +28,8 @@ export type Message = {
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
   images?: { entry: EntryId; count: number }
+  /** How many images the user attached to this answer: placed in the recipient's input, so `entry` holds them. */
+  attached?: number
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
   /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
@@ -57,9 +59,16 @@ export const Messages = defineDoc<{ messages: Message[]; next: number }>({
 export type MessagesService = {
   /**
    * Reply `text` from the user to open message `messageId`, from browser `device`; returns the reply's message
-   * id. Records a `user.input` event.
+   * id. Records a `user.input` event. `images` the user attached (at most 4 PNG, JPEG, WebP or GIF of 2 MiB each, as
+   * base64; others are refused) go along in the asker's input.
    */
-  answer(messageId: number, text: string, ctx: Context, device?: Device): Promise<number>
+  answer(
+    messageId: number,
+    text: string,
+    ctx: Context,
+    device?: Device,
+    images?: readonly { data: string; mimeType: string }[],
+  ): Promise<number>
   /**
    * The messages that wait on the user's answer, oldest first: each one's id, the conversation that asked, when, and its
    * question in one line (the line its card's header shows).

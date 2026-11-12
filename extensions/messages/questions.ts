@@ -139,7 +139,7 @@ export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, 
     )
     .join(
       '\n',
-    )}${primary ? `\nWhen the user decides one in your chat, settle it with ultimate.action('messages', 'settle', { messageId, text }).` : ''}`
+    )}${primary ? `\nWhen the user decides one in your chat, settle it with ultimate.action('messages', 'settle', { messageId, text }), adding images: 'latest' when they pasted a screenshot with it.` : ''}`
   return {
     entries: [
       {
