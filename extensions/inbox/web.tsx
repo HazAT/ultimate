@@ -212,7 +212,7 @@ function useOpenBranch() {
 
 /** The reading pane's scroller: positioned, as the transcript's is, so an absolutely positioned descendant of what it
  * reads stays inside it. A question's `sr-only` legend otherwise takes the page as its containing block and lays itself
- * out at its static position below the window, letting the whole page scroll one screen into empty background (#19598).
+ * out at its static position below the window, letting the whole page scroll one screen into empty background (PR #144).
  */
 const pane = 'relative min-h-0 flex-1 overflow-y-auto'
 
