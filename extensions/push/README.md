@@ -11,6 +11,12 @@ with `extensions.enable: ["push"]` in user or project settings.
 - **A landing** (`workspaces.landed`).
 - **@ultimate's failed run**, read from the conversation overview as the sounds do (`extensions/sounds/cues.ts`).
 
+- **Another extension's push**, through `PushApi` (`api.ts`; `host.want` it, push is optional): `notify(push)` sends a
+  `Push` (`{ title, body, tag, path, urgency }`, `rules.ts`) the same way; `close(tag)` closes that tag's
+  notification on every device with the app open, as an answered question's closes. The closed tags live in the
+  root's `push.closed` document (the newest 50), which open pages read; a new `notify` under a closed tag opens it
+  again. A `path` of `/?inbox=<key>` opens the Inbox at that item (`extensions/inbox`).
+
 A browser that reported the app on screen in the last 15 s gets nothing. Tapping a notification opens its
 conversation, a question's at the question.
 

@@ -4,7 +4,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { api, cn, defineWebExtension, errorMessage, events, useDocOf, useUltimate } from '@/sdk'
 import { isOpen, MessagesDoc } from '../messages/ui.tsx'
-import { KeyAction, PresentAction, SubscribeAction, TestAction, UnsubscribeAction } from './refs.ts'
+import {
+  ClosedDoc,
+  KeyAction,
+  PresentAction,
+  SubscribeAction,
+  TestAction,
+  UnsubscribeAction,
+} from './refs.ts'
 import type { Subscription } from './refs.ts'
 
 /** This browser's service worker and push subscription, once known; `error` says why the last step failed. */
@@ -103,15 +110,19 @@ function Pusher() {
       window.removeEventListener('pagehide', hide)
     }
   }, [endpoint])
-  // A question answered on its card or another device takes its notification with it.
+  // A question answered on its card or another device takes its notification with it, as does a tag another
+  // extension closed (`PushApi.close`).
   const log = useDocOf(1, MessagesDoc)
-  const settled = log?.messages
-    .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
-    .map((m) => `message:${m.id}`)
-    .join(' ')
+  const closed = useDocOf(1, ClosedDoc)?.tags ?? []
+  const settled = [
+    ...(log?.messages ?? [])
+      .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
+      .map((m) => `message:${m.id}`),
+    ...closed,
+  ].join('\n')
   useEffect(() => {
     if (!settled || !registration) return
-    const tags = new Set(settled.split(' '))
+    const tags = new Set(settled.split('\n'))
     registration
       .getNotifications()
       .then((shown) => {
@@ -124,10 +135,10 @@ function Pusher() {
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
-      // A question opens the Inbox at it, where it is answered.
-      const asked = Number(url.searchParams.get('inbox'))
-      if (url.searchParams.has('inbox') && Number.isSafeInteger(asked)) {
-        events.emit('inbox:open', { message: asked })
+      // A question or another Inbox item opens the Inbox at it, where it is answered.
+      const key = url.searchParams.get('inbox')
+      if (key) {
+        events.emit('inbox:open', { key })
         showSurface('inbox')
         return
       }
