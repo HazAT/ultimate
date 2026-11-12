@@ -20,6 +20,8 @@ import type { Context } from '@earendil-works/chord/context'
 import { bool, int, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { openaiError } from '../../lib/openai.ts'
+import type { OpenAiError } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { openQuestion } from '../../lib/message-state.ts'
@@ -460,6 +462,12 @@ export function answerTask(host: ExtensionHost) {
   })
 }
 
+/** The dock's message when OpenAI refuses a session: its own words, since a bare "(HTTP 429)" hid "no credits". */
+function liveFailure({ status, message, code }: OpenAiError) {
+  const said = message ? `: ${message}` : ''
+  return `OpenAI live session failed (HTTP ${status}${code ? ` ${code}` : ''})${said}`
+}
+
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) =>
     (await apiKey(host, signal))
@@ -523,7 +531,7 @@ export const actions = {
       }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     })
-    if (!response.ok) throw new Error(`OpenAI live session failed (HTTP ${response.status})`)
+    if (!response.ok) throw new Error(liveFailure(await openaiError(response)))
     const answer = (await response.json()) as {
       session?: { id?: string }
       transport?: { type?: string; sdp?: string }
