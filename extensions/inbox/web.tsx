@@ -193,6 +193,12 @@ function useOpenBranch() {
   }
 }
 
+/** The reading pane's scroller: positioned, as the transcript's is, so an absolutely positioned descendant of what it
+ * reads stays inside it. A question's `sr-only` legend otherwise takes the page as its containing block and lays itself
+ * out at its static position below the window, letting the whole page scroll one screen into empty background (#19598).
+ */
+const pane = 'relative min-h-0 flex-1 overflow-y-auto'
+
 function Reading({
   item,
   now,
@@ -268,14 +274,14 @@ function Reading({
           </Button>
           <span className="section-label">Inbox</span>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className={cn(pane, 'px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]')}>
           {top}
           <div className="mt-5">{answer}</div>
         </div>
       </div>
     )
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-inbox-item={item.id}>
+    <div className={pane} data-inbox-item={item.id}>
       <div className="mx-auto w-full max-w-[44rem] px-8 pt-8 pb-12">
         {top}
         <div className="mt-6">{answer}</div>
