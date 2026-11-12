@@ -17,6 +17,7 @@ import {
   api,
   cn,
   errorMessage,
+  events,
   refreshModels,
   useCopy,
   useDialog,
@@ -285,8 +286,11 @@ function FlowView({
   const failure = error ?? flow?.error
   useEffect(() => onRunning(status === 'running' ? flowId : undefined), [flowId, onRunning, status])
   useEffect(() => {
+    if (status !== 'complete') return
     // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
-    if (status === 'complete') void refreshModels()
+    void refreshModels()
+    // Whoever gates on a credential re-checks its status now instead of on a remount, voice's mic included.
+    events.emit('auth:changed', undefined)
   }, [status])
   return (
     <div className="flex flex-col">
