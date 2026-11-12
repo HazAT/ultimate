@@ -1,18 +1,19 @@
 import { defineWebExtension, getState } from '@/sdk'
-import type { ThemePreference } from '@/sdk'
-
-const cycle: ThemePreference[] = ['system', 'light', 'dark']
-const label = (theme: ThemePreference) => theme[0].toUpperCase() + theme.slice(1)
 
 export default defineWebExtension({
-  commands: cycle.map((theme, index) => {
-    const next = cycle[(index + 1) % cycle.length]
-    return {
-      id: `theme.${theme}`,
-      title: `Toggle theme (current: ${label(theme)})`,
+  commands: [
+    {
+      id: 'theme.toggle',
+      title: () => {
+        const theme = getState().ui.theme
+        return `Toggle theme (current: ${theme[0].toUpperCase() + theme.slice(1)})`
+      },
       group: 'Ultimate',
-      when: () => getState().ui.theme === theme,
-      run: (context) => context.setTheme(next),
-    }
-  }),
+      keepOpen: true,
+      run: (context) => {
+        const theme = getState().ui.theme
+        context.setTheme(theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system')
+      },
+    },
+  ],
 })

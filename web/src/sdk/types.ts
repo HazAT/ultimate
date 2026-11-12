@@ -176,11 +176,14 @@ export interface UltimateContext extends UltimateActions {
 
 export interface CommandContribution {
   id: string
-  title: string
+  /** A label, or its current value for a command that reflects changing UI state. */
+  title: string | (() => string)
   /** Shortcut: `mod+shift+m`, or a sequence such as `mod+k m` (`mod` is ⌘ on macOS, Ctrl elsewhere). */
   keys?: string
   /** Palette group; defaults to the extension name. */
   group?: string
+  /** Leave the palette open after running, for commands that adjust a setting in place. */
+  keepOpen?: boolean
   /**
    * Fire a plain-key shortcut (`escape`, `shift+tab`) even while the user types in the composer (not in other inputs),
    * though not while a dialog is open.

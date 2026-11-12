@@ -165,15 +165,16 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
     arrayOf(
       fields({
         id: isString,
-        title: isString,
+        title: (value) => isString(value) || isFunction(value),
         keys: optional(isString),
         group: optional(isString),
+        keepOpen: optional((value) => typeof value === 'boolean'),
         whileTyping: optional((value) => typeof value === 'boolean'),
         when: optional(isFunction),
         run: isFunction,
       }),
     ),
-    'an array of { id, title, keys?, group?, whileTyping?, when?, run }',
+    'an array of { id, title, keys?, group?, keepOpen?, whileTyping?, when?, run }',
   ],
   provides: [
     arrayOf(fields({ point: isString, use: isFunction })),
