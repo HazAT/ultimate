@@ -80,8 +80,12 @@ it.each(['system-first', 'facets-first'])(
       timedOut: false,
     })
     registry.receiveSystem()
-    registry.replace('broken', { default: {} })
-    registry.fail('slow', 'reload error')
+    await registry.setLoaders({
+      [path('slow')]: async () => {
+        throw new Error('reload error')
+      },
+      [path('broken')]: async () => ({ default: {} }),
+    })
     await registry.setLoaders({ [path('slow')]: async () => ({ default: {} }) })
     expect(registry.getReady()).toEqual({ ready: true, timedOut: false, failed: [], pending: [] })
     expect(ready).toHaveBeenCalledTimes(1)

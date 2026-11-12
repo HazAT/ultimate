@@ -303,16 +303,6 @@ export function createRegistry() {
         refreshReady()
       }
     },
-    /** Install a facet loaded on its own. */
-    replace(name: string, module: unknown) {
-      tokens.set(name, {})
-      pending.delete(name)
-      install(name, module)
-    },
-    /** Record a failed load; the previous version stays installed. */
-    fail(name: string, error: unknown) {
-      if (records.some((record) => record.name === name)) fail(name, error)
-    },
   }
 }
 export type Registry = ReturnType<typeof createRegistry>
