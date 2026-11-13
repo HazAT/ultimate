@@ -16,6 +16,8 @@ export type RunningProject = {
   busy?: number
   /** Messages waiting on the user's answer; absent when its `status` did not answer. */
   questions?: number
+  /** Its HTTPS port on the tailnet, when Tailscale registered one: where a page opened over the tailnet reaches it. */
+  tailnetPort?: number
 }
 
 /** No arguments → every running instance on this machine, this one included, in project order. */

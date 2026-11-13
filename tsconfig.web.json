@@ -25,6 +25,7 @@
     "shared/extension-api.ts",
     "extensions/*/refs.ts",
     "extensions/messages/caller.ts",
+    "extensions/projects/links.ts",
     "extensions/cloud/types.ts",
     "extensions/conversations/types.ts",
     "extensions/dream/stage.ts",

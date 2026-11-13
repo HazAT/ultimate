@@ -14,6 +14,7 @@ import {
   useViewport,
 } from '@/sdk'
 import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.tsx'
+import { shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
@@ -22,8 +23,6 @@ const WIDE = 272
 /** Live state every 4 s while the page is visible; the shared pin every 30 s. */
 const LIVE = 4_000
 const PIN = 30_000
-
-const port = (url: string) => new URL(url).port || '80'
 
 /**
  * The project this tab is navigating to. The old page stays until the new one paints, which takes seconds while the
@@ -98,7 +97,7 @@ function Detail({ project, pending }: { project: RunningProject; pending: boolea
   return (
     <>
       {project.repo && <RepoLabel className="min-w-0" repo={project.repo} />}
-      <span className="shrink-0 text-muted-foreground/50">:{port(project.url)}</span>
+      <span className="shrink-0 text-muted-foreground/50">{shownPort(project, location)}</span>
     </>
   )
 }
@@ -138,10 +137,13 @@ function Row({
   const busy = (project.busy ?? 0) > 0
   const questions = project.questions ?? 0
   const name = prettyName(project.name)
+  const href = here ? undefined : target(project, location)
+  const unreachable = !here && !href
   const title = [
     name,
     project.repo?.name,
-    `:${port(project.url)}`,
+    shownPort(project, location),
+    unreachable && 'not on the tailnet',
     questions && `${questions} for you`,
     busy && 'working',
     here && 'this tab',
@@ -155,15 +157,17 @@ function Row({
       aria-label={title}
       className={cn(
         'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
-        here ? 'cursor-default' : 'cursor-pointer',
+        here || unreachable ? 'cursor-default' : 'cursor-pointer',
+        unreachable && 'opacity-45',
         wide && (here ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
       )}
       data-project={project.name}
-      href={here ? undefined : `${project.url}/`}
+      href={href}
       onClick={(event) => {
         // A plain click navigates this tab: mark it. Mod-click and middle-click open another tab and leave this one.
         if (
           here ||
+          unreachable ||
           event.button !== 0 ||
           event.metaKey ||
           event.ctrlKey ||

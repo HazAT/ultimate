@@ -5,7 +5,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import { LiveDoc, type ConversationId } from '@earendil-works/pi-durable'
 import { Messages } from '../../../messages/api.ts'
 import { launchHandshake, Automations } from '../../server.ts'
 import { Done, Exited } from '../../refs.ts'
@@ -57,6 +57,17 @@ async function writeRun(folder: string, script: string) {
   await mkdir(join(folder, 'state'), { recursive: true })
   await writeFile(join(folder, 'run'), `#!/bin/sh\n${script}\n`)
   await chmod(join(folder, 'run'), 0o700)
+}
+/**
+ * Waits until a watcher's first run has failed. These tests queue no model answers, so it fails; an input that arrives
+ * while it still runs waits behind the failure for another input and never starts (Pi's default `afterFailedRun`).
+ * Without this wait, the next delivery depended on how fast earlier commits ran (#587482: PR #161 made them slower).
+ */
+async function failed(app: NonNullable<typeof server>, id: number | undefined) {
+  await until(async () => {
+    const live = await app.harness.snapshot(LiveDoc, id as ConversationId, context)
+    return live?.run === undefined && live?.runFailure !== undefined
+  })
 }
 function call(app: NonNullable<typeof server>, action: string, id: string) {
   return app.extensions.invoke('automations', action, { id }, new AbortController().signal)
@@ -199,6 +210,7 @@ it('delivers FIRE once, investigates exits only in the owning agent, recovers, a
     once: false,
   })) as Automation
   await script(recurring.id, 'echo FIRE tick; exit 0')
+  await failed(app, recurring.script!.conversationId)
   await invoke('resume', { id: recurring.id })
   await until(
     async () =>
@@ -621,6 +633,7 @@ it('creates a project automation in the checkout with a committed manifest', asy
     script: { state: 'writing' },
   })
 
+  await failed(app, sub.script!.conversationId)
   await app.extensions.invoke(
     'automations',
     'update',

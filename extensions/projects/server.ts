@@ -74,7 +74,24 @@ function checkoutName(name: string, root: string | undefined) {
   return worktree ? `${worktree[1]} #${worktree[2]}` : name
 }
 
+/** Each project's port on the tailnet by its root, from the registry the tailscale extension keeps. */
+async function tailnetPorts(host: ExtensionHost) {
+  type Registry = { ports?: Record<string, { port?: unknown }> }
+  const registry = await readJson<Registry>(
+    join(host.userHome, '.ultimate', 'tailscale.json'),
+    {},
+  ).catch((): Registry => {
+    // Without a readable registry nothing is published on the tailnet: instances are reached over loopback only.
+    return {}
+  })
+  const ports: Record<string, number> = {}
+  for (const [root, entry] of Object.entries(registry.ports ?? {}))
+    if (typeof entry?.port === 'number') ports[root] = entry.port
+  return ports
+}
+
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
+  const tailnet = await tailnetPorts(host)
   return Promise.all(
     (await host.projects()).flatMap(({ name, root, running, current }) => {
       // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
@@ -88,6 +105,7 @@ export async function list(host: ExtensionHost, signal: AbortSignal): Promise<Ru
             url,
             current,
             ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
+            ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
             ...(current ? await own(host) : await counts(name, url, signal)),
           }
         })(),
