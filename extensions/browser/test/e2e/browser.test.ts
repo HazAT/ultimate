@@ -1,9 +1,9 @@
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { ToolExecutionApi } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../../../server/harness.ts'
-import browserExtension from '../../server.ts'
+import browserExtension, { browserBinary } from '../../server.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { groupAlive } from '../../../../lib/process-group.ts'
 import { removeTemp, temp, until } from '../../../../test/helpers.ts'
@@ -44,6 +44,13 @@ it('kills a browser that drops its connection and keeps running, without a notic
 
 it('times out a hung step, closes its page and keeps later calls working', async () => {
   const directory = await temp('ultimate-browser-timeout-')
+  // Under load a cold launch outlasted the call's 1 s timeoutMs and failed it before its first step.
+  // A launch slower than timeoutMs keeps that deterministic.
+  const slowChrome = join(directory, 'slow-chrome')
+  await writeFile(slowChrome, `#!/bin/sh\nsleep 1.5\nexec '${await browserBinary()}' "$@"\n`, {
+    mode: 0o755,
+  })
+  vi.stubEnv('ULTIMATE_CHROMIUM', slowChrome)
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
   const host = {
@@ -74,6 +81,7 @@ it('times out a hung step, closes its page and keeps later calls working', async
       expect(next.text).toContain('Step 1: OK \\"Hang\\"')
     }
   } finally {
+    vi.unstubAllEnvs()
     for (const close of closers) await close()
     await removeTemp(directory)
   }
