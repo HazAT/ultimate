@@ -308,8 +308,8 @@ function Switcher() {
         >
           {current ? (
             <>
-              <span className="size-1.5 rounded-full bg-brand" />
-              {name(current)} · {port(current.url)}
+              <span className="size-1.5 shrink-0 rounded-full bg-brand" />
+              <span className="max-w-16 truncate">{name(current)}</span> · {port(current.url)}
             </>
           ) : (
             <span className="max-md:hidden">
