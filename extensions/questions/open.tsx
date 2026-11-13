@@ -37,12 +37,15 @@ export const keyCard = (conversation: number | undefined, messages: readonly Mes
 
 /**
  * What the user did on cards whose message no longer waits on them is dropped: answered, dismissed, or settled for
- * them by @ultimate, also from another window. The same object when nothing settled, so it writes nothing.
+ * them by @ultimate, also from another window. Cards of another source (keys not `message:`) are not this log's to
+ * judge and stay. The same object when nothing settled, so it writes nothing.
  */
 export function forgetSettled(cards: Record<string, CardState>, messages: readonly Message[]) {
   const open = new Set(
     messages.flatMap((message) => (waitsOnUser(message) ? [`message:${message.id}`] : [])),
   )
-  const kept = Object.entries(cards).filter(([card]) => open.has(card))
+  const kept = Object.entries(cards).filter(
+    ([card]) => !card.startsWith('message:') || open.has(card),
+  )
   return kept.length === Object.keys(cards).length ? cards : Object.fromEntries(kept)
 }

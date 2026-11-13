@@ -17,6 +17,8 @@ export type InboxItem = {
   at: number
   /** The conversation it belongs to: the row shows it and the reading pane offers "Open in branch". */
   conversation?: number
+  /** Where it comes from, drawn where a question's asker goes (another project's tile and name), instead of the conversation. */
+  from?: ReactNode
   /** The row's short kind tag, as `question` or `preview` for questions. */
   tag: string
   title: string

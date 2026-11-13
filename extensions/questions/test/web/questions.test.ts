@@ -64,4 +64,12 @@ describe('what the user did on a card', () => {
   it('stays, as the same object, while every message still waits on the user', () => {
     expect(forgetSettled(cards, [open, { ...open, id: 6 }])).toBe(cards)
   })
+
+  it("stays when it is another source's card, which no local message settles", () => {
+    const theirs = { ...cards, 'my-source:6': EMPTY_CARD }
+    expect(forgetSettled(theirs, [open, { ...open, id: 6, state: 'answered' }])).toEqual({
+      'message:5': EMPTY_CARD,
+      'my-source:6': EMPTY_CARD,
+    })
+  })
 })

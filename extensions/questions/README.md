@@ -56,6 +56,12 @@ What the user picked and typed on a card lives in durable UI state, by message (
 surface for another, a reload or another window or device shows it again where they left it; it goes as soon as the
 message settles (answered, dismissed, or settled for them by @ultimate).
 
+The same card answers questions from elsewhere (another project's, through an Inbox item): `QuestionsCard` from
+`ui.tsx` takes `card` (a key not starting with `message:`, such as `my-source:12`), the `questions`, `keys`, and
+`submit`, `reply` and `dismiss` callbacks that send it; a rejection shows on the card. Its picks live under its key in
+the same state and go once its answer or dismissal went through; the sweep of settled messages leaves keys that are
+not `message:` alone.
+
 ## Where open questions wait
 
 The Inbox (`extensions/inbox`) lists every message that waits on the user, oldest first, and shows this card under the
