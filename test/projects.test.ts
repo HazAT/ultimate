@@ -7,7 +7,8 @@ import { context } from '../server/harness.ts'
 
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 afterEach(async () => {
-  for (const server of servers.splice(0)) await server.close()
+  // In parallel, like the other server tests: two closes in a row overran the 5 s hook under load.
+  await Promise.all(servers.splice(0).map((server) => server.close()))
 })
 
 it('keeps stores local while exposing projects, conversations and live URLs through the host', async () => {

@@ -8,8 +8,11 @@ import { writeSecret } from '../../store.ts'
 const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 afterEach(async () => {
-  for (const server of servers.splice(0)) await server.close()
-  for (const directory of homes.splice(0)) await removeTemp(directory)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's homes.
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  for (const server of closing) await server.close()
+  for (const directory of taken) await removeTemp(directory)
 })
 async function home() {
   const value = await temp()

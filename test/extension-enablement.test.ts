@@ -13,8 +13,11 @@ const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 // Tests run concurrently, each on its own server; close them all once the file is done.
 afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  for (const home of homes.splice(0)) await removeTemp(home)
+  // Capture both lists before close can yield to another test's setup.
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  await Promise.all(closing.map((server) => server.close()))
+  for (const home of taken) await removeTemp(home)
 })
 async function fixture(settings?: string) {
   const home = await temp()
