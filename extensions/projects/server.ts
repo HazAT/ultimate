@@ -65,6 +65,15 @@ function repoOf(root: string | undefined) {
   return repos.get(root) ?? undefined
 }
 
+/**
+ * A branch's checkout (`<home>/worktrees/<id>`, as previews run) is named for its project and that conversation,
+ * `ultimate #586869`, as the sidebar heads it, so it shows and colours with its project rather than as a bare number.
+ */
+function checkoutName(name: string, root: string | undefined) {
+  const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(root ?? '')
+  return worktree ? `${worktree[1]} #${worktree[2]}` : name
+}
+
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   return Promise.all(
     (await host.projects()).flatMap(({ name, root, running, current }) => {
@@ -75,7 +84,7 @@ export async function list(host: ExtensionHost, signal: AbortSignal): Promise<Ru
         (async () => {
           const repo = repoOf(root)
           return {
-            name,
+            name: checkoutName(name, root),
             url,
             current,
             ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),

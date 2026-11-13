@@ -183,32 +183,38 @@ function Row({
           pending && 'animate-pulse-dot',
         )}
       />
+      {/* The swatch's own box: the indicators centre on it with auto margins, never a transform, so they land on whole
+          pixels on the column's axis. A family's inner segments leave a hairline above and below. */}
       <span
         className={cn(
-          'relative flex h-full w-11 shrink-0 items-stretch justify-center',
+          'flex h-full w-11 shrink-0 justify-center',
           !first && 'pt-px',
           !last && 'pb-px',
         )}
       >
-        <ProjectSwatch
-          className={cn(
-            'transition-[width,opacity] duration-150',
-            here || pending ? 'w-5' : 'w-3 opacity-70 group-hover:w-4 group-hover:opacity-100',
-            first && 'rounded-t-md',
-            last && 'rounded-b-md',
-            pending && 'animate-pulse-dot',
+        <span className="relative flex h-full w-5 justify-center">
+          <ProjectSwatch
+            className={cn(
+              'h-full transition-[width,opacity] duration-150',
+              here || pending ? 'w-5' : 'w-3 opacity-70 group-hover:w-4 group-hover:opacity-100',
+              // The project this tab shows: a ring set off from its swatch, clear on a purple one too.
+              here && 'outline-1 outline-offset-2 outline-foreground/45',
+              first ? 'rounded-t-md' : 'rounded-t-[1px]',
+              last ? 'rounded-b-md' : 'rounded-b-[1px]',
+              pending && 'animate-pulse-dot',
+            )}
+            family={family}
+            folder={project.name}
+          />
+          {!wide && questions > 0 && (
+            <span className="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
+              {questions}
+            </span>
           )}
-          family={family}
-          folder={project.name}
-        />
-        {!wide && questions > 0 && (
-          <span className="absolute top-1/2 left-1/2 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] font-semibold text-black tabular-nums ring-2 ring-sidebar">
-            {questions}
-          </span>
-        )}
-        {!wide && busy && questions === 0 && (
-          <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
-        )}
+          {!wide && busy && questions === 0 && (
+            <span className="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
+          )}
+        </span>
       </span>
       {wide && (
         <span className="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">

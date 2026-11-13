@@ -4,10 +4,13 @@ import { cn } from '@/sdk'
 import type { GithubRepo } from '../workspaces/refs.ts'
 
 /**
- * The palette projects draw from: muted cool hues from sage through teal and blue to violet, one family of colour.
- * Warm hues are left out, so a project's colour never reads as amber (waiting on the user) or red (failed).
+ * The palette other projects draw from: muted cool hues from sage through teal to blue, one family of colour. Warm hues
+ * are left out, so nothing reads as amber (waiting on the user) or red (failed), and so is violet: purple is Ultimate's.
  */
-const HUES = [150, 172, 194, 216, 238, 260, 282, 304]
+const HUES = [145, 162, 179, 196, 213, 230, 247]
+/** Ultimate's own family takes the brand's hue, a little more saturated than the rest. */
+const BRAND = { hue: 300, chroma: 0.11 }
+const CHROMA = 0.06
 /** Shades a project takes next to others of its family: lightness steps, with a nudge of hue. */
 const SHADES = [
   { l: 0, h: 0 },
@@ -23,32 +26,39 @@ const hash = (text: string) => {
   return value
 }
 
-/** The family a folder belongs to: its first word, so `ultimate`, `ultimate-eval` and `ultimate-fleet` share one. */
-export const stemOf = (folder: string) => folder.toLowerCase().split(/[-_.\s]+/)[0] ?? ''
+/** The family a name belongs to: its first word, so `ultimate`, `ultimate-eval` and `ultimate-fleet` share one. */
+export const stemOf = (name: string) => name.toLowerCase().split(/[-_.\s]+/)[0] ?? ''
 
 /**
- * A project's colour from its folder name, the same on every instance and page: its family's hue from the palette and
- * a neighbouring shade of it. The stem itself takes the base shade; a sibling (`ultimate-eval`) takes the next by its
- * place among the `family` given, sorted, so siblings never share one, else a shade its suffix hashes to.
+ * A colour for a name (a project's folder; a machine's name works too), the same on every page: its family's hue and a
+ * neighbouring shade of it, as oklch parts. The `ultimate` family is purple. The stem itself takes the base shade; a
+ * sibling (`ultimate-eval`) the next by its place among the `family` given, sorted, so siblings never share one.
  */
-function colourOf(folder: string, family?: readonly string[]) {
-  const name = folder.toLowerCase()
-  const stem = stemOf(name)
-  const siblings = [...new Set((family ?? []).map((item) => item.toLowerCase()))]
+export function colourOf(name: string, family: readonly string[] = []) {
+  const key = name.toLowerCase()
+  const stem = stemOf(key)
+  const siblings = [...new Set(family.map((item) => item.toLowerCase()))]
     .filter((item) => item !== stem && stemOf(item) === stem)
     .toSorted()
-  const place = siblings.indexOf(name)
-  const step =
-    name === stem
-      ? 0
-      : 1 + ((place >= 0 ? place : hash(name.slice(stem.length))) % (SHADES.length - 1))
-  const shade = SHADES[step]
-  return { '--swatch-h': HUES[hash(stem) % HUES.length] + shade.h, '--swatch-l': shade.l }
+  const place = siblings.indexOf(key)
+  const shade =
+    SHADES[
+      key === stem
+        ? 0
+        : 1 + ((place >= 0 ? place : hash(key.slice(stem.length))) % (SHADES.length - 1))
+    ]
+  const brand = stem === 'ultimate'
+  return {
+    hue: (brand ? BRAND.hue : HUES[hash(stem) % HUES.length]) + shade.h,
+    chroma: brand ? BRAND.chroma : CHROMA,
+    /** Added to the theme's base lightness. */
+    lightness: shade.l,
+  }
 }
 
 /**
- * A project's swatch: a slim bar of its colour, no letters. The project rail stacks them into one quiet column, a
- * family's bars a hairline apart; the sidebar's header leads with the same one, so a project looks alike in both.
+ * A project's swatch: a slim bar of its colour, no letters. The project rail stacks them into one quiet column; the
+ * sidebar's header leads with the same one, so a project looks alike in both.
  */
 export function ProjectSwatch({
   folder,
@@ -61,15 +71,16 @@ export function ProjectSwatch({
   family?: readonly string[]
   className?: string
 }) {
+  const { hue, chroma, lightness } = colourOf(folder, family)
   return (
     <span
       aria-hidden
       className={cn(
-        'block shrink-0 bg-[oklch(calc(0.74_+_var(--swatch-l))_0.06_var(--swatch-h))] transition-opacity dark:bg-[oklch(calc(0.6_+_var(--swatch-l))_0.06_var(--swatch-h))]',
+        'block shrink-0 bg-[oklch(calc(0.74_+_var(--swatch-l))_var(--swatch-c)_var(--swatch-h))] transition-opacity dark:bg-[oklch(calc(0.6_+_var(--swatch-l))_var(--swatch-c)_var(--swatch-h))]',
         className,
       )}
       data-project-swatch={folder}
-      style={colourOf(folder, family) as CSSProperties}
+      style={{ '--swatch-h': hue, '--swatch-c': chroma, '--swatch-l': lightness } as CSSProperties}
     />
   )
 }
