@@ -24,6 +24,34 @@ import { Metadata } from '../../../server/metadata.ts'
 import { Marks } from '../../conversations/api.ts'
 import { discoverAgents, parseDefinition, saveDefinition } from '../../../lib/agents.ts'
 
+it('keeps an edit a turn applied while a standing call was waiting to commit', async () => {
+  const { service, host, file, hold } = await fixture()
+  const id = await service.standing('x', ctx)
+  const gate = hold()
+  const refresh = service.standing('x', ctx)
+  await gate.reached
+  await writeFile(file, definition('Edited'))
+  await host.harness.commit((tx) => configure(tx, id, { instructions: 'Edited' }), ctx)
+  gate.release()
+  expect(await refresh).toBe(id)
+  expect(await (await host.harness.conversation(id, ctx))!.agent(ctx)).toMatchObject({
+    instructions: 'Edited',
+  })
+})
+
+it('retires the agent when its definition stops being resident while a standing call was waiting to commit', async () => {
+  const { service, host, file, hold } = await fixture()
+  const id = await service.standing('x', ctx)
+  const gate = hold()
+  const refresh = service.standing('x', ctx)
+  await gate.reached
+  await writeFile(file, definition('Original').replace('resident: true', 'resident: false'))
+  gate.release()
+  await expect(refresh).rejects.toThrow('Unknown standing agent @x')
+  expect(await host.harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)).toEqual({})
+  expect(await host.harness.snapshot(Metadata, id, ctx)).not.toHaveProperty('label')
+})
+
 const ctx = BACKGROUND_CONTEXT
 const directories: string[] = []
 const opened: OpenHost[] = []
@@ -62,9 +90,40 @@ async function fixture() {
   let host!: OpenHost
   let service!: SubagentsService
   const openers: (() => Promise<void>)[] = []
+  // Holds the next commit the extension makes until `release`, so a test edits a definition between a call's start
+  // and its commit.
+  let held: { reached: () => void; release: Promise<void> } | undefined
+  const hold = () => {
+    let reached!: () => void
+    let release!: () => void
+    const gate = {
+      reached: new Promise<void>((resolve) => (reached = resolve)),
+      release: new Promise<void>((resolve) => (release = resolve)),
+    }
+    held = { reached, release: gate.release }
+    return { reached: gate.reached, release }
+  }
+  const gated = (): OpenHost['harness'] =>
+    new Proxy(host.harness, {
+      get(target, property) {
+        if (property !== 'commit') {
+          const value = Reflect.get(target, property, target)
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+        return async (...args: Parameters<typeof target.commit>) => {
+          const gate = held
+          held = undefined
+          if (gate) {
+            gate.reached()
+            await gate.release
+          }
+          return target.commit(...args)
+        }
+      },
+    })
   const backend = subagents({
     ...prepared,
-    harness: () => host.harness,
+    harness: gated,
     metadata: Metadata,
     projectSettings: async () => ({}),
     implement: (_api, value) => {
@@ -92,7 +151,7 @@ async function fixture() {
     opened.push(host)
     return host
   }
-  return { path, prepared, host, service, file, reopen, open }
+  return { path, prepared, host, service, file, reopen, open, hold }
 }
 
 it('lists definitions only to agents that can use them', async () => {
