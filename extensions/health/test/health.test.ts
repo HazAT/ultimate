@@ -42,6 +42,17 @@ it('classifies failures as auth, capacity or transient', () => {
   expect(failureKind('request failed')).toBe('transient')
 })
 
+it('reports a 402 streak as a billing failure, not a broken login', async () => {
+  // OpenRouter's in_flight_budget_exhausted came back as 402 and the setup popover said "Log in again".
+  const home = await temp()
+  expect(failureKind('402 Payment Required')).toBe('billing')
+  await record(home, 'p', { lastOk: NOW })
+  for (let i = 1; i <= 3; i++) await record(home, 'p', { lastFail: NOW + i, error: '402' })
+  expect(await readHealth(home, NOW + 4)).toMatchObject([
+    { provider: 'p', state: 'failing', cause: 'billing', error: '402' },
+  ])
+})
+
 it('counts a provider failing only after an auth error or a transient streak', async () => {
   const home = await temp()
   const states = async () => (await readHealth(home)).map((entry) => entry.state)
@@ -170,6 +181,7 @@ it('records real responses in the machine’s health file, merging concurrent wr
     {
       provider: 'anthropic',
       state: 'failing',
+      cause: 'auth',
       lastOk: NOW,
       lastFail: NOW + 1,
       lastUsed: NOW + 1,

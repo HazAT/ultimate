@@ -5,6 +5,8 @@ import { defineEvent } from '../../shared/events.ts'
 export interface ProviderHealth {
   provider: string
   state: 'ok' | 'failing' | 'unknown'
+  /** Why it is failing: its login was refused, its account hit a credit limit (402), or its calls kept failing. */
+  cause?: 'auth' | 'billing' | 'transient'
   /** The last successful call. */
   lastOk?: number
   /** The last failed call. */
