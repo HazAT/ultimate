@@ -36,6 +36,14 @@ const Requests = defineDoc<{ ids: Record<string, number> }>({
   fork: 'initial',
   initial: () => ({ ids: {} }),
 })
+/** The id of the message the tool call `callId` of task `taskId` sent, if its receipt exists. */
+export async function receiptOf(
+  host: ExtensionHost,
+  call: { taskId: TaskId; callId: string },
+  ctx: Context,
+) {
+  return (await host.harness().snapshot(Sent, call.taskId, ctx))?.ids[call.callId]
+}
 /** An answer in a few characters: its picks (`1a 2b,c 3`) when the card numbered them, else its first line. */
 const answerSummary = (text: string) => {
   const lines = text.split('\n').filter((line) => line.trim())
