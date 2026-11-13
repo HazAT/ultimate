@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, cn, defineWebExtension, useAction, useExtensions, useViewport } from '@/sdk'
+import { shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
@@ -18,8 +19,6 @@ function monogram(name: string) {
   const words = name.split(/[-_.\s]+/).filter(Boolean)
   return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toLowerCase()
 }
-
-const port = (url: string) => new URL(url).port || '80'
 
 /**
  * The project this tab is navigating to. The old page stays until the new one paints, which takes seconds while the
@@ -112,9 +111,12 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
   const pending = useOpening() === project.url
   const busy = (project.busy ?? 0) > 0
   const questions = project.questions ?? 0
+  const href = here ? undefined : target(project, location)
+  const unreachable = !here && !href
   const title = [
     project.name,
-    `:${port(project.url)}`,
+    shownPort(project, location),
+    unreachable && 'not on the tailnet',
     questions && `${questions} for you`,
     busy && 'working',
     here && 'this tab',
@@ -128,15 +130,17 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
       aria-label={title}
       className={cn(
         'group relative flex h-9 w-full items-center text-left outline-none',
-        here ? 'cursor-default' : 'cursor-pointer',
+        here || unreachable ? 'cursor-default' : 'cursor-pointer',
+        unreachable && 'opacity-45',
         wide && !here && 'hover:bg-sidebar-accent/50',
         wide && here && 'bg-brand/10',
       )}
-      href={here ? undefined : `${project.url}/`}
+      href={href}
       onClick={(event) => {
         // A plain click navigates this tab: mark it. Mod-click and middle-click open another tab and leave this one.
         if (
           here ||
+          unreachable ||
           event.button !== 0 ||
           event.metaKey ||
           event.ctrlKey ||
@@ -194,7 +198,7 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
               pending ? 'text-brand' : 'text-muted-foreground/60',
             )}
           >
-            {pending ? 'opening…' : `:${port(project.url)}`}
+            {pending ? 'opening…' : shownPort(project, location)}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
             {busy && <BusyDot />}
