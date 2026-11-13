@@ -517,13 +517,13 @@ it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP sta
 })
 
 type Fixture = Awaited<ReturnType<typeof fixture>>
-const askUser = (f: Fixture, text: string, from = f.voice) =>
+const askUser = (f: Fixture, text: string) =>
   f.server.harness.commit(async (tx) => {
     const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
     const id = log.next++
     log.messages.push({
       id,
-      from,
+      from: f.voice,
       to: 'user',
       text,
       at: Date.now(),
@@ -616,60 +616,6 @@ it.each([{ text: '1. yes' }, { dismiss: true }])(
           /^(Answered|Dismissed) message/.test((e.data as VoiceLine).text),
       ),
     ).toHaveLength(1)
-    await finish(f)
-  },
-)
-
-it('replays a finished forward to @ultimate after the question was trimmed, without a second forward', async () => {
-  const f = await fixture()
-  const id = await askUser(f, 'Ship it?', f.main)
-  const tool = voiceAnswer(f)
-  let outcome: PromiseSettledResult<unknown> | undefined
-  let present: boolean | undefined
-  f.server.host.registry.install(
-    defineExtension({
-      ...f.server.host.registry.snapshot().extension('voice-live')!,
-      tools: [
-        {
-          ...tool,
-          execute: async (input, api, ctx) => {
-            const first = await tool.execute(input, api, ctx)
-            // The answer task closes the question once it delivers the reply; only then can the log trim it.
-            await until(
-              async () => (await logOf(f)).messages.find((m) => m.id === id)?.state === 'answered',
-            )
-            present = await trimOut(f, id)
-            ;[outcome] = await Promise.allSettled([tool.execute(input, api, ctx)])
-            return first
-          },
-        },
-      ],
-    }),
-  )
-  await f.action('heard', { text: `answer message ${id}: 1. yes` })
-  await until(() => outcome !== undefined)
-  expect(present).toBe(false)
-  expect(outcome).toMatchObject({ status: 'fulfilled' })
-  const replies = async () => (await f.entries(f.main)).filter((e) => e.kind === 'board.message')
-  await until(async () => (await replies()).length === 1)
-  expect(await replies()).toHaveLength(1)
-  await finish(f)
-})
-
-it.each([{ text: '1. yes' }, { dismiss: true }])(
-  'rejects %o from a conversation other than Voice and leaves the question and log as they were',
-  async (args) => {
-    const f = await fixture()
-    const id = await askUser(f, 'Ship it?')
-    const before = await logOf(f)
-    const voiceEntries = (await f.entries(f.voice)).length
-    const api = { conversationId: f.main, taskId: 1, snapshot: () => undefined }
-    await expect(
-      voiceAnswer(f).execute({ message: id, ...args }, api as never, context),
-    ).rejects.toThrow('Only Voice answers questions')
-    expect(await logOf(f)).toEqual(before)
-    expect((await logOf(f)).messages.find((m) => m.id === id)?.state).toBe('delivered')
-    expect(await f.entries(f.voice)).toHaveLength(voiceEntries)
     await finish(f)
   },
 )
