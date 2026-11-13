@@ -63,17 +63,22 @@ const hooks = (conversation: number) => ({
 })
 
 /** Install the hooks for bash call `api` in `execution`; they log its commits to `log` when given. */
-export function prepareBash(
+export async function prepareBash(
   execution: BashExecution,
   api: Pick<ToolExecutionApi, 'conversationId'>,
   log?: string,
 ) {
+  // Test commands inherit the environment too: their fixture repositories must not receive attribution or events.
+  const worktree = await git(execution.cwd, 'rev-parse', '--show-toplevel').catch(() => '')
+  if (!worktree.trim()) return
+  execution.env.ULTIMATE_COMMIT_WORKTREE = worktree.trim()
   let count = Number(process.env.GIT_CONFIG_COUNT ?? 0)
   for (const [event, command] of Object.entries(hooks(api.conversationId))) {
     execution.env[`GIT_CONFIG_KEY_${count}`] = `hook.ultimate-${event}.event`
     execution.env[`GIT_CONFIG_VALUE_${count++}`] = event
     execution.env[`GIT_CONFIG_KEY_${count}`] = `hook.ultimate-${event}.command`
-    execution.env[`GIT_CONFIG_VALUE_${count++}`] = command
+    execution.env[`GIT_CONFIG_VALUE_${count++}`] =
+      `[ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$ULTIMATE_COMMIT_WORKTREE" ] || exit 0; ${command}`
   }
   execution.env.GIT_CONFIG_COUNT = String(count)
   if (log) execution.env.ULTIMATE_COMMIT_LOG = log
