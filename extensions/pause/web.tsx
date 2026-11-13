@@ -32,6 +32,10 @@ const statusButton =
 
 const tasks = (count: number) => `${count} ${count === 1 ? 'task' : 'tasks'}`
 
+/** A time today or tomorrow, as the status line says it: `14:07`. */
+const clock = (at: number) =>
+  new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
 /** What the provider said: the upstream message a relay wraps (Claude Code's), a JSON body's message, or the error. */
 const said = (error: string) =>
   /upstream said: (.+)\)$/s.exec(error)?.[1] ??
@@ -128,8 +132,16 @@ function Popup({
             </div>
             <div className="text-muted-foreground">
               <span className="text-foreground">{held.source}</span> paused Ultimate
-              {state.since !== undefined && <> · {lasted(now - state.since)} ago</>}: nothing starts
-              until you press Play.
+              {state.since !== undefined && <> · {lasted(now - state.since)} ago</>}:{' '}
+              {state.autoPlayAt !== undefined ? (
+                <span data-pause-resumes>
+                  plays by itself at{' '}
+                  <span className="text-foreground">{clock(state.autoPlayAt)}</span> (in{' '}
+                  {lasted(Math.max(0, state.autoPlayAt - now))}), or press Play.
+                </span>
+              ) : (
+                'nothing starts until you press Play.'
+              )}
             </div>
           </div>
         )}
@@ -238,6 +250,9 @@ function Item() {
       .finally(() => setBusy(false))
   }
   const pausing = state.paused && state.running.length > 0
+  const resumes = state.autoPlayAt !== undefined && !pausing && (
+    <span data-pause-until> · until {clock(state.autoPlayAt)}</span>
+  )
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -259,11 +274,13 @@ function Item() {
             <>
               <PauseIcon className="size-3" />
               Rate limited<span className="max-md:hidden"> · {state.limit.provider}</span>
+              {resumes}
             </>
           ) : state.held ? (
             <>
               <PauseIcon className="size-3" />
               Paused<span className="max-md:hidden"> · {state.held.source}</span>
+              {resumes}
             </>
           ) : state.paused ? (
             <>
@@ -454,7 +471,7 @@ function Limit({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** A rate-limit pause that played by itself, in @ultimate's transcript: one quiet divider saying when. */
+/** A pause that played by itself, in @ultimate's transcript: one quiet divider saying when. */
 function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
   const data = (entry.data ?? {}) as Partial<AutoPlayed>
   if (data.since === undefined || data.at === undefined) return null
@@ -467,8 +484,11 @@ function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
         <PlayIcon className="size-3 shrink-0 text-warning" />
         <span className="text-warning">Played by itself</span>
         <span className="truncate">
-          · {lasted(data.at - data.since)} after the rate limit ·{' '}
-          {new Date(data.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          · {lasted(data.at - data.since)}{' '}
+          {data.held && data.minutes === undefined
+            ? `held by ${data.held.source}`
+            : 'after the rate limit'}{' '}
+          · {clock(data.at)}
         </span>
       </span>
     </div>

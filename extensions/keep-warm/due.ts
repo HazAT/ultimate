@@ -15,6 +15,11 @@ export type Activity = {
   inputAt?: number
   /** A ping failed after this request: none again until a newer one. */
   failedAfter?: number
+  /**
+   * A hold with an end paused Ultimate at this time (ms): the user waits for it to play, so their absence counts only
+   * up to it.
+   */
+  heldSince?: number
 }
 
 /** A ping failed at `failedAt` and no request renewed the cache since: a newer cached answer supersedes the failure. */
@@ -22,12 +27,13 @@ export const failing = (failedAt: number | undefined, lastRequest: number | unde
   failedAt !== undefined && (lastRequest === undefined || failedAt >= lastRequest)
 
 /**
- * Whether to ping now: the cache is still warm but about to expire, the user wrote within `IDLE_STOP`, and no ping
- * failed since the last request. A cache already past its hour is cold; a ping would only pay to rebuild it.
+ * Whether to ping now: the cache is still warm but about to expire, the user wrote within `IDLE_STOP` (before a hold
+ * with an end began, while one holds), and no ping failed since the last request. A cache already past its hour is
+ * cold; a ping would only pay to rebuild it.
  */
-export function due({ now, lastRequest, inputAt, failedAfter }: Activity) {
+export function due({ now, lastRequest, inputAt, failedAfter, heldSince }: Activity) {
   if (lastRequest === undefined || inputAt === undefined) return false
   if (failing(failedAfter, lastRequest)) return false
   const age = now - lastRequest
-  return age >= LEAD && age < TTL && now - inputAt < IDLE_STOP
+  return age >= LEAD && age < TTL && Math.min(now, heldSince ?? now) - inputAt < IDLE_STOP
 }

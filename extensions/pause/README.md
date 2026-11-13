@@ -9,11 +9,12 @@ Pause the whole Ultimate host and continue it with Play. This is a soft pause: r
 
 ## An extension's hold
 
-`PauseApi` (`api.ts`) gives other extensions `hold({ source, reason })`: the extension that holds the host, by name (its own, e.g. `guard`), and one short line saying why. It records the same pause document a manual Pause does, so the status line reads `⏸ Paused · guard` and its popover the reason, and Play (the status line's, ⌘K's, or the popover's) continues as usual. The Play note on each held run names it too: "Paused for 12m (guard: the day's spend passed $5.00); the run continued after Play."
+`PauseApi` (`api.ts`) gives other extensions `hold({ source, reason, until? })`: the extension that holds the host, by name (its own, e.g. `guard`), and one short line saying why. It records the same pause document a manual Pause does, so the status line reads `⏸ Paused · guard` and its popover the reason, and Play (the status line's, ⌘K's, or the popover's) continues as usual. The Play note on each held run names it too: "Paused for 12m (guard: the day's spend passed $5.00); the run continued after Play."
 
 - A hold on a host that is already paused joins that pause: it changes neither its start nor the explanation already shown (the first rate limit or hold explains it), so holding again after each spend check adds nothing. Only a new pause after a Play starts a new start.
 - Like a pause it is soft: running tasks finish, nothing new starts, and messages queue until Play.
-- Only a rate limit's pause plays by itself. A pause the user pressed, and one an extension holds, wait for Play; `pause`, `play` and `autoPlay` stay the user's alone, so no agent unpauses into a rate limit or out of a spend cap.
+- **`until`** (ms) is when what the hold waits for ends by itself, such as a usage window's reset. The pause then plays by itself 2 minutes after it (so the first request lands in the new window even when clocks differ), with the same timer, `pause.autoplay` divider and "played by itself" run notes as a rate limit's. The status line reads `⏸ Paused · plans · until 14:07`, and its popover "plays by itself at 14:07 (in 1h 3m), or press Play". It plays only once every cause has an end, at the latest of them (a later `until` joining a timed hold moves its end): a Pause the user pressed, a hold without `until`, or a rate limit without **Play by itself** joining it waits for Play. While only such holds keep the host paused, `heldSince()` returns the pause's start, so a timer that keeps something warm for the resume may run (keep-warm's cache ping); it is undefined otherwise.
+- A hold without `until` never plays by itself, like a pause the user pressed; `pause`, `play` and `autoPlay` stay the user's alone, so no agent unpauses into a rate limit or out of a spend cap.
 
 ## Rate limits
 
@@ -35,7 +36,7 @@ Automation fires are scheduler tasks, so the hold stops them. Timers that start 
 
 ## UI
 
-- Status line: a quiet `⏸ Pause`; while work still runs `⏳ Pausing… 3 tasks running` (amber), its popover listing each task with its conversation, what it runs and its age; then `⏸ Paused · safe` with `▶ Play` next to it. A rate limit shows `⏸ Rate limited · claude-code`, its popover the provider, model and upstream message; an extension's hold shows `⏸ Paused · guard`, its popover headed `Held by guard` with the reason.
+- Status line: a quiet `⏸ Pause`; while work still runs `⏳ Pausing… 3 tasks running` (amber), its popover listing each task with its conversation, what it runs and its age; then `⏸ Paused · safe` with `▶ Play` next to it. A rate limit shows `⏸ Rate limited · claude-code`, its popover the provider, model and upstream message; an extension's hold shows `⏸ Paused · guard`, its popover headed `Held by guard` with the reason. A pause that plays by itself adds its time: `· until 14:07` (the source is hidden on a phone, the time is not).
 - Under the composer while paused: `Paused — your message runs on Play`.
 - ⌘K: **Pause** and **Play**.
 - The Play note shows as one amber divider in the transcript.
