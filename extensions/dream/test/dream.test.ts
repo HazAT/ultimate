@@ -31,8 +31,11 @@ const openedHosts: OpenHost[] = []
 /** The extensions' close callbacks: automations' minute timer stops before its harness closes. */
 const closers: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const close of closers.splice(0)) await close()
-  for (const opened of openedHosts.splice(0)) await opened.close()
+  // Both lists before the first await, so a hook past its timeout cannot close the next test's hosts.
+  const closing = closers.splice(0)
+  const hosts = openedHosts.splice(0)
+  for (const close of closing) await close()
+  for (const opened of hosts) await opened.close()
   vi.useRealTimers()
 })
 
