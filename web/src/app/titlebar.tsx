@@ -39,6 +39,36 @@ export function projectTitle(system: SystemInfo | undefined) {
     : `preview · ${project}`
 }
 
+/** A folder name as a display name: `omarchy-config` → `Omarchy Config`; each word's first letter capitalised. */
+export function prettyName(folder: string) {
+  return folder
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+/**
+ * The project as the sidebar heads it: its folder's `prettyName` as the title, and under it its path from home, or
+ * `#<worktree>` in a branch's checkout; a server outside `~/.ultimate/projects` says it is a preview.
+ */
+export function projectHeading(system: SystemInfo | undefined) {
+  if (!system) return undefined
+  const { home } = system.machine
+  const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(
+    system.project.root,
+  )
+  const path = worktree ? `#${worktree[2]}` : shortenPath(system.project.root, { home })
+  const folder = worktree?.[1] ?? system.project.name
+  return {
+    folder,
+    name: prettyName(folder),
+    path: system.persistence.path.startsWith(`${home}/.ultimate/projects/`)
+      ? path
+      : `preview · ${path}`,
+  }
+}
+
 /**
  * The project as the title bar's chip says it beside the wordmark: another project's name, a branch checkout's
  * `#<worktree>`; nothing for Ultimate's own checkout, whose name the wordmark already says.

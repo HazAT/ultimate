@@ -13,3 +13,4 @@ export const UnderUltimate = definePoint<number | undefined, ReactNode>('sidebar
  * Input is @ultimate's conversation id.
  */
 export const Unlisted = definePoint<number | undefined, ReadonlySet<number>>('sidebar.unlisted')
+export { GithubMark, ProjectTile, RepoLabel } from './tile.tsx'

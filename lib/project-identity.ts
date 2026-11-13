@@ -1,4 +1,39 @@
+import { exec } from './exec.ts'
 import { git } from './git.ts'
+
+/** A GitHub repository: its key, `<owner>/<repo>` as GitHub spells it, its URL and, when `gh` knew it, visibility. */
+export type GithubRepo = {
+  key: string
+  name: string
+  url: string
+  visibility?: 'public' | 'private' | 'internal'
+}
+
+/**
+ * The repository behind a `github.com/<owner>/<repo>` key with its visibility, which the URL does not tell: one
+ * `gh repo view`, which asks the network, so callers cache it.
+ */
+export async function readGithubRepo(key: string): Promise<GithubRepo> {
+  const fallback: GithubRepo = { key, name: key.slice('github.com/'.length), url: `https://${key}` }
+  try {
+    const { stdout } = await exec(
+      'gh',
+      ['repo', 'view', fallback.name, '--json', 'nameWithOwner,visibility'],
+      { timeout: 15_000 },
+    )
+    const { nameWithOwner, visibility } = JSON.parse(stdout) as Record<string, unknown>
+    const lower = typeof visibility === 'string' ? visibility.toLowerCase() : undefined
+    return {
+      ...fallback,
+      name: typeof nameWithOwner === 'string' ? nameWithOwner : fallback.name,
+      visibility:
+        lower === 'public' || lower === 'private' || lower === 'internal' ? lower : undefined,
+    }
+  } catch {
+    // gh missing, signed out, offline or without access: the repository shows without saying who can see it.
+    return fallback
+  }
+}
 
 /** `github.com/<owner>/<repo>`, lowercased, for a GitHub SSH or HTTPS remote URL; undefined for any other. */
 export function projectKey(remote: string): string | undefined {

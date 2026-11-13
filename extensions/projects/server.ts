@@ -7,6 +7,8 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
+import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
+import type { GithubRepo } from '../../lib/project-identity.ts'
 import { postAction } from '../../lib/remote.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
@@ -43,19 +45,43 @@ async function counts(name: string, url: string, signal: AbortSignal) {
   return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}
 }
 
+/**
+ * Each project folder's GitHub repository, once known: read in the background on first sight (`git` here, then one
+ * `gh` call for its visibility) and kept for the process, so a poll never waits on the network.
+ */
+const repos = new Map<string, GithubRepo | null>()
+const reading = new Set<string>()
+function repoOf(root: string | undefined) {
+  if (!root) return undefined
+  if (!repos.has(root) && !reading.has(root)) {
+    reading.add(root)
+    // oxlint-disable-next-line typescript/no-floating-promises -- neither call rejects: githubRepo settles to undefined, readGithubRepo to the repository without its visibility.
+    void (async () => {
+      const key = await githubRepo(root)
+      repos.set(root, key ? await readGithubRepo(key) : null)
+      reading.delete(root)
+    })()
+  }
+  return repos.get(root) ?? undefined
+}
+
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   return Promise.all(
-    (await host.projects()).flatMap(({ name, running, current }) => {
+    (await host.projects()).flatMap(({ name, root, running, current }) => {
       // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
       const url = current ? host.system().process.url : running?.url
       if (!url) return []
       return [
-        (async () => ({
-          name,
-          url,
-          current,
-          ...(current ? await own(host) : await counts(name, url, signal)),
-        }))(),
+        (async () => {
+          const repo = repoOf(root)
+          return {
+            name,
+            url,
+            current,
+            ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
+            ...(current ? await own(host) : await counts(name, url, signal)),
+          }
+        })(),
       ]
     }),
   )

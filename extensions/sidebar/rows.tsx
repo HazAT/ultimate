@@ -192,7 +192,7 @@ function PhasedRow({
     <div
       className={cn(
         'group relative mx-2 flex items-center rounded-md transition-colors',
-        hasActivity ? 'h-[58px]' : hasMetadata ? 'h-11' : 'h-7',
+        hasActivity ? 'h-[62px]' : hasMetadata ? 'h-12' : 'h-8',
         shown ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50',
       )}
       data-conversation={conversation.id}
@@ -303,7 +303,7 @@ export function RowMenu({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         aria-label="Conversation actions"
-        className="invisible absolute right-1 bottom-1 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
+        className="invisible absolute right-1.5 bottom-1.5 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
       >
         <EllipsisIcon className="size-3.5" />
       </DropdownMenuTrigger>
@@ -394,7 +394,7 @@ export function StandingRow({
   return (
     <div
       className={cn(
-        'group relative mx-2 flex h-11 items-center rounded-md transition-colors',
+        'group relative mx-2 flex h-12 items-center rounded-md transition-colors',
         shown ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50',
       )}
       data-conversation={conversation?.id}
@@ -435,7 +435,7 @@ export function StandingRow({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             aria-label="Conversation actions"
-            className="invisible absolute right-1 bottom-1 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
+            className="invisible absolute right-1.5 bottom-1.5 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
           >
             <EllipsisIcon className="size-3.5" />
           </DropdownMenuTrigger>
@@ -512,7 +512,7 @@ function TaskedSubagentLine({
     <button
       aria-current={shown ? 'true' : undefined}
       className={cn(
-        'mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        'mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         shown && 'bg-sidebar-accent',
       )}
       data-child-conversation={conversation.id}
@@ -559,7 +559,7 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
         const done = epic.status === 'done'
         return (
           <button
-            className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-epic-line={id}
             data-ui="sidebar-row"
             onClick={epic.open}

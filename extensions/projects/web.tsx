@@ -1,23 +1,27 @@
 // The project switcher (`shell.rail`): every Ultimate running on this machine as a tile at the window's left edge.
 // Hover opens it over the app with names and ports; pin keeps it open beside the app. A tile is a link to that
 // instance's `/`, which opens its @ultimate. It steps aside for any other extension that fills `shell.rail`.
+import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { api, cn, defineWebExtension, useAction, useExtensions, useViewport } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  prettyName,
+  useAction,
+  useExtensions,
+  useViewport,
+} from '@/sdk'
+import { ProjectTile, RepoLabel } from '../sidebar/ui.tsx'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
-const RAIL = 52
-const WIDE = 232
+const RAIL = 56
+const WIDE = 272
 /** Live state every 4 s while the page is visible; the shared pin every 30 s. */
 const LIVE = 4_000
 const PIN = 30_000
-
-/** Two letters from the project name: initials of its words, else its first two letters. */
-function monogram(name: string) {
-  const words = name.split(/[-_.\s]+/).filter(Boolean)
-  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toLowerCase()
-}
 
 const port = (url: string) => new URL(url).port || '80'
 
@@ -88,23 +92,27 @@ function usePinned(off: boolean) {
   return [pinned ?? false, set] as const
 }
 
-function BusyDot({ className }: { className?: string }) {
+/** The project's identity under its name: its GitHub repository when known, and its port. */
+function Detail({ project, pending }: { project: RunningProject; pending: boolean }) {
+  if (pending) return <span className="text-brand">opening…</span>
   return (
-    <span className={cn('size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand', className)} />
+    <>
+      {project.repo && <RepoLabel className="min-w-0" repo={project.repo} />}
+      <span className="shrink-0 text-muted-foreground/50">:{port(project.url)}</span>
+    </>
   )
 }
 
-function QuestionBadge({ count, className }: { count: number; className?: string }) {
-  return (
-    <span
-      className={cn(
-        'flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 font-mono text-[9.5px] font-semibold text-background tabular-nums',
-        className,
-      )}
-    >
-      {count}
-    </span>
-  )
+/** What waits in a project, loudest first: questions for the user in amber, else a pulsing dot while it works. */
+function State({ busy, questions }: { busy: boolean; questions: number }) {
+  if (questions > 0)
+    return (
+      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
+        {questions}
+      </span>
+    )
+  if (busy) return <span className="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
+  return null
 }
 
 function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
@@ -112,8 +120,10 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
   const pending = useOpening() === project.url
   const busy = (project.busy ?? 0) > 0
   const questions = project.questions ?? 0
+  const name = prettyName(project.name)
   const title = [
-    project.name,
+    name,
+    project.repo?.name,
     `:${port(project.url)}`,
     questions && `${questions} for you`,
     busy && 'working',
@@ -127,11 +137,11 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
       aria-current={here ? 'page' : undefined}
       aria-label={title}
       className={cn(
-        'group relative flex h-9 w-full items-center text-left outline-none',
+        'group relative mx-1.5 flex h-12 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         here ? 'cursor-default' : 'cursor-pointer',
-        wide && !here && 'hover:bg-sidebar-accent/50',
-        wide && here && 'bg-brand/10',
+        wide && (here ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
       )}
+      data-project={project.name}
       href={here ? undefined : `${project.url}/`}
       onClick={(event) => {
         // A plain click navigates this tab: mark it. Mod-click and middle-click open another tab and leave this one.
@@ -148,58 +158,51 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
       }}
       title={title}
     >
+      {/* The edge bar: the project this tab shows, or the one it is opening; a hint of it on hover. */}
       <span
         className={cn(
-          'absolute left-0 w-[3px] rounded-r-full bg-brand transition-all duration-150',
-          here || pending ? 'h-6' : 'h-0 group-hover:h-2.5 group-hover:bg-muted-foreground/60',
+          'absolute -left-1.5 w-[3px] rounded-r-full transition-all duration-150',
+          here || pending ? 'h-6 bg-brand' : 'h-0 bg-muted-foreground/60 group-hover:h-3',
           pending && 'animate-pulse-dot',
         )}
       />
-      <span className="flex w-[52px] shrink-0 justify-center">
-        <span
+      <span className="flex w-11 shrink-0 justify-center">
+        <ProjectTile
           className={cn(
-            'relative flex size-7 items-center justify-center rounded-lg font-mono text-[10.5px] font-medium transition-colors group-focus-visible:ring-1 group-focus-visible:ring-ring',
-            here
-              ? 'bg-brand/20 text-brand ring-1 ring-brand/50'
-              : pending
-                ? 'animate-pulse-dot bg-brand/15 text-brand ring-1 ring-brand/40'
-                : 'bg-sidebar-accent/60 text-muted-foreground group-hover:text-foreground',
+            'transition-transform group-active:scale-95',
+            pending && 'animate-pulse-dot',
+            here && 'ring-2',
           )}
+          dim={!here && !pending}
+          folder={project.name}
+          size="lg"
         >
-          {monogram(project.name)}
           {!wide && questions > 0 && (
-            <QuestionBadge
-              className="absolute -top-1.5 -right-1.5 ring-2 ring-sidebar"
-              count={questions}
-            />
+            <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] font-semibold text-black tabular-nums ring-2 ring-sidebar">
+              {questions}
+            </span>
           )}
-          {!wide && busy && (
-            <BusyDot className="absolute -right-0.5 -bottom-0.5 size-2 ring-2 ring-sidebar" />
+          {!wide && busy && questions === 0 && (
+            <span className="absolute -right-0.5 -bottom-0.5 size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
           )}
-        </span>
+        </ProjectTile>
       </span>
       {wide && (
-        <span className="flex min-w-0 flex-1 items-center gap-2 pr-3">
-          <span
-            className={cn(
-              'min-w-0 truncate text-[13px]',
-              here ? 'font-medium text-brand' : 'text-foreground/85',
-            )}
-          >
-            {project.name}
+        <span className="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span
+              className={cn(
+                'truncate text-[13px] leading-5',
+                here ? 'font-semibold text-foreground' : 'text-foreground/85',
+              )}
+            >
+              {name}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground/80">
+              <Detail pending={pending} project={project} />
+            </span>
           </span>
-          <span
-            className={cn(
-              'shrink-0 font-mono text-[10px]',
-              pending ? 'text-brand' : 'text-muted-foreground/60',
-            )}
-          >
-            {pending ? 'opening…' : `:${port(project.url)}`}
-          </span>
-          <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            {busy && <BusyDot />}
-            {questions > 0 && <QuestionBadge count={questions} />}
-          </span>
+          <State busy={busy} questions={questions} />
         </span>
       )}
     </a>
@@ -211,14 +214,14 @@ function RailSkeleton({ wide }: { wide: boolean }) {
   return (
     <div aria-hidden className="pointer-events-none">
       {['w-24', 'w-32', 'w-20', 'w-28'].map((name) => (
-        <span className="flex h-9 items-center" key={name}>
-          <span className="flex w-[52px] shrink-0 justify-center">
-            <Skeleton className="size-7 rounded-lg bg-sidebar-accent/60" />
+        <span className="mx-1.5 flex h-12 items-center" key={name}>
+          <span className="flex w-11 shrink-0 justify-center">
+            <Skeleton className="size-8 rounded-lg bg-sidebar-accent/60" />
           </span>
           {wide && (
-            <span className="flex min-w-0 flex-1 items-center gap-2 pr-3">
+            <span className="flex min-w-0 flex-1 flex-col gap-1.5 pl-1.5">
               <Skeleton className={cn('h-2.5 rounded-sm bg-sidebar-accent/60', name)} />
-              <Skeleton className="h-2 w-7 rounded-sm bg-sidebar-accent/40" />
+              <Skeleton className="h-2 w-16 rounded-sm bg-sidebar-accent/40" />
             </span>
           )}
         </span>
@@ -275,25 +278,34 @@ function Rail() {
       >
         {/* Every horizontal rail line continues an app line: this one the title bar's (h-9, core shell). */}
         <div className="flex h-9 shrink-0 items-center border-b border-border/70">
-          <span className="flex w-[52px] shrink-0 justify-center font-mono text-[9px] tracking-[0.2em] text-brand">
+          <span className="flex w-14 shrink-0 justify-center font-mono text-[9px] tracking-[0.2em] text-brand">
             U
           </span>
           {wide && (
             <>
-              <span className="font-mono text-[10px] tracking-[0.3em] text-brand">PROJECTS</span>
+              <span className="section-label">Projects</span>
+              <span className="ml-1.5 font-mono text-[11px] text-muted-foreground/60 tabular-nums">
+                {projects.length || ''}
+              </span>
               <button
-                className="mr-2 ml-auto cursor-pointer rounded px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                aria-label={pinned ? 'Unpin the projects rail' : 'Pin the projects rail open'}
+                aria-pressed={pinned}
+                className={cn(
+                  'mr-2 ml-auto flex size-6 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+                  pinned ? 'text-foreground' : 'text-muted-foreground/70',
+                )}
                 onClick={() => setPinned(!pinned)}
+                title={pinned ? 'Unpin: open on hover' : 'Pin: keep open beside the app'}
                 type="button"
               >
-                {pinned ? 'unpin' : 'pin'}
+                {pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
               </button>
             </>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-1 pb-2 [scrollbar-width:none]">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-2 pb-2 [scrollbar-width:none]">
           {loading && <RailSkeleton wide={wide} />}
-          <div className={cn(waited && 'animate-fade-in')}>
+          <div className={cn('flex flex-col gap-1', waited && 'animate-fade-in')}>
             {projects.map((project) => (
               <Row key={project.url} project={project} wide={wide} />
             ))}
@@ -301,11 +313,16 @@ function Rail() {
         </div>
         {/* Same height and border as the status line beside it (core primitives.tsx), so the two read as one line. */}
         <div className="flex h-7 shrink-0 items-center border-t border-border/70 font-mono text-[10px] text-muted-foreground/70 md:pointer-coarse:box-content md:pointer-coarse:pb-3">
-          <span className="flex w-[52px] shrink-0 justify-center">
-            {questions > 0 && <span className="size-1.5 rounded-full bg-warning" />}
+          <span className="flex w-14 shrink-0 justify-center">
+            {questions > 0 && <span className="size-1.5 rounded-full bg-amber-400" />}
           </span>
           {wide && !loading && (
-            <span className="truncate">{`${questions} for you · ${working} working`}</span>
+            <span className="truncate">
+              <span className={cn(questions > 0 && 'text-amber-700 dark:text-amber-300')}>
+                {questions} for you
+              </span>
+              {` · ${working} working`}
+            </span>
           )}
         </div>
       </nav>

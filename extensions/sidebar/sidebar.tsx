@@ -1,4 +1,4 @@
-import { BrainIcon, ChevronRightIcon, FolderIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -9,9 +9,7 @@ import {
   cn,
   errorMessage,
   formatAgo,
-  formatTokens,
   ParkedRuns,
-  projectTitle,
   AllProvided,
   Provided,
   Slot,
@@ -43,10 +41,11 @@ import {
   stateTone,
   stateWord,
 } from '../messages/ui.tsx'
-import { InFlight, inFlight, MemoryRow, stillOpen, useMemorySummary } from './root.tsx'
+import { InFlight, inFlight, MemoryRow, stillOpen } from './root.tsx'
+import { Project } from './project.tsx'
 import type { Flight } from './root.tsx'
 import { Landed, useLandings } from './landed.tsx'
-import { MEMORY_SURFACE, useOpenMemory, useRoots } from '../lineage/ui.tsx'
+import { useRoots } from '../lineage/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import type { KeptWork } from '../conversations/types.ts'
 import { LanderState } from './lander.tsx'
@@ -54,100 +53,6 @@ import { StandingPhase, WaitingOnUser } from './ultimate.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 import { topLevelRows } from './listed.ts'
 import { UnderUltimate, Unlisted } from './ui.tsx'
-
-/**
- * The project: its path from home (or `<project> #<worktree>`) heading its root's Memory row. Clicking the path opens
- * the root's History, the project's read-only tally; its chevron folds the Memory row away (folded by default, kept in
- * `ext.conversations.projectOpen`), and folded, a quiet brain count on the path row still opens Memory.
- */
-function Project({
-  root,
-  shown,
-  children,
-}: {
-  root?: number
-  shown: boolean
-  children?: ReactNode
-}) {
-  const system = useSystem()
-  const actions = useShell()
-  const title = projectTitle(system)
-  const [open, setOpen] = useSidebarState('projectOpen', false)
-  return (
-    <div aria-label="Project" className="mb-1 border-b border-border/70 pb-1" role="group">
-      {root === undefined ? (
-        <div
-          className="flex h-10 shrink-0 items-center gap-2 px-4 text-[13px] font-medium text-foreground/90"
-          title={system?.project.root}
-        >
-          <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{title}</span>
-        </div>
-      ) : (
-        <div
-          className={cn(
-            'group/project mx-2 mt-1 flex h-8 min-w-0 items-center rounded-md text-[13px] font-medium text-foreground/90 has-[[data-root-context]:hover]:bg-sidebar-accent/50',
-            shown && 'bg-sidebar-accent has-[[data-root-context]:hover]:bg-sidebar-accent',
-          )}
-        >
-          <button
-            aria-expanded={open}
-            aria-label={open ? 'Hide the project memory' : 'Show the project memory'}
-            className="flex h-full w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-            data-project-toggle
-            onClick={() => setOpen(!open)}
-            title={open ? 'Hide Memory' : 'Show Memory'}
-            type="button"
-          >
-            <ChevronRightIcon
-              className={cn('size-3.5 transition-transform', open && 'rotate-90')}
-            />
-          </button>
-          <button
-            aria-current={shown ? 'true' : undefined}
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md pr-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-            data-root-context={root}
-            onClick={() => actions.switchConversation(root)}
-            title={`${system?.project.root ?? title} · open the project's History: every branch, abstract and landing`}
-            type="button"
-          >
-            <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{title}</span>
-            <span className="ml-auto shrink-0 font-mono text-[10px] font-normal text-muted-foreground/50 group-hover/project:text-muted-foreground">
-              History #{root}
-            </span>
-          </button>
-          {!open && <MemoryHint root={root} />}
-        </div>
-      )}
-      {(open || root === undefined) && children}
-    </div>
-  )
-}
-
-/** The folded project block's trace of its memory: a brain and the count, opening the Memory surface. */
-function MemoryHint({ root }: { root: number }) {
-  const openMemory = useOpenMemory()
-  const shown = useShell().surface === MEMORY_SURFACE
-  const { total, tokens, counts } = useMemorySummary(root)
-  return (
-    <button
-      aria-current={shown ? 'page' : undefined}
-      aria-label="Open the project memory"
-      className={cn(
-        'mr-0.5 flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-normal text-muted-foreground/50 outline-none hover:bg-sidebar-accent/50 hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
-        shown && 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent hover:text-foreground',
-      )}
-      data-memory-hint={root}
-      onClick={() => openMemory()}
-      title={`Memory · ${counts}${tokens === undefined ? '' : ` · ${formatTokens(tokens)} tokens every new branch starts from`}`}
-      type="button"
-    >
-      <BrainIcon className="size-3" />
-      {total > 0 && total}
-    </button>
-  )
-}
 
 /** The shown conversation, also while its snapshot is still on the way. */
 const useShownId = () => useStore((state) => state.view?.conversation.id ?? state.requested)
@@ -623,8 +528,8 @@ function Tree({
       >
         {rootRows.map((root) => tree(root))}
       </Project>
-      <nav aria-label="Conversations" className="flex flex-col gap-px">
-        <div className="mb-1 border-b border-border/60 pb-1">
+      <nav aria-label="Conversations" className="flex flex-col gap-0.5">
+        <div className="mb-2 flex flex-col gap-0.5 border-b border-border/60 pb-2">
           {ultimate ? tree(ultimate) : standingRow(undefined)}
           <AllProvided input={ultimateId} point={UnderUltimate}>
             {(rows) => rows}
@@ -633,7 +538,7 @@ function Tree({
         {agents.length > 0 && (
           <div
             aria-label="Agents"
-            className="mb-1 flex flex-col gap-px border-b border-border/60 pb-1"
+            className="mb-2 flex flex-col gap-0.5 border-b border-border/60 pb-2"
             role="group"
           >
             {agents.map((conversation) =>
@@ -688,14 +593,14 @@ function Tree({
       <div className="mt-auto pt-3">
         {earlier.length > 0 && (
           <Collapsible className="pt-1" open={earlierOpen} onOpenChange={setEarlierOpen}>
-            <CollapsibleTrigger className="group/earlier flex w-full cursor-pointer items-center gap-1 px-4 py-1 section-label outline-none hover:text-foreground">
+            <CollapsibleTrigger className="group/earlier flex w-full cursor-pointer items-center gap-1 px-4 py-1.5 section-label outline-none hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/earlier:rotate-90" />
               Earlier · {earlier.length}
             </CollapsibleTrigger>
             <CollapsibleContent
               aria-label="Earlier"
               role="region"
-              className="flex flex-col gap-px pt-1"
+              className="flex flex-col gap-0.5 pt-1"
             >
               {earlierOpen && earlier.map((conversation) => tree(conversation))}
             </CollapsibleContent>
@@ -703,13 +608,13 @@ function Tree({
         )}
         {hidden.length > 0 && (
           <Collapsible className="pt-1" open={concludedOpen} onOpenChange={setConcludedOpen}>
-            <CollapsibleTrigger className="group/concluded flex w-full cursor-pointer items-center gap-1 px-4 py-1 section-label outline-none hover:text-foreground focus-visible:text-foreground">
+            <CollapsibleTrigger className="group/concluded flex w-full cursor-pointer items-center gap-1 px-4 py-1.5 section-label outline-none hover:text-foreground focus-visible:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/concluded:rotate-90" />
               Concluded · {hidden.length}
             </CollapsibleTrigger>
             <CollapsibleContent
               aria-label="Concluded"
-              className="flex flex-col gap-px pt-1"
+              className="flex flex-col gap-0.5 pt-1"
               role="region"
             >
               {concludedOpen &&

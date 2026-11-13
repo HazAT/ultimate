@@ -12,7 +12,8 @@ import { MentionText } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
 import { api, definePoint, Fold, Provided, useConversationSummary, useUltimate } from '@/sdk'
 import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
-import { GithubAction } from './refs.ts'
+import { GithubAction, RepoAction } from './refs.ts'
+import type { GithubRepo } from './refs.ts'
 import type { ConversationSubject } from '../conversations/types.ts'
 
 /** "open #id", with a dot while that conversation works. */
@@ -65,6 +66,25 @@ export function useGithubRepo() {
     }
   }, [])
   return url
+}
+
+let project: Promise<GithubRepo | null> | undefined
+/** The project's GitHub repository with its visibility, or null off GitHub; asked once per page. */
+export function useProjectRepo() {
+  const [value, setValue] = useState<GithubRepo | null>()
+  useEffect(() => {
+    project ??= api.action(RepoAction).catch(
+      // No repository: the sidebar's project header names no remote.
+      () => null,
+    )
+    let live = true
+    // oxlint-disable-next-line typescript/no-floating-promises -- project converts action failures to null; the callback only updates state.
+    void project.then((found) => live && setValue(found))
+    return () => {
+      live = false
+    }
+  }, [])
+  return value
 }
 
 /**

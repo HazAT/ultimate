@@ -62,7 +62,9 @@ Info's Workspace section (`Workspaces` in `ui.tsx`) shows the lander queue, the 
 statistics over every checkout, read-only: landing goes through agents. Concluding a conversation can release its clean, landed checkout.
 `isolation` says why the project cannot be isolated, if it cannot; `info {id}` reads the record and current tips; `create {cwd?, title?}` returns a new conversation ID.
 `github` returns `https://github.com/<owner>/<repo>` of the project's `origin`, or null off GitHub; landing cards and
-the root row link commit ranges with it.
+the root row link commit ranges with it. `repo` returns the same repository as `{key, name, url, visibility?}` for the
+sidebar's project header: `name` and `visibility` come from one `gh repo view` per process (`readGithubRepo`,
+`lib/project-identity.ts`), and without `gh`, signed out or offline it is the key's `owner/repo` without a visibility.
 The service's `land(id)` fast-forwards a worker's source (its owner's checkout) to the worker's clean tip, for
 `subagent land`; it refuses moved or diverged targets and never rebases or pushes. The only way to the project's
 target branch is `workspace submit`.

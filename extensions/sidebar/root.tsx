@@ -190,7 +190,7 @@ function PhasedFlightRow({
           <button
             aria-current={shown ? 'true' : undefined}
             className={cn(
-              'mx-2 flex w-[calc(100%-1rem)] min-w-0 cursor-pointer flex-col gap-0.5 rounded-md py-1 pr-2 pl-2.5 text-left outline-none hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+              'mx-2 flex w-[calc(100%-1rem)] min-w-0 cursor-pointer flex-col gap-0.5 rounded-md py-1.5 pr-2 pl-2.5 text-left outline-none hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
               shown && 'bg-sidebar-accent',
             )}
             data-in-flight={conversation.id}
@@ -237,7 +237,7 @@ function PhasedFlightRow({
         </SummaryHistory>
         {!editing && (
           // Beside the title rather than at the bottom right, where the age is.
-          <div className="absolute top-0.5 right-2 size-5">
+          <div className="absolute top-1 right-2 size-5">
             <RowMenu
               concluded={false}
               conversation={conversation}
@@ -336,7 +336,7 @@ export function InFlight({
   if (!flights.length) return null
   return (
     <Section count={flights.length} id="in-flight" label="In flight">
-      <ul className="flex flex-col gap-px">
+      <ul className="flex flex-col gap-0.5">
         {flights.map((flight) => (
           <FlightRow
             conversation={flight.conversation}
@@ -406,7 +406,7 @@ export function MemoryRow({
         aria-current={shown ? 'page' : undefined}
         aria-label={`Project memory of #${id}`}
         className={cn(
-          'mx-2 flex h-11 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-2.5 rounded-md pr-2 pl-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+          'mx-2 flex h-12 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-2.5 rounded-md pr-2 pl-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
           shown && 'bg-sidebar-accent hover:bg-sidebar-accent',
         )}
         onClick={() => openMemory()}

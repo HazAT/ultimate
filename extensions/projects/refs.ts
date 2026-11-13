@@ -7,6 +7,11 @@ export type RunningProject = {
   url: string
   /** The instance this page shows. */
   current: boolean
+  /**
+   * Its `origin` on GitHub, `<owner>/<repo>` as GitHub spells it, with its visibility when `gh` knew it; absent off
+   * GitHub and until the first read finished.
+   */
+  repo?: { name: string; url: string; visibility?: 'public' | 'private' | 'internal' }
   /** Conversations running a turn now; absent when its `status` did not answer. */
   busy?: number
   /** Messages waiting on the user's answer; absent when its `status` did not answer. */

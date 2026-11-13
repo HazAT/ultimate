@@ -136,3 +136,14 @@ export type LandResult = {
   needsRestart?: boolean
 }
 export type SubmitResult = { text: string; id: string; position: number; lander: number }
+
+/** A project's GitHub repository as the sidebar and the project rail name it. */
+export type GithubRepo = {
+  /** `github.com/<owner>/<repo>`, lowercased. */
+  key: string
+  /** `<owner>/<repo>` as GitHub spells it, or the key's when `gh` could not say. */
+  name: string
+  url: string
+  /** Missing when `gh` is not installed, not signed in or cannot see the repository. */
+  visibility?: 'public' | 'private' | 'internal'
+}

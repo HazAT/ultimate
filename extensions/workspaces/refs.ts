@@ -4,7 +4,13 @@
  */
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
-import type { WorkspaceDisk, WorkspaceIndex, WorkspaceInfo, WorkspaceStats } from './types.ts'
+import type {
+  GithubRepo,
+  WorkspaceDisk,
+  WorkspaceIndex,
+  WorkspaceInfo,
+  WorkspaceStats,
+} from './types.ts'
 import type { KeptWork } from '../conversations/types.ts'
 
 /** Why the project cannot isolate conversations (`reason`, absent when it can), and whether its folder is empty. */
@@ -33,6 +39,9 @@ export const DiskAction = actionRef<null, WorkspaceDisk>('workspaces', 'disk')
 export const IsolationAction = actionRef<null, Isolation>('workspaces', 'isolation')
 /** No arguments → `github.com/<owner>/<repo>` of the project's `origin`, or null off GitHub. */
 export const GithubAction = actionRef<null, string | null>('workspaces', 'github')
+export type { GithubRepo }
+/** No arguments → the project's `origin` on GitHub with its visibility, or null off GitHub. */
+export const RepoAction = actionRef<null, GithubRepo | null>('workspaces', 'repo')
 
 export type LandedData = {
   /** The submission's id in the lander's queue. */
