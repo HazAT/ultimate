@@ -53,9 +53,10 @@ function OpeningBar() {
   )
 }
 
-/** Calls `refetch` every `every` ms while the page is visible, and when it becomes visible. */
-function usePoll(refetch: () => Promise<unknown>, every: number) {
+/** Calls `refetch` every `every` ms while the page is visible, and when it becomes visible; never while `off`. */
+function usePoll(refetch: () => Promise<unknown>, every: number, off = false) {
   useEffect(() => {
+    if (off) return undefined
     const visible = () => {
       if (document.visibilityState !== 'visible') return
       // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
@@ -67,13 +68,13 @@ function usePoll(refetch: () => Promise<unknown>, every: number) {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [refetch, every])
+  }, [refetch, every, off])
 }
 
 /** Whether the rail is pinned: one value for every instance on this machine, so a jump keeps the rail as it was. */
-function usePinned() {
-  const shared = useAction(PinAction, {}, { onError: () => {} })
-  usePoll(shared.refetch, PIN)
+function usePinned(off: boolean) {
+  const shared = useAction(PinAction, {}, { onError: () => {}, enabled: !off })
+  usePoll(shared.refetch, PIN, off)
   const [pinned, setPinned] = useState<boolean>()
   const stored = shared.data?.pinned
   useEffect(() => {
@@ -233,9 +234,9 @@ function Rail() {
     (record) => record.name !== 'projects' && record.extension?.slots?.['shell.rail'],
   )
   const list = useAction(ListAction, null, { onError: () => {}, enabled: !other })
-  usePoll(list.refetch, LIVE)
+  usePoll(list.refetch, LIVE, other)
   const [hover, setHover] = useState(false)
-  const [pinned, setPinned] = usePinned()
+  const [pinned, setPinned] = usePinned(other)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(timer.current), [])
   const projects = list.data ?? []

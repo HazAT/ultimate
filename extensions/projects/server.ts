@@ -45,18 +45,19 @@ async function counts(name: string, url: string, signal: AbortSignal) {
 
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   return Promise.all(
-    (await host.projects()).flatMap(({ name, running, current }) =>
-      running
-        ? [
-            (async () => ({
-              name,
-              url: running.url,
-              current,
-              ...(current ? await own(host) : await counts(name, running.url, signal)),
-            }))(),
-          ]
-        : [],
-    ),
+    (await host.projects()).flatMap(({ name, running, current }) => {
+      // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
+      const url = current ? host.system().process.url : running?.url
+      if (!url) return []
+      return [
+        (async () => ({
+          name,
+          url,
+          current,
+          ...(current ? await own(host) : await counts(name, url, signal)),
+        }))(),
+      ]
+    }),
   )
 }
 
