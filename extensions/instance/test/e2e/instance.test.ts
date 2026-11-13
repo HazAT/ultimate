@@ -538,7 +538,9 @@ it('previews a commit the user picks until no page was open for the idle limit',
     const client = await attach(preview)
     const checkout = client.system().execution.defaultCwd
     const home = dirname(dirname(checkout))
-    expect(checkout).toBe(join(home, 'checkouts', 'commit'))
+    // Named after the repository, so the preview's project reads as it, not as its checkout folder.
+    expect(checkout).toBe(join(home, 'checkouts', 'app'))
+    expect(client.system().project.name).toBe('app')
     // The host's Ultimate runs the commit as its project, trusted like the project and behind the push guard.
     expect(client.system().code.ultimateRoot).toBe(f.source)
     expect(client.system().project.decision).toBe(true)

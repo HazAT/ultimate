@@ -488,7 +488,8 @@ async function refCheckout(
     () => '',
   )
   if (!commit) throw new Error(`Unknown commit ${ref}: fetch it first`)
-  const path = join(home, 'checkouts', 'commit')
+  // Named after the repository: the preview names its project after this folder.
+  const path = join(home, 'checkouts', basename(source))
   const branch = previewBranch(home, 'checkout')
   await git(source, 'worktree', 'add', '-b', branch, path, commit)
   const project = join(path, relative(source, await realpath(host.projectRoot)))
