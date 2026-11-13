@@ -185,7 +185,7 @@ function TodoRow({
           title={`${todo.done ? 'Done' : 'Added'} ${new Date(at).toLocaleString()}`}
         >
           {todo.done && todo.owner === 'ultimate' ? '@ultimate · ' : ''}
-          {age}
+          {todo.id} · {age}
         </time>
       </label>
       {start && !todo.done ? (
