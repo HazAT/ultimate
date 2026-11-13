@@ -41,9 +41,9 @@ export function ProjectTile({
       aria-hidden
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center font-sans font-semibold tracking-tight ring-1 transition-[opacity,filter] ring-inset',
-        'bg-[oklch(0.66_0.12_var(--hue)/0.16)] text-[oklch(0.48_0.13_var(--hue))] ring-[oklch(0.62_0.12_var(--hue)/0.32)] dark:text-[oklch(0.82_0.1_var(--hue))]',
+        'bg-[oklch(0.68_0.14_var(--hue)/0.2)] text-[oklch(0.46_0.15_var(--hue))] ring-[oklch(0.62_0.14_var(--hue)/0.4)] dark:bg-[oklch(0.62_0.14_var(--hue)/0.22)] dark:text-[oklch(0.86_0.11_var(--hue))]',
         size === 'lg' ? 'size-8 rounded-lg text-[12.5px]' : 'size-7 rounded-[7px] text-[11px]',
-        dim && 'opacity-60 saturate-50 group-hover:opacity-100 group-hover:saturate-100',
+        dim && 'opacity-70 group-hover:opacity-100',
         className,
       )}
       data-project-tile={folder}
