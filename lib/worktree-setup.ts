@@ -1,5 +1,5 @@
 import type { JsonObject } from '@earendil-works/pi-durable'
-import { exec } from '../../lib/exec.ts'
+import { exec } from './exec.ts'
 
 /** Run the project's `isolates.worktree.setup` commands in a new worktree at `path`, branched from `source`. */
 export async function setup(

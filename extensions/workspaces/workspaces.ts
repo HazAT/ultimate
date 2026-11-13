@@ -18,7 +18,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branches } from './api.ts'
 import { WorkspacesDoc } from './refs.ts'
-import { setup } from './setup.ts'
+import { setup } from '../../lib/worktree-setup.ts'
 import {
   addCheckout,
   clearCheckout,
