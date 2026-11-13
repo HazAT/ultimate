@@ -1,57 +1,76 @@
 import { LockIcon } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
-import { cn, prettyName } from '@/sdk'
+import type { CSSProperties } from 'react'
+import { cn } from '@/sdk'
 import type { GithubRepo } from '../workspaces/refs.ts'
 
-/** A hue for a folder name, the same on every instance and page: its characters hashed onto the colour wheel. */
-function hueOf(folder: string) {
-  let hash = 0
-  for (const char of folder.toLowerCase()) hash = (hash * 31 + char.codePointAt(0)!) >>> 0
-  return hash % 360
+/**
+ * The palette projects draw from: muted cool hues from sage through teal and blue to violet, one family of colour.
+ * Warm hues are left out, so a project's colour never reads as amber (waiting on the user) or red (failed).
+ */
+const HUES = [150, 172, 194, 216, 238, 260, 282, 304]
+/** Shades a project takes next to others of its family: lightness steps, with a nudge of hue. */
+const SHADES = [
+  { l: 0, h: 0 },
+  { l: -0.1, h: 8 },
+  { l: 0.09, h: -8 },
+  { l: -0.17, h: 14 },
+  { l: 0.15, h: -14 },
+]
+
+const hash = (text: string) => {
+  let value = 0
+  for (const char of text) value = (value * 31 + char.codePointAt(0)!) >>> 0
+  return value
 }
 
-/** Up to two letters for a folder name: the initials of its first two words, else its first letter. */
-function monogram(folder: string) {
-  const words = prettyName(folder).split(' ')
-  return (words.length > 1 ? words[0][0] + words[1][0] : (words[0]?.[0] ?? '?')).toUpperCase()
+/** The family a folder belongs to: its first word, so `ultimate`, `ultimate-eval` and `ultimate-fleet` share one. */
+export const stemOf = (folder: string) => folder.toLowerCase().split(/[-_.\s]+/)[0] ?? ''
+
+/**
+ * A project's colour from its folder name, the same on every instance and page: its family's hue from the palette and
+ * a neighbouring shade of it. The stem itself takes the base shade; a sibling (`ultimate-eval`) takes the next by its
+ * place among the `family` given, sorted, so siblings never share one, else a shade its suffix hashes to.
+ */
+function colourOf(folder: string, family?: readonly string[]) {
+  const name = folder.toLowerCase()
+  const stem = stemOf(name)
+  const siblings = [...new Set((family ?? []).map((item) => item.toLowerCase()))]
+    .filter((item) => item !== stem && stemOf(item) === stem)
+    .toSorted()
+  const place = siblings.indexOf(name)
+  const step =
+    name === stem
+      ? 0
+      : 1 + ((place >= 0 ? place : hash(name.slice(stem.length))) % (SHADES.length - 1))
+  const shade = SHADES[step]
+  return { '--swatch-h': HUES[hash(stem) % HUES.length] + shade.h, '--swatch-l': shade.l }
 }
 
 /**
- * A project's tile: its monogram on a tint of its own hue, so each project reads apart at a glance. The sidebar's
- * header and the project rail draw the same one from the project's folder name.
+ * A project's swatch: a slim bar of its colour, no letters. The project rail stacks them into one quiet column, a
+ * family's bars a hairline apart; the sidebar's header leads with the same one, so a project looks alike in both.
  */
-export function ProjectTile({
+export function ProjectSwatch({
   folder,
-  size = 'md',
-  dim,
+  family,
   className,
-  children,
 }: {
   /** The project's folder name: `omarchy-config`. */
   folder: string
-  size?: 'md' | 'lg'
-  /** Quieter, for projects that are not the one shown; full on hover of a `group`. */
-  dim?: boolean
+  /** Every project's folder name shown beside it, so siblings of one stem get distinct shades. */
+  family?: readonly string[]
   className?: string
-  /** Badges pinned to its corners. */
-  children?: ReactNode
 }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center font-sans font-semibold tracking-tight ring-1 transition-[opacity,filter] ring-inset',
-        'bg-[oklch(0.68_0.14_var(--hue)/0.2)] text-[oklch(0.46_0.15_var(--hue))] ring-[oklch(0.62_0.14_var(--hue)/0.4)] dark:bg-[oklch(0.62_0.14_var(--hue)/0.22)] dark:text-[oklch(0.86_0.11_var(--hue))]',
-        size === 'lg' ? 'size-8 rounded-lg text-[12.5px]' : 'size-7 rounded-[7px] text-[11px]',
-        dim && 'opacity-70 group-hover:opacity-100',
+        'block shrink-0 bg-[oklch(calc(0.74_+_var(--swatch-l))_0.06_var(--swatch-h))] transition-opacity dark:bg-[oklch(calc(0.6_+_var(--swatch-l))_0.06_var(--swatch-h))]',
         className,
       )}
-      data-project-tile={folder}
-      style={{ '--hue': hueOf(folder) } as CSSProperties}
-    >
-      {monogram(folder)}
-      {children}
-    </span>
+      data-project-swatch={folder}
+      style={colourOf(folder, family) as CSSProperties}
+    />
   )
 }
 

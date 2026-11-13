@@ -6,7 +6,7 @@ import { useProjectRepo } from '../workspaces/ui.tsx'
 import type { GithubRepo } from '../workspaces/refs.ts'
 import { useMemorySummary } from './root.tsx'
 import { useShell, useSidebarState } from './state.tsx'
-import { ProjectTile, RepoLabel } from './tile.tsx'
+import { ProjectSwatch, RepoLabel } from './tile.tsx'
 
 /** The repository line under the project's name: a link to it on GitHub, with its visibility when `gh` knew it. */
 function Repo({ repo }: { repo: GithubRepo }) {
@@ -30,7 +30,7 @@ function Repo({ repo }: { repo: GithubRepo }) {
 }
 
 /**
- * The project: its tile, its display name over its path from home (or `#<worktree>`), and its GitHub repository,
+ * The project: its colour bar, its display name over its path from home (or `#<worktree>`), and its GitHub repository,
  * heading its root's Memory row. Clicking the name opens the root's History, the project's read-only tally; the chevron
  * on the right folds the Memory row away (folded by default, kept in `ext.conversations.projectOpen`), and folded, a
  * quiet brain count beside it still opens Memory.
@@ -51,7 +51,7 @@ export function Project({
   const [open, setOpen] = useSidebarState('projectOpen', false)
   const name = (
     <>
-      <ProjectTile folder={heading?.folder ?? ''} size="lg" />
+      <ProjectSwatch className="h-8 w-1 rounded-full" folder={heading?.folder ?? ''} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[14px] leading-5 font-semibold tracking-tight text-foreground">
           {heading?.name}
@@ -65,7 +65,7 @@ export function Project({
   return (
     <div aria-label="Project" className="mb-1.5 border-b border-border/70 pt-1.5 pb-2" role="group">
       {root === undefined ? (
-        <div className="mx-2 flex h-12 items-center gap-3 px-2" title={system?.project.root}>
+        <div className="mx-2 flex h-12 items-center gap-2.5 px-2.5" title={system?.project.root}>
           {name}
         </div>
       ) : (
@@ -77,7 +77,7 @@ export function Project({
         >
           <button
             aria-current={shown ? 'true' : undefined}
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md pr-1 pl-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md pr-1 pl-2.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-root-context={root}
             onClick={() => actions.switchConversation(root)}
             title={`${system?.project.root ?? ''}\nOpen the project's History (#${root}): every branch, abstract and landing`}
@@ -103,7 +103,7 @@ export function Project({
       )}
       {repo && (
         // Beside the button, not in it: a link cannot sit inside a button. Aligned with the name above.
-        <div className="mx-2 flex min-w-0 pr-2 pl-[52px]">
+        <div className="mx-2 flex min-w-0 pr-2 pl-[24px]">
           <Repo repo={repo} />
         </div>
       )}

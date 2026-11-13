@@ -1,5 +1,5 @@
-// The project switcher (`shell.rail`): every Ultimate running on this machine as a tile at the window's left edge.
-// Hover opens it over the app with names and ports; pin keeps it open beside the app. A tile is a link to that
+// The project switcher (`shell.rail`): every Ultimate running on this machine as a colour swatch at the window's left edge.
+// Hover opens it over the app with names, repositories and ports; pin keeps it open beside the app. A row is a link to that
 // instance's `/`, which opens its @ultimate. It steps aside for any other extension that fills `shell.rail`.
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
@@ -13,7 +13,7 @@ import {
   useExtensions,
   useViewport,
 } from '@/sdk'
-import { ProjectTile, RepoLabel } from '../sidebar/ui.tsx'
+import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.tsx'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
@@ -115,7 +115,24 @@ function State({ busy, questions }: { busy: boolean; questions: number }) {
   return null
 }
 
-function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
+/**
+ * One project. Collapsed it is its swatch, a segment of the rail's colour column: a family's segments (`first`,
+ * `last`) join into one strip, rounded at its ends, with a gap before the next family.
+ */
+function Row({
+  project,
+  wide,
+  first,
+  last,
+  family,
+}: {
+  project: RunningProject
+  wide: boolean
+  first: boolean
+  last: boolean
+  /** Every running project's folder name, for the shades of a family. */
+  family: readonly string[]
+}) {
   const here = project.current
   const pending = useOpening() === project.url
   const busy = (project.busy ?? 0) > 0
@@ -137,7 +154,7 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
       aria-current={here ? 'page' : undefined}
       aria-label={title}
       className={cn(
-        'group relative mx-1.5 flex h-12 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         here ? 'cursor-default' : 'cursor-pointer',
         wide && (here ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
       )}
@@ -166,26 +183,32 @@ function Row({ project, wide }: { project: RunningProject; wide: boolean }) {
           pending && 'animate-pulse-dot',
         )}
       />
-      <span className="flex w-11 shrink-0 justify-center">
-        <ProjectTile
+      <span
+        className={cn(
+          'relative flex h-full w-11 shrink-0 items-stretch justify-center',
+          !first && 'pt-px',
+          !last && 'pb-px',
+        )}
+      >
+        <ProjectSwatch
           className={cn(
-            'transition-transform group-active:scale-95',
+            'transition-[width,opacity] duration-150',
+            here || pending ? 'w-5' : 'w-3 opacity-70 group-hover:w-4 group-hover:opacity-100',
+            first && 'rounded-t-md',
+            last && 'rounded-b-md',
             pending && 'animate-pulse-dot',
-            here && 'ring-2',
           )}
-          dim={!here && !pending}
+          family={family}
           folder={project.name}
-          size="lg"
-        >
-          {!wide && questions > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] font-semibold text-black tabular-nums ring-2 ring-sidebar">
-              {questions}
-            </span>
-          )}
-          {!wide && busy && questions === 0 && (
-            <span className="absolute -right-0.5 -bottom-0.5 size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
-          )}
-        </ProjectTile>
+        />
+        {!wide && questions > 0 && (
+          <span className="absolute top-1/2 left-1/2 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] font-semibold text-black tabular-nums ring-2 ring-sidebar">
+            {questions}
+          </span>
+        )}
+        {!wide && busy && questions === 0 && (
+          <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
+        )}
       </span>
       {wide && (
         <span className="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">
@@ -214,9 +237,9 @@ function RailSkeleton({ wide }: { wide: boolean }) {
   return (
     <div aria-hidden className="pointer-events-none">
       {['w-24', 'w-32', 'w-20', 'w-28'].map((name) => (
-        <span className="mx-1.5 flex h-12 items-center" key={name}>
-          <span className="flex w-11 shrink-0 justify-center">
-            <Skeleton className="size-8 rounded-lg bg-sidebar-accent/60" />
+        <span className="mx-1.5 flex h-10 items-center" key={name}>
+          <span className="flex h-full w-11 shrink-0 justify-center py-px">
+            <Skeleton className="h-full w-3 rounded-sm bg-sidebar-accent/60" />
           </span>
           {wide && (
             <span className="flex min-w-0 flex-1 flex-col gap-1.5 pl-1.5">
@@ -250,6 +273,7 @@ function Rail() {
   if (other || viewport === 'phone' || (!loading && projects.length < 2)) return null
 
   const wide = hover || pinned
+  const family = projects.map((project) => project.name)
   const questions = projects.reduce((sum, project) => sum + (project.questions ?? 0), 0)
   const working = projects.filter((project) => (project.busy ?? 0) > 0).length
 
@@ -305,10 +329,17 @@ function Rail() {
         </div>
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-2 pb-2 [scrollbar-width:none]">
           {loading && <RailSkeleton wide={wide} />}
-          <div className={cn('flex flex-col gap-1', waited && 'animate-fade-in')}>
-            {projects.map((project) => (
-              <Row key={project.url} project={project} wide={wide} />
-            ))}
+          <div className={cn('flex flex-col', waited && 'animate-fade-in')}>
+            {projects.map((project, index) => {
+              const stem = stemOf(project.name)
+              const first = index === 0 || stemOf(projects[index - 1].name) !== stem
+              const last = stemOf(projects[index + 1]?.name ?? '') !== stem
+              return (
+                <div className={cn(first && index > 0 && 'mt-2')} key={project.url}>
+                  <Row family={family} first={first} last={last} project={project} wide={wide} />
+                </div>
+              )
+            })}
           </div>
         </div>
         {/* Same height and border as the status line beside it (core primitives.tsx), so the two read as one line. */}

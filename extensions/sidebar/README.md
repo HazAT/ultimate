@@ -13,8 +13,8 @@ its definition's `icon` and `tint` for any other resident, else a bot — with a
 waits on you). Then its display name (its definition's `title`, else the ULTIMATE wordmark for @ultimate, `Lander`, or
 the name capitalised) with `@name` small and muted. The same mark sits in the title bar's button and before standing senders in chat bubbles.
 
-The **project** heads the sidebar (`project.tsx`): a tile with its monogram on a hue of its own (`ProjectTile`,
-`tile.tsx`, the same the project rail draws), its display name (the folder prettified by `prettyName`:
+The **project** heads the sidebar (`project.tsx`): a slim bar of its colour (`ProjectSwatch`, `tile.tsx`, the same
+the project rail draws), its display name (the folder prettified by `prettyName`:
 `omarchy-config` → `Omarchy Config`) and under it its path from home, small and muted (`#<worktree>` in a branch
 checkout, `preview · …` on a preview; the full path on hover). Under them, when `origin` is on GitHub, its
 `owner/repo` with GitHub's mark links to the repository, with a lock and `private` (or `public`) when `gh` could say
@@ -46,7 +46,7 @@ Every section of the sidebar folds the same way (`Section`, `section.tsx`): a qu
 a count bubble, open by default, its fold state kept per section in `ext.conversations.closedSections`; the Scheduled
 section of the `sidebar.top` slot draws the same heading. Top to bottom:
 
-- **Project**: its tile, name, path and repository, opening History; the chevron and the Memory row (or, folded, its
+- **Project**: its colour bar, name, path and repository, opening History; the chevron and the Memory row (or, folded, its
   brain count).
 - **@ultimate**, then the **Agents** group: the lander first, with its **Landed · N** section right under its row,
   aligned with the other sections, then other standing agents.
