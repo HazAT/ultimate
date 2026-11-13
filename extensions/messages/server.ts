@@ -27,7 +27,7 @@ import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
-import { send } from './send.ts'
+import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { reported, route, working } from './route.ts'
@@ -48,8 +48,16 @@ async function answer(
   messageId: number,
   text: string,
   ctx: Context,
-  options: { device?: Device; via?: { via: Via; primary: number } } = {},
+  options: {
+    device?: Device
+    via?: { via: Via; primary: number }
+    call?: { taskId: TaskId; callId: string }
+  } = {},
 ) {
+  if (options.call) {
+    const id = await receiptOf(host, options.call, ctx)
+    if (id !== undefined) return id
+  }
   const message = await openMessage(host, messageId, ctx)
   // @ultimate settling its own question has the answer already: a one-way note, not another turn.
   const own = options.via !== undefined && message.from === options.via.primary
@@ -60,6 +68,7 @@ async function answer(
     ctx,
     {
       answerId: messageId,
+      ...options.call,
       ...(own ? { note: true } : {}),
       device: options.device,
       ...(options.via ? { via: options.via.via } : {}),
@@ -71,10 +80,19 @@ async function dismiss(
   host: ExtensionHost,
   messageId: number,
   ctx: Context,
-  options: { device?: Device; via?: Via; reason?: string } = {},
+  options: {
+    device?: Device
+    via?: Via
+    reason?: string
+    call?: { taskId: TaskId; callId: string }
+  } = {},
 ) {
+  if (options.call) {
+    const id = await receiptOf(host, options.call, ctx)
+    if (id !== undefined) return id
+  }
   const message = await openMessage(host, messageId, ctx)
-  const { reason, ...rest } = options
+  const { reason, call, ...rest } = options
   // A one-way note: the asker reads it with its next input, and no run starts for it.
   return send(
     host,
@@ -89,7 +107,7 @@ async function dismiss(
       dismiss: true,
     },
     ctx,
-    { answerId: messageId, note: true, ...rest },
+    { answerId: messageId, note: true, ...call, ...rest },
   )
 }
 /** The user's own input that started `id`'s current run, which a settlement names as its source. */
@@ -183,7 +201,8 @@ export default function messages(host: ExtensionHost) {
     working: (tx, id) => working(tx, id),
   })
   host.implement(MessagesApi, {
-    answer: (messageId, text, ctx, device) => answer(host, messageId, text, ctx, { device }),
+    answer: (messageId, text, ctx, device, call) =>
+      answer(host, messageId, text, ctx, { device, call }),
     openQuestions: async (ctx) =>
       (
         (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages ?? []
@@ -192,7 +211,7 @@ export default function messages(host: ExtensionHost) {
           ? [{ message: m.id, conversation: m.from, at: m.at, text: gist(m) }]
           : [],
       ),
-    dismiss: (messageId, ctx, device) => dismiss(host, messageId, ctx, { device }),
+    dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
   })

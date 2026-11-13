@@ -898,7 +898,8 @@ export default (host: ExtensionHost) => {
           text: opt(str({ minLength: 1 })),
           dismiss: opt(bool()),
         }),
-        // The settled reply is memoized; a replay after a crash finds the message no longer open and goes on.
+        // A reply or dismissal commits a receipt keyed by this call, so a replay after a crash finds the settlement
+        // instead of the closed question. The forward to @ultimate is memoized.
         replay: 'safe',
         async execute({ message, text, dismiss }, api, ctx) {
           if (api.conversationId !== (await voiceId(host)))
@@ -908,18 +909,21 @@ export default (host: ExtensionHost) => {
           const found = (await api.snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages.find(
             (m) => m.id === message,
           )
-          const done = await api.memo<boolean>('settled', ctx)
-          if (!done) {
-            if (!found || !openQuestion(found))
-              throw new Error(`Message ${message} is not an open question to the user`)
-            if (dismiss) await host.need(MessagesApi).dismiss(message, ctx)
-            else if (found.from === main) {
+          const call = { taskId: api.taskId, callId: api.callId }
+          // Only the forward to @ultimate writes this memo, so a replay that finds it goes the same way.
+          const settled = await api.memo<boolean>('settled', ctx)
+          const toMain = settled || (!dismiss && found !== undefined && found.from === main)
+          if (toMain) {
+            if (!settled) {
+              if (!openQuestion(found!))
+                throw new Error(`Message ${message} is not an open question to the user`)
               // @ultimate's own question: its answer follows, and comes back to Voice to speak.
               await forward(api, ctx, text!, message)
-            } else await host.need(MessagesApi).answer(message, text!, ctx)
-            await api.memo('settled', true, ctx)
-          }
-          if (dismiss || found?.from !== main)
+              await api.memo('settled', true, ctx)
+            }
+          } else if (dismiss) await host.need(MessagesApi).dismiss(message, ctx, undefined, call)
+          else await host.need(MessagesApi).answer(message, text!, ctx, undefined, call)
+          if (!toMain)
             await write(
               host,
               api.conversationId,
@@ -936,7 +940,7 @@ export default (host: ExtensionHost) => {
             output: [
               {
                 type: 'text',
-                text: `${dismiss ? 'Dismissed' : 'Answered'}${found?.from === main && !dismiss ? '; @ultimate’s reply will arrive as input' : ''}.\n\nStill open:\n${await openList(host, ctx)}`,
+                text: `${dismiss ? 'Dismissed' : 'Answered'}${toMain ? '; @ultimate’s reply will arrive as input' : ''}.\n\nStill open:\n${await openList(host, ctx)}`,
               },
             ],
           }

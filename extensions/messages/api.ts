@@ -4,7 +4,7 @@
  */
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { EntryId } from '@earendil-works/pi-durable'
+import type { EntryId, TaskId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
@@ -57,9 +57,16 @@ export const Messages = defineDoc<{ messages: Message[]; next: number }>({
 export type MessagesService = {
   /**
    * Reply `text` from the user to open message `messageId`, from browser `device`; returns the reply's message
-   * id. Records a `user.input` event.
+   * id. Records a `user.input` event. With `call` (a tool call), a receipt commits with the reply, and a replay of
+   * that call returns the same id even though the question is closed by then.
    */
-  answer(messageId: number, text: string, ctx: Context, device?: Device): Promise<number>
+  answer(
+    messageId: number,
+    text: string,
+    ctx: Context,
+    device?: Device,
+    call?: { taskId: TaskId; callId: string },
+  ): Promise<number>
   /**
    * The messages that wait on the user's answer, oldest first: each one's id, the conversation that asked, when, and its
    * question in one line (the line its card's header shows).
@@ -67,8 +74,16 @@ export type MessagesService = {
   openQuestions(
     ctx: Context,
   ): Promise<{ message: number; conversation: number; at: number; text: string }[]>
-  /** Close open message `messageId` unanswered; its sender gets a one-way note. Returns the note's message id. */
-  dismiss(messageId: number, ctx: Context, device?: Device): Promise<number>
+  /**
+   * Close open message `messageId` unanswered; its sender gets a one-way note. Returns the note's message id. `call`
+   * works as for `answer`.
+   */
+  dismiss(
+    messageId: number,
+    ctx: Context,
+    device?: Device,
+    call?: { taskId: TaskId; callId: string },
+  ): Promise<number>
   /** Send a one-way message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
   send(
     from: number,
