@@ -133,9 +133,12 @@ export async function linkHome(from: string, to: string) {
   }
 }
 
-/** The branch a preview with this home lands on; it shares the prefix of the preview's workspace branches. */
-export const previewBranch = (home: string) =>
-  `ultimate/${createHash('sha256').update(home).digest('hex').slice(0, 6)}-preview`
+/**
+ * The branch a preview with this home lands on, or with another suffix another branch of its own; all share the prefix
+ * of the preview's workspace branches.
+ */
+export const previewBranch = (home: string, suffix = 'preview') =>
+  `ultimate/${createHash('sha256').update(home).digest('hex').slice(0, 6)}-${suffix}`
 
 /**
  * Git config for the previewed repository: every push goes to a transport that does not exist (`pushInsteadOf`, which
@@ -408,9 +411,10 @@ export const actions: Record<string, ExtensionAction> = {
 
 function stringArg(args: unknown, name: string, max: number) {
   const value = (args as Record<string, unknown> | null)?.[name]
-  if (typeof value !== 'string' || !value.trim() || value.length > max)
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed || trimmed.length > max)
     throw new Error(`${name} must be a non-empty string of at most ${max} characters`)
-  return value
+  return trimmed
 }
 
 /** How long a preview the user started may run with no page open, and how often that is checked. */
@@ -436,16 +440,18 @@ function watchIdle(
   item: Instance,
 ) {
   let seen = Date.now()
+  // Stopping clears the interval; a failed stop is tried again at the next check.
   item.idle = setInterval(() => {
     void pages(item)
       .then(async (open) => {
         if (open > 0) seen = Date.now()
         if (live(item) && Date.now() - seen < idle.limit) return
-        clearInterval(item.idle)
         await stop(running(host), item.id)
         remember(host, item)
       })
       .catch((error: unknown) => {
+        // Already stopped by the user's `stop` or by shutdown: nothing failed.
+        if (!running(host).has(item.id)) return
         host.notice(`Stopping idle preview ${item.label} failed: ${String(error)}`)
       })
   }, idle.every)
@@ -463,9 +469,13 @@ async function refCheckout(
   label: string,
   home: string,
 ) {
-  const repository = await isolatable(host.projectRoot)
-  if ('reason' in repository) throw new Error(`Cannot preview a commit: ${repository.reason}`)
-  const { source } = repository
+  // Only the repository is needed: its checkout may be on any branch, or detached.
+  const top = await git(host.projectRoot, 'rev-parse', '--show-toplevel').catch(
+    // Outside Git there is no commit to preview; the error below says so.
+    () => '',
+  )
+  if (!top) throw new Error('Cannot preview a commit: the project is not a Git repository')
+  const source = await realpath(top)
   const commit = await git(
     source,
     'rev-parse',
@@ -479,7 +489,7 @@ async function refCheckout(
   )
   if (!commit) throw new Error(`Unknown commit ${ref}: fetch it first`)
   const path = join(home, 'checkouts', 'commit')
-  const branch = previewBranch(home).replace(/preview$/, 'checkout')
+  const branch = previewBranch(home, 'checkout')
   await git(source, 'worktree', 'add', '-b', branch, path, commit)
   const project = join(path, relative(source, await realpath(host.projectRoot)))
   if (host.projectRoot !== host.ultimateRoot)
