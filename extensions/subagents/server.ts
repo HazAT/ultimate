@@ -37,8 +37,6 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../server/project.ts'
 import {
   agentRoots,
-  definitionAgent,
-  definitionFamily,
   deleteDefinition,
   discoverAgents,
   hasLogin,
@@ -48,14 +46,14 @@ import {
   saveOverlay,
 } from '../../lib/agents.ts'
 import type { AgentDefinition, DefinitionFields } from '../../lib/agents.ts'
-import { createChild, started } from './children.ts'
+import { createChild, reconfigure, started } from './children.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
-import { Family, Pin } from '../models/api.ts'
+import { Pin } from '../models/api.ts'
 import { Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
 import type { SubagentsService } from './api.ts'
 import { definitionRuns, refName, refOf } from '../../lib/families.ts'
@@ -639,6 +637,9 @@ export default function subagents(
       await started(host, tx, child, options.definition?.name ?? options.label, 'child')
       return child
     },
+    async reconfigure(tx, id, { definition, parentAgent, modelRuntime }) {
+      await reconfigure(tx, id, definition, parentAgent, modelRuntime)
+    },
     async residents(_ctx) {
       return (await residentDefinitions()).map(({ name, description }) => ({ name, description }))
     },
@@ -657,30 +658,21 @@ export default function subagents(
         const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
         let id = Object.hasOwn(index, name) ? index[name] : undefined
         let created: ConversationRecord | undefined
-        // A new conversation starts on the default model and thinking level; an existing one keeps those chosen in
-        // it, so a refresh changes them only where the definition pins them.
-        let base = { ...main, ...(await hostDefault(host)) }
-        if (id !== undefined && (await tx.conversation(id))) {
-          const own = await tx.doc(AgentDoc, id)
-          base = {
-            ...base,
-            ...(own.model ? { model: own.model } : {}),
-            ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
-          }
-        } else {
+        if (id === undefined || !(await tx.conversation(id))) {
           // Created and indexed in one commit; a deleted standing conversation is recreated here.
           created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
           id = created.id
           index[name] = id
         }
-        const change = definitionAgent(definition, base, host.modelRuntime)
-        await configure(tx, id, { ...change, cwd: host.projectRoot })
-        ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
+        // A new conversation starts on the default model and thinking level; an existing one keeps those chosen in
+        // it, so a refresh changes them only where the definition pins them.
+        const base = { ...main, ...(await hostDefault(host)) }
+        await reconfigure(tx, id, definition, base, host.modelRuntime)
+        await configure(tx, id, { cwd: host.projectRoot })
         Object.assign(await tx.doc(host.metadata, id), { label: 'agent', title: `@${name}` })
         // A standing agent keeps its `@name`: no automatic title, summary or reply activity.
         await conversations.setAutomaticSummaries(tx, id, false)
         await conversations.setStanding(tx, id, true)
-        ;(await tx.doc(Profile, id)).definition = name
         setMark(await tx.doc(Marks, ROOT_CONVERSATION_ID), definition)
         // Only a new conversation starts: a refresh reconfigures one that already runs.
         if (created) await started(host, tx, created, name, 'standing')

@@ -4,7 +4,9 @@
  */
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type { Agent, ConversationId, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import type { AgentDefinition } from '../../lib/agents.ts'
 import { defineApi } from '../../shared/extension-api.ts'
 import { RunsDoc, StandingDoc } from './refs.ts'
 import type { Run } from './refs.ts'
@@ -93,6 +95,16 @@ export type SubagentsService = {
     tx: Tx,
     options: Parameters<typeof createChild>[2],
   ) => ReturnType<typeof createChild>
+  /**
+   * Refresh, inside `tx`, conversation `id` from `definition` (read fresh, e.g. with `discoverAgents`) over
+   * `parentAgent`: its current tools, extensions and instructions; the model and thinking chosen in it stay unless the
+   * definition pins them.
+   */
+  reconfigure: (
+    tx: Tx,
+    id: ConversationId,
+    options: { definition: AgentDefinition; parentAgent: Agent; modelRuntime: ModelRuntime },
+  ) => Promise<void>
 }
 /** Child conversations and standing agents; `need` it where delegation is required, else `want` it. */
 export const SubagentsApi = defineApi<SubagentsService>()('subagents')

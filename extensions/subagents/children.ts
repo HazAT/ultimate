@@ -41,6 +41,29 @@ export async function started(
 }
 
 /**
+ * Configure existing conversation `id` from `definition` over `parent`: its current tools, extensions and instructions,
+ * while the model and thinking chosen in it stay unless the definition pins them. Its cwd stays.
+ */
+export async function reconfigure(
+  tx: Tx,
+  id: ConversationId,
+  definition: AgentDefinition,
+  parent: Agent,
+  modelRuntime: ModelRuntime,
+) {
+  const own = await tx.doc(AgentDoc, id)
+  const base = {
+    ...parent,
+    ...(own.model ? { model: own.model } : {}),
+    ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
+  }
+  const change = definitionAgent(definition, base, modelRuntime)
+  await configure(tx, id, change)
+  ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
+  ;(await tx.doc(Profile, id)).definition = definition.name
+}
+
+/**
  * A conversation configured from a definition (or as a copy of the parent's agent), new or forked at `fork.at`; a
  * definition with `summaries: false` turns its automatic summaries off.
  */

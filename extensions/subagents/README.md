@@ -137,6 +137,9 @@ ordinary one.
 - `standing(name, ctx)` creates or returns the standing conversation and reconfigures it from the current definition;
   unknown and non-resident names fail with the available names. The `standing {name}` action does the same.
 - `createChild(…)`: used by automations to start a run from a definition.
+- `reconfigure(tx, id, {definition, parentAgent, modelRuntime})`: refreshes a conversation an extension keeps (a
+  per-item chat) from its definition's current tools and instructions; the model and thinking chosen in it stay unless
+  the definition pins them.
 
 The `Standing` document (kind `ultimate.standing-agents`, on `ROOT_CONVERSATION_ID`) maps names to conversation ids.
 `ultimate.subagents` holds each conversation's children and actions. Each child's `ultimate.metadata` has `label` (the
