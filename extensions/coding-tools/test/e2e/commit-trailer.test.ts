@@ -27,19 +27,23 @@ it.each([0, 1])(
       const hooks = join(cwd, '.git', 'hooks')
       const before = await readdir(hooks)
       const execution: BashExecution = { command: '', cwd, env: {}, inheritEnv: true }
-      prepareBash(execution, { conversationId: 34820 as ConversationId })
+      await prepareBash(execution, { conversationId: 34820 as ConversationId })
       const bash = (command: string) =>
         run('bash', ['-c', command], { cwd, env: { ...process.env, ...execution.env } })
       expect((await bash('git config --list')).stdout.includes('ultimate.test=preserved')).toBe(
         count === 1,
       )
+      await bash(
+        'git init fixture && git -C fixture -c user.name=Test -c user.email=test@example.test commit --allow-empty -m fixture',
+      )
+      expect((await bash('git -C fixture log -1 --format=%B')).stdout).toBe('fixture\n\n')
       await bash('git commit --allow-empty -m x -m "Other-Trailer: kept"')
       expect((await git('log', '-1', '--format=%B')).stdout).toContain(
         'Ultimate-Conversation: 34820',
       )
       expect((await git('log', '-1', '--format=%B')).stdout).toContain('Other-Trailer: kept')
 
-      prepareBash(execution, { conversationId: 42 as ConversationId })
+      await prepareBash(execution, { conversationId: 42 as ConversationId })
       await run('bash', ['-c', 'git commit --amend --allow-empty --no-edit'], {
         cwd,
         env: { ...process.env, ...execution.env },
@@ -82,7 +86,7 @@ it('preserves original attribution when another conversation rebases a commit', 
     await writeFile(join(cwd, 'topic.txt'), 'topic\n')
     await git('add', 'topic.txt')
     const execution: BashExecution = { command: '', cwd, env: {}, inheritEnv: true }
-    prepareBash(execution, { conversationId: 34820 as ConversationId })
+    await prepareBash(execution, { conversationId: 34820 as ConversationId })
     const bash = (command: string) =>
       run('bash', ['-c', command], { cwd, env: { ...process.env, ...execution.env } })
     await bash('git commit -m topic -m "Other-Trailer: kept"')
@@ -92,7 +96,7 @@ it('preserves original attribution when another conversation rebases a commit', 
     await git('commit', '--allow-empty', '-m', 'advance')
     await git('checkout', 'topic')
 
-    prepareBash(execution, { conversationId: 42 as ConversationId })
+    await prepareBash(execution, { conversationId: 42 as ConversationId })
     await bash('git rebase main')
 
     expect((await git('rev-parse', 'HEAD')).stdout).not.toBe(before)
