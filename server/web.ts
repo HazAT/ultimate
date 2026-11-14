@@ -12,6 +12,7 @@ import { inExtensionTests } from '../shared/extension-api.ts'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { exec } from '../lib/exec.ts'
+import { debounce } from '../lib/timers.ts'
 import { writeTextAtomically } from '../lib/json-file.ts'
 import { discoverExtensions } from './discovery.ts'
 import { discoveryRoots } from './project.ts'
@@ -102,7 +103,7 @@ export async function createWeb(options: {
   let left: { file: string; error: string }[] = []
   let failed: string | undefined
   let pending = new Set<string>()
-  let timer: ReturnType<typeof setTimeout> | undefined
+  const scheduleUpdate = debounce(150, () => void update())
   const closing = new AbortController()
 
   async function fresh(current: Manifest) {
@@ -269,8 +270,8 @@ export async function createWeb(options: {
   function touched(file: string) {
     pending.add(relative(ultimateRoot, file).startsWith('..') ? file : relative(ultimateRoot, file))
     stale = true
-    clearTimeout(timer)
-    if (options.pages() > 0) timer = setTimeout(() => void update(), 150)
+    scheduleUpdate.cancel()
+    if (options.pages() > 0) scheduleUpdate()
   }
   const inside = (file: string, root: string) => file === root || file.startsWith(root + sep)
   const tests = (file: string) =>
@@ -385,7 +386,7 @@ export async function createWeb(options: {
         .pipe(response)
     },
     close() {
-      clearTimeout(timer)
+      scheduleUpdate.cancel()
       unwatch()
       // A build no one will be served: stop it rather than wait for it.
       closing.abort()

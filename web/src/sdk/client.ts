@@ -1,5 +1,6 @@
 import { ActionError, actionMessage, createApi } from './api.ts'
 import { createReads } from './reads.ts'
+import { deadline } from '../../../lib/timers.ts'
 import { linkedConversation } from './link.ts'
 import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
@@ -94,7 +95,7 @@ store.subscribe(() => {
       switchKey,
       JSON.stringify({ at: Date.now(), changed: system.web.changed }),
     )
-    setTimeout(() => location.reload(), switchDelay)
+    deadline(switchDelay, () => location.reload())
     return
   }
   // The stream sends `system` before `ui`, so a new process's snapshot finds the revisions forgotten.

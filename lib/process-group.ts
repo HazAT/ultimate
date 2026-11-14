@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
-import { setTimeout as sleep } from 'node:timers/promises'
+import { pace } from './timers.ts'
 
 /** The program cannot start until its pid is recorded; a parent that dies before go gives EOF instead. */
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
@@ -125,7 +125,7 @@ function within<T>(promise: Promise<T>, ms: number) {
   const timer = new AbortController()
   return Promise.race([
     promise,
-    sleep(ms, undefined, { signal: timer.signal }).catch(
+    pace(ms, timer.signal).catch(
       // Aborted once `promise` settled first; the race already has its value.
       () => undefined,
     ),
@@ -135,7 +135,7 @@ function within<T>(promise: Promise<T>, ms: number) {
 /** Poll group `pid` until it is empty or `ms` passed; whether it is empty. */
 async function gone(pid: number, ms: number) {
   const deadline = Date.now() + ms
-  while (groupAlive(pid) && Date.now() < deadline) await sleep(20)
+  while (groupAlive(pid) && Date.now() < deadline) await pace(20)
   return !groupAlive(pid)
 }
 

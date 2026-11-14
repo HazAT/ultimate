@@ -1,8 +1,7 @@
 import { readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { identify } from '../lib/process-group.ts'
-
-export const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+import { pace } from '../lib/timers.ts'
 export function alive(pid: number) {
   try {
     process.kill(pid, 0)
@@ -52,7 +51,7 @@ export async function retireStorageOwner(path: string) {
   }
   if (!(await signal('SIGTERM'))) return
   const deadline = Date.now() + 10000
-  while (alive(owner.pid) && Date.now() < deadline) await pause(50)
+  while (alive(owner.pid) && Date.now() < deadline) await pace(50)
   if (alive(owner.pid)) await signal('SIGKILL')
 }
 export async function readOwner(
@@ -95,7 +94,7 @@ export async function acquireLock(
         if ((error as { errcode?: number }).errcode !== 5) throw error
         let owner = await readOwner(path)
         if (!owner) {
-          await pause(50)
+          await pace(50)
           owner = await readOwner(path)
         }
         if (Date.now() >= deadline)
@@ -105,7 +104,7 @@ export async function acquireLock(
               : `Ultimate core already owns this storage (pid ${owner?.pid ?? 'unknown'})`,
             { cause: error },
           )
-        await pause(50)
+        await pace(50)
       }
     }
     const stale = Boolean(await readOwner(path))

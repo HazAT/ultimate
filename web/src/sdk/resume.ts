@@ -3,11 +3,13 @@
  * positions) in `sessionStorage`, `index.html` paints that before any module loads, and it fades out once the app has
  * rendered again (`rendered()`). A core swap, a Vite full reload or F5 so never flash an empty window or the splash.
  */
+import { debounce, deadline } from '../../../lib/timers.ts'
+
 const key = 'ultimate.resume'
 /** The view `index.html` painted from the previous page, until released. */
 const shown = document.getElementById('resume')
 /** Longest the previous view covers the app, should it never render. */
-const deadline = 8000
+const coverMs = 8000
 /**
  * Once the app has rendered, it settles for at most this long, and counts as settled after this long without the
  * transcript growing or scrolling. Timestamps and status text keep changing and do not count.
@@ -105,23 +107,20 @@ export function rendered() {
   ready = true
   if (!covering) return
   const app = document.getElementById('app')!
-  let timer = setTimeout(done, quiet)
-  const wait = () => {
-    clearTimeout(timer)
-    timer = setTimeout(done, quiet)
-  }
+  const wait = debounce(quiet, done)
+  wait()
   const changes = new MutationObserver(wait)
   changes.observe(app, { subtree: true, childList: true })
   addEventListener('scroll', wait, true)
-  const cap = setTimeout(done, settle)
+  const cancelCap = deadline(settle, done)
   function done() {
     changes.disconnect()
     removeEventListener('scroll', wait, true)
-    clearTimeout(timer)
-    clearTimeout(cap)
+    wait.cancel()
+    cancelCap()
     uncover()
   }
 }
 
 addEventListener('pagehide', capture)
-if (shown) setTimeout(uncover, deadline)
+if (shown) deadline(coverMs, uncover)

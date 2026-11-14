@@ -1,4 +1,6 @@
 import { applyImmutable } from '@earendil-works/chord/delta'
+import { nextTurn, retryAfter } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import type { JsonObject, TaskGraph } from '@earendil-works/pi-durable'
 import type {
@@ -93,7 +95,7 @@ interface DocStream {
   kinds: string
   view: boolean
   sub: number
-  retry?: ReturnType<typeof setTimeout>
+  cancelRetry?: Cancel
 }
 
 /**
@@ -142,9 +144,9 @@ export function createStore(options: StoreOptions = {}) {
   let nextSub = 0
   let main: number | undefined
   let opened = false
-  let retry: ReturnType<typeof setTimeout> | undefined
-  let resubscribe: ReturnType<typeof setTimeout> | undefined
-  let sync: ReturnType<typeof setTimeout> | undefined
+  let cancelRetry: Cancel | undefined
+  let cancelResubscribe: Cancel | undefined
+  let cancelSync: Cancel | undefined
   let noticeId = 0
   let stopped = true
   /**
@@ -284,7 +286,7 @@ export function createStore(options: StoreOptions = {}) {
   }
   /** (Re)subscribe the shown conversation with the watched kinds, replacing its previous subscription. */
   function openMain() {
-    clearTimeout(resubscribe)
+    cancelResubscribe?.()
     unsubscribe(main)
     const requested = state.requested
     main = subscribe(
@@ -298,13 +300,13 @@ export function createStore(options: StoreOptions = {}) {
           set({ requested: undefined })
           options.onFallback?.()
           openMain()
-        } else resubscribe = setTimeout(openMain, options.retryMs ?? 1000)
+        } else cancelResubscribe = retryAfter(options.retryMs ?? 1000, openMain)
       },
     )
   }
 
   function connect() {
-    clearTimeout(retry)
+    cancelRetry?.()
     source?.close()
     streamId = undefined
     const current = open('/api/events')
@@ -320,7 +322,7 @@ export function createStore(options: StoreOptions = {}) {
       streamId = undefined
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
       // EventSource retries by itself unless the server answered with an error status.
-      if (current.readyState === CLOSED) retry = setTimeout(connect, options.retryMs ?? 1000)
+      if (current.readyState === CLOSED) cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
     })
     for (const name of names)
       current.addEventListener(name, (event) => {
@@ -353,8 +355,8 @@ export function createStore(options: StoreOptions = {}) {
   }
   function scheduleMain() {
     if (stopped) return
-    clearTimeout(resubscribe)
-    resubscribe = setTimeout(openMain, 0)
+    cancelResubscribe?.()
+    cancelResubscribe = nextTurn(openMain)
   }
 
   function openDocs(conversation: number, kinds: string, withView: boolean) {
@@ -384,9 +386,8 @@ export function createStore(options: StoreOptions = {}) {
       (status) => {
         // The stream ended: its reconnect resubscribes.
         if (status !== 410)
-          stream.retry = setTimeout(
-            () => openDocs(conversation, kinds, withView),
-            options.retryMs ?? 1000,
+          stream.cancelRetry = retryAfter(options.retryMs ?? 1000, () =>
+            openDocs(conversation, kinds, withView),
           )
       },
     )
@@ -394,7 +395,7 @@ export function createStore(options: StoreOptions = {}) {
   function closeDocs(conversation: number) {
     const stream = docStreams.get(conversation)
     unsubscribe(stream?.sub)
-    clearTimeout(stream?.retry)
+    stream?.cancelRetry?.()
     docStreams.delete(conversation)
   }
   /** Scoped views and explicit document watches share one subscription per conversation. */
@@ -424,8 +425,8 @@ export function createStore(options: StoreOptions = {}) {
   }
   function scheduleSync() {
     if (stopped) return
-    clearTimeout(sync)
-    sync = setTimeout(syncDocs, 0)
+    cancelSync?.()
+    cancelSync = nextTurn(syncDocs)
   }
 
   async function refreshModels() {
@@ -453,9 +454,9 @@ export function createStore(options: StoreOptions = {}) {
     },
     stop() {
       stopped = true
-      clearTimeout(retry)
-      clearTimeout(resubscribe)
-      clearTimeout(sync)
+      cancelRetry?.()
+      cancelResubscribe?.()
+      cancelSync?.()
       // Closing the stream closes its subscriptions.
       streamId = undefined
       for (const conversation of docStreams.keys()) closeDocs(conversation)

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { debounce } from '../../../lib/timers.ts'
 import { allCommands, applies, currentContext, runCommand } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
 import { scopeOf } from '../sdk/conversation-scope.tsx'
@@ -22,7 +23,7 @@ function editable(target: EventTarget | null) {
 export function useShortcuts() {
   useEffect(() => {
     let pending: string[] = []
-    let timer: ReturnType<typeof setTimeout> | undefined
+    const resetPending = debounce(1200, () => (pending = []))
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return
       const chord = chordOf(event)
@@ -57,7 +58,7 @@ export function useShortcuts() {
       const longer = candidates.some(
         ({ keys }) => keys.length > sequence.length && sequence.every((key, i) => keys[i] === key),
       )
-      clearTimeout(timer)
+      resetPending.cancel()
       pending = []
       if (exact && allowed(exact)) {
         event.preventDefault()
@@ -67,12 +68,12 @@ export function useShortcuts() {
       if (longer && (exact || !typing || /\b(mod|alt|ctrl)\+/.test(chord))) {
         if (!exact) event.preventDefault()
         pending = sequence
-        timer = setTimeout(() => (pending = []), 1200)
+        resetPending()
       }
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => {
-      clearTimeout(timer)
+      resetPending.cancel()
       window.removeEventListener('keydown', onKeyDown, { capture: true })
     }
   }, [])

@@ -16,6 +16,8 @@ import type {
   ToolTaskInput,
 } from '@earendil-works/pi-durable'
 import type { EventContext } from '../shared/events.ts'
+import { batch, every } from '../lib/timers.ts'
+import type { Cancel } from '../lib/timers.ts'
 
 export type TraceContext = EventContext & { traceId: string; parentCall: string }
 export type CallKind = 'service' | 'action' | 'reactor' | 'tool' | 'model'
@@ -127,8 +129,8 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
   let database: DatabaseSync | undefined
   let insert: ReturnType<DatabaseSync['prepare']> | undefined
   let buffer: unknown[][] = []
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let pruning: ReturnType<typeof setInterval> | undefined
+  const scheduleFlush = batch(200, flush, { unref: true })
+  let stopPruning: Cancel | undefined
   let reported = false
   const failed = (error: unknown) => {
     if (reported) return
@@ -165,8 +167,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
   }
 
   function flush() {
-    clearTimeout(timer)
-    timer = undefined
+    scheduleFlush.cancel()
     const rows = buffer
     buffer = []
     if (!database || !rows.length) return
@@ -272,7 +273,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
           context.taskId ?? null,
           context.entryId ?? null,
         ])
-        timer ??= setTimeout(flush, 200).unref()
+        scheduleFlush()
       } catch (error) {
         failed(error)
       }
@@ -345,7 +346,7 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
           `INSERT OR IGNORE INTO calls (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})`,
         )
         prune()
-        pruning = setInterval(prune, 36e5).unref()
+        stopPruning = every(36e5, prune, { unref: true })
       } catch (error) {
         database?.close()
         database = undefined
@@ -355,7 +356,7 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
     /** Write what is buffered and close; calls go on untraced until the next open. */
     close() {
       flush()
-      clearInterval(pruning)
+      stopPruning?.()
       database?.close()
       database = undefined
     },

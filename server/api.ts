@@ -29,6 +29,7 @@ import { admit, deviceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
 import { shortTitle } from '../lib/title.ts'
+import { batch, every } from '../lib/timers.ts'
 
 class HttpError extends Error {
   status: number
@@ -102,9 +103,9 @@ function eventStream(response: ServerResponse) {
     'X-Accel-Buffering': 'no',
   })
   response.write('retry: 500\n\n')
-  const heartbeat = setInterval(() => {
+  const stopHeartbeat = every(15000, () => {
     if (!response.destroyed) response.write(': heartbeat\n\n')
-  }, 15000)
+  })
   return {
     send: (name: keyof ServerEvents, data: ServerEvents[keyof ServerEvents], sub?: number) => {
       if (!response.destroyed)
@@ -113,7 +114,7 @@ function eventStream(response: ServerResponse) {
         )
     },
     end: () => {
-      clearInterval(heartbeat)
+      stopHeartbeat()
       response.end()
     },
   }
@@ -190,7 +191,6 @@ export async function createApi(
   )
   latest.tasks ??= graph.value
   const tasks = () => latest.tasks!
-  let timer: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let summaries: ConversationSummary[] = []
   const projectIndex = conversationIndex(host.home)
@@ -258,26 +258,25 @@ export async function createApi(
   await refreshConversations()
   projectIndex.update(summaries)
   let lastGraph = JSON.stringify(tasks())
-  onGraph = () => {
-    if (closed || timer) return
-    timer = setTimeout(() => {
-      timer = undefined
-      const graphJson = JSON.stringify(tasks())
-      if (graphJson !== lastGraph) {
-        lastGraph = graphJson
-        events.emit('tasks', tasks())
-        const next = summaries.map((summary) => ({
-          ...summary,
-          busy: Object.values(tasks().tasks).some(
-            (task) => task.conversationId === summary.id && !task.background,
-          ),
-        }))
-        if (JSON.stringify(next) !== JSON.stringify(summaries)) {
-          summaries = next
-          events.emit('conversations', summaries)
-        }
+  const scheduleGraph = batch(100, () => {
+    const graphJson = JSON.stringify(tasks())
+    if (graphJson !== lastGraph) {
+      lastGraph = graphJson
+      events.emit('tasks', tasks())
+      const next = summaries.map((summary) => ({
+        ...summary,
+        busy: Object.values(tasks().tasks).some(
+          (task) => task.conversationId === summary.id && !task.background,
+        ),
+      }))
+      if (JSON.stringify(next) !== JSON.stringify(summaries)) {
+        summaries = next
+        events.emit('conversations', summaries)
       }
-    }, 100)
+    }
+  })
+  onGraph = () => {
+    if (!closed) scheduleGraph()
   }
   const unsubscribe = onCommit(harness, (publication) => {
     if (closed) return
@@ -749,7 +748,7 @@ export async function createApi(
       closed = true
       unsubscribe()
       graph.detach()
-      clearTimeout(timer)
+      scheduleGraph.cancel()
       await Promise.all([...streams].map((stop) => stop()))
       await refreshing
       events.listeners.delete(indexListener)
