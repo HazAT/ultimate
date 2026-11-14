@@ -155,6 +155,78 @@ function commands_find(list: Command[], id: string): Command {
   return found
 }
 
+async function voiceModule() {
+  return (await import('../../web.tsx')) as unknown as {
+    handleTranscription: typeof import('../../web.tsx').handleTranscription
+    entersSend: typeof import('../../web.tsx').entersSend
+  }
+}
+
+function fakeEffects() {
+  const calls: string[] = []
+  return {
+    calls,
+    insert: (text: string) => calls.push(`insert:${text}`),
+    submit: () => calls.push('submit'),
+    error: (message: string) => calls.push(`error:${message}`),
+  }
+}
+
+it("Send transcribes, inserts the transcript, and submits (the composer's own Send)", async () => {
+  const { handleTranscription } = await voiceModule()
+  const effects = fakeEffects()
+  await handleTranscription(async () => ({ text: 'buy milk' }), true, effects)
+  expect(effects.calls).toEqual(['insert:buy milk', 'submit'])
+})
+
+it('Stop transcribes and inserts, unsent, for editing', async () => {
+  const { handleTranscription } = await voiceModule()
+  const effects = fakeEffects()
+  await handleTranscription(async () => ({ text: 'buy milk' }), false, effects)
+  expect(effects.calls).toEqual(['insert:buy milk'])
+})
+
+it('a failed transcription sends nothing: no insert, no submit, just the error', async () => {
+  const { handleTranscription } = await voiceModule()
+  const effects = fakeEffects()
+  await handleTranscription(async () => Promise.reject(new Error('network down')), true, effects)
+  expect(effects.calls).toEqual(['error:Error: network down'])
+})
+
+it('an empty transcription sends nothing either, Send or Stop', async () => {
+  const { handleTranscription } = await voiceModule()
+  for (const send of [true, false]) {
+    const effects = fakeEffects()
+    await handleTranscription(async () => ({ text: '' }), send, effects)
+    expect(effects.calls).toEqual(['error:No speech heard'])
+  }
+})
+
+it("Enter sends while recording, in that conversation's own composer, and leaves Enter alone otherwise", async () => {
+  const { entersSend } = await voiceModule()
+  const enter = {
+    key: 'Enter',
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    isComposing: false,
+  }
+  expect(entersSend(enter, '7', 7, true)).toBe(true)
+  // Not recording: Enter is untouched.
+  expect(entersSend(enter, '7', 7, false)).toBe(false)
+  // A different conversation's composer, even while this one records.
+  expect(entersSend(enter, '9', 7, true)).toBe(false)
+  // No composer in focus (the shortcut's own conversationId, not a textarea).
+  expect(entersSend(enter, undefined, 7, true)).toBe(false)
+  // A modifier or an IME composition: not a plain Enter.
+  expect(entersSend({ ...enter, shiftKey: true }, '7', 7, true)).toBe(false)
+  expect(entersSend({ ...enter, metaKey: true }, '7', 7, true)).toBe(false)
+  expect(entersSend({ ...enter, isComposing: true }, '7', 7, true)).toBe(false)
+  // Any other key, recording or not.
+  expect(entersSend({ ...enter, key: 'a' }, '7', 7, true)).toBe(false)
+})
+
 it('spaces inserted words from their neighbours and puts the cursor after them', () => {
   expect(spliced('', 0, 0, 'Hello')).toEqual({ text: 'Hello', cursor: 5 })
   expect(spliced('Fix the', 7, 7, 'login bug')).toEqual({ text: 'Fix the login bug', cursor: 17 })

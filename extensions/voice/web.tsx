@@ -1,4 +1,4 @@
-import { LoaderCircleIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react'
+import { ArrowUpIcon, LoaderCircleIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -78,6 +78,42 @@ type Recording = {
   started: number
   chunks: Blob[]
   cancelled: boolean
+  send: boolean
+}
+
+/**
+ * Once the audio is ready: transcribe it, then insert at the cursor as Stop always does, and also run the composer's
+ * own send when `send` is true (Send, or Enter while recording). A failed or empty transcription sends nothing; the
+ * error shows as it does today. Exported so this core path is tested without a browser.
+ */
+export async function handleTranscription(
+  transcribe: () => Promise<{ text: string }>,
+  send: boolean,
+  effects: { insert: (text: string) => void; submit: () => void; error: (message: string) => void },
+) {
+  try {
+    const { text } = await transcribe()
+    if (!text) return effects.error('No speech heard')
+    effects.insert(text)
+    if (send) effects.submit()
+  } catch (failure) {
+    effects.error(errorMessage(failure))
+  }
+}
+
+/**
+ * Whether a keydown should send the live recording: Enter with no modifiers, not composing, and typed into this
+ * conversation's own composer (never a side chat's or another conversation's). Exported for the same reason.
+ */
+export function entersSend(
+  event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey' | 'isComposing'>,
+  targetConversation: string | undefined,
+  id: number,
+  recording: boolean,
+): boolean {
+  if (!recording || event.key !== 'Enter' || event.isComposing) return false
+  if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
+  return targetConversation === String(id)
 }
 
 /** Why this browser cannot record at all, or undefined when it can. */
@@ -94,6 +130,20 @@ async function base64(blob: Blob) {
   for (let at = 0; at < bytes.length; at += 0x8000)
     binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
   return btoa(binary)
+}
+
+/**
+ * Runs conversation `id`'s own Send, the same form its Send button submits: a frame after the transcript lands in the
+ * draft, once React has rendered it (the same wait `insertIntoComposer` gives the cursor), so the submit reads it
+ * instead of the draft from before. A busy conversation steers or queues it, as typed text does.
+ */
+function submitComposer(id: number) {
+  requestAnimationFrame(() => {
+    document
+      .querySelector<HTMLTextAreaElement>(`textarea[data-conversation="${id}"]`)
+      ?.closest('form')
+      ?.requestSubmit()
+  })
 }
 
 const clock = (ms: number) => {
@@ -165,25 +215,32 @@ function VoiceButton() {
     return () => clearTimeout(timer)
   }, [error])
 
-  function finish(active: Recording | undefined, cancel: boolean) {
+  function finish(active: Recording | undefined, cancel: boolean, send = false) {
     if (!active) return
     active.cancelled = cancel
+    active.send = send
     if (active.recorder.state !== 'inactive') active.recorder.stop()
     setRecording(undefined)
   }
+  // A ref holds the latest finish (it closes over this render's state); the Enter listener below reads it without
+  // depending on it, the same trick `latestToggle` uses.
+  const latestFinish = useRef(finish)
+  latestFinish.current = finish
 
-  async function transcribe(audio: Blob) {
+  async function transcribe(audio: Blob, send: boolean) {
     if (id === undefined) return
     setTranscribing(true)
     try {
-      const { text } = await api.action(TranscribeAction, {
-        audio: await base64(audio),
-        mimeType: audio.type,
-      })
-      if (text) insertIntoComposer(id, text)
-      else setError('No speech heard')
-    } catch (failure) {
-      setError(errorMessage(failure))
+      await handleTranscription(
+        async () =>
+          api.action(TranscribeAction, { audio: await base64(audio), mimeType: audio.type }),
+        send,
+        {
+          insert: (text) => insertIntoComposer(id, text),
+          submit: () => submitComposer(id),
+          error: setError,
+        },
+      )
     } finally {
       setTranscribing(false)
     }
@@ -217,6 +274,7 @@ function VoiceButton() {
       started: Date.now(),
       chunks: [],
       cancelled: false,
+      send: false,
     }
     recorder.addEventListener('dataavailable', (event) => {
       if (event.data.size > 0) active.chunks.push(event.data)
@@ -227,7 +285,10 @@ function VoiceButton() {
       audio?.close().catch(() => undefined)
       if (active.cancelled || active.chunks.length === 0) return
       // oxlint-disable-next-line typescript/no-floating-promises -- transcribe shows its own failures beside the button.
-      void transcribe(new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }))
+      void transcribe(
+        new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }),
+        active.send,
+      )
     })
     // Created after awaiting the permission prompt, it may start suspended (Safari): the meter would read silence.
     audio?.resume().catch(() => undefined)
@@ -268,6 +329,24 @@ function VoiceButton() {
     })
   }, [id])
 
+  // Enter sends the live recording, same as tapping Send: captured ahead of the composer's own Enter-to-send (which
+  // runs on bubble, after this), so only one of them fires for the same keypress. Everywhere else Enter is untouched.
+  useEffect(() => {
+    if (id === undefined) return undefined
+    const conversationId = id
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target
+      const conversation =
+        target instanceof HTMLTextAreaElement ? target.dataset.conversation : undefined
+      if (!entersSend(event, conversation, conversationId, !!current.current)) return
+      event.preventDefault()
+      event.stopPropagation()
+      latestFinish.current(current.current, false, true)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [id])
+
   if (recording)
     return (
       <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Recording">
@@ -295,6 +374,16 @@ function VoiceButton() {
           type="button"
         >
           <SquareIcon className="size-3 fill-current" />
+        </button>
+        <button
+          aria-label="Send"
+          className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 pointer-coarse:size-9"
+          onClick={() => finish(recording, false, true)}
+          onPointerDown={keepFocus}
+          title="Send (Enter)"
+          type="button"
+        >
+          <ArrowUpIcon className="size-4" />
         </button>
       </div>
     )
