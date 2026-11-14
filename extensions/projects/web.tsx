@@ -1,6 +1,8 @@
 // The project switcher (`shell.rail`): every Ultimate running on this machine as a colour swatch at the window's left edge.
 // Hover opens it over the app with names, repositories and ports; pin keeps it open beside the app. A row is a link to that
 // instance's `/`, which opens its @ultimate. It steps aside for any other extension that fills `shell.rail`.
+import { debounce, deadline, every } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -30,12 +32,12 @@ const PIN = 30_000
  * browser's cache clears it, and so does a navigation stopped on this page, after 15 s.
  */
 let opening: string | undefined
-let expiry: ReturnType<typeof setTimeout> | undefined
+let cancelExpiry: Cancel | undefined
 const listeners = new Set<() => void>()
 const setOpening = (url: string | undefined) => {
   opening = url
-  clearTimeout(expiry)
-  if (url) expiry = setTimeout(() => setOpening(undefined), 15_000)
+  cancelExpiry?.()
+  if (url) cancelExpiry = deadline(15_000, () => setOpening(undefined))
   for (const listener of listeners) listener()
 }
 const subscribe = (listener: () => void) => {
@@ -56,8 +58,8 @@ function OpeningBar() {
   )
 }
 
-/** Calls `refetch` every `every` ms while the page is visible, and when it becomes visible; never while `off`. */
-function usePoll(refetch: () => Promise<unknown>, every: number, off = false) {
+/** Calls `refetch` every `interval` ms while the page is visible, and when it becomes visible; never while `off`. */
+function usePoll(refetch: () => Promise<unknown>, interval: number, off = false) {
   useEffect(() => {
     if (off) return undefined
     const visible = () => {
@@ -65,13 +67,13 @@ function usePoll(refetch: () => Promise<unknown>, every: number, off = false) {
       // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetch()
     }
-    const timer = setInterval(visible, every)
+    const stopPolling = every(interval, visible)
     document.addEventListener('visibilitychange', visible)
     return () => {
-      clearInterval(timer)
+      stopPolling()
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [refetch, every, off])
+  }, [refetch, interval, off])
 }
 
 /** Whether the rail is pinned: one value for every instance on this machine, so a jump keeps the rail as it was. */
@@ -273,8 +275,8 @@ function Rail() {
   usePoll(list.refetch, LIVE, other)
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = usePinned(other)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const [showHover] = useState(() => debounce(150, () => setHover(true)))
+  useEffect(() => showHover.cancel, [showHover])
   const projects = list.data ?? []
   const loading = !list.data && !list.error
   // A list that arrives after the skeleton fades in over it; one already there on mount just shows.
@@ -295,12 +297,9 @@ function Rail() {
           'absolute inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,box-shadow] duration-150 ease-out',
           hover && !pinned && 'shadow-2xl shadow-black/40',
         )}
-        onMouseEnter={() => {
-          clearTimeout(timer.current)
-          timer.current = setTimeout(() => setHover(true), 150)
-        }}
+        onMouseEnter={showHover}
         onMouseLeave={() => {
-          clearTimeout(timer.current)
+          showHover.cancel()
           setHover(false)
         }}
         // Keyboard: tabbing into the rail opens it like hovering, leaving it closes it.

@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { api, useUltimate } from '@/sdk'
 import { NavigatedAction } from './refs.ts'
@@ -24,7 +25,7 @@ export function NavigationReporter() {
   useEffect(() => {
     const key = `${surface}:${conversation ?? ''}`
     if (navigator.webdriver || !visible || key === reported.current) return undefined
-    const timer = setTimeout(() => {
+    return deadline(SETTLE_MS, () => {
       reported.current = key
       // A missed report only leaves a gap in the debug log; it never needs the user's attention.
       api
@@ -33,8 +34,7 @@ export function NavigationReporter() {
           ...(conversation === undefined ? {} : { conversation }),
         })
         .catch(() => (reported.current = undefined))
-    }, SETTLE_MS)
-    return () => clearTimeout(timer)
+    })
   }, [surface, conversation, visible])
   return null
 }

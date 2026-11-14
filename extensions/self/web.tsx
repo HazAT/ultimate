@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import { LoaderCircleIcon, RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -252,8 +253,7 @@ function Build() {
   }, [id])
   useEffect(() => {
     if (!fresh) return undefined
-    const timer = setTimeout(() => setFresh(false), 4000)
-    return () => clearTimeout(timer)
+    return deadline(4000, () => setFresh(false))
   }, [fresh])
   if (!system) return null
   // The rebuild item stands in for this one while it shows something.
@@ -327,8 +327,7 @@ function Updated() {
   const events = useEvents({ events: [SubmissionLanded], limit: 5 })
   useEffect(() => {
     if (!shown) return undefined
-    const timer = setTimeout(() => setShown(false), lifetime)
-    return () => clearTimeout(timer)
+    return deadline(lifetime, () => setShown(false))
   }, [shown])
   if (!shown || !switched) return null
   const { at } = switched

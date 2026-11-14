@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import {
   ArrowLeftIcon,
@@ -244,8 +245,7 @@ function Stage() {
   if (current && shown !== current.id) setShown(current.id)
   useEffect(() => {
     if (current) return undefined
-    const timer = setTimeout(() => setShown(undefined), duration + 60)
-    return () => clearTimeout(timer)
+    return deadline(duration + 60, () => setShown(undefined))
   }, [current])
 
   useLayoutEffect(() => {
