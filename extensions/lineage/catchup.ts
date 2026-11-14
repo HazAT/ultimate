@@ -11,6 +11,7 @@ import type {
   Tx,
 } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
@@ -48,10 +49,7 @@ async function mainOf(
     (await git(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => ''))
   if (!target) return undefined
   // Projects without a main branch have nothing to catch up on.
-  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(
-    // An unborn target branch has no commits to catch up on.
-    () => undefined,
-  )
+  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(meansNone)
   // Only a ready checkout exists on disk: a concluded conversation's is released, and its next request recreates it.
   return sha
     ? { cwd, target, sha, ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}) }

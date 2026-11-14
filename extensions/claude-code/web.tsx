@@ -1,12 +1,12 @@
 import { RefreshCwIcon, TerminalIcon } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { defineWebExtension, refreshModels, useAction } from '@/sdk'
+import { defineWebExtension, keepLast, refreshModels, useAction } from '@/sdk'
 import { StatusAction } from './refs.ts'
 
 function ClaudeCodePanel() {
   const { data, error, loading, refetch } = useAction(StatusAction, null, {
-    onError: () => {},
+    onError: keepLast,
   })
   useEffect(() => {
     // A successful status check also refreshes the model cache, so a login or logout reaches the picker without a reload.

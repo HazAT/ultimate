@@ -6,6 +6,7 @@
 import { LoaderCircleIcon, MoonIcon, MoonStarIcon } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage, useDocOf, useUltimate } from '@/sdk'
+import { meansNone } from '../../lib/errors.ts'
 import { useConcludedSince } from '../conversations/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { DismissAction, DreamDoc, ReadyAction } from './refs.ts'
@@ -91,8 +92,7 @@ export function AwakeSection({ onAct }: { onAct?: () => void }) {
             className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-foreground/85 hover:text-foreground"
             onClick={() => {
               onAct?.()
-              // Opening a conversation fails only when @ultimate is unknown; the sidebar row stays as it is then.
-              talkToUltimate(actions).catch(() => undefined)
+              talkToUltimate(actions).catch(meansNone)
             }}
             type="button"
           >

@@ -19,6 +19,7 @@ import type { ContextEdit, ConversationId, Cursor, EntryId, Tx } from '@earendil
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { git } from '../../lib/git.ts'
+import { meansNone } from '../../lib/errors.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent } from '../../shared/events.ts'
 import { Committed } from '../coding-tools/api.ts'
@@ -159,10 +160,7 @@ export async function editedPaths(
 async function fileStates(top: string, paths: ReadonlySet<string>, base: string | undefined) {
   if (!paths.size) return []
   const listed = [...paths]
-  const head = await git(top, 'rev-parse', '--verify', '--quiet', 'HEAD').catch(
-    // A repository before its first commit has no HEAD to count lines against.
-    () => undefined,
-  )
+  const head = await git(top, 'rev-parse', '--verify', '--quiet', 'HEAD').catch(meansNone)
   const counts = new Map<string, { added: number; removed: number }>()
   if (head)
     for (const line of rows(
@@ -207,10 +205,7 @@ async function facts(host: ExtensionHost, id: ConversationId, at: number, ctx: C
   const own = (data: { conversation?: number; parent?: number }) =>
     data.conversation === id || data.parent === id
   const cwd = (await host.harness().snapshot(AgentDoc, id, ctx))?.cwd ?? host.projectRoot
-  const top = await git(cwd, 'rev-parse', '--show-toplevel').catch(
-    // Outside a repository no commit is this checkout's.
-    () => undefined,
-  )
+  const top = await git(cwd, 'rev-parse', '--show-toplevel').catch(meansNone)
   // Only commits made in this checkout: a command may commit in another repository.
   const here = (data: { conversation: number; repo: string; worktree?: string }) =>
     own(data) && (data.worktree ?? data.repo) === top

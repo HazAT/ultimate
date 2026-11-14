@@ -2,6 +2,7 @@
 import { hostname } from 'node:os'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { httpBase } from '../../lib/cloud.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { JoinResult, JoinState } from './refs.ts'
@@ -122,12 +123,13 @@ export async function joinState(userHome: string): Promise<JoinState> {
   const missing = [TOKEN, SNAPSHOT_KEY].filter(
     (name) => !stored.some((secret) => secret.name === name),
   )
-  let host: string | undefined
-  try {
-    host = url ? new URL(url).host : undefined
-  } catch {
-    // A malformed cloud.url counts as not joined; the card offers to set it again.
-  }
+  const host = (() => {
+    try {
+      return url ? new URL(url).host : undefined
+    } catch (error) {
+      return meansNone(error)
+    }
+  })()
   return {
     ...(url && host && !missing.length ? { joined: { url, host, machine } } : {}),
     ...(url ? { url } : {}),

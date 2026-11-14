@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
+  keepLast,
   useAction,
   useConversation,
   useConversationSummary,
@@ -56,12 +57,10 @@ function Pinned({ id }: { id: number }) {
   // A new `pi.system` entry in the stream means the prompt changed: ask for it again.
   const latest = entries.findLast((entry) => entry.kind === 'pi.system')?.id
   const [seen, setSeen] = useUiState<number | null>(`context.seen.${id}`, null)
-  const shown = useAction(
-    CurrentPromptAction,
-    seen === null ? {} : { since: seen },
-    // Without a prompt there is nothing to pin; a failure leaves the pin out rather than raising a notice.
-    { onError: () => {}, on: latest },
-  )
+  const shown = useAction(CurrentPromptAction, seen === null ? {} : { since: seen }, {
+    onError: keepLast,
+    on: latest,
+  })
   const current = shown.data
   useEffect(() => {
     if (seen === null && current?.at !== undefined) setSeen(current.at)

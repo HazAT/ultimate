@@ -11,6 +11,7 @@ import {
   api,
   cn,
   errorMessage,
+  keepLast,
   useAction,
   useConnection,
   useConversations,
@@ -35,7 +36,7 @@ export const chaptersDialog = 'dream.chapters'
 
 /** The chapters of this home; they change only with a restart, which reloads the page. */
 export function useChapters() {
-  return useAction(ChaptersAction, null, { onError: () => {} }).data
+  return useAction(ChaptersAction, null, { onError: keepLast }).data
 }
 
 /**
@@ -238,9 +239,7 @@ function useReloadOnChapterChange(pid: number | undefined) {
         if (loaded.current === undefined) loaded.current = chapters.active
         else if (loaded.current !== chapters.active) location.replace('/')
       })
-      .catch(() => {
-        // Unreadable while the server restarts again: the next process's effect reads it.
-      })
+      .catch(keepLast)
     return () => controller.abort()
   }, [pid])
 }

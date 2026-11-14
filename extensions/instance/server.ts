@@ -30,6 +30,7 @@ import type { WorkspaceService } from '../workspaces/api.ts'
 import { cleanPreview, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { meansNone, overshadowed } from '../../lib/errors.ts'
 import { spawnGroup, stopGroup } from '../../lib/process-group.ts'
 import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
@@ -285,8 +286,8 @@ export const stopped = (host: Pick<ExtensionHost, 'resource' | 'home'>) =>
     try {
       const saved = JSON.parse(readFileSync(join(host.home, 'previews.json'), 'utf8')) as Listed[]
       for (const item of saved) byPort.set(portOf(item.url), item)
-    } catch {
-      // No previews stopped in this home yet, or an unreadable file: links to earlier ones stay ordinary links.
+    } catch (error) {
+      meansNone(error)
     }
     return byPort
   })
@@ -476,11 +477,7 @@ export default function instanceExtension(
       // A stop and a start of the same home in one tool round run side by side (omarchy-config #78009); wait for the
       // stop.
       for (const item of instances.values())
-        if (item.home === home)
-          await item.stopping?.catch(
-            // A failed stop reaches its own caller and leaves the instance live: the check below reports the home owned.
-            () => undefined,
-          )
+        if (item.home === home) await item.stopping?.catch(overshadowed)
       if ([...instances.values()].some((item) => item.home === home && live(item)))
         throw new Error('Home is already owned by an instance')
       context.abortSignal?.throwIfAborted()
@@ -608,10 +605,7 @@ export default function instanceExtension(
           ['server/main.ts', false, 'Worktree is not Ultimate: missing server/main.ts'],
           ['node_modules', true, 'Worktree has no node_modules; run pnpm install first'],
         ] as const) {
-          const entry = await stat(join(cwd, path)).catch(
-            // An unreadable prerequisite fails the explicit preview validation below.
-            () => undefined,
-          )
+          const entry = await stat(join(cwd, path)).catch(meansNone)
           if (!entry || (directory ? !entry.isDirectory() : !entry.isFile()))
             throw new Error(message)
         }

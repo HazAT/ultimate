@@ -8,6 +8,7 @@ import type { Agent, ConversationId, Cursor, Tx } from '@earendil-works/pi-durab
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { FIRST_CHAPTER } from '../../lib/chapters.ts'
+import { settled } from '../../lib/errors.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import {
   closeOutput,
@@ -713,13 +714,12 @@ export function supervisor(
     const work = previous.then(async () => {
       await effect(value)
     })
-    // A failed start has already become an investigating automation; it must not block its repair.
-    const settled = work.catch(() => {})
-    effects.set(value.id, settled)
+    const done = settled(work)
+    effects.set(value.id, done)
     try {
       await work
     } finally {
-      if (effects.get(value.id) === settled) effects.delete(value.id)
+      if (effects.get(value.id) === done) effects.delete(value.id)
     }
   }
   /**

@@ -28,6 +28,7 @@ import {
   errorMessage,
   events,
   formatKeys,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -267,7 +268,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
   const described = useAction(
     DescribeAction,
     { schedule: settled ?? '' },
-    { enabled: settled !== undefined, onError: () => {} },
+    { enabled: settled !== undefined, onError: keepLast },
   )
   const now = useNow(1000)
   const data = settled === schedule ? described.data : undefined
@@ -332,7 +333,7 @@ const model = (agent: Model | undefined, fallback: string) =>
 /** Which agent runs the prompt: a copy of the main agent, or a shared agent definition with its own model. */
 function AgentPicker({ value, onChange }: { value: string; onChange: (agent: string) => void }) {
   const { data, refetch } = useAction(DefinitionsAction, null, {
-    onError: () => {},
+    onError: keepLast,
   })
   // A definition changed in its config dialog shows its new model here once the dialog closes, and focus comes back to
   // Configure: opened over the bus, that dialog has no trigger of its own to return focus to.
@@ -456,7 +457,7 @@ export function AutomationForm({
 }) {
   const [draft, setDraft] = useState(() => draftOf(automation))
   const [saving, setSaving] = useState(false)
-  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: () => {} })
+  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: keepLast })
   const [error, setError] = useState<string>()
   const ids = useId()
   const name = useRef<HTMLInputElement>(null)

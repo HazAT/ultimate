@@ -25,6 +25,7 @@ import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
 import { readOnly } from '../../lib/replay.ts'
+import { errnoCode, ignoring, meansNone } from '../../lib/errors.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -59,12 +60,10 @@ export async function browserBinary() {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter((path): path is string => !!path)
   for (const path of candidates) {
-    try {
-      await access(path)
-      return path
-    } catch {
-      /* try the next installed browser */
-    }
+    const available = await access(path)
+      .then(() => path)
+      .catch(meansNone)
+    if (available) return available
   }
   throw new Error(
     'No Chromium found. Set ULTIMATE_CHROMIUM, install /usr/bin/chromium or /usr/bin/google-chrome-stable (Google Chrome in /Applications on macOS), or run `npx playwright install chromium` (~/.cache/ms-playwright on Linux, ~/Library/Caches/ms-playwright on macOS).',
@@ -109,6 +108,8 @@ async function browserProcess(browser: Browser) {
   return pid === undefined || start === undefined ? undefined : { pid, start }
 }
 
+const gone = (error: unknown) => ['ESRCH', 'EPERM'].includes(errnoCode(error) ?? '')
+
 /**
  * Kill a disconnected browser's process group. A browser can drop its connection and keep running (Chrome does when
  * its policy disallows remote debugging), and Playwright never closes a disconnected browser.
@@ -118,8 +119,8 @@ function killGroup(owner: { pid: number; start: string } | undefined) {
   const target = groupTarget(owner.pid)
   try {
     process.kill(target, 'SIGKILL')
-  } catch {
-    // The group exited since (ESRCH), or only zombies are left of it (EPERM on Darwin).
+  } catch (error) {
+    ignoring(gone)(error)
   }
 }
 
@@ -423,7 +424,7 @@ export default function browserExtension(host: ExtensionHost) {
             })
             if (state.launched === launched) state.browser = browser
             // Looked up beside the call, which need not wait for it. It takes milliseconds; a policy drop comes seconds in.
-            const owner = browserProcess(browser).catch(() => undefined)
+            const owner = browserProcess(browser).catch(meansNone)
             browser.once('disconnected', () => {
               if (state.launched === launched) {
                 state.launched = undefined
