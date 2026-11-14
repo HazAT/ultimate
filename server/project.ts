@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
-import { alive, readOwner } from './lock.ts'
+import { alive, readOwner } from '../lib/lock.ts'
 import { debounce } from '../lib/timers.ts'
 import { meansNone } from '../lib/errors.ts'
 

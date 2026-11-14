@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { acquireLock } from '../../../server/lock.ts'
+import { acquireLock } from '../../../lib/lock.ts'
 import { cleanPreview, sweepPreviews } from '../cleanup.ts'
 import { git } from '../../../lib/git.ts'
 

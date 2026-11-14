@@ -430,8 +430,6 @@ it('applies each automation call in one script to its own arguments', async () =
 
 it('reserves trust and secret writes for the UI while allowing normal actions', async () => {
   const { server, options } = await fixture()
-  await mkdir(join(options.ultimateRoot, 'server'), { recursive: true })
-  await cp(resolve('server/lock.ts'), join(options.ultimateRoot, 'server/lock.ts'))
   // Onboarding and secrets use the shared helpers in lib/.
   await cp(resolve('lib'), join(options.ultimateRoot, 'lib'), { recursive: true })
   const probes = { onboarding: 'decide', secrets: 'set' } as const

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
-// oxlint-disable-next-line no-restricted-imports -- tailscale ownership uses the shared process lock and liveness check
-import { acquireLock, alive } from '../../server/lock.ts'
+import { acquireLock, alive } from '../../lib/lock.ts'
 // oxlint-disable-next-line no-restricted-imports -- the project's own server is the one on its default, lock-held home
 import { projectHome } from '../../server/project.ts'
 import { access, mkdir } from 'node:fs/promises'

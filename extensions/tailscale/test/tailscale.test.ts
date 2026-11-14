@@ -132,7 +132,6 @@ async function repo(home: string) {
   await cp(resolve('lib'), join(root, 'lib'), { recursive: true })
   await copyApis(root)
   await mkdir(join(root, 'server'))
-  await cp(resolve('server/lock.ts'), join(root, 'server/lock.ts'))
   await cp(resolve('server/project.ts'), join(root, 'server/project.ts'))
   await linkDependencies(root)
   await writeFile(

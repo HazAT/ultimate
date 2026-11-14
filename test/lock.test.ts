@@ -2,7 +2,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { temp, removeTemp } from './helpers.ts'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { acquireLock, readOwner, retireStorageOwner, alive } from '../server/lock.ts'
+import { acquireLock, readOwner, retireStorageOwner, alive } from '../lib/lock.ts'
 import * as processes from '../lib/process-group.ts'
 
 const directories: string[] = []

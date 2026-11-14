@@ -14,7 +14,7 @@ import { StartedEvent } from '../shared/events.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ChildMessage, SupervisorMessage } from './supervisor-protocol.ts'
 
-import { alive } from './lock.ts'
+import { alive } from '../lib/lock.ts'
 import { every } from '../lib/timers.ts'
 import { realpath } from 'node:fs/promises'
 import { extensionModules } from './vite-extensions.ts'

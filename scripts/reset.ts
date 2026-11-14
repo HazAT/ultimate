@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util'
 import { git } from '../lib/git.ts'
 import { meansNone } from '../lib/errors.ts'
 import { readJson, writeJson } from '../lib/json-file.ts'
-import { acquireLock, readOwner } from '../server/lock.ts'
+import { acquireLock, readOwner } from '../lib/lock.ts'
 import { projectHome } from '../server/project.ts'
 import type { BackupFile } from '../extensions/cloud/backup.ts'
 

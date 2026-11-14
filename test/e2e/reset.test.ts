@@ -84,7 +84,7 @@ it('refuses while Ultimate runs in the home', async () => {
     [
       '--input-type=module',
       '-e',
-      `const { acquireLock } = await import(${JSON.stringify(resolve('server/lock.ts'))});
+      `const { acquireLock } = await import(${JSON.stringify(resolve('lib/lock.ts'))});
        await acquireLock(${JSON.stringify(join(home, 'ultimate.lock'))}, { pid: process.pid, port: 4747 });
        console.log('held'); setInterval(() => {}, 1000)`,
     ],
