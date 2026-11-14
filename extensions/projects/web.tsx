@@ -1,7 +1,7 @@
-// The project switcher (`shell.rail`): every Ultimate running on this machine as a colour swatch at the window's left edge.
+// The project switcher (`shell.rail`): local and configured remote instances as colour swatches at the window's left edge.
 // Hover opens it over the app with names, repositories and ports; pin keeps it open beside the app. A row is a link to that
 // instance's `/`, which opens its @ultimate. It steps aside for any other extension that fills `shell.rail`.
-import { PinIcon, PinOffIcon } from 'lucide-react'
+import { CircleSlashIcon, PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -96,14 +96,28 @@ function Detail({ project, pending }: { project: RunningProject; pending: boolea
   if (pending) return <span className="text-brand">opening…</span>
   return (
     <>
-      {project.repo && <RepoLabel className="min-w-0" repo={project.repo} />}
+      {project.unavailable ? (
+        <span className="text-muted-foreground">unavailable</span>
+      ) : (
+        project.repo && <RepoLabel className="min-w-0" repo={project.repo} />
+      )}
       <span className="shrink-0 text-muted-foreground/50">{shownPort(project, location)}</span>
     </>
   )
 }
 
 /** What waits in a project, loudest first: questions for the user in amber, else a pulsing dot while it works. */
-function State({ busy, questions }: { busy: boolean; questions: number }) {
+function State({
+  busy,
+  questions,
+  unavailable,
+}: {
+  busy: boolean
+  questions: number
+  unavailable?: true
+}) {
+  if (unavailable)
+    return <CircleSlashIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
   if (questions > 0)
     return (
       <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
@@ -141,8 +155,10 @@ function Row({
   const unreachable = !here && !href
   const title = [
     name,
+    project.machine,
     project.repo?.name,
     shownPort(project, location),
+    project.unavailable && 'unavailable',
     unreachable && 'not on the tailnet',
     questions && `${questions} for you`,
     busy && 'working',
@@ -210,12 +226,17 @@ function Row({
             family={family}
             folder={project.name}
           />
-          {!wide && questions > 0 && (
+          {!wide && project.unavailable && (
+            <span className="absolute inset-0 m-auto flex size-4 items-center justify-center rounded-full bg-sidebar ring-2 ring-sidebar">
+              <CircleSlashIcon aria-hidden className="size-3 text-muted-foreground" />
+            </span>
+          )}
+          {!wide && !project.unavailable && questions > 0 && (
             <span className="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
               {questions}
             </span>
           )}
-          {!wide && busy && questions === 0 && (
+          {!wide && !project.unavailable && busy && questions === 0 && (
             <span className="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
           )}
         </span>
@@ -235,7 +256,7 @@ function Row({
               <Detail pending={pending} project={project} />
             </span>
           </span>
-          <State busy={busy} questions={questions} />
+          <State busy={busy} questions={questions} unavailable={project.unavailable} />
         </span>
       )}
     </a>
@@ -284,6 +305,7 @@ function Rail() {
 
   const wide = hover || pinned
   const family = projects.map((project) => project.name)
+  const machines = projects.some((project) => project.machine !== undefined)
   const questions = projects.reduce((sum, project) => sum + (project.questions ?? 0), 0)
   const working = projects.filter((project) => (project.busy ?? 0) > 0).length
 
@@ -342,10 +364,35 @@ function Rail() {
           <div className={cn('flex flex-col', waited && 'animate-fade-in')}>
             {projects.map((project, index) => {
               const stem = stemOf(project.name)
-              const first = index === 0 || stemOf(projects[index - 1].name) !== stem
-              const last = stemOf(projects[index + 1]?.name ?? '') !== stem
+              const machineStart = index === 0 || projects[index - 1].machine !== project.machine
+              const first = machineStart || stemOf(projects[index - 1].name) !== stem
+              const last =
+                index === projects.length - 1 ||
+                projects[index + 1].machine !== project.machine ||
+                stemOf(projects[index + 1].name) !== stem
               return (
-                <div className={cn(first && index > 0 && 'mt-2')} key={project.url}>
+                <div
+                  className={cn(first && !machineStart && index > 0 && 'mt-2')}
+                  key={`${project.machine ?? ''}:${project.name}:${project.url}`}
+                >
+                  {machines && machineStart && (
+                    <div
+                      className={cn(
+                        'mx-3 flex h-7 items-center',
+                        index > 0 && 'mt-2',
+                        index > 0 && wide && 'border-t border-sidebar-border',
+                      )}
+                      title={project.machine ?? 'This machine'}
+                    >
+                      {wide ? (
+                        <span className="section-label truncate">
+                          {project.machine ?? 'This machine'}
+                        </span>
+                      ) : (
+                        <span aria-hidden className="mx-auto h-px w-3 bg-sidebar-border" />
+                      )}
+                    </div>
+                  )}
                   <Row family={family} first={first} last={last} project={project} wide={wide} />
                 </div>
               )

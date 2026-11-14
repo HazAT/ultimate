@@ -1,6 +1,6 @@
 /**
- * Projects: the Ultimate instances running on this machine, from the host's project list (`host.projects()`), each
- * with its live counts from its own `status` action, for the rail's project switcher.
+ * Projects: the Ultimate instances running on this machine (`host.projects()`) and those the user names in `remotes`
+ * on other machines, each with its live counts from its own `status` action, for the rail's project switcher.
  */
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -9,13 +9,13 @@ import { implementAction } from '../../lib/actions.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import type { GithubRepo } from '../../lib/project-identity.ts'
-import { postAction } from '../../lib/remote.ts'
+import { postAction, remotes } from '../../lib/remote.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
-/** How long the list waits for another instance's counts; a slower one shows without them until the next poll. */
+/** How long the list waits for another instance's counts; a slower one shows as unavailable until the next poll. */
 const STATUS_WAIT = 1_500
 
 type Counts = { busy: number; questions: number }
@@ -28,21 +28,28 @@ async function own(host: ExtensionHost): Promise<Counts> {
   }
 }
 
-/** Another instance's counts from its `status` action, or nothing when it does not answer in time. */
-async function counts(name: string, url: string, signal: AbortSignal) {
+/** Another instance's counts from its `status` action, or unavailable when it does not answer in time. */
+async function counts(
+  name: string,
+  url: string,
+  signal: AbortSignal,
+): Promise<Counts | { unavailable: true }> {
   const status = (await postAction(
-    { url, label: name },
+    // A configured URL may end in a slash; postAction appends `/api/...` to it.
+    { url: url.replace(/\/+$/, ''), label: name },
     'status',
     'status',
     {},
     AbortSignal.any([signal, AbortSignal.timeout(STATUS_WAIT)]),
   ).catch(() => {
-    // Down, slow or without the status extension: the rail lists it without live state.
+    // Down, slow or without the status extension: the rail marks it unavailable, without live counts.
     return undefined
   })) as { busy?: unknown; questions?: { count?: unknown } } | undefined
   const busy = status?.busy
   const questions = status?.questions?.count
-  return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}
+  return typeof busy === 'number' && typeof questions === 'number'
+    ? { busy, questions }
+    : { unavailable: true }
 }
 
 /**
@@ -92,26 +99,32 @@ async function tailnetPorts(host: ExtensionHost) {
 
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   const tailnet = await tailnetPorts(host)
-  return Promise.all(
-    (await host.projects()).flatMap(({ name, root, running, current }) => {
-      // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
-      const url = current ? host.system().process.url : running?.url
-      if (!url) return []
-      return [
-        (async () => {
-          const repo = repoOf(root)
-          return {
-            name: checkoutName(name, root),
-            url,
-            current,
-            ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
-            ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
-            ...(current ? await own(host) : await counts(name, url, signal)),
-          }
-        })(),
-      ]
-    }),
-  )
+  const local = (await host.projects()).flatMap(({ name, root, running, current }) => {
+    // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
+    const url = current ? host.system().process.url : running?.url
+    if (!url) return []
+    return [
+      (async () => {
+        const repo = repoOf(root)
+        return {
+          name: checkoutName(name, root),
+          url,
+          current,
+          ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
+          ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
+          ...(current ? await own(host) : await counts(name, url, signal)),
+        }
+      })(),
+    ]
+  })
+  const others = (await remotes(host)).map(async ({ machine, name, url }) => ({
+    name,
+    machine,
+    url,
+    current: false,
+    ...(await counts(`${name} on ${machine}`, url, signal)),
+  }))
+  return Promise.all([...local, ...others])
 }
 
 /** The rail's pin, one file for every instance on this machine, so jumping keeps the rail as it was. */
