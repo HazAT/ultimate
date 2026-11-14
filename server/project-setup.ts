@@ -5,10 +5,8 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { JsonObject } from '@earendil-works/pi-durable'
 
-const errors = new Map<string, string>()
 export function projectDiagnostics(projectRoot: string, userHome = homedir()) {
-  projectDecision(projectRoot, userHome)
-  const error = errors.get(join(userHome, '.ultimate/trust.json'))
+  const { error } = readDecision(projectRoot, userHome)
   return error ? [error] : []
 }
 
@@ -50,17 +48,18 @@ export function decisionRoot(projectRoot: string) {
   return basename(common) === '.git' ? realpathSync(dirname(common)) : root
 }
 
-export function projectDecision(projectRoot: string, userHome = homedir()) {
-  const path = join(userHome, '.ultimate/trust.json')
+function readDecision(projectRoot: string, userHome: string) {
   try {
     const root = decisionRoot(projectRoot)
     const entry = new ProjectTrustStore(join(userHome, '.ultimate')).getEntry(root)
-    errors.delete(path)
-    return entry?.path === root ? entry.decision : null
+    return { decision: entry?.path === root ? entry.decision : null }
   } catch (error) {
-    errors.set(path, String(error))
-    return null
+    return { decision: null, error: String(error) }
   }
+}
+
+export function projectDecision(projectRoot: string, userHome = homedir()) {
+  return readDecision(projectRoot, userHome).decision
 }
 
 export function useProjectSetup(projectRoot: string, userHome?: string) {
