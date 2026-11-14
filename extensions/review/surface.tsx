@@ -34,6 +34,7 @@ import {
 } from '@/sdk'
 import { Address } from '../messages/ui.tsx'
 import { compareUrl } from '../../lib/compare.ts'
+import { deadline } from '../../lib/timers.ts'
 import { useGithubRepo } from '../workspaces/ui.tsx'
 import { Composer, DraftCard } from './comment.tsx'
 import { draftsKey } from './comments.ts'
@@ -375,19 +376,37 @@ function Diffs({
     }
     setMarked(target)
     pick(target.file)
-    let tries = 0
-    const timer = setInterval(() => {
-      const host = document.getElementById(anchor(target.file))?.querySelector('diffs-container')
-      const side = target.side === 'old' ? 'deletions' : 'additions'
+    const side = target.side === 'old' ? 'deletions' : 'additions'
+    const reach = () => {
+      const root = document
+        .getElementById(anchor(target.file))
+        ?.querySelector('diffs-container')?.shadowRoot
       const line =
-        host?.shadowRoot?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
-        host?.shadowRoot?.querySelector(`[data-line="${target.line}"]`)
-      if (!line && ++tries <= 40) return
-      clearInterval(timer)
-      line?.scrollIntoView({ block: 'center' })
+        root?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
+        root?.querySelector(`[data-line="${target.line}"]`)
+      if (!line) return false
+      settle()
+      line.scrollIntoView({ block: 'center' })
+      return true
+    }
+    const settle = () => {
+      rendering.disconnect()
+      giveUp()
       reachedTarget()
-    }, 50)
-    return () => clearInterval(timer)
+    }
+    const rendering = new MutationObserver(() => {
+      const root = document
+        .getElementById(anchor(target.file))
+        ?.querySelector('diffs-container')?.shadowRoot
+      if (root) rendering.observe(root, { childList: true, subtree: true })
+      reach()
+    })
+    const giveUp = deadline(2000, settle)
+    if (!reach()) rendering.observe(document.body, { childList: true, subtree: true })
+    return () => {
+      rendering.disconnect()
+      giveUp()
+    }
   }, [target, diff])
   const byFile = Map.groupBy(drafts.comments, (draft) => draft.file)
   return (

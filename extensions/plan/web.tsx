@@ -577,7 +577,6 @@ function useAnchor(conversationId: number | undefined) {
   const [anchor, setAnchor] = useState<{ right: number; bottom: number }>()
   useEffect(() => {
     let form: HTMLFormElement | null | undefined
-    let retry: ReturnType<typeof setTimeout> | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
@@ -588,19 +587,21 @@ function useAnchor(conversationId: number | undefined) {
     const attach = () => {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
-      if (!container?.parentElement || !form) {
-        setAnchor(undefined)
-        retry = setTimeout(attach, 250)
-        return
-      }
+      if (!container?.parentElement || !form) return false
+      appeared.disconnect()
       observer.observe(container.parentElement)
       observer.observe(form)
       measure()
+      return true
     }
-    attach()
+    const appeared = new MutationObserver(attach)
+    if (!attach()) {
+      setAnchor(undefined)
+      appeared.observe(document.body, { childList: true, subtree: true })
+    }
     addEventListener('resize', measure)
     return () => {
-      clearTimeout(retry)
+      appeared.disconnect()
       observer.disconnect()
       removeEventListener('resize', measure)
     }

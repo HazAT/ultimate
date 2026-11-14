@@ -44,6 +44,20 @@ export default defineConfig({
         },
       },
       {
+        files: [
+          'bin/**',
+          'extensions/**',
+          '.ultimate/extensions/**',
+          'lib/**',
+          'scripts/**',
+          'server/**',
+          'shared/**',
+          'web/**',
+        ],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', 'lib/timers.ts'],
+        rules: { 'ultimate/no-raw-timer': 'error' },
+      },
+      {
         files: ['server/**', 'bin/**'],
         rules: {
           'no-restricted-imports': [

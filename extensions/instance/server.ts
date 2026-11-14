@@ -16,7 +16,6 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { setTimeout as sleep } from 'node:timers/promises'
 import type { Context } from '@earendil-works/chord/context'
 import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
@@ -32,6 +31,7 @@ import { cleanPreview, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
 import { spawnGroup, stopGroup } from '../../lib/process-group.ts'
+import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
@@ -530,49 +530,35 @@ export default function instanceExtension(
           .join('\n')
           .slice(-100000)
       }
-      let stdout = ''
-      child.stdout?.on('data', (chunk: Buffer) => {
-        append(chunk)
-        stdout += chunk.toString()
-        const lines = stdout.split('\n')
-        stdout = lines.pop()!.slice(-10000)
-        for (const line of lines) {
-          const match = /^Ultimate: (http:\/\/127\.0\.0\.1:([1-9]\d*))\r?$/.exec(line)
-          if (match) item.url = match[1]
-        }
+      const notReady = () => new Error(`Instance did not become ready:\n${item.output}`)
+      const serving = new Promise<void>((resolve, reject) => {
+        let stdout = ''
+        child.stdout?.on('data', (chunk: Buffer) => {
+          append(chunk)
+          stdout += chunk.toString()
+          const lines = stdout.split('\n')
+          stdout = lines.pop()!.slice(-10000)
+          for (const line of lines) {
+            const match = /^Ultimate: (http:\/\/127\.0\.0\.1:([1-9]\d*))\r?$/.exec(line)
+            if (match) {
+              item.url = match[1]
+              resolve()
+            }
+          }
+        })
+        child.on('error', (error) => {
+          item.output += String(error)
+          reject(notReady())
+        })
+        child.on('exit', () => reject(notReady()))
+        context.abortSignal?.addEventListener('abort', () => reject(context.abortSignal!.reason), {
+          once: true,
+        })
       })
       child.stderr?.on('data', append)
-      let failed = false
-      child.on('error', (error) => {
-        failed = true
-        item.output += String(error)
-      })
       try {
         output(`Starting ${id}\n`)
-        const deadline = Date.now() + 60000
-        let ready = false
-        while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
-          context.abortSignal?.throwIfAborted()
-          if (failed) break
-          try {
-            const response = item.url
-              ? await fetch(`${item.url}/api/models`, {
-                  signal: context.abortSignal
-                    ? AbortSignal.any([context.abortSignal, AbortSignal.timeout(1000)])
-                    : AbortSignal.timeout(1000),
-                })
-              : undefined
-            if (response?.ok && !failed && child.exitCode === null && child.signalCode === null) {
-              ready = true
-              break
-            }
-          } catch {
-            /* server is still booting */
-          }
-          await sleep(250, undefined, { signal: context.abortSignal })
-        }
-        context.abortSignal?.throwIfAborted()
-        if (!ready) throw new Error(`Instance did not become ready:\n${item.output}`)
+        await within(60000, serving, notReady, context.abortSignal)
         return info(item)
       } catch (error) {
         await stop(instances, id)

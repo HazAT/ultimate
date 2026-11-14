@@ -4,6 +4,7 @@ import { api, cn, errorMessage, formatDuration, useUltimate } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
 import type { Feed } from './feed.ts'
+import { deadline, every } from '../../lib/timers.ts'
 import { StreamAction } from './refs.ts'
 import type { SystemFilter, SystemRow } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.tsx'
@@ -73,13 +74,12 @@ function useStream(filter: SystemFilter, live: boolean) {
   }, [key])
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
+    return every(POLL, () => {
       const { head, loading } = latest.current
       if (loading || latest.current.key !== key) return
       if (head === undefined) request({}, loaded)
       else request({ after: head }, (feed, page) => followed(feed, head, page))
-    }, POLL)
-    return () => clearInterval(timer)
+    })
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live])
   // Older rows are asked for once wanted and nothing else is on its way, also when a live refresh ends.
@@ -212,10 +212,7 @@ function Filters({ view, setView }: { view: StreamView; setView: (view: StreamVi
 /** Debounces `value` by `ms`, so typing filters once the user pauses. */
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
+  useEffect(() => deadline(ms, () => setSettled(value)), [value, ms])
   return settled
 }
 
@@ -246,9 +243,9 @@ export function Stream({
     const observer = new IntersectionObserver((seen) => {
       if (seen.some((entry) => entry.isIntersecting)) page.current()
     })
-    const timer = setTimeout(() => observer.observe(end.current!), stream.error ? POLL : 0)
+    const cancel = deadline(stream.error ? POLL : 0, () => observer.observe(end.current!))
     return () => {
-      clearTimeout(timer)
+      cancel()
       observer.disconnect()
     }
   }, [stream.rows.length, stream.error])
