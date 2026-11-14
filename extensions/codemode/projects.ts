@@ -12,7 +12,7 @@ export type Read = (typeof READS)[number]
 
 /**
  * Run read `op` in `project`, on `machine` when one is named: undefined when it is this project, so the caller reads its
- * own storage.
+ * own storage. The URL comes back with the value, so a caller can point the user at the instance that answered.
  */
 export async function readProject(
   host: ExtensionHost,
@@ -20,8 +20,11 @@ export async function readProject(
   op: Read,
   args: JsonValue[],
   signal?: AbortSignal,
-): Promise<{ value: unknown } | undefined> {
+): Promise<{ url: string; value: unknown } | undefined> {
   const target = await locate(host, project, machine)
   if ('current' in target) return undefined
-  return { value: await postAction(target, 'codemode', 'read', { op, args }, signal) }
+  return {
+    url: target.url,
+    value: await postAction(target, 'codemode', 'read', { op, args }, signal),
+  }
 }

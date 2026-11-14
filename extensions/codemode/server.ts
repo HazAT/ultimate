@@ -48,7 +48,8 @@ import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Summarized } from './refs.ts'
 import type { CallSummary } from './refs.ts'
-import { PendingDoc, SummaryDoc } from './api.ts'
+import { HistoryApi, PendingDoc, SummaryDoc } from './api.ts'
+import type { HistoryHit } from './api.ts'
 import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryInput } from './summary.ts'
 import type { Call } from './summary.ts'
 
@@ -474,6 +475,21 @@ export const actions = {
 
 export default function codemode(host: ExtensionHost) {
   const globalDeclarations = globals(host, 1 as ConversationId, BACKGROUND_CONTEXT)
+  // What other extensions search stored history through, such as the history-search surface: the same reads the
+  // `read` action serves, searchHit's compact shape and never `full`.
+  host.implement(HistoryApi, {
+    search: async (text, options = {}) =>
+      (await localReads(host, BACKGROUND_CONTEXT).search([text, options])) as HistoryHit[],
+    searchProject: async (project, text, options = {}) => {
+      // The read takes `[text, options]`; the option object is built defined-only, as JSON.
+      const remote = await readProject(host, { project }, 'search', [
+        text,
+        options.limit === undefined ? {} : { limit: options.limit },
+      ])
+      if (!remote) return undefined
+      return { url: remote.url, hits: remote.value as HistoryHit[] }
+    },
+  })
   const codemodeTool = defineTool({
     name: 'codemode',
     replay: 'unsafe',
