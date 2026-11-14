@@ -11,7 +11,7 @@ const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-fo
 function headline(args: ToolCallView['args']): [string, string] {
   const n = typeof args.n === 'number' ? args.n : undefined
   const count = Array.isArray(args.criteria) ? args.criteria.length : 0
-  switch (args.action) {
+  switch (words(args.action)) {
     case 'criteria':
       return ['Set criteria', count ? `${count} to meet` : '']
     case 'decide':
@@ -26,12 +26,9 @@ function headline(args: ToolCallView['args']): [string, string] {
       return ['Waiting on you', words(args.reason)]
     case 'resume':
       return ['Back on the goal', '']
-    case null:
-    case false:
-    case true:
-      break
+    default:
+      return ['Goal', '']
   }
-  return ['Goal', '']
 }
 
 /** One `goal` call as the step it records on the hands-off goal; a failed call keeps the generic card. */
