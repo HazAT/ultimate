@@ -28,7 +28,7 @@ import { discoverAgents } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
 import { writeJson } from '../../lib/json-file.ts'
-import { SubagentsApi } from '../subagents/api.ts'
+import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { AutomationsApi } from './api.ts'
@@ -295,6 +295,17 @@ function backend(host: ExtensionHost) {
     }
     return prepared
   }
+  /**
+   * Made while @ultimate owes an agent's request ("I've started it"), a new automation serves it like a branch: the run
+   * its first fire wakes in @ultimate answers that agent (ultimate-eval #53/5281). Only @ultimate's answers route that
+   * way (messages' route.ts).
+   */
+  async function served(tx: Tx, caller?: number) {
+    if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
+      return {}
+    const serves = await host.need(MessagesApi).owed(tx, caller)
+    return serves ? { serves: { ...serves, by: caller } } : {}
+  }
   async function changeScript(
     tx: Tx,
     args: Args,
@@ -376,6 +387,7 @@ function backend(host: ExtensionHost) {
         updatedAt: now,
         runs: [],
         fires: 0,
+        ...(await served(tx, caller)),
       }
       state.automations[id] = sub
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -546,21 +558,6 @@ function backend(host: ExtensionHost) {
     prepared: Awaited<ReturnType<typeof prepare>>,
     caller?: number,
   ): Promise<Change> {
-    const changed = await changeOne(tx, args, prepared, caller)
-    if (args.action !== 'create' || caller === undefined) return changed
-    // Made while its creator owes an agent's request ("I've started it"), the automation serves that request like a
-    // branch: the run its first fire wakes in the creator answers that agent (ultimate-eval #53/5281).
-    const a = (await tx.doc(Automations)).automations[(changed.result as { id: string }).id]
-    const serves = a && !a.fires && !a.serves && (await host.need(MessagesApi).owed(tx, caller))
-    if (serves) a.serves = { ...serves, by: caller }
-    return a ? { ...changed, result: json(a) } : changed
-  }
-  async function changeOne(
-    tx: Tx,
-    args: Args,
-    prepared: Awaited<ReturnType<typeof prepare>>,
-    caller?: number,
-  ): Promise<Change> {
     if (args.action === 'events') return { result: json(TRIGGER_EVENTS) }
     const state = await tx.doc(Automations)
     if (args.action === 'list') return changeScript(tx, args, prepared, caller)
@@ -591,6 +588,7 @@ function backend(host: ExtensionHost) {
           : args.prompt
             ? []
             : [caller!],
+        ...(await served(tx, caller)),
       }
     }
     const a = state.automations[id]

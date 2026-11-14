@@ -114,12 +114,12 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
   // Each branch with the newest message of it the run answers: the starter's messages after it are the run's own.
   const latest = new Map<number, number>()
   const askers: { source: string; key: string; serves: Serves }[] = []
-  const messaged = (since: number, to: (m: Message) => boolean) =>
-    log.messages.some((m) => m.from === starter && m.id > since && to(m))
-  // Whether the starter already messaged the asker of `serves` after `since`, besides its early answer to the request.
-  const told = (serves: Serves, since: number) =>
+  const messaged = (after: (m: Message) => boolean, to: (m: Message) => boolean) =>
+    log.messages.some((m) => m.from === starter && after(m) && to(m))
+  // Whether the starter already messaged the asker of `serves` since `after`, besides its early answer to the request.
+  const told = (serves: Serves, after: (m: Message) => boolean) =>
     messaged(
-      since,
+      after,
       (m) =>
         m.re !== serves.message &&
         (serves.from === 'remote'
@@ -132,8 +132,9 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       | { id?: unknown; name?: unknown; from?: unknown; reply?: unknown; echo?: unknown }
       | undefined
     if (entry?.kind === FIRED) {
-      const serves = (data as { serves?: Serves } | undefined)?.serves
-      if (serves && !told(serves, serves.message))
+      // `at`: when it fired. Only what the starter sent since then is this run's own answer.
+      const { serves, at = 0 } = data as { serves?: Serves; at?: number }
+      if (serves && !told(serves, (m) => m.at >= at))
         askers.push({
           source: `automation ${String(data?.id)} "${String(data?.name)}"`,
           key: `automation:${String(data?.id)}`,
@@ -161,7 +162,13 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
   const branches: number[] = []
   for (const [branch, since] of latest) {
     if (!concluded.has(branch as ConversationId)) {
-      if (!messaged(since, (m) => m.to === branch)) branches.push(branch)
+      if (
+        !messaged(
+          (m) => m.id > since,
+          (m) => m.to === branch,
+        )
+      )
+        branches.push(branch)
       continue
     }
     // A copy: the doc's proxy is unusable once this commit settles, and `board.route` sends after it.
@@ -172,10 +179,16 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       ...(stored.remote ? { remote: { ...stored.remote } } : {}),
     }
     // The early answer to the request itself ("started #X") may be logged after a quick branch's reply: not a result.
-    if (serves && !told(serves, since))
+    if (serves && !told(serves, (m) => m.id > since))
       askers.push({ source: `#${branch}`, key: String(branch), serves })
   }
-  return { branches, askers }
+  // One result per request: a run that reads a branch's result and an automation's for the same request answers once.
+  return {
+    branches,
+    askers: askers.filter(
+      (a, i) => askers.findIndex((b) => b.serves.message === a.serves.message) === i,
+    ),
+  }
 }
 
 /** One message `board.route` sends, with `send`'s options; `remote` sends it to another project's Ultimate. */

@@ -408,7 +408,10 @@ export function supervisor(
                   text,
                   // The run this wakes in its creator answers the request the creator owed then (messages' route.ts).
                   ...(kind === 'fired' && sub.serves?.by === id
-                    ? { serves: (({ by: _by, ...serves }) => serves)(sub.serves) }
+                    ? {
+                        serves: (({ by: _by, ...serves }) => serves)(sub.serves),
+                        at: sub.lastFireAt ?? 0,
+                      }
                     : {}),
                 },
               },

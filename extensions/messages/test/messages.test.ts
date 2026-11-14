@@ -1628,7 +1628,13 @@ it("sends @ultimate's answer to a run its automation woke to the agent whose req
         content: 'Automation A8 "ab done" fired: AB-DONE',
         entry: {
           kind: 'automations.fired',
-          data: { id: 'A8', name: 'ab done', text: 'AB-DONE', ...(serves ? { serves } : {}) },
+          data: {
+            id: 'A8',
+            name: 'ab done',
+            text: 'AB-DONE',
+            // @ultimate's message to #scout before the fire is no answer of this run.
+            ...(serves ? { serves, at: Date.now() } : {}),
+          },
         },
       },
       context,
