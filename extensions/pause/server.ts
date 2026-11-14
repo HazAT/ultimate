@@ -12,6 +12,7 @@ import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from '
 import type {
   AutoPlayed,
   HeldNote,
+  Hold,
   PauseDocState,
   PauseNote,
   PauseState,
@@ -35,9 +36,22 @@ type Host = Pick<
   'harness' | 'resource' | 'onOpen' | 'onClose' | 'onRelease' | 'implement' | 'conversations'
 >
 
-/** The flag timers read synchronously; shared across reloads, set from the doc each time the harness opens. */
+/**
+ * The flags timers read synchronously; shared across reloads, set from the doc each time the harness opens.
+ * `heldSince` is the pause's start while only holds with an end keep it (`timed`).
+ */
 const flag = (host: Pick<ExtensionHost, 'resource'>) =>
-  host.resource('pause.flag', () => ({ paused: false }))
+  host.resource('pause.flag', () => ({ paused: false, heldSince: undefined as number | undefined }))
+
+/** The start of `doc`'s pause while only holds with `until` keep it: no rate limit, nothing the user pressed. */
+const timed = (doc: PauseDocState) =>
+  doc.paused && !doc.manual && !doc.limit && doc.held?.until !== undefined ? doc.since : undefined
+
+/** Set the flags from `doc`. */
+function mirror(host: Pick<ExtensionHost, 'resource'>, doc: PauseDocState) {
+  flag(host).paused = doc.paused
+  flag(host).heldSince = timed(doc)
+}
 
 const read = async (host: Host) =>
   (await host.harness().snapshot(State, ROOT_CONVERSATION_ID, context)) ?? { paused: false }
@@ -120,6 +134,7 @@ async function state(host: Host): Promise<PauseState> {
     paused: doc.paused,
     ...(doc.since === undefined ? {} : { since: doc.since }),
     ...(doc.limit === undefined ? {} : { limit: doc.limit }),
+    ...(doc.held === undefined ? {} : { held: doc.held }),
     ...(doc.autoPlay === undefined ? {} : { autoPlay: doc.autoPlay }),
     ...(autoPlayAt(doc) === undefined ? {} : { autoPlayAt: autoPlayAt(doc) }),
     running: await running(host),
@@ -129,20 +144,25 @@ async function state(host: Host): Promise<PauseState> {
 // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 /**
  * Hold the scheduler, then record the pause and each run mid-turn now (its task and first input), which Play notes;
- * `limit` when a rate limit pauses it, also into a pause already recorded, so the limit shows.
+ * `cause` is why: a rate limit, or an extension's hold. A pause already recorded keeps its start and the explanation
+ * shown, and gains the cause's if it had none.
  */
-async function hold(host: Host, limit?: RateLimit) {
+async function hold(host: Host, cause?: Cause) {
   const harness = host.harness()
   harness.hold()
   flag(host).paused = true
+  // Until the commit says otherwise: this cause may be one no keep-warm ping may run into.
+  flag(host).heldSince = undefined
   await harness.commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (doc.paused) {
-      if (limit && !doc.limit) doc.limit = limit
-      // The user pressed Pause too: this pause waits for them.
-      if (!limit) doc.manual = true
-      return
-    }
+    // The user's Pause and a hold with no end wait for Play; a rate limit and a hold with `until` may play by itself.
+    if (!cause || ('held' in cause && cause.held.until === undefined)) doc.manual = true
+    if (cause && 'limit' in cause && !doc.limit) doc.limit = cause.limit
+    if (cause && 'held' in cause && !doc.held) doc.held = cause.held
+    // A later end joining a timed hold moves it: the pause plays once every cause has ended.
+    else if (cause && 'held' in cause && (cause.held.until ?? 0) > (doc.held?.until ?? Infinity))
+      doc.held!.until = cause.held.until
+    if (doc.paused) return
     const runs: NonNullable<PauseDocState['runs']> = {}
     // Sleeping: a generation waiting out its retry backoff, as one that just hit a rate limit does.
     for (const status of ['pending', 'running', 'waiting', 'sleeping'] as const) {
@@ -157,14 +177,11 @@ async function hold(host: Host, limit?: RateLimit) {
         cursor = page.next
       } while (cursor)
     }
-    Object.assign(doc, {
-      paused: true,
-      since: Date.now(),
-      runs,
-      ...(limit ? { limit } : { manual: true }),
-    })
+    Object.assign(doc, { paused: true, since: Date.now(), runs })
   }, context)
-  arm(host, await read(host))
+  const doc = await read(host)
+  mirror(host, doc)
+  arm(host, doc)
 }
 
 async function pause(host: Host) {
@@ -172,13 +189,63 @@ async function pause(host: Host) {
   return state(host)
 }
 
-/** When `doc`'s pause plays by itself: a rate-limit pause the user did not also pause, with the setting on. */
-const autoPlayAt = (doc: PauseDocState) =>
-  doc.paused && doc.limit && !doc.manual && doc.autoPlay && doc.since !== undefined
-    ? doc.since + doc.autoPlay * 60_000
-    : undefined
+/** Why the host is held: a rate limit that paused it, or an extension's hold. */
+type Cause = { limit: RateLimit } | { held: Hold }
 
-/** The timer that plays a rate-limit pause by itself; outside the scheduler, which the pause holds. */
+/** An extension holds the host with its reason, as the user's Pause does; serialized with Play so the two never race. */
+async function holdBy(host: Host, request: Hold) {
+  const { source, reason, until } = (request ?? {}) as Partial<Hold>
+  if (typeof source !== 'string' || !source.trim() || typeof reason !== 'string' || !reason.trim())
+    throw new Error('hold needs { source, reason }: the extension holding the pause, and why')
+  if (until !== undefined && !Number.isFinite(until))
+    throw new Error('hold until must be a time in ms')
+  const before = { ...flag(host) }
+  try {
+    await hold(host, {
+      held: {
+        source: source.trim(),
+        reason: reason.trim(),
+        ...(until === undefined ? {} : { until }),
+      },
+    })
+  } catch (error) {
+    // The commit recorded nothing, so nothing would show the hold or offer Play: release what it took, as `limited` does.
+    Object.assign(flag(host), before)
+    if (!before.paused) host.harness().release()
+    throw error
+  }
+  return state(host)
+}
+
+/**
+ * A hold's `until` is an end another service names, such as a usage window's reset: playing a little after it lets the
+ * first request land in the new window even when the two clocks differ by a minute.
+ */
+const GRACE = 2 * 60_000
+
+/**
+ * When `doc`'s pause plays by itself: once every cause has an end (a rate limit with the setting on, a hold with
+ * `until`), at the latest of them, and never a pause the user pressed or a hold without an end joined.
+ */
+function autoPlayAt(doc: PauseDocState): number | undefined {
+  if (!doc.paused || doc.manual || doc.since === undefined || (!doc.limit && !doc.held))
+    return undefined
+  const ends: number[] = []
+  if (doc.limit) {
+    if (!doc.autoPlay) return undefined
+    ends.push(doc.since + doc.autoPlay * 60_000)
+  }
+  if (doc.held) {
+    if (doc.held.until === undefined) return undefined
+    ends.push(doc.held.until + GRACE)
+  }
+  return Math.max(...ends)
+}
+
+/** setTimeout's longest delay; a later end re-arms when it fires. */
+const LONGEST = 2 ** 31 - 1
+
+/** The timer that plays a pause by itself; outside the scheduler, which the pause holds. */
 const timer = (host: Pick<ExtensionHost, 'resource'>) =>
   host.resource('pause.autoplay', () => ({ handle: undefined as NodeJS.Timeout | undefined }))
 
@@ -191,12 +258,15 @@ function arm(host: Host, doc: PauseDocState) {
   if (at === undefined) return
   slot.handle = setTimeout(
     () => {
-      autoPlay(host).catch((error: unknown) => {
-        // The pause stands with Play in the status line; the user can still press it.
-        console.error('pause: playing by itself failed:', error)
-      })
+      autoPlay(host)
+        // Not due yet after the longest delay: wait the rest.
+        .then(async (played) => played || arm(host, await read(host)))
+        .catch((error: unknown) => {
+          // The pause stands with Play in the status line; the user can still press it.
+          console.error('pause: playing by itself failed:', error)
+        })
     },
-    Math.max(0, at - Date.now()),
+    Math.min(LONGEST, Math.max(0, at - Date.now())),
   )
   // A pending Play keeps no process alive; the pause document re-arms it on the next open.
   slot.handle.unref()
@@ -213,7 +283,15 @@ export async function autoPlay(host: Host, now = Date.now()) {
     const doc = await read(host)
     const at = autoPlayAt(doc)
     if (at === undefined || now < at) return false
-    const data: AutoPlayed = { since: doc.since!, at: now, minutes: doc.autoPlay! }
+    const data: AutoPlayed = {
+      since: doc.since!,
+      at: now,
+      ...(doc.limit ? { minutes: doc.autoPlay! } : {}),
+      ...(doc.held ? { held: doc.held } : {}),
+    }
+    const why = doc.limit
+      ? `after the rate limit paused it (the user's setting: ${data.minutes} min)`
+      : `after ${doc.held!.source} held it (${doc.held!.reason}), once the time it named passed`
     const harness = host.harness()
     const ultimate = (await harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
     if (ultimate !== undefined)
@@ -229,7 +307,7 @@ export async function autoPlay(host: Host, now = Date.now()) {
             model: [
               {
                 role: 'user',
-                content: `Ultimate played by itself ${lasted(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
+                content: `Ultimate played by itself ${lasted(now - data.since)} ${why}.`,
                 timestamp: now,
               },
             ],
@@ -265,7 +343,7 @@ async function setAutoPlay(host: Host, minutes: unknown) {
  */
 async function limited(host: Host, limit: RateLimit) {
   try {
-    await hold(host, limit)
+    await hold(host, { limit })
   } catch (error) {
     // The commit recorded nothing, so nothing shows the pause or offers Play: let the work go on rather than hold it
     // unseen. Pi's retry and the watchdog's report still stand.
@@ -350,14 +428,20 @@ async function noted(host: Host, id: ConversationId, recorded: { task: number; i
 /**
  * Leave one note on each run that was mid-turn at the pause and still is, placed at its next step, then record the
  * end and release the scheduler. A retry after a crash finds the notes by request ID and leaves no second one.
- * `auto` when the user's setting played it, not the user.
+ * `auto` when it played by itself (the user's setting, or a hold's end), not the user.
  */
 async function play(host: Host, auto = false) {
   const harness = host.harness()
   const doc = await read(host)
   if (doc.paused && doc.since !== undefined) {
     const until = Date.now()
-    const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
+    const span = `${lasted(until - doc.since)}${
+      doc.limit
+        ? ` (${doc.limit.provider} rate limited ${doc.limit.model})`
+        : doc.held
+          ? ` (${doc.held.source}: ${doc.held.reason})`
+          : ''
+    }`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
       const id = Number(key) as ConversationId
       const how = await noted(host, id, recorded)
@@ -393,16 +477,22 @@ async function play(host: Host, auto = false) {
     delete current.since
     delete current.runs
     delete current.limit
+    delete current.held
     delete current.manual
   }, context)
-  arm(host, await read(host))
-  flag(host).paused = false
+  const after = await read(host)
+  arm(host, after)
+  mirror(host, after)
   harness.release()
   return state(host)
 }
 
 export default function pauseExtension(host: Host) {
-  host.implement(PauseApi, { paused: () => flag(host).paused })
+  host.implement(PauseApi, {
+    paused: () => flag(host).paused,
+    hold: (request) => serial(host, () => holdBy(host, request)),
+    heldSince: () => flag(host).heldSince,
+  })
   let unsubscribe: (() => void) | undefined
   const close = async () => {
     unsubscribe?.()
@@ -417,7 +507,7 @@ export default function pauseExtension(host: Host) {
     // Before watching: scheduling starts only after the openers, so no model answer arrives in between.
     await serial(host, async () => {
       const doc = await read(host)
-      flag(host).paused = doc.paused
+      mirror(host, doc)
       if (!doc.paused) return
       host.harness().hold()
       arm(host, doc)
@@ -457,6 +547,7 @@ export default function pauseExtension(host: Host) {
           conversationId: change.value.conversationId,
         }
         flag(host).paused = true
+        flag(host).heldSince = undefined
         host.harness().hold()
         serial(host, () => limited(host, limit)).catch((error: unknown) => {
           // A failed pause released its hold (limited); a failed card leaves the pause standing in the status line.

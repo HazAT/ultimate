@@ -14,15 +14,23 @@ export type RateLimit = {
 }
 
 /**
+ * An extension's hold: the extension that asked (its name, e.g. `guard`) and why, one short line saying it; `until`
+ * (ms) when what it waits for ends by itself, such as a usage window's reset: the pause then plays shortly after.
+ */
+export type Hold = { source: string; reason: string; until?: number }
+
+/**
  * The pause on conversation 1: `since` when it began; `runs` each conversation mid-turn then, by id, with its run's
- * generation task and first input submission, so Play notes that run only; `limit` when a rate limit paused it.
+ * generation task and first input submission, so Play notes that run only; `limit` when a rate limit paused it;
+ * `held` when an extension held it.
  */
 export type PauseDocState = {
   paused: boolean
   since?: number
   runs?: Record<string, { task: number; input?: number }>
   limit?: RateLimit
-  /** The user pressed Pause during this pause: it never plays by itself. */
+  held?: Hold
+  /** The user pressed Pause, or an extension held without `until`, during this pause: it never plays by itself. */
   manual?: boolean
   /** The user's setting: minutes after a rate-limit pause began that Ultimate presses Play by itself; unset is off. */
   autoPlay?: number
@@ -45,9 +53,14 @@ export type PauseState = {
   since?: number
   /** The rate limit that paused Ultimate, if one did. */
   limit?: RateLimit
+  /** The extension that held Ultimate, if one did. */
+  held?: Hold
   /** Minutes after a rate-limit pause began that Play is pressed by itself; unset is off. */
   autoPlay?: number
-  /** When this pause plays by itself (ms): a rate-limit pause the user did not also pause, with the setting on. */
+  /**
+   * When this pause plays by itself (ms): once every cause has an end (a rate limit with the setting on, a hold with
+   * `until`), and nothing the user pressed holds it.
+   */
   autoPlayAt?: number
   /** Foreground tasks still running: while paused, the pause is safe once this is empty. */
   running: RunningTask[]
@@ -82,5 +95,8 @@ export type PauseNote = { since: number; until: number; finished?: boolean; auto
  */
 export type HeldNote = { child: number; provider: string; model: string; at: number }
 
-/** The `pause.autoplay` entry in @ultimate's transcript: the rate-limit pause from `since` played by itself at `at`. */
-export type AutoPlayed = { since: number; at: number; minutes: number }
+/**
+ * The `pause.autoplay` entry in @ultimate's transcript: the pause from `since` played by itself at `at`; `minutes` the
+ * setting when a rate limit paused it, `held` the hold whose `until` passed.
+ */
+export type AutoPlayed = { since: number; at: number; minutes?: number; held?: Hold }

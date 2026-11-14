@@ -21,6 +21,26 @@ it('stops once the user has been away 8 hours, and without any input', () => {
   expect(due({ now, inputAt: now })).toBe(false)
 })
 
+it('counts the user away only up to a hold with an end: they wait for it to play', () => {
+  const lastRequest = now - LEAD
+  const inputAt = now - minutes(11 * 60)
+  expect(due({ now, lastRequest, inputAt })).toBe(false)
+  expect(due({ now, lastRequest, inputAt, heldSince: now - minutes(4 * 60) })).toBe(true)
+  expect(due({ now, lastRequest, inputAt, heldSince: now - minutes(2 * 60) })).toBe(false)
+})
+
+it('pings through a hold with an end, never through a rate limit or the user’s Pause', () => {
+  const pause = (paused: boolean, heldSince?: number) => ({
+    paused: () => paused,
+    heldSince: () => heldSince,
+  })
+  expect(keepWarm.stopped(undefined)).toBe(false)
+  expect(keepWarm.stopped(pause(false))).toBe(false)
+  expect(keepWarm.stopped(pause(true, now - minutes(90)))).toBe(false)
+  // The pause extension leaves `heldSince` unset for a rate limit and the user's Pause (its own tests).
+  expect(keepWarm.stopped(pause(true))).toBe(true)
+})
+
 it('does not retry after a failed ping until a newer request', () => {
   const lastRequest = now - LEAD
   const inputAt = now - minutes(70)
@@ -79,6 +99,5 @@ it('counts a ping only on the provider and model it warmed', () => {
 it('sends only while not paused and within the hour, checked right before the request', () => {
   expect(keepWarm.open(false, now - LEAD, now)).toBe(true)
   expect(keepWarm.open(true, now - LEAD, now)).toBe(false)
-  expect(keepWarm.open(undefined, now - LEAD, now)).toBe(true)
   expect(keepWarm.open(false, now - TTL, now)).toBe(false)
 })

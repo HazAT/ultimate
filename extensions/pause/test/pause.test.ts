@@ -137,6 +137,9 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
       actions.autoPlay({ minutes }, { host } as unknown as ActionContext),
     autoPlay: (now: number) => autoPlay(host, now),
     paused: () => services.want(PauseApi)!.paused(),
+    hold: (request: { source: string; reason: string; until?: number }) =>
+      services.want(PauseApi)!.hold(request),
+    heldSince: () => services.want(PauseApi)!.heldSince(),
     get opened() {
       return opened!
     },
@@ -205,6 +208,59 @@ it('lets a running tool finish, starts no generation after it while paused, and 
   const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
   expect(notes).toHaveLength(1)
   expect(notes[0].model?.[0]?.content).toMatch(/^Paused for \d+s; the run continued after Play\.$/)
+})
+
+it('pauses when an extension holds it, showing its reason, and play continues as usual', async () => {
+  const f = await fixture()
+  let responses = 0
+  f.prepared.faux!.setResponses([
+    () => {
+      responses++
+      return fauxAssistantMessage([fauxToolCall('work', {})], { stopReason: 'toolUse' })
+    },
+    () => {
+      responses++
+      return fauxAssistantMessage([fauxText('done')])
+    },
+  ])
+  const { root, harness } = await f.open()
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await until(() => f.finish !== undefined)
+
+  const reason = "the day's spend passed $5.00"
+  const held = await f.hold({ source: 'guard', reason })
+  expect(held).toMatchObject({ paused: true, held: { source: 'guard', reason } })
+  expect(f.paused()).toBe(true)
+  // Without an end it waits for Play, like the user's Pause.
+  expect(held.autoPlayAt).toBeUndefined()
+  expect(f.heldSince()).toBeUndefined()
+  expect((await harness.inspect(context)).scheduling).toBe('paused')
+  const { since } = held
+
+  // A second hold joins the pause: neither its start nor the reason shown changes.
+  const again = await f.hold({ source: 'guard', reason: 'still over' })
+  expect(again).toMatchObject({ paused: true, since, held: { source: 'guard', reason } })
+
+  f.finish!()
+  await until(async () => (await f.action('state')).running.length === 0)
+  expect(responses).toBe(1)
+
+  const played = await f.action('play')
+  expect(played).toMatchObject({ paused: false })
+  expect(played.held).toBeUndefined()
+  expect(f.paused()).toBe(false)
+  await submission.wait(context)
+  expect(responses).toBeGreaterThanOrEqual(2)
+  const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
+  expect(notes).toHaveLength(1)
+  expect(notes[0].model?.[0]?.content).toMatch(
+    /^Paused for \d+s \(guard: the day's spend passed \$5\.00\); the run continued after Play\.$/,
+  )
+  // A hold is an extension's: it never plays by itself, and it needs its reason.
+  await expect(f.hold({ source: 'guard', reason: '  ' })).rejects.toThrow(
+    'hold needs { source, reason }',
+  )
+  expect(f.paused()).toBe(false)
 })
 
 it('reopens paused: nothing starts until play', async () => {
@@ -575,6 +631,8 @@ it('plays a rate-limit pause by itself once, N minutes in, only when the user sw
   const submission = await root.submit({ type: 'input', content: 'go' }, context)
   await until(async () => (await f.action('state')).limit !== undefined)
   const { since } = await f.action('state')
+  // A ping into the limit would fail: keep-warm stays stopped.
+  expect(f.heldSince()).toBeUndefined()
   // Off by default: no time ever plays it.
   expect((await f.action('state')).autoPlay).toBeUndefined()
   expect(await f.autoPlay(since! + 365 * 86_400_000)).toBe(false)
@@ -601,6 +659,47 @@ it('plays a rate-limit pause by itself once, N minutes in, only when the user sw
   expect(notes[0].model?.[0]?.content).toMatch(/continued after Ultimate played by itself\.$/)
   // The setting stays for the next limit.
   expect((await f.action('state')).autoPlay).toBe(30)
+})
+
+it('plays a hold with an end by itself two minutes after it, unless the user also paused', async () => {
+  const f = await fixture()
+  f.prepared.faux!.setResponses([
+    () => fauxAssistantMessage([fauxToolCall('work', {})], { stopReason: 'toolUse' }),
+    () => fauxAssistantMessage([fauxText('done')]),
+  ])
+  const { root, harness } = await f.open()
+  const ultimate = await harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  await harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ultimate.id
+  }, context)
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await until(() => f.finish !== undefined)
+  const end = Date.now() + 60 * 60_000
+  const held = await f.hold({ source: 'plans', reason: 'Claude 5h at 92%', until: end })
+  expect(held).toMatchObject({ autoPlayAt: end + 2 * 60_000 })
+  // Only such a hold keeps the host paused: a keep-warm ping may run.
+  expect(f.heldSince()).toBe(held.since)
+  f.finish!()
+  expect(await f.autoPlay(end)).toBe(false)
+  expect(f.paused()).toBe(true)
+  expect(await f.autoPlay(end + 2 * 60_000)).toBe(true)
+  expect(f.paused()).toBe(false)
+  expect(f.heldSince()).toBeUndefined()
+  expect((await submission.wait(context)).status).toBe('done')
+  const played = (await ultimate.context(context)).entries.filter(
+    (entry) => entry.kind === 'pause.autoplay',
+  )
+  expect(played[0].data).toMatchObject({ held: { source: 'plans', until: end } })
+  expect(played[0].model?.[0]?.content).toMatch(/after plans held it \(Claude 5h at 92%\)/)
+
+  // The user's Pause joining such a hold waits for them, and no ping may run.
+  const again = await f.hold({ source: 'plans', reason: 'Claude 5h at 92%', until: end })
+  expect(f.heldSince()).toBe(again.since)
+  await f.action('pause')
+  expect(f.heldSince()).toBeUndefined()
+  expect((await f.action('state')).autoPlayAt).toBeUndefined()
+  expect(await f.autoPlay(end + 86_400_000)).toBe(false)
+  await f.action('play')
 })
 
 it('never plays a pause the user pressed, also when a rate limit joins it', async () => {

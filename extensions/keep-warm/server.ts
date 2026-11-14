@@ -83,6 +83,15 @@ async function answeredAt(host: ExtensionHost, id: ConversationId, model: ModelR
   return undefined
 }
 
+/**
+ * Whether Ultimate is paused for a cause a ping must not run into: the user's Pause, whose "nothing new starts" covers
+ * pings too, or a rate limit, which would fail it. A hold with an end (a usage window at its soft cap) still lets pings
+ * through: the provider answers, and the work it holds resumes on this cache.
+ */
+export function stopped(pause: { paused(): boolean; heldSince(): number | undefined } | undefined) {
+  return !!pause?.paused() && pause.heldSince() === undefined
+}
+
 /** @ultimate, its model and the times that decide a ping; undefined while its provider does not cache for an hour. */
 async function activity(host: ExtensionHost, doc: WarmDocState, now: number) {
   const id = await ultimateOf(host)
@@ -101,11 +110,12 @@ async function activity(host: ExtensionHost, doc: WarmDocState, now: number) {
     lastRequest,
     failedAfter: last?.error ? last.at : undefined,
     inputAt: doc.inputAt,
+    heldSince: host.want(PauseApi)?.heldSince(),
   }
 }
 
-/** Not paused (also by a rate limit) and the cache still within its hour; synchronous, so nothing slips in after it. */
-export const open = (paused: boolean | undefined, lastRequest: number, now: number) =>
+/** Not `stopped` and the cache still within its hour; synchronous, so nothing slips in after it. */
+export const open = (paused: boolean, lastRequest: number, now: number) =>
   !paused && now - lastRequest < TTL
 
 /**
@@ -158,7 +168,7 @@ async function ping(
     previous?: number
   },
 ) {
-  const paused = () => host.want(PauseApi)?.paused()
+  const paused = () => stopped(host.want(PauseApi))
   const { id, provider } = found
   const conversation = (await host.harness().conversation(id, context))!
   const agent = await conversation.agent(context)
@@ -233,8 +243,7 @@ async function ping(
 }
 
 async function tick(host: ExtensionHost) {
-  // Paused, also by a rate limit: no request starts until Play.
-  if (host.want(PauseApi)?.paused()) return
+  if (stopped(host.want(PauseApi))) return
   const doc = await read(host)
   if (doc.off) return
   const now = Date.now()
