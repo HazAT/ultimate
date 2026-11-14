@@ -70,6 +70,8 @@ export type LanderOutcome = {
   reason?: string
   /** Output tail behind the reason: conflicting paths, a check's output, git's error. */
   output?: string
+  /** The failed check's whole output on the host, when `output` is its tail (`lander-logs/`, the newest 20 kept). */
+  log?: string
   /** What the submitter does next, for a failure. */
   hint?: string
 }

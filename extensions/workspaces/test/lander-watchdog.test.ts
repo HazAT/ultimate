@@ -1,4 +1,14 @@
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { withAbortSignal } from '@earendil-works/chord/context'
@@ -168,6 +178,46 @@ it('gives each check its own TMPDIR in the given directory and removes it afterw
   await run('.', 'pnpm test', context, tmpdir(), temp)
   expect(seen && dirname(seen)).toBe(temp)
   expect(await readdir(temp)).toEqual([])
+})
+
+it('keeps the whole output of a failed check in its log, and no log of a passed one', async () => {
+  const logs = await mkdtemp(join(tmpdir(), 'lander-logs-'))
+  try {
+    // 21 older failures: only the newest 20 logs stay.
+    for (let index = 0; index < 21; index++) {
+      await writeFile(join(logs, `old-${index}.log`), '')
+      await utimes(join(logs, `old-${index}.log`), index, index)
+    }
+    const head = ' \u001b[31mFAIL\u001b[39m  test/a.test.ts > first\n'
+    vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
+      // An escape sequence split across chunks is still stripped from the log.
+      options.onOutput(head.slice(0, 3))
+      options.onOutput(head.slice(3) + 'noise\n'.repeat(1000))
+      return 1
+    })
+    const log = join(logs, 's1-1-2.log')
+    const failed = await run('.', 'pnpm test', context, tmpdir(), tmpdir(), undefined, log)
+    expect(failed.log).toBe(log)
+    // The report keeps only the tail; the log keeps everything.
+    expect(failed.failure!.length).toBeLessThan(3200)
+    const text = await readFile(log, 'utf8')
+    expect(text).toBe(' FAIL  test/a.test.ts > first\n' + 'noise\n'.repeat(1000))
+    expect((await stat(log)).mode & 0o777).toBe(0o600)
+    expect(await readdir(logs)).not.toContain('old-0.log')
+    expect(await readdir(logs)).toHaveLength(20)
+
+    vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
+      options.onOutput('ok\n')
+      return 0
+    })
+    const passed = join(logs, 's1-1-3.log')
+    expect(await run('.', 'pnpm test', context, tmpdir(), tmpdir(), undefined, passed)).toEqual({
+      summary: 'ok',
+    })
+    expect(await readdir(logs)).not.toContain('s1-1-3.log')
+  } finally {
+    await rm(logs, { recursive: true, force: true })
+  }
 })
 
 it('keeps the result of a check whose TMPDIR cannot be removed', async () => {

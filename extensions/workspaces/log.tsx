@@ -3,6 +3,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CircleDotIcon,
+  CopyIcon,
   GitMergeIcon,
   LoaderCircleIcon,
   TriangleAlertIcon,
@@ -17,6 +18,7 @@ import {
   formatTime,
   formatTokens,
   useConversation,
+  useCopy,
   useNow,
   useToolDuration,
   useTranscript,
@@ -88,13 +90,13 @@ function OutcomeBody({ outcome }: { outcome: LanderOutcome }) {
       ))}
       {outcome.needsRestart && <p className="text-warning">Needs restart.</p>}
       {outcome.hint && <p className="text-muted-foreground">{outcome.hint}</p>}
-      {outcome.output && <OutputTail output={outcome.output} />}
+      {outcome.output && <OutputTail log={outcome.log} output={outcome.output} />}
     </>
   )
 }
 
-/** A failure's output tail, collapsed. */
-function OutputTail({ output }: { output: string }) {
+/** A failure's output tail, collapsed, with the path of its whole output when the host kept it. */
+function OutputTail({ output, log }: { output: string; log?: string }) {
   return (
     <Collapsible className="group/tail">
       <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-muted-foreground hover:text-foreground">
@@ -102,9 +104,32 @@ function OutputTail({ output }: { output: string }) {
         Output
       </CollapsibleTrigger>
       <CollapsibleContent>
+        {log && <FullLog path={log} />}
         <ToolOutput className="px-0" isError output={output} />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+/** The whole output's path on the host, copied on click: the tail above is cut to its last 3000 characters. */
+function FullLog({ path }: { path: string }) {
+  const { copied, copy } = useCopy()
+  return (
+    <button
+      aria-label={`Copy ${path}`}
+      className="group/copy mt-1 flex max-w-full min-w-0 items-center gap-1 text-left text-muted-foreground hover:text-foreground"
+      onClick={() => copy(path)}
+      title={`${path}\nThe whole output, on the machine Ultimate runs on. Click to copy.`}
+      type="button"
+    >
+      <span className="shrink-0">Full log</span>
+      <span className="truncate">{path}</span>
+      {copied ? (
+        <CheckIcon className="size-3 shrink-0" />
+      ) : (
+        <CopyIcon className="size-3 shrink-0 opacity-50 group-hover/copy:opacity-100" />
+      )}
+    </button>
   )
 }
 
@@ -405,7 +430,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
     <div className="font-mono text-[11px]">
       {line}
       <div className="pl-9">
-        <OutputTail output={data.output} />
+        <OutputTail log={data.log} output={data.output} />
       </div>
     </div>
   )
