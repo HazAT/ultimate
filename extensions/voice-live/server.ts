@@ -59,7 +59,7 @@ export const secrets = [
   },
 ]
 
-/** The same API-key-only policy as composer voice; an OpenAI OAuth login is not an API key. */
+/** Composer voice takes the ChatGPT login too; live voice stays API-key-only, since OpenAI refuses live sessions to it. */
 async function apiKey(host: ExtensionHost, signal: AbortSignal) {
   const key = await readSecret(host.userHome, SECRET)
   if (key) return key

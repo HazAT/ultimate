@@ -5,7 +5,8 @@ project `.ultimate/settings.json`. Its Voice agent loads only while the extensio
 overlays still apply.
 
 Nothing is billable until a session starts or the Voice agent receives input. GPT-Live uses `OPENAI_API_KEY` from
-Secrets (⌘K → Secrets), or Pi's OpenAI **API key**, never its OAuth login. The key stays on the server. The Voice
+Secrets (⌘K → Secrets), or Pi's OpenAI **API key**, never its OAuth login: OpenAI refuses live sessions to a ChatGPT
+login (`HTTP 403 Voice session access denied.`). The key stays on the server. The Voice
 agent uses `openai-codex/gpt-6-luna` through Pi's existing ChatGPT login, low thinking and the fast tier.
 
 ## Flow

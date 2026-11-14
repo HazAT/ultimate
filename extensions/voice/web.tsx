@@ -95,7 +95,9 @@ function Level({ audio, stream }: { audio?: AudioContext; stream: MediaStream })
 function VoiceButton() {
   const { id } = useConversation()
   const status = useAction(StatusAction)
+  // A saved secret or a new provider login makes the button usable without remounting the composer.
   useEvent('secrets:changed', () => void status.refetch())
+  useEvent('auth:changed', () => void status.refetch())
   const [recording, setRecording] = useState<Recording>()
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState<string>()
