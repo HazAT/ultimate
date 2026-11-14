@@ -518,7 +518,7 @@ function lineage(host: ExtensionHost) {
         const { title, text, answer } = task.state.checkpoint as {
           title?: string
           text: string
-          answer: EntryId
+          answer: EntryId | 0
         }
         // Keyed by the answer, so a task that replaced one aborted between submit and record finds its delivery.
         const requestId = answer
