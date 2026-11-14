@@ -1,10 +1,12 @@
 // The project switcher (`shell.rail`): every Ultimate running on this machine as a colour swatch at the window's left edge.
 // Hover opens it over the app with names, repositories and ports; pin keeps it open beside the app. A row is a link to that
-// instance's `/`, which opens its @ultimate. It steps aside for any other extension that fills `shell.rail`.
+// instance's `/`, which opens its @ultimate. Other extensions add items after the projects (`RailItems`). It steps aside for any
+// other extension that fills `shell.rail`.
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  AllProvided,
   api,
   cn,
   defineWebExtension,
@@ -17,6 +19,7 @@ import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.tsx'
 import { shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
+import { RailItems, rowBox, swatchColumn } from './ui.tsx'
 
 const RAIL = 56
 const WIDE = 272
@@ -156,7 +159,7 @@ function Row({
       aria-current={here ? 'page' : undefined}
       aria-label={title}
       className={cn(
-        'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        rowBox,
         here || unreachable ? 'cursor-default' : 'cursor-pointer',
         unreachable && 'opacity-45',
         wide && (here ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
@@ -189,13 +192,7 @@ function Row({
       />
       {/* The swatch's own box: the indicators centre on it with auto margins, never a transform, so they land on whole
           pixels on the column's axis. A family's inner segments leave a hairline above and below. */}
-      <span
-        className={cn(
-          'flex h-full w-11 shrink-0 justify-center',
-          !first && 'pt-px',
-          !last && 'pb-px',
-        )}
-      >
+      <span className={cn(swatchColumn, !first && 'pt-px', !last && 'pb-px')}>
         <span className="relative flex h-full w-5 justify-center">
           <ProjectSwatch
             className={cn(
@@ -248,7 +245,7 @@ function RailSkeleton({ wide }: { wide: boolean }) {
     <div aria-hidden className="pointer-events-none">
       {['w-24', 'w-32', 'w-20', 'w-28'].map((name) => (
         <span className="mx-1.5 flex h-10 items-center" key={name}>
-          <span className="flex h-full w-11 shrink-0 justify-center py-px">
+          <span className={cn(swatchColumn, 'py-px')}>
             <Skeleton className="h-full w-3 rounded-sm bg-sidebar-accent/60" />
           </span>
           {wide && (
@@ -351,6 +348,12 @@ function Rail() {
               )
             })}
           </div>
+          {/* After the projects, so they arrive with the list. */}
+          {!loading && (
+            <AllProvided input={{ wide }} point={RailItems}>
+              {(items) => items.some(Boolean) && <div className="mt-2 flex flex-col">{items}</div>}
+            </AllProvided>
+          )}
         </div>
         {/* Same height and border as the status line beside it (core primitives.tsx), so the two read as one line. */}
         <div className="flex h-7 shrink-0 items-center border-t border-border/70 font-mono text-[10px] text-muted-foreground/70 md:pointer-coarse:box-content md:pointer-coarse:pb-3">
