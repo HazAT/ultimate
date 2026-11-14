@@ -25,7 +25,8 @@ export async function cleanPreview(home: string) {
     }
     // The original project checkout may have been released. Discover repositories from the previews themselves.
     const repositories = new Set<string>()
-    for (const name of ['lander', 'worktrees']) {
+    // `checkouts` holds the commit a preview the user started runs (`start` action), there before any lander.
+    for (const name of ['lander', 'worktrees', 'checkouts']) {
       const directory = join(home, name)
       const checkouts = await readdir(directory, { withFileTypes: true }).catch(
         (error: NodeJS.ErrnoException) => {

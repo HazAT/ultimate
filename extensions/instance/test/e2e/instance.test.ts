@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
-import { cp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { cp, lstat, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -12,7 +14,7 @@ import { expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
 import { emit } from '../../../../server/events.ts'
-import instance, { actions } from '../../server.ts'
+import instance, { actions, idle, previewBranch } from '../../server.ts'
 import subagents from '../../../subagents/server.ts'
 import { Subagents } from '../../../subagents/api.ts'
 import workspaceExtension from '../../../workspaces/server.ts'
@@ -29,6 +31,7 @@ import { apis, attach, post, temp, removeTemp, until } from '../../../../test/he
 import { scriptedModel } from '../../../../test/e2e/scripted-model.ts'
 
 type Preview = { id: string; url: string; home: string; pid: number }
+type Listed = { id: string; url: string; label?: string; ref?: string; running: boolean }
 async function assertProject(
   preview: Preview,
   path: string,
@@ -55,8 +58,8 @@ async function fixture({ foreign = false } = {}) {
   const source = join(root, 'source')
   await git(root, 'clone', '--no-hardlinks', checkout, source)
   await git(source, 'switch', '-c', 'preview-source')
-  // The preview runs the clone's committed code: give it this checkout's preview and landing code.
-  for (const path of ['extensions/instance', 'extensions/workspaces', 'lib'])
+  // The preview runs the clone's committed code: give it this checkout's preview, landing and server code.
+  for (const path of ['extensions/instance', 'extensions/workspaces', 'lib', 'server'])
     await cp(join(checkout, path), join(source, path), { recursive: true })
   await symlink(join(checkout, 'node_modules'), join(source, 'node_modules'))
   await writeFile(
@@ -77,6 +80,7 @@ async function fixture({ foreign = false } = {}) {
     'extensions/instance',
     'extensions/workspaces',
     'lib',
+    'server',
   )
   await git(source, 'commit', '-m', 'Configure preview setup')
   const project = foreign ? join(root, 'app') : source
@@ -203,9 +207,14 @@ async function fixture({ foreign = false } = {}) {
       tailnet?: string
       running: boolean
     })[]
+  /** A user-only action, called as the UI calls it. */
+  const action = async (name: 'start' | 'stop', args: object) =>
+    (await actions[name](args as never, { host } as never)) as Listed | null
   return {
     root,
     source,
+    project,
+    action,
     prepared,
     opened,
     service,
@@ -500,6 +509,87 @@ it('removes preview registrations, branches and temporary homes on stop and shut
       expect(await git(f.source, 'worktree', 'list', '--porcelain')).toBe(beforeTrees)
       expect(await git(f.source, 'branch', '--format=%(refname)')).toBe(beforeBranches)
     }
+  } finally {
+    await f.close()
+  }
+}, 120000)
+
+it('previews a commit the user picks until no page was open for the idle limit', async () => {
+  const f = await fixture({ foreign: true })
+  const limits = { ...idle }
+  try {
+    const first = await git(f.project, 'rev-parse', 'HEAD')
+    await writeFile(join(f.project, 'README.md'), 'Moved on\n')
+    await git(f.project, 'commit', '-qam', 'Move on')
+    const trees = await git(f.project, 'worktree', 'list', '--porcelain')
+    const branches = await git(f.project, 'branch', '--format=%(refname)')
+    await expect(f.action('start', { ref: 'no-such-ref', label: 'PR #9' })).rejects.toThrow(
+      'Unknown commit no-such-ref',
+    )
+    Object.assign(idle, { limit: 1500, every: 100 })
+    const preview = (await f.action('start', { ref: first.slice(0, 7), label: 'PR #1' }))!
+    expect(preview).toEqual({
+      id: expect.any(String),
+      url: expect.any(String),
+      label: 'PR #1',
+      ref: first,
+      running: true,
+    })
+    const client = await attach(preview)
+    const checkout = client.system().execution.defaultCwd
+    const home = dirname(dirname(checkout))
+    // Named after the repository, so the preview's project reads as it, not as its checkout folder.
+    expect(checkout).toBe(join(home, 'checkouts', 'app'))
+    expect(client.system().project.name).toBe('app')
+    // The host's Ultimate runs the commit as its project, trusted like the project and behind the push guard.
+    expect(client.system().code.ultimateRoot).toBe(f.source)
+    expect(client.system().project.decision).toBe(true)
+    expect(await readFile(join(checkout, 'README.md'), 'utf8')).toContain('not Ultimate')
+    const environ = (await readFile(`/proc/${client.system().process.pid}/environ`, 'utf8')).split(
+      '\0',
+    )
+    expect(environ).toContain(`ULTIMATE_PREVIEW_BRANCH=${previewBranch(home)}`)
+    // An open page keeps it running past the idle limit; once it closes, the preview stops and is cleaned up.
+    await sleep(2500)
+    expect((await f.list()).find(({ id }) => id === preview.id)?.running).toBe(true)
+    await client.close()
+    await until(async () =>
+      (await f.list()).some((item) => item.id === preview.id && !item.running),
+    )
+    await until(async () => !existsSync(home))
+    expect((await f.list()).find(({ id }) => id === preview.id)).toEqual({
+      ...preview,
+      running: false,
+    })
+    expect(await git(f.project, 'worktree', 'list', '--porcelain')).toBe(trees)
+    expect(await git(f.project, 'branch', '--format=%(refname)')).toBe(branches)
+  } finally {
+    Object.assign(idle, limits)
+    await f.close()
+  }
+}, 120000)
+
+it("previews a commit of Ultimate itself on that commit's own code, until the user stops it", async () => {
+  const f = await fixture()
+  try {
+    const trees = await git(f.source, 'worktree', 'list', '--porcelain')
+    const branches = await git(f.source, 'branch', '--format=%(refname)')
+    const preview = (await f.action('start', { ref: 'HEAD', label: 'PR #2' }))!
+    expect(preview.ref).toBe(await git(f.source, 'rev-parse', 'HEAD'))
+    const client = await attach(preview)
+    const checkout = client.system().execution.defaultCwd
+    expect(client.system().code.ultimateRoot).toBe(checkout)
+    await client.close()
+    // The project's worktree setup gave it its dependencies.
+    expect((await lstat(join(checkout, 'node_modules'))).isSymbolicLink()).toBe(true)
+    expect(await f.action('stop', { id: preview.id })).toBeNull()
+    expect(existsSync(dirname(dirname(checkout)))).toBe(false)
+    expect(await git(f.source, 'worktree', 'list', '--porcelain')).toBe(trees)
+    expect(await git(f.source, 'branch', '--format=%(refname)')).toBe(branches)
+    expect((await f.list()).find(({ id }) => id === preview.id)).toEqual({
+      ...preview,
+      running: false,
+    })
   } finally {
     await f.close()
   }

@@ -497,6 +497,11 @@ export async function createApi(
           json(200, await listModels(host.modelRuntime))
           return true
         }
+        // How many pages are open: the host that started this server as a preview stops it after an idle hour.
+        if (request.method === 'GET' && url.pathname === '/api/pages') {
+          json(200, { pages: connections.size })
+          return true
+        }
         if (request.method !== 'POST') throw new HttpError(404, 'Unknown endpoint')
         const action = actionPath.exec(url.pathname)
         // Submissions carry images and actions can carry media (a voice recording); other commands stay small.
