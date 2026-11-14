@@ -460,9 +460,6 @@ export interface ActionState<T> {
   refetch: () => Promise<T | undefined>
 }
 
-/** `onError: keepLast`: a failed read keeps its last answer and shows no notice; the next read asks again. */
-export const keepLast = (_error: ActionError) => undefined
-
 /** Options of `useAction`. */
 export type UseActionOptions = {
   enabled?: boolean

@@ -28,8 +28,21 @@ export const ignoring =
 /** `.catch(meansNone)`: a failure here only means there is nothing, such as no commit, no repository or no answer. */
 export const meansNone = (_error: unknown): undefined => undefined
 
+/** `onError: keepLast` or `.catch(keepLast)`: a failed read keeps its last answer, quietly; the next read asks again. */
+export const keepLast = (_error: unknown): undefined => undefined
+
 /** `.catch(overshadowed)`: a cleanup that failed while another error, the one that matters, is being reported. */
 export const overshadowed = (_error: unknown): undefined => undefined
+
+/**
+ * `inBackground(work)`: starts work nobody waits for, whose own catch reports its failure. A failure that still escapes
+ * is a bug, logged loudly instead of crashing the process as an unhandled rejection.
+ */
+export function inBackground(work: Promise<unknown>): void {
+  work.catch((error: unknown) =>
+    console.error('Background work failed without reporting it:', error),
+  )
+}
 
 /** `queue = settled(work)`: a queue waits for `work` to end; its caller already received the failure. */
 export const settled = (work: Promise<unknown>): Promise<void> =>

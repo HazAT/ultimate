@@ -77,6 +77,7 @@
     "lib/message-state.ts",
     "lib/source-frames.ts",
     "lib/timers.ts",
+    "lib/errors.ts",
     "extensions/subagents/message-types.ts",
     "test/web",
     "extensions/*/test/web"

@@ -30,6 +30,7 @@ import type { SaveFamilies } from './refs.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
+import { inBackground } from '../../lib/errors.ts'
 
 /** A Pi type as a document holds it: plain JSON, arrays mutable. */
 type Json<T> = T extends readonly (infer U)[]
@@ -187,8 +188,7 @@ export const actions = {
             const cleanup = () => {
               for (const item of signals) item.removeEventListener('abort', abort)
               delete flow.answer
-              // oxlint-disable-next-line typescript/no-floating-promises -- update catches and logs document write failures.
-              void update((state) => delete state.prompt)
+              inBackground(update((state) => delete state.prompt))
             }
             const abort = () => {
               cleanup()
@@ -206,12 +206,13 @@ export const actions = {
               item.addEventListener('abort', abort, { once: true })
             }
             const { signal: _signal, ...wire } = prompt
-            // oxlint-disable-next-line typescript/no-floating-promises -- update catches and logs document write failures.
-            void update((state) => {
-              state.prompt = json(wire)
-            })
+            inBackground(
+              update((state) => {
+                state.prompt = json(wire)
+              }),
+            )
           }),
-        notify: (event) => void update((state) => state.events.push(json(event))),
+        notify: (event) => inBackground(update((state) => state.events.push(json(event)))),
       })
       .then(
         () => (signal.aborted ? 'cancel' : 'complete'),

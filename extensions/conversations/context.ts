@@ -10,6 +10,7 @@ import {
 } from '../../lib/context-usage.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
+import { inBackground } from '../../lib/errors.ts'
 
 /** Keep one server-side context measure, including recovery of an interrupted projection on open. */
 export function contextBehavior(
@@ -127,8 +128,7 @@ export function contextBehavior(
           ids.add(change.conversationId)
       }
       for (const id of ids) {
-        // oxlint-disable-next-line typescript/no-floating-promises -- schedule reports failures through host.notice.
-        void schedule(id)
+        inBackground(schedule(id))
       }
     })
     // Bounded pages and one conversation at a time; do not hold up opening the harness.

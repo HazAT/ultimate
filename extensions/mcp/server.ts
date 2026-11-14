@@ -25,6 +25,7 @@ import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
+import { inBackground } from '../../lib/errors.ts'
 
 export const reloadOnSettings = true
 export const pollActions = ['status']
@@ -200,7 +201,7 @@ export default async function mcp(host: ExtensionHost) {
     server.error = error
     const delay = Math.min(FIRST_RETRY * 2 ** server.attempts++, LAST_RETRY)
     server.retryAt = Date.now() + delay
-    server.cancelRetry = retryAfter(delay, () => void begin(server), { unref: true })
+    server.cancelRetry = retryAfter(delay, () => inBackground(begin(server)), { unref: true })
   }
 
   async function connect(server: Server) {
@@ -279,11 +280,11 @@ export default async function mcp(host: ExtensionHost) {
   function queue(server: Server, work: () => Promise<void>) {
     const next = (server.connecting ?? Promise.resolve()).then(work)
     server.connecting = next
-    // work never rejects (connect and close report into the server's state).
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    void next.finally(() => {
-      if (server.connecting === next) delete server.connecting
-    })
+    inBackground(
+      next.finally(() => {
+        if (server.connecting === next) delete server.connecting
+      }),
+    )
     return next
   }
 
@@ -327,9 +328,7 @@ export default async function mcp(host: ExtensionHost) {
   host.onOpen(async () => {
     if (started) return
     started = true
-    // Each server reports its own failure in its state, and connect() never rejects; none waits for another.
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    for (const server of servers.values()) void begin(server)
+    for (const server of servers.values()) inBackground(begin(server))
   })
   host.onClose(async () => {
     closed = true
@@ -384,9 +383,7 @@ export default async function mcp(host: ExtensionHost) {
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
                 )
-                // restart never rejects; the server's state shows how it went.
-                // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-                if (broken && server.client === client) void restart(server)
+                if (broken && server.client === client) inBackground(restart(server))
                 return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
               }
             },

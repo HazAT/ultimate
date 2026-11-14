@@ -14,6 +14,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
+import { inBackground } from '../../lib/errors.ts'
 
 /** How long the list waits for another instance's counts; a slower one shows without them until the next poll. */
 const STATUS_WAIT = 1_500
@@ -55,12 +56,13 @@ function repoOf(root: string | undefined) {
   if (!root) return undefined
   if (!repos.has(root) && !reading.has(root)) {
     reading.add(root)
-    // oxlint-disable-next-line typescript/no-floating-promises -- neither call rejects: githubRepo settles to undefined, readGithubRepo to the repository without its visibility.
-    void (async () => {
-      const key = await githubRepo(root)
-      repos.set(root, key ? await readGithubRepo(key) : null)
-      reading.delete(root)
-    })()
+    inBackground(
+      (async () => {
+        const key = await githubRepo(root)
+        repos.set(root, key ? await readGithubRepo(key) : null)
+        reading.delete(root)
+      })(),
+    )
   }
   return repos.get(root) ?? undefined
 }

@@ -33,6 +33,7 @@ import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
 import type { Device } from '../shared/events.ts'
+import { inBackground } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -231,8 +232,8 @@ export async function loadExtensions(
         else {
           facetOpeners.get(facetHost)!.add(callback)
           openers.add(callback)
-          // oxlint-disable-next-line typescript/no-floating-promises -- runOpener catches and reports opener failures.
-          if (open && [...facetHosts.values()].includes(facetHost)) void runOpener(callback)
+          if (open && [...facetHosts.values()].includes(facetHost))
+            inBackground(runOpener(callback))
         }
       },
       onRelease: (callback) => {
@@ -388,8 +389,7 @@ export async function loadExtensions(
     },
     onOpen: (callback) => {
       openers.add(callback)
-      // oxlint-disable-next-line typescript/no-floating-promises -- runOpener catches and reports opener failures.
-      if (open) void runOpener(callback)
+      if (open) inBackground(runOpener(callback))
     },
     onRelease: (callback) => {
       releasers.add(callback)
