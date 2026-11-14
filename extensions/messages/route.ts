@@ -27,6 +27,8 @@ import type { Serves } from './addresses.ts'
 
 /** The lander's card in the starter, an input only when the landing concluded the branch (workspaces' lander.ts). */
 const LANDED = 'workspaces.lander-report'
+/** A fired automation's input in a subscriber; its data carries `serves` on the first fire only (automations). */
+const FIRED = 'automations.fired'
 
 /** Every task state but `terminal`: queried by status, so finished tasks are never scanned. */
 const LIVE = ['pending', 'running', 'waiting', 'sleeping', 'completing'] as const
@@ -102,17 +104,43 @@ async function children(tx: Tx, id: ConversationId): Promise<boolean> {
  * messaged it. Each input is judged on its own, as `board.delivery` judges reply-enabled messages: an input that is
  * no branch's (the user's, another Ultimate's, a card) neither receives the answer nor keeps it from a branch. Under
  * the earlier rule one such input left every branch in the run waiting unseen (#567641). An echo (a branch's answer
- * to a routed answer) routes nowhere, so routing goes back and forth at most once.
+ * to a routed answer) routes nowhere, so routing goes back and forth at most once. A fired automation made while an
+ * agent's request was owed serves it like a branch: the run it wakes answers that agent, unless the starter messaged
+ * it since the request other than its early answer (ultimate-eval #53/5281: an A/B result woken by the asked
+ * Ultimate's own automation reached no one).
  */
 export async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   // Each branch with the newest message of it the run answers: the starter's messages after it are the run's own.
   const latest = new Map<number, number>()
+  const askers: { source: string; key: string; serves: Serves }[] = []
+  const messaged = (since: number, to: (m: Message) => boolean) =>
+    log.messages.some((m) => m.from === starter && m.id > since && to(m))
+  // Whether the starter already messaged the asker of `serves` after `since`, besides its early answer to the request.
+  const told = (serves: Serves, since: number) =>
+    messaged(
+      since,
+      (m) =>
+        m.re !== serves.message &&
+        (serves.from === 'remote'
+          ? m.to === 'remote' && m.remote?.project === serves.remote!.project
+          : m.to === serves.from),
+    )
   for (const entryId of answered) {
     const entry = await tx.entry(entryId as never)
     const data = entry?.data as
-      | { id?: unknown; from?: unknown; reply?: unknown; echo?: unknown }
+      | { id?: unknown; name?: unknown; from?: unknown; reply?: unknown; echo?: unknown }
       | undefined
+    if (entry?.kind === FIRED) {
+      const serves = (data as { serves?: Serves } | undefined)?.serves
+      if (serves && !told(serves, serves.message))
+        askers.push({
+          source: `automation ${String(data?.id)} "${String(data?.name)}"`,
+          key: `automation:${String(data?.id)}`,
+          serves: { ...serves, ...(serves.remote ? { remote: { ...serves.remote } } : {}) },
+        })
+      continue
+    }
     if (entry?.kind === LANDED) {
       // A landing card is an input only when the landing concluded the branch, which is when its result is ready.
       const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
@@ -130,10 +158,7 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
     latest.set(data.from, Math.max(latest.get(data.from) ?? 0, Number(data.id ?? 0)))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
-  const messaged = (since: number, to: (m: Message) => boolean) =>
-    log.messages.some((m) => m.from === starter && m.id > since && to(m))
   const branches: number[] = []
-  const askers: { branch: number; serves: Serves }[] = []
   for (const [branch, since] of latest) {
     if (!concluded.has(branch as ConversationId)) {
       if (!messaged(since, (m) => m.to === branch)) branches.push(branch)
@@ -146,19 +171,9 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       from: stored.from,
       ...(stored.remote ? { remote: { ...stored.remote } } : {}),
     }
-    if (
-      serves &&
-      // The early answer to the request itself ("started #X") may be logged after a quick branch's reply: not a result.
-      !messaged(
-        since,
-        (m) =>
-          m.re !== serves.message &&
-          (serves.from === 'remote'
-            ? m.to === 'remote' && m.remote?.project === serves.remote!.project
-            : m.to === serves.from),
-      )
-    )
-      askers.push({ branch, serves })
+    // The early answer to the request itself ("started #X") may be logged after a quick branch's reply: not a result.
+    if (serves && !told(serves, since))
+      askers.push({ source: `#${branch}`, key: String(branch), serves })
   }
   return { branches, askers }
 }
@@ -239,11 +254,11 @@ export function route(host: ExtensionHost) {
                 requestId: `route:${answer}:${to}`,
                 options: { routed: answer },
               })),
-              ...askers.map(({ branch, serves }) => ({
+              ...askers.map(({ source, key, serves }) => ({
                 to: serves.from,
                 ...(serves.remote ? { remote: serves.remote } : {}),
-                text: `Result of #${branch}, which worked on your message ${serves.message}:\n\n${text}`,
-                requestId: `route:${answer}:asker:${branch}`,
+                text: `Result of ${source}, which worked on your message ${serves.message}:\n\n${text}`,
+                requestId: `route:${answer}:asker:${key}`,
                 options: { routed: answer },
               })),
             ]

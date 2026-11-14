@@ -1,5 +1,6 @@
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { TaskId, ConversationId } from '@earendil-works/pi-durable'
+import type { Serves } from '../messages/refs.ts'
 
 export type TriggerEvent = { name: string; description: string; fields: Record<string, string> }
 /** The labels automations gives the conversations it creates: a prompt run's, and a script's watcher. */
@@ -68,6 +69,11 @@ export type Automation = {
   model?: { provider: string; modelId: string }
   thinking?: ModelThinkingLevel
   subscribers: Subscriber[]
+  /**
+   * The agent's request its creator `by` still owed an answer at creation: the run its first fire wakes in `by` answers
+   * that agent (messages' route.ts). Cleared by that fire.
+   */
+  serves?: Serves & { by: number }
   nextAt?: number
   scheduler?: TaskId
   runs: Run[]

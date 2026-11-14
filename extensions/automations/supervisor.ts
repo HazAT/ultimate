@@ -402,7 +402,15 @@ export function supervisor(
               requestId,
               entry: {
                 kind: `automations.${kind}`,
-                data: { id: sub.id, name: sub.name, text },
+                data: {
+                  id: sub.id,
+                  name: sub.name,
+                  text,
+                  // The run this wakes in its creator answers the request the creator owed then (messages' route.ts).
+                  ...(kind === 'fired' && sub.serves?.by === id
+                    ? { serves: (({ by: _by, ...serves }) => serves)(sub.serves) }
+                    : {}),
+                },
               },
             },
             ctx,

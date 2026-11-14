@@ -546,6 +546,21 @@ function backend(host: ExtensionHost) {
     prepared: Awaited<ReturnType<typeof prepare>>,
     caller?: number,
   ): Promise<Change> {
+    const changed = await changeOne(tx, args, prepared, caller)
+    if (args.action !== 'create' || caller === undefined) return changed
+    // Made while its creator owes an agent's request ("I've started it"), the automation serves that request like a
+    // branch: the run its first fire wakes in the creator answers that agent (ultimate-eval #53/5281).
+    const a = (await tx.doc(Automations)).automations[(changed.result as { id: string }).id]
+    const serves = a && !a.fires && !a.serves && (await host.need(MessagesApi).owed(tx, caller))
+    if (serves) a.serves = { ...serves, by: caller }
+    return a ? { ...changed, result: json(a) } : changed
+  }
+  async function changeOne(
+    tx: Tx,
+    args: Args,
+    prepared: Awaited<ReturnType<typeof prepare>>,
+    caller?: number,
+  ): Promise<Change> {
     if (args.action === 'events') return { result: json(TRIGGER_EVENTS) }
     const state = await tx.doc(Automations)
     if (args.action === 'list') return changeScript(tx, args, prepared, caller)

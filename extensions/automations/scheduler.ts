@@ -178,6 +178,8 @@ export function scheduler(
     a.lastFireAt = firedAt
     const event = await host.emit(tx, Fired, { id: a.id, text, fire: a.fires })
     if (a.subscribers.length) await deliver(tx, a, event.id, 'fired', text)
+    // Only the first fire's run answers the request: a repeating automation must not message its asker on every fire.
+    delete a.serves
     return result
   }
   const activeRuns = new WeakMap<Tx, Set<string>>()
