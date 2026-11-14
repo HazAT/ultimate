@@ -75,7 +75,7 @@ export function resolveProject(
  * The instances the user named in `remotes` (`{ <machine>: { <project>: url } }`, user settings only: a repository must
  * not redirect messages), as `{ machine, name, url }`.
  */
-async function remotes(host: Pick<ExtensionHost, 'userHome'>) {
+export async function remotes(host: Pick<ExtensionHost, 'userHome'>) {
   // Invalid user settings are reported by the settings loader; treat them as unset here.
   const settings = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
   const object = (value: unknown) =>
