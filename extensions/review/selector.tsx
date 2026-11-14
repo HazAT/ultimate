@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronDownIcon, CornerDownLeftIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import {
@@ -25,7 +26,7 @@ export function Selector({
 }: {
   spec: string
   title?: string
-  conversation?: number
+  conversation?: ConversationId
   onChange: (spec: string) => void
 }) {
   const [open, setOpen] = useState(false)

@@ -1,5 +1,6 @@
-import type { Context } from '@earendil-works/chord/context'
+import { parseConversationId } from './ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../server/extensions.ts'
 
 /** Temporary copies act for their long-lived main. Read by kind to keep core extensions independent of side chats. */
@@ -11,5 +12,5 @@ export async function actingAs(
   const doc = host.doc('sidechat')
   if (!doc) return id
   const side = await host.harness().snapshot(doc, id, context)
-  return (typeof side?.of === 'number' ? side.of : id) as ConversationId
+  return typeof side?.of === 'number' ? parseConversationId(side.of) : id
 }

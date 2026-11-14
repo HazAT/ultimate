@@ -2,6 +2,7 @@
  * System in the browser: one stream of everything Ultimate records (durable events and the call trace), paged and
  * filtered, and the call tree of one trace with its events. Browser-safe.
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 /** One recorded thing: a durable event or a traced call, in one shape. */
@@ -15,7 +16,7 @@ export type SystemRow = {
   kind: string
   /** The event name (`workspaces.landed`) or the call name (`alpha/go`, `bash`). */
   name: string
-  conversation?: number
+  conversation?: ConversationId
   trace?: string
   /** False for a failed call; events are always ok. */
   ok: boolean
@@ -34,7 +35,7 @@ export type SystemRow = {
 export type SystemFilter = {
   sources?: ('event' | 'call')[]
   kinds?: string[]
-  conversation?: number
+  conversation?: ConversationId
   errors?: boolean
   text?: string
 }
@@ -78,17 +79,23 @@ export type LaneSpawn = { call?: string; at: string; inferred?: true }
  * owner or the conversation it branched from. Titles are the browser's to resolve (`ConversationRef`).
  */
 export type Lane = {
-  conversation: number
+  conversation: ConversationId
   agent?: string
   model?: string
   kind?: 'standing' | 'branch' | 'child'
-  parent?: number
+  parent?: ConversationId
   /** Present when the parent is among the lanes. */
   spawn?: LaneSpawn
   runs: LaneRun[]
 }
 /** A message from one lane's conversation to another's, sent at `at` by tool call `call`. */
-export type LaneLink = { from: number; to: number; call?: string; at: string; kind: 'message' }
+export type LaneLink = {
+  from: ConversationId
+  to: ConversationId
+  call?: string
+  at: string
+  kind: 'message'
+}
 
 /**
  * `{ since?, until? }` (ISO; default the last 30 minutes up to now) → `{ now, lanes, links, more? }`: a lane for each
@@ -118,7 +125,7 @@ export type SystemCall = SystemRow & { parent?: string; children: SystemCall[] }
  * event is recorded unless it repeats the last one (`recorded: false`).
  */
 export const NavigatedAction = actionRef<
-  { surface: string; conversation?: number },
+  { surface: string; conversation?: ConversationId },
   { recorded: boolean }
 >('system', 'navigated')
 

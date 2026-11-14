@@ -1,3 +1,6 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import {
   GitBranchIcon,
   GitMergeIcon,
@@ -93,10 +96,16 @@ function SubagentCall({ call }: { call: ToolCallView }) {
   const id = useConversation((conversation) => conversation.id)
   const action = text(call.args.action) || 'start'
   const details = call.details as
-    | { conversationId?: number; background?: boolean; yielded?: boolean; answerId?: number }
+    | {
+        conversationId?: ConversationId
+        background?: boolean
+        yielded?: boolean
+        answerId?: number
+      }
     | undefined
   const childId =
-    details?.conversationId ?? (typeof call.args.id === 'number' ? call.args.id : undefined)
+    details?.conversationId ??
+    (typeof call.args.id === 'number' ? parseConversationId(call.args.id) : undefined)
   const child = useConversationSummary(childId)
   const agent = child?.label || text(call.args.label) || text(call.args.agent)
   const background = call.args.background === true || details?.background === true
@@ -289,7 +298,7 @@ function Landed({ output }: { output: string }) {
 /** The `list` action's JSON rows. */
 function ChildList({ output }: { output: string }) {
   const { switchConversation } = useUltimate()
-  let rows: { conversationId: number; agent: string; background: boolean; busy: boolean }[]
+  let rows: { conversationId: ConversationId; agent: string; background: boolean; busy: boolean }[]
   try {
     rows = JSON.parse(output)
   } catch {
@@ -338,7 +347,7 @@ function useErrorReport() {
 function LandOnUltimate() {
   const loaded = useStore((state) => state.shared !== undefined)
   const [chosen] = useUiState<number | null>('shell.conversation', null)
-  const standing = useDocOf(1, StandingDoc)
+  const standing = useDocOf(ROOT, StandingDoc)
   const { switchConversation } = useUltimate()
   const target = landing(loaded, chosen ?? undefined, standing)
   useEffect(() => {

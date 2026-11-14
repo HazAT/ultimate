@@ -2,6 +2,8 @@
  * Lineage for other extensions' browser code: the project's roots, a root's tally, landing links and compaction, the
  * branch and root events, and the Memory surface with its header point.
  */
+import { ROOT } from '@/sdk'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { BrainIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { cn, definePoint, getState, useDocOf, useUiState, useUltimate } from '@/sdk'
@@ -61,7 +63,7 @@ export function MemoryChip({
 export const MemoryHeader = definePoint<null, ReactNode>('lineage.memory-header')
 
 /** Conversation 1 keeps the `lineage.roots` document. */
-const keeper = 1
+const keeper = ROOT
 
 /** The project's roots, live in every client; undefined until the stream delivers them. */
 export function useRoots() {
@@ -70,6 +72,7 @@ export function useRoots() {
 
 /** The roots as last streamed, for synchronous readers such as a command's `when`; a mounted `useRoots` keeps them. */
 export function getRoots() {
-  return (getState().docsOf[keeper]?.[RootsDoc.kind] as { roots: number[] } | null | undefined)
-    ?.roots
+  return (
+    getState().docsOf[keeper]?.[RootsDoc.kind] as { roots: ConversationId[] } | null | undefined
+  )?.roots
 }

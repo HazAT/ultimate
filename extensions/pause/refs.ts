@@ -1,4 +1,5 @@
 /** Pause in the browser: whether this Ultimate is paused, what still runs, and Pause and Play. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**
@@ -10,7 +11,7 @@ export type RateLimit = {
   model: string
   error: string
   at: number
-  conversationId: number
+  conversationId: ConversationId
 }
 
 /**
@@ -31,7 +32,7 @@ export type PauseDocState = {
 /** A task still running while paused: it finishes on its own, nothing new starts after it. */
 export type RunningTask = {
   task: number
-  conversationId: number
+  conversationId: ConversationId
   /** The conversation's label or title. */
   title?: string
   /** `model response`, the tool's name, or the task kind. */

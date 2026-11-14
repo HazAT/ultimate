@@ -1,4 +1,4 @@
-import type { ConversationView } from '@earendil-works/pi-durable'
+import type { ConversationView, ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApi } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
@@ -128,7 +128,10 @@ it('until fails at once on an unknown event, and on the event that fails the awa
 
 it('exposes the page api, so a driven page sets up state with one call', async () => {
   const { hook, fetch } = setup()
-  await hook.api.configure({ model: { provider: 'openai-codex', modelId: 'gpt-6.1-sol' } }, 1)
+  await hook.api.configure(
+    { model: { provider: 'openai-codex', modelId: 'gpt-6.1-sol' } },
+    1 as ConversationId,
+  )
   const [url, init] = fetch.mock.calls.at(-1)!
   expect(url).toBe('/api/conversations/1/configure')
   expect(JSON.parse(init?.body as string)).toEqual({

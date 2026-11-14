@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff, Virtualizer } from '@pierre/diffs/react'
 import type {
@@ -454,8 +455,8 @@ function Sent({
   onOpen,
   onClose,
 }: {
-  sent: { conversation: number } | { error: string }
-  onOpen: (id: number) => void
+  sent: { conversation: ConversationId } | { error: string }
+  onOpen: (id: ConversationId) => void
   onClose: () => void
 }) {
   return (
@@ -501,14 +502,17 @@ export default function ReviewSurface() {
   const { conversationId, switchConversation, showSurface } = useUltimate()
   // Review reads the checkout of the conversation you are in: a project root that is no repository of its own keeps
   // its work in subfolder repositories, and the one to review is your conversation's.
-  const args: { spec: string; conversation?: number } = { spec, conversation: conversationId }
+  const args: { spec: string; conversation?: ConversationId } = {
+    spec,
+    conversation: conversationId,
+  }
   const diff = useAction(DiffAction, args, { onError: keepLast })
   const github = useGithubRepo()
   const [drafts, update] = useDrafts(draftsKey(spec, conversationId))
   const suggested = useAction(RecipientAction, args, { onError: keepLast })
   const to = drafts.to ?? suggested.data?.conversation
   const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState<{ conversation: number } | { error: string }>()
+  const [sent, setSent] = useState<{ conversation: ConversationId } | { error: string }>()
   const data = diff.data?.spec === spec ? diff.data : undefined
   // A branch gone without a landing shows another spec: follow it rather than ask for the deleted ref again.
   const moved = diff.data && diff.data.spec !== spec ? diff.data.spec : undefined

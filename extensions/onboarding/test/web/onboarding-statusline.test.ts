@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ dismissed: false, off: false }))
 vi.mock('@/sdk', () => ({
+  ROOT: 1,
   api: {},
   attention: (renderer: unknown) => renderer,
   Card: () => null,

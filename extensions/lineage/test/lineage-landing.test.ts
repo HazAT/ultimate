@@ -1,5 +1,5 @@
+import type { Tx, ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Tx } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
 import { abstract } from '../server.ts'
 import { SubmissionLanded } from '../../workspaces/api.ts'
@@ -12,12 +12,12 @@ import type { Server } from './lineage-fixture.ts'
 
 const landing = (submission: string, conversationId: number): LandedData => ({
   submission,
-  conversationId,
-  at: 3,
+  conversationId: conversationId as ConversationId,
+  at: 3 as EntryId,
   sha: `${submission}abcdef0`,
   base: '0000000',
   target: 'main',
-  lander: 2,
+  lander: 2 as ConversationId,
   divergence: 'None',
   title: 'Land me',
   feature: 'Landing',
@@ -39,7 +39,10 @@ it.concurrent('notes a landing in its tree root once, across a failed attempt an
   const { server, home } = await fixture()
   const first = await branchFrom(server, { from: 1, prompt: 'Land me' })
   await settled(server, first)
-  await server.harness.commit((tx) => abstract(tx, first, { text: 'State: done.', at: 3 }), context)
+  await server.harness.commit(
+    (tx) => abstract(tx, first, { text: 'State: done.', at: 3 as EntryId }),
+    context,
+  )
 
   // The reactor's first attempt fails after it placed the note, as a crash before its commit would.
   let failed = false

@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -186,7 +188,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
 }
 
 /** The linked child: "open #id" like the Agents tab, with a dot while it works. */
-function ChildLink({ id, child }: { id: number; child?: ConversationSummary }) {
+function ChildLink({ id, child }: { id: ConversationId; child?: ConversationSummary }) {
   const { switchConversation } = useUltimate()
   return (
     <Button
@@ -571,7 +573,7 @@ function Panel({
 }
 
 /** Where the pill floats: the right edge of the conversation's prompt, just above it. */
-function useAnchor(conversationId: number | undefined) {
+function useAnchor(conversationId: ConversationId | undefined) {
   const [anchor, setAnchor] = useState<{ right: number; bottom: number }>()
   useEffect(() => {
     let form: HTMLFormElement | null | undefined
@@ -607,7 +609,7 @@ function useAnchor(conversationId: number | undefined) {
   return anchor
 }
 
-type Open = { conversation: number; key: string } | null
+type Open = { conversation: ConversationId; key: string } | null
 
 /**
  * The plan beside the conversation: a pill above the prompt (the open epic's progress, or a worker's task and its
@@ -621,7 +623,7 @@ function PlanOverlay() {
   useEffect(() => {
     const url = new URL(location.href)
     const key = url.searchParams.get('task')
-    const conversation = Number(url.searchParams.get('conversation'))
+    const conversation = parseConversationId(Number(url.searchParams.get('conversation')))
     if (!key) return
     url.searchParams.delete('task')
     history.replaceState(history.state, '', url)
@@ -651,7 +653,7 @@ function CoordinatorPlan({
   request,
   settle,
 }: {
-  conversation: number
+  conversation: ConversationId
   request: Open
   settle: () => void
 }) {
@@ -698,7 +700,7 @@ function CoordinatorPlan({
   )
 }
 
-function WorkerPlan({ conversation, task }: { conversation: number; task: TaskLink }) {
+function WorkerPlan({ conversation, task }: { conversation: ConversationId; task: TaskLink }) {
   const [expanded, setExpanded] = useUiState('plan.panel', false)
   const plan = useDocOf(expanded ? task.coordinator : undefined, PlanDoc)
   const openTask = useOpenTask()
@@ -861,7 +863,7 @@ function useConversationTask(id: number | undefined) {
 }
 
 /** The epic coordinator `id` works itself, for its sidebar row; one with a task linked to a subagent has none. */
-function useConversationEpic(id: number) {
+function useConversationEpic(id: ConversationId) {
   const epics = useDocOf(id, PlanDoc)?.epics ?? {}
   const openTask = useOpenTask()
   const epic =

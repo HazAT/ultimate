@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
   ArrowUpRightIcon,
@@ -23,7 +24,7 @@ export function Open({
   label,
   entry,
 }: {
-  id: number
+  id: ConversationId
   className?: string
   label?: string
   entry?: number
@@ -156,7 +157,7 @@ export function CommitCount({
  * What a submission lands as the feature its conversation had at submit time; a standing agent is only ever its
  * `@name`, whatever branch work it last submitted.
  */
-function useSubject(from: number, subject?: ConversationSubject) {
+function useSubject(from: ConversationId, subject?: ConversationSubject) {
   const agent = useStandingName(from)
   return agent ? { title: agent } : subject
 }
@@ -168,7 +169,7 @@ export function Subject({
   className,
 }: {
   subject?: ConversationSubject
-  from: number
+  from: ConversationId
   className?: string
 }) {
   const { switchConversation } = useUltimate()
@@ -219,7 +220,7 @@ export function LandingCard({
   headline: ReactNode
   subject?: ConversationSubject
   /** The submitting conversation. */
-  from: number
+  from: ConversationId
   /** The landed commit, for the folded line. */
   sha?: string
   at?: ReactNode

@@ -1,3 +1,13 @@
+import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  Cursor,
+  JsonObject,
+  ToolExecutionApi,
+  ToolRegistration,
+  ToolExecutionResult,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -20,16 +30,6 @@ import {
   defineTool,
   ROOT_CONVERSATION_ID,
   section,
-} from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  Cursor,
-  EntryId,
-  JsonObject,
-  ToolExecutionApi,
-  ToolRegistration,
-  ToolExecutionResult,
-  Tx,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
@@ -108,7 +108,7 @@ function localReads(host: ExtensionHost, context: Context) {
         options.before === undefined
           ? {}
           : {
-              maxEntryId: (options.before - 1) as EntryId,
+              maxEntryId: offsetEntryId(options.before, -1),
             },
         100,
         cursor,
@@ -473,7 +473,7 @@ export const actions = {
 }
 
 export default function codemode(host: ExtensionHost) {
-  const globalDeclarations = globals(host, 1 as ConversationId, BACKGROUND_CONTEXT)
+  const globalDeclarations = globals(host, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
   const codemodeTool = defineTool({
     name: 'codemode',
     replay: 'unsafe',
@@ -487,7 +487,7 @@ export default function codemode(host: ExtensionHost) {
         args: unknown
         status: string
         ms: number
-        conversationId?: number
+        conversationId?: ConversationId
         background?: boolean
       }[] = []
       const subagentAnswers = new Set<number>()
@@ -569,7 +569,7 @@ export default function codemode(host: ExtensionHost) {
             if (resolved.name === 'subagent' && details?.yielded === true) {
               call.status = 'yielded'
               if (typeof details.conversationId === 'number')
-                call.conversationId = details.conversationId
+                call.conversationId = parseConversationId(details.conversationId)
               if (typeof details.background === 'boolean') call.background = details.background
               yielded = true
               // Abort synchronously: pi-codemode clears pending replies and terminates the VM,

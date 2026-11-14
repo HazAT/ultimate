@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { AudioLinesIcon, PlayIcon, SquareIcon, Volume2Icon, VolumeOffIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -107,9 +109,9 @@ function narratorOfTab() {
  * a failed run, and each landing. Whatever it shows when this tab opens has been heard already.
  */
 function Player() {
-  const overview = useDocOf(1, OverviewDoc)
-  const log = useDocOf(1, MessagesDoc)
-  const agent = useDocOf(1, StandingDoc)?.ultimate
+  const overview = useDocOf(ROOT, OverviewDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
+  const agent = useDocOf(ROOT, StandingDoc)?.ultimate
   const landings = useEvents({ events: [SubmissionLanded], limit: 20 })
   const branched = useEvents({ events: [Branched], limit: 20 })
   const conversations = useConversations()
@@ -206,8 +208,8 @@ function useCatchingUp(hidden = false) {
 /** While the sound of agents plays: follows every conversation, tool call and landing, and hands them to the band. */
 function Listener({ landings }: { landings: boolean }) {
   const conversations = useConversations()
-  const overview = useDocOf(1, OverviewDoc)
-  const standing = useDocOf(1, StandingDoc)
+  const overview = useDocOf(ROOT, OverviewDoc)
+  const standing = useDocOf(ROOT, StandingDoc)
   const events = useEvents({ events: watched, limit: 20 })
   const [follow] = useState(tracker)
   const catchingUp = useCatchingUp()
@@ -241,14 +243,14 @@ function Listener({ landings }: { landings: boolean }) {
 /** `pi.live` alone: a conversation's whole view would stream its transcript to every tab that plays. */
 const LiveDoc = docRef<LiveState>('pi.live')
 
-type Round = { tools: [string, { name: string; conversationId: number }][] }
+type Round = { tools: [string, { name: string; conversationId: ConversationId }][] }
 
 /** Reports conversation `id`'s current round from its `pi.live`. */
 function RoundOf({
   id,
   report,
 }: {
-  id: number
+  id: ConversationId
   report: (update: (previous: Record<number, Round>) => Record<number, Round>) => void
 }) {
   const live = useDocOf(id, LiveDoc)

@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 /**
  * The goal's two transcript cards in @ultimate's conversation: `goal.started`, live while it works (criteria, the latest
  * decisions, End), and `goal.report`, what happened while the user was away: every decision with its reason.
@@ -32,7 +33,7 @@ import { EndAction, GoalDoc, ImagesAction } from './refs.ts'
 import type { Criterion, Decision, Goal, GoalEntry } from './refs.ts'
 
 function useGoal(id: number) {
-  return useDocOf(1, GoalDoc)?.goals.find((goal) => goal.id === id)
+  return useDocOf(ROOT, GoalDoc)?.goals.find((goal) => goal.id === id)
 }
 
 /** The frame both cards share: an accent rule on the left, a mono header row. */

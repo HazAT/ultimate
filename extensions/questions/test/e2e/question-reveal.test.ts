@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 // "answer" on a question in To-dos opens the asker's conversation with the question's card at the top of the view. It
 // once left the view at the bottom: clearing the request re-ran the effect whose cleanup cancelled the reveal's frame.
 // The card must also land below the pinned prompt strip, which arrives after the jump, not at the top of the response
@@ -7,7 +8,6 @@ import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
@@ -67,11 +67,12 @@ async function setup() {
     return fauxAssistantMessage(last.role === 'user' ? step(++steps) : 'Waiting on you.')
   }
   server.host.faux!.setResponses([route])
-  const created = async () => (await post(server, '/api/conversations', {})).data.id as number
+  const created = async () =>
+    (await post(server, '/api/conversations', {})).data.id as ConversationId
   const [branch, other] = [await created(), await created()]
   // Started by another conversation, the branch may ask the user.
   await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Started, branch as ConversationId)).by = other
+    ;(await tx.doc(Started, branch)).by = other
   }, context)
   const say = async (id: number, content: string) =>
     (

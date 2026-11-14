@@ -1,4 +1,5 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
 
@@ -9,7 +10,7 @@ export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
   `@ultimate@${remote.project} on ${remote.machine}`
 
 /** Only incoming requests belong to an answer, never the outgoing reply log item. */
-export function answeredMessages(messages: Message[], conversation: number, entry: number) {
+export function answeredMessages(messages: Message[], conversation: ConversationId, entry: number) {
   return messages.filter((message) => message.to === conversation && message.answer === entry)
 }
 
@@ -80,7 +81,7 @@ function awaitsPrimary(
   id: number,
   primary: number | undefined,
   log: MessagesData,
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   if (primary === undefined) return false
   return (
@@ -98,7 +99,7 @@ export function pendingReport(
   messages: readonly Message[],
   from: number | 'user' | 'remote',
   to: number | 'user' | 'remote',
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   let pending: Message | undefined
   for (const m of messages)
@@ -246,8 +247,8 @@ export function landedSha(entry: EntryRecord): string | undefined {
   return typeof sha === 'string' ? sha.slice(0, 7) : undefined
 }
 
-const idOf = (value: unknown): (number | 'remote')[] =>
-  typeof value === 'number' || value === 'remote' ? [value] : []
+const idOf = (value: unknown): (ConversationId | 'remote')[] =>
+  typeof value === 'number' ? [parseConversationId(value)] : value === 'remote' ? [value] : []
 
 /**
  * Whether an entry says work landed: the lander's landing note, or its report of a landing. Landings are news you wait
@@ -266,7 +267,7 @@ export function counterparts(
     calls,
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData>,
-): (number | 'remote' | 'lander')[] {
+): (ConversationId | 'remote' | 'lander')[] {
   const data = (entry.data ?? {}) as {
     from?: unknown
     sender?: unknown
@@ -293,7 +294,7 @@ export function counterparts(
       const sent = log.messages.find((m) => m.call === call.id)
       if (sent) return idOf(sent.to)
       const to = /^#(\d+)$/.exec(String((call.arguments as { to?: unknown } | undefined)?.to))
-      return to ? [Number(to[1])] : []
+      return to ? [parseConversationId(Number(to[1]))] : []
     })
   return [
     ...answeredMessages(log.messages, entry.conversationId, entry.id).flatMap((m) => idOf(m.from)),
@@ -313,7 +314,7 @@ export const answerTo = (messages: readonly Message[], question: Message) =>
 export function openMessages(
   messages: readonly Message[],
   id: number,
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   const reporters = new Set(
     messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
@@ -331,8 +332,10 @@ export function openMessages(
 }
 
 /** Whether a report is settled: its sender was concluded after sending it (or is concluded now). */
-export const settled = (message: Message, concludedSince: (id: number) => number | undefined) =>
-  typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
+export const settled = (
+  message: Message,
+  concludedSince: (id: ConversationId) => number | undefined,
+) => typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
 
 /** Who waits on whom for one message; `yours` is an open question to the user. */
 export function messageStatus(message: Message) {

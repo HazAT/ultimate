@@ -1,8 +1,8 @@
+import type { TaskGraphNode, ConversationId } from '@earendil-works/pi-durable'
 /**
  * What a live task means, in plain words: the group it belongs to and the phrase that names it. Pure, from the task graph
  * node, the facts its input gives (`describe` action) and, for a message, its state in the messages log.
  */
-import type { TaskGraphNode } from '@earendil-works/pi-durable'
 import type { TaskFacts } from './refs.ts'
 
 /** The root conversation: work it owns is the project's, never named after it. */
@@ -24,9 +24,9 @@ export type Meaning = {
   /** The phrase, read before `who` when there is one: "Waiting on" #12. */
   text: string
   /** The conversation (or the user, another project) the phrase is about. */
-  who?: number | 'user' | 'remote'
+  who?: ConversationId | 'user' | 'remote'
   /** Who asked, for a message. */
-  by?: number | 'user' | 'remote'
+  by?: ConversationId | 'user' | 'remote'
   /** A second line: a message's first line, a lander's step. */
   detail?: string
   /** When a scheduled task wakes. */

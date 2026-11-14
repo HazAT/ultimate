@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../../shared/extension-api.ts'
 import { retryAfter } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
@@ -88,7 +89,7 @@ export function createReads(api: Api, store: Store) {
     extension: string,
     name: string,
     args: unknown,
-    conversationId?: number,
+    conversationId?: ConversationId,
   ) {
     let state: ReadState = { loading: false, settled: false }
     const listeners = new Set<() => void>()
@@ -190,7 +191,7 @@ export function createReads(api: Api, store: Store) {
 
   return {
     /** The read of `extension/name` with `args` on `conversationId` (the shown conversation when absent). */
-    get(extension: string, name: string, args: unknown, conversationId?: number): Read {
+    get(extension: string, name: string, args: unknown, conversationId?: ConversationId): Read {
       const key = JSON.stringify([extension, name, args ?? null, conversationId ?? null])
       let read = reads.get(key)
       if (!read) {

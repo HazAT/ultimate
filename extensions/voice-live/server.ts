@@ -1,3 +1,12 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type {
+  TaskId,
+  ConversationId,
+  Cursor,
+  ToolExecutionApi,
+  ToolTaskInput,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import {
   AssistantEntry,
@@ -8,13 +17,6 @@ import {
   GenerationTask,
   hook,
   ROOT_CONVERSATION_ID,
-} from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  Cursor,
-  ToolExecutionApi,
-  ToolTaskInput,
-  Tx,
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { bool, int, obj, opt, str } from '@earendil-works/pi-schema'
@@ -205,14 +207,18 @@ function questionsText(questions: Question[]) {
 }
 
 /** Who asks `message`, for Voice to say: @ultimate, or the branch by title and id. */
-function askerOf(host: ExtensionHost, message: Pick<Message, 'from'>, main: number | undefined) {
+function askerOf(
+  host: ExtensionHost,
+  message: Pick<Message, 'from'>,
+  main: ConversationId | undefined,
+) {
   if (message.from === main) return '@ultimate'
   const title = host.conversations().find((c) => c.id === message.from)?.title
   return `#${message.from}${title ? ` "${title}"` : ''}`
 }
 
 /** One open question to the user in full, the way Voice reads it out. */
-function questionText(host: ExtensionHost, message: Message, main: number | undefined) {
+function questionText(host: ExtensionHost, message: Message, main: ConversationId | undefined) {
   return [
     `Message ${message.id} from ${askerOf(host, message, main)}, asked ${formatAgo(message.at, Date.now(), { ago: true })}:`,
     message.text,
@@ -243,7 +249,7 @@ async function gistOf(host: ExtensionHost, message: number, ctx: Context) {
 }
 
 /** Voice's spoken line for tool `taskId`, when a tool speaks and ends Voice's turn in one call. */
-const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: number) =>
+const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: TaskId) =>
   write(host, id, 'voice.line', { role: 'ultimate', text, speech: true }, `voice:say:${taskId}`)
 
 /** Both writers share one request id, so the first write's time is the one kept. */
@@ -257,12 +263,12 @@ const userLine = (input: { text: string }): VoiceLine => ({
 /** A stable input request id makes answer delivery safe if the task resumes after submitting it. */
 async function answerVoice(
   host: ExtensionHost,
-  voice: number,
+  voice: ConversationId,
   line: number,
   text: string,
   source?: VoiceAnswer['source'],
 ) {
-  const conversation = (await host.harness().conversation(voice as ConversationId, context))!
+  const conversation = (await host.harness().conversation(voice, context))!
   const data: VoiceAnswer = { text, re: line, ...(source ? { source } : {}) }
   await conversation.submit(
     {
@@ -279,8 +285,8 @@ async function answerVoice(
 export function answerTask(host: ExtensionHost) {
   return defineTask<
     {
-      voice: number
-      main: number
+      voice: ConversationId
+      main: ConversationId
       /** Names the user's forwarded line, written once under `voice:line:<request>`. */
       request: string
       text: string
@@ -297,11 +303,11 @@ export function answerTask(host: ExtensionHost) {
     phases: {
       answer: async (task, runtime, ctx) => {
         const input = task.input
-        const main = input.main as ConversationId
+        const main = input.main
         const recipient = (await host.harness().conversation(main, ctx))!
         const line = await write(
           host,
-          input.voice as ConversationId,
+          input.voice,
           'voice.line',
           userLine(input),
           `voice:line:${input.request}`,
@@ -382,7 +388,7 @@ export function answerTask(host: ExtensionHost) {
           // Said out loud too: the user waits by ear, so a silent failure looks like nothing happened.
           await write(
             host,
-            input.voice as ConversationId,
+            input.voice,
             'voice.line',
             {
               role: 'notice',
@@ -827,7 +833,7 @@ export default (host: ExtensionHost) => {
           } else if (conversation !== undefined) {
             const found = host.conversations().find((c) => c.id === conversation)
             if (!found) throw new Error(`No conversation #${conversation}`)
-            go = { conversation }
+            go = { conversation: parseConversationId(conversation) }
             label = `#${conversation}${found.title ? ` ${found.title}` : ''}`
           } else {
             // The page knows its surfaces; it reports one it does not have as a notice.

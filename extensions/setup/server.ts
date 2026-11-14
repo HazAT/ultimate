@@ -1,15 +1,15 @@
+import type {
+  ConversationDocToken,
+  ConversationId,
+  JsonObject,
+  Tx,
+} from '@earendil-works/pi-durable'
 import {
   defineDoc,
   defineExtension,
   GenerationTask,
   hook,
   ROOT_CONVERSATION_ID,
-} from '@earendil-works/pi-durable'
-import type {
-  ConversationDocToken,
-  ConversationId,
-  JsonObject,
-  Tx,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
@@ -354,13 +354,9 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
     | undefined
   const empty: number[] = []
   for (const root of listed?.roots ?? []) {
-    const tally = (await read(tallyDoc, root as ConversationId)) as
-      | (typeof TallyDoc)['value']
-      | undefined
+    const tally = (await read(tallyDoc, root)) as (typeof TallyDoc)['value'] | undefined
     if (tally?.since === undefined) continue
-    const doc = (await read(memoryDoc, root as ConversationId)) as
-      | (typeof MemoryDoc)['value']
-      | undefined
+    const doc = (await read(memoryDoc, root)) as (typeof MemoryDoc)['value'] | undefined
     if (!Object.keys(doc?.memories ?? {}).length) empty.push(root)
   }
   if (!empty.length) return undefined

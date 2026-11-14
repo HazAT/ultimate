@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** From a response in the transcript to the call that produced it in Wire. */
 import type { ReactNode } from 'react'
 import {
@@ -17,7 +18,7 @@ import { ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
 
 /** Which call Wire shows, for the conversation it was picked in. */
-export type Picked = { conversation: number; n: number }
+export type Picked = { conversation: ConversationId; n: number }
 
 /** Wire is a tab of the System surface: a function that selects it there, then shows System. */
 export function useOpenWire() {

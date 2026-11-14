@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Browser WebRTC lifecycle, independent of React and the shell. Never holds an API key. */
 import { deadline, every, within } from '../../lib/timers.ts'
 import { inBackground, settled } from '../../lib/errors.ts'
@@ -14,7 +15,7 @@ export type LiveOptions = {
   onError: (error: Error) => void
 }
 export type LiveSession = {
-  conversation: number
+  conversation: ConversationId
   analyser: AnalyserNode
   relay: Relay
   send: (event: Record<string, unknown>) => void
@@ -45,7 +46,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   let releasing = false
   let closePromise: Promise<void> | undefined
   let pending = Promise.resolve()
-  let conversation: number | undefined
+  let conversation: ConversationId | undefined
   const errorOf = (error: unknown) => (error instanceof Error ? error : new Error(String(error)))
   const cleanup = async () => {
     if (releasing) return

@@ -1,4 +1,4 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, EntryId } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import {
   anchorSelector,
@@ -205,14 +205,14 @@ describe('folded groups', () => {
   })
 
   it('finds a scroll anchor by its last entry, or a row inside an open run', () => {
-    expect(anchorSelector({ entryId: 3, last: 5, inner: false })).toBe(
+    expect(anchorSelector({ entryId: 3 as EntryId, last: 5, inner: false })).toBe(
       ':scope > [data-run-last="5"]',
     )
     // A row inside an open run, never the run that may carry the same id.
-    expect(anchorSelector({ entryId: 3, inner: true })).toBe(
+    expect(anchorSelector({ entryId: 3 as EntryId, inner: true })).toBe(
       '[data-run-last] [data-entry-id="3"]:not([data-run-last])',
     )
-    expect(anchorSelector({ entryId: 3, inner: false })).toBe('[data-entry-id="3"]')
+    expect(anchorSelector({ entryId: 3 as EntryId, inner: false })).toBe('[data-entry-id="3"]')
   })
 
   it('folds everything between two thread rows into one stretch', () => {

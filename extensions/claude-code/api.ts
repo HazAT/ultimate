@@ -1,4 +1,5 @@
 /** Claude Code: an optional per-conversation environment for its CLI requests. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 
 export type ClaudeCodeEnvService = {
@@ -8,7 +9,7 @@ export type ClaudeCodeEnvService = {
    * is not known (an extension's one-shot call, a compaction resumed after a restart). Return undefined to change
    * nothing. Each distinct environment gets its own warm CLI process.
    */
-  env(conversationId: number | undefined): Record<string, string> | undefined
+  env(conversationId: ConversationId | undefined): Record<string, string> | undefined
 }
 /** Implemented by another extension; claude-code `want`s it on every request. */
 export const ClaudeCodeEnv = defineApi<ClaudeCodeEnvService>()('claude-code.env')
@@ -16,7 +17,7 @@ export const ClaudeCodeEnv = defineApi<ClaudeCodeEnvService>()('claude-code.env'
 /** One HTTP request Claude Code sent upstream through the turn relay, and the answer, as bytes on the wire. */
 export type ClaudeCodeExchange = {
   /** The conversation the request generated for; undefined when not known (an extension's one-shot call). */
-  conversationId: number | undefined
+  conversationId: ConversationId | undefined
   model: string
   url: string
   startedAt: number

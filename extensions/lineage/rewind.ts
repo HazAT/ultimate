@@ -1,3 +1,5 @@
+import type { ContextEdit, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../../lib/ids.ts'
 /**
  * Going back to an entry in place: everything after it leaves the model's context through omit edits on one note entry,
  * which says what changed in the checkout since (and, when asked, summarizes the set-aside path). The conversation keeps
@@ -15,7 +17,6 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ContextEdit, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { git } from '../../lib/git.ts'
@@ -38,7 +39,7 @@ import { RewindAction, RewindPreviewAction, Rewound } from './refs.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
 
 type View = {
-  entries: readonly { id: number; kind: string }[]
+  entries: readonly { id: EntryId; kind: string }[]
   contributions: readonly (readonly Message[])[]
 }
 type Facts = {
@@ -47,13 +48,15 @@ type Facts = {
   dependents: RewindDependent[]
 }
 /** The facts and the context revision they were gathered against: the newest entry the model saw then. */
-type Gathered = { revision: number | null; facts: Facts }
+type Gathered = { revision: EntryId | null; facts: Facts }
 
 /**
  * Messages’ `board.sent`, read by kind: messages depends on lineage, so lineage importing Messages’ token would close a cycle.
  * Only the fields read here; Messages’ refs.ts owns the full shape.
  */
-const MessageSent = defineEvent<{ from: number | 'user'; to: number | 'user' }>('board.sent')
+const MessageSent = defineEvent<{ from: ConversationId | 'user'; to: ConversationId | 'user' }>(
+  'board.sent',
+)
 
 /** How many events a go-back reads from the log per page. */
 const EVENTS = 5000
@@ -62,14 +65,11 @@ const SUMMARY_SYSTEM =
   'Summarize the part of a coding conversation the user set aside by going back to an earlier point. The agent will continue from that earlier point and reads this summary instead. In short Markdown bullets: what was tried, decided and achieved, what is unfinished. Preserve exact file paths, names and errors. Do not continue the conversation; output only the summary.'
 
 /** Why conversation `id` cannot go back to entry `at` now, inside `tx` before its first table write; undefined when it can. */
-export async function refusal(tx: Tx, id: ConversationId, at: number) {
+export async function refusal(tx: Tx, id: ConversationId, at: EntryId) {
   if (!(await tx.conversation(id))) return `No conversation #${id}`
   if ((await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id))
     return "Roots can't go back: a root's context is its tally."
-  const found = await tx.scanEntries(
-    { conversationId: id, minEntryId: at as EntryId, maxEntryId: at as EntryId },
-    1,
-  )
+  const found = await tx.scanEntries({ conversationId: id, minEntryId: at, maxEntryId: at }, 1)
   if (!found.items.length) return `Entry ${at} is not in #${id}`
   const live = await tx.doc(LiveDoc, id)
   if (live.run || (await tx.doc(InboxDoc, id)).items.length)
@@ -90,7 +90,7 @@ const json = (messages: readonly Message[] | undefined) => JSON.stringify(messag
  * `steps` counts the entries set aside with messages other than system prompt changes: inputs, answers, tool calls and
  * results, notes.
  */
-export function rewindPlan(current: View, past: View, at: number) {
+export function rewindPlan(current: View, past: View, at: EntryId) {
   const before = new Map(past.entries.map((entry, index) => [entry.id, past.contributions[index]]))
   const edits: ContextEdit[] = []
   let steps = 0
@@ -98,7 +98,7 @@ export function rewindPlan(current: View, past: View, at: number) {
     const now = current.contributions[index]
     if (entry.id > at) {
       if (!now.length) return
-      edits.push({ target: entry.id as EntryId, action: 'omit' })
+      edits.push({ target: entry.id, action: 'omit' })
       if (now.some((message) => message.role !== 'system')) steps++
       return
     }
@@ -106,8 +106,8 @@ export function rewindPlan(current: View, past: View, at: number) {
     if (json(now) === json(then)) return
     edits.push(
       then?.length
-        ? { target: entry.id as EntryId, action: 'replace', messages: [...then] }
-        : { target: entry.id as EntryId, action: 'omit' },
+        ? { target: entry.id, action: 'replace', messages: [...then] }
+        : { target: entry.id, action: 'omit' },
     )
   })
   return { edits, steps }
@@ -186,7 +186,7 @@ async function fileStates(top: string, paths: ReadonlySet<string>, base: string 
  * the parent of its first after, else its worktree's base), so changes from before the entry stay out; and the
  * conversations it started or messaged since.
  */
-async function facts(host: ExtensionHost, id: ConversationId, at: number, ctx: Context) {
+async function facts(host: ExtensionHost, id: ConversationId, at: EntryId, ctx: Context) {
   /** Every event of `token` after entry `at`, oldest first: the log pages by id, so no window cuts it short. */
   const since = async <D extends JsonValue>(token: EventToken<D>) => {
     const found: EventRecord<D>[] = []
@@ -199,19 +199,19 @@ async function facts(host: ExtensionHost, id: ConversationId, at: number, ctx: C
       })
       found.push(...page)
       if (page.length < EVENTS) return found
-      after = page.at(-1)!.id
+      after = parseEntryId(page.at(-1)!.id)
     }
   }
-  const own = (data: { conversation?: number; parent?: number }) =>
+  const own = (data: { conversation?: ConversationId; parent?: number }) =>
     data.conversation === id || data.parent === id
   const cwd = (await host.harness().snapshot(AgentDoc, id, ctx))?.cwd ?? host.projectRoot
   const top = await git(cwd, 'rev-parse', '--show-toplevel').catch(meansNone)
   // Only commits made in this checkout: a command may commit in another repository.
-  const here = (data: { conversation: number; repo: string; worktree?: string }) =>
+  const here = (data: { conversation: ConversationId; repo: string; worktree?: string }) =>
     own(data) && (data.worktree ?? data.repo) === top
   const after = (await since(Committed)).filter((event) => here(event.data))
   let before: EventRecord<EventData<typeof Committed>> | undefined
-  for (let until = at + 1; !before;) {
+  for (let until = offsetEntryId(at, 1); !before;) {
     const page = await host.eventLog.recent({ events: [Committed], before: until, limit: EVENTS })
     before = page.find((event) => here(event.data))
     if (page.length < EVENTS) break
@@ -227,7 +227,7 @@ async function facts(host: ExtensionHost, id: ConversationId, at: number, ctx: C
   let cursor: Cursor | undefined
   do {
     const page = await conversation.entries(
-      { minEntryId: (at + 1) as EntryId, order: 'ascending' },
+      { minEntryId: offsetEntryId(at, 1), order: 'ascending' },
       256,
       cursor,
       ctx,
@@ -286,7 +286,7 @@ async function facts(host: ExtensionHost, id: ConversationId, at: number, ctx: C
 }
 
 /** The note the model reads after going back to `#id/at`. */
-export function noteText(id: number, at: number, found: Facts, summary?: string) {
+export function noteText(id: ConversationId, at: EntryId, found: Facts, summary?: string) {
   const lines = [
     `You went back to #${id}/${at}. What came after it is set aside: it is no longer in your context.`,
   ]
@@ -319,16 +319,16 @@ export function noteText(id: number, at: number, found: Facts, summary?: string)
  * The views a go-back compares: the context now and as of entry `at`, the plan between them, the messages it sets
  * aside, and the revision: the newest entry of the context now.
  */
-async function views(host: ExtensionHost, id: ConversationId, at: number, ctx: Context) {
+async function views(host: ExtensionHost, id: ConversationId, at: EntryId, ctx: Context) {
   const conversation = (await host.harness().conversation(id, ctx))!
   const current = await conversation.context(ctx)
-  const past = await conversation.context(ctx, { at: at as EntryId })
+  const past = await conversation.context(ctx, { at: at })
   const setAside = current.entries.flatMap((entry, index) =>
     entry.id > at
       ? current.contributions[index].filter((message) => message.role !== 'system')
       : [],
   )
-  const revision = (current.entries.at(-1)?.id as number | undefined) ?? null
+  const revision = current.entries.at(-1)?.id ?? null
   return { current, past, plan: rewindPlan(current, past, at), setAside, revision }
 }
 
@@ -336,11 +336,11 @@ async function views(host: ExtensionHost, id: ConversationId, at: number, ctx: C
  * Why the context moved past `revision`: an entry after it that changes what the model sees (a turn, a note, an
  * edit). Display-only entries (a summary line, a marker) do not count. Read inside `tx` before its first table write.
  */
-async function moved(tx: Tx, id: ConversationId, revision: number | null) {
+async function moved(tx: Tx, id: ConversationId, revision: EntryId | null) {
   const since = await tx.scanEntries(
     {
       conversationId: id,
-      ...(revision === null ? {} : { minEntryId: (revision + 1) as EntryId }),
+      ...(revision === null ? {} : { minEntryId: offsetEntryId(revision, 1) }),
     },
     100,
   )
@@ -358,9 +358,9 @@ const nothing = 'Nothing after this point is in the context to set aside.'
 export function rewindTask(host: ExtensionHost) {
   const conversations = host.need(ConversationsApi)
   return defineTask<
-    { at: number; summarize: boolean },
-    { phase: 'note' } | { phase: 'mark'; entry: number; dependents: RewindDependent[] },
-    { entry: number }
+    { at: EntryId; summarize: boolean },
+    { phase: 'note' } | { phase: 'mark'; entry: EntryId; dependents: RewindDependent[] },
+    { entry: EntryId }
   >({
     name: 'lineage.rewind',
     version: 1,
@@ -462,14 +462,14 @@ export function rewindTask(host: ExtensionHost) {
       },
       mark: async (task, runtime, ctx) => {
         const { entry, dependents } = task.state.checkpoint as {
-          entry: number
+          entry: EntryId
           dependents: RewindDependent[]
         }
         const id = runtime.conversationId
         // A display-only write lands at once, also in a running conversation; its request id writes it once.
         for (const dependent of dependents)
           await (
-            await host.harness().conversation(dependent.id as ConversationId, ctx)
+            await host.harness().conversation(dependent.id, ctx)
           )?.submit(
             {
               type: 'write',
@@ -492,7 +492,7 @@ export function rewindTask(host: ExtensionHost) {
   })
 }
 
-function point(args: ActionInput<{ conversation: number; at: number }>) {
+function point(args: ActionInput<{ conversation: ConversationId; at: EntryId }>) {
   const input = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {
     conversation?: unknown
     at?: unknown
@@ -502,7 +502,7 @@ function point(args: ActionInput<{ conversation: number; at: number }>) {
     if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
       throw new Error(`${key} must be a positive integer`)
   }
-  return { id: input.conversation as ConversationId, at: input.at as number }
+  return { id: parseConversationId(Number(input.conversation)), at: parseEntryId(Number(input.at)) }
 }
 
 export const rewindActions = {

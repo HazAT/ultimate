@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon, GanttChartIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
@@ -45,10 +46,10 @@ function useLive() {
 
 /** Each lane's conversation state, the same the sidebar shows: only the primary agent can wait on you. */
 function useStates(parked: ReadonlySet<number>) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
   const conversations = useConversations()
-  const primary = useDocOf(1, StandingDoc)?.ultimate
+  const primary = useDocOf(ROOT, StandingDoc)?.ultimate
   const concludedSince = useConcludedSince()
   return (lane: Lane) => {
     const id = lane.conversation

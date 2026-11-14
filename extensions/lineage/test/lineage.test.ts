@@ -1,5 +1,5 @@
+import type { ConversationId, EntryRecord, EntryId } from '@earendil-works/pi-durable'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
 import { compareLinks, leaveNote, rootOf, Tally } from '../server.ts'
@@ -82,7 +82,9 @@ it.concurrent("lists a root's newest landings, notes, branches and compactions, 
   }, context)
   const branch = await branchFrom(server, { from: 1, prompt: 'Polish the sidebar' })
   await settled(server, branch)
-  await leaveNote({ harness: () => server.harness }, 1, 'Keep it quiet.', { from: branch })
+  await leaveNote({ harness: () => server.harness }, 1 as ConversationId, 'Keep it quiet.', {
+    from: branch,
+  })
   await leaveNote({ harness: () => server.harness }, 'root', 'Landed abc1234', {
     from: branch,
     source: 'lander',
@@ -149,14 +151,14 @@ it.concurrent("lists a root's newest landings, notes, branches and compactions, 
 })
 
 const landed = (entry: number, sha: string, base?: string) =>
-  ({ entry, type: 'landed', sha, commits: 1, ...(base ? { base } : {}) }) as const
+  ({ entry: entry as EntryId, type: 'landed', sha, commits: 1, ...(base ? { base } : {}) }) as const
 
 it('links each landing to its DiffsHub compare range, from its base or the landing before it', () => {
   const links = compareLinks(
     'github.com/hazat/ultimate',
     [
       landed(9, 'ccc', 'bbb'),
-      { entry: 8, type: 'compacted' },
+      { entry: 8 as EntryId, type: 'compacted' },
       landed(7, 'bbb'),
       landed(5, 'aaa'),
       landed(3, 'zzz'),
@@ -383,7 +385,7 @@ it.concurrent('a late branched reaction leaves the title a branch chose since', 
   // As if the reaction came late: lineage's naming runs now, after the rename.
   const at = (await server.harness.snapshot(Branch, id, context))!.branch!.at
   const late = await server.harness.commit(
-    (tx) => emit(tx, Branched, { id, from: 1, at, intent: 'Polish the sidebar' }),
+    (tx) => emit(tx, Branched, { id, from: 1 as ConversationId, at, intent: 'Polish the sidebar' }),
     context,
   )
   await until(

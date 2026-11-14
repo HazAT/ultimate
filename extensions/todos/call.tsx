@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { ListTodoIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Tool, ToolContent, ToolHeader, ToolOutput, ToolSection } from '@/components/ai/tool'
@@ -10,7 +11,7 @@ const words = (value: unknown) => (typeof value === 'string' ? value.trim() : ''
 /** One `todo` call as what happened: a to-do added or done, or the list read; a failed call keeps the generic card. */
 export function TodoCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
-  const items = useDocOf(1, TodosDoc)?.items
+  const items = useDocOf(ROOT, TodosDoc)?.items
   if (call.status === 'error' || call.status === 'interrupted') return core
   const action = words(call.args.action)
   const id = typeof call.args.id === 'number' ? call.args.id : undefined

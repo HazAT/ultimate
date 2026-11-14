@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { BlocksIcon, CheckIcon, FolderCogIcon, GitBranchIcon, LoaderCircleIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
@@ -150,7 +151,7 @@ function SetupLink({
   )
 }
 /** Dismissing Start here quiets the setup reminders too; ⌘K Get ready… and the Extensions panel still reach them. */
-const useDismissed = () => useDocOf(1, StartsDoc)?.dismissed === true
+const useDismissed = () => useDocOf(ROOT, StartsDoc)?.dismissed === true
 const useOff = () => useAction(StatusAction).data?.off === true
 function Undecided() {
   const project = useSystem()?.project

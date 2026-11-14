@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
@@ -12,7 +14,6 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { discoverAgents } from '../../lib/agents.ts'
@@ -85,7 +86,10 @@ export async function landings(
   for (const record of log.split('\x1e')) {
     const [sha, subject, trailer] = record.trim().split('\0')
     if (!sha) continue
-    let id = Number(trailer?.trim()) || Number(/ from #(\d+) into /.exec(subject)?.[1]) || undefined
+    let id =
+      parseConversationId(
+        Number(trailer?.trim()) || Number(/ from #(\d+) into /.exec(subject)?.[1]),
+      ) || undefined
     // An owned conversation (a worker, a designer) worked for its owner's branch.
     for (let owner = id && byId.get(id)?.parentConversationId; owner;) {
       id = owner

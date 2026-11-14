@@ -10,6 +10,7 @@ import {
 
 const known = vi.hoisted(() => [{ id: 157029, title: 'Sidebar polish landed' }])
 vi.mock('@/sdk', () => ({
+  ROOT: 1,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   events: { emit: () => {} },
   useDocOf: () => ({ conversations: { '157029': { feature: 'Sidebar' } } }),

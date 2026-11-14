@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { BrainIcon, ChevronRightIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn, formatTokens, projectHeading, useSystem } from '@/sdk'
@@ -40,7 +41,7 @@ export function Project({
   shown,
   children,
 }: {
-  root?: number
+  root?: ConversationId
   shown: boolean
   children?: ReactNode
 }) {
@@ -113,7 +114,7 @@ export function Project({
 }
 
 /** The folded project block's trace of its memory: a brain and the count, opening the Memory surface. */
-function MemoryHint({ root }: { root: number }) {
+function MemoryHint({ root }: { root: ConversationId }) {
   const openMemory = useOpenMemory()
   const shown = useShell().surface === MEMORY_SURFACE
   const { total, tokens, counts } = useMemorySummary(root)

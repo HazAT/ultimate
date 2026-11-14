@@ -1,5 +1,6 @@
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 import {
   ArrowRightIcon,
   AudioLinesIcon,
@@ -73,8 +74,8 @@ const KEYS = 'alt+v'
 const useMode = () => useSyncExternalStore(live.subscribe, live.voiceMode)
 /** @ultimate's conversation and the Voice conversation, once start created it. */
 function useIds() {
-  const main = useDocOf(1, StandingDoc)?.ultimate
-  const voice = useDocOf(1, StandingDoc)?.voice
+  const main = useDocOf(ROOT, StandingDoc)?.ultimate
+  const voice = useDocOf(ROOT, StandingDoc)?.voice
   return { main, voice }
 }
 
@@ -353,7 +354,7 @@ const QUIET_MS = 2000
  * have been quiet a moment; never one that was open before. The server takes each message once.
  */
 function Announce() {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const mode = useMode()
   const seen = useRef<Set<number>>(undefined)
   const [due, setDue] = useState<number[]>([])
@@ -1200,7 +1201,7 @@ function Asked({ text }: { text: string }) {
 }
 
 /** @ultimate on it: the phase the sidebar shows for it (else working, or waiting its turn) and the time so far. */
-function Working({ main, since }: { main: number; since?: number }) {
+function Working({ main, since }: { main: ConversationId; since?: number }) {
   const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, since !== undefined)
   return (

@@ -1,3 +1,10 @@
+import type {
+  ConversationId,
+  ConversationDocToken,
+  Extension,
+  Harness,
+  JsonObject,
+} from '@earendil-works/pi-durable'
 import { readFile, realpath } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
 import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
@@ -17,19 +24,12 @@ import { actionExec } from './actions.ts'
 import type { ExtensionAction } from './actions.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { join, resolve } from 'node:path'
-import type {
-  ConversationDocToken,
-  Extension,
-  Harness,
-  JsonObject,
-} from '@earendil-works/pi-durable'
 import type { ViteDevServer } from 'vite-plus'
 import type { ConversationSummary, ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { PreparedHost } from './harness.ts'
 import { Metadata } from './metadata.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
 import { EventFeed, eventLog } from './events.ts'
 import { contractOutline } from '../lib/api-files.ts'
@@ -110,7 +110,7 @@ export type ExtensionHost = Pick<
     action: string,
     args: JsonValue,
     signal: AbortSignal,
-    conversationId?: number,
+    conversationId?: ConversationId,
   ): Promise<unknown>
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
@@ -329,7 +329,7 @@ export async function loadExtensions(
     action: string,
     args: JsonValue,
     signal: AbortSignal,
-    conversationId?: number,
+    conversationId?: ConversationId,
     caller = 'ui',
     device?: Device,
   ) {
@@ -353,9 +353,7 @@ export async function loadExtensions(
           const agent =
             conversationId === undefined
               ? undefined
-              : await runtime
-                  .harness()
-                  .snapshot(AgentDoc, conversationId as ConversationId, BACKGROUND_CONTEXT)
+              : await runtime.harness().snapshot(AgentDoc, conversationId, BACKGROUND_CONTEXT)
           return actionExec(options?.cwd ?? agent?.cwd ?? host.projectRoot, signal)(
             command,
             commandArgs,

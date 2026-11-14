@@ -1,5 +1,5 @@
-import { int, lit, union } from '@earendil-works/pi-schema'
 import type { ConversationId, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
+import { int, lit, union } from '@earendil-works/pi-schema'
 import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
 
@@ -7,7 +7,7 @@ import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.
  * Which images to forward: `latest`, the newest entry with images in the sender's current turn (its input or a tool
  * result such as a screenshot since), or an entry's id.
  */
-export type ImagesRef = 'latest' | number
+export type ImagesRef = 'latest' | EntryId
 export const SCAN_PAGE = 200
 /** Resolve `ref` against conversation `from`'s visible history to the entry holding the images, checking the limits. */
 export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef) {
@@ -20,8 +20,8 @@ export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef
       await tx.scanEntries(
         {
           conversationId: from,
-          minEntryId: ref as EntryId,
-          maxEntryId: ref as EntryId,
+          minEntryId: ref,
+          maxEntryId: ref,
         },
         1,
       )

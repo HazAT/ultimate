@@ -1,3 +1,10 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  JsonObject,
+  ConversationDocToken,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
@@ -5,10 +12,8 @@ import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
-import type { JsonObject } from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
 import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
@@ -307,7 +312,7 @@ type State =
   | {
       phase: 'report'
       id: string
-      conversationId: number
+      conversationId: ConversationId
       text: string
       outcome: WorkspaceIndex['results'][string]
     }
@@ -315,14 +320,14 @@ type State =
   | {
       phase: 'deliver'
       id: string
-      conversationId: number
+      conversationId: ConversationId
       text: string
       outcome: WorkspaceIndex['results'][string]
       concluded: boolean
       starter?: number
     }
   /** A landed branch concluded in the report's last commit: free its checkout. */
-  | { phase: 'release'; conversationId: number }
+  | { phase: 'release'; conversationId: ConversationId }
 
 export function createLander(
   host: Host,
@@ -455,9 +460,7 @@ export function createLander(
                 lander: runtime.conversationId,
                 divergence: entry.divergence,
                 title:
-                  subject.title ??
-                  (await tx.doc(host.metadata, entry.conversationId as ConversationId)).title ??
-                  '',
+                  subject.title ?? (await tx.doc(host.metadata, entry.conversationId)).title ?? '',
                 ...(subject.summary ? { summary: subject.summary } : {}),
                 ...(subject.feature ? { feature: subject.feature } : {}),
                 commits: commits.slice(0, 10),
@@ -804,7 +807,7 @@ export function createLander(
        */
       report: async (task, runtime, context) => {
         const { id, conversationId, text, outcome } = task.state.checkpoint
-        const branch = conversationId as ConversationId
+        const branch = conversationId
         const entry = { kind: LanderReportEntry, data: { id, outcome } }
         const next = { status: 'running', checkpoint: { phase: 'next' } } as const
         if (outcome.outcome === 'failed') {
@@ -869,7 +872,7 @@ export function createLander(
         const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
-            await host.harness().conversation(starter as ConversationId, context)
+            await host.harness().conversation(parseConversationId(starter), context)
           )?.submit(
             concluded
               ? { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` }
@@ -894,7 +897,7 @@ export function createLander(
       // At least once, like the Conclude action's release: it frees only what a concluded, idle branch holds.
       release: async (task, runtime, context) => {
         await after
-          .release(task.state.checkpoint.conversationId as ConversationId, context)
+          .release(task.state.checkpoint.conversationId, context)
           .catch((error: unknown) => {
             context.abortSignal?.throwIfAborted()
             // The landing stands; the next open's reconciliation frees the checkout instead.

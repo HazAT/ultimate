@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 // The Inbox reading pane scrolls inside the window; it once grew the whole page instead, so a reader could scroll one
 // screen past the conversation into empty background. The answer card carries absolutely positioned `sr-only` legends
 // (one per question, extensions/questions/question.tsx): with no positioned ancestor their containing block was the page,
@@ -5,7 +6,6 @@
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
@@ -76,15 +76,16 @@ async function setup() {
     return fauxAssistantMessage('Fine.')
   }
   server.host.faux!.setResponses([route])
-  const created = async () => (await post(server, '/api/conversations', {})).data.id as number
+  const created = async () =>
+    (await post(server, '/api/conversations', {})).data.id as ConversationId
   const [branch, other] = [await created(), await created()]
   // Started by another conversation, the branch may ask the user.
   await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Started, branch as ConversationId)).by = other
+    ;(await tx.doc(Started, branch)).by = other
   }, context)
   const say = async (content: string) =>
     (
-      await (await server.harness.conversation(branch as ConversationId, context))!.submit(
+      await (await server.harness.conversation(branch, context))!.submit(
         { type: 'input', content },
         context,
       )

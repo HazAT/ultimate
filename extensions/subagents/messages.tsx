@@ -1,4 +1,4 @@
-import type { EntryRecord, InboxItem } from '@earendil-works/pi-durable'
+import type { EntryRecord, InboxItem, ConversationId } from '@earendil-works/pi-durable'
 import { ArrowLeftIcon, BotIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -17,7 +17,7 @@ import { ConversationRef, ConversationTask } from '../conversations/ui.tsx'
 import type { AgentOrigin } from './message-types.ts'
 import { openAgentSource } from './ui.tsx'
 
-type Destination = { conversation: number; entry?: number }
+type Destination = { conversation: ConversationId; entry?: number }
 
 export function AgentMessages() {
   const { id, entries, loading } = useConversation()

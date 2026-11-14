@@ -1,7 +1,8 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { RootEvent } from '../lineage/types.ts'
 
 /** A landing note of root `root`. */
-export type Landing = Extract<RootEvent, { type: 'landed' }> & { root: number }
+export type Landing = Extract<RootEvent, { type: 'landed' }> & { root: ConversationId }
 
 /** Landings of one feature (or one untagged title), newest first. */
 export type LandingGroup = { label: string; feature?: string; landings: Landing[] }

@@ -1,4 +1,5 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -59,7 +60,7 @@ export function questionsOf(
  */
 export function OffscreenQuestions() {
   const id = useConversation((conversation) => conversation.id)
-  const messages = useDocOf(1, MessagesDoc)?.messages
+  const messages = useDocOf(ROOT, MessagesDoc)?.messages
   const entries = useTranscript()
   const questions = useMemo(
     () => (id === undefined || !messages ? [] : questionsOf(id, messages, entries)),

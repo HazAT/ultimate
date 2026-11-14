@@ -1,3 +1,5 @@
+import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 /**
  * Hands-off goals: the user puts @ultimate on a goal and goes away. While it is open, @ultimate decides what it would
  * otherwise ask them, records each decision with its reason, and ends the goal with a report. Only the user starts or
@@ -13,7 +15,6 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -114,14 +115,14 @@ export function noteText(goal: Goal, reminded = false) {
 }
 
 /** The newest entry with images in this turn of conversation `id`, or entry `ref` when it has some. */
-async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | number) {
+async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | EntryId) {
   if (ref !== 'latest') {
-    const entry = await tx.entry(ref as EntryId)
+    const entry = await tx.entry(ref)
     if (entry?.conversationId !== id || !imagesOf(entry).length)
       throw new Error(`images: entry ${ref} in your conversation has no images`)
     return ref
   }
-  return (await latestImagesEntry(tx, id)).id as number
+  return (await latestImagesEntry(tx, id)).id
 }
 
 type ToolArgs = {
@@ -131,8 +132,8 @@ type ToolArgs = {
   question?: string
   picked?: string
   reason?: string
-  conversation?: number
-  images?: 'latest' | number
+  conversation?: ConversationId
+  images?: 'latest' | EntryId
   outcome?: 'met' | 'blocked'
   summary?: string
 }
@@ -282,7 +283,7 @@ export const actions = {
       // Only the screenshots a decision names, not any entry by id.
       if (!goal?.decisions.some((decision) => decision.images === entry))
         throw new Error('No decision of that goal has these images')
-      return imagesOf(await tx.entry(entry as EntryId)).map(({ data, mimeType }) => ({
+      return imagesOf(await tx.entry(parseEntryId(Number(entry)))).map(({ data, mimeType }) => ({
         data,
         mimeType,
       }))
@@ -350,7 +351,19 @@ export default function goalExtension(host: ExtensionHost) {
           const result = await api.commit(async (tx) => {
             if ((await ultimateOf(tx)) !== caller)
               throw new Error('Only @ultimate keeps the hands-off goal.')
-            const acted = await act(tx, caller, args, Date.now())
+            const acted = await act(
+              tx,
+              caller,
+              {
+                ...args,
+                conversation:
+                  args.conversation === undefined
+                    ? undefined
+                    : parseConversationId(args.conversation),
+                images: typeof args.images === 'number' ? parseEntryId(args.images) : args.images,
+              },
+              Date.now(),
+            )
             if (acted.ended) await card(host, tx, 'goal.report', acted.ended)
             const changed = acted.sync ?? acted.ended?.id
             if (changed !== undefined) await sync(host, tx, changed)

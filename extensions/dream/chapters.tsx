@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 /**
  * Chapters in the browser: their names, the switch between them and the night veil while the server restarts into
  * another one. A successful switch never answers: the process exits, the page reconnects to the new one and reloads.
@@ -126,7 +128,7 @@ export function SwitchVeil() {
   const ours = usePending()
   const system = useSystem()
   const connection = useConnection()
-  const doc = useDocOf(1, DreamDoc)
+  const doc = useDocOf(ROOT, DreamDoc)
   const sleep = doc?.sleep?.phase === 'switching' ? doc.sleep : undefined
   const current = useChapters()
   const now = useNow(1000, ours !== undefined)
@@ -403,7 +405,7 @@ export function BusyBlocker({
   busy,
   onGo,
 }: {
-  busy: { id: number; title: string }[]
+  busy: { id: ConversationId; title: string }[]
   onGo?: () => void
 }) {
   const actions = useUltimate()

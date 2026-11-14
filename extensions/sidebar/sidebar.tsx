@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -95,7 +96,7 @@ const pinned = (conversation: ConversationSummary) =>
 
 /** The project tree, with owned subagents under each row and earlier/concluded work at the bottom. */
 export function Conversations() {
-  const ultimateId = useDocOf(1, StandingDoc)?.ultimate
+  const ultimateId = useDocOf(ROOT, StandingDoc)?.ultimate
   return (
     <WaitingOnUser>
       {(waiting) => (
@@ -124,7 +125,7 @@ function Tree({
   unlisted: readonly ReadonlySet<number>[]
 }) {
   const overview = useOverview()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const tasks = useTasks()
   const foreground = new Set<number>(
     Object.values(tasks?.tasks ?? {})
@@ -160,7 +161,7 @@ function Tree({
   const working = workingByTop(conversations)
   const topLevel = topLevelRows(conversations, new Set(unlisted.flatMap((set) => [...set])))
   // @ultimate first, then the lander and other standing agents: pinned above the rest and never concluded.
-  const standingIds = useDocOf(1, StandingDoc)
+  const standingIds = useDocOf(ROOT, StandingDoc)
   const ultimateId = standingIds?.ultimate
   const ultimate = topLevel.find((conversation) => conversation.id === ultimateId)
   const agents = topLevel

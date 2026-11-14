@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { events, formatAgo, keepLast, useStore } from '@/sdk'
 import { reads, store } from '@/sdk/client'
@@ -14,9 +16,12 @@ import { useShell, useSidebarState } from './state.tsx'
  * The latest landings of every root (up to 20 each), newest first. Read again whenever a root's token count changes,
  * which every new entry in it does: a new count means something may have landed.
  */
-export function useLandings(rootIds: readonly number[]) {
+export function useLandings(rootIds: readonly ConversationId[]) {
   const key = rootIds.join(',')
-  const roots = useMemo(() => (key ? key.split(',').map(Number) : []), [key])
+  const roots = useMemo(
+    () => (key ? key.split(',').map((id) => parseConversationId(Number(id))) : []),
+    [key],
+  )
   useEffect(() => {
     const stops = roots.map((id) => store.watchDocOf(id, TallyDoc.kind))
     return () => stops.forEach((stop) => stop())

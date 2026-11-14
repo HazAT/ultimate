@@ -1,5 +1,5 @@
-import { defineTask } from '@earendil-works/pi-durable'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
+import { defineTask } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
 /**
@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
  * a retried delivery harmless.
  */
 type Delivery = {
-  to: number
+  to: ConversationId
   type: 'input' | 'write'
   requestId: string
   kind: 'dream.requested' | 'dream.ready' | 'dream.prepared' | 'dream.chapter'
@@ -34,7 +34,7 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
         const { to, type, requestId, kind, content } = task.input
         const data = task.input.data ?? {}
         // The host handle, unlike the task runtime's, admits passive writes.
-        const target = (await host.harness().conversation(to as ConversationId, ctx))!
+        const target = (await host.harness().conversation(to, ctx))!
         if (type === 'input')
           await target.submit(
             { type: 'input', requestId, content, entry: { kind, data }, whenBusy: 'followUp' },
@@ -62,11 +62,11 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
 export const deliver = (
   host: Pick<ExtensionHost, 'harness'>,
   tx: Tx,
-  to: number,
+  to: ConversationId,
   delivery: Omit<Delivery, 'to'>,
 ) =>
   tx.createTask(
     deliverTask(host),
     { to, ...delivery },
-    { conversationId: to as ConversationId, ownership: { kind: 'conversation' }, background: true },
+    { conversationId: to, ownership: { kind: 'conversation' }, background: true },
   )

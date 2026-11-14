@@ -1,3 +1,4 @@
+import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { AuthEvent, AuthPrompt, AuthType } from '@earendil-works/pi-ai'
@@ -9,7 +10,6 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Family, LoginChanged } from './api.ts'
@@ -125,7 +125,7 @@ export const actions = {
     const family = field(args, 'family')
     if (family !== null && (typeof family !== 'string' || !family))
       throw new Error('Expected family: a family name or null')
-    const id = (conversationId ?? ROOT_CONVERSATION_ID) as ConversationId
+    const id = conversationId ?? ROOT_CONVERSATION_ID
     await host.harness().commit(async (tx) => {
       if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
       ;(await tx.doc(Family, id)).name = family
@@ -137,7 +137,7 @@ export const actions = {
     const change = await setDefault(host, text(args, 'model'))
     if (conversationId !== undefined)
       await host.harness().commit(async (tx) => {
-        const id = conversationId as ConversationId
+        const id = conversationId
         if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
         await configure(tx, id, change)
         ;(await tx.doc(Family, id)).name = DEFAULT_FAMILY
@@ -155,7 +155,7 @@ export const actions = {
       throw new Error('Unsupported provider or login type')
     const live = liveFlows(host)
     const harness = host.harness()
-    const id = (conversationId ?? ROOT_CONVERSATION_ID) as ConversationId
+    const id = conversationId ?? ROOT_CONVERSATION_ID
     const flowId = randomUUID()
     await harness.commit(async (tx) => {
       if (!(await tx.conversation(id))) throw new Error('Unknown conversation')

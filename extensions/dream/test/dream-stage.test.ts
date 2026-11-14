@@ -1,8 +1,9 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { Dream, Prepared, Sleep } from '../refs.ts'
 import { dreamStage } from '../stage.ts'
 
-const dream: Dream = { branch: 7, requested: 1, at: 100 }
+const dream: Dream = { branch: 7 as ConversationId, requested: 1 as EntryId, at: 100 }
 const prepared: Prepared = { chapter: 'Two', learned: [], handoff: '', at: 200 }
 const sleep = (phase: Sleep['phase']): Sleep => ({ chapter: 'Two', phase, at: 300 })
 const concluded = (id: number) => (id === 7 ? Infinity : undefined)

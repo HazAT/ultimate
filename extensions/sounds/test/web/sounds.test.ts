@@ -1,10 +1,11 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { OverviewRow } from '../../../conversations/types.ts'
 import { cuesOf, listener } from '../../cues.ts'
 import type { Watched } from '../../cues.ts'
 import { linesOf } from '../../narration.ts'
 
-const agent = 7
+const agent = 7 as ConversationId
 const answered = (answerId: number, extra: Partial<OverviewRow> = {}): OverviewRow => ({
   runState: 'answered',
   inputId: answerId - 1,
@@ -34,9 +35,9 @@ it('cues branch questions but keeps other conversations and one-way branch messa
   expect(sounds(watched({ row: answered(10, { internalInput: true }) }))).toEqual([])
   // A branch question needs input; one-way branch news and messages between agents stay quiet.
   const messages = [
-    { id: 1, from: 30726, to: 'user' as const, reply: true },
-    { id: 2, from: 110108, to: 'user' as const, reply: false },
-    { id: 3, from: agent, to: 158849, reply: true },
+    { id: 1, from: 30726 as ConversationId, to: 'user' as const, reply: true },
+    { id: 2, from: 110108 as ConversationId, to: 'user' as const, reply: false },
+    { id: 3, from: agent, to: 158849 as ConversationId, reply: true },
     { id: 4, from: 'user' as const, to: agent, reply: false },
   ]
   expect(sounds(watched({ messages }))).toEqual(['input'])
@@ -69,7 +70,7 @@ it('sounds each landing once, and not those that arrive while catching up', () =
 })
 
 it('narrates what arrives together as one line per kind, questions first', () => {
-  const branchAsks = { id: 3, from: 40, to: 'user' as const, reply: true }
+  const branchAsks = { id: 3, from: 40 as ConversationId, to: 'user' as const, reply: true }
   const cues = cuesOf(
     watched({
       messages: [branchAsks],

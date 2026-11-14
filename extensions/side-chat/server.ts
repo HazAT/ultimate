@@ -1,3 +1,5 @@
+import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import {
   defineDoc,
@@ -8,7 +10,6 @@ import {
   ROOT_CONVERSATION_ID,
   ToolTask,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -36,7 +37,7 @@ export const Index = defineDoc<SideChatIndex>({
   fork: 'initial',
   initial: () => ({ sides: [] }),
 })
-const Ending = defineDoc<{ mode?: 'discarded' | 'injected'; task?: number; introduced?: boolean }>({
+const Ending = defineDoc<{ mode?: 'discarded' | 'injected'; task?: TaskId; introduced?: boolean }>({
   kind: 'sidechat.ending',
   checkpointWhen: () => false,
   version: 1,
@@ -105,7 +106,7 @@ function sideId(args: unknown): ConversationId {
   const id = args && typeof args === 'object' && 'id' in args ? args.id : undefined
   if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1)
     throw new Error('Expected a side chat id')
-  return id as ConversationId
+  return parseConversationId(id)
 }
 
 async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 'injected') {
@@ -122,7 +123,7 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
     const ending = await tx.doc(Ending, id)
     // An ending whose task faulted or was aborted (a summary failure reopens the copy itself) is no ending: without
     // this, every retry waited on the dead task again and Discard refused the chat as "already ending".
-    const previous = ending.task === undefined ? undefined : await tx.task(ending.task as TaskId)
+    const previous = ending.task === undefined ? undefined : await tx.task(ending.task)
     if (
       ending.mode &&
       !side.ended &&
@@ -132,8 +133,7 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
       delete ending.mode
       delete ending.task
     }
-    if (mode === 'injected' && ending.mode === mode && ending.task !== undefined)
-      return ending.task as TaskId
+    if (mode === 'injected' && ending.mode === mode && ending.task !== undefined) return ending.task
     if (side.ended || ending.mode) throw new Error(`Side chat #${id} is already ended or ending`)
     if (mode === 'discarded' && side.effects)
       throw new Error(`Side chat #${id} has effects; inject its summary instead`)
@@ -142,12 +142,12 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
       endTask(host),
       { side: id, ...(model ? { model } : {}) },
       {
-        conversationId: side.of as ConversationId,
+        conversationId: side.of,
         ownership: { kind: 'conversation' },
         background: true,
       },
     )
-    return ending.task as TaskId
+    return ending.task
   }, context)
   host.harness().resume()
   const settled = await host.harness().waitForTask(task, context)
@@ -155,16 +155,16 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
     throw new Error(
       `Could not end side chat #${id}: ${settled.state.outcome.error?.message ?? settled.state.outcome.status}`,
     )
-  return { id: id as number }
+  return { id }
 }
 
-const Start = defineTask<{ side: number; text: string }, { phase: 'submit' }, null>({
+const Start = defineTask<{ side: ConversationId; text: string }, { phase: 'submit' }, null>({
   name: 'side-chat.start',
   version: 1,
   initial: () => ({ phase: 'submit' }),
   phases: {
     submit: async (task, runtime, ctx) => {
-      const id = task.input.side as ConversationId
+      const id = task.input.side
       await (await runtime.conversation(id, ctx))!.submit(
         {
           type: 'input',
@@ -183,7 +183,7 @@ const Start = defineTask<{ side: number; text: string }, { phase: 'submit' }, nu
 export function endTask(host: ExtensionHost) {
   const summaries = host.need(ConversationsApi)
   return defineTask<
-    { side: number; model?: SummaryModel },
+    { side: ConversationId; model?: SummaryModel },
     { phase: 'stop' } | { phase: 'summarize' },
     null
   >({
@@ -192,13 +192,13 @@ export function endTask(host: ExtensionHost) {
     initial: () => ({ phase: 'stop' }),
     phases: {
       stop: async (task, runtime, ctx) => {
-        const conversation = (await runtime.conversation(task.input.side as ConversationId, ctx))!
+        const conversation = (await runtime.conversation(task.input.side, ctx))!
         await conversation.abort(ctx)
         await conversation.waitForIdle(ctx)
         await runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'summarize' } }), ctx)
       },
       summarize: async (task, runtime, ctx) => {
-        const id = task.input.side as ConversationId
+        const id = task.input.side
         const side = (await runtime.snapshot(Side, id, ctx))!
         const mode = (await runtime.snapshot(Ending, id, ctx))!.mode!
         let response: ResponseReceipt | undefined
@@ -210,7 +210,11 @@ export function endTask(host: ExtensionHost) {
               let cursor: Cursor | undefined
               do {
                 const page = await tx.scanEntries(
-                  { conversationId: id, minEntryId: (side.at! + 1) as EntryId, order: 'ascending' },
+                  {
+                    conversationId: id,
+                    minEntryId: offsetEntryId(side.at!, 1),
+                    order: 'ascending',
+                  },
                   100,
                   cursor,
                 )
@@ -261,11 +265,11 @@ export function endTask(host: ExtensionHost) {
             return
           }
           const text = response.text.trim()
-          const at = await host.harness().commit((tx) => tx.entry(side.at as EntryId), ctx)
+          const at = await host.harness().commit((tx) => tx.entry(side.at!), ctx)
           const time = new Date(at!.model![0].timestamp).toISOString().slice(11, 16)
           const data: SideChatSummary = { side: id, at: side.at!, from: id, to: side.of!, text }
           // Standard write admission preserves main's inbox/reset order; the request id survives a crash before conclusion.
-          await (await host.harness().conversation(side.of as ConversationId, ctx))!.submit(
+          await (await host.harness().conversation(side.of!, ctx))!.submit(
             {
               type: 'write',
               requestId: `sidechat:summary:${id}`,
@@ -290,9 +294,7 @@ export function endTask(host: ExtensionHost) {
           await summaries.concludeIn(tx, [id])
           if (response) await summaries.accountResponse(tx, id, response)
           state.ended = mode
-          const listed = (await tx.doc(Index, side.of as ConversationId)).sides.find(
-            (item) => item.id === id,
-          )!
+          const listed = (await tx.doc(Index, side.of!)).sides.find((item) => item.id === id)!
           listed.ended = mode
           return terminal
         }, ctx)
@@ -308,7 +310,7 @@ export const actions = {
     const text = args && typeof args === 'object' && !Array.isArray(args) ? args.text : undefined
     if (typeof text !== 'string' || !text.trim()) throw new Error('Expected nonempty text')
     if (conversationId === undefined) throw new Error('Open a side chat from @ultimate')
-    const main = conversationId as ConversationId
+    const main = conversationId
     await host.harness().commit(async (tx) => {
       if ((await tx.doc(Side, main)).of !== undefined)
         throw new Error('A side chat cannot open another side chat')
@@ -359,7 +361,7 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
 }
 
 /** Read ahead of the user's first words in a side chat; agents/ultimate.md describes side chats the same way. */
-export function sideReminder(side: number, main: number, at: Date) {
+export function sideReminder(side: ConversationId, main: number, at: Date) {
   return [
     `You are in a side chat (#${side}): a temporary copy of @ultimate (#${main}), forked at ${at.toTimeString().slice(0, 5)}. Main keeps running without you.`,
     'It is for quick lookups and small side tasks. Answer here, in place.',

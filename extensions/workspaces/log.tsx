@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
   CheckIcon,
@@ -115,7 +117,7 @@ const toneOf = (outcome: LanderOutcome): LandingTone =>
 export function LanderReport({ entry }: { entry: EntryRecord }) {
   const { outcome } = entry.data as { id: string; outcome: WorkspaceIndex['results'][string] }
   // Reports from before the record named its conversation are in their submitter's transcript.
-  const own = useConversation((conversation) => conversation.id) ?? 0
+  const own = useConversation((conversation) => conversation.id) ?? parseConversationId(0)
   return (
     <div data-lander-report={toneOf(outcome)}>
       <LandingCard
@@ -261,7 +263,7 @@ function Steps({
   ended,
 }: {
   steps: readonly LanderStep[]
-  lander: number
+  lander: ConversationId
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** The submission is landing: its last step is the one in progress. */
@@ -411,7 +413,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
 }
 
 type Submission = {
-  conversationId?: number
+  conversationId?: ConversationId
   subject?: ConversationSubject
   tip: string
   target: string
