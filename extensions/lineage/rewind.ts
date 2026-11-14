@@ -199,7 +199,7 @@ async function facts(host: ExtensionHost, id: ConversationId, at: EntryId, ctx: 
       })
       found.push(...page)
       if (page.length < EVENTS) return found
-      after = parseEntryId(page.at(-1)!.id)
+      after = page.at(-1)!.id
     }
   }
   const own = (data: { conversation?: ConversationId; parent?: number }) =>

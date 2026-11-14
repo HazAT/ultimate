@@ -1,4 +1,3 @@
-import { parseConversationId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   JsonObject,
@@ -324,7 +323,7 @@ type State =
       text: string
       outcome: WorkspaceIndex['results'][string]
       concluded: boolean
-      starter?: number
+      starter?: ConversationId
     }
   /** A landed branch concluded in the report's last commit: free its checkout. */
   | { phase: 'release'; conversationId: ConversationId }
@@ -336,7 +335,7 @@ export function createLander(
   serial: <T>(source: string, operation: () => Promise<T>) => Promise<T>,
   /** What a landing needs from the rest of Ultimate: who started a branch, whether it has work under way, conclude, release. */
   after: {
-    starter: (id: ConversationId, context: Context) => Promise<number | undefined>
+    starter: (id: ConversationId, context: Context) => Promise<ConversationId | undefined>
     working: (tx: Tx, id: ConversationId) => Promise<boolean>
     conclude: (tx: Tx, id: ConversationId) => Promise<void>
     release: (id: ConversationId, context: Context) => Promise<unknown>
@@ -872,7 +871,7 @@ export function createLander(
         const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
-            await host.harness().conversation(parseConversationId(starter), context)
+            await host.harness().conversation(starter, context)
           )?.submit(
             concluded
               ? { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` }

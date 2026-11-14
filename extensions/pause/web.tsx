@@ -1,4 +1,3 @@
-import { parseConversationId } from '../../lib/ids.ts'
 import { ROOT } from '@/sdk'
 import { HourglassIcon, PauseIcon, PlayIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -336,7 +335,7 @@ function Held({ entry }: { entry: EntryRecord }) {
   const data = (entry.data ?? {}) as Partial<HeldNote>
   const { switchConversation } = useUltimate()
   if (data.child === undefined || data.provider === undefined) return null
-  const child = parseConversationId(data.child)
+  const { child } = data
   return (
     <div
       className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"

@@ -1,4 +1,4 @@
-import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.ts'
 import type {
   CompactionResult,
   ConversationId,
@@ -437,7 +437,7 @@ function lineage(host: ExtensionHost) {
   })
   const Notify = defineTask<
     { target: ConversationId; wake: boolean },
-    { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: EntryId },
+    { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: EntryId | 0 },
     null
   >({
     name: 'lineage.notify',
@@ -447,7 +447,7 @@ function lineage(host: ExtensionHost) {
       wait: async (task, runtime, ctx) => {
         const { target } = task.input
         let said = ''
-        let answerId = parseEntryId(0)
+        let answerId: EntryId | 0 = 0
         for (;;) {
           // Subscribed before reading, so an entry the target writes after the read still ends the wait below.
           const written = Promise.withResolvers<void>()
@@ -465,7 +465,7 @@ function lineage(host: ExtensionHost) {
             // A fork inherits its source's entries; only an answer written in the target itself counts as its own.
             const view = await runtime.context(target, ctx)
             said = ''
-            answerId = parseEntryId(0)
+            answerId = 0
             for (let index = view.entries.length - 1; index >= 0 && !said; index--) {
               if (view.entries[index].conversationId !== target) continue
               const answer = view.contributions[index].findLast(
@@ -669,7 +669,7 @@ function landingNote(landing: LandedData) {
  * Per target, the answer entry a notify last delivered to this conversation (`0`: it had none), so a re-armed notify
  * waits for a newer one instead of repeating it. A fork keeps it with the deliveries it inherits.
  */
-export const Notified = defineDoc<{ answers: Record<string, EntryId> }>({
+export const Notified = defineDoc<{ answers: Record<string, EntryId | 0> }>({
   kind: 'lineage.notified',
   checkpointWhen: () => false,
   version: 1,

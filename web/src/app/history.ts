@@ -16,9 +16,8 @@ export function mergeRows(previous: readonly EntryRecord[], rows: readonly Entry
  * it, or `undefined` when no row below it is loaded (nothing to bridge) or it starts right there.
  */
 export function gapAfter(loaded: readonly EntryRecord[], older: EntryId) {
-  const below = loaded
-    .flatMap((entry) => (entry.id < older ? [entry.id] : []))
-    .toSorted((a, b) => b - a)[0]
+  let below: EntryId | undefined
+  for (const { id } of loaded) if (id < older && (below === undefined || id > below)) below = id
   return below !== undefined && offsetEntryId(below, 1) < older
     ? offsetEntryId(below, 1)
     : undefined

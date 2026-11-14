@@ -128,12 +128,11 @@ const modelOf = (response?: ResponseReceipt, model?: SummaryModel) =>
       : {}
 
 function submissionsForAnswer(inputs: (SubmissionRecord | undefined)[], answer: EntryId) {
-  const completed = inputs.flatMap((input) =>
-    input?.type === 'input' && input.status === 'done' && input.answer === answer
-      ? [input.entry]
-      : [],
-  )
-  return completed.toSorted((a, b) => b - a)[0]
+  let newest: EntryId | undefined
+  for (const input of inputs)
+    if (input?.type === 'input' && input.status === 'done' && input.answer === answer)
+      if (newest === undefined || input.entry > newest) newest = input.entry
+  return newest
 }
 
 /** Add a summary model response's usage to the conversation's `pi.usage`, under its own model. */

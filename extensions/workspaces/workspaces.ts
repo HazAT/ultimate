@@ -133,14 +133,12 @@ async function onDisk(path: string) {
  * after `git worktree remove`) is not a repository to inspect, and holds none.
  */
 async function atRisk(
-  id: ConversationId,
   workspace: Pick<WorkspaceIndex['items'][string], 'path' | 'branch' | 'target'>,
-): Promise<KeptWork> {
+): Promise<Omit<KeptWork, 'id'>> {
   const branch = (await git(workspace.path, 'branch', '--list', workspace.branch))
     ? [workspace.branch]
     : []
   return {
-    id,
     uncommitted: (await git(workspace.path, 'status', '--porcelain')).split('\n').filter(Boolean)
       .length,
     unlanded: Number(
@@ -161,7 +159,9 @@ const held = (
   workspace: WorkspaceIndex['items'][string],
   registered: boolean,
 ): Promise<KeptWork> =>
-  registered ? atRisk(id, workspace) : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
+  registered
+    ? atRisk(workspace).then((work) => ({ id, ...work }))
+    : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
 /** Whether the source lists the path as a worktree; throws when the source cannot tell, so callers never guess. */
 async function listedBySource(workspace: WorkspaceIndex['items'][string]) {
   return (await git(workspace.source, 'worktree', 'list', '--porcelain'))
@@ -530,7 +530,7 @@ export function workspaces(host: Host) {
     let item: KeptWork = { id, uncommitted: 0, unlanded: 0 }
     try {
       if (await listedBySource(workspace)) {
-        item = await atRisk(id, workspace)
+        item = { id, ...(await atRisk(workspace)) }
         if (item.uncommitted || item.unlanded) {
           await host.harness().commit(async (tx) => {
             ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'ready'
@@ -697,7 +697,7 @@ export function workspaces(host: Host) {
           .find((line) => line.startsWith('branch refs/heads/'))
           ?.slice('branch refs/heads/'.length)
         // A detached checkout counts its HEAD's commits not on the target as work only it holds.
-        const work = await atRisk(parseConversationId(0), { path, branch: branch ?? '', target })
+        const work = await atRisk({ path, branch: branch ?? '', target })
         if (work.uncommitted || work.unlanded) {
           kept.push(path)
           return

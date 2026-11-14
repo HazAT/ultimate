@@ -1,4 +1,3 @@
-import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
@@ -117,13 +116,15 @@ const toneOf = (outcome: LanderOutcome): LandingTone =>
 export function LanderReport({ entry }: { entry: EntryRecord }) {
   const { outcome } = entry.data as { id: string; outcome: WorkspaceIndex['results'][string] }
   // Reports from before the record named its conversation are in their submitter's transcript.
-  const own = useConversation((conversation) => conversation.id) ?? parseConversationId(0)
+  const shown = useConversation((conversation) => conversation.id)
+  const from = outcome.conversationId ?? shown
+  if (from === undefined) return null
   return (
     <div data-lander-report={toneOf(outcome)}>
       <LandingCard
         card={entry.id}
         sha={outcome.commits?.length ? outcome.sha : undefined}
-        from={outcome.conversationId ?? own}
+        from={from}
         sourceEntry={outcome.at}
         divergence={outcome.divergence}
         headline={headline(outcome, outcome.target)}
