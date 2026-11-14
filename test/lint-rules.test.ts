@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import ultimate from '../lint/ultimate.ts'
 
-type Context = Parameters<(typeof ultimate.rules)['no-retired-ui']['create']>[0]
+type Context = Parameters<(typeof ultimate.rules)['no-raw-timer']['create']>[0]
 function context(text = '', reason = '') {
   const reports: string[] = []
   return {
@@ -61,21 +61,30 @@ it('rejects process imports and real sleeps, but allows IO yields, fake timers a
   expect(reason.reports).toEqual([])
 })
 
-it('rejects retired UI labels case-insensitively and only the board surface property', () => {
+it('rejects raw timers, as in the review surface polling the DOM for a diff line', async () => {
+  const { parseSync } = await import('vite-plus')
+  // Shipped in f16013b (extensions/review/surface.tsx): a 50 ms interval that tries 40 times to find a rendered line.
+  const shipped = `
+    import { setTimeout as sleep } from 'node:timers/promises'
+    const timer = setInterval(() => {
+      if (!line && ++tries <= 40) return
+      clearInterval(timer)
+    }, 50)
+    window.setTimeout(done, 0)
+  `
   const f = context()
-  const rule = ultimate.rules['no-retired-ui'].create(f.context)
-  for (const value of ['Branch from here', 'clear context', 'New conversation'])
-    rule.Literal({ type: 'Literal', value })
-  rule.Literal({
-    type: 'Literal',
-    value: 'board',
-    parent: { type: 'Property', key: { type: 'Identifier', name: 'surface' } },
-  })
-  expect(f.reports).toHaveLength(4)
-  rule.Literal({ type: 'Literal', value: 'board' })
-  rule.Literal({ type: 'Literal', value: 'Start a branch' })
-  rule.Literal({ type: 'Literal', value: 'SIDE CHAT' })
-  expect(f.reports).toHaveLength(4)
+  const rule = ultimate.rules['no-raw-timer'].create(f.context)
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(visit)
+    if (!node || typeof node !== 'object') return
+    const typed = node as { type?: string }
+    if (typed.type === 'CallExpression') rule.CallExpression(typed as never)
+    if (typed.type === 'ImportDeclaration') rule.ImportDeclaration(typed as never)
+    for (const value of Object.values(node)) visit(value)
+  }
+  visit(parseSync('surface.tsx', shipped).program)
+  expect(f.reports).toHaveLength(3)
+  expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.ts/)
 })
 
 it('rejects local polling function declarations in favor of the shared real-deadline helper', () => {

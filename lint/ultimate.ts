@@ -149,7 +149,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const message =
-          'Extension UI reaches the server through @/sdk: useDoc/useDocOf and the other hooks for live state, useAction or api.action for server code (docs/extensions/sdk.md).'
+          'One way to the server keeps every page live, reconnecting and replay-safe: read state with useDoc/useDocOf and call the server with useAction or api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own.'
         return {
           CallExpression(node: Node) {
             if (isGlobal(node.callee, 'fetch')) context.report({ node, message })
@@ -184,7 +184,7 @@ export default {
             context.report({
               node,
               message:
-                'Keep fast tests in-process and deterministic: use fake timers or test/e2e. A justified exception needs a fast-test-reason: comment.',
+                'A real wait or process makes pnpm test slow and flaky: use fake timers, or move the test to a test/e2e folder. A justified exception needs a fast-test-reason: comment.',
             })
         }
         return {
@@ -221,21 +221,19 @@ export default {
         }
       },
     },
-    'no-retired-ui': {
+    'no-raw-timer': {
       meta: { schema: [] },
       create(context: Context) {
+        const message =
+          'A timer guesses when something has happened, so it is slow when it waits too long and wrong when it waits too little: react to the event, document, observer or AbortSignal that says so. When time itself is the reason, use the helper from lib/timers.ts that names it (debounce, batch, deadline, within, retryAfter, every, pace, nextTurn).'
         return {
-          Literal(node: Node) {
-            if (
-              typeof node.value === 'string' &&
-              (/^(Branch from here|Clear context|New conversation)$/i.test(node.value) ||
-                (node.value === 'board' &&
-                  (node.parent?.key?.name ?? node.parent?.key?.value) === 'surface'))
-            )
-              context.report({
-                node,
-                message: 'Use the current conversation and surface vocabulary.',
-              })
+          CallExpression(node: Node) {
+            if (isGlobal(node.callee, 'setTimeout') || isGlobal(node.callee, 'setInterval'))
+              context.report({ node, message })
+          },
+          ImportDeclaration(node: Node) {
+            if (/^(node:)?timers(\/promises)?$/.test(String(node.source?.value)))
+              context.report({ node, message })
           },
         }
       },
@@ -248,7 +246,8 @@ export default {
             if (['until', 'waitFor'].includes(node.id?.name ?? ''))
               context.report({
                 node,
-                message: 'Use until from test/helpers.ts; it polls against a real deadline.',
+                message:
+                  'One polling helper with a real deadline keeps waits in tests consistent: use until from test/helpers.ts instead of a local one.',
               })
           },
         }
@@ -279,7 +278,7 @@ export default {
               context.report({
                 node,
                 message:
-                  'AGENTS.md: Keep pnpm test fast; fix or delete a flaky test rather than raising its timeout. Do not override test timeouts.',
+                  'A raised timeout hides a slow or flaky test instead of fixing it: make the test fast and deterministic, or delete it.',
               })
           },
         }
@@ -300,7 +299,8 @@ export default {
             )
               context.report({
                 node,
-                message: 'Say why a rerun cannot do harm before declaring replay safe.',
+                message:
+                  'After a crash, replay runs a call again, so a call with effects would repeat them: say why a rerun cannot do harm before declaring replay safe.',
               })
           },
         }
@@ -324,7 +324,8 @@ export default {
           )
             context.report({
               node,
-              message: 'Say why ignoring the error is correct, or handle it.',
+              message:
+                'A swallowed error hides a bug where nobody looks: handle it, or say why ignoring it is correct.',
             })
         }
         return {
@@ -381,7 +382,7 @@ export default {
           if (directory === 'extensions' && extension !== own && file.join('/') !== allowed)
             context.report({
               node,
-              message: `${own} imports ${extension}/${file.join('/')} at runtime; reach ${extension} through ${how}, import types with \`import type\`, or move a pure helper to lib/.`,
+              message: `Extensions meet only at their contracts, so each can change and reload on its own: ${own} imports ${extension}/${file.join('/')} at runtime; reach ${extension} through ${how}, import types with \`import type\`, or move a pure helper to lib/.`,
             })
         }
         return {
@@ -406,7 +407,7 @@ export default {
           if (directory === 'extensions' && extension !== own && !coreExtension(extension))
             context.report({
               node,
-              message: `${own} is core tier and imports optional ${extension}; declare a point in ${own} that ${extension} provides, or react to an event.`,
+              message: `The core tier must run with every optional extension off: ${own} is core tier and imports optional ${extension}; declare a point in ${own} that ${extension} provides, or react to an event.`,
             })
         }
         return {
@@ -423,7 +424,11 @@ export default {
         const contract = contractFile(context.filename)
         if (!contract) return {}
         const { file } = contract
-        const report = (node: Node, message: string) => context.report({ node, message })
+        const report = (node: Node, message: string) =>
+          context.report({
+            node,
+            message: `Agents and other extensions read a contract file as the whole surface (ultimate.api), so it holds only contracts, each documented: ${message}`,
+          })
         const checkImport = (node: Node) => {
           const source = String(node.source?.value)
           if (source.startsWith('node:'))
@@ -552,7 +557,7 @@ export default {
             if (callee?.type === 'Identifier' && callee.name === 'actionRef' && name !== own)
               context.report({
                 node,
-                message: `extensions/${own} refers only to its own actions: actionRef('${own}', name).`,
+                message: `A name tells the reader who owns it: extensions/${own} refers only to its own actions, actionRef('${own}', name).`,
               })
             if (
               callee?.type === 'CallExpression' &&
@@ -567,7 +572,7 @@ export default {
             )
               context.report({
                 node,
-                message: `The API of extensions/${own} is named '${own}', its extension points '${own}.<point>'.`,
+                message: `A name tells the reader who owns it: the API of extensions/${own} is named '${own}', its extension points '${own}.<point>'.`,
               })
             if (
               callee?.type === 'Identifier' &&
@@ -580,7 +585,7 @@ export default {
             )
               context.report({
                 node,
-                message: `Events of extensions/${own} are named '${own}.<event>'.`,
+                message: `A name tells the reader who owns it: events of extensions/${own} are named '${own}.<event>'.`,
               })
           },
         }

@@ -36,10 +36,6 @@ export default defineConfig({
         rules: { 'ultimate/no-local-test-polling': 'error' },
       },
       {
-        files: ['extensions/**', 'web/**'],
-        rules: { 'ultimate/no-retired-ui': 'error' },
-      },
-      {
         files: ['**/*'],
         excludeFiles: ['test/**', 'extensions/*/test/**'],
         rules: {
