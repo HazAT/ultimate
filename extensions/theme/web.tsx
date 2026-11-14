@@ -4,9 +4,16 @@ export default defineWebExtension({
   commands: [
     {
       id: 'theme.toggle',
-      title: 'Toggle light and dark theme',
+      get title() {
+        const theme = getState().ui.theme
+        return `Toggle theme (current: ${theme[0].toUpperCase() + theme.slice(1)})`
+      },
       group: 'Ultimate',
-      run: (context) => context.setTheme(getState().ui.theme === 'dark' ? 'light' : 'dark'),
+      keepOpen: true,
+      run: (context) => {
+        const theme = getState().ui.theme
+        context.setTheme(theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system')
+      },
     },
   ],
 })

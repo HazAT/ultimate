@@ -26,7 +26,10 @@ must work in the composer too sets `whileTyping: true`, as Escape (`agent.stop`)
 (`model.thinking.cycle`) do; it fires while the user types in the composer, not in other inputs, and still leaves the
 key to an open dialog, which closes or moves focus with it. To let a command open UI an extension renders, such as a
 popover, use a dialog id: the command calls `context.open(id)` and the component reads `useDialog(id)` as its open state
-(see `models`).
+(see `models`). Set `keepOpen: true` for a command that adjusts a setting in place: the palette stays open after it runs,
+so its updated state is visible and the command can run again. Use `get title()` to read the current UI state for a label;
+the command's `id` stays the same so keyboard selection survives a label change. Other commands close the palette before
+running.
 
 Command ids are global and resolve like surface ids: a later facet in discovery order wins an id, in the place of the
 command it replaces. The shell itself has only the palette (`ultimate.palette`), the panel and sidebar toggles

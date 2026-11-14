@@ -27,9 +27,16 @@
     </style>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <script>
-      if (localStorage.getItem('ultimate.theme') === 'light') {
-        document.documentElement.classList.remove('dark')
-        document.querySelector('meta[name=theme-color]').content = '#f9fafb'
+      // Before the app loads: the stored preference, or the device's own appearance until someone chooses.
+      {
+        const stored = localStorage.getItem('ultimate.theme')
+        const light =
+          stored === 'light' ||
+          (stored !== 'dark' && !matchMedia('(prefers-color-scheme: dark)').matches)
+        if (light) {
+          document.documentElement.classList.remove('dark')
+          document.querySelector('meta[name=theme-color]').content = '#f9fafb'
+        }
       }
     </script>
   </head>

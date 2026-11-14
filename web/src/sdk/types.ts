@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from 'react'
 import type { ImageContent, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord, InboxItem, JsonObject, ToolDiagnostic } from '@earendil-works/pi-durable'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
+import type { ThemePreference } from './theme.ts'
 
 /** Named places in the shell that extensions fill with components. */
 export type SlotName =
@@ -161,8 +162,8 @@ export interface UltimateActions {
   close: (dialog: string) => void
   openPalette: () => void
   focusComposer: () => void
-  /** Switch this browser to the light or dark theme; `getState().ui.theme` is the current one. */
-  setTheme: (theme: 'dark' | 'light') => void
+  /** Switch this browser's appearance; `system` follows the device, and `getState().ui.theme` is the current choice. */
+  setTheme: (theme: ThemePreference) => void
 }
 export interface UltimateContext extends UltimateActions {
   /** The shown conversation, once known. */
@@ -180,6 +181,8 @@ export interface CommandContribution {
   keys?: string
   /** Palette group; defaults to the extension name. */
   group?: string
+  /** Leave the palette open after running, for commands that adjust a setting in place. */
+  keepOpen?: boolean
   /**
    * Fire a plain-key shortcut (`escape`, `shift+tab`) even while the user types in the composer (not in other inputs),
    * though not while a dialog is open.

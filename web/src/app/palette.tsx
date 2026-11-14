@@ -31,7 +31,8 @@ export function Shortcut({ keys }: { keys: string }) {
 
 /** Every command, core and extension, searchable; `mod+k`. */
 export function CommandPalette() {
-  const open = useStore((state) => state.ui.paletteOpen)
+  // A command can adjust the UI without closing the palette; re-evaluate its visibility in the new state.
+  const { paletteOpen: open } = useStore((state) => state.ui)
   const commands = useCommands()
   const context = currentContext()
   // The palette itself and a switch to the shown surface would do nothing here.
@@ -59,12 +60,12 @@ export function CommandPalette() {
                 <CommandItem
                   className="text-[12.5px]"
                   key={command.id}
-                  keywords={[command.id, command.extension]}
+                  keywords={[command.title, command.extension]}
                   onSelect={() => {
-                    store.setUi({ paletteOpen: false })
+                    if (!command.keepOpen) store.setUi({ paletteOpen: false })
                     actions.runCommand(command.id)
                   }}
-                  value={`${command.title} ${command.id}`}
+                  value={command.id}
                 >
                   <span className="truncate">{command.title}</span>
                   {command.keys && (

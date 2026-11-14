@@ -1,6 +1,6 @@
 import { TriangleAlertIcon, XIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, defineWebExtension, errorMessage, resumed, useReady, useStore } from '@/sdk'
+import { api, defineWebExtension, errorMessage, resumed, useReady, useTheme } from '@/sdk'
 import { store } from '@/sdk/client'
 import { StatusAction } from '../onboarding/ui.tsx'
 import { Electric } from './electric.tsx'
@@ -44,7 +44,7 @@ const charge = `data:image/svg+xml,${encodeURIComponent(
  * has reached and how strong it is. Theme colours: brand light in dark, brand ink in light.
  */
 function Lightning({ level }: { level: () => Level }) {
-  const theme = useStore((state) => state.ui.theme)
+  const theme = useTheme()
   return (
     <Electric
       arcs={0.25}
