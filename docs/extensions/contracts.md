@@ -119,7 +119,8 @@ export default defineWebExtension({ provides: [provide(Phase, (id) => usePhaseWo
 The provider's function is a hook, run once per `<Provided>`; the last facet in discovery order providing a point wins,
 and while none does the render prop gets `undefined`. A point that combines its providers (the sidebar's rows under
 @ultimate) renders `<AllProvided point input>{(values) => …}</AllProvided>` instead: every provider's value in discovery
-order, a throwing one left out behind its inline error card.
+order, a throwing one left out behind its inline error card. The projects rail's `RailItems` is one: each provider
+returns an item for the end of its list, laid out with the rail's `RailItem` (`extensions/projects/ui.tsx`).
 
 A piece of UI other extensions may redraw (a line, a header, a row) renders through `<Rendered point input>` with its
 own rendering as children. Its point's input carries `core`, the rendering so far, and each provider in discovery order
