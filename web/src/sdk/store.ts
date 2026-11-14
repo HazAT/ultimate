@@ -182,7 +182,6 @@ export function createStore(options: StoreOptions = {}) {
     switch (name) {
       case 'stream':
       case 'view':
-        // Handled before dispatch: stream opens subscriptions and view replaces their snapshots.
         break
       case 'system': {
         const system = data as SystemInfo
