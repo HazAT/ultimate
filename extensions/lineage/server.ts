@@ -14,7 +14,7 @@ import type {
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { isMissing, meansNone } from '../../lib/errors.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
@@ -1250,7 +1250,7 @@ export const actions = {
         return { editor }
       } catch (error) {
         // Not on PATH: try the next name; anything else is a real failure.
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        if (!isMissing(error)) throw error
       }
     throw new Error('Zed is not installed on this machine (no zeditor or zed on PATH)')
   }),

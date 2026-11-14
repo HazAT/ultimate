@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isMissing } from './errors.ts'
 
 /** An extension folder as discovery reports it (`host.extensions()`). */
 type Folder = { name: string; path: string; enabled: boolean }
@@ -33,7 +34,7 @@ async function read(folder: Folder) {
       try {
         return [{ file, role, text: await readFile(join(folder.path, file), 'utf8') }]
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        if (!isMissing(error)) throw error
         return []
       }
     }),

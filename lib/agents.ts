@@ -15,6 +15,7 @@ import type { Families } from './families.ts'
 import { readFamilies } from './families-settings.ts'
 import { projectDecision, useProjectSetup } from './project-setup.ts'
 import { discoverExtensions } from './discovery.ts'
+import { isMissing } from './errors.ts'
 
 export interface AgentDefinition {
   name: string
@@ -471,7 +472,7 @@ export async function discoverAgents(
     try {
       files = await readdir(directory)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      if (!isMissing(error))
         errors.push({ name: directory, path: directory, source, error: String(error) })
       continue
     }
@@ -728,8 +729,7 @@ export async function deleteDefinition(
   try {
     await rm(path)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      throw new Error(`No ${scope} definition named ${name}`, { cause: error })
+    if (isMissing(error)) throw new Error(`No ${scope} definition named ${name}`, { cause: error })
     throw error
   }
   return { path }

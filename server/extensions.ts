@@ -39,7 +39,7 @@ import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
 import type { Device } from '../shared/events.ts'
-import { inBackground } from '../lib/errors.ts'
+import { inBackground, isMissing } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -793,7 +793,7 @@ export async function loadExtensions(
       })
     } catch (error) {
       // A missing folder has no entries; watchRoots reports it once it appears.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!isMissing(error)) throw error
       return undefined
     }
   }

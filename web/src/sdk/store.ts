@@ -180,6 +180,10 @@ export function createStore(options: StoreOptions = {}) {
 
   function handle(name: keyof ServerEvents, data: unknown) {
     switch (name) {
+      case 'stream':
+      case 'view':
+        // Handled before dispatch: stream opens subscriptions and view replaces their snapshots.
+        break
       case 'system': {
         const system = data as SystemInfo
         const restarted =

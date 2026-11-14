@@ -13,6 +13,19 @@ export function errnoCode(error: unknown): string | undefined {
 /** A file or directory that is not there. */
 export const isMissing = (error: unknown) => errnoCode(error) === 'ENOENT'
 
+/** A process or process group that has already exited. */
+export const isNoProcess = (error: unknown) => errnoCode(error) === 'ESRCH'
+
+/** A process this user is not permitted to signal or probe. */
+export const isPermissionDenied = (error: unknown) => errnoCode(error) === 'EPERM'
+
+/** SQLite's numeric result code, so lock contention can be distinguished from other failures. */
+export function sqliteCode(error: unknown): number | undefined {
+  if (error instanceof Error && 'errcode' in error && typeof error.errcode === 'number')
+    return error.errcode
+  return undefined
+}
+
 /** A call its caller aborted. */
 export const isAborted = (error: unknown) =>
   errnoCode(error) === 'AbortError' || (error instanceof Error && error.name === 'AbortError')

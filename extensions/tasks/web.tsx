@@ -143,11 +143,12 @@ function status(task: TaskGraphNode): {
       }
     case 'sleeping':
       return { text: `${state.phase} · sleeping`, icon: 'pending' }
-    default:
-      return {
-        text: `completing → ${state.outcome}`,
-        icon: state.outcome === 'completed' ? 'done' : 'interrupted',
-      }
+    case 'completing':
+      break
+  }
+  return {
+    text: `completing → ${state.outcome}`,
+    icon: state.outcome === 'completed' ? 'done' : 'interrupted',
   }
 }
 

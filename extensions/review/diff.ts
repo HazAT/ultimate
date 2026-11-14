@@ -3,7 +3,7 @@ import { lstat, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { errnoCode, meansNone } from '../../lib/errors.ts'
 import type { ReviewDiff, ReviewFile, ReviewKind } from './refs.ts'
 
 /** Patches over this many bytes per file are listed without their hunks. */
@@ -166,8 +166,7 @@ function fit(files: ReviewFile[], patches: (string | undefined)[]) {
   return { patch: kept.join(''), truncated }
 }
 
-const tooBig = (error: unknown) =>
-  (error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+const tooBig = (error: unknown) => errnoCode(error) === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 
 /** The tracked changes between `base` and `head` (the work tree without `head`). */
 async function tracked(cwd: string, base: string, head: string | undefined, signal?: AbortSignal) {

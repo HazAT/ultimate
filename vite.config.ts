@@ -23,6 +23,19 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: [
+          'extensions/**',
+          'server/**',
+          'web/**',
+          'lib/**',
+          'shared/**',
+          'bin/**',
+          'scripts/**',
+        ],
+        excludeFiles: ['test/**', 'extensions/*/test/**'],
+        rules: { 'typescript/switch-exhaustiveness-check': 'error' },
+      },
+      {
         files: ['web/public/sw.js'],
         rules: { 'unicorn/require-post-message-target-origin': 'off' },
       },

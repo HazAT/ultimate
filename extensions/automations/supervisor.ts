@@ -8,7 +8,7 @@ import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-d
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { FIRST_CHAPTER } from '../../lib/chapters.ts'
-import { settled } from '../../lib/errors.ts'
+import { isMissing, settled } from '../../lib/errors.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import {
   closeOutput,
@@ -170,7 +170,7 @@ export function supervisor(
         withFileTypes: true,
       })
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return found
+      if (isMissing(error)) return found
       throw error
     }
     for (const entry of entries) {
@@ -179,7 +179,7 @@ export function supervisor(
       try {
         text = await readFile(join(projectDir(entry.name), MANIFEST), 'utf8')
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+        if (isMissing(error)) continue
         throw error
       }
       let parsed: Manifest | undefined
@@ -345,7 +345,7 @@ export function supervisor(
         .slice(-lines)
         .join('\n')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      if (isMissing(error)) return ''
       throw error
     }
   }
@@ -784,7 +784,7 @@ export function supervisor(
     try {
       folders = await readdir(scriptsRoot(), { withFileTypes: true })
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!isMissing(error)) throw error
       folders = []
     }
     // Sweep files, not ledger records: stop/delete may have committed just before a crash.

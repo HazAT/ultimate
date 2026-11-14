@@ -6,6 +6,7 @@ import { constants, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
+import { isMissing } from '../../lib/errors.ts'
 import { readJson, writeJson, writeTarget } from '../../lib/json-file.ts'
 import { userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -163,7 +164,7 @@ export default function tailscale(host: ExtensionHost) {
       try {
         output = (await command(['status', '--json'])).stdout
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        if (!isMissing(error)) throw error
         try {
           // A named CLI that is missing means none: the macOS app is only the default's fallback.
           if (override) throw error

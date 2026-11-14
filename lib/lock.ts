@@ -2,12 +2,13 @@ import { readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { identify } from './process-group.ts'
 import { pace } from './timers.ts'
+import { isMissing, isNoProcess, sqliteCode } from './errors.ts'
 export function alive(pid: number) {
   try {
     process.kill(pid, 0)
     return true
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
+    return !isNoProcess(error)
   }
 }
 export async function retireStorageOwner(path: string) {
@@ -44,7 +45,7 @@ export async function retireStorageOwner(path: string) {
     try {
       process.kill(owner.pid, name)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
+      if (!isNoProcess(error))
         throw new Error(`Cannot signal Ultimate core pid ${owner.pid}`, { cause: error })
     }
     return true
@@ -62,7 +63,7 @@ export async function readOwner(
     if (!Number.isSafeInteger(owner.pid) || owner.pid < 1) throw new Error('Invalid pid')
     return owner
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    if (isMissing(error)) return undefined
     throw new Error(`Cannot parse Ultimate lock ${path}`, { cause: error })
   }
 }
@@ -91,7 +92,7 @@ export async function acquireLock(
         database.exec('BEGIN EXCLUSIVE')
         break
       } catch (error) {
-        if ((error as { errcode?: number }).errcode !== 5) throw error
+        if (sqliteCode(error) !== 5) throw error
         let owner = await readOwner(path)
         if (!owner) {
           await pace(50)

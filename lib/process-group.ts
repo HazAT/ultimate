@@ -6,7 +6,7 @@ import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { pace } from './timers.ts'
-import { ignoring, isAborted } from './errors.ts'
+import { ignoring, isAborted, isMissing, isNoProcess, isPermissionDenied } from './errors.ts'
 
 /** The program cannot start until its pid is recorded; a parent that dies before go gives EOF instead. */
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
@@ -50,7 +50,7 @@ export function identify(pid: number): string | undefined {
   try {
     stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    if (isMissing(error)) return undefined
     throw error
   }
   // Field 22 is the start time in ticks since boot; the name before it may hold spaces. The boot id tells boots apart.
@@ -60,8 +60,7 @@ export function identify(pid: number): string | undefined {
 
 /** Darwin returns EPERM for zombie-only groups too; permission denial alone proves nothing. */
 function darwinEnded(pid: number, denied: unknown) {
-  if (process.platform !== 'darwin' || (denied as NodeJS.ErrnoException).code !== 'EPERM')
-    return false
+  if (process.platform !== 'darwin' || !isPermissionDenied(denied)) return false
   try {
     const output = execFileSync('ps', ['-A', '-o', 'pgid=,stat='], { encoding: 'utf8' })
     let found = false
@@ -77,7 +76,7 @@ function darwinEnded(pid: number, denied: unknown) {
     try {
       process.kill(groupTarget(pid), 0)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true
+      if (isNoProcess(error)) return true
       throw error
     }
   } catch (cause) {
@@ -95,7 +94,7 @@ export function groupAlive(pid?: number) {
     process.kill(target, 0)
     return true
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH' || darwinEnded(pid, error)) return false
+    if (isNoProcess(error) || darwinEnded(pid, error)) return false
     throw error
   }
 }
@@ -106,7 +105,7 @@ function probe(pid: number) {
     return groupAlive(pid)
   } catch (error) {
     // A member of another user survived, so the group is still there.
-    if ((error as NodeJS.ErrnoException).code === 'EPERM') return true
+    if (isPermissionDenied(error)) return true
     throw error
   }
 }
@@ -117,7 +116,7 @@ function send(pid: number, name: NodeJS.Signals) {
     process.kill(target, name)
   } catch (error) {
     // The group may empty between the check and the signal.
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH' && !darwinEnded(pid, error)) throw error
+    if (!isNoProcess(error) && !darwinEnded(pid, error)) throw error
   }
 }
 
@@ -202,7 +201,7 @@ async function text(path: string) {
   try {
     return (await readFile(path, 'utf8')).trim()
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    if (isMissing(error)) return undefined
     throw error
   }
 }
@@ -336,7 +335,7 @@ export async function sweepPidFiles(
   try {
     names = await readdir(directory)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    if (isMissing(error)) return
     throw error
   }
   for (const name of names.filter((file) => file.endsWith('.pid') && !keep(file))) {

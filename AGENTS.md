@@ -136,6 +136,7 @@ table once its mistake can no longer happen.
 | A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
 | Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
 | One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |
+| A switch over a union names every case                                   | `typescript/switch-exhaustiveness-check`                            |
 | Pi couplings are listed and marked                                       | `scripts/pi-upstream.ts`                                            |
 | No dead code, shims, slop or tests that restate the implementation       | the review team (`reviewer-simplicity`)                             |
 

@@ -26,9 +26,12 @@ function headline(args: ToolCallView['args']): [string, string] {
       return ['Waiting on you', words(args.reason)]
     case 'resume':
       return ['Back on the goal', '']
-    default:
-      return ['Goal', '']
+    case null:
+    case false:
+    case true:
+      break
   }
+  return ['Goal', '']
 }
 
 /** One `goal` call as the step it records on the hands-off goal; a failed call keeps the generic card. */

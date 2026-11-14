@@ -118,9 +118,10 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
       )
     case 'device_code':
       return <DeviceCode event={event} since={seen.get(key) ?? Date.now()} />
-    default:
-      return <p className="text-[12px] text-muted-foreground">{event.message}</p>
+    case 'progress':
+      break
   }
+  return <p className="text-[12px] text-muted-foreground">{event.message}</p>
 }
 
 function DeviceCode({

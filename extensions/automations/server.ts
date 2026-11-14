@@ -25,6 +25,7 @@ import { EVENT_FEED } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
+import { errnoCode, isMissing } from '../../lib/errors.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
@@ -240,7 +241,7 @@ function backend(host: ExtensionHost) {
         try {
           await link(draft, path)
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+          if (errnoCode(error) !== 'EEXIST') throw error
           const found = manifest(JSON.parse(await readFile(path, 'utf8')))
           if (JSON.stringify(found) !== JSON.stringify(committed)) throw taken()
         } finally {
@@ -802,7 +803,7 @@ export const actions = {
       const text = await readFile(path, 'utf8')
       return { path, text: text.length > 65536 ? `${text.slice(0, 65536)}\n…` : text }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path, text: '' }
+      if (isMissing(error)) return { path, text: '' }
       throw error
     }
   }),
