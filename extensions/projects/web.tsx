@@ -4,6 +4,7 @@
 // other extension that fills `shell.rail`.
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   AllProvided,
@@ -276,15 +277,15 @@ function Rail() {
   const loading = !list.data && !list.error
   // A list that arrives after the skeleton fades in over it; one already there on mount just shows.
   const waited = useRef(loading).current
-  // On phones, like the shell's other rails; and with only this project running there is nothing to switch to.
-  if (other || viewport === 'phone' || (!loading && projects.length < 2)) return null
+  // On phones, like the shell's other rails.
+  if (other || viewport === 'phone') return null
 
   const wide = hover || pinned
   const family = projects.map((project) => project.name)
   const questions = projects.reduce((sum, project) => sum + (project.questions ?? 0), 0)
   const working = projects.filter((project) => (project.busy ?? 0) > 0).length
 
-  return (
+  const rail = (items: readonly ReactNode[]) => (
     <div className="relative shrink-0" style={{ width: pinned ? WIDE : RAIL }}>
       <nav
         aria-label="Projects"
@@ -349,11 +350,7 @@ function Rail() {
             })}
           </div>
           {/* After the projects, so they arrive with the list. */}
-          {!loading && (
-            <AllProvided input={{ wide }} point={RailItems}>
-              {(items) => items.some(Boolean) && <div className="mt-2 flex flex-col">{items}</div>}
-            </AllProvided>
-          )}
+          {!loading && items.length > 0 && <div className="mt-2 flex flex-col">{items}</div>}
         </div>
         {/* Same height and border as the status line beside it (core primitives.tsx), so the two read as one line. */}
         <div className="flex h-7 shrink-0 items-center border-t border-border/70 font-mono text-[10px] text-muted-foreground/70 md:pointer-coarse:box-content md:pointer-coarse:pb-3">
@@ -371,6 +368,15 @@ function Rail() {
         </div>
       </nav>
     </div>
+  )
+  return (
+    <AllProvided input={{ wide }} point={RailItems}>
+      {(provided) => {
+        const items = provided.filter(Boolean)
+        // With only this project running there is nothing to switch to, unless an item offers something else.
+        return !loading && projects.length < 2 && items.length === 0 ? null : rail(items)
+      }}
+    </AllProvided>
   )
 }
 
