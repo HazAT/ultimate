@@ -4,11 +4,11 @@
  */
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { EntryId, TaskId } from '@earendil-works/pi-durable'
+import type { EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Via } from './refs.ts'
+import type { Question, Remote, Serves, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -102,9 +102,14 @@ export type MessagesService = {
     ctx: Context,
     signal?: AbortSignal,
   ): Promise<{ message: number; delivered: number }>
+  /**
+   * Inside `tx`, the newest agent's request conversation `to` still owes an answer: work it starts now serves it. An
+   * `automations.fired` input whose data carries it routes the woken run's final answer to that agent (route.ts).
+   */
+  owed(tx: Tx, to: number): Promise<Serves | undefined>
 }
 export { MessageSent } from './refs.ts'
-export type { Question } from './refs.ts'
+export type { Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
 

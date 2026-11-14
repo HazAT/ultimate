@@ -28,7 +28,7 @@ import { discoverAgents } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
 import { writeJson } from '../../lib/json-file.ts'
-import { SubagentsApi } from '../subagents/api.ts'
+import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { AutomationsApi } from './api.ts'
@@ -296,6 +296,17 @@ function backend(host: ExtensionHost) {
     }
     return prepared
   }
+  /**
+   * Made while @ultimate owes an agent's request ("I've started it"), a new automation serves it like a branch: the run
+   * its first fire wakes in @ultimate answers that agent (ultimate-eval #53/5281). Only @ultimate's answers route that
+   * way (messages' route.ts).
+   */
+  async function served(tx: Tx, caller?: number) {
+    if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
+      return {}
+    const serves = await host.need(MessagesApi).owed(tx, caller)
+    return serves ? { serves: { ...serves, by: caller } } : {}
+  }
   async function changeScript(
     tx: Tx,
     args: Args,
@@ -341,6 +352,7 @@ function backend(host: ExtensionHost) {
             ]),
           ],
           ...(args.key ? { key: args.key } : {}),
+          ...(await served(tx, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -377,6 +389,7 @@ function backend(host: ExtensionHost) {
         updatedAt: now,
         runs: [],
         fires: 0,
+        ...(await served(tx, caller)),
       }
       state.automations[id] = sub
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -577,6 +590,7 @@ function backend(host: ExtensionHost) {
           : args.prompt
             ? []
             : [caller!],
+        ...(await served(tx, caller)),
       }
     }
     const a = state.automations[id]

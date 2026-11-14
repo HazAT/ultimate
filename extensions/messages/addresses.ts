@@ -4,10 +4,27 @@ import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
-import type { Remote } from './refs.ts'
+import type { Remote, Serves } from './refs.ts'
+import { Messages } from './api.ts'
+import { isOwed } from '../../lib/message-state.ts'
 
-/** The agent's request a branch works on: the message its starter still owed an answer when it started the branch. */
-export type Serves = { message: number; from: number | 'remote'; remote?: Remote }
+export type { Serves }
+/**
+ * The newest agent's request `to` still owes an answer: what a branch or an automation it makes now works on, so its
+ * later result reaches that agent (route.ts). Undefined when no agent waits on `to`.
+ */
+export async function owedRequest(tx: Tx, to: number): Promise<Serves | undefined> {
+  const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
+    (m) => m.to === to && m.from !== 'user' && isOwed(m),
+  )
+  if (!owed || owed.from === 'user') return undefined
+  // A copy: the doc's proxy is unusable once the commit settles.
+  return {
+    message: owed.id,
+    from: owed.from,
+    ...(owed.remote ? { remote: { ...owed.remote } } : {}),
+  }
+}
 /**
  * Who started a branch through `branch`, so its later final answers reach that conversation, and the request it serves.
  * `yielded` is the newest generation observed, so a replayed hook creates no second observer.

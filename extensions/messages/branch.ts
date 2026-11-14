@@ -16,9 +16,7 @@ import { LineageApi, Roots } from '../lineage/api.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter } from './images.ts'
 import { send } from './send.ts'
-import { Started } from './addresses.ts'
-import { Messages } from './api.ts'
-import { isOwed } from '../../lib/message-state.ts'
+import { owedRequest, Started } from './addresses.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export const branchTool = (host: ExtensionHost) =>
@@ -106,18 +104,11 @@ export const branchTool = (host: ExtensionHost) =>
           ;(await tx.doc(Family, branch.id)).name = definitionFamily(coordinator, change)
           const started = await tx.doc(Started, branch.id)
           started.by = from
-          // An agent's request the starter still owes an answer (send.ts's test for what is owed) is what the branch
-          // works on: its result reaches that agent once it is concluded (route.ts). Without the link, a result routed
-          // to a concluded branch reached no one (danielgriesser.com #13859/15161, @writer's briefing).
-          const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
-            (m) => m.to === from && m.from !== 'user' && isOwed(m),
-          )
-          if (owed && owed.from !== 'user')
-            started.serves = {
-              message: owed.id,
-              from: owed.from,
-              ...(owed.remote ? { remote: owed.remote } : {}),
-            }
+          // An agent's request the starter still owes an answer is what the branch works on: its result reaches that
+          // agent once it is concluded (route.ts). Without the link, a result routed to a concluded branch reached no
+          // one (danielgriesser.com #13859/15161, @writer's briefing).
+          const serves = await owedRequest(tx, from)
+          if (serves) started.serves = serves
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
       }

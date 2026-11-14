@@ -17,6 +17,11 @@ export type Remote = {
   /** The sender's random key for the message: the target delivers it once, and only the target can reply to it. */
   key: string
 }
+/**
+ * An agent's request that later work serves (a branch, an automation): the message the conversation that started it
+ * still owed an answer, so the work's result reaches that agent.
+ */
+export type Serves = { message: number; from: number | 'remote'; remote?: Remote }
 
 /**
  * One question an agent asks the user with a message, as the `message` tool's `questions` argument declares it: the
