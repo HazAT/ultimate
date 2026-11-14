@@ -551,14 +551,15 @@ export default function instanceExtension(
           reject(notReady())
         })
         child.on('exit', () => reject(notReady()))
-        context.abortSignal?.addEventListener('abort', () => reject(context.abortSignal!.reason), {
-          once: true,
-        })
+        const signal = context.abortSignal
+        if (signal?.aborted) reject(signal.reason)
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
       })
       child.stderr?.on('data', append)
       try {
         output(`Starting ${id}\n`)
         await within(60000, serving, notReady, context.abortSignal)
+        context.abortSignal?.throwIfAborted()
         return info(item)
       } catch (error) {
         await stop(instances, id)
