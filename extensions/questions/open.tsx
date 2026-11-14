@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { openQuestion } from '../../lib/message-state.ts'
 import type { Question } from '../messages/refs.ts'
 import type { CardState } from './state.tsx'
@@ -30,7 +31,7 @@ export function newestAsked(messages: readonly Message[]) {
 }
 
 /** The card taking desktop keys on a conversation's page: its newest open message with an answer card. */
-export const keyCard = (conversation: number | undefined, messages: readonly Message[]) => {
+export const keyCard = (conversation: ConversationId | undefined, messages: readonly Message[]) => {
   const id = newestAsked(messages.filter((message) => message.from === conversation))
   return id === undefined ? undefined : `message:${id}`
 }

@@ -1,8 +1,4 @@
-/**
- * `board.route`: a branch's final answers reach the conversation that started it, and that conversation's final answer
- * to a branch's report or reply reaches the branch.
- */
-import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   EntryId,
@@ -11,6 +7,11 @@ import type {
   TaskId,
   Tx,
 } from '@earendil-works/pi-durable'
+/**
+ * `board.route`: a branch's final answers reach the conversation that started it, and that conversation's final answer
+ * to a branch's report or reply reaches the branch.
+ */
+import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
@@ -74,8 +75,9 @@ async function underway(host: ExtensionHost, tx: Tx, id: ConversationId): Promis
   if (queue.some((item) => item.conversationId === id)) return true
   // A submission leaves the queue in the commit that moves the lander to reporting it.
   for (const task of await live(tx, 'workspaces.lander')) {
-    const checkpoint = (task.state as { checkpoint?: { phase?: string; conversationId?: number } })
-      .checkpoint
+    const checkpoint = (
+      task.state as { checkpoint?: { phase?: string; conversationId?: ConversationId } }
+    ).checkpoint
     if (checkpoint?.phase === 'report' && checkpoint.conversationId === id) return true
   }
   return working(tx, id)
@@ -109,10 +111,15 @@ async function children(tx: Tx, id: ConversationId): Promise<boolean> {
  * it since the request other than its early answer (ultimate-eval #53/5281: an A/B result woken by the asked
  * Ultimate's own automation reached no one).
  */
-export async function reported(host: ExtensionHost, tx: Tx, starter: number, answered: number[]) {
+export async function reported(
+  host: ExtensionHost,
+  tx: Tx,
+  starter: ConversationId,
+  answered: number[],
+) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   // Each branch with the newest message of it the run answers: the starter's messages after it are the run's own.
-  const latest = new Map<number, number>()
+  const latest = new Map<ConversationId, number>()
   const askers: { source: string; key: string; serves: Serves }[] = []
   const messaged = (after: (m: Message) => boolean, to: (m: Message) => boolean) =>
     log.messages.some((m) => m.from === starter && after(m) && to(m))
@@ -148,8 +155,7 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       // A landing card is an input only when the landing concluded the branch, which is when its result is ready.
       const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
       const branch = results[String(data?.id)]?.conversationId
-      if (branch === undefined || (await tx.doc(Started, branch as ConversationId)).by !== starter)
-        continue
+      if (branch === undefined || (await tx.doc(Started, branch)).by !== starter) continue
       const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
       latest.set(branch, Math.max(latest.get(branch) ?? 0, last))
       continue
@@ -157,13 +163,14 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
     const report =
       entry?.kind === 'board.reply' || (entry?.kind === 'board.message' && data?.reply === false)
     if (!report || typeof data?.from !== 'number' || data.echo === true) continue
-    if ((await tx.doc(Started, data.from as ConversationId)).by !== starter) continue
-    latest.set(data.from, Math.max(latest.get(data.from) ?? 0, Number(data.id ?? 0)))
+    const from = parseConversationId(data.from)
+    if ((await tx.doc(Started, from)).by !== starter) continue
+    latest.set(from, Math.max(latest.get(from) ?? 0, Number(data.id ?? 0)))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
-  const branches: number[] = []
+  const branches: ConversationId[] = []
   for (const [branch, since] of latest) {
-    if (!concluded.has(branch as ConversationId)) {
+    if (!concluded.has(branch)) {
       if (
         !messaged(
           (m) => m.id > since,
@@ -174,7 +181,7 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       continue
     }
     // A copy: the doc's proxy is unusable once this commit settles, and `board.route` sends after it.
-    const stored = (await tx.doc(Started, branch as ConversationId)).serves
+    const stored = (await tx.doc(Started, branch)).serves
     const serves: Serves | undefined = stored && {
       message: stored.message,
       from: stored.from,
@@ -195,7 +202,7 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
 
 /** One message `board.route` sends, with `send`'s options; `remote` sends it to another project's Ultimate. */
 interface Route {
-  to: number | 'remote'
+  to: ConversationId | 'remote'
   remote?: Remote
   text: string
   requestId: string
@@ -214,7 +221,7 @@ export function route(host: ExtensionHost) {
     {
       generation: TaskId<GenerationResult>
       inputs: SubmissionId[]
-      by: number
+      by: ConversationId
       /** The starter's own run: route its answer down to the branch it answers. */
       down?: boolean
     },

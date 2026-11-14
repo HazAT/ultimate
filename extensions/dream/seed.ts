@@ -1,7 +1,7 @@
+import type { Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 import { openQuestion } from '../../lib/message-state.ts'
@@ -35,10 +35,15 @@ const carries = (item: Seed['automations'][number]) =>
   (!!item.prompt || !!item.subscribers?.length) && !item.condition?.of.startsWith('#')
 
 /** Exported conversation documents are resolved at call time, including after a facet reload. */
-async function document<T>(host: ExtensionHost, tx: Tx, kind: string, id = 1): Promise<T> {
+async function document<T>(
+  host: ExtensionHost,
+  tx: Tx,
+  kind: string,
+  id = ROOT_CONVERSATION_ID,
+): Promise<T> {
   const token = host.doc(kind)
   if (!token) throw new Error(`Chapter seed needs document ${kind}`)
-  return (await tx.doc(token, id as ConversationId)) as unknown as T
+  return (await tx.doc(token, id)) as unknown as T
 }
 
 /** Read what @ultimate `prepared` and the project context without importing another facet's implementation. */

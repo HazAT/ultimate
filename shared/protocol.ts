@@ -1,13 +1,16 @@
-import type { JsonValue } from '@earendil-works/chord/json'
-import type { Op } from '@earendil-works/chord/delta'
-import type { AuthType, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type {
+  ConversationId,
+  TaskId,
+  EntryId,
   ConversationView,
   EntryRecord,
   JsonObject,
   ModelRef,
   TaskGraph,
 } from '@earendil-works/pi-durable'
+import type { JsonValue } from '@earendil-works/chord/json'
+import type { Op } from '@earendil-works/chord/delta'
+import type { AuthType, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 
 export const imageMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
@@ -35,21 +38,21 @@ export type StreamedView = ConversationView
 /** Stored history, newest first; `before` is the exclusive cursor for the next page. */
 export interface HistoryResponse {
   entries: EntryRecord[]
-  before?: number
+  before?: EntryId
 }
 export interface CompactResponse {
-  taskId: number
+  taskId: TaskId
 }
 export interface EmptyResponse {
   ok: true
 }
 export interface ConversationSummary {
-  id: number
+  id: ConversationId
   /** The conversation that owns this subagent or lander. */
-  parentConversationId?: number
+  parentConversationId?: ConversationId
   /** The source and history entry of an ownerless branch. */
-  branchOf?: { conversationId: number; at: number }
-  ownerTaskId?: number
+  branchOf?: { conversationId: ConversationId; at: EntryId }
+  ownerTaskId?: TaskId
   /** A short name its creator gave it, shown before its title. */
   label?: string
   title?: string
@@ -65,11 +68,11 @@ export interface CreateConversationRequest {
   title?: string
 }
 export interface CreateConversationResponse {
-  id: number
+  id: ConversationId
 }
 export interface ExtensionActionRequest {
   args: JsonValue
-  conversationId?: number
+  conversationId?: ConversationId
 }
 export interface ExtensionActionResponse {
   result: JsonValue

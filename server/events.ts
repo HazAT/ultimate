@@ -1,3 +1,5 @@
+import { parseEntryId, offsetEntryId } from '../lib/ids.ts'
+import type { EntryId, ConversationId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 // Durable events: the log is one ownerless conversation that never runs, and an event is a typed entry in it, so entry
 // ids give one global order and history, search and sync cover it. `emit` appends in the caller's transaction, so the
 // event exists exactly when the state change it describes does. A reactor's cursor advances in the transaction its
@@ -6,7 +8,6 @@
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type { EventContext, EventData, EventRecord, EventToken } from '../shared/events.ts'
@@ -15,7 +16,10 @@ import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
 
 /** Where the log lives and how far each reactor has read; on the root, next to other project-wide indexes. */
-export const EventLog = defineDoc<{ conversation?: number; cursors: Record<string, number> }>({
+export const EventLog = defineDoc<{
+  conversation?: ConversationId
+  cursors: Record<string, EntryId>
+}>({
   kind: 'ultimate.events',
   checkpointWhen: () => false,
   version: 1,
@@ -41,12 +45,12 @@ export interface ReactorStatus {
   name: string
   events: string[]
   /** The last log entry the reactor has passed. */
-  cursor: number
+  cursor: EntryId
   /** Matching events after the cursor. */
   lag: number
   running: boolean
   /** The latest failure; cleared by the next successful step. The failed event stays pending and is retried. */
-  failure?: { error: string; at: string; entryId?: number }
+  failure?: { error: string; at: string; entryId?: EntryId }
 }
 
 export interface ReactOptions {
@@ -75,8 +79,8 @@ export interface EventHost {
     /** Newest first (oldest first with `order: 'ascending'`), plain copies; `since` and `before` are exclusive event ids. */
     recent<T extends EventToken = EventToken>(options?: {
       events?: readonly T[]
-      since?: number
-      before?: number
+      since?: EntryId
+      before?: EntryId
       order?: 'ascending' | 'descending'
       limit?: number
     }): Promise<EventRecord<EventData<T>>[]>
@@ -110,7 +114,7 @@ async function logOf(tx: Tx) {
     Object.assign(await tx.doc(Metadata, id), { title: 'Events', label: EVENT_LOG_LABEL })
     index.conversation = id
   }
-  return index.conversation as ConversationId
+  return index.conversation
 }
 
 export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, data: D) {
@@ -136,13 +140,13 @@ export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, da
 async function scan(
   tx: Tx,
   log: ConversationId,
-  after: number,
+  after: EntryId,
   visit: (entry: EntryRecord) => boolean,
 ) {
   let cursor: Parameters<Tx['scanEntries']>[2]
   do {
     const page = await tx.scanEntries(
-      { conversationId: log, minEntryId: (after + 1) as EntryId, order: 'ascending' },
+      { conversationId: log, minEntryId: offsetEntryId(after, 1), order: 'ascending' },
       256,
       cursor,
     )
@@ -179,7 +183,7 @@ export function eventLog(
       for (;;) {
         const active = state.active
         if (!active) return
-        let attempted: number | undefined
+        let attempted: EntryId | undefined
         try {
           const handled = await harness().commit(async (tx) => {
             const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
@@ -188,20 +192,15 @@ export function eventLog(
               const newest =
                 index.conversation === undefined
                   ? undefined
-                  : (
-                      await tx.scanEntries(
-                        { conversationId: index.conversation as ConversationId },
-                        1,
-                      )
-                    ).items[0]
-              index.cursors[name] = newest?.id ?? 0
+                  : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
+              index.cursors[name] = newest?.id ?? parseEntryId(0)
               return false
             }
             if (index.conversation === undefined) return false
-            const after = index.cursors[name] ?? 0
+            const after = index.cursors[name] ?? parseEntryId(0)
             let pending: EntryRecord | undefined
             let last = after
-            await scan(tx, index.conversation as ConversationId, after, (entry) => {
+            await scan(tx, index.conversation, after, (entry) => {
               last = entry.id
               if (active.kinds.has(entry.kind)) pending = entry
               return pending !== undefined
@@ -297,8 +296,8 @@ export function eventLog(
   async function recent<T extends EventToken = EventToken>(
     options: {
       events?: readonly T[]
-      since?: number
-      before?: number
+      since?: EntryId
+      before?: EntryId
       order?: 'ascending' | 'descending'
       limit?: number
     } = {},
@@ -314,11 +313,11 @@ export function eventLog(
       do {
         const page = await tx.scanEntries(
           {
-            conversationId: log as ConversationId,
-            ...(options.since === undefined ? {} : { minEntryId: (options.since + 1) as EntryId }),
+            conversationId: log,
+            ...(options.since === undefined ? {} : { minEntryId: offsetEntryId(options.since, 1) }),
             ...(options.before === undefined
               ? {}
-              : { maxEntryId: (options.before - 1) as EntryId }),
+              : { maxEntryId: offsetEntryId(options.before, -1) }),
             order: options.order ?? 'descending',
           },
           256,
@@ -340,10 +339,10 @@ export function eventLog(
     return harness().commit(async (tx) => {
       const list: ReactorStatus[] = []
       for (const [name, state] of reactors) {
-        const cursor = index?.cursors[name] ?? 0
+        const cursor = index?.cursors[name] ?? parseEntryId(0)
         let lag = 0
         if (index?.conversation !== undefined)
-          await scan(tx, index.conversation as ConversationId, cursor, (entry) => {
+          await scan(tx, index.conversation, cursor, (entry) => {
             if (state.kinds.has(entry.kind)) lag++
             return false
           })

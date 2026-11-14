@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 /**
  * The Fall asleep card: what @ultimate prepared for the next chapter (its name, three lines it learned, its handover),
  * then each step live from `sleep`: packing the seed, the last backup, the switch. A failed step says what failed and
@@ -40,7 +41,7 @@ const elapsed = (now: number, at: number) => {
 
 /** `dream.prepared`: the card for the preparation it announced; a later one replaces it. */
 export function PreparedCard({ entry }: { entry: EntryRecord }) {
-  const doc = useDocOf(1, DreamDoc)
+  const doc = useDocOf(ROOT, DreamDoc)
   const at = (entry.data as { at: number }).at
   if (doc === undefined) return null
   if (doc?.prepared?.at !== at)

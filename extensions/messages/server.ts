@@ -1,3 +1,11 @@
+import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  GenerationResult,
+  TaskId,
+  Tx,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { bool, obj, opt, str } from '@earendil-works/pi-schema'
 import {
@@ -9,7 +17,6 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, GenerationResult, TaskId, Tx } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
@@ -114,7 +121,7 @@ async function dismiss(
 /** The user's own input that started `id`'s current run, which a settlement names as its source. */
 async function runInput(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const run = (await host.harness().snapshot(LiveDoc, id, ctx))?.run
-  let found: number | undefined
+  let found: EntryId | undefined
   for (const submission of run?.inputs ?? []) {
     const record = await (await host.harness().submission(submission, ctx))?.status(ctx)
     if (record?.type !== 'input' || record.entry === undefined) continue
@@ -136,7 +143,7 @@ export const actions = {
       let cursor: Parameters<Tx['scanEntries']>[2]
       do {
         const page = await tx.scanEntries(
-          { conversationId: conversation as ConversationId },
+          { conversationId: parseConversationId(Number(conversation)) },
           SCAN_PAGE,
           cursor,
         )
@@ -159,10 +166,10 @@ export const actions = {
     if (
       conversationId === undefined ||
       primary === undefined ||
-      (await actingAs(host, conversationId as ConversationId, ctx)) !== primary
+      (await actingAs(host, conversationId, ctx)) !== primary
     )
       throw new Error("Only @ultimate settles the user's questions")
-    const entry = await runInput(host, conversationId as ConversationId, ctx)
+    const entry = await runInput(host, conversationId, ctx)
     const via = { conversation: conversationId, ...(entry === undefined ? {} : { entry }) }
     return {
       id: closing
@@ -303,10 +310,21 @@ export default function messages(host: ExtensionHost) {
             (await api.memo<number>('message-id', ctx)) ??
             (await api.memo(
               'message-id',
-              await send(host, from, { ...input, imagesFrom: api.conversationId }, ctx, {
-                taskId: api.taskId,
-                callId: api.callId,
-              }),
+              await send(
+                host,
+                from,
+                {
+                  ...input,
+                  images:
+                    typeof input.images === 'number' ? parseEntryId(input.images) : input.images,
+                  imagesFrom: api.conversationId,
+                },
+                ctx,
+                {
+                  taskId: api.taskId,
+                  callId: api.callId,
+                },
+              ),
               ctx,
             ))
           const sent = (await host

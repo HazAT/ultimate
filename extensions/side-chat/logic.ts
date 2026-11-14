@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Side chat decisions the web facet makes, pure for tests. Browser-safe. */
 import type { SideChat, SideChatIndex } from './refs.ts'
 
@@ -17,7 +18,7 @@ export interface TabKey {
  */
 export function togglesSideMode(
   event: TabKey,
-  where: { conversation?: number; ultimate?: number; popup: boolean },
+  where: { conversation?: ConversationId; ultimate?: number; popup: boolean },
 ) {
   return (
     event.key === 'Tab' &&

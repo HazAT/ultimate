@@ -1,11 +1,13 @@
-/** Read a closed chapter without opening a harness, migrating its schema, or resuming its tasks. */
-import { apply } from '@earendil-works/chord/delta'
+import { parseConversationId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   ConversationRecord,
   EntryRecord,
   JsonObject,
+  EntryId,
 } from '@earendil-works/pi-durable'
+/** Read a closed chapter without opening a harness, migrating its schema, or resuming its tasks. */
+import { apply } from '@earendil-works/chord/delta'
 import { DatabaseSync } from 'node:sqlite'
 import { chapterFiles, readChapters } from '../../lib/chapters.ts'
 import { shortTitle } from '../../lib/title.ts'
@@ -19,13 +21,13 @@ export const limit = (value: unknown, fallback = 100) => {
 export const id = (value: unknown): ConversationId => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1)
     throw new Error('conversationId must be a positive integer')
-  return value as ConversationId
+  return parseConversationId(value)
 }
 
 export type HistoryRead = 'conversations' | 'entries' | 'search'
 
 export type SearchOptions = {
-  conversationId?: number
+  conversationId?: ConversationId
   limit?: number
   kinds?: string[]
   full?: boolean
@@ -54,7 +56,7 @@ export function searchHit(entry: EntryRecord, text: string, options: SearchOptio
   }
 }
 
-export type EntriesOptions = { kinds?: string[]; limit?: number; before?: number; full?: boolean }
+export type EntriesOptions = { kinds?: string[]; limit?: number; before?: EntryId; full?: boolean }
 
 const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text)
 
@@ -146,7 +148,7 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
       if (!row) throw new Error('Unknown conversation')
       return JSON.parse(String(row.record)) as ConversationRecord
     }
-    function* entries(value: unknown, before?: number): Generator<EntryRecord> {
+    function* entries(value: unknown, before?: EntryId): Generator<EntryRecord> {
       let record = conversation(value)
       let upper = before === undefined ? Number.MAX_SAFE_INTEGER : before - 1
       while (true) {

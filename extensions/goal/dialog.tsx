@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { FlagIcon, LoaderCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +27,7 @@ export function GoalDialog() {
 }
 
 function Body({ onClose }: { onClose: () => void }) {
-  const active = useDocOf(1, GoalDoc)?.goals.find((goal) => !goal.ended)
+  const active = useDocOf(ROOT, GoalDoc)?.goals.find((goal) => !goal.ended)
   const actions = useUltimate()
   const [text, setText] = useState('')
   const [starting, setStarting] = useState(false)

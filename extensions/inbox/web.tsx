@@ -49,7 +49,7 @@ const conversationOf = (entry: Entry) =>
 /** Who asks, as the sidebar draws a branch: its feature chip (or a standing agent's `@name`) and `#id`. */
 function Asker({ id }: { id: Message['from'] }) {
   const overview = useOverview()
-  const agent = useStandingName(typeof id === 'number' ? id : 0)
+  const agent = useStandingName(typeof id === 'number' ? id : undefined)
   if (typeof id !== 'number') return <span className="font-mono text-[10.5px]">{id}</span>
   const feature = agent ? undefined : overview[id]?.feature
   return (

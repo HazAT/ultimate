@@ -1,7 +1,8 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { settled } from '../../lib/errors.ts'
@@ -287,7 +288,7 @@ async function limited(host: Host, limit: RateLimit) {
  */
 async function held(host: Host, limit: RateLimit) {
   const harness = host.harness()
-  const child = limit.conversationId as ConversationId
+  const child = limit.conversationId
   const parent = await harness.commit(
     async (tx) => (await tx.conversation(child))?.owner?.conversationId,
     context,
@@ -361,7 +362,7 @@ async function play(host: Host, auto = false) {
     const until = Date.now()
     const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
-      const id = Number(key) as ConversationId
+      const id = parseConversationId(Number(key))
       const how = await noted(host, id, recorded)
       if (!how) continue
       const note: PauseNote = {

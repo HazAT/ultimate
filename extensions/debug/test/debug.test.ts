@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
@@ -86,7 +87,9 @@ const signal = new AbortController().signal
 it('shows events, reactor failures, the catalogue and a trace tree, within limits', async () => {
   const { server, debug } = await start()
   for (const n of [1, 2, 3])
-    expect(await server.extensions.invoke('alpha', 'go', { n }, signal, 1)).toBe('pong')
+    expect(await server.extensions.invoke('alpha', 'go', { n }, signal, 1 as ConversationId)).toBe(
+      'pong',
+    )
 
   // Newest first, with data and the trace the event was emitted in; limit and filters honoured.
   const events = (await debug({ call: 'events', events: ['beta.pinged'] })).split('\n')

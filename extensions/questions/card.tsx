@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
@@ -44,7 +45,7 @@ const countdown = (bar: HTMLDivElement | null) => {
 
 /** Whether `card` is the one on the shown conversation's page that takes the desktop 1–9 and Enter keys. */
 function useKeys(card: string) {
-  const messages = useDocOf(1, MessagesDoc)?.messages ?? []
+  const messages = useDocOf(ROOT, MessagesDoc)?.messages ?? []
   const conversation = useConversation((value) => value.id)
   return keyCard(conversation, messages) === card
 }

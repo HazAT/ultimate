@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { demo, demoPlayer, tracker } from '../../agents.ts'
 import type { Snapshot } from '../../agents.ts'
@@ -18,7 +19,7 @@ it('turns project changes into happenings, taking the first snapshot as heard', 
       { id: 2, label: 'agent', busy: true },
       { id: 10, label: 'coordinator', busy: true },
     ],
-    tools: { '10:a': { name: 'bash', conversationId: 10 } },
+    tools: { '10:a': { name: 'bash', conversationId: 10 as ConversationId } },
     events: [{ id: 1, kind: 'event.workspaces.landed', data: {} }],
   })
   expect(follow(busy)).toEqual([])
@@ -30,8 +31,8 @@ it('turns project changes into happenings, taking the first snapshot as heard', 
         { id: 11, label: 'worker', busy: true },
       ],
       tools: {
-        '10:a': { name: 'bash', conversationId: 10 },
-        '11:b': { name: 'edit', conversationId: 11 },
+        '10:a': { name: 'bash', conversationId: 10 as ConversationId },
+        '11:b': { name: 'edit', conversationId: 11 as ConversationId },
       },
       runs: { '11': { runState: 'error', inputId: 3 } },
       events: [
@@ -59,7 +60,7 @@ it('takes what a tab catches up on after a reconnect as heard', () => {
       { id: 10, label: 'coordinator', busy: false },
       { id: 11, label: 'worker', busy: true },
     ],
-    tools: { '11:a': { name: 'edit', conversationId: 11 } },
+    tools: { '11:a': { name: 'edit', conversationId: 11 as ConversationId } },
     runs: { '11': { runState: 'error', inputId: 1 } },
     events: [
       { id: 4, kind: 'event.workspaces.landed', data: {} },

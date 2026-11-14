@@ -1,7 +1,8 @@
+import { offsetEntryId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { AgentDoc } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId } from '@earendil-works/pi-durable'
 import {
   contextUsage,
   estimateAfterHead,
@@ -46,7 +47,7 @@ export function contextBehavior(
       // Generation restates the system prompt and tools in effect before the head as its next request's baseline.
       const before = (
         await conversation.entries(
-          { maxEntryId: (view.head.id - 1) as EntryId },
+          { maxEntryId: offsetEntryId(view.head.id, -1) },
           1,
           undefined,
           context,

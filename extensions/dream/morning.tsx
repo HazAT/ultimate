@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 /**
  * `dream.chapter`: the morning card in @ultimate's conversation of a new chapter. Where we came from, what came along,
  * and the check that Ultimate really woke up: a side chat that asks it what it knows. Summarize & inject marks the
@@ -110,7 +111,7 @@ function Carried({ counts }: { counts: Seed['counts'] }) {
 
 /** The check that I woke up well, followed to its side chat's ending; Discard leads back to the chapter before. */
 function Awake({ data }: { data: ChapterEntry }) {
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   const index = useDocOf(ultimate, SideChatsDoc) ?? undefined
   const conversations = useConversations()
   const [, setFront] = useSideChatFront()

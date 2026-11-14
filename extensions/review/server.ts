@@ -1,7 +1,8 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AgentDoc, defineEntry, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { UserInputEvent } from '../../shared/events.ts'
@@ -23,11 +24,11 @@ const index = (host: ExtensionHost, ctx: Context) =>
   host.harness().snapshot(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID, ctx)
 
 /** A conversation argument, checked: `undefined` for a caller that passed none. */
-function conversationOf(value: unknown): number | undefined {
+function conversationOf(value: unknown): ConversationId | undefined {
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
     throw new Error('conversation must be a conversation id')
-  return value
+  return parseConversationId(value)
 }
 
 /**
@@ -35,12 +36,12 @@ function conversationOf(value: unknown): number | undefined {
  * its own cwd, else the project's checkout. The same rule as lineage's catch-up: a project root that is no repository
  * of its own keeps its work in subfolder repositories, and Review has to follow the conversation into them.
  */
-async function checkout(host: ExtensionHost, conversation?: number) {
+async function checkout(host: ExtensionHost, conversation?: ConversationId) {
   if (conversation === undefined) return host.projectRoot
   const workspace = (await index(host, context))?.items[String(conversation)]
   if (workspace?.state === 'ready') return workspace.path
   if (workspace?.source) return workspace.source
-  const agent = await host.harness().snapshot(AgentDoc, conversation as ConversationId, context)
+  const agent = await host.harness().snapshot(AgentDoc, conversation, context)
   return agent?.cwd || host.projectRoot
 }
 
@@ -96,14 +97,14 @@ async function resolve(host: ExtensionHost, cwd: string, spec: string) {
 /** A git or landing time in seconds, as the range list shows it. */
 const ago = (seconds: number) => formatAgo(seconds * 1000)
 
-async function ranges(host: ExtensionHost, conversation?: number): Promise<ReviewRange[]> {
+async function ranges(host: ExtensionHost, conversation?: ConversationId): Promise<ReviewRange[]> {
   const cwd = await checkout(host, conversation)
   const items = Object.entries((await index(host, context))?.items ?? {})
   const titles = new Map(host.conversations().map((item) => [item.id, item.title]))
   const owner = new Map(
     items
       .filter(([, item]) => item.state !== 'removed')
-      .map(([id, item]) => [item.branch, Number(id)]),
+      .map(([id, item]) => [item.branch, parseConversationId(Number(id))]),
   )
   const [branches, commits, landings] = await Promise.all([
     git(
@@ -162,21 +163,22 @@ async function ranges(host: ExtensionHost, conversation?: number): Promise<Revie
 /** The conversation of an `uncommitted:<id>` spec, else undefined. */
 const worktreeOf = (spec: string) => {
   const id = /^uncommitted:([1-9]\d*)$/.exec(spec.trim())?.[1]
-  return id === undefined ? undefined : Number(id)
+  return id === undefined ? undefined : parseConversationId(Number(id))
 }
 
-const known = (host: ExtensionHost, id: number) =>
+const known = (host: ExtensionHost, id: ConversationId) =>
   host.conversations().some((conversation) => conversation.id === id)
 
 /** Who a review of `spec` goes to unless the user picks another: see `RecipientAction`. */
-async function recipient(host: ExtensionHost, spec: string, cwd: string): Promise<number> {
+async function recipient(host: ExtensionHost, spec: string, cwd: string): Promise<ConversationId> {
   const owner = async () => {
     const worktree = worktreeOf(spec)
     if (worktree !== undefined) return worktree
     if (spec.startsWith('branch:')) {
       const branch = spec.slice('branch:'.length)
       const items = Object.entries((await index(host, context))?.items ?? {})
-      return Number(items.find(([, item]) => item.branch === branch)?.[0]) || undefined
+      const id = Number(items.find(([, item]) => item.branch === branch)?.[0])
+      return id ? parseConversationId(id) : undefined
     }
     const range = /^[^.]+\.\.\.([^.]+)$/.exec(spec)
     let head = spec
@@ -204,7 +206,8 @@ async function recipient(host: ExtensionHost, spec: string, cwd: string): Promis
       '--end-of-options',
       head,
     )
-    return Number(trailer.split('\n')[0]) || undefined
+    const id = Number(trailer.split('\n')[0])
+    return id ? parseConversationId(id) : undefined
   }
   const found = await owner().catch(meansNone)
   if (found !== undefined && known(host, found)) return found
@@ -242,12 +245,13 @@ export const actions = {
     return { conversation: await recipient(host, input.spec, cwd) }
   }),
   send: implementAction(SendAction, async (args, { host, device }) => {
-    const id =
+    const value =
       args && typeof args === 'object' && !Array.isArray(args) ? args.conversation : undefined
-    if (typeof id !== 'number' || !Number.isSafeInteger(id) || !known(host, id))
+    const id = typeof value === 'number' ? parseConversationId(value) : undefined
+    if (id === undefined || !Number.isSafeInteger(id) || !known(host, id))
       throw new Error('conversation must be an existing conversation id')
     const review = checkReview(args)
-    const conversation = await host.harness().conversation(id as ConversationId, context)
+    const conversation = await host.harness().conversation(id, context)
     if (!conversation) throw new Error(`No conversation #${id}`)
     const content = reviewText(review)
     const submission = await conversation.submit(

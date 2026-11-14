@@ -1,3 +1,4 @@
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import type { ReactNode } from 'react'
 import { ChevronRightIcon, GitMergeIcon } from 'lucide-react'
 import { MentionText } from '@/components/ai/message'
@@ -7,7 +8,6 @@ import { useWorkspaceIndex } from './data.tsx'
 import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
 import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
 import { compareUrl } from '../../lib/compare.ts'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 
 /** The lander's note in the root: the landing's card, from the note's own data, with the state it froze. */
 function LandingNote({ entry }: { entry: EntryRecord }) {
@@ -27,7 +27,7 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
     pushed,
     abstract,
   } = entry.data as {
-    from: number
+    from: ConversationId
     at?: number
     divergence?: string
     sha: string

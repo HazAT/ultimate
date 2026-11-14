@@ -35,7 +35,7 @@ export { CheckRan, SubmissionFailed, SubmissionLanded } from './refs.ts'
 export type { LandedData } from './refs.ts'
 export type BranchesService = {
   /** The conversation that started branch `id`, which hears that its submission landed. */
-  starter(id: ConversationId, ctx: Context): Promise<number | undefined>
+  starter(id: ConversationId, ctx: Context): Promise<ConversationId | undefined>
   /** Inside `tx`: whether branch `id` has work of its own that will wake it again, so a landing leaves it open. */
   working(tx: Tx, id: ConversationId): Promise<boolean>
 }

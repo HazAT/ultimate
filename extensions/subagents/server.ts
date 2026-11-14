@@ -1,3 +1,14 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  ConversationRecord,
+  Cursor,
+  EntryId,
+  EntryRecord,
+  TaskId,
+  ToolExecutionApi,
+  SubmissionRecord,
+} from '@earendil-works/pi-durable'
 import { existsSync } from 'node:fs'
 import { onCommit } from '../../lib/commits.ts'
 import { readFile } from 'node:fs/promises'
@@ -22,16 +33,6 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
   section,
-} from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  ConversationRecord,
-  Cursor,
-  EntryId,
-  EntryRecord,
-  TaskId,
-  ToolExecutionApi,
-  SubmissionRecord,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../lib/project-paths.ts'
@@ -1063,7 +1064,7 @@ export default function subagents(
             await api.memo('workspace-operation', true, context)
             const operation = args.action
             return finish(
-              JSON.stringify(await workspaces[operation](args.id as ConversationId, context)),
+              JSON.stringify(await workspaces[operation](parseConversationId(args.id!), context)),
             )
           }
           if (args.action === 'start' || args.action === 'message') {
@@ -1115,7 +1116,7 @@ export default function subagents(
             const action = await api.commit(async (tx) => {
               const state = await tx.doc(Subagents, api.conversationId)
               if (state.actions[api.callId]) return { ...state.actions[api.callId] }
-              let conversationId = args.id as ConversationId
+              let conversationId: ConversationId
               if (definition) {
                 await conversations.requestSummary(
                   tx,
@@ -1167,7 +1168,7 @@ export default function subagents(
                     instructions: `${definition.instructions}\nWork only in ${workspace.path} on ${workspace.branch}, cut from ${workspace.base}. Commit your work on this branch with clear messages. Never push and never touch other checkouts.`,
                   })
                 }
-              }
+              } else conversationId = parseConversationId(args.id!)
               const reporter = await tx.createTask(
                 Reporter,
                 {
@@ -1229,7 +1230,7 @@ export default function subagents(
               ),
             )
           }
-          const id = args.id as ConversationId
+          const id = parseConversationId(args.id!)
           const info = details(id, index.agents[String(id)].background)
           await api.details(info, context)
           if (args.action === 'stop') {
@@ -1247,7 +1248,7 @@ export default function subagents(
                 )
                 tasks.push(
                   ...page.items.filter(
-                    (task) => (task.input as { conversation?: number }).conversation === id,
+                    (task) => (task.input as { conversation?: ConversationId }).conversation === id,
                   ),
                 )
                 cursor = page.next

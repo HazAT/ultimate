@@ -1,3 +1,4 @@
+import type { ConversationId, Task, TaskId, EntryId } from '@earendil-works/pi-durable'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import {
   eventHost,
@@ -26,7 +27,6 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Task, TaskId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it } from 'vitest'
@@ -151,7 +151,7 @@ async function fixture(
             ? { concludedIn }
             : name === 'lineage'
               ? {
-                  rootOf: (id: number, ctx: Context) => rootOf(host, id, ctx),
+                  rootOf: (id: number, ctx: Context) => rootOf(host, id as ConversationId, ctx),
                   branch: (input: BranchInput, ctx: Context) => startBranch(host, input, ctx),
                 }
               : undefined
@@ -552,7 +552,7 @@ it("turns @ultimate's message to the user it owes an answer into that answer and
       log.messages.push({
         id: log.next++,
         from: 'user',
-        to: 1,
+        to: 1 as ConversationId,
         text,
         at: 0,
         reply: true,
@@ -587,7 +587,7 @@ it("never lets the user's queued reply block @ultimate's message to them", async
     log.messages.push({
       id: log.next++,
       from: 'user',
-      to: 1,
+      to: 1 as ConversationId,
       text: '1a',
       at: 0,
       reply: true,
@@ -881,7 +881,7 @@ it('refuses self, unknown ids, tally roots and unknown names with valid names', 
   expect(f.observed.join('\n')).toContain('@scout')
   await f.opened.harness.commit(async (tx) => {
     ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.push(f.recipient.id)
-    ;(await tx.doc(Tally, f.recipient.id)).since = 2
+    ;(await tx.doc(Tally, f.recipient.id)).since = 2 as EntryId
   }, context)
   await f.send(String(f.recipient.id))
   expect(f.observed.join('\n')).toContain('use note')
@@ -906,8 +906,8 @@ it('bounds the log and exposes no user posting action', async () => {
     for (let id = 1; id <= 300; id++)
       log.messages.push({
         id,
-        from: 1,
-        to: 2,
+        from: 1 as ConversationId,
+        to: 2 as ConversationId,
         text: String(id),
         at: id,
         reply: false,
@@ -1135,7 +1135,7 @@ it.each([false, true])(
       (candidate) => candidate.name === 'branch',
     )!
     await f.opened.harness.commit(async (tx) => {
-      ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1]
+      ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1 as ConversationId]
       await configure(tx, f.opened.root.id, { modelTools: { add: [tool] } })
     }, context)
     await f.opened.root.submit(
@@ -1324,7 +1324,7 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
     (candidate) => candidate.name === 'branch',
   )
   await f.opened.harness.commit(async (tx) => {
-    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1]
+    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1 as ConversationId]
     if (tool) await configure(tx, f.opened.root.id, { modelTools: { add: [tool] } })
   }, context)
   await f.opened.root.submit(
@@ -1415,7 +1415,7 @@ it('forwards images into a new branch with its prompt', async () => {
   const f = await fixture()
   const tool = (await f.opened.root.agent(context)).deferred.find((t) => t.name === 'branch')!
   await f.opened.harness.commit(async (tx) => {
-    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1]
+    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1 as ConversationId]
     await configure(tx, f.opened.root.id, { modelTools: { add: [tool] } })
   }, context)
   await submitWithImages(
@@ -1578,7 +1578,7 @@ it("sends @ultimate's answer to a branch it concluded to the agent whose request
   const f = await fixture()
   const tool = (await f.opened.root.agent(context)).deferred.find((t) => t.name === 'branch')!
   await f.opened.harness.commit(async (tx) => {
-    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1]
+    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1 as ConversationId]
     await configure(tx, f.opened.root.id, { modelTools: { add: [tool] } })
   }, context)
   const branch = 'BRANCH ' + JSON.stringify({ prompt: 'Research STALL', isolated: false })
@@ -1680,7 +1680,9 @@ it("routes @ultimate's final answer to every branch whose reply shared its run",
   const a = await branched(f)
   const b = await branched(f)
   const ask = (to: number, text: string) =>
-    sendMessage(f.host, 1, { to: `#${to}`, text, reply: true }, context, { requestId: `ask:${to}` })
+    sendMessage(f.host, 1 as ConversationId, { to: `#${to}`, text, reply: true }, context, {
+      requestId: `ask:${to}`,
+    })
   await ask(a.id, 'STALL')
   await until(f.holding)
   await ask(b.id, 'WEIGH')
@@ -1702,9 +1704,15 @@ it("routes @ultimate's final answer to a branch whose reply shared its run with 
   // project's Ultimate; the weigh-in reached no one and the branch waited 36 minutes.
   const f = await remoteFixture()
   const b = await branched(f)
-  await sendMessage(f.host, 1, { to: `#${b.id}`, text: 'STALL', reply: true }, context, {
-    requestId: 'ask',
-  })
+  await sendMessage(
+    f.host,
+    1 as ConversationId,
+    { to: `#${b.id}`, text: 'STALL', reply: true },
+    context,
+    {
+      requestId: 'ask',
+    },
+  )
   await until(f.holding)
   const queued = async () =>
     (await f.opened.harness.snapshot(InboxDoc, f.opened.root.id, context))!.items.length

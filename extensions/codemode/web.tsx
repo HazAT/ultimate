@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronRightIcon, DatabaseIcon } from 'lucide-react'
 import { CodeBlock } from '@/components/ai/code-block'
 import { Tool, ToolContent, ToolHeader, ToolImages, ToolSection } from '@/components/ai/tool'
@@ -254,7 +255,7 @@ function StoreDocument({ value }: DocumentProps) {
 }
 
 /** The reference another conversation can follow to message `id` of `conversation`: its read in codemode. */
-const messageReference = ({ conversation, id }: { conversation: number; id: number }) =>
+const messageReference = ({ conversation, id }: { conversation: ConversationId; id: number }) =>
   `Ultimate conversation #${conversation}, message #${id}. Read it in codemode with ultimate.entries(${conversation}, { before: ${id + 1}, limit: 1 }).`
 
 export default defineWebExtension({

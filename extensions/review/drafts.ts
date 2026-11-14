@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Draft review comments in durable UI state: kept across reloads and shared by every tab, per spec (`draftsKey`). */
 import { useCallback } from 'react'
 import type { JsonValue } from '@/sdk'
@@ -11,7 +12,7 @@ import type { ReviewComment } from './comments.ts'
  */
 export type Draft = Omit<ReviewComment, 'excerpt'> & { id: string }
 /** A spec's pending review: its comments, the overall note, and the recipient the user picked, if any. */
-export type Drafts = { comments: Draft[]; note: string; to?: number }
+export type Drafts = { comments: Draft[]; note: string; to?: ConversationId }
 
 const empty: Drafts = { comments: [], note: '' }
 

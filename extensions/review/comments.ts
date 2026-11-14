@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Review comments: their limits, their check, and the Markdown the model reads. Pure and browser-safe. */
 import { sha256 } from './sha256.ts'
 import type { ReviewComment, ReviewComments } from './types.ts'
@@ -54,7 +55,7 @@ export function excerptOf(lines: readonly string[]) {
 }
 
 /** Where drafts of `spec` are kept: per spec, and per the conversation whose worktree the diff came from. */
-export function draftsKey(spec: string, conversation?: number) {
+export function draftsKey(spec: string, conversation?: ConversationId) {
   // UI state keys allow `[A-Za-z0-9_.:-]`, 200 characters: escape the rest (and `_`) as `_<hex>_`, one to one. A spec
   // too long for that is named by the SHA-256 of all of it, as `sha256-<hex>`: the escaped form never holds a `-`.
   const safe = spec.replace(/[^A-Za-z0-9.]/g, (char) => `_${char.codePointAt(0)!.toString(16)}_`)

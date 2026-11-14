@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { useEffect, useRef } from 'react'
 import { api, defineWebExtension, insertIntoComposer, useDocOf, useUltimate } from '@/sdk'
 import { StandingAction, StandingDoc } from '../subagents/ui.tsx'
@@ -56,7 +57,7 @@ async function drop(id: number, files: File[]) {
  * as a dropped file would: images inline, others through the attachments extension.
  */
 function Share() {
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   const { showSurface, switchConversation } = useUltimate()
   const latest = useRef({ ultimate, showSurface, switchConversation })
   latest.current = { ultimate, showSurface, switchConversation }

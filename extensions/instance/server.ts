@@ -1,3 +1,4 @@
+import type { ConversationId, ToolExecutionApi, JsonObject } from '@earendil-works/pi-durable'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   cp,
@@ -19,7 +20,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@earendil-works/chord/context'
 import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import type { ConversationId, ToolExecutionApi } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -36,7 +36,6 @@ import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
-import type { JsonObject } from '@earendil-works/pi-durable'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.ts'
@@ -232,7 +231,7 @@ interface Instance {
   pid: number
   temporary: boolean
   /** The conversation whose workspace it previews, or which started it in the shared checkout. */
-  conversationId?: number
+  conversationId?: ConversationId
   child: GroupProcess
   group: Group
   output: string
@@ -268,7 +267,7 @@ const listed = ({
 }: {
   id: string
   url: string
-  conversationId: number
+  conversationId: ConversationId
 }) => ({
   id,
   url,
@@ -442,7 +441,7 @@ export default function instanceExtension(
   async function start(
     args: { home?: string; model?: string | null },
     context: Context,
-    prepare: () => Promise<{ cwd: string; project: string; conversationId?: number }>,
+    prepare: () => Promise<{ cwd: string; project: string; conversationId?: ConversationId }>,
     output: (text: string) => void = () => {},
   ) {
     let reserved = false

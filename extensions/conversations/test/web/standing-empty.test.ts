@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
@@ -9,13 +10,18 @@ const summaries = vi.hoisted(() => [
   { id: 4, title: 'A branch' },
 ])
 vi.mock('@/sdk', () => ({
+  ROOT: 1,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   useDocOf: () => ({ 'chess-coach': { title: 'Coach', icon: 'crown', tint: 'amber' } }),
   useConversationSummary: (id: number) => summaries.find((summary) => summary.id === id),
 }))
 
 const render = (conversation: number) =>
-  renderToStaticMarkup(createElement(() => useStandingEmpty({ conversation, core: 'core card' })))
+  renderToStaticMarkup(
+    createElement(() =>
+      useStandingEmpty({ conversation: conversation as ConversationId, core: 'core card' }),
+    ),
+  )
 
 it("shows a standing agent's mark, title and @name before its first message", () => {
   const html = render(3)

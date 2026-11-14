@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { useEffect } from 'react'
 import { defineWebExtension, provide, useDocOf, useUiState } from '@/sdk'
 import { MessageAnswers, MessagesDoc } from '../messages/ui.tsx'
@@ -13,7 +14,7 @@ import type { CardState } from './state.tsx'
  */
 function CardSweep() {
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
-  const messages = useDocOf(1, MessagesDoc)?.messages
+  const messages = useDocOf(ROOT, MessagesDoc)?.messages
   // `cards` too: the log can arrive before the stored state, and the cards that came with it still have to go.
   useEffect(() => {
     // Nothing is settled until both are there: a starting server shows no messages for a moment.

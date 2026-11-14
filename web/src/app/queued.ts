@@ -1,10 +1,10 @@
-import type { InboxItem } from '@earendil-works/pi-durable'
+import type { ConversationId, InboxItem } from '@earendil-works/pi-durable'
 import { HttpError } from '../sdk/api.ts'
 
 export type QueuedInput = { text: string; images: { data: string; mimeType: string }[] }
 
 type QueueApi = {
-  cancelSubmission: (submissionId: number, id?: number) => Promise<unknown>
+  cancelSubmission: (submissionId: number, id?: ConversationId) => Promise<unknown>
 }
 
 /**
@@ -61,7 +61,7 @@ const alreadyTaken = (failure: unknown) => failure instanceof HttpError && failu
  */
 export async function withdrawQueuedSteer(
   api: QueueApi,
-  conversationId: number,
+  conversationId: ConversationId,
   items: readonly InboxItem[],
 ): Promise<QueuedInput | undefined> {
   const previous = items.findLast((item) => item.mode === 'steer')
@@ -87,7 +87,7 @@ export const mergedSteer = (previous: QueuedInput, next: QueuedInput): QueuedInp
  */
 export async function recallQueued(
   api: QueueApi,
-  conversationId: number,
+  conversationId: ConversationId,
   items: readonly InboxItem[],
 ): Promise<QueuedInput[]> {
   const queued = [

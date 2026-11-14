@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import type { Todo } from '../todos/refs.ts'
@@ -49,7 +50,7 @@ export type Seed = {
   /** The built-in "Dream after a pause" automation, likewise. */
   builtInPause?: { enabled: boolean } | null
   /** @ultimate's handover, written in conversation `conversation` of the chapter it left: the new chapter wakes up from it. */
-  continues: { conversation: number; handoff: string }
+  continues: { conversation: ConversationId; handoff: string }
 }
 
 /** The six passes a dream runs, in the order its journal lists them. */

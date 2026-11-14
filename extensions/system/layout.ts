@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /**
  * The Agent Lanes geometry: where a window's ticks and a run's block sit, as fractions of the timeline's width; the
  * lanes as a tree; and the dotted links between them.
@@ -80,7 +81,14 @@ export const duration = (run: LaneRun, now: number) =>
  */
 export type TreeRow =
   | { kind: 'lane'; lane: Lane; depth: number; last: boolean; through: boolean[] }
-  | { kind: 'fold'; parent: number; count: number; depth: number; last: true; through: boolean[] }
+  | {
+      kind: 'fold'
+      parent: ConversationId
+      count: number
+      depth: number
+      last: true
+      through: boolean[]
+    }
 
 /** Children folded behind a "+N finished" row once a parent has more than this many finished ones. */
 export const FOLD = 3
@@ -160,7 +168,7 @@ export function tree(
 }
 
 /** Each conversation with the conversations above and below it in the tree: whose chain a hovered lane lights up. */
-export function chain(lanes: readonly Lane[], conversation: number) {
+export function chain(lanes: readonly Lane[], conversation: ConversationId) {
   const parents = new Map(lanes.map((lane) => [lane.conversation, lane.parent]))
   const found = new Set([conversation])
   for (let up = parents.get(conversation); up !== undefined && !found.has(up); up = parents.get(up))
@@ -176,7 +184,12 @@ export function chain(lanes: readonly Lane[], conversation: number) {
 }
 
 /** A dotted link in pixels: its SVG path and the dot at its start. */
-export type LinkPath = { from: number; to: number; d: string; dot: [number, number] }
+export type LinkPath = {
+  from: ConversationId
+  to: ConversationId
+  d: string
+  dot: [number, number]
+}
 
 /** Where things sit on the timeline overlay: a row's vertical centre by conversation, and the overlay's width. */
 export type Frame = { y: ReadonlyMap<number, number>; width: number; since: number; now: number }

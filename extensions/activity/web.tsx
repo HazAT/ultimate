@@ -12,6 +12,7 @@ import {
   useUltimate,
 } from '@/sdk'
 import { activityEvents, Feed, filters, joined, shows, tone } from './feed.tsx'
+import type { EntryId } from '@earendil-works/pi-durable'
 import type { ActivityEvent, Filter } from './feed.tsx'
 import { PageAction } from './refs.ts'
 
@@ -148,7 +149,7 @@ function Older({
   now,
 }: {
   recent: ActivityEvent[]
-  before: number | undefined
+  before: EntryId | undefined
   filter: Filter
   since: string | undefined
   where: string
@@ -156,7 +157,7 @@ function Older({
 }) {
   const [older, setOlder] = useState<ActivityEvent[]>([])
   const [kept, setKept] = useState<ActivityEvent[]>([])
-  const [next, setNext] = useState<number>()
+  const [next, setNext] = useState<EntryId>()
   const paging = next !== undefined || older.length > 0
   // The live feed holds the newest events only: keep what it showed, so newer arrivals leave no gap above the pages.
   useEffect(() => {

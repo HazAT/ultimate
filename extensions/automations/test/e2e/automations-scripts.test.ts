@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { spawn } from 'node:child_process'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { Metadata } from '../../../../server/metadata.ts'
@@ -5,7 +6,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { LiveDoc, type ConversationId } from '@earendil-works/pi-durable'
+import { LiveDoc } from '@earendil-works/pi-durable'
 import { Messages } from '../../../messages/api.ts'
 import { launchHandshake, Automations } from '../../server.ts'
 import { Done, Exited } from '../../refs.ts'
@@ -200,9 +201,7 @@ it('delivers FIRE once, investigates exits only in the owning agent, recovers, a
   ).toHaveLength(1)
   await invoke('delete', { id: third.id })
   expect((await app.harness.snapshot(Automations, context))!.automations[third.id]).toBeUndefined()
-  expect(
-    await app.harness.conversation(third.script!.conversationId as ConversationId, context),
-  ).toBeDefined()
+  expect(await app.harness.conversation(third.script!.conversationId, context)).toBeDefined()
 
   const recurring = (await invoke('create', {
     name: 'Watch',
@@ -571,7 +570,7 @@ it('creates a project automation in the checkout with a committed manifest', asy
       'create',
       { ask: 'Poll ship PRs', name: 'Ship PRs', scope: 'project' },
       new AbortController().signal,
-      999_999,
+      999_999 as ConversationId,
     ),
   ).rejects.toThrow('Unknown caller #999999')
   const sub = (await app.extensions.invoke(
@@ -664,10 +663,7 @@ it('creates a project automation in the checkout with a committed manifest', asy
   })
   const watcherInputs = async () =>
     (
-      await (await app.harness.conversation(
-        sub.script!.conversationId as ConversationId,
-        context,
-      ))!.context(context)
+      await (await app.harness.conversation(sub.script!.conversationId, context))!.context(context)
     ).entries.filter((e) => e.kind === 'automations.writing')
   await until(async () => (await watcherInputs()).length === 2)
 
@@ -826,10 +822,7 @@ it('records the exit metadata and event for a successful done one-shot without a
   expect(events.filter((event) => event.data.id === sub.id).map((event) => event.data)).toEqual([
     { id: sub.id, code: 0 },
   ])
-  const agent = (await app.harness.conversation(
-    sub.script!.conversationId as ConversationId,
-    context,
-  ))!
+  const agent = (await app.harness.conversation(sub.script!.conversationId, context))!
   expect(
     (await agent.context(context)).entries.filter((entry) => entry.kind === 'automations.failed'),
   ).toHaveLength(0)

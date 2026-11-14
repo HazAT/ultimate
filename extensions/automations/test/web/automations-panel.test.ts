@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -121,7 +122,7 @@ const script = (
 ) => ({
   ask: 'watch it',
   once: false,
-  conversationId,
+  conversationId: conversationId as ConversationId,
   state,
 })
 const schedule = base('A1', 300, {
@@ -129,12 +130,16 @@ const schedule = base('A1', 300, {
   prompt: 'say hi',
   nextAt: 1_300_000,
 })
-const watching = base('A2', 200, { script: script('running', 41), subscribers: [7], fires: 1 })
+const watching = base('A2', 200, {
+  script: script('running', 41),
+  subscribers: [7 as ConversationId],
+  fires: 1,
+})
 const failed = base('ci-watch', 100, {
   scope: 'project',
   enabled: false,
   script: { ...script('failed', 42), error: 'exit 2' },
-  subscribers: [7],
+  subscribers: [7 as ConversationId],
 })
 
 const render = () => renderToStaticMarkup(createElement(AutomationsPanel))
@@ -171,7 +176,7 @@ it("shows a script's output beside its watcher, with FIRE lines marked", () => {
 
 const eventAutomation = base('A3', 400, {
   event: { name: 'workspaces.check', where: { result: 'failed' }, sinceEvent: 0 },
-  subscribers: [7],
+  subscribers: [7 as ConversationId],
 })
 const contextAutomation = base('A4', 500, {
   condition: {
@@ -182,7 +187,7 @@ const contextAutomation = base('A4', 500, {
     armed: true,
     value: 64,
   },
-  subscribers: [7],
+  subscribers: [7 as ConversationId],
 })
 
 it('shows bolt triggers, filters, context fill and event fire history without scheduling placeholders', () => {

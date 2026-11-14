@@ -1,14 +1,14 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { onCommit } from '../lib/commits.ts'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../lib/ids.ts'
 import type {
   ConversationId,
   Cursor,
   DocumentWatch,
-  EntryId,
   JsonObject,
   SubmissionId,
   TaskGraph,
 } from '@earendil-works/pi-durable'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { onCommit } from '../lib/commits.ts'
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
@@ -146,7 +146,7 @@ async function runAction(
       key,
       args,
       controller.signal,
-      id,
+      id === undefined ? undefined : parseConversationId(id),
       'ui',
       deviceOf(request.headers),
     )
@@ -412,7 +412,7 @@ export async function createApi(
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
     if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(400, 'Invalid conversation id')
-    return id as ConversationId
+    return parseConversationId(id)
   }
   return {
     conversations() {
@@ -463,10 +463,12 @@ export async function createApi(
         }
         const history = /^\/api\/conversations\/(\d+)\/history$/.exec(url.pathname)
         if (request.method === 'GET' && history) {
-          const id = Number(history[1])
-          const before = Number(url.searchParams.get('before'))
+          const id = parseConversationId(Number(history[1]))
+          const before = parseEntryId(Number(url.searchParams.get('before')))
           // `after` bounds the page from below, so a reveal reads down to one entry in large pages.
-          const after = url.searchParams.has('after') ? Number(url.searchParams.get('after')) : 0
+          const after = parseEntryId(
+            url.searchParams.has('after') ? Number(url.searchParams.get('after')) : 0,
+          )
           if (
             !Number.isSafeInteger(id) ||
             id < 1 ||
@@ -476,11 +478,11 @@ export async function createApi(
             after < 0
           )
             throw new HttpError(400, 'Invalid history cursor or conversation id')
-          const conversation = await harness.conversation(id as ConversationId, context)
+          const conversation = await harness.conversation(id, context)
           if (!conversation) throw new HttpError(404, 'Unknown conversation')
           const size = after ? 512 : 64
           const page = await conversation.entries(
-            { maxEntryId: (before - 1) as EntryId, ...(after && { minEntryId: after as EntryId }) },
+            { maxEntryId: offsetEntryId(before, -1), ...(after && { minEntryId: after }) },
             size + 1,
             undefined,
             context,
@@ -588,7 +590,7 @@ export async function createApi(
         )
         if (match) {
           const conversation = await harness.conversation(
-            Number(match[1]) as ConversationId,
+            parseConversationId(Number(match[1])),
             context,
           )
           if (!conversation) throw new HttpError(404, 'Unknown conversation')

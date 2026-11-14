@@ -1,4 +1,5 @@
 /** Review in the browser: the local diff of a spec, and the specs worth choosing from. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 import type { ReviewComment } from './types.ts'
 
@@ -53,7 +54,7 @@ export type ReviewRange = {
   /** Quiet meta: a short sha, an age. */
   detail?: string
   /** The conversation behind it: a branch's owner, a landing's submitter. */
-  conversation?: number
+  conversation?: ConversationId
 }
 
 /**
@@ -62,7 +63,7 @@ export type ReviewRange = {
  * latest landing, else `uncommitted`, and says so in `spec`. Throws on a spec or ref Git does not know as a commit, and
  * on any part starting with `-`.
  */
-export const DiffAction = actionRef<{ spec: string; conversation?: number }, ReviewDiff>(
+export const DiffAction = actionRef<{ spec: string; conversation?: ConversationId }, ReviewDiff>(
   'review',
   'diff',
 )
@@ -70,7 +71,7 @@ export const DiffAction = actionRef<{ spec: string; conversation?: number }, Rev
  * `{ conversation? }` → recent specs to choose from, read in conversation `conversation`'s checkout (the project's with
  * none): uncommitted, open `ultimate/*` branches, landings and commits.
  */
-export const RangesAction = actionRef<{ conversation?: number } | null, ReviewRange[]>(
+export const RangesAction = actionRef<{ conversation?: ConversationId } | null, ReviewRange[]>(
   'review',
   'ranges',
 )
@@ -79,14 +80,14 @@ export const RangesAction = actionRef<{ conversation?: number } | null, ReviewRa
  * submitter, the conversation a commit's `Ultimate-Conversation` trailer names, else the primary agent's.
  */
 export const RecipientAction = actionRef<
-  { spec: string; conversation?: number },
-  { conversation: number }
+  { spec: string; conversation?: ConversationId },
+  { conversation: ConversationId }
 >('review', 'recipient')
 /**
  * User only: `{ conversation, spec, comments, note? }` → one `review.comments` input into `conversation`, which wakes
  * or steers it like a typed message. Throws on an unknown conversation or a review over the limits in comments.ts.
  */
 export const SendAction = actionRef<
-  { conversation: number; spec: string; comments: ReviewComment[]; note?: string },
-  { conversation: number }
+  { conversation: ConversationId; spec: string; comments: ReviewComment[]; note?: string },
+  { conversation: ConversationId }
 >('review', 'send')

@@ -1,4 +1,5 @@
 /** Coding tools in the browser: the event each commit made through the bash tool records. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { defineEvent } from '../../shared/events.ts'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
@@ -17,7 +18,7 @@ export const CancelAction = actionRef<{ callId: string }, null>('coding-tools', 
  * commit of its own, so it outlives the commit and its worktree.
  */
 export const Committed = defineEvent<{
-  conversation: number
+  conversation: ConversationId
   sha: string
   parents: string[]
   repo: string

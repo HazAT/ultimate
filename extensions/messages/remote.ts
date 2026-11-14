@@ -1,8 +1,8 @@
+import type { EntryId, ConversationId } from '@earendil-works/pi-durable'
 /** Messaging another project's Ultimate: `tell` out, and the `remote` and `remoteReply` actions it posts in. */
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
-import type { EntryId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
@@ -73,7 +73,7 @@ export async function projectsSection(
  */
 export async function tell(
   host: ExtensionHost,
-  from: number,
+  from: ConversationId,
   input: { project: string; machine?: string; text: string; reply?: boolean },
   ctx: Context,
   signal?: AbortSignal,
@@ -244,7 +244,7 @@ export async function remoteReplyAction(args: JsonValue, { host }: ActionContext
   const seen = (await host.harness().snapshot(RemoteDoc, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))
     ?.told
   if (!seen || !Object.hasOwn(seen, key)) throw unknownKey()
-  const fromLabel = await senderName(host, seen[key].message.from as number, BACKGROUND_CONTEXT)
+  const fromLabel = await senderName(host, seen[key].message.from, BACKGROUND_CONTEXT)
   return host.harness().commit(async (tx) => {
     const { told } = await tx.doc(RemoteDoc, ROOT_CONVERSATION_ID)
     if (!Object.hasOwn(told, key)) throw unknownKey()

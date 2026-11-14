@@ -1,17 +1,18 @@
+import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 
 /** Ids of the work an event happened in, from the call trace: a reactor's run continues `traceId` under `parentCall`. */
 export type EventContext = {
   traceId?: string
-  conversationId?: number
-  taskId?: number
-  entryId?: number
+  conversationId?: ConversationId
+  taskId?: TaskId
+  entryId?: EntryId
   parentCall?: string
 }
 
 /** One durable event as readers and reactors see it: `id` is its entry in the event log and gives one global order. */
 export type EventRecord<D extends JsonValue = JsonValue> = {
-  id: number
+  id: EntryId
   name: string
   kind: string
   /** The version of the event's data shape when it was emitted. */
@@ -71,9 +72,9 @@ export type Device = { device: string; login?: string; address?: string }
  */
 export const UserInputEvent = defineEvent<
   {
-    conversation: number
+    conversation: ConversationId
     kind: 'prompt' | 'steer' | 'follow-up' | 'answer' | 'dismiss' | 'review'
-    entry?: number
+    entry?: EntryId
     submission?: number
     message?: number
     length: number
@@ -82,7 +83,7 @@ export const UserInputEvent = defineEvent<
 
 /** The user switched the surface on screen (`agent`, `system`, …) or the conversation open on it. */
 export const NavigatedEvent = defineEvent<
-  { surface: string; conversation?: number } & Partial<Device>
+  { surface: string; conversation?: ConversationId } & Partial<Device>
 >('ui.navigated')
 
 /** The events core defines here; extensions declare theirs in their refs.ts, listed in `ExtensionInfo.events`. */

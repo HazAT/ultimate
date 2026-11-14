@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { getOpenAICodexWebSocketDebugStats } from '@earendil-works/pi-ai/api/openai-codex-responses'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
@@ -31,7 +32,7 @@ function relayUsage(message: unknown): WireUsage | undefined {
 
 export function fromExchange(
   exchange: ClaudeCodeExchange,
-  conversationId: number,
+  conversationId: ConversationId,
 ): Omit<WireCall, 'n'> {
   const id = (exchange.message as { id?: unknown } | undefined)?.id
   const usage = relayUsage(exchange.message)
@@ -129,7 +130,7 @@ export default function wire(host: ExtensionHost) {
   })
 }
 
-const conversationOf = (id: number | undefined) => {
+const conversationOf = (id: ConversationId | undefined) => {
   if (id === undefined) throw new Error('No conversation')
   return id
 }

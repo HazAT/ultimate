@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import { ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
@@ -5,7 +6,7 @@ import type { ReactNode } from 'react'
 import { useCompact, useConversation } from '../sdk/hooks.ts'
 
 /** Where a card's expand state lives: `ultimate.fold.<conversation>.<card>`, the card an entry id or a tool call id. */
-export const foldKey = (conversation: number | undefined, card: string | number) =>
+export const foldKey = (conversation: ConversationId | undefined, card: string | number) =>
   `ultimate.fold.${conversation ?? 0}.${card}`
 
 /** Whether the reader opened a folded card; only that deviation from the folded default is stored. */

@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { BotIcon, BrainIcon, GitMergeIcon, icons, ScrollTextIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn, useDocOf } from '@/sdk'
@@ -18,7 +19,7 @@ const agentTitle = (name: string) => names[name] ?? name.charAt(0).toUpperCase()
  * doc arrives, so a page load never flashes the default name before the title.
  */
 export function useAgentTitle(name: string) {
-  const marks = useDocOf(1, MarksDoc)
+  const marks = useDocOf(ROOT, MarksDoc)
   if (marks === undefined) return { title: '', brand: false }
   const title = marks?.[name]?.title
   return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
@@ -114,7 +115,7 @@ export function AgentMark({
   size?: 'xs' | 'sm' | 'md' | 'lg'
   presence?: Presence
 }) {
-  const marks = useDocOf(1, MarksDoc)
+  const marks = useDocOf(ROOT, MarksDoc)
   const style = marks?.[name]
   const tile = tiles[name] ?? definedTile(style)
   // @ultimate's letter is its title's first; unknown, and so blank, until the marks doc arrives.

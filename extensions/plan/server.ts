@@ -1,3 +1,5 @@
+import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, EntryId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { arr, int, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
@@ -10,7 +12,6 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branch } from '../lineage/api.ts'
 import { PlanDoc, TaskIndexDoc } from './refs.ts'
@@ -23,7 +24,7 @@ export type Task = {
   description: string
   deps: string[]
   status: 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'canceled'
-  child?: number
+  child?: ConversationId
   verdict?: string
   notes: { at: string; text: string }[]
 }
@@ -111,8 +112,8 @@ async function reindex(
         before?.coordinator !== coordinator ||
         before.key !== task.key ||
         before.title !== task.title
-      if (renamed && (await tx.conversation(task.child as ConversationId)))
-        (await tx.doc(host.metadata, task.child as ConversationId)).title = task.title
+      if (renamed && (await tx.conversation(task.child)))
+        (await tx.doc(host.metadata, task.child)).title = task.title
     }
   }
 }
@@ -129,11 +130,11 @@ export const Started = defineDoc<{ started?: true }>({
 })
 
 /** Whether branch `id` has answered since it forked at entry `at`. */
-async function answered(tx: Tx, id: ConversationId, at: number) {
+async function answered(tx: Tx, id: ConversationId, at: EntryId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries(
-      { conversationId: id, minEntryId: (at + 1) as EntryId, order: 'ascending' },
+      { conversationId: id, minEntryId: offsetEntryId(at, 1), order: 'ascending' },
       64,
       cursor,
     )
@@ -302,7 +303,7 @@ export default (host: ExtensionHost) => {
                 if (args.verdict !== undefined) item.verdict = args.verdict
                 if (task) {
                   if (args.description !== undefined) item.description = args.description
-                  if (args.child !== undefined) item.child = args.child
+                  if (args.child !== undefined) item.child = parseConversationId(args.child)
                 } else {
                   if (args.body !== undefined) item.body = args.body
                 }

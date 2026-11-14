@@ -2,6 +2,8 @@
  * Inbox: the point another extension provides to put its own items, things the user has to do, next to the questions
  * waiting on them, and `Waiting`, which renders with both merged.
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import type { ReactNode } from 'react'
 import { AllProvided, definePoint, useDocOf } from '@/sdk'
 import { emptyMessages, MessagesDoc } from '../messages/ui.tsx'
@@ -16,7 +18,7 @@ export type InboxItem = {
   /** When it started waiting, epoch ms: the list is oldest first. */
   at: number
   /** The conversation it belongs to: the row shows it and the reading pane offers "Open in branch". */
-  conversation?: number
+  conversation?: ConversationId
   /** The row's short kind tag, as `question` or `preview` for questions. */
   tag: string
   title: string
@@ -35,7 +37,7 @@ export function Waiting({
 }: {
   children: (entries: Entry[], messages: readonly Message[]) => ReactNode
 }) {
-  const { messages } = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const { messages } = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   return (
     <AllProvided input={null} point={InboxItems}>
       {(provided) => children(inboxItems(messages, provided), messages)}

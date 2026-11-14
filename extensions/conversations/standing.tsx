@@ -1,10 +1,11 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ReactNode } from 'react'
 import { ConversationEmptyState } from '@/components/ai/conversation'
 import { useStandingName } from './feature.tsx'
 import { AgentMark, standingPlaceholder, useAgentTitle } from './marks.tsx'
 
 /** Conversation `id`'s standing agent as definitions and marks know it (without the `@`), and its display title. */
-function useStandingAgent(id: number) {
+function useStandingAgent(id: ConversationId | undefined) {
   const name = useStandingName(id)?.replace(/^@/, '')
   return { name, title: useAgentTitle(name ?? '').title }
 }
@@ -14,7 +15,7 @@ export function useStandingPlaceholder({
   conversation,
   busy,
 }: {
-  conversation: number
+  conversation: ConversationId
   busy: boolean
 }) {
   const { name, title } = useStandingAgent(conversation)
@@ -29,7 +30,7 @@ export function useStandingEmpty({
   conversation,
   core,
 }: {
-  conversation: number
+  conversation: ConversationId
   core: ReactNode
 }) {
   const { name, title } = useStandingAgent(conversation)

@@ -1,7 +1,7 @@
+import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
 /** The `branch` tool: start a lineage branch and send it its first message. */
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import {
   definitionAgent,
@@ -43,7 +43,7 @@ export const branchTool = (host: ExtensionHost) =>
         const lineage = host.need(LineageApi)
         const roots = (await host.harness().snapshot(Roots, ROOT_CONVERSATION_ID, ctx))?.roots ?? []
         const root =
-          input.root ??
+          (input.root === undefined ? undefined : parseConversationId(input.root)) ??
           (await lineage.rootOf(api.conversationId, ctx)) ??
           (roots.length === 1 ? roots[0] : undefined)
         if (root === undefined || !roots.includes(root))
@@ -70,9 +70,7 @@ export const branchTool = (host: ExtensionHost) =>
         // The model and thinking level the definition pins when its provider has a login here, thinking clamped to
         // what the model supports; without one, the current default model and thinking level, never what the root
         // last stored.
-        const rootAgent = await (await host
-          .harness()
-          .conversation(root as ConversationId, ctx))!.agent(ctx)
+        const rootAgent = await (await host.harness().conversation(root, ctx))!.agent(ctx)
         const change = definitionAgent(
           coordinator,
           { ...rootAgent, ...(await hostDefault(host)) },
@@ -119,7 +117,12 @@ export const branchTool = (host: ExtensionHost) =>
           to: `#${id}`,
           text: input.prompt,
           reply: true,
-          ...(input.images === undefined ? {} : { images: input.images }),
+          ...(input.images === undefined
+            ? {}
+            : {
+                images:
+                  typeof input.images === 'number' ? parseEntryId(input.images) : input.images,
+              }),
           imagesFrom: api.conversationId,
         },
         ctx,

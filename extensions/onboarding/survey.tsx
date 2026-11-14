@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { CompassIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -22,7 +23,7 @@ import { DismissAction, StartAction, StartsDoc, StatusAction } from './refs.ts'
 /** Above @ultimate's composer until onboarding has run for the project: one click starts it. */
 export function StartComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   if (id === undefined || id !== ultimate) return core
   return (
     <>
@@ -34,8 +35,8 @@ export function StartComposer({ core, dock }: { core: ReactNode; dock?: boolean 
 
 function StartHere({ dock }: { dock?: boolean }) {
   const root = useRoots()?.[0]
-  const starts = useDocOf(1, StartsDoc)
-  const memories = useDocOf(root ?? 1, MemoryDoc)
+  const starts = useDocOf(ROOT, StartsDoc)
+  const memories = useDocOf(root ?? ROOT, MemoryDoc)
   const project = useSystem()?.project.name
   const status = useAction(StatusAction).data
   // @ultimate's model, as Get ready checks it: without a login and an available model, setup opens Get ready first.

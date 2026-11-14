@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { FlameIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
@@ -45,7 +46,7 @@ const failed = (state: WarmState) =>
  * popover has the switch, where the cache stands and the last ping.
  */
 function Chip() {
-  const doc = useDocOf(1, WarmDoc)
+  const doc = useDocOf(ROOT, WarmDoc)
   const { data: state } = useAction(StateAction, null, {
     onError: keepLast,
     on: doc,

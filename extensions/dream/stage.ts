@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Where the way from a dream into a fresh chapter stands, read from the dream document alone. Pure and browser-safe. */
 import type { Dream, Prepared, Sleep } from './refs.ts'
 
@@ -18,7 +19,7 @@ export type DreamStage =
 /** `concludedSince(id)` is Infinity while conversation `id` is concluded (`useConcludedSince`). */
 export function dreamStage(
   doc: { dream?: Dream; prepared?: Prepared; sleep?: Sleep },
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ): DreamStage {
   const { dream, prepared, sleep } = doc
   // A preparation from before the latest dream is stale: that dream's Fall asleep prepares anew.

@@ -1,5 +1,6 @@
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 import {
   ArrowLeftIcon,
   GitForkIcon,
@@ -64,7 +65,7 @@ const sideEndings = createEndings(errorMessage)
 
 /** @ultimate's conversation id, and the side chats it has. */
 function useMain() {
-  const main = useDocOf(1, StandingDoc)?.ultimate
+  const main = useDocOf(ROOT, StandingDoc)?.ultimate
   const index = useDocOf(main, SideChatsDoc) ?? undefined
   return { main, index }
 }
@@ -241,7 +242,7 @@ function Stage() {
   const isMain = id !== undefined && id === main
   const current = isMain ? frontSide(front, index) : undefined
   // The last side chat stays mounted while its sheet leaves.
-  const [shown, setShown] = useState<number>()
+  const [shown, setShown] = useState<ConversationId>()
   if (current && shown !== current.id) setShown(current.id)
   useEffect(() => {
     if (current) return undefined
@@ -512,7 +513,7 @@ function SummaryCard({ entry }: { entry: EntryRecord }) {
 // ---- sidebar: open side chats under @ultimate ----------------------------------------------------------------------
 
 /** Rows for @ultimate's open side chats; clicking one brings it to the front, or parks it when it already is. */
-function useSideRows(main: number | undefined): ReactNode {
+function useSideRows(main: ConversationId | undefined): ReactNode {
   const index = useDocOf(main, SideChatsDoc) ?? undefined
   const [front, setFront] = useFront()
   const actions = useUltimate()
@@ -561,7 +562,7 @@ function useSideRows(main: number | undefined): ReactNode {
 }
 
 /** Every side chat of @ultimate, open or ended: none is a row of the sidebar's own sections. */
-function useSideIds(main: number | undefined): ReadonlySet<number> {
+function useSideIds(main: ConversationId | undefined): ReadonlySet<number> {
   const sides = (useDocOf(main, SideChatsDoc) ?? undefined)?.sides
   return useMemo(() => new Set(sides?.map((side) => side.id)), [sides])
 }

@@ -1,6 +1,7 @@
+import { parseConversationId, parseTaskId } from '../../lib/ids.ts'
+import type { EntryId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AssistantEntry } from '@earendil-works/pi-durable'
-import type { EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
@@ -18,7 +19,7 @@ const gist = (text: string) => {
 /** The conversation a task's input names, under whichever field its kind uses. */
 const conversationOf = (input: Input) => {
   for (const key of ['conversationId', 'conversation', 'target', 'id', 'to'])
-    if (typeof input?.[key] === 'number') return input[key]
+    if (typeof input?.[key] === 'number') return parseConversationId(input[key])
   return undefined
 }
 
@@ -79,7 +80,7 @@ export const actions = {
     return host.harness().commit(async (tx) => {
       const started: Record<string, number> = {}
       for (const id of ids as number[]) {
-        const at = (await tx.task(id as TaskId))?.startedAt
+        const at = (await tx.task(parseTaskId(id)))?.startedAt
         if (at !== undefined) started[id] = at
       }
       return started
@@ -93,7 +94,7 @@ export const actions = {
     return host.harness().commit(async (tx) => {
       const described: Record<string, TaskFacts> = {}
       for (const id of ids as number[]) {
-        const task = await tx.task(id as TaskId)
+        const task = await tx.task(parseTaskId(id))
         if (task) described[id] = await facts(host, tx, task.kind, task.input as Input)
       }
       return described

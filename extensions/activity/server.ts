@@ -1,3 +1,4 @@
+import { parseEntryId } from '../../lib/ids.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEvent } from '../../shared/events.ts'
 import { PageAction } from './refs.ts'
@@ -21,7 +22,7 @@ export const actions = {
     // One past the limit says whether anything older is left.
     const found = await host.eventLog.recent({
       events: kinds.map((kind) => defineEvent(kind)),
-      ...(before === undefined ? {} : { before: before as number }),
+      ...(before === undefined ? {} : { before: parseEntryId(Number(before)) }),
       limit: (limit as number) + 1,
     })
     const floor = since === undefined ? -Infinity : Date.parse(since)

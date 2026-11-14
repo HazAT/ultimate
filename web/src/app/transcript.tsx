@@ -1,5 +1,12 @@
+import { parseEntryId } from '../../../lib/ids.ts'
+import type {
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  LiveState,
+  ToolSlot,
+} from '@earendil-works/pi-durable'
 import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai'
-import type { EntryRecord, LiveState, ToolSlot } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
   CheckIcon,
@@ -162,7 +169,7 @@ export function Transcript({ dock }: { dock?: boolean }) {
   }, [id])
   // A sent message pins the view to the bottom and follows the run, even when the reader had scrolled up.
   useEvent('ultimate:sent', (value) => {
-    if ((value as { conversationId?: number } | undefined)?.conversationId === id)
+    if ((value as { conversationId?: ConversationId } | undefined)?.conversationId === id)
       void stick.current?.scrollToBottom({ animation: 'instant' })
   })
   // Keyed so a conversation never inherits the previous one's scroll position or follow state.
@@ -189,7 +196,7 @@ function TranscriptEntries() {
     useHistory(id, active, older)
   const [tailSpace, setTailSpace] = useState(0)
   const anchor = useRef<{
-    entryId: number
+    entryId: EntryId
     /** The last entry of a folded run: its row keeps that id when a page brings earlier entries into the run. */
     last?: number
     /** A row inside an opened run. */
@@ -300,7 +307,7 @@ function TranscriptEntries() {
       )
       if (element) {
         anchor.current = {
-          entryId: Number(element.getAttribute('data-entry-id')),
+          entryId: parseEntryId(Number(element.getAttribute('data-entry-id'))),
           last: Number(element.getAttribute('data-run-last')) || undefined,
           inner: !element.parentElement?.isSameNode(contentRef.current),
           top: element.getBoundingClientRect().top,
@@ -429,10 +436,10 @@ function TranscriptEntries() {
   }, [scrollRef, contentRef])
   // Reveal a stored row, or one tool call in it, without the auto-follow animation overriding the jump; a row older than
   // those loaded needs the history down to it first, and one in a folded run needs the run open.
-  const [reveal, setReveal] = useState<{ entry: number; call?: string }>()
+  const [reveal, setReveal] = useState<{ entry: EntryId; call?: string }>()
   useEvent('ultimate:reveal-entry', (value) => {
     const target = value as
-      | { conversationId?: number; entryId?: number; toolCallId?: string }
+      | { conversationId?: ConversationId; entryId?: EntryId; toolCallId?: string }
       | undefined
     const entryId = target?.entryId
     if (target?.conversationId === id && entryId !== undefined && Number.isSafeInteger(entryId))
@@ -667,18 +674,18 @@ const itemParts = (item: CompactPart | WorkRun | AsideGroup) =>
  * stays open when a page brings earlier rows into it or live rows join it.
  */
 const betweenKeys = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
 ) => {
   const parts = group.between.flatMap(itemParts)
   return [parts[0], parts.at(-1)!].map((part) => foldKey(id, `between:${partKey(part)}`))
 }
 const readBetween = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
 ) => betweenKeys(id, group).some(readFold)
 const writeBetween = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
   open: boolean,
 ) => {
@@ -1252,7 +1259,7 @@ function shows(message: AssistantMessage | undefined) {
 
 /** What the run is doing when the transcript alone does not show it; a run a pause parked says so instead. */
 function LiveStatus(props: {
-  id: number | undefined
+  id: ConversationId | undefined
   live: LiveState
   busy: boolean
   partial: AssistantMessage | undefined

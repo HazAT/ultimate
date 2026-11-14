@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 /**
  * The way from a finished dream into a fresh chapter, in the sidebar and the status line on every surface: once the
  * dream branch is concluded, Fall asleep asks @ultimate to prepare the chapter; once it is prepared, the Fall asleep
@@ -17,7 +18,7 @@ export const nextDialog = 'dream.next'
 
 /** The dream document and its stage (`dreamStage`); undefined until the document loads. */
 export function useDreamStage() {
-  const doc = useDocOf(1, DreamDoc)
+  const doc = useDocOf(ROOT, DreamDoc)
   const concluded = useConcludedSince()
   return doc && { doc, stage: dreamStage(doc, concluded) }
 }

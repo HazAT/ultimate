@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /**
  * Wire's files: one gzipped JSON file per model call, `<home>/wire/<conversation>/<n>.json.gz`, outside the durable
  * database. Each conversation keeps its newest `PER_CONVERSATION` calls; the whole folder stays under `TOTAL_BYTES`,
@@ -65,7 +66,7 @@ export function save(queue: Queue, home: string, call: Omit<WireCall, 'n'>): Pro
 
 export async function load(
   home: string,
-  conversationId: number,
+  conversationId: ConversationId,
   n: number,
 ): Promise<WireCall | undefined> {
   const bytes = await readFile(join(folder(home), String(conversationId), name(n))).catch(
@@ -78,7 +79,7 @@ export async function load(
 }
 
 /** The conversation's stored calls, oldest first, without their bodies (read from each call's small summary file). */
-export async function list(home: string, conversationId: number): Promise<WireSummary[]> {
+export async function list(home: string, conversationId: ConversationId): Promise<WireSummary[]> {
   const dir = join(folder(home), String(conversationId))
   const summaries = await Promise.all(
     (await calls(dir)).map((n) =>

@@ -1,3 +1,4 @@
+import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
 /**
  * `#157029` and `#157029/158003` in running text: a conversation, and an entry in it. Never part of a word, a path, a
  * URL fragment or an HTML entity; ids under three digits stay text, since `#1 priority` or `#12` is usually not a
@@ -16,7 +17,10 @@ export const mentionHref = (conversation: string, entry?: string) =>
 export function parseMention(href: string) {
   const match = /^#conversation-(\d+)(?:-(\d+))?$/.exec(href)
   return match
-    ? { conversation: Number(match[1]), entry: match[2] ? Number(match[2]) : undefined }
+    ? {
+        conversation: parseConversationId(Number(match[1])),
+        entry: match[2] ? parseEntryId(Number(match[2])) : undefined,
+      }
     : undefined
 }
 

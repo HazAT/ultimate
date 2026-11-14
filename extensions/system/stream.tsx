@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, cn, errorMessage, formatDuration, useUltimate } from '@/sdk'
@@ -22,7 +23,12 @@ export const sources = {
 export type Source = keyof typeof sources
 
 /** What the user filters the stream by; kept in UI state so it survives reloads. */
-export type StreamView = { source: Source; errors: boolean; conversation?: number; text: string }
+export type StreamView = {
+  source: Source
+  errors: boolean
+  conversation?: ConversationId
+  text: string
+}
 
 /** This surface's own polls, which would otherwise fill the stream it shows. */
 export const ownPoll = (row: SystemRow) =>

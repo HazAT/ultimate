@@ -1,3 +1,4 @@
+import type { HookApi, ConversationId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import type {
@@ -8,7 +9,6 @@ import type {
   Models,
 } from '@earendil-works/pi-ai'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
-import type { HookApi } from '@earendil-works/pi-durable'
 import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
 
@@ -23,7 +23,7 @@ export const MAX_WHITESPACE_RUN = 1000
 /** Records one model call: the trace's `begin`, and the conversation of a provider session id, when known. */
 export type ModelTrace = {
   begin: CallTrace['begin']
-  conversationOf(sessionId: string | undefined): number | undefined
+  conversationOf(sessionId: string | undefined): ConversationId | undefined
 }
 
 /**
@@ -33,7 +33,7 @@ export type ModelTrace = {
  * in this process (a compaction right after a restart) and extensions' own calls stay unlinked.
  */
 export function modelTrace(trace: Pick<CallTrace, 'begin'>) {
-  const sessions = new Map<string, number>()
+  const sessions = new Map<string, ConversationId>()
   const remember = async (api: HookApi, context: Context) => {
     const provider = await api.snapshot(ProviderDoc, api.conversationId, context)
     if (!provider) return

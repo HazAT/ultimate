@@ -1,4 +1,5 @@
 /** Dream in the browser: the prepared next chapter, the sleep into it and the chapters. Browser-safe. */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**
@@ -22,8 +23,8 @@ export type Sleep = {
  * prepares then), `dismissed` when they chose to stay in this chapter.
  */
 export type Dream = {
-  branch: number
-  requested: number
+  branch: ConversationId
+  requested: EntryId
   at: number
   asked?: number
   dismissed?: true

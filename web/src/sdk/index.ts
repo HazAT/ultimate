@@ -16,6 +16,7 @@ export {
   provide,
   RunStart,
 } from './types.ts'
+export { ROOT } from './api.ts'
 export { events, useEvent } from './events.ts'
 export { resumed } from './resume.ts'
 export type {

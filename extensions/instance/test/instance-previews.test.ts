@@ -1,9 +1,9 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import {
   linkHome,
@@ -36,7 +36,7 @@ function hostOver(home: string) {
 const preview = (port: number, conversationId = 1) => ({
   id: `p${port}-${conversationId}`,
   url: `http://127.0.0.1:${port}`,
-  conversationId,
+  conversationId: conversationId as ConversationId,
 })
 
 it('previews the nearest owner worktree of a subagent, else the host checkout', async () => {

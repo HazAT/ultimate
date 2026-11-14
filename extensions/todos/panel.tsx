@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { CheckIcon, ChevronRightIcon, InboxIcon, PlayIcon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -24,7 +25,7 @@ export function Todos() {
 }
 
 function List({ questions }: { questions: readonly unknown[] }) {
-  const items = useDocOf(1, TodosDoc)?.items ?? []
+  const items = useDocOf(ROOT, TodosDoc)?.items ?? []
   const now = useNow(60_000)
   const [error, setError] = useState<string>()
   const open = items.filter((todo) => !todo.done)

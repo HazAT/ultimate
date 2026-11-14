@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { HourglassIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -21,7 +23,7 @@ function Section({
   messages: Message[]
   side: 'to' | 'from'
   now: number
-  open: (id: number) => void
+  open: (id: ConversationId) => void
 }) {
   if (!messages.length) return null
   return (
@@ -51,7 +53,7 @@ function Section({
 /** The composer's chip for the shown conversation's open messages; a click lists them, and each opens its conversation. */
 export function OpenMessages() {
   const id = useConversation((conversation) => conversation.id)
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const concludedSince = useConcludedSince()
   const now = useNow(30_000)
   const { switchConversation } = useUltimate()
@@ -64,7 +66,7 @@ export function OpenMessages() {
     delivering.length && `${delivering.length} delivering`,
   ].filter(Boolean)
   if (!parts.length) return null
-  const go = (to: number) => {
+  const go = (to: ConversationId) => {
     setShown(false)
     switchConversation(to)
   }

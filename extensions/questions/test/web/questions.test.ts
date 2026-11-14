@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import { forgetSettled, keyCard, newestAsked, openQuestions, waiting } from '../../open.tsx'
 import { EMPTY_CARD } from '../../state.tsx'
@@ -30,10 +31,10 @@ describe('message answer cards', () => {
   })
   it('gives the keys to the newest open message the shown conversation sent', () => {
     const messages = [open, { ...open, id: 6 }, { ...open, id: 7, from: 3 }]
-    expect(keyCard(2, messages)).toBe('message:6')
-    expect(keyCard(3, messages)).toBe('message:7')
-    expect(keyCard(4, messages)).toBeUndefined()
-    expect(keyCard(2, [{ ...open, state: 'answered' }])).toBeUndefined()
+    expect(keyCard(2 as ConversationId, messages)).toBe('message:6')
+    expect(keyCard(3 as ConversationId, messages)).toBe('message:7')
+    expect(keyCard(4 as ConversationId, messages)).toBeUndefined()
+    expect(keyCard(2 as ConversationId, [{ ...open, state: 'answered' }])).toBeUndefined()
   })
 })
 

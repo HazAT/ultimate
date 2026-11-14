@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { useSyncExternalStore } from 'react'
 import { api, getConversation, useConversation, useDocOf, useModels, useStore } from '@/sdk'
 import type { ModelsResponse, UltimateActions } from '@/sdk'
@@ -19,7 +20,7 @@ export const thinkingDialog = (id: number | undefined) => `models.thinking.${id}
  * The scoped (or shown) conversation's model, thinking and recorded family, or those of `target`, and its id to
  * configure.
  */
-export function useCurrentModel(target?: number) {
+export function useCurrentModel(target?: ConversationId) {
   const own = useConversation()
   const other = useStore(() => (target === undefined ? undefined : getConversation(target)))
   const { id, agent, loading } = other ?? own
@@ -41,7 +42,7 @@ export function useCurrentModel(target?: number) {
 }
 
 /** Run conversation `id` on `model`, picked by id: it runs as no family now. */
-export async function selectModel(model: ModelInfo, id: number | undefined) {
+export async function selectModel(model: ModelInfo, id: ConversationId | undefined) {
   await api.configure({ model: { provider: model.provider, modelId: model.id } }, id)
   await api.action(SetFamilyAction, { family: null }, { conversationId: id })
   notePick()
@@ -73,7 +74,7 @@ export function usePicks() {
  * The conversation the picker configures: the one whose toolbar or shortcut opened it, which is a scoped conversation
  * (a side chat) rather than the shown one when opened inside its scope. Undefined targets the shown conversation.
  */
-let pickerTarget: number | undefined
+let pickerTarget: ConversationId | undefined
 const targetListeners = new Set<() => void>()
 export function usePickerTarget() {
   return useSyncExternalStore(
@@ -87,11 +88,13 @@ export function usePickerTarget() {
   )
 }
 
-function setPickerTarget(target: number | undefined) {
+function setPickerTarget(target: ConversationId | undefined) {
   pickerTarget = target
   for (const listener of targetListeners) listener()
 }
-export function openPicker(actions: Pick<UltimateActions, 'open'> & { conversationId?: number }) {
+export function openPicker(
+  actions: Pick<UltimateActions, 'open'> & { conversationId?: ConversationId },
+) {
   setPickerTarget(actions.conversationId)
   actions.open(dialogs.picker)
 }
@@ -111,7 +114,7 @@ let loginProvider: string | undefined
 const listeners = new Set<() => void>()
 /** `actions.conversationId` is the conversation a model picked after this login configures. */
 export function openLogin(
-  actions: Pick<UltimateActions, 'open' | 'close'> & { conversationId?: number },
+  actions: Pick<UltimateActions, 'open' | 'close'> & { conversationId?: ConversationId },
   provider?: string,
 ) {
   setPickerTarget(actions.conversationId)

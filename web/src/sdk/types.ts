@@ -1,6 +1,14 @@
+import type {
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  InboxItem,
+  JsonObject,
+  ToolDiagnostic,
+  TaskId,
+} from '@earendil-works/pi-durable'
 import type { ComponentType, ReactNode } from 'react'
 import type { ImageContent, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
-import type { EntryRecord, InboxItem, JsonObject, ToolDiagnostic } from '@earendil-works/pi-durable'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 
 /** Named places in the shell that extensions fill with components. */
@@ -131,7 +139,7 @@ export type ComposerRenderer = ComponentType<{ core: ReactNode; dock?: boolean }
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
 export interface DocumentProps {
   value: Readonly<JsonObject>
-  conversationId: number
+  conversationId: ConversationId
 }
 /**
  * How the Documents tab shows one kind of extension document, a server facet's `docs` export (`ultimate.plan`).
@@ -147,7 +155,7 @@ export interface DocumentContribution {
 /** Navigation and shell actions, passed to commands and returned by `useUltimate()`. */
 export interface UltimateActions {
   /** `replace` takes the current browser history entry instead of adding one, as a redirect does. */
-  switchConversation: (id: number, options?: { replace?: boolean }) => void
+  switchConversation: (id: ConversationId, options?: { replace?: boolean }) => void
   /** Show surface `id` (`agent` is the home); the conversation keeps running. */
   showSurface: (id: string) => void
   /** Open the right panel, on tab `id` when given. */
@@ -166,9 +174,9 @@ export interface UltimateActions {
 }
 export interface UltimateContext extends UltimateActions {
   /** The shown conversation, once known. */
-  conversationId?: number
+  conversationId?: ConversationId
   /** A stored message targeted by a contextual command. */
-  entryId?: number
+  entryId?: EntryId
   /** The id of the surface on screen: Agent while a chosen surface that failed falls back. */
   surface: string
 }
@@ -252,12 +260,12 @@ export const definePoint = <Input, Value>(point: string): Point<Input, Value> =>
  * held, none of it executes, so the transcript and every list of conversations show them paused, not working.
  * Undefined, as none, while nothing provides it.
  */
-export const ParkedRuns = definePoint<null, ReadonlySet<number>>('ultimate.parked')
+export const ParkedRuns = definePoint<null, ReadonlySet<ConversationId>>('ultimate.parked')
 /**
  * When a run's task first ran, in epoch ms, by its task ID (the `tasks` extension provides it), for the working
  * indicator's clock. Undefined while unknown or while nothing provides it.
  */
-export const RunStart = definePoint<number | undefined, number | undefined>('ultimate.runStart')
+export const RunStart = definePoint<TaskId | undefined, number | undefined>('ultimate.runStart')
 /**
  * What the title bar names a conversation's kind before its title (`messages` provides it: `branch · coordinator` for
  * the branches it starts); undefined shows the conversation's label as it is.
@@ -272,7 +280,7 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
  * a `ComposerRedirect`'s placeholder comes first.
  */
 export const ComposerPlaceholder = definePoint<
-  { conversation: number; busy: boolean },
+  { conversation: ConversationId; busy: boolean },
   string | undefined
 >('ultimate.composerPlaceholder')
 /**
@@ -280,15 +288,16 @@ export const ComposerPlaceholder = definePoint<
  * model, extensions and host (`conversations` provides it: a standing agent's mark and title). Each provider gets the
  * rendering so far as `core` and returns it, wraps it or replaces it.
  */
-export const EmptyTranscript = definePoint<{ conversation: number; core: ReactNode }, ReactNode>(
-  'ultimate.emptyTranscript',
-)
+export const EmptyTranscript = definePoint<
+  { conversation: ConversationId; core: ReactNode },
+  ReactNode
+>('ultimate.emptyTranscript')
 /**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */
 export const MessageReference = definePoint<
-  { conversation: number; id: number },
+  { conversation: ConversationId; id: EntryId },
   string | undefined
 >('ultimate.messageReference')
 

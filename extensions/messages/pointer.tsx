@@ -1,4 +1,5 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { MessageCircleQuestionIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { Card, cn, events, useConversation, useDocOf, useUltimate } from '@/sdk'
 import { Address, useAccentOf } from './cards.tsx'
@@ -7,11 +8,11 @@ import { openQuestion } from './data.tsx'
 
 type Notice = {
   message: number
-  from: number
+  from: ConversationId
   call?: string
   summary?: string
   dismissed?: boolean
-  via?: { conversation: number }
+  via?: { conversation: ConversationId }
 }
 
 /**
@@ -27,7 +28,7 @@ export function QuestionPointer({ entry }: { entry: EntryRecord }) {
         (e) => e.kind === 'board.answered' && (e.data as Notice).message === id,
       )?.data as Notice | undefined,
   )
-  const message = useDocOf(1, MessagesDoc)?.messages.find((m) => m.id === id)
+  const message = useDocOf(ROOT, MessagesDoc)?.messages.find((m) => m.id === id)
   const open = !outcome && message !== undefined && openQuestion(message)
   const accent = useAccentOf(from)
   const { showSurface, switchConversation } = useUltimate()

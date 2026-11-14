@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -5,7 +6,6 @@ import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/provid
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, beforeAll, expect, it } from 'vitest'
 import { abstract, leaveNote, Tally } from '../../server.ts'
 import { Seen, tallyText } from '../../catchup.ts'
@@ -179,7 +179,7 @@ it('does not catch up when a note and new commits arrive in the middle of a run'
     { harness: () => f.server.harness },
     ROOT_CONVERSATION_ID,
     'A sibling left a note.',
-    { from: 2 },
+    { from: 2 as ConversationId },
   )
   f.release()
   await run
@@ -298,7 +298,8 @@ const branchFrom = async (server: Server, args: Record<string, unknown>) => {
 }
 const writeAbstract = (server: Server, id: ConversationId, text: string, title?: string) =>
   server.harness.commit(
-    (tx) => abstract(tx, id, { text, at: 1, ...(title ? { title, feature: 'Tally' } : {}) }),
+    (tx) =>
+      abstract(tx, id, { text, at: 1 as EntryId, ...(title ? { title, feature: 'Tally' } : {}) }),
     context,
   )
 const land = (server: Server, from: ConversationId, sha: string, divergence: string) =>

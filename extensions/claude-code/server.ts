@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 // The pinned upstream (package.json) ships TypeScript source only, so it loads through the server-facet Vite loader like
 // any facet import, never as a direct Node import from node_modules.
 import {
@@ -53,7 +54,7 @@ const fields = {
   closing: () => false,
   facets: () => new Set<symbol>(),
   // Requests carry Pi's provider session id, not a conversation: `beforeRequest` below maps one to the other.
-  sessions: () => new Map<string, number>(),
+  sessions: () => new Map<string, ConversationId>(),
 }
 type Shared = { [K in keyof typeof fields]: ReturnType<(typeof fields)[K]> }
 

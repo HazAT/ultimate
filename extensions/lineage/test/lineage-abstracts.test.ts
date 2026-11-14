@@ -1,5 +1,5 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { abstract, branchOf, leaveNote, rootOf, Tally } from '../server.ts'
 import type { TreesService } from '../../conversations/api.ts'
@@ -24,7 +24,7 @@ it.concurrent('updates an open abstract in place and freezes it into a landing',
   server.host.registry.install(defineExtension({ name: 'lineage-test', tasks: [anchor] }))
   const lineage = {
     branchOf: (id: number, ctx: typeof context) =>
-      branchOf({ harness: () => server.harness }, id, ctx),
+      branchOf({ harness: () => server.harness }, id as ConversationId, ctx),
     abstract,
   }
   const first = await branchFrom(server, { from: 1, prompt: 'Abstract me' })
@@ -35,7 +35,13 @@ it.concurrent('updates an open abstract in place and freezes it into a landing',
   expect(await lineage.branchOf(first, context)).toEqual({ root: 1, intent: 'Abstract me' })
   const write = (id: number, text: string) =>
     server.harness.commit(
-      (tx) => lineage.abstract(tx, id, { text, at, title: 'Abstracts', feature: 'Tally' }),
+      (tx) =>
+        lineage.abstract(tx, id as ConversationId, {
+          text,
+          at,
+          title: 'Abstracts',
+          feature: 'Tally',
+        }),
       context,
     )
   const other = await branchFrom(server, { from: 1, prompt: 'Other' })
@@ -164,7 +170,7 @@ it.concurrent('places a landing in a tally in one transaction, so an abstract ne
     if (raced) return
     raced = true
     await server.harness.commit(
-      (tx) => abstract(tx, first, { text: 'State: raced.', at: 1 }),
+      (tx) => abstract(tx, first, { text: 'State: raced.', at: 1 as EntryId }),
       context,
     )
   }
@@ -224,9 +230,9 @@ it.concurrent('summarizes a branch into its title and its abstract in the tree r
             api.name === 'conversations.trees'
               ? ({
                   rootOf: (id: number, ctx: typeof context) =>
-                    rootOf({ harness: () => server.harness }, id, ctx),
+                    rootOf({ harness: () => server.harness }, id as ConversationId, ctx),
                   branchOf: (id: number, ctx: typeof context) =>
-                    branchOf({ harness: () => server.harness }, id, ctx),
+                    branchOf({ harness: () => server.harness }, id as ConversationId, ctx),
                   abstract,
                 } satisfies TreesService)
               : undefined) as NonNullable<SummaryHost['want']>,
@@ -327,7 +333,7 @@ it.concurrent('compacts a tally from its model view, then opens a new abstract a
   const first = await branchFrom(server, { from: 1, prompt: 'Abstract me' })
   await settled(server, first)
   for (const text of ['State: started.', 'State: done.'])
-    await server.harness.commit((tx) => abstract(tx, first, { text, at: 1 }), context)
+    await server.harness.commit((tx) => abstract(tx, first, { text, at: 1 as EntryId }), context)
   await server.harness.commit(async (tx) => {
     for (let n = 0; n < 8; n++)
       await tx.appendEntry(server.root.id, {
@@ -342,7 +348,7 @@ it.concurrent('compacts a tally from its model view, then opens a new abstract a
   expect(source).not.toContain('State: started.')
   // The compaction replaced the anchor, so an edit of it would change nothing: the next abstract is a new anchor.
   await server.harness.commit(
-    (tx) => abstract(tx, first, { text: 'State: after.', at: 1 }),
+    (tx) => abstract(tx, first, { text: 'State: after.', at: 1 as EntryId }),
     context,
   )
   const { entries, messages } = await server.root.context(context)
@@ -357,7 +363,7 @@ it.concurrent('keeps an abstract written while the tally compacts: it opens a ne
   const first = await branchFrom(server, { from: 1, prompt: 'Abstract me' })
   await settled(server, first)
   await server.harness.commit(
-    (tx) => abstract(tx, first, { text: 'State: started.', at: 1 }),
+    (tx) => abstract(tx, first, { text: 'State: started.', at: 1 as EntryId }),
     context,
   )
   await server.harness.commit(async (tx) => {
@@ -373,7 +379,7 @@ it.concurrent('keeps an abstract written while the tally compacts: it opens a ne
   // The compaction has chosen its range and waits for its summary when the update arrives.
   await until(async () => condensed.length > 0)
   await server.harness.commit(
-    (tx) => abstract(tx, first, { text: 'State: during.', at: 2 }),
+    (tx) => abstract(tx, first, { text: 'State: during.', at: 2 as EntryId }),
     context,
   )
   release()

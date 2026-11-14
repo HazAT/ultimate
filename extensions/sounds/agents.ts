@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /**
  * The sound of agents, as data: what the live project does, turned into happenings a band plays. Pure and
  * browser-safe; `engine.ts` makes the music.
@@ -51,7 +52,7 @@ export type Snapshot = {
   /** The standing agents' conversation ids. */
   standing: ReadonlySet<number>
   /** Tool calls of the current rounds by a key unique to each call. */
-  tools: Readonly<Record<string, { name: string; conversationId: number }>>
+  tools: Readonly<Record<string, { name: string; conversationId: ConversationId }>>
   /** Run state and latest input of each conversation, for failures. */
   runs: Readonly<Record<string, { runState: string; inputId?: number }>>
   /** Recent durable events, any order. */

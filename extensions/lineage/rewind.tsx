@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 /**
  * Going back to an entry in the browser: the "Go back to here" message action and its confirm dialog, the note card
  * the go-back leaves, and the marker on conversations that built on the set-aside path.
@@ -195,7 +196,7 @@ export function GoBackAction({ entry }: { entry: EntryRecord }) {
 }
 
 type RewoundData = {
-  at: number
+  at: EntryId
   steps: number
   files: RewindFile[]
   commits: { sha: string; subject: string }[]
@@ -283,7 +284,11 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
 /** In a conversation that built on a path its source later set aside: a quiet divider that opens the go-back. */
 export function RewoundDependent({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { from, at, entry: note } = entry.data as { from: number; at: number; entry: number }
+  const {
+    from,
+    at,
+    entry: note,
+  } = entry.data as { from: ConversationId; at: EntryId; entry: EntryId }
   return (
     <button
       className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-warning/90 before:h-px before:flex-1 before:bg-warning/30 after:h-px after:flex-1 after:bg-warning/30 hover:text-warning"

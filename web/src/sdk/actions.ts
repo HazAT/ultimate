@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { registry, replaceNextSelection, store, uiState } from './client.ts'
 import { errorMessage } from './format.ts'
 import {
@@ -154,7 +155,7 @@ export function runCommand(id: string, context: UltimateContext = currentContext
 }
 
 /** The shell's context; `scoped` is the `ConversationScope` a shortcut was typed in, which it acts on instead. */
-export function currentContext(scoped?: number): UltimateContext {
+export function currentContext(scoped?: ConversationId): UltimateContext {
   return {
     ...actions,
     conversationId: scoped ?? store.getState().view?.conversation.id,

@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
@@ -8,7 +9,6 @@ import {
   defineExtension,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import {
   applyMemoryOps,
@@ -106,7 +106,10 @@ async function fixture(settings?: object) {
 const memories = async (server: Server, root = ROOT_CONVERSATION_ID) =>
   (await server.harness.snapshot(Memory, root, context))?.memories ?? {}
 const apply = (server: Server, ops: unknown[], root = 1) =>
-  server.harness.commit((tx) => applyMemoryOps(tx, root, ops, Date.UTC(2026, 9, 21)), context)
+  server.harness.commit(
+    (tx) => applyMemoryOps(tx, root as ConversationId, ops, Date.UTC(2026, 9, 21)),
+    context,
+  )
 const add = (slug: string, line = `About ${slug}`) => ({
   op: 'add',
   slug,
@@ -196,7 +199,7 @@ it.concurrent('starts a branch from the memory brief, and without memories from 
   const plain = await branch(server, 'Plain branch')
   const marker = 'TALLY ABSTRACT TEXT'
   await server.harness.commit(
-    (tx) => abstract(tx, plain.id, { text: marker, at: 3, title: 'Plain' }),
+    (tx) => abstract(tx, plain.id, { text: marker, at: 3 as EntryId, title: 'Plain' }),
     context,
   )
   const inherited = await branch(server, 'Inherits the tally')
@@ -387,7 +390,7 @@ it.concurrent('reads memories with memory; only @ultimate writes them with remem
   // With no root or several, a caller outside any tree has to name one.
   const setRoots = (roots: number[]) =>
     server.harness.commit(async (tx) => {
-      ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = roots
+      ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = roots as ConversationId[]
     }, context)
   await setRoots([1, id])
   await expect(run(server, 'memory', {}, ultimate)).rejects.toThrow(
@@ -405,12 +408,12 @@ it.concurrent('reads memories with memory; only @ultimate writes them with remem
 
 const landing = (submission: string, conversationId: number): LandedData => ({
   submission,
-  conversationId,
-  at: 3,
+  conversationId: conversationId as ConversationId,
+  at: 3 as EntryId,
   sha: `${submission}abcdef0`,
   base: '0000000',
   target: 'main',
-  lander: 2,
+  lander: 2 as ConversationId,
   divergence: 'None',
   title: 'Land me',
   feature: 'Landing',
@@ -437,7 +440,10 @@ const settledTasks = async (server: Server, count: number) => {
 it.concurrent('distils each landing into memory once and writes nothing from a refused answer', async () => {
   const { server, state } = await fixture()
   const { id } = await branch(server, 'Land me')
-  await server.harness.commit((tx) => abstract(tx, id, { text: 'State: done.', at: 3 }), context)
+  await server.harness.commit(
+    (tx) => abstract(tx, id, { text: 'State: done.', at: 3 as EntryId }),
+    context,
+  )
   await apply(server, [add('old-tool', 'Uses old-tool')])
   state.memorize = `\`\`\`json\n${JSON.stringify({
     ops: [

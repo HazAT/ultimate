@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { ChevronDownIcon, SendIcon } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -13,21 +15,27 @@ import { Address } from '../messages/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 
 /** Who a review goes to: a button naming the conversation, opening standing agents and recent conversations. */
-export function Recipient({ value, onChange }: { value?: number; onChange: (id: number) => void }) {
+export function Recipient({
+  value,
+  onChange,
+}: {
+  value?: ConversationId
+  onChange: (id: ConversationId) => void
+}) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const standing = useDocOf(1, StandingDoc) ?? {}
+  const standing = useDocOf(ROOT, StandingDoc) ?? {}
   const agents = new Set(Object.values(standing))
   const conversations = useConversations()
   const needle = query.trim().toLowerCase()
-  const matches = (id: number, ...texts: (string | undefined)[]) =>
+  const matches = (id: ConversationId, ...texts: (string | undefined)[]) =>
     !needle || [`#${id}`, ...texts].some((text) => text?.toLowerCase().includes(needle))
   const recent = conversations
     .filter((conversation) => !conversation.parentConversationId && !agents.has(conversation.id))
     .toSorted((a, b) => (b.inputAt ?? b.id) - (a.inputAt ?? a.id))
     .filter((conversation) => matches(conversation.id, conversation.title, conversation.label))
     .slice(0, 30)
-  const choose = (id: number) => {
+  const choose = (id: ConversationId) => {
     setOpen(false)
     setQuery('')
     onChange(id)

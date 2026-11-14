@@ -1,3 +1,6 @@
+import { parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -83,7 +86,9 @@ function filterOf(args: Record<string, unknown>): SystemFilter {
   return {
     ...(sources ? { sources } : {}),
     ...(kinds ? { kinds } : {}),
-    ...(conversation === undefined ? {} : { conversation: conversation as number }),
+    ...(conversation === undefined
+      ? {}
+      : { conversation: parseConversationId(Number(conversation)) }),
     ...(errors ? { errors } : {}),
     ...(text ? { text } : {}),
   }
@@ -100,7 +105,7 @@ async function events(
   const tokens = filter.kinds?.map((name) => defineEvent(name))
   const text = filter.text?.toLowerCase()
   const found: Item[] = []
-  let position = from
+  let position = parseEntryId(from)
   for (;;) {
     const page = await host.eventLog.recent({
       ...(tokens ? { events: tokens } : {}),
@@ -221,7 +226,7 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
 /** Every event emitted in trace `trace`, oldest first. */
 async function traceEvents(host: ExtensionHost, trace: string) {
   const found: SystemRow[] = []
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       ...(before === undefined ? {} : { before }),
@@ -257,7 +262,7 @@ type Fact = Omit<Lane, 'conversation' | 'runs' | 'spawn'> & {
 async function started(host: ExtensionHost) {
   const Started = defineEvent<Record<string, JsonValue>>('subagents.started')
   const facts = new Map<number, Fact>()
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       events: [Started],
@@ -274,7 +279,7 @@ async function started(host: ExtensionHost) {
           : caller !== undefined && caller !== data.id
             ? caller
             : typeof data.parent === 'number'
-              ? data.parent
+              ? parseConversationId(data.parent)
               : undefined
       facts.set(data.id, {
         at,
@@ -290,12 +295,12 @@ async function started(host: ExtensionHost) {
   }
 }
 
-type Sent = { from: number; to: number }
+type Sent = { from: ConversationId; to: ConversationId }
 /** `board.sent` events between two conversations emitted in `[since, until)`, oldest first. */
 async function messages(host: ExtensionHost, since: number, until: number) {
   const Sent = defineEvent<Record<string, JsonValue>>('board.sent')
   const found: EventRecord<Sent>[] = []
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       events: [Sent],
@@ -324,7 +329,7 @@ function ownToolCall(
   host: ExtensionHost,
   byId: Map<string, CallRow>,
   trees: Map<string, Map<string, CallRow>>,
-  conversation: number,
+  conversation: ConversationId,
   id: string,
   trace: string | undefined,
 ) {
@@ -369,7 +374,7 @@ export async function lanes(
   const since = time(args.since, 'since') ?? until - 30 * 60_000
   if (since >= until) throw new Error('Expected since before until')
   // Each conversation's tool and model calls in the window, by start time.
-  const byConversation = new Map<number, CallRow[]>()
+  const byConversation = new Map<ConversationId, CallRow[]>()
   let after = 0
   for (;;) {
     const { rows } = host.trace.page({ after, since, until, kinds: ['tool', 'model'], limit: 1000 })
@@ -385,13 +390,13 @@ export async function lanes(
   const live = until >= clock ? await busy(host) : new Set<number>()
   const facts = byConversation.size ? await started(host) : new Map<number, Fact>()
   // Conversations without an event fall back to their owner or the conversation they branched from.
-  const owners = new Map<number, number>()
+  const owners = new Map<ConversationId, ConversationId>()
   if (byConversation.size)
     for (const summary of host.conversations()) {
       const owner = summary.parentConversationId ?? summary.branchOf?.conversationId
       if (owner !== undefined) owners.set(summary.id, owner)
     }
-  const parentOf = (conversation: number) =>
+  const parentOf = (conversation: ConversationId) =>
     facts.get(conversation)?.parent ?? owners.get(conversation)
   const all = [...byConversation].map(([conversation, found]) => {
     found.sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
@@ -443,7 +448,7 @@ export async function lanes(
   const byId = new Map<string, CallRow>()
   for (const found of byConversation.values()) for (const call of found) byId.set(call.id, call)
   const trees = new Map<string, Map<string, CallRow>>()
-  const toolCall = (conversation: number, id: string, trace: string | undefined) =>
+  const toolCall = (conversation: ConversationId, id: string, trace: string | undefined) =>
     ownToolCall(host, byId, trees, conversation, id, trace)
   const lanesOut = [...listed.values()].map((lane): Lane => {
     const fact = facts.get(lane.conversation)
@@ -488,7 +493,11 @@ export async function lanes(
    * Where `lane` started in `parent`'s lane: the call its event names, else the parent's last spawning tool call before
    * the lane was created (its event) or first worked.
    */
-  function spawnOf(lane: Lane, parent: number, fact: Fact | undefined): LaneSpawn | undefined {
+  function spawnOf(
+    lane: Lane,
+    parent: ConversationId,
+    fact: Fact | undefined,
+  ): LaneSpawn | undefined {
     const context = fact?.context
     if (context?.parentCall !== undefined && context.conversationId === parent) {
       const call = toolCall(parent, context.parentCall, context.traceId)
@@ -542,7 +551,9 @@ export const actions = {
       throw new Error('Expected conversation to be an integer')
     const data = {
       surface,
-      ...(conversation === undefined ? {} : { conversation: conversation as number }),
+      ...(conversation === undefined
+        ? {}
+        : { conversation: parseConversationId(Number(conversation)) }),
       ...device,
     }
     const key = `${surface}:${data.conversation ?? ''}`

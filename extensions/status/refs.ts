@@ -1,4 +1,5 @@
 /** Status: one compact read-only summary of this Ultimate, for dashboards that poll it. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 export type Status = {
@@ -21,11 +22,20 @@ export type Status = {
     error?: string
   }
   /** Failed runs Watchdog reported since `since`, newest first, at most 20. Absent while Watchdog is off. */
-  failures?: { conversation: number; title: string; at: number; error: string; retried: boolean }[]
+  failures?: {
+    conversation: ConversationId
+    title: string
+    at: number
+    error: string
+    retried: boolean
+  }[]
   /** Each model provider with a login on this machine. Absent while Health is off. */
   providers?: { provider: string; state: 'ok' | 'failing' | 'unknown'; error?: string }[]
   /** Messages waiting on the user's answer; `first` is the oldest. */
-  questions: { count: number; first?: { text: string; conversation: number; message: number } }
+  questions: {
+    count: number
+    first?: { text: string; conversation: ConversationId; message: number }
+  }
   /** Conversations running a turn now. */
   busy: number
   /** Every discovered extension; `error` is why its server facet failed to load. */

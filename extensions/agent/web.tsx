@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { MessagesSquareIcon } from 'lucide-react'
 import {
   Conversation,
@@ -63,7 +64,7 @@ const commands: CommandContribution[] = [
     id: 'agent.main',
     title: 'Show the main conversation',
     when: (context) => context.conversationId !== 1,
-    run: (context) => context.switchConversation(1),
+    run: (context) => context.switchConversation(ROOT),
   },
 ]
 
