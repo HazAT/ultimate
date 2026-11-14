@@ -165,10 +165,17 @@ async function ping(
   const model = host.modelRuntime.getModel(provider, found.model)
   if (!model) return
   let messages: Message[] = [...(await conversation.context(context)).messages]
-  // As conversations' beforeRequest hook sends it (extensions/conversations/server.ts): the identity leads, once.
+  // As conversations' beforeRequest hook sends it (extensions/conversations/server.ts): the identity once, right after
+  // the leading system message.
   const identity = `You are conversation #${id}.`
-  if (!messages.some((message) => message.role === 'user' && message.content === identity))
-    messages = [{ role: 'user', content: identity, timestamp: 0 }, ...messages]
+  if (!messages.some((message) => message.role === 'user' && message.content === identity)) {
+    const place = messages[0]?.role === 'system' ? 1 : 0
+    messages = [
+      ...messages.slice(0, place),
+      { role: 'user', content: identity, timestamp: 0 },
+      ...messages.slice(place),
+    ]
+  }
   const at = Date.now()
   messages.push({ role: 'user', content: QUESTION, timestamp: at })
   // Preparing awaited: a pause, a new run or the switch may have come in meanwhile. The claim checks the switch and the

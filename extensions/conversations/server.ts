@@ -56,7 +56,10 @@ const Fixed = defineDoc<{ fixed?: true }>({
 
 export const docs = [Summaries, Overview, Fixed, ContextUsageDoc, Marks]
 
-/** A fork needs its own identity; a new context head (compaction or reset) needs it again. */
+/**
+ * Whether the conversation stored its identity, with the context head it saw then. A fork starts without (`initial`):
+ * it needs its own, after its parent's. A later head (compaction or reset) gets it from the request guard instead.
+ */
 const SeenIdentity = defineDoc<{ head?: number }>({
   kind: 'conversations.identity',
   checkpointWhen: () => false,
@@ -68,10 +71,11 @@ const SeenIdentity = defineDoc<{ head?: number }>({
 })
 
 async function identityNote(tx: Tx, id: ConversationId) {
-  const head = (await tx.latestHeadMarker(id))?.id ?? 0
   const seen = await tx.doc(SeenIdentity, id)
-  if (seen.head === head) return undefined
-  seen.head = head
+  // Once: a copy stored after a compaction would land behind the guard's, which then stops, and every message after
+  // the system prompt moves, so the whole conversation is written to the prompt cache again.
+  if (seen.head !== undefined) return undefined
+  seen.head = (await tx.latestHeadMarker(id))?.id ?? 0
   return {
     entries: [
       {
@@ -372,19 +376,22 @@ export default (host: ExtensionHost) => {
           return identityNote(api.tx, api.conversationId)
         },
         beforeRequest: (request, api) => {
-          // beforeInput sees the old head when queued writes land, and automatic compaction can resume
-          // without an input. Guard the actual request, including retries, without changing the system prefix.
-          // First, not last: a fixed position keeps the cached conversation prefix valid from one request to the next.
+          // After a compaction or reset the context has no identity: add it to every request, retries included, without
+          // writing history. Right after the leading system message, not last: a fixed position keeps the cached prefix
+          // valid from one request to the next, and the system message stays first, so providers with mid-conversation
+          // system messages still take it as the initial prompt and tool set.
           const content = `You are conversation #${api.conversationId}.`
-          if (
-            !request.messages.some(
-              (message) => message.role === 'user' && message.content === content,
-            )
-          )
-            return {
-              messages: [{ role: 'user', content, timestamp: 0 }, ...request.messages],
-            }
-          return undefined
+          const { messages } = request
+          if (messages.some((message) => message.role === 'user' && message.content === content))
+            return undefined
+          const at = messages[0]?.role === 'system' ? 1 : 0
+          return {
+            messages: [
+              ...messages.slice(0, at),
+              { role: 'user', content, timestamp: 0 },
+              ...messages.slice(at),
+            ],
+          }
         },
       }),
     ],
