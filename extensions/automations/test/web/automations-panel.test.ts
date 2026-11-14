@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { AutomationListItem } from '../../types.ts'
+import { keepLast } from '../../../../lib/errors.ts'
 
 const shell = vi.hoisted(() => ({
   requested: undefined as number | undefined,
@@ -16,6 +17,7 @@ vi.mock('react', async (original) => ({
   useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
 }))
 vi.mock('@/sdk', () => ({
+  keepLast,
   api: { action: shell.action },
   defineWebExtension: (extension: unknown) => extension,
   useToolDuration: () => undefined,

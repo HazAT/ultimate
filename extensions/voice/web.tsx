@@ -14,6 +14,7 @@ import {
   useEvent,
   useNow,
 } from '@/sdk'
+import { meansNone } from '../../lib/errors.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
 /** Recordings stop on their own here: well under the 8 MB the server takes at any browser's bitrate. */
@@ -172,13 +173,11 @@ function VoiceButton() {
     })
     recorder.addEventListener('stop', () => {
       for (const track of stream.getTracks()) track.stop()
-      // Closing only frees the meter's audio graph; a failure leaves nothing to clean up.
-      audio?.close().catch(() => undefined)
+      audio?.close().catch(meansNone)
       if (active.cancelled || active.chunks.length === 0) return
       void transcribe(new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }))
     })
-    // Created after awaiting the permission prompt, it may start suspended (Safari): the meter would read silence.
-    audio?.resume().catch(() => undefined)
+    audio?.resume().catch(meansNone)
     recorder.start(1000)
     setRecording(active)
   }

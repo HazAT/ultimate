@@ -12,6 +12,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Conversation, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -110,15 +111,11 @@ async function adds(projectRoot: string) {
       .filter((file) => file.endsWith('.md'))
       .toSorted()
       .map(async (file) => {
-        try {
-          const { name } = parseFrontmatter(
-            await readFile(join(directory, file), 'utf8'),
-          ).frontmatter
-          if (typeof name === 'string' && name.trim()) return name.trim()
-        } catch {
-          // An invalid definition still shows by its file name; the subagents extension reports the error.
-        }
-        return basename(file, '.md')
+        const definition = await readFile(join(directory, file), 'utf8')
+          .then((text) => parseFrontmatter(text))
+          .catch(meansNone)
+        const name = definition?.frontmatter.name
+        return typeof name === 'string' && name.trim() ? name.trim() : basename(file, '.md')
       }),
   )
   const skills = loadSkillsFromDir({

@@ -12,6 +12,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone, settled } from '../../lib/errors.ts'
 import {
   chapterFiles,
   chapterName,
@@ -224,9 +225,7 @@ async function finalBackup(host: ExtensionHost): Promise<NonNullable<Sleep['back
 export async function firstBackup(host: ExtensionHost) {
   const cloud = host.want(CloudApi)
   if ((await cloud?.status()) !== 'on' || (await cloud!.lastBackup())) return
-  // A refusal means another backup is running (@ultimate's, or this one's before a facet reload), or Ultimate is
-  // paused: the record that backup writes, or the next open, settles it. Upload failures are already reported.
-  await cloud!.backup().catch(() => undefined)
+  await cloud!.backup().catch(meansNone)
 }
 
 /**
@@ -435,8 +434,7 @@ export default function dream(host: ExtensionHost) {
   /** Queue a check behind the last one; a failure becomes a notice. */
   const ensure = () => {
     const run = queue.last.then(() => ensureAutomation(host))
-    // The queue only orders the checks: the failure is reported below, and the next check still runs.
-    queue.last = run.catch(() => undefined)
+    queue.last = settled(run)
     return run.catch((error: unknown) => host.notice(`Dream automations: ${String(error)}`))
   }
   host.onOpen(async () => {

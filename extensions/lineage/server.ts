@@ -1,6 +1,7 @@
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
@@ -718,13 +719,7 @@ export const BranchReceipts = defineDoc<{ branches: Record<string, number> }>({
 
 /** The project checkout's tip, where new branches start, shared or isolated. */
 function head(host: ExtensionHost) {
-  return host
-    .need(WorkspacesApi)
-    .git(host.projectRoot, 'rev-parse', 'HEAD')
-    .catch(
-      // A project without a Git HEAD can start conversations without a commit baseline.
-      () => undefined,
-    )
+  return host.need(WorkspacesApi).git(host.projectRoot, 'rev-parse', 'HEAD').catch(meansNone)
 }
 
 /** `text` on one line of at most `max` characters, whitespace collapsed. */

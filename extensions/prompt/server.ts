@@ -17,6 +17,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { git } from '../../lib/git.ts'
+import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { Standing } from '../subagents/api.ts'
 import type { BuildNote, Landing } from './refs.ts'
@@ -117,8 +118,7 @@ async function cloneDocs(ultimateRoot: string, files: Record<string, string>) {
     ...(await listed('agents')),
   ]
   for (const path of paths) {
-    // A doc removed between the listing and the read is simply not there.
-    const text = await readFile(path, 'utf8').catch(() => undefined)
+    const text = await readFile(path, 'utf8').catch(ignoring(isMissing))
     if (text !== undefined) files[path] = digest(text)
   }
 }
@@ -224,8 +224,7 @@ export default function prompt(host: ExtensionHost) {
           const built = previous !== undefined && previous !== build.id
           let landed: Landing[] = []
           if (seen.head === undefined || built) {
-            // Outside Git the build changes without commits: no landings to name.
-            const head = await git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(() => undefined)
+            const head = await git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(meansNone)
             if (built && head && seen.head && head !== seen.head)
               landed = await landings(
                 host.ultimateRoot,

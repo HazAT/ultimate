@@ -28,6 +28,7 @@ import {
   cn,
   errorMessage,
   formatDuration,
+  keepLast,
   shortenPath,
   useAction,
   useCommands,
@@ -153,7 +154,7 @@ function useWords(schedule: Schedule | undefined, now: number) {
   const { data } = useAction(
     DescribeAction,
     { schedule: schedule ?? '' },
-    { enabled: !!schedule && schedule.kind !== 'at', onError: () => {} },
+    { enabled: !!schedule && schedule.kind !== 'at', onError: keepLast },
   )
   return schedule ? words(schedule, data?.description ?? raw(schedule), now) : ''
 }
@@ -836,10 +837,9 @@ function Script({
   const home = useSystem()?.machine.home
   const [view, setView] = useExtensionUiState<'output' | 'script'>('pane', 'output')
   const [busy, setBusy] = useState(false)
-  // Read errors show inline in the pane instead of as a notice on every poll.
-  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: () => {} })
+  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: keepLast })
   // Always read once for the command's path; only the script tab polls it for edits.
-  const source = useAction(ScriptAction, { id: automation.id }, { onError: () => {} })
+  const source = useAction(ScriptAction, { id: automation.id }, { onError: keepLast })
   const { refetch: refetchLog } = log
   const { refetch: refetchSource } = source
   // Poll with the list, so new output arrives as the script prints it.

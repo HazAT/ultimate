@@ -2,7 +2,16 @@ import { CloudIcon, LoaderCircleIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { api, cn, defineWebExtension, errorMessage, formatAgo, formatBytes, useEvents } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  errorMessage,
+  formatAgo,
+  formatBytes,
+  keepLast,
+  useEvents,
+} from '@/sdk'
 import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { JoinDialog, joinDialog } from './join.tsx'
 import { BackupAction, BackupEvent, StateAction } from './refs.ts'
@@ -28,8 +37,8 @@ function poll<T>(
       if (current !== generation) return
       value = next
       for (const listener of listeners) listener()
-    } catch {
-      // Aborted, restarting or unreachable: keep what was loaded, and the next poll tries again.
+    } catch (error) {
+      keepLast(error)
     }
     if (current === generation && listeners.size) cancelPoll = retryAfter(every(value), tick)
   }

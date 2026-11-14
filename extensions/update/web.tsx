@@ -15,6 +15,7 @@ import {
   defineWebExtension,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useRestart,
   useSystem,
@@ -349,12 +350,7 @@ function Action({
 
 /** The status-line item: quiet while the clone is current, prominent while it is behind or owes a restart. */
 function Update() {
-  const { data, refetch } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {}, every: 60_000 },
-  )
+  const { data, refetch } = useAction(StateAction, null, { onError: keepLast, every: 60_000 })
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()

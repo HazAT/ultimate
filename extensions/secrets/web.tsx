@@ -16,6 +16,7 @@ import {
   errorMessage,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -50,9 +51,8 @@ const subscribe = (listener: () => void) => {
  */
 function useSecrets() {
   const system = useSystem()
-  // Failures show inline in the panel, not as notices: the status line reads the list on every page.
   const secrets = useAction(ListAction, null, {
-    onError: () => {},
+    onError: keepLast,
     on: system?.extensions.map((extension) => [
       extension.name,
       extension.enabled,

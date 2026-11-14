@@ -13,6 +13,7 @@ import {
 import type { ConversationId, Cursor, TaskId, Tx } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { meansNone, overshadowed, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -191,12 +192,7 @@ export function workspaces(host: Host) {
   const queues = host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
   /** Runs writes to one source checkout one at a time, across synchronous landing and the lander. */
   async function serial<T>(source: string, operation: () => Promise<T>): Promise<T> {
-    const queued = (queues.get(source) ?? Promise.resolve())
-      .catch(
-        // The previous caller receives its failure; it must not poison the next queued operation.
-        () => undefined,
-      )
-      .then(operation)
+    const queued = settled(queues.get(source) ?? Promise.resolve()).then(operation)
     queues.set(source, queued)
     try {
       return await queued
@@ -413,17 +409,13 @@ export function workspaces(host: Host) {
                   workspace.source,
                   workspace.path,
                   treeName(workspace.branch),
-                ).catch(
-                  // Best-effort rollback: the preparation error is recorded below and must not be replaced.
-                  () => undefined,
-                )
+                ).catch(overshadowed)
               if (
                 !task.input.preserve &&
                 (await git(workspace.source, 'rev-parse', workspace.branch).catch(() => '')) ===
                   workspace.base
               )
-                // Best-effort rollback: the preparation error is recorded below and must not be replaced.
-                await git(workspace.source, 'branch', '-D', workspace.branch).catch(() => undefined)
+                await git(workspace.source, 'branch', '-D', workspace.branch).catch(overshadowed)
             }
           })
           await runtime.commit(async (tx) => {
@@ -512,10 +504,7 @@ export function workspaces(host: Host) {
         // it forks. `git worktree remove` deletes that file and leaves only ignored files behind.
         if (workspace?.state !== 'ready' || !(await onDisk(join(workspace.path, '.git'))))
           return undefined
-        return changes(id as ConversationId, workspace).catch(
-          // A checkout gone from disk or mid-removal has nothing to show.
-          () => undefined,
-        )
+        return changes(id as ConversationId, workspace).catch(meansNone)
       }),
     )
     return result.filter((item) => item !== undefined)

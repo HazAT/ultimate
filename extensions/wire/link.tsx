@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react'
 import {
   cn,
+  keepLast,
   useAction,
   useConversation,
   useExtensionUiState,
@@ -62,8 +63,7 @@ export function WireLink({
 }) {
   const message = entry.model?.[0]
   const busy = useConversation((conversation) => conversation.busy)
-  // A failed read only leaves the link out; the transcript has no place for a notice per response.
-  const calls = useAction(ListAction, null, { on: busy, onError: () => {} })
+  const calls = useAction(ListAction, null, { on: busy, onError: keepLast })
   const bust = cacheBusts(useTranscript()).has(entry.id)
   const [, setPicked] = useExtensionUiState<Picked | null>('picked', null)
   const openWire = useOpenWire()

@@ -1,7 +1,16 @@
 import { FlameIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
-import { api, cn, defineWebExtension, formatAgo, useAction, useDocOf, useNow } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  formatAgo,
+  keepLast,
+  useAction,
+  useDocOf,
+  useNow,
+} from '@/sdk'
 import { failing, TTL } from './due.ts'
 import { SetAction, StateAction, WarmDoc } from './refs.ts'
 import type { WarmState } from './refs.ts'
@@ -37,12 +46,11 @@ const failed = (state: WarmState) =>
  */
 function Chip() {
   const doc = useDocOf(1, WarmDoc)
-  const { data: state } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next one asks again.
-    { onError: () => {}, on: doc, every: 60_000 },
-  )
+  const { data: state } = useAction(StateAction, null, {
+    onError: keepLast,
+    on: doc,
+    every: 60_000,
+  })
   const now = useNow(60_000)
   if (!state) return null
   const warm = state.lastRequest !== undefined && state.lastRequest + TTL > now

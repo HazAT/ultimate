@@ -8,6 +8,7 @@ import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durabl
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { EventToken } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { ignoring, isMissing, meansNone, settled } from '../../lib/errors.ts'
 import { deadline, every, pace } from '../../lib/timers.ts'
 import { compareUrl } from '../../lib/compare.ts'
 import { exec } from '../../lib/exec.ts'
@@ -47,11 +48,7 @@ export const gitIn =
     }
   }
 
-const read = (path: string) =>
-  readFile(path, 'utf8').catch(
-    // A missing lockfile or install reads as absent: no clone of Ultimate lacks both.
-    () => undefined,
-  )
+const read = (path: string) => readFile(path, 'utf8').catch(ignoring(isMissing))
 
 /** Whether `pnpm-lock.yaml` differs from what pnpm last installed (`node_modules/.pnpm/lock.yaml`). */
 export async function installOwed(root: string) {
@@ -159,10 +156,7 @@ export function loadable(host: ExtensionHost): Promise<void> {
   const shared = state(host)
   const root = host.ultimateRoot
   shared.installing ??= (async () => {
-    const index = await gitPath(gitIn(root), root, 'index.lock').catch(
-      // Not a git checkout: nothing moves its files under us.
-      () => undefined,
-    )
+    const index = await gitPath(gitIn(root), root, 'index.lock').catch(meansNone)
     const waitUntil = Date.now() + CHECKOUT_WAIT
     if (index) while (existsSync(index) && Date.now() < waitUntil) await pace(50)
     const failure = (error: string) =>
@@ -270,8 +264,7 @@ export default function update(host: ExtensionHost) {
     cancelStart()
     stopTicking()
     await shared.ticking
-    // Its failure was reported to whoever waited for it.
-    await shared.installing?.catch(() => {})
+    if (shared.installing) await settled(shared.installing)
   })
   return defineExtension({ name: 'update' })
 }
@@ -308,10 +301,7 @@ const state = (host: ExtensionHost) =>
  */
 const boot = (host: ExtensionHost) =>
   host.resource('update.boot-head', () => ({
-    head: gitIn(host.ultimateRoot)('rev-parse', 'HEAD').catch(
-      // Not a git checkout or git missing: restarts are then asked for installs only.
-      () => undefined,
-    ),
+    head: gitIn(host.ultimateRoot)('rev-parse', 'HEAD').catch(meansNone),
   }))
 
 /** The clone-wide lock: fetches, updates and installs of one clone never overlap across the Ultimates on it. */

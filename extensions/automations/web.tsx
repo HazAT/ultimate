@@ -33,7 +33,7 @@ function body(text: string) {
     try {
       return `\`\`\`json\n${JSON.stringify(JSON.parse(trimmed), null, 2)}\n\`\`\``
     } catch {
-      // Not JSON after all: it reads as Markdown like any other text.
+      return text
     }
   return text
 }

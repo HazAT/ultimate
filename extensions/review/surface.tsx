@@ -26,6 +26,7 @@ import {
   api,
   cn,
   errorMessage,
+  keepLast,
   useAction,
   useExtensionUiState,
   useStore,
@@ -501,10 +502,10 @@ export default function ReviewSurface() {
   // Review reads the checkout of the conversation you are in: a project root that is no repository of its own keeps
   // its work in subfolder repositories, and the one to review is your conversation's.
   const args: { spec: string; conversation?: number } = { spec, conversation: conversationId }
-  const diff = useAction(DiffAction, args, { onError: () => undefined })
+  const diff = useAction(DiffAction, args, { onError: keepLast })
   const github = useGithubRepo()
   const [drafts, update] = useDrafts(draftsKey(spec, conversationId))
-  const suggested = useAction(RecipientAction, args, { onError: () => undefined })
+  const suggested = useAction(RecipientAction, args, { onError: keepLast })
   const to = drafts.to ?? suggested.data?.conversation
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState<{ conversation: number } | { error: string }>()

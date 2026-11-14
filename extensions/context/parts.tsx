@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   cn,
   formatTokens,
+  keepLast,
   useAction,
   useConversation,
   useConversationSummary,
@@ -200,8 +201,7 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const shown = useAction(
     DefinitionAction,
     { name: identity.definition ?? '' },
-    // A label that names no definition, such as `branch`, simply has none to show.
-    { enabled: !!identity.definition, onError: () => {} },
+    { enabled: !!identity.definition, onError: keepLast },
   )
   const definition = shown.data?.definition
   const model = modelLine(breakdown.model, agent)

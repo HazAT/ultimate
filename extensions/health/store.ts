@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writeJson } from '../../lib/json-file.ts'
+import { settled } from '../../lib/errors.ts'
 import type { ProviderHealth } from './refs.ts'
 
 /** One provider's record in `health.json`; times are epoch milliseconds. */
@@ -302,16 +303,12 @@ export async function reset(userHome: string, providers: string[]): Promise<Flip
 
 function write(userHome: string, change: (file: HealthFile) => void) {
   const path = healthPath(userHome)
-  const operation = (writes.get(path) ?? Promise.resolve())
-    .catch(() => {
-      // The previous caller receives its failure; later writes must still run.
-    })
-    .then(async () => {
-      const file = await readFileHealth(userHome)
-      change(file)
-      await writeJson(path, file)
-      return file
-    })
+  const operation = settled(writes.get(path) ?? Promise.resolve()).then(async () => {
+    const file = await readFileHealth(userHome)
+    change(file)
+    await writeJson(path, file)
+    return file
+  })
   writes.set(path, operation)
   return operation
 }
