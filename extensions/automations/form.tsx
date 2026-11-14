@@ -33,6 +33,7 @@ import {
   useNow,
   useUltimate,
 } from '@/sdk'
+import { debounce } from '../../lib/timers.ts'
 import { clock, full, until, words } from './parts.tsx'
 import { DefinitionsAction } from '../subagents/ui.tsx'
 import { CreateAction, DescribeAction, EventsAction, UpdateAction } from './refs.ts'
@@ -231,8 +232,9 @@ const matches = (draft: Draft, preset: Partial<Draft>) =>
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
+    const settle = debounce(ms, () => setSettled(value))
+    settle()
+    return settle.cancel
   }, [value, ms])
   return settled
 }

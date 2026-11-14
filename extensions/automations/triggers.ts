@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
+import { every, type Cancel } from '../../lib/timers.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -274,16 +275,16 @@ export function triggers(
     await check()
     // A close while the first check ran ends here: no timer outlives it.
     if (closed) return
-    clearInterval(timer)
-    timer = setInterval(idleTick, IDLE_TICK)
+    stopPolling?.()
+    stopPolling = every(IDLE_TICK, idleTick)
   }
-  let timer: ReturnType<typeof setInterval> | undefined
+  let stopPolling: Cancel | undefined
   async function close() {
     closed = true
     stop?.()
     stop = undefined
-    clearInterval(timer)
-    timer = undefined
+    stopPolling?.()
+    stopPolling = undefined
     await queue
   }
   return { resolve, evaluate, install, open, close, idleTick }

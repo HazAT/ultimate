@@ -30,6 +30,7 @@ import { MessageResponse } from '@/components/ai/message'
 import type { Isolation } from '../workspaces/refs.ts'
 import { refreshFamilies, runsOn, SetDefaultAction, useFamilies, usePicks } from '../models/ui.tsx'
 import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
+import { nextTurn } from '../../lib/timers.ts'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'
 
@@ -88,8 +89,7 @@ export function FirstRun({
     const active = document.activeElement
     const here = !active || active === document.body || body.current?.contains(active)
     if (!before.covered && (before.next === next || !here)) return undefined
-    const timer = setTimeout(() => primary.current?.focus())
-    return () => clearTimeout(timer)
+    return nextTurn(() => primary.current?.focus())
   }, [covered, next, open])
   const finish = async (skipped: boolean) => {
     if (busy) return

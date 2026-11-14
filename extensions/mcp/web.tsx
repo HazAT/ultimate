@@ -12,6 +12,7 @@ import {
   useEvent,
   useNow,
 } from '@/sdk'
+import { retryAfter } from '../../lib/timers.ts'
 import { ExtensionDetails } from '../onboarding/ui.tsx'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
@@ -34,8 +35,7 @@ function useServers(enabled = true) {
   useEffect(() => {
     if (!enabled || retry === Infinity) return undefined
     // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    const timer = setTimeout(() => void refetch(), Math.max(0, retry - Date.now()) + 500)
-    return () => clearTimeout(timer)
+    return retryAfter(Math.max(0, retry - Date.now()) + 500, () => void refetch())
   }, [enabled, retry, refetch])
   return status
 }

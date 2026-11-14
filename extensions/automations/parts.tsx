@@ -11,6 +11,7 @@ import {
 import { useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { api, cn, formatDuration, formatTime, useUltimate } from '@/sdk'
+import { every, type Cancel } from '../../lib/timers.ts'
 import { ListAction } from './refs.ts'
 import type { Automation, AutomationListItem, Run, Schedule } from './refs.ts'
 
@@ -299,7 +300,7 @@ const poll = {
   state: {} as Polled,
   listeners: new Set<() => void>(),
   rates: new Map<symbol, number>(),
-  timer: undefined as ReturnType<typeof setInterval> | undefined,
+  stopPolling: undefined as Cancel | undefined,
   rate: 0,
   loading: undefined as Promise<void> | undefined,
 }
@@ -319,10 +320,10 @@ export function refreshAutomations() {
 function reschedule() {
   const rate = Math.min(...poll.rates.values())
   if (rate === poll.rate) return
-  clearInterval(poll.timer)
+  poll.stopPolling?.()
   poll.rate = rate
-  poll.timer = Number.isFinite(rate)
-    ? setInterval(() => void refreshAutomations(), rate)
+  poll.stopPolling = Number.isFinite(rate)
+    ? every(rate, () => void refreshAutomations())
     : undefined
 }
 const listen = (listener: () => void) => {

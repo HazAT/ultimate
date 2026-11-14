@@ -42,6 +42,7 @@ import {
   useUltimate,
   useViewport,
 } from '@/sdk'
+import { debounce, every } from '../../lib/timers.ts'
 import { AutomationForm } from './form.tsx'
 import {
   BusyDot,
@@ -103,8 +104,9 @@ export function useLive(overdue: boolean, now: number) {
   useEffect(() => {
     if (seen.current === signature) return undefined
     seen.current = signature
-    const timer = setTimeout(() => void refreshAutomations(), 100)
-    return () => clearTimeout(timer)
+    const refresh = debounce(100, () => void refreshAutomations())
+    refresh()
+    return refresh.cancel
   }, [signature])
   const polled = useRef(0)
   useEffect(() => {
@@ -847,13 +849,12 @@ function Script({
   // Poll with the list, so new output arrives as the script prints it.
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
+    return every(2000, () => {
       // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchLog()
       // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       if (view === 'script') void refetchSource()
-    }, 2000)
-    return () => clearInterval(timer)
+    })
   }, [live, view, refetchLog, refetchSource])
   const output = log.data?.text ?? ''
   const scroller = useRef<HTMLPreElement>(null)
