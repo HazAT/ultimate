@@ -5,6 +5,7 @@ import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from './lock.ts'
 import { debounce } from '../lib/timers.ts'
+import { meansNone } from '../lib/errors.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,
@@ -50,10 +51,7 @@ export async function projects(userHome: string, currentHome: string): Promise<P
       const project = await readJson<{ root: string; name: string; openedAt: number }>(
         join(home, 'project.json'),
       )
-      const lock = await readOwner(join(home, 'ultimate.lock')).catch(
-        // A missing or unreadable lock supplies no live-process evidence; the project still belongs in the list.
-        () => undefined,
-      )
+      const lock = await readOwner(join(home, 'ultimate.lock')).catch(meansNone)
       return {
         ...project,
         name: project?.name ?? basename(home),

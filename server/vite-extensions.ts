@@ -6,6 +6,7 @@ import { discoverExtensions } from './discovery.ts'
 import { discoveryRoots } from './project.ts'
 import { useProjectSetup } from './project-setup.ts'
 import { extensionTests } from '../shared/extension-api.ts'
+import { ignoring, isMissing } from '../lib/errors.ts'
 
 const virtual = 'virtual:ultimate/web-facets'
 const resolved = '\0' + virtual
@@ -91,7 +92,7 @@ export function extensionModules(
         // Tailwind keeps its compiler, and so its sources, until an imported file's mtime changes: the sources live in
         // their own file, rewritten when a root appears, a link is added or the project's trust changes. A scanner
         // never picks up a source folder that was missing when it started, so only existing roots are listed.
-        const current = await readFile(sourcesFile, 'utf8').catch(() => undefined) // Missing until the first write.
+        const current = await readFile(sourcesFile, 'utf8').catch(ignoring(isMissing))
         if (current !== sources) {
           await mkdir(dirname(sourcesFile), { recursive: true })
           await writeFile(sourcesFile, sources)

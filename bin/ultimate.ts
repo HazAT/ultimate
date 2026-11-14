@@ -274,10 +274,10 @@ async function exit(core: Core) {
     send(core, { type: 'exit' })
     await Promise.race([exited, pace(Math.max(0, expiresAt - Date.now()))])
   } catch {
-    // A child that cannot release must be killed before another owner opens.
-  } finally {
     await kill(core)
+    return
   }
+  await kill(core)
 }
 function boot(previousBuild?: BuildInfo): Core {
   const child = fork(join(ultimateRoot, 'server/main.ts'), [], {

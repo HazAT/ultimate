@@ -17,6 +17,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { EventContext } from '../shared/events.ts'
 import { batch, every } from '../lib/timers.ts'
+import { meansNone } from '../lib/errors.ts'
 import type { Cancel } from '../lib/timers.ts'
 
 export type TraceContext = EventContext & { traceId: string; parentCall: string }
@@ -369,8 +370,8 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
           let input: ToolTaskInput | undefined
           try {
             input = (await api.getTask(api.taskId, context))?.input as ToolTaskInput | undefined
-          } catch {
-            // The task read only labels the row (a test double may not offer it); the call runs regardless.
+          } catch (error) {
+            input = meansNone(error)
           }
           // A task runs its own call; a tool another tool calls in-process with its api (codemode's `tools.*`) runs
           // inside its caller's task. Its parent is the enclosing run, a Pi nested call's is its calling tool's run;

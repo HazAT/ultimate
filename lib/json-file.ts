@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readlink, realpath, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { settled } from './errors.ts'
 
 /** A JSON file's value, `fallback` when the file is missing; other read and parse errors throw. */
 export async function readJson<T>(path: string, fallback: T): Promise<T> {
@@ -71,15 +72,11 @@ export async function updateJson<T>(
   read: (path: string) => Promise<T>,
   modify: (value: T) => void,
 ) {
-  const operation = (writes.get(path) ?? Promise.resolve())
-    .catch(() => {
-      // The previous caller receives its failure; later writes must still run.
-    })
-    .then(async () => {
-      const value = await read(path)
-      modify(value)
-      await writeJson(path, value)
-    })
+  const operation = settled(writes.get(path) ?? Promise.resolve()).then(async () => {
+    const value = await read(path)
+    modify(value)
+    await writeJson(path, value)
+  })
   writes.set(path, operation)
   try {
     await operation

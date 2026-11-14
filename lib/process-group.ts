@@ -6,6 +6,7 @@ import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { pace } from './timers.ts'
+import { ignoring, isAborted } from './errors.ts'
 
 /** The program cannot start until its pid is recorded; a parent that dies before go gives EOF instead. */
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
@@ -123,13 +124,9 @@ function send(pid: number, name: NodeJS.Signals) {
 /** `promise`'s value, or undefined when it takes longer than `ms`. */
 function within<T>(promise: Promise<T>, ms: number) {
   const timer = new AbortController()
-  return Promise.race([
-    promise,
-    pace(ms, timer.signal).catch(
-      // Aborted once `promise` settled first; the race already has its value.
-      () => undefined,
-    ),
-  ]).finally(() => timer.abort())
+  return Promise.race([promise, pace(ms, timer.signal).catch(ignoring(isAborted))]).finally(() =>
+    timer.abort(),
+  )
 }
 
 /** Poll group `pid` until it is empty or `ms` passed; whether it is empty. */

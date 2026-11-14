@@ -8,13 +8,16 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 
 // A push's JSON (extensions/push/rules.ts): `{ title, body, tag, path, message?, approve? }`. `message` names a question
 // to the user, which gets a Reply action, and Approve when `approve` holds the answers it sends.
-self.addEventListener('push', (event) => {
-  let data = {}
+function pushData(event) {
   try {
-    data = event.data?.json() ?? {}
+    return event.data?.json() ?? {}
   } catch {
-    // A payload that is no JSON still shows, as a plain Ultimate notification: every push must show one.
+    return {}
   }
+}
+
+self.addEventListener('push', (event) => {
+  const data = pushData(event)
   const actions = []
   if (typeof data.message === 'number') {
     if (Array.isArray(data.approve)) actions.push({ action: 'approve', title: 'Approve' })

@@ -1,4 +1,5 @@
 import { exec } from './exec.ts'
+import { meansNone } from './errors.ts'
 import { git } from './git.ts'
 
 /** A GitHub repository: its key, `<owner>/<repo>` as GitHub spells it, its URL and, when `gh` knew it, visibility. */
@@ -46,13 +47,7 @@ export function projectKey(remote: string): string | undefined {
 
 /** `github.com/<owner>/<repo>` of the project's `origin`, if it is on GitHub. */
 export const githubRepo = (projectRoot: string) =>
-  git(projectRoot, 'remote', 'get-url', 'origin')
-    .then(projectKey)
-    .catch(
-      () =>
-        // No repository or no origin: the project is not on GitHub, so callers show no GitHub links.
-        undefined,
-    )
+  git(projectRoot, 'remote', 'get-url', 'origin').then(projectKey).catch(meansNone)
 
 /**
  * The project's global identity: its origin's GitHub key and the repository's oldest root commit. A worktree reads its
