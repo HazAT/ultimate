@@ -108,9 +108,9 @@ it('rejects a commented replay: safe, as the restart tool declared it, and accep
     // The target generation is memoized before the swap, so replay reports it without restarting again.
     replay: 'safe',
   })`
-  expect(run(shipped)).toEqual([expect.stringMatching(/\.\.\.readOnly.*\.\.\.dedupedBy/)])
+  expect(run(shipped)).toEqual([expect.stringMatching(/\.\.\.readOnly.*\.\.\.safeToRerun/)])
   expect(run(`defineTool({ ...readOnly })`)).toEqual([])
-  expect(run(`defineTool({ ...dedupedBy('the memoized generation'), replay2: 'safe' })`)).toEqual(
+  expect(run(`defineTool({ ...safeToRerun('the memoized generation'), replay2: 'safe' })`)).toEqual(
     [],
   )
 })

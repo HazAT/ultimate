@@ -11,7 +11,7 @@ import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/p
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
-import { overshadowed, settled } from '../../lib/errors.ts'
+import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { landingWeight } from '../../lib/token-weight.ts'
@@ -230,7 +230,7 @@ export async function runLanderCheck(
     stallDeadline.cancel()
     cancelTotal()
     await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
-      overshadowed,
+      retriedLater,
     )
   }
 }

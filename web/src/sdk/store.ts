@@ -1,6 +1,6 @@
 import { applyImmutable } from '@earendil-works/chord/delta'
 import { nextTurn, retryAfter } from '../../../lib/timers.ts'
-import { keepLast, overshadowed } from '../../../lib/errors.ts'
+import { keepLast, meansNone } from '../../../lib/errors.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import type { JsonObject, TaskGraph } from '@earendil-works/pi-durable'
@@ -280,7 +280,7 @@ export function createStore(options: StoreOptions = {}) {
   }
   function unsubscribe(sub: number | undefined) {
     if (sub === undefined || !handlers.delete(sub) || streamId === undefined) return
-    request(`/api/events/${streamId}/${sub}`, { method: 'DELETE' }).catch(overshadowed)
+    request(`/api/events/${streamId}/${sub}`, { method: 'DELETE' }).catch(meansNone)
   }
   /** (Re)subscribe the shown conversation with the watched kinds, replacing its previous subscription. */
   function openMain() {

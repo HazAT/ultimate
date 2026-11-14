@@ -63,7 +63,7 @@ import type {
   Subscriber,
 } from './types.ts'
 import { isSlug, STANDING } from './types.ts'
-import { dedupedBy } from '../../lib/replay.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 export type { Automation, Run } from './types.ts'
 export { launchHandshake } from './supervisor.ts'
 type Ledger = { next: number; automations: Record<string, Automation> }
@@ -864,7 +864,7 @@ export default function automations(host: ExtensionHost) {
     tools: [
       defineTool({
         name: 'automation',
-        ...dedupedBy(
+        ...safeToRerun(
           'Receipts deduplicate ledger changes; process effects reuse their committed pid on replay.',
         ),
         // Calls in one round apply in the order written: a parallel unsubscribe could otherwise commit before the

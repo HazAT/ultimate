@@ -41,7 +41,7 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
-import { readOnly } from '../../lib/replay.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
 export const Starts = defineDoc<{ roots: Record<string, number>; dismissed?: boolean }>({
   kind: StartsDoc.kind,
@@ -580,7 +580,9 @@ export default function onboarding(host: ExtensionHost) {
         parameters: obj({
           card: strEnum(['extensions', 'project', 'git']),
         }),
-        ...readOnly,
+        ...safeToRerun(
+          'a rerun shows the same card again; reading the trust decision only creates its lock file',
+        ),
         async execute({ card }) {
           const project = await host.projectSetup()
           if (card === 'project' && (!project.config || project.decision !== null))

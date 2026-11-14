@@ -47,7 +47,7 @@ import type {
   VoiceSession,
 } from './refs.ts'
 import { voiceBrief } from './brief.ts'
-import { dedupedBy } from '../../lib/replay.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
 const SECRET = 'OPENAI_API_KEY'
 const NO_KEY = `Live voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
@@ -725,7 +725,7 @@ export default (host: ExtensionHost) => {
         description:
           'Speak text to the user through GPT-Live. Use for your answer, clarification or brief acknowledgement.',
         parameters: obj({ text: str({ minLength: 1 }) }),
-        ...dedupedBy(
+        ...safeToRerun(
           "The tool task's request id writes the spoken line once; correlation is memoized.",
         ),
         async execute({ text }, api, ctx) {
@@ -783,7 +783,7 @@ export default (host: ExtensionHost) => {
         description:
           'Pass a clear, self-contained request in the user’s words to @ultimate. Its answer returns as input; do not wait here.',
         parameters: obj({ request: str({ minLength: 1 }) }),
-        ...dedupedBy(
+        ...safeToRerun(
           'A transactional receipt schedules once; the forwarded line has a stable write request id.',
         ),
         async execute({ request }, api, ctx) {
@@ -811,7 +811,7 @@ export default (host: ExtensionHost) => {
           message: opt(int()),
           say: opt(str({ minLength: 1 })),
         }),
-        ...dedupedBy('Stable request ids write each line once.'),
+        ...safeToRerun('Stable request ids write each line once.'),
         async execute({ surface, conversation, message, say }, api, ctx) {
           if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice navigates')
           if ([surface, conversation, message].filter((v) => v !== undefined).length !== 1)
@@ -855,7 +855,7 @@ export default (host: ExtensionHost) => {
         description:
           'Read the questions waiting on the user. Without `message`: every open one, oldest first (the Inbox order). With `message`: that one in full (who asks, its text, each numbered question with lettered options and the asker’s picks) and, unless `show` is false, its card shown in the Inbox.',
         parameters: obj({ message: opt(int()), show: opt(bool()) }),
-        ...dedupedBy("Reads, and one navigation line under the tool task's stable request id."),
+        ...safeToRerun("Reads, and one navigation line under the tool task's stable request id."),
         async execute({ message, show }, api, ctx) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice reads questions')
@@ -899,7 +899,7 @@ export default (host: ExtensionHost) => {
           text: opt(str({ minLength: 1 })),
           dismiss: opt(bool()),
         }),
-        ...dedupedBy(
+        ...safeToRerun(
           'A reply or dismissal commits a receipt keyed by this call, so a replay after a crash finds the settlement instead of the closed question. The forward to @ultimate is memoized.',
         ),
         async execute({ message, text, dismiss }, api, ctx) {
@@ -952,7 +952,7 @@ export default (host: ExtensionHost) => {
         deferred: true,
         description: 'Give GPT-Live quiet context, without speaking it.',
         parameters: obj({ text: str({ minLength: 1 }) }),
-        ...dedupedBy("The tool task's stable request id writes the context note once."),
+        ...safeToRerun("The tool task's stable request id writes the context note once."),
         async execute({ text }, api) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice sends thinking notes')

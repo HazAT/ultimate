@@ -1,6 +1,6 @@
 /** Browser WebRTC lifecycle, independent of React and the shell. Never holds an API key. */
 import { deadline, every, within } from '../../lib/timers.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { inBackground, settled } from '../../lib/errors.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import type { ActionRef } from '../../shared/extension-api.ts'
 import { EndAction, HeardAction, LogAction, StartAction } from './refs.ts'
@@ -36,7 +36,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   const relay = new Relay(Date.now())
   const started = Promise.withResolvers<void>()
   const closed = Promise.withResolvers<void>()
-  started.promise.catch(meansNone)
+  inBackground(settled(started.promise))
   let stopPolling: Cancel | undefined
   let cancelStartup: Cancel | undefined
   let seconds: number | undefined

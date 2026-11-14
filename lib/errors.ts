@@ -44,6 +44,9 @@ export function inBackground(work: Promise<unknown>): void {
   )
 }
 
+/** `.catch(retriedLater)`: a cleanup whose leftover the next run removes, so this one failing loses nothing. */
+export const retriedLater = (_error: unknown): undefined => undefined
+
 /** `queue = settled(work)`: a queue waits for `work` to end; its caller already received the failure. */
 export const settled = (work: Promise<unknown>): Promise<void> =>
   work.then(

@@ -301,7 +301,7 @@ export default {
               context.report({
                 node,
                 message:
-                  'After a crash, replay runs a call again, so a call with effects would repeat them: spread ...readOnly for a tool that only reads, or ...dedupedBy(what makes a rerun a no-op), from lib/replay.ts.',
+                  'After a crash, replay runs a call again, so a call with effects would repeat them: spread ...readOnly for a tool that only reads, or ...safeToRerun(why a rerun does no harm), from lib/replay.ts.',
               })
           },
         }

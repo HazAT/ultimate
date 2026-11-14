@@ -6,8 +6,8 @@
 /** Spread into a tool that only reads: a rerun changes nothing. */
 export const readOnly = { replay: 'safe' } as const
 
-/** Spread into a tool that writes but makes a rerun a no-op; `how` names what deduplicates it. */
-export const dedupedBy = (how: string) => {
-  if (!how.trim()) throw new Error('dedupedBy needs what deduplicates the rerun')
+/** Spread into a tool that writes, where a rerun does no harm; `why` says what makes it so (a receipt, a memo, …). */
+export const safeToRerun = (why: string) => {
+  if (!why.trim()) throw new Error('safeToRerun needs why a rerun does no harm')
   return { replay: 'safe' } as const
 }

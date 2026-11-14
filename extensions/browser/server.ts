@@ -24,7 +24,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
-import { readOnly } from '../../lib/replay.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 import { errnoCode, ignoring, meansNone } from '../../lib/errors.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
@@ -186,7 +186,9 @@ export default function browserExtension(host: ExtensionHost) {
         name: 'screenshot',
         description:
           'Look at a browser page; save a full-resolution PNG and return a compact image with loading errors. Loading and capturing each time out after 30 s.',
-        ...readOnly,
+        ...safeToRerun(
+          'a rerun loads the page again and writes one more PNG; it clicks and types nothing',
+        ),
         parameters: obj({
           ...base,
           width: opt(int({ minimum: 1 })),
