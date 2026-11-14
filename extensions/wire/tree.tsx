@@ -221,10 +221,7 @@ function Branch({
 /** A branch's fields in order, or its items by index; a message's content opens with it. */
 export function Children({ value }: { value: JsonObject | Json[] }) {
   if (Array.isArray(value))
-    return value.map((item, index) => (
-      // oxlint-disable-next-line react/no-array-index-key -- Items of a sent body are positional.
-      <Node key={index} label={`[${index}]`} value={item} />
-    ))
+    return value.map((item, index) => <Node key={index} label={`[${index}]`} value={item} />)
   return Object.entries(value).map(([key, item]) =>
     key === 'cache_control' && isObject(item) ? (
       <div className="flex h-6 items-center gap-2 pr-2 pl-6" key={key}>

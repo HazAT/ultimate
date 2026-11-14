@@ -49,7 +49,6 @@ function CallLog({ calls, running }: { calls: readonly NestedCall[]; running: bo
     <ToolSection label={`Calls · ${calls.length}`}>
       <div className="flex flex-col">
         {calls.map((call, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Calls append to the script log and may repeat.
           <div className="flex min-w-0 items-center gap-2 leading-[1.7]" key={index}>
             <span
               className={cn(

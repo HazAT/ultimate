@@ -207,7 +207,6 @@ function Notes({ details }: { details: Details }) {
   return (
     <ToolSection className="border-t border-border/60 text-[11.5px]">
       {errors.map((error, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed fetch errors may repeat for repeated input URLs.
         <div className="flex min-w-0 gap-1.5 text-error" key={`error:${index}`}>
           <span className="shrink-0">✗</span>
           <span className="min-w-0 truncate" title={error.url}>
@@ -220,7 +219,6 @@ function Notes({ details }: { details: Details }) {
         </div>
       ))}
       {warnings.map((warning, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed result warnings have no id and may repeat.
         <div className="flex min-w-0 gap-1.5 text-warning" key={`warning:${index}`}>
           <span className="shrink-0">!</span>
           <span className="min-w-0 break-words">{warning.message}</span>
@@ -395,7 +393,6 @@ function Fetch({ call }: { call: ToolCallView }) {
       {pages.length > 0 && (
         <ul aria-label="Fetched pages" className="divide-y divide-border/60">
           {pages.map((page, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Fixed fetched pages may repeat for repeated input URLs.
             <FetchedPage key={index} open={pages.length === 1} page={page} />
           ))}
         </ul>

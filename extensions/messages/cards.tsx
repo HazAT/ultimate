@@ -774,7 +774,6 @@ function Thumbnails({ images }: { images: readonly { data: string; mimeType: str
   return (
     <div className="flex flex-wrap gap-2 border-t border-border/60 px-3 py-2">
       {images.map((image, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed forwarded attachments may contain duplicates.
         <ToolImage alt={`Forwarded image ${index + 1}`} image={image} key={index} />
       ))}
     </div>

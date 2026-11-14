@@ -109,7 +109,6 @@ function Setup() {
         </div>
         <ul className="max-h-[60vh] overflow-y-auto px-3 py-1.5 text-[11.5px] leading-[1.5]">
           {data!.map((issue, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Check results have no id; areas and failures may repeat.
             <Row issue={issue} key={`${issue.area}-${index}`} />
           ))}
         </ul>

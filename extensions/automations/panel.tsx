@@ -1007,13 +1007,11 @@ function Output({ text }: { text: string }) {
   if (!lines.some((line) => /^FIRE(\s|$)/.test(line))) return <AnsiOutput output={text} />
   return lines.map((line, index) =>
     /^FIRE(\s|$)/.test(line) ? (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div className="-mx-3 border-l-2 border-success bg-success/10 px-2.5" key={index}>
         <span className="font-semibold text-success">FIRE</span>
         {line.slice(4)}
       </div>
     ) : (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div key={index}>
         <AnsiOutput output={line || ' '} />
       </div>

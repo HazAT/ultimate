@@ -59,7 +59,6 @@ export function GoalCall({ call, core }: { call: ToolCallView; core: ReactNode }
           <ToolSection label="Done means">
             <ol className={`list-decimal space-y-0.5 pl-5 ${prose}`}>
               {criteria.map((item, index) => (
-                // oxlint-disable-next-line react/no-array-index-key -- Fixed call arguments; criteria may repeat.
                 <li key={index}>{item}</li>
               ))}
             </ol>

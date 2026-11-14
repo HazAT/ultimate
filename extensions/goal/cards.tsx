@@ -75,7 +75,6 @@ function Criteria({ goal }: { goal: Goal }) {
         <li
           className="flex items-start gap-2 text-[13px] leading-5"
           data-goal-criterion={item.status}
-          // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered positions; text may repeat.
           key={index}
         >
           <span className="mt-0.5 shrink-0">{marks[item.status]}</span>
@@ -104,7 +103,6 @@ function Screenshots({ goal, entry }: { goal: number; entry: number }) {
           alt={`Screenshot ${index + 1} @ultimate judged`}
           className="max-w-60"
           image={image}
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed screenshot attachments may contain duplicates.
           key={index}
         />
       ))}
@@ -151,7 +149,6 @@ function Decisions({ goal, latest }: { goal: Goal; latest?: number }) {
       </h3>
       <ul className="divide-y divide-border/50">
         {shown.map((decision, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Decisions have no id; timestamps may repeat.
           <DecisionRow decision={decision} goal={goal.id} key={index} />
         ))}
       </ul>

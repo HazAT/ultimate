@@ -107,7 +107,6 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
       />
       <ToolContent>
         {ops.map((op, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Ordered batch operations can target the same slug.
           <ToolSection className="border-b border-border/50 last:border-b-0" key={index}>
             <div className="flex min-w-0 items-center gap-2">
               <span

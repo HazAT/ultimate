@@ -1123,7 +1123,6 @@ function AssistantView({
           case 'thinking':
             if (!block.thinking && !block.redacted) return null
             return (
-              // oxlint-disable-next-line react/no-array-index-key -- Message content blocks are addressed by index.
               <Reasoning isStreaming={streaming && index === last} key={index}>
                 <ReasoningTrigger
                   label={`${streaming && index === last ? 'Thinking' : 'Thought'}${block.redacted ? ' (redacted)' : ''}`}
@@ -1133,7 +1132,6 @@ function AssistantView({
             )
           case 'text':
             return block.text ? (
-              // oxlint-disable-next-line react/no-array-index-key -- Message content blocks are addressed by index.
               <MessageResponse isAnimating={streaming && index === last} key={index}>
                 {block.text}
               </MessageResponse>

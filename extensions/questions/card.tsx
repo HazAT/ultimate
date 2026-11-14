@@ -126,7 +126,6 @@ function Progress({ done }: { done: boolean[] }) {
     <span className="flex items-center gap-1" aria-hidden>
       {done.map((value, index) => (
         <span
-          // oxlint-disable-next-line react/no-array-index-key -- Progress dots correspond to fixed question positions.
           key={index}
           className={cn(
             'h-1 rounded-full transition-[width,background-color] duration-300 ease-out',
@@ -163,7 +162,6 @@ function Summary({
         const answer = brief(question, index, drafts[index])
         return (
           <li
-            // oxlint-disable-next-line react/no-array-index-key -- Answers correspond to fixed question positions.
             key={index}
             className="flex min-w-0 items-baseline gap-2 motion-safe:animate-fade-in"
             style={{ animationDelay: `${index * 40}ms` }}
@@ -578,7 +576,6 @@ function Card({
       </div>
       <div className="space-y-0.5 px-1.5">
         {questions.map((question, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Questions and their drafts are addressed by index.
           <div key={index} data-question={index}>
             <QuestionItem
               question={question}

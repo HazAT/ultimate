@@ -83,7 +83,6 @@ function Criteria({ items, met }: { items: string[]; met: boolean }) {
   return (
     <ol className="space-y-1">
       {items.map((item, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered by position.
         <li className="flex min-w-0 gap-1.5" key={index}>
           <span className="pt-0.5">
             <StatusIcon status={met ? 'done' : 'todo'} />
@@ -108,7 +107,6 @@ function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteri
         if (criteria && section.label === 'Acceptance criteria') return null
         const items = section.label === 'Acceptance criteria' && criteriaOf(section.text)
         return (
-          // oxlint-disable-next-line react/no-array-index-key -- Sections are positional; labels can repeat.
           <div key={index}>
             {section.label && <div className="pb-0.5 section-label">{section.label}</div>}
             {items ? (
@@ -353,7 +351,6 @@ function TaskRow({
               <div className="space-y-1">
                 <div className="section-label">Notes</div>
                 {task.notes.map((note, index) => (
-                  // oxlint-disable-next-line react/no-array-index-key -- Notes are append-only; timestamps can repeat.
                   <Note key={index} note={note} />
                 ))}
               </div>

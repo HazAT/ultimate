@@ -186,7 +186,6 @@ export function LaneTree({
             </g>
           ))}
           {sent.map((link, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Computed message paths have no id and can overlap.
             <g className="stroke-brand opacity-45" key={`m${index}`}>
               <path d={link.d} fill="none" strokeDasharray="1 3" strokeLinecap="round" />
               <circle

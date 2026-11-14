@@ -238,7 +238,6 @@ function Run({ name, list }: { name: string; list: Event[] }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="ml-[9px] border-l border-border/60 pl-2">
         {list.map((event, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Events of a finished stream are positional.
           <Node key={index} label={`[${index}]`} value={value(event)} />
         ))}
       </CollapsibleContent>
@@ -328,7 +327,6 @@ export function ReadableResponse({ call }: { call: WireCall }) {
             title="event stream"
           >
             {runs(stream).map((run, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Runs of a finished stream are positional.
               <Run key={index} list={run.events} name={run.name} />
             ))}
           </Part>

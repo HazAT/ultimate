@@ -54,7 +54,6 @@ function Touches({ layers }: { layers: Layers }) {
   return (
     <span>
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional layer fragments built for this render.
         <span key={index}>
           {index > 0 && ' · '}
           {part}
@@ -87,7 +86,6 @@ function After({ layers, install }: { layers: Layers; install?: UpdateResult & {
   return (
     <ul className="space-y-0.5">
       {lines.map((line, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed instructions derived from this update's layers.
         <li className="flex gap-1.5" key={index}>
           <span className="text-muted-foreground">·</span>
           <span className="min-w-0">{line}</span>

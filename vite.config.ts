@@ -12,7 +12,7 @@ export default defineConfig({
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
-      'react/no-array-index-key': 'warn',
+      'react/no-array-index-key': 'off',
       'react/no-children-prop': 'off',
       'typescript/no-unsafe-type-assertion': 'off',
       'promise/always-return': 'off',

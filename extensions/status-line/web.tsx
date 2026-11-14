@@ -173,7 +173,6 @@ function Tokens() {
       }
     >
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional usage fragments built for this render.
         <span key={index}>{part}</span>
       ))}
     </Item>

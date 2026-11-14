@@ -168,16 +168,17 @@ function Guides({ depth, rails = [], last = true }: Place) {
   const line = 'pointer-events-none absolute border-muted-foreground/35 border-dashed'
   return (
     <span aria-hidden>
-      {rails.slice(0, depth - 1).map((on, level) =>
-        on ? (
-          <span
-            className={cn(line, 'inset-y-0 border-l')}
-            // oxlint-disable-next-line react/no-array-index-key -- Guide columns are addressed by tree depth.
-            key={level}
-            style={{ left: axis(level) }}
-          />
-        ) : null,
-      )}
+      {rails
+        .slice(0, depth - 1)
+        .map((on, level) =>
+          on ? (
+            <span
+              className={cn(line, 'inset-y-0 border-l')}
+              key={level}
+              style={{ left: axis(level) }}
+            />
+          ) : null,
+        )}
       <span
         className={cn(line, 'top-0 border-l', last ? 'h-1/2' : 'bottom-0')}
         style={{ left: axis(depth - 1) }}

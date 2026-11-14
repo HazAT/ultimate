@@ -330,7 +330,6 @@ function FlowView({
       <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto px-4 py-4">
         {flowId &&
           flow?.events.map((event, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Login events append within this flow.
             <EventView event={event} flowId={flowId} index={index} key={index} />
           ))}
         {flow?.prompt && status === 'running' && flowId && (

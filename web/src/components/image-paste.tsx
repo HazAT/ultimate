@@ -164,7 +164,6 @@ export function ImagePreviews({
       {images.map((image, index) => (
         <div
           className="relative w-38 rounded-md border border-border/80 bg-terminal p-1"
-          // oxlint-disable-next-line react/no-array-index-key -- Pasted images have no id and may repeat.
           key={index}
         >
           <ToolImage
