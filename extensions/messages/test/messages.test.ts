@@ -277,7 +277,11 @@ async function fixture(
     if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('STALL'))
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
     // @ultimate answers a branch's reply with only a message to the user.
-    if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('TELLUSER'))
+    if (
+      last.role === 'user' &&
+      (text.startsWith('Reply from #') || text.startsWith('Automation ')) &&
+      text.includes('TELLUSER')
+    )
       return fauxAssistantMessage(
         [fauxToolCall('message', { to: 'user', text: 'Correction', reply: false })],
         { stopReason: 'toolUse' },
@@ -1625,7 +1629,8 @@ it("sends @ultimate's answer to a run its automation woke to the agent whose req
     f.opened.root.submit(
       {
         type: 'input',
-        content: 'Automation A8 "ab done" fired: AB-DONE',
+        // It tells the user first: that message must not end the run before its answer to the asker.
+        content: `Automation A8 "ab done" fired: AB-DONE${serves ? ' TELLUSER' : ''}`,
         entry: {
           kind: 'automations.fired',
           data: {
@@ -1650,7 +1655,7 @@ it("sends @ultimate's answer to a run its automation woke to the agent whose req
     expect.objectContaining({
       to: f.recipient.id,
       reply: false,
-      text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nAnswer: Automation A8 "ab done" fired: AB-DONE`,
+      text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
     }),
   ])
 })

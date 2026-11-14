@@ -341,7 +341,8 @@ export default function messages(host: ExtensionHost) {
           // The message is @ultimate's answer: the run ends here instead of restating it, unless a reply it has read
           // is owed. One still queued gets its own turn. Pi ends the run only when every call of the tool round
           // terminates, and codemode's nested calls never end it. Nor does it end while a branch whose reply or report
-          // this run read awaits its answer: the final answer goes there (#570368).
+          // this run read awaits its answer, or an agent whose request a concluded branch or a fired automation served:
+          // the final answer goes there (#570368).
           const inputs =
             (await host.harness().snapshot(LiveDoc, api.conversationId, ctx))?.run?.inputs ?? []
           const read = (
@@ -355,7 +356,10 @@ export default function messages(host: ExtensionHost) {
               async (tx) =>
                 (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
                   (m) => m.to === api.conversationId && isOwed(m),
-                ) || (await reported(host, tx, api.conversationId, read)).branches.length > 0,
+                ) ||
+                (({ branches, askers }) => branches.length + askers.length > 0)(
+                  await reported(host, tx, api.conversationId, read),
+                ),
               ctx,
             )
           return {
