@@ -5,12 +5,15 @@ import { expect, it, vi } from 'vitest'
 import { spliced } from '../../../../web/src/app/queued.ts'
 
 const status = vi.hoisted(() => ({ data: undefined as unknown }))
+const busy = vi.hoisted(() => ({ value: false }))
 vi.mock('@/sdk', () => ({
   api: {},
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   defineWebExtension: (facet: unknown) => facet,
   errorMessage: String,
   events: { emit: () => {} },
+  formatKeys: (keys: string) => [keys.split('+').map((part) => part.toUpperCase())],
+  getConversation: () => ({ busy: busy.value }),
   insertIntoComposer: () => {},
   useAction: () => ({ data: status.data, loading: false, refetch: async () => undefined }),
   useConversation: () => ({ id: 7 }),
@@ -36,6 +39,35 @@ async function button(data: unknown) {
   return html
 }
 
+type Command = {
+  id: string
+  when?: (context: { conversationId?: number }) => boolean
+  run: (context: { conversationId?: number }) => void
+}
+
+/**
+ * The facet's commands and `registerVoice`, standing in for a mounted button without a DOM. `unsupported()` (behind
+ * `voice.toggle`'s `when`) reads `window`/`navigator`/`MediaRecorder` lazily, at call time, so the stubs stay until
+ * the caller is done and restores them.
+ */
+async function commands() {
+  vi.stubGlobal('window', { isSecureContext: true })
+  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => {} } })
+  vi.stubGlobal('MediaRecorder', function MediaRecorder() {})
+  const module = (await import('../../web.tsx')) as unknown as {
+    default: { commands: Command[] }
+    registerVoice: (
+      id: number,
+      controls: { toggle: () => void; cancel: () => void; recording: boolean },
+    ) => () => void
+  }
+  return {
+    commands: module.default.commands,
+    registerVoice: module.registerVoice,
+    restore: () => vi.unstubAllGlobals(),
+  }
+}
+
 it('dims the mic and says why while no OpenAI key is set', async () => {
   const reason = 'Voice needs an OpenAI API key: add OPENAI_API_KEY in ⌘K → Secrets'
   const html = await button({ available: false, reason })
@@ -50,6 +82,78 @@ it('offers the mic once a key is set', async () => {
   expect(html).toContain('aria-label="Voice input"')
   expect(html).toContain('aria-disabled="false"')
 })
+
+it('voice.toggle calls the registered button for the context conversation, and only that one', async () => {
+  const { commands: list, registerVoice, restore } = await commands()
+  const toggle = commands_find(list, 'voice.toggle')
+  const calls: number[] = []
+  const withdraw7 = registerVoice(7, {
+    toggle: () => calls.push(7),
+    cancel: () => {},
+    recording: false,
+  })
+  const withdraw9 = registerVoice(9, {
+    toggle: () => calls.push(9),
+    cancel: () => {},
+    recording: false,
+  })
+  toggle.run({ conversationId: 7 })
+  toggle.run({ conversationId: 9 })
+  toggle.run({ conversationId: 123 })
+  expect(calls).toEqual([7, 9])
+  withdraw7()
+  withdraw9()
+  restore()
+})
+
+it('voice.toggle is hidden once no button is mounted for that conversation, or the context has none', async () => {
+  const { commands: list, registerVoice, restore } = await commands()
+  const toggle = commands_find(list, 'voice.toggle')
+  expect(toggle.when?.({ conversationId: 7 })).toBe(false)
+  const withdraw = registerVoice(7, { toggle: () => {}, cancel: () => {}, recording: false })
+  expect(toggle.when?.({ conversationId: 7 })).toBe(true)
+  expect(toggle.when?.({ conversationId: undefined })).toBe(false)
+  withdraw()
+  expect(toggle.when?.({ conversationId: 7 })).toBe(false)
+  restore()
+})
+
+it('voice.toggle hides once the browser cannot record, even with a button registered', async () => {
+  const { commands: list, registerVoice, restore } = await commands()
+  const toggle = commands_find(list, 'voice.toggle')
+  const withdraw = registerVoice(7, { toggle: () => {}, cancel: () => {}, recording: false })
+  expect(toggle.when?.({ conversationId: 7 })).toBe(true)
+  vi.stubGlobal('window', { isSecureContext: false })
+  expect(toggle.when?.({ conversationId: 7 })).toBe(false)
+  withdraw()
+  restore()
+})
+
+it('voice.cancel fires only while a recording is live and the conversation is idle; it never fights agent.stop', async () => {
+  const { commands: list, registerVoice, restore } = await commands()
+  const cancel = commands_find(list, 'voice.cancel')
+  let cancelled = false
+  const withdraw = registerVoice(7, {
+    toggle: () => {},
+    cancel: () => (cancelled = true),
+    recording: true,
+  })
+  expect(cancel.when?.({ conversationId: 7 })).toBe(true)
+  busy.value = true
+  expect(cancel.when?.({ conversationId: 7 })).toBe(false)
+  busy.value = false
+  cancel.run({ conversationId: 7 })
+  expect(cancelled).toBe(true)
+  withdraw()
+  expect(cancel.when?.({ conversationId: 7 })).toBe(false)
+  restore()
+})
+
+function commands_find(list: Command[], id: string): Command {
+  const found = list.find((command) => command.id === id)
+  if (!found) throw new Error(`No command ${id}`)
+  return found
+}
 
 it('spaces inserted words from their neighbours and puts the cursor after them', () => {
   expect(spliced('', 0, 0, 'Hello')).toEqual({ text: 'Hello', cursor: 5 })

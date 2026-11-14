@@ -7,18 +7,69 @@ import {
   defineWebExtension,
   errorMessage,
   events,
+  formatKeys,
+  getConversation,
   insertIntoComposer,
   useAction,
   useConversation,
   useEvent,
   useNow,
 } from '@/sdk'
+import type { UltimateContext } from '@/sdk'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
 /** Recordings stop on their own here: well under the 8 MB the server takes at any browser's bitrate. */
 const MAX_MS = 5 * 60_000
 /** In order of preference; iOS Safari records only `audio/mp4`. */
 const TYPES = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+/**
+ * No default binding claims `mod+shift+v` in Chrome or Safari on macOS or Windows: it is a letter chord, so the
+ * browser's "paste as plain text" (itself a page feature some rich editors add for Ctrl/Cmd+Shift+V, not a browser
+ * interception) never comes up, since the composer is a plain `<textarea>` with nothing to strip.
+ */
+const KEYS = 'mod+shift+v'
+const keyHint = formatKeys(KEYS)[0].join('')
+
+/**
+ * Every mounted button's controls, by the conversation it records into: the shortcut drives the same recorder the
+ * tap does (never a second one), reached by the conversation its command ran in (the focused composer's, or the
+ * shown conversation's from the palette). `registerVoice` registers one on mount and withdraws it on unmount; tests
+ * use it directly to drive the commands without mounting the button.
+ */
+type VoiceControls = { toggle: () => void; cancel: () => void; recording: boolean }
+const buttons = new Map<number, VoiceControls>()
+
+export function registerVoice(id: number, controls: VoiceControls): () => void {
+  buttons.set(id, controls)
+  return () => void buttons.delete(id)
+}
+
+/** Hidden when no composer offers voice here: an unsupported browser, or no mounted button for this conversation. A missing key stays visible, like the dimmed button: invoking it opens the Secrets row. */
+function unavailable(context: UltimateContext) {
+  if (unsupported()) return true
+  const id = context.conversationId
+  return id === undefined || !buttons.has(id)
+}
+
+function toggleVoice(context: UltimateContext) {
+  const id = context.conversationId
+  if (id !== undefined) buttons.get(id)?.toggle()
+}
+
+/**
+ * Escape cancels a live recording, but only while the conversation is idle: `agent.stop` already owns Escape to stop
+ * a busy run, and the two `when`s never both hold, so they never compete for the same keypress.
+ */
+function cancellable(context: UltimateContext) {
+  const id = context.conversationId
+  if (id === undefined || getConversation(id).busy) return false
+  return buttons.get(id)?.recording ?? false
+}
+
+function cancelVoice(context: UltimateContext) {
+  const id = context.conversationId
+  if (id !== undefined) buttons.get(id)?.cancel()
+}
 
 type Recording = {
   recorder: MediaRecorder
@@ -91,7 +142,7 @@ function Level({ audio, stream }: { audio?: AudioContext; stream: MediaStream })
   )
 }
 
-/** Tap to record, tap to stop; the words land in the draft at the cursor, unsent, for review. */
+/** Tap to record, tap to stop (or `mod+shift+v`); the words land in the draft at the cursor, unsent, for review. */
 function VoiceButton() {
   const { id } = useConversation()
   const status = useAction(StatusAction)
@@ -190,6 +241,33 @@ function VoiceButton() {
   // Keeps the editor's focus, so a phone's keyboard neither opens nor closes under the tap.
   const keepFocus = (event: React.PointerEvent) => event.preventDefault()
 
+  // Tap and the shortcut share this: start if idle, stop (and transcribe) if recording. A missing key opens its row
+  // in Secrets, as the tap does; a blocked browser shows why, beside the button.
+  function toggle() {
+    if (transcribing || status.loading) return
+    if (recording) return finish(recording, false)
+    if (missingKey) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+    if (blocked) return setError(blocked)
+    // oxlint-disable-next-line typescript/no-floating-promises -- start shows its own failures beside the button.
+    void start()
+  }
+  // A ref holds the latest toggle (it closes over this render's state); the map entry stays the same object across
+  // renders, so registering it costs one Map write per mount, not one per render.
+  const latestToggle = useRef(toggle)
+  latestToggle.current = toggle
+
+  // Registers for the shortcut and the palette command; withdrawn on unmount or a conversation switch.
+  useEffect(() => {
+    if (id === undefined) return undefined
+    return registerVoice(id, {
+      toggle: () => latestToggle.current(),
+      cancel: () => finish(current.current, true),
+      get recording() {
+        return !!current.current
+      },
+    })
+  }, [id])
+
   if (recording)
     return (
       <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Recording">
@@ -246,14 +324,8 @@ function VoiceButton() {
                 'opacity-50 hover:bg-transparent hover:text-muted-foreground',
             )}
             data-voice={blocked ? 'blocked' : transcribing ? 'transcribing' : 'idle'}
-            onClick={() => {
-              if (transcribing || status.loading) return
-              // On a phone there is no tooltip: the tap says why, and a missing key opens its row in Secrets.
-              if (missingKey) events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
-              else if (blocked) setError(blocked)
-              // oxlint-disable-next-line typescript/no-floating-promises -- start shows its own failures beside the button.
-              else void start()
-            }}
+            // On a phone there is no tooltip: the tap says why, as toggle() does for every trigger.
+            onClick={toggle}
             onPointerDown={keepFocus}
             type="button"
           >
@@ -265,7 +337,7 @@ function VoiceButton() {
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          {blocked ?? 'Voice input: tap to record, tap again to transcribe'}
+          {blocked ?? `Voice input: tap to record, tap again to transcribe · ${keyHint}`}
         </TooltipContent>
       </Tooltip>
     </div>
@@ -274,4 +346,22 @@ function VoiceButton() {
 
 export default defineWebExtension({
   slots: { 'composer.actions': [VoiceButton] },
+  commands: [
+    {
+      id: 'voice.toggle',
+      title: 'Voice input: start / stop recording',
+      keys: KEYS,
+      whileTyping: true,
+      when: (context) => !unavailable(context),
+      run: (context) => toggleVoice(context),
+    },
+    {
+      id: 'voice.cancel',
+      title: 'Voice input: cancel recording',
+      keys: 'escape',
+      whileTyping: true,
+      when: (context) => cancellable(context),
+      run: (context) => cancelVoice(context),
+    },
+  ],
 })

@@ -2,8 +2,10 @@ Voice input: a mic button beside Send records speech and puts its transcript int
 
 ## How it works
 
-- **Tap to record, tap to stop.** While recording the button becomes Cancel, an elapsed clock with a level meter, and
-  Stop. Stop transcribes; the text is inserted at the cursor with spaces as needed and is never sent on its own, so a
+- **Tap to record, tap to stop**, or `mod+shift+v` (the `voice.toggle` command): the shortcut drives the same
+  recorder the button does, works while typing in the composer, and is hidden where no composer offers voice. While
+  recording the button becomes Cancel, an elapsed clock with a level meter, and Stop; Escape cancels while idle.
+  Stop transcribes; the text is inserted at the cursor with spaces as needed and is never sent on its own, so a
   busy conversation steers or queues it like typed text. Recordings stop themselves after 10 minutes.
 - **Recording** uses `MediaRecorder`: `audio/webm` (Opus) in Chrome and Firefox, `audio/mp4` in Safari, including the
   installed iOS home-screen app. The microphone is released after each recording. It needs a secure page: the tailnet
