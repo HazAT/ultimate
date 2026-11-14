@@ -89,6 +89,32 @@ it('rejects raw timers, as in the review surface polling the DOM for a diff line
   expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.ts/)
 })
 
+it('rejects a commented replay: safe, as the restart tool declared it, and accepts the named spreads', async () => {
+  const { parseSync } = await import('vite-plus')
+  const run = (source: string) => {
+    const f = context()
+    const rule = ultimate.rules['replay-safe-by-name'].create(f.context)
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit)
+      if (!node || typeof node !== 'object') return
+      if ((node as { type?: string }).type === 'Property') rule.Property(node as never)
+      for (const value of Object.values(node)) visit(value)
+    }
+    visit(parseSync('server.ts', source).program)
+    return f.reports
+  }
+  // Shipped in extensions/self/server.ts until the replay helpers: a comment was the only reason given.
+  const shipped = `defineTool({
+    // The target generation is memoized before the swap, so replay reports it without restarting again.
+    replay: 'safe',
+  })`
+  expect(run(shipped)).toEqual([expect.stringMatching(/\.\.\.readOnly.*\.\.\.dedupedBy/)])
+  expect(run(`defineTool({ ...readOnly })`)).toEqual([])
+  expect(run(`defineTool({ ...dedupedBy('the memoized generation'), replay2: 'safe' })`)).toEqual(
+    [],
+  )
+})
+
 it('rejects local polling function declarations in favor of the shared real-deadline helper', () => {
   const f = context()
   const rule = ultimate.rules['no-local-test-polling'].create(f.context)

@@ -24,6 +24,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
+import { readOnly } from '../../lib/replay.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -184,8 +185,7 @@ export default function browserExtension(host: ExtensionHost) {
         name: 'screenshot',
         description:
           'Look at a browser page; save a full-resolution PNG and return a compact image with loading errors. Loading and capturing each time out after 30 s.',
-        // A fresh isolated page only observes the UI and writes the screenshot again; it performs no interactions.
-        replay: 'safe',
+        ...readOnly,
         parameters: obj({
           ...base,
           width: opt(int({ minimum: 1 })),

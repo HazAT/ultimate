@@ -14,6 +14,7 @@ import type { ConversationId, Cursor, EntryId, JsonObject, Tx } from '@earendil-
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branch } from '../lineage/api.ts'
 import { PlanDoc, TaskIndexDoc } from './refs.ts'
+import { dedupedBy } from '../../lib/replay.ts'
 
 export type Task = {
   key: string
@@ -189,8 +190,9 @@ export default (host: ExtensionHost) => {
         name: 'plan',
         description:
           'Maintain the durable epic/task ledger. The tool assigns keys: epics E1, E2; tasks E1.1, E1.2. Use only keys a call has returned: wait for create/add results before calls that reference them (epic, deps, key), never in the same parallel batch. create {title,body}; add {epic,title,role,description,deps?}; update {key,status?,title?,description?,body?,child?,verdict?} replaces only the fields given (description and body whole: show first to extend them); in codemode every action returns the object; note {key,text} notes a task only (E1.1, not E1; record on an epic with update verdict or body); show {key?} reads an epic, task, or the whole ledger. Epic bodies use Request, Selected approach, Intent, Scope (in/out), binary Acceptance criteria, Implementation, Verification, Risks. Task descriptions use Outcome, Scope, Non-goals, Files, Acceptance criteria with a verification command, Constraints. Epic statuses: planning, in_progress, done, blocked. Task statuses: backlog, todo, in_progress, in_review, done, blocked, canceled. child links a conversation number; deps are task keys. body is epic-only; verdict records evidence on either an epic or a task. Children read the root coordinator’s ledger with show; only that coordinator can edit it. Read full plans with show; the prompt contains only a compact ledger.',
-        // A memoized receipt id records the result in the same transaction as the ledger change.
-        replay: 'safe',
+        ...dedupedBy(
+          'A memoized receipt id records the result in the same transaction as the ledger change.',
+        ),
         parameters: obj({
           action: strEnum(['create', 'add', 'update', 'note', 'show'] as const),
           title: opt(str()),

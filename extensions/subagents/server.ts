@@ -65,6 +65,7 @@ import {
   SaveDefinitionAction,
   StandingAction,
 } from './refs.ts'
+import { dedupedBy } from '../../lib/replay.ts'
 
 export const docs = [Subagents, Standing, Profile, Runs]
 
@@ -989,8 +990,9 @@ export default function subagents(
         name: 'subagent',
         description:
           'Delegate to a named agent. start returns its answer (foreground) or id (background). Foreground start/message and wait yield on queued steering with details.yielded:true; work continues independently. Stop children explicitly; stopping the parent does not stop them; stop lists files left uncommitted in the child worktree. message steers a busy child (steer false queues a follow-up instead); wait returns the latest answer; stop stops current work; list shows your children; land verifies and fast-forwards a finished worktree child; discard removes its worktree but keeps its branch. start accepts isolate none or worktree, and fork true to inherit parent history before this call (more context cost; prompt caching usually covers the shared prefix). Background answers join the current run after its tool round, or wake you when idle.',
-        // Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.
-        replay: 'safe',
+        ...dedupedBy(
+          'Call-id receipts deduplicate starts/messages; memoized targets and guards protect stop/workspace replays.',
+        ),
         parameters: obj({
           action: strEnum(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
           agent: opt(

@@ -33,6 +33,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
+import { dedupedBy } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages]
 
@@ -290,8 +291,9 @@ export default function messages(host: ExtensionHost) {
           images: opt(imagesParameter),
           questions: opt(questionsParameter),
         }),
-        // The task-scoped receipt deduplicates admission; the memo returns the same id on replay.
-        replay: 'safe',
+        ...dedupedBy(
+          'The task-scoped receipt deduplicates admission; the memo returns the same id on replay.',
+        ),
         async execute(input, api, ctx) {
           // A temporary copy cannot use main's privilege to message the user.
           const from =

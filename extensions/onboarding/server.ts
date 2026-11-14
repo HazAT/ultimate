@@ -40,6 +40,7 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
+import { readOnly } from '../../lib/replay.ts'
 
 export const Starts = defineDoc<{ roots: Record<string, number>; dismissed?: boolean }>({
   kind: StartsDoc.kind,
@@ -582,8 +583,7 @@ export default function onboarding(host: ExtensionHost) {
         parameters: obj({
           card: strEnum(['extensions', 'project', 'git']),
         }),
-        // Read-only inspection: repeating a card changes no state.
-        replay: 'safe',
+        ...readOnly,
         async execute({ card }) {
           const project = await host.projectSetup()
           if (card === 'project' && (!project.config || project.decision !== null))

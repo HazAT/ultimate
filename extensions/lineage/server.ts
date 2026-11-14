@@ -66,6 +66,7 @@ import { compareUrl } from '../../lib/compare.ts'
 import { hasLogin, hostDefault } from '../../lib/agents.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
+import { dedupedBy } from '../../lib/replay.ts'
 
 export type BranchImage = { data: string; mimeType: string }
 
@@ -1496,8 +1497,9 @@ export default function lineageExtension(host: ExtensionHost) {
           id: int({ minimum: 1 }),
           wake: opt(bool()),
         }),
-        // The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.
-        replay: 'safe',
+        ...dedupedBy(
+          'The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.',
+        ),
         async execute({ id, wake = true }, api, ctx) {
           const target = id as ConversationId
           const from = await actingAs(host, api.conversationId, ctx)

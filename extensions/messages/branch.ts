@@ -19,6 +19,7 @@ import { send } from './send.ts'
 import { Started } from './addresses.ts'
 import { Messages } from './api.ts'
 import { isOwed } from '../../lib/message-state.ts'
+import { dedupedBy } from '../../lib/replay.ts'
 
 export const branchTool = (host: ExtensionHost) =>
   defineTool({
@@ -34,8 +35,7 @@ export const branchTool = (host: ExtensionHost) =>
       isolated: opt(bool()),
       images: opt(imagesParameter),
     }),
-    // Lineage atomically deduplicates the fork; Sent deduplicates its first message.
-    replay: 'safe',
+    ...dedupedBy('Lineage atomically deduplicates the fork; Sent deduplicates its first message.'),
     async execute(input, api, ctx) {
       const from = await actingAs(host, api.conversationId, ctx)
       let id = await api.memo<number>('branch-id', ctx)

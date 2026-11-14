@@ -5,6 +5,7 @@ import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { CallRow, CallTree } from '../../server/trace.ts'
+import { readOnly } from '../../lib/replay.ts'
 
 /** The most text one call returns; rows past it are cut with a note. */
 const BUDGET = 16_000
@@ -170,8 +171,7 @@ export default function debug(host: ExtensionHost) {
       defineTool({
         name: 'debug',
         deferred: true,
-        // Reads events, reactor status, the catalogue, traces and contract files; changes nothing.
-        replay: 'safe',
+        ...readOnly,
         description:
           "Inspect Ultimate's running system to find out why something did or did not happen, and to follow one chain of work across extensions. " +
           'call: `events` lists durable events newest first (filter `events` by name like `workspaces.landed`, `since` an event id); ' +

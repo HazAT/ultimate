@@ -286,7 +286,7 @@ export default {
         }
       },
     },
-    'replay-safe-reason': {
+    'replay-safe-by-name': {
       meta: { schema: [] },
       create(context: Context) {
         return {
@@ -296,13 +296,12 @@ export default {
                 ? node.key?.value === 'replay'
                 : (node.key?.name ?? node.key?.value) === 'replay') &&
               node.value.type === 'Literal' &&
-              node.value.value === 'safe' &&
-              !context.sourceCode.getCommentsBefore(node).length
+              node.value.value === 'safe'
             )
               context.report({
                 node,
                 message:
-                  'After a crash, replay runs a call again, so a call with effects would repeat them: say why a rerun cannot do harm before declaring replay safe.',
+                  'After a crash, replay runs a call again, so a call with effects would repeat them: spread ...readOnly for a tool that only reads, or ...dedupedBy(what makes a rerun a no-op), from lib/replay.ts.',
               })
           },
         }

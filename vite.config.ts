@@ -38,10 +38,12 @@ export default defineConfig({
       {
         files: ['**/*'],
         excludeFiles: ['test/**', 'extensions/*/test/**'],
-        rules: {
-          'ultimate/replay-safe-reason': 'error',
-          'ultimate/no-silent-catch': 'error',
-        },
+        rules: { 'ultimate/no-silent-catch': 'error' },
+      },
+      {
+        files: ['**/*'],
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/replay.ts'],
+        rules: { 'ultimate/replay-safe-by-name': 'error' },
       },
       {
         files: [
