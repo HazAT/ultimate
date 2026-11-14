@@ -3,9 +3,17 @@ Pause the whole Ultimate host and continue it with Play. This is a soft pause: r
 ## How it works
 
 - **Pause** (`pause`, user-only) holds Pi Durable's task scheduler (`harness.hold()`, from the patch in `patches/@earendil-works__pi-durable@1.3.0.patch`). A running task invocation finishes its current phase and parks as `pending`; no task is reserved until Play. Abort handlers still run, so Stop works while paused. `harness.inspect()` reports `scheduling: 'paused'`.
-- The pause is stored in the root's `pause.state` document (`{ paused, since, runs, limit }`) and survives a restart: the `onOpen` callback holds the scheduler again before the server resumes scheduling.
+- The pause is stored in the root's `pause.state` document (`{ paused, since, runs, limit, held }`) and survives a restart: the `onOpen` callback holds the scheduler again before the server resumes scheduling.
 - **Play** (`play`, user-only) leaves one note on each conversation that was mid-turn when paused and still has its run: a `pause.note` write ("Paused for 2h 14m; the run continued after Play."), placed at the run's next step. Its request ID is the pause's start, so a retried Play leaves no second note. Idle conversations get none. Then the scheduler is released.
-- `state` returns `{ paused, since, limit, running }`: the foreground tasks still running, each with its conversation, what it runs (`model response` or the tool's name) and when it started. Background waiters (subagent reporters, automation schedulers, Messages deliveries) never count.
+- `state` returns `{ paused, since, limit, held, running }`: the foreground tasks still running, each with its conversation, what it runs (`model response` or the tool's name) and when it started. Background waiters (subagent reporters, automation schedulers, Messages deliveries) never count.
+
+## An extension's hold
+
+`PauseApi` (`api.ts`) gives other extensions `hold({ source, reason })`: the extension that holds the host, by name (its own, e.g. `guard`), and one short line saying why. It records the same pause document a manual Pause does, so the status line reads `⏸ Paused · guard` and its popover the reason, and Play (the status line's, ⌘K's, or the popover's) continues as usual. The Play note on each held run names it too: "Paused for 12m (guard: the day's spend passed $5.00); the run continued after Play."
+
+- A hold on a host that is already paused joins that pause: it changes neither its start nor the explanation already shown (the first rate limit or hold explains it), so holding again after each spend check adds nothing. Only a new pause after a Play starts a new start.
+- Like a pause it is soft: running tasks finish, nothing new starts, and messages queue until Play.
+- Only a rate limit's pause plays by itself. A pause the user pressed, and one an extension holds, wait for Play; `pause`, `play` and `autoPlay` stay the user's alone, so no agent unpauses into a rate limit or out of a spend cap.
 
 ## Rate limits
 
@@ -27,7 +35,7 @@ Automation fires are scheduler tasks, so the hold stops them. Timers that start 
 
 ## UI
 
-- Status line: a quiet `⏸ Pause`; while work still runs `⏳ Pausing… 3 tasks running` (amber), its popover listing each task with its conversation, what it runs and its age; then `⏸ Paused · safe` with `▶ Play` next to it. A rate limit shows `⏸ Rate limited · claude-code`, its popover the provider, model and upstream message.
+- Status line: a quiet `⏸ Pause`; while work still runs `⏳ Pausing… 3 tasks running` (amber), its popover listing each task with its conversation, what it runs and its age; then `⏸ Paused · safe` with `▶ Play` next to it. A rate limit shows `⏸ Rate limited · claude-code`, its popover the provider, model and upstream message; an extension's hold shows `⏸ Paused · guard`, its popover headed `Held by guard` with the reason.
 - Under the composer while paused: `Paused — your message runs on Play`.
 - ⌘K: **Pause** and **Play**.
 - The Play note shows as one amber divider in the transcript.

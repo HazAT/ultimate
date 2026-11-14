@@ -94,11 +94,11 @@ function Popup({
 }) {
   const now = useNow(1000, state.paused)
   const pausing = state.paused && state.running.length > 0
-  const { limit } = state
+  const { limit, held } = state
   return (
     <>
       <div className="border-b border-border/70 px-3 py-2 section-label">
-        {limit ? 'Rate limited' : 'Pause'}
+        {limit ? 'Rate limited' : held ? `Held by ${held.source}` : 'Pause'}
       </div>
       <div className="space-y-2 px-3 py-2 text-[11.5px] leading-[1.55]">
         {limit && (
@@ -118,6 +118,18 @@ function Popup({
                 ? `No reset time given: plays by itself in ${lasted(Math.max(0, state.autoPlayAt - now))}, or press Play.`
                 : 'No reset time given: nothing retries until Play.'}{' '}
               A model you switch meanwhile applies on Play.
+            </div>
+          </div>
+        )}
+        {held && !limit && (
+          <div className="space-y-1" data-pause-held-detail>
+            <div className="break-words text-warning" title={held.reason}>
+              “{held.reason}”
+            </div>
+            <div className="text-muted-foreground">
+              <span className="text-foreground">{held.source}</span> paused Ultimate
+              {state.since !== undefined && <> · {lasted(now - state.since)} ago</>}: nothing starts
+              until you press Play.
             </div>
           </div>
         )}
@@ -247,6 +259,11 @@ function Item() {
             <>
               <PauseIcon className="size-3" />
               Rate limited<span className="max-md:hidden"> · {state.limit.provider}</span>
+            </>
+          ) : state.held ? (
+            <>
+              <PauseIcon className="size-3" />
+              Paused<span className="max-md:hidden"> · {state.held.source}</span>
             </>
           ) : state.paused ? (
             <>
