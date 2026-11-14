@@ -95,6 +95,7 @@ export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
 export {
   getConversation,
   getState,
+  keepLast,
   refreshModels,
   useAction,
   useCompact,

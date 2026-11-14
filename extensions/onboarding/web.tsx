@@ -40,7 +40,6 @@ function useIsolation() {
   if (busy !== runs.busy) setRuns({ busy, ended: runs.ended + (busy ? 0 : 1) })
   const isolation = useAction(IsolationAction, null, { enabled: workspaces, on: runs.ended })
   useEvent('onboarding:git', () => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
     if (workspaces) void isolation.refetch()
   })
   return workspaces ? isolation.data : undefined

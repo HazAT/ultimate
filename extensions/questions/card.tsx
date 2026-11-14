@@ -483,7 +483,6 @@ function Card({
         data-questions-card={card}
         onSubmit={(event) => {
           event.preventDefault()
-          // oxlint-disable-next-line typescript/no-floating-promises -- run catches reply failures and displays them with setError.
           if (text.trim()) void run(() => reply(text.trim()))
         }}
       >

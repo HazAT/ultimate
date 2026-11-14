@@ -337,7 +337,6 @@ export function useAutomations(ms: number | false): Polled {
     const key = Symbol()
     poll.rates.set(key, ms === false ? Infinity : ms)
     reschedule()
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in poll.state.error.
     void refreshAutomations()
     return () => {
       poll.rates.delete(key)
@@ -373,7 +372,6 @@ export function useOpenAutomation() {
   }
   return (id: string) => {
     if (poll.state.data?.some((automation) => automation.id === id)) return show(id)
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in poll.state.error.
     void refreshAutomations().then(() => show(id))
   }
 }

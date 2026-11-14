@@ -48,7 +48,6 @@ function Body({ onClose }: { onClose: () => void }) {
   const submitOnModEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
     event.preventDefault()
-    // oxlint-disable-next-line typescript/no-floating-promises -- start catches failures and shows them with setFailure.
     void start()
   }
   return (

@@ -49,9 +49,7 @@ export function createReads(api: Api, store: Store) {
   /** Reads whose last call never reached the server (status 0), asked again once the page is back. */
   const missed = new Set<Read & { readers: Set<Reader> }>()
   function retryMissed() {
-    for (const read of missed)
-      // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
-      if (read.readers.size) void read.refetch()
+    for (const read of missed) if (read.readers.size) void read.refetch()
   }
   let process: string | undefined
   let connection = store.getState().connection.status
@@ -66,13 +64,11 @@ export function createReads(api: Api, store: Store) {
     if (next === process) return
     const restarted = process !== undefined
     process = next
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     if (restarted) for (const read of reads.values()) if (read.readers.size) void read.refetch()
   })
   if (typeof window !== 'undefined')
     window.addEventListener('focus', () => {
       for (const read of reads.values())
-        // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
         if ([...read.readers].some((reader) => reader.focus)) void read.refetch()
     })
   if (typeof window !== 'undefined') window.addEventListener('online', retryMissed)
@@ -168,7 +164,6 @@ export function createReads(api: Api, store: Store) {
         readers.add(reader)
         // A reader joining a call in flight, or an answer just given, takes that one: components of one page mount over
         // several commits, and each asking again aborted the call before it.
-        // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
         if (!controller && !queued && Date.now() - answered > FRESH) void read.refetch()
         else repoll()
         return () => {

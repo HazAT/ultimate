@@ -175,7 +175,6 @@ function VoiceButton() {
       // Closing only frees the meter's audio graph; a failure leaves nothing to clean up.
       audio?.close().catch(() => undefined)
       if (active.cancelled || active.chunks.length === 0) return
-      // oxlint-disable-next-line typescript/no-floating-promises -- transcribe shows its own failures beside the button.
       void transcribe(new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }))
     })
     // Created after awaiting the permission prompt, it may start suspended (Safari): the meter would read silence.
@@ -251,7 +250,6 @@ function VoiceButton() {
               // On a phone there is no tooltip: the tap says why, and a missing key opens its row in Secrets.
               if (missingKey) events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
               else if (blocked) setError(blocked)
-              // oxlint-disable-next-line typescript/no-floating-promises -- start shows its own failures beside the button.
               else void start()
             }}
             onPointerDown={keepFocus}

@@ -73,7 +73,6 @@ export function useHistory(
     if (id === undefined || filled.current.has(key)) return
     filled.current.add(key)
     setFilling((count) => count + 1)
-    // oxlint-disable-next-line typescript/no-floating-promises -- this task catches history failures and displays them with setError.
     void (async () => {
       try {
         const { rows } = await read(id, upTo, after)

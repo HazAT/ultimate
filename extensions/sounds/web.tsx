@@ -120,7 +120,6 @@ function Player() {
   const catchingUp = useCatchingUp(narrating)
   useEffect(() => tones.setVolume(muted ? 0 : volume), [muted, volume])
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- conduct catches nothing worth reporting beyond a warning.
     conductor
       .conduct(muted || agents === 'off' ? undefined : agents)
       .catch((error: unknown) => console.warn('Sound of agents failed', error))
@@ -414,7 +413,6 @@ function Control() {
                     setOff((previous) =>
                       on ? previous.filter((other) => other !== sound) : [...previous, sound],
                     )
-                    // oxlint-disable-next-line typescript/no-floating-promises -- preview catches and logs playback failures.
                     if (on) void preview(sound)
                   }}
                 />

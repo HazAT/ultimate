@@ -163,7 +163,6 @@ export function Transcript({ dock }: { dock?: boolean }) {
   // A sent message pins the view to the bottom and follows the run, even when the reader had scrolled up.
   useEvent('ultimate:sent', (value) => {
     if ((value as { conversationId?: number } | undefined)?.conversationId === id)
-      // oxlint-disable-next-line typescript/no-floating-promises -- use-stick-to-bottom's frame loop resolves a boolean; it performs no rejecting async work.
       void stick.current?.scrollToBottom({ animation: 'instant' })
   })
   // Keyed so a conversation never inherits the previous one's scroll position or follow state.
@@ -346,7 +345,6 @@ function TranscriptEntries() {
       return undefined
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // oxlint-disable-next-line typescript/no-floating-promises -- loadEarlier catches history failures and displays them with setError.
         if (entry?.isIntersecting) void earlier()
       },
       { root, rootMargin: '100% 0px 0px 0px' },
@@ -450,7 +448,6 @@ function TranscriptEntries() {
     const { entry: revealed, call } = reveal
     if (!entries.some((entry) => entry.id === revealed)) {
       if (cursor !== undefined && revealed < cursor) {
-        // oxlint-disable-next-line typescript/no-floating-promises -- loadDown catches history failures and displays them with setError.
         void loadDown(revealed, stopScroll)
         return
       }

@@ -460,6 +460,9 @@ export interface ActionState<T> {
   refetch: () => Promise<T | undefined>
 }
 
+/** `onError: keepLast`: a failed read keeps its last answer and shows no notice; the next read asks again. */
+export const keepLast = (_error: ActionError) => undefined
+
 /** Options of `useAction`. */
 export type UseActionOptions = {
   enabled?: boolean
@@ -500,7 +503,6 @@ export function useAction<Args, T>(
   useEffect(() => {
     if (seen.current === on) return
     seen.current = on
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     if (enabled) void read.refetch()
   }, [read, on, enabled])
   return {

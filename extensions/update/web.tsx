@@ -385,7 +385,6 @@ function Update() {
       )
       .finally(() => {
         setBusy(false)
-        // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
         void refetch()
       })
   }

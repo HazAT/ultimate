@@ -84,7 +84,6 @@ const start = live.start
 function toggleFront(actions: Pick<UltimateActions, 'switchConversation' | 'showSurface'>) {
   const front = !live.voiceMode().front
   live.setFront(front)
-  // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
   if (front) void talkToUltimate(actions)
 }
 
@@ -186,7 +185,6 @@ function StartButton() {
             if (status.loading) return
             if (missing) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
             if (on) return toggleFront(actions)
-            // oxlint-disable-next-line typescript/no-floating-promises -- open shows its own failures in the indicator.
             void start()
           }}
           // Keeps the editor's focus, so a phone's keyboard neither opens nor closes under the tap.

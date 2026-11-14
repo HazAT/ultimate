@@ -285,7 +285,6 @@ function FlowView({
   const failure = error ?? flow?.error
   useEffect(() => onRunning(status === 'running' ? flowId : undefined), [flowId, onRunning, status])
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
     if (status === 'complete') void refreshModels()
   }, [status])
   return (
@@ -428,7 +427,6 @@ function Chooser({
     api.action(LogoutAction, { provider: provider.id }).then(
       () => {
         setBusy(undefined)
-        // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
         void refreshModels()
       },
       (failure: unknown) => {
@@ -573,7 +571,6 @@ export function LoginDialog() {
       )
   }
   const close = () => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- cancel catches failures when a flow has already ended.
     if (running) void cancel(running)
     setOpen(false)
     setState(undefined)

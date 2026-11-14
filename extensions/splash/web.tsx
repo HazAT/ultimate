@@ -161,7 +161,6 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
     })
     intro.push(clock)
     // Still loading once all of it has played: the rule says so.
-    // oxlint-disable-next-line typescript/no-floating-promises -- finished uses allSettled to consume animation cancellations; rule starts only a synchronous animation.
     void finished([...intro, ...flair]).then(() => {
       if (!committed) rule()
     })
@@ -214,7 +213,6 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
       if (signature || committed || still) return
       signature = true
       for (const animation of [...intro, ...flair]) animation.updatePlaybackRate(signatureRate)
-      // oxlint-disable-next-line typescript/no-floating-promises -- finished uses allSettled to consume animation cancellations; rule starts only a synchronous animation.
       void finished(intro).then(() => rule())
     },
     reveal() {

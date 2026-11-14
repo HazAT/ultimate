@@ -251,7 +251,6 @@ export function useWakeUp(open: () => Promise<void>) {
   useEffect(() => {
     if (!system || !sessionStorage.getItem(WAKE)) return
     sessionStorage.removeItem(WAKE)
-    // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
     void open()
   }, [system, open])
 }

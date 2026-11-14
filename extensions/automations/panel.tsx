@@ -112,7 +112,6 @@ export function useLive(overdue: boolean, now: number) {
   useEffect(() => {
     if (!overdue || now - polled.current < 2000) return
     polled.current = now
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in its state.
     void refreshAutomations()
   }, [overdue, now])
   useEffect(() => {
@@ -324,7 +323,6 @@ function Toggle({
   const checked = pending ?? automation.enabled
   const toggle = (enabled: boolean) => {
     setPending(enabled)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(enabled ? ResumeAction : PauseAction, { id: automation.id })).finally(
       () => setPending(undefined),
     )
@@ -383,12 +381,10 @@ function AutomationRow({
   const runNow = () => {
     setBusy('run')
     if (!script) onExpand(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => setBusy(undefined))
   }
   const remove = () => {
     setBusy('delete')
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(async () => {
       await api.action(DeleteAction, { id: automation.id })
       onDeleted()
@@ -850,9 +846,7 @@ function Script({
   useEffect(() => {
     if (!live) return undefined
     return every(2000, () => {
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchLog()
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       if (view === 'script') void refetchSource()
     })
   }, [live, view, refetchLog, refetchSource])
@@ -867,10 +861,8 @@ function Script({
   const path = source.data?.path
   const restart = () => {
     setBusy(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors; useAction resolves undefined on failure.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => {
       setBusy(false)
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchLog()
     })
   }

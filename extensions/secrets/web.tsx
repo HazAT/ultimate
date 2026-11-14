@@ -138,7 +138,6 @@ function ValueInput({
     if (event.nativeEvent.isComposing) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
       void save()
     }
     if (event.key === 'Escape') {

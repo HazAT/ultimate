@@ -59,7 +59,6 @@ function Share() {
   const ultimate = useDocOf(1, StandingDoc)?.ultimate
   const { showSurface, switchConversation } = useUltimate()
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- registration failing leaves the page as it was without one.
     navigator.serviceWorker
       ?.register('/sw.js')
       .catch((error: unknown) => console.warn('Service worker', error))

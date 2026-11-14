@@ -248,7 +248,6 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
             event.preventDefault()
-            // oxlint-disable-next-line typescript/no-floating-promises -- submit catches join failures and displays them in the result.
             if (ready) void submit()
           }}
         >
@@ -369,7 +368,6 @@ export function JoinCard() {
           <JoinForm
             onJoined={() => {
               setJoining(true)
-              // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
               void state.refetch()
             }}
             state={state.data!}

@@ -64,7 +64,6 @@ function usePoll(refetch: () => Promise<unknown>, interval: number, off = false)
     if (off) return undefined
     const visible = () => {
       if (document.visibilityState !== 'visible') return
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetch()
     }
     const stopPolling = every(interval, visible)

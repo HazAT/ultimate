@@ -185,7 +185,6 @@ export function createStore(options: StoreOptions = {}) {
           (state.system.process.pid !== system.process.pid ||
             state.system.process.generation !== system.process.generation)
         set({ system })
-        // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
         if (!state.models || restarted) void refreshModels()
         break
       }
@@ -348,7 +347,6 @@ export function createStore(options: StoreOptions = {}) {
             handle(name, JSON.parse(raw))
           } else if (name === 'system' && !state.models)
             // The same system info still retries models a failed fetch left missing.
-            // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
             void refreshModels()
         } else handle(name, JSON.parse(raw))
       })

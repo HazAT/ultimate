@@ -352,7 +352,6 @@ export function hear(text: string, entry?: number) {
   else if (mode.phase === 'paused') {
     // Without an earlier gesture on this page the browser keeps the microphone and audio shut: ask for a tap.
     if (navigator.userActivation && !navigator.userActivation.hasBeenActive) set({ waiting: text })
-    // oxlint-disable-next-line typescript/no-floating-promises -- open never rejects: its failures become `problem`.
     else void open(text, entry)
   }
 }

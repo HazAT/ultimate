@@ -310,24 +310,27 @@ export default {
     'no-silent-catch': {
       meta: { schema: [] },
       create(context: Context) {
-        // The reason may sit inside the handler, right before it, or above its statement.
-        const statement = (node: Node) => {
-          let current: Node | null | undefined = node
-          while (current && !/(Statement|Declaration)$/.test(current.type)) current = current.parent
-          return current
-        }
-        const check = (node: Node) => {
-          const above = statement(node)
-          if (
-            !context.sourceCode.getCommentsBefore(node).length &&
-            !context.sourceCode.getCommentsInside(node).length &&
-            !(above && context.sourceCode.getCommentsBefore(above).length)
+        const check = (node: Node) =>
+          context.report({
+            node,
+            message:
+              'A swallowed error hides a bug where nobody looks: handle it, or let it go by name from lib/errors.ts (ignoring(isMissing), meansNone, overshadowed, settled; keepLast for a read in the browser).',
+          })
+        const empty = (fn: Node | undefined) => {
+          if (!fn || !['ArrowFunctionExpression', 'FunctionExpression'].includes(fn.type))
+            return false
+          const body = fn.body as Node
+          return (
+            (body.type === 'Identifier' && body.name === 'undefined') ||
+            (body.type === 'BlockStatement' &&
+              Array.isArray(body.body) &&
+              (body.body.length === 0 ||
+                (body.body.length === 1 &&
+                  body.body[0].type === 'ReturnStatement' &&
+                  (!body.body[0].argument ||
+                    (body.body[0].argument.type === 'Identifier' &&
+                      body.body[0].argument.name === 'undefined')))))
           )
-            context.report({
-              node,
-              message:
-                'A swallowed error hides a bug where nobody looks: handle it, or say why ignoring it is correct.',
-            })
         }
         return {
           CallExpression(node: Node) {
@@ -338,24 +341,10 @@ export default {
             )
               return
             const handler = node.arguments?.[0]
-            if (
-              !handler ||
-              !['ArrowFunctionExpression', 'FunctionExpression'].includes(handler.type)
-            )
-              return
-            const body = handler.body as Node
-            if (
-              (body.type === 'Identifier' && body.name === 'undefined') ||
-              (body.type === 'BlockStatement' &&
-                Array.isArray(body.body) &&
-                (body.body.length === 0 ||
-                  (body.body.length === 1 &&
-                    body.body[0].type === 'ReturnStatement' &&
-                    (!body.body[0].argument ||
-                      (body.body[0].argument.type === 'Identifier' &&
-                        body.body[0].argument.name === 'undefined')))))
-            )
-              check(handler)
+            if (empty(handler)) check(handler!)
+          },
+          Property(node: Node & { value: Node }) {
+            if ((node.key?.name ?? node.key?.value) === 'onError' && empty(node.value)) check(node)
           },
           CatchClause(node: Node) {
             const block = node.body as Node

@@ -537,7 +537,6 @@ function useSideRows(main: number | undefined): ReactNode {
               if (inFront) return setFront(null)
               setFront(item.id)
               if (actions.conversationId === main) return
-              // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
               void talkToUltimate(actions)
             }}
             type="button"

@@ -44,7 +44,6 @@ export function useLandings(roots: readonly number[]) {
   useEffect(() => {
     if (seen.current === tokens) return
     seen.current = tokens
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     for (const read of list) void read.refetch()
   }, [list, tokens])
   const last = useRef<ReadState[]>([])

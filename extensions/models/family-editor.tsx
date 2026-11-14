@@ -292,7 +292,6 @@ export function AddFamily({ view }: { view: FamiliesView }) {
             setError(undefined)
           }}
           onKeyDown={(event) => {
-            // oxlint-disable-next-line typescript/no-floating-promises -- add shows its own failure.
             if (event.key === 'Enter') void add()
           }}
           placeholder="local"

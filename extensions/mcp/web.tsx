@@ -34,7 +34,6 @@ function useServers(enabled = true) {
   const { refetch } = status
   useEffect(() => {
     if (!enabled || retry === Infinity) return undefined
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
     return retryAfter(Math.max(0, retry - Date.now()) + 500, () => void refetch())
   }, [enabled, retry, refetch])
   return status
@@ -65,7 +64,6 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
   // Its missing secret, once saved in the Secrets panel, connects it again at once instead of at the next retry.
   useEvent('secrets:changed', (data) => {
     if (server.missing && (data as { name?: unknown } | undefined)?.name === server.missing)
-      // oxlint-disable-next-line typescript/no-floating-promises -- reconnect reports its failure in the row.
       void reconnect()
   })
   const retry = server.retryAt && Math.max(0, Math.ceil((server.retryAt - now) / 1000))

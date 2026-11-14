@@ -37,7 +37,7 @@ export default defineConfig({
       },
       {
         files: ['**/*'],
-        excludeFiles: ['test/**', 'extensions/*/test/**'],
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.ts'],
         rules: { 'ultimate/no-silent-catch': 'error' },
       },
       {
@@ -151,6 +151,9 @@ export default defineConfig({
         excludeFiles: ['extensions/*/test/**'],
         plugins: ['react'],
         rules: {
+          // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
+          // notice, and nothing can take the process down.
+          'typescript/no-floating-promises': ['error', { ignoreVoid: true }],
           'react/rules-of-hooks': 'error',
           'react/exhaustive-deps': 'error',
           'react/jsx-key': 'error',

@@ -59,7 +59,6 @@ export function useGithubRepo() {
       () => null,
     )
     let live = true
-    // oxlint-disable-next-line typescript/no-floating-promises -- repo converts action failures to null; the callback only updates state.
     void repo.then((value) => live && setUrl(value))
     return () => {
       live = false
@@ -78,7 +77,6 @@ export function useProjectRepo() {
       () => null,
     )
     let live = true
-    // oxlint-disable-next-line typescript/no-floating-promises -- project converts action failures to null; the callback only updates state.
     void project.then((found) => live && setValue(found))
     return () => {
       live = false

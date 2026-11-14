@@ -117,7 +117,6 @@ function useTokenRates() {
         if (!cancelled) cancelPoll = retryAfter(1000, poll)
       }
     }
-    // oxlint-disable-next-line typescript/no-floating-promises -- poll catches failures and clears the sample until the next poll.
     void poll()
     return () => {
       cancelled = true

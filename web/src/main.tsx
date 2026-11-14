@@ -12,7 +12,6 @@ for (const name of ['dragover', 'drop'] as const)
   document.addEventListener(name, (event) => {
     if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
   })
-// oxlint-disable-next-line typescript/no-floating-promises -- setLoaders settles loaders and records each facet's error in the registry.
 void loadExtensions()
 createRoot(document.getElementById('app')!).render(
   <StrictMode>

@@ -119,7 +119,6 @@ export function FirstRun({
     <Dialog
       open={open}
       onOpenChange={(isOpen) => {
-        // oxlint-disable-next-line typescript/no-floating-promises -- finish catches completion failures and displays them with setError.
         if (!isOpen) void finish(true)
       }}
     >
