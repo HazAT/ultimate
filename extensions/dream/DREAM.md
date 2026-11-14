@@ -120,8 +120,12 @@ tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation onl
   `no-guards` keeps most rules in prompts), agent definitions or docs (an instruction rather than a project fact), a
   skill (a multi-step procedure agents repeat across conversations but need only sometimes: clone `skills/`, the
   project's `.ultimate/skills/` or the user's `~/.ultimate/skills/`), or stays a memory (context about the project or
-  the user). Say the memory delete or update that follows once it is codified. Also check the skills that exist: one
-  that is stale, duplicated or never read gets an update or removal proposal.
+  the user). Prefer the earliest fix that makes the mistake impossible: architecture (a shape where it cannot
+  happen) first, then types, then a lint rule, then a test, docs last. A codified rule follows the rules table in
+  AGENTS.md "Review quality": it joins the table with what enforces it. Name the old way an agent would copy (a
+  helper, a pattern, a doc line) and propose deleting it with the fix. Say the memory delete or update that follows
+  once it is codified. Also check the skills that exist: one that is stale, duplicated or never read gets an update or
+  removal proposal.
 - **project** — what Ultimate could do better in this project's own work. Read the root's tally (abstracts and
   landings), the project's conversations and `git log`, and look for what repeats: steps agents did by hand again and
   again (the same commands, checks, lookups, setup), what the user asked for more than once, and where branches got
