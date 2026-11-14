@@ -351,6 +351,7 @@ function backend(host: ExtensionHost) {
             ]),
           ],
           ...(args.key ? { key: args.key } : {}),
+          ...(await served(tx, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
