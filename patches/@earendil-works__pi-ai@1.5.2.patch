@@ -1,0 +1,13 @@
+diff --git a/dist/api/openai-responses.js b/dist/api/openai-responses.js
+index 0977a46594d2caa8c92b90e267158ee5efb74938..bf7065be7edd7ad0a0bf310cc704589cfa4c7c99 100644
+--- a/dist/api/openai-responses.js
++++ b/dist/api/openai-responses.js
+@@ -69,7 +69,7 @@ function getCompat(model) {
+         sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
+         promptCacheKeyMode: model.compat?.promptCacheKeyMode ?? "auto",
+         supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+-        supportsStrictMode: model.compat?.supportsStrictMode ?? false,
++        supportsStrictMode: model.compat?.supportsStrictMode ?? true,
+         supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
+         supportsAdditionalTools: model.compat?.supportsAdditionalTools ?? false,
+         supportsToolSearch: model.compat?.supportsToolSearch ?? false,
