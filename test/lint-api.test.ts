@@ -7,8 +7,8 @@ type Rule = keyof typeof ultimate.rules
 type Located = { type: string; start: number; end: number; parent?: Located }
 type Comment = { type: string; value: string; start: number; end: number }
 
-/** Run one rule over `source` as oxlint would for `file` (repository-relative): parse, walk, report messages. */
-function lint(rule: Rule, file: string, source: string) {
+/** Run one rule over `source` as oxlint would for `file` (repository-relative): parse, walk, report full messages. */
+function diagnose(rule: Rule, file: string, source: string) {
   const { program, comments } = parseSync(file, source, { lang: 'ts' }) as unknown as {
     program: Located
     comments: Comment[]
@@ -45,6 +45,35 @@ function lint(rule: Rule, file: string, source: string) {
   visit(program)
   return reports
 }
+
+/** The specific part of each message, after the sentence that says why the rule exists. */
+const lint = (rule: Rule, file: string, source: string) =>
+  diagnose(rule, file, source).map((message) => message.slice(message.indexOf('. ') + 2))
+
+it('opens every contract and boundary message with why the rule exists', () => {
+  const why = (rule: Rule, file: string, source: string) =>
+    diagnose(rule, file, source).map((message) => message.slice(0, message.indexOf('. ') + 1))
+  expect(why('api-file-shape', 'extensions/echo/api.ts', 'export const limit = 3')).toContain(
+    'Agents and other extensions read a contract file as the whole surface (ultimate.api), so it holds only contracts, each documented.',
+  )
+  expect(
+    why('api-naming', 'extensions/echo/refs.ts', "export const A = actionRef('messages', 'send')"),
+  ).toEqual(['A name tells the reader who owns it.'])
+  expect(
+    why(
+      'api-only-imports',
+      'extensions/echo/server.ts',
+      "import { x } from '../messages/server.ts'",
+    ),
+  ).toEqual(['Extensions meet only at their contracts, so each can change and reload on its own.'])
+  expect(
+    why(
+      'core-tier-deps',
+      'extensions/conversations/rows.tsx',
+      "import { x } from '../plan/ui.tsx'",
+    ),
+  ).toEqual(['The core tier must run with every optional extension off.'])
+})
 
 const api = `/**
  * Echo: says things back. Other extensions ask it to repeat text.

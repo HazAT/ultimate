@@ -71,6 +71,7 @@ it('rejects raw timers, as in the review surface polling the DOM for a diff line
       clearInterval(timer)
     }, 50)
     window.setTimeout(done, 0)
+    await import('node:timers/promises')
   `
   const f = context()
   const rule = ultimate.rules['no-raw-timer'].create(f.context)
@@ -80,10 +81,11 @@ it('rejects raw timers, as in the review surface polling the DOM for a diff line
     const typed = node as { type?: string }
     if (typed.type === 'CallExpression') rule.CallExpression(typed as never)
     if (typed.type === 'ImportDeclaration') rule.ImportDeclaration(typed as never)
+    if (typed.type === 'ImportExpression') rule.ImportExpression(typed as never)
     for (const value of Object.values(node)) visit(value)
   }
   visit(parseSync('surface.tsx', shipped).program)
-  expect(f.reports).toHaveLength(3)
+  expect(f.reports).toHaveLength(4)
   expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.ts/)
 })
 

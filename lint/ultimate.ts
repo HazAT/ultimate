@@ -226,15 +226,17 @@ export default {
       create(context: Context) {
         const message =
           'A timer guesses when something has happened, so it is slow when it waits too long and wrong when it waits too little: react to the event, document, observer or AbortSignal that says so. When time itself is the reason, use the helper from lib/timers.ts that names it (debounce, batch, deadline, within, retryAfter, every, pace, nextTurn).'
+        const imported = (node: Node) => {
+          if (/^(node:)?timers(\/promises)?$/.test(String(node.source?.value)))
+            context.report({ node, message })
+        }
         return {
           CallExpression(node: Node) {
             if (isGlobal(node.callee, 'setTimeout') || isGlobal(node.callee, 'setInterval'))
               context.report({ node, message })
           },
-          ImportDeclaration(node: Node) {
-            if (/^(node:)?timers(\/promises)?$/.test(String(node.source?.value)))
-              context.report({ node, message })
-          },
+          ImportDeclaration: imported,
+          ImportExpression: imported,
         }
       },
     },
@@ -382,7 +384,7 @@ export default {
           if (directory === 'extensions' && extension !== own && file.join('/') !== allowed)
             context.report({
               node,
-              message: `Extensions meet only at their contracts, so each can change and reload on its own: ${own} imports ${extension}/${file.join('/')} at runtime; reach ${extension} through ${how}, import types with \`import type\`, or move a pure helper to lib/.`,
+              message: `Extensions meet only at their contracts, so each can change and reload on its own. ${own} imports ${extension}/${file.join('/')} at runtime; reach ${extension} through ${how}, import types with \`import type\`, or move a pure helper to lib/.`,
             })
         }
         return {
@@ -407,7 +409,7 @@ export default {
           if (directory === 'extensions' && extension !== own && !coreExtension(extension))
             context.report({
               node,
-              message: `The core tier must run with every optional extension off: ${own} is core tier and imports optional ${extension}; declare a point in ${own} that ${extension} provides, or react to an event.`,
+              message: `The core tier must run with every optional extension off. ${own} is core tier and imports optional ${extension}; declare a point in ${own} that ${extension} provides, or react to an event.`,
             })
         }
         return {
@@ -427,7 +429,7 @@ export default {
         const report = (node: Node, message: string) =>
           context.report({
             node,
-            message: `Agents and other extensions read a contract file as the whole surface (ultimate.api), so it holds only contracts, each documented: ${message}`,
+            message: `Agents and other extensions read a contract file as the whole surface (ultimate.api), so it holds only contracts, each documented. ${message}`,
           })
         const checkImport = (node: Node) => {
           const source = String(node.source?.value)
@@ -557,7 +559,7 @@ export default {
             if (callee?.type === 'Identifier' && callee.name === 'actionRef' && name !== own)
               context.report({
                 node,
-                message: `A name tells the reader who owns it: extensions/${own} refers only to its own actions, actionRef('${own}', name).`,
+                message: `A name tells the reader who owns it. extensions/${own} refers only to its own actions: actionRef('${own}', name).`,
               })
             if (
               callee?.type === 'CallExpression' &&
@@ -572,7 +574,7 @@ export default {
             )
               context.report({
                 node,
-                message: `A name tells the reader who owns it: the API of extensions/${own} is named '${own}', its extension points '${own}.<point>'.`,
+                message: `A name tells the reader who owns it. The API of extensions/${own} is named '${own}', its extension points '${own}.<point>'.`,
               })
             if (
               callee?.type === 'Identifier' &&
@@ -585,7 +587,7 @@ export default {
             )
               context.report({
                 node,
-                message: `A name tells the reader who owns it: events of extensions/${own} are named '${own}.<event>'.`,
+                message: `A name tells the reader who owns it. Events of extensions/${own} are named '${own}.<event>'.`,
               })
           },
         }

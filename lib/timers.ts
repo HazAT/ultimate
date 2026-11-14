@@ -67,26 +67,26 @@ export function deadline(
   return () => clearTimeout(handle)
 }
 
-/** `work`, or `error` once `ms` pass first: a deadline on a promise that may never settle. */
-export function within<T>(ms: number, work: Promise<T>, error: () => Error): Promise<T> {
+/** `work`, or `error` once `ms` pass first: a deadline on a promise that may never settle. `signal` drops the deadline. */
+export function within<T>(
+  ms: number,
+  work: Promise<T>,
+  error: () => Error,
+  signal?: AbortSignal,
+): Promise<T> {
   let cancel: Cancel | undefined
   return Promise.race([
     work,
     new Promise<never>((_resolve, reject) => {
       cancel = deadline(ms, () => reject(error()))
+      signal?.addEventListener('abort', () => cancel?.(), { once: true })
     }),
   ]).finally(() => cancel?.())
 }
 
 /** Calls `fn` again after `ms`: the next attempt after a failure. */
-export function retryAfter(
-  ms: number,
-  fn: () => void,
-  { unref }: { unref?: boolean } = {},
-): Cancel {
-  const handle = lenient(setTimeout(fn, ms), unref)
-  return () => clearTimeout(handle)
-}
+export const retryAfter = (ms: number, fn: () => void, options: { unref?: boolean } = {}): Cancel =>
+  deadline(ms, fn, options)
 
 /** Calls `fn` every `ms`: a real schedule, or a poll of something that publishes no change. */
 export function every(ms: number, fn: () => void, { unref }: { unref?: boolean } = {}): Cancel {
@@ -111,7 +111,7 @@ export function pace(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** Runs `fn` once the current task and its rendering are done: after the browser or Node has caught up. */
+/** Runs `fn` in a later task, once the current one and the work it queued are done. */
 export function nextTurn(fn: () => void): Cancel {
   return deadline(0, fn)
 }
