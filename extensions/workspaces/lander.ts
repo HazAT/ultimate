@@ -11,6 +11,7 @@ import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/p
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
+import { overshadowed, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { landingWeight } from '../../lib/token-weight.ts'
@@ -49,23 +50,18 @@ export async function landerCheckout(
   tip = 'HEAD',
 ) {
   const path = await landerPath(home, source, settings)
-  const queued = (checkouts.get(path) ?? Promise.resolve())
-    .catch(
-      // The previous caller receives its failure; a later call must still be able to recover.
-      () => undefined,
-    )
-    .then(async () => {
-      const registered = (await git(source, 'worktree', 'list', '--porcelain'))
-        .split('\n\n')
-        .some((entry) => entry.split('\n').includes(`worktree ${path}`))
-      if (!registered) {
-        // The directory is the lander's own; a crash may have left it half created.
-        await rm(path, { recursive: true, force: true })
-        await git(source, 'worktree', 'prune')
-        await addCheckout(settings, source, path, landerName(source), ['--detach', tip])
-      }
-      return path
-    })
+  const queued = settled(checkouts.get(path) ?? Promise.resolve()).then(async () => {
+    const registered = (await git(source, 'worktree', 'list', '--porcelain'))
+      .split('\n\n')
+      .some((entry) => entry.split('\n').includes(`worktree ${path}`))
+    if (!registered) {
+      // The directory is the lander's own; a crash may have left it half created.
+      await rm(path, { recursive: true, force: true })
+      await git(source, 'worktree', 'prune')
+      await addCheckout(settings, source, path, landerName(source), ['--detach', tip])
+    }
+    return path
+  })
   checkouts.set(path, queued)
   try {
     return await queued
@@ -233,10 +229,9 @@ export async function runLanderCheck(
   } finally {
     stallDeadline.cancel()
     cancelTotal()
-    // Best effort: detached processes an e2e test leaves behind (supervisors, preview homes) can still be writing here,
-    // the same race #43 fixed in test/sweep-temp.ts. Without retry and catch, rm throws ENOTEMPTY and refuses a landing
-    // whose checks passed. sweepChecks removes the leftover at the next start. Can go once no check leaves writers.
-    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {})
+    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+      overshadowed,
+    )
   }
 }
 
@@ -599,8 +594,7 @@ export function createLander(
                   return false
                 } catch {
                   const conflicts = await git(path, 'diff', '--name-only', '--diff-filter=U')
-                  // The next attempt starts from a reset, cleaned checkout, so a failed abort cannot leak into it.
-                  await git(path, 'merge', '--abort').catch(() => undefined)
+                  await git(path, 'merge', '--abort').catch(overshadowed)
                   await fail(reason, conflicts, hint)
                   return true
                 }
@@ -715,8 +709,8 @@ export function createLander(
                 return rerun.failure === undefined ? { flaky: true } : { failure: rerun.failure }
               }
               // Every command settles before a failure hands over, so none still runs in the checkout.
-              const settled = await Promise.allSettled(commands.map(settle))
-              const results = settled.map((outcome) => {
+              const outcomes = await Promise.allSettled(commands.map(settle))
+              const results = outcomes.map((outcome) => {
                 if (outcome.status === 'rejected') throw outcome.reason
                 return outcome.value
               })

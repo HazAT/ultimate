@@ -6,6 +6,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { meansNone } from '../../lib/errors.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
@@ -205,10 +206,7 @@ async function recipient(host: ExtensionHost, spec: string, cwd: string): Promis
     )
     return Number(trailer.split('\n')[0]) || undefined
   }
-  const found = await owner().catch(
-    // An unknown ref or a missing repository has no owner: the review goes to the primary agent.
-    () => undefined,
-  )
+  const found = await owner().catch(meansNone)
   if (found !== undefined && known(host, found)) return found
   return host.need(SubagentsApi).standing('ultimate', context)
 }

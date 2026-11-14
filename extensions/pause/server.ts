@@ -4,6 +4,7 @@ import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-dur
 import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { settled } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
@@ -50,8 +51,7 @@ function serial<T>(host: Pick<ExtensionHost, 'resource'>, work: () => Promise<T>
     chain: Promise.resolve() as Promise<unknown>,
   }))
   const next = queue.chain.then(work)
-  // The caller gets the failure; the chain only waits for the work to settle.
-  queue.chain = next.catch(() => undefined)
+  queue.chain = settled(next)
   return next
 }
 

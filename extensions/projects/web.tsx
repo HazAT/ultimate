@@ -11,6 +11,7 @@ import {
   cn,
   defineWebExtension,
   prettyName,
+  keepLast,
   useAction,
   useExtensions,
   useViewport,
@@ -77,7 +78,7 @@ function usePoll(refetch: () => Promise<unknown>, interval: number, off = false)
 
 /** Whether the rail is pinned: one value for every instance on this machine, so a jump keeps the rail as it was. */
 function usePinned(off: boolean) {
-  const shared = useAction(PinAction, {}, { onError: () => {}, enabled: !off })
+  const shared = useAction(PinAction, {}, { onError: keepLast, enabled: !off })
   usePoll(shared.refetch, PIN, off)
   const [pinned, setPinned] = useState<boolean>()
   const stored = shared.data?.pinned
@@ -86,8 +87,7 @@ function usePinned(off: boolean) {
   }, [stored])
   const set = (next: boolean) => {
     setPinned(next)
-    // A failed write leaves this page's value; the next poll brings the file's back.
-    api.action(PinAction, { pinned: next }).catch(() => {})
+    api.action(PinAction, { pinned: next }).catch(keepLast)
   }
   return [pinned ?? false, set] as const
 }
@@ -270,7 +270,7 @@ function Rail() {
   const other = useExtensions().some(
     (record) => record.name !== 'projects' && record.extension?.slots?.['shell.rail'],
   )
-  const list = useAction(ListAction, null, { onError: () => {}, enabled: !other })
+  const list = useAction(ListAction, null, { onError: keepLast, enabled: !other })
   usePoll(list.refetch, LIVE, other)
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = usePinned(other)

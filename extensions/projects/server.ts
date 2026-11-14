@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { inBackground, meansNone } from '../../lib/errors.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import type { GithubRepo } from '../../lib/project-identity.ts'
@@ -14,7 +15,6 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
-import { inBackground } from '../../lib/errors.ts'
 
 /** How long the list waits for another instance's counts; a slower one shows without them until the next poll. */
 const STATUS_WAIT = 1_500
@@ -37,10 +37,7 @@ async function counts(name: string, url: string, signal: AbortSignal) {
     'status',
     {},
     AbortSignal.any([signal, AbortSignal.timeout(STATUS_WAIT)]),
-  ).catch(() => {
-    // Down, slow or without the status extension: the rail lists it without live state.
-    return undefined
-  })) as { busy?: unknown; questions?: { count?: unknown } } | undefined
+  ).catch(meansNone)) as { busy?: unknown; questions?: { count?: unknown } } | undefined
   const busy = status?.busy
   const questions = status?.questions?.count
   return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}

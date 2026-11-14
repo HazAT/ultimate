@@ -5,6 +5,7 @@ import {
   cn,
   defineWebExtension,
   events,
+  keepLast,
   useAction,
   useCommands,
   useEvent,
@@ -77,12 +78,11 @@ function Setup() {
   ])
   // A login or provider health change re-checks at once; the minute poll covers the file-backed areas.
   const latest = useEvents({ events: [LoginChanged, HealthChanged], limit: 1 })?.[0]?.id
-  const { data, refetch } = useAction(
-    CheckAction,
-    null,
-    // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {}, on: [signature, latest], every: 60_000 },
-  )
+  const { data, refetch } = useAction(CheckAction, null, {
+    onError: keepLast,
+    on: [signature, latest],
+    every: 60_000,
+  })
   useEvent('secrets:changed', () => void refetch())
   const warnings = data?.filter((issue) => issue.status === 'warn') ?? []
   if (!warnings.length) return null

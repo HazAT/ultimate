@@ -26,6 +26,7 @@ import {
   useUltimate,
 } from '@/sdk'
 import type { AuthEvent, AuthPrompt } from '@/sdk'
+import { meansNone } from '../../lib/errors.ts'
 import { authLabel, dialogs, reopenPicker, useLoginProvider } from './state.tsx'
 import type { ProviderInfo } from './state.tsx'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
@@ -35,10 +36,8 @@ function useLoginFlow(flowId: string | undefined) {
   const flows = useDoc(LoginDoc)?.flows
   return flowId === undefined ? undefined : flows?.[flowId]
 }
-/** Cancel a running flow; it may have just ended, which needs no notice. */
 const cancel = (flowId: string) =>
-  // The flow may have just ended; a failed cancel needs no notice.
-  api.action(CancelAction, { flowId }, { keepalive: true }).catch(() => undefined)
+  api.action(CancelAction, { flowId }, { keepalive: true }).catch(meansNone)
 interface Method {
   provider: ProviderInfo
   type: AuthType

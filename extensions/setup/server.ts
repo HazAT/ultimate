@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readSecret, secretMetadata } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -477,8 +478,7 @@ export default function setup(host: ExtensionHost) {
         beforeInput: async (_input, { tx, conversationId }) => {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
-          // A check that fails here only skips the note; the status line still shows the setup.
-          return noteFor(tx, conversationId, await current(tx).catch(() => undefined), Date.now())
+          return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())
         },
       }),
     ],

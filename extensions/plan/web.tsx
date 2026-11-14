@@ -39,6 +39,7 @@ import {
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
 import { InfoAction, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
+import { meansNone } from '../../lib/errors.ts'
 import { criteriaOf, sectionsOf, verbatim } from './body.tsx'
 import { criteriaOfBody, finished, number, pillOf, progressLabel } from './progress.tsx'
 import { PlanDoc } from './refs.ts'
@@ -784,8 +785,8 @@ function PlanCall({ call }: { call: ToolCallView }) {
   if (call.status === 'done') {
     try {
       result = JSON.parse(call.output)
-    } catch {
-      // Error outputs may be plain text; the card can still describe the call from its arguments.
+    } catch (error) {
+      meansNone(error)
     }
   }
   const key =

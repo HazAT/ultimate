@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import { events, formatAgo, useStore } from '@/sdk'
+import { events, formatAgo, keepLast, useStore } from '@/sdk'
 import { reads, store } from '@/sdk/client'
 import type { ReadState } from '@/sdk/reads'
 import { RecentAction, TallyDoc } from '../lineage/ui.tsx'
@@ -36,8 +36,7 @@ export function useLandings(roots: readonly number[]) {
     [key],
   )
   useEffect(() => {
-    // A root that cannot list its landings (one just unlisted) only leaves them out; the next entry reads again.
-    const releases = list.map((read) => read.use({ onError: () => {} }))
+    const releases = list.map((read) => read.use({ onError: keepLast }))
     return () => releases.forEach((release) => release())
   }, [list])
   const seen = useRef(tokens)

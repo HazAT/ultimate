@@ -135,7 +135,7 @@ export default function parallel(host: ExtensionHost) {
             try {
               return { ...input, url: JSON.parse(input.url) }
             } catch {
-              /* Let validation report malformed URLs. */
+              return input
             }
           }
           return input

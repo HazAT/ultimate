@@ -8,6 +8,7 @@ import {
   errorMessage,
   events,
   provide,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -25,7 +26,7 @@ function useServers(enabled = true) {
   const [settling, setSettling] = useState(false)
   const status = useAction(StatusAction, null, {
     enabled,
-    onError: () => {},
+    onError: keepLast,
     every: settling ? 2_000 : 60_000,
   })
   const connecting = status.data?.some((server) => server.state === 'connecting') ?? false

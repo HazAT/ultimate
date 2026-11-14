@@ -1,6 +1,15 @@
 import type { ReactNode } from 'react'
 import { useRef, useState } from 'react'
-import { cn, formatAgo, formatTokens, Provided, useAction, useDocOf, useEvents } from '@/sdk'
+import {
+  cn,
+  formatAgo,
+  formatTokens,
+  keepLast,
+  Provided,
+  useAction,
+  useDocOf,
+  useEvents,
+} from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
@@ -285,7 +294,7 @@ function useFlightWork(branches: ConversationSummary[]) {
   const progress = useAction(
     ProgressAction,
     { ids },
-    { enabled: ids.length > 0, onError: () => {}, on: [commit, runs.ended] },
+    { enabled: ids.length > 0, onError: keepLast, on: [commit, runs.ended] },
   )
   const byId = new Map((progress.data ?? []).map((item) => [item.id, item]))
   return new Map(

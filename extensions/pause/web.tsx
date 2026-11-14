@@ -11,6 +11,7 @@ import {
   formatDuration,
   errorMessage,
   getState,
+  keepLast,
   ParkedRuns,
   provide,
   useAction,
@@ -46,12 +47,7 @@ function usePauseState() {
   const doc = useDocOf(1, PauseDoc)
   const live = useTasks()
   const graph = doc?.paused ? live : undefined
-  const { data } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next change asks again.
-    { onError: () => {}, on: [doc, graph] },
-  )
+  const { data } = useAction(StateAction, null, { onError: keepLast, on: [doc, graph] })
   return data
 }
 

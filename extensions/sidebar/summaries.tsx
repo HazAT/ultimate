@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { formatAgo, formatTime, useAction } from '@/sdk'
+import { formatAgo, formatTime, keepLast, useAction } from '@/sdk'
 import { SummariesAction } from '../conversations/ui.tsx'
 
 /**
@@ -49,7 +49,7 @@ export function SummaryHistory({
 }
 
 function History({ id, list }: { id: number; list: React.RefObject<HTMLOListElement | null> }) {
-  const { data, loading } = useAction(SummariesAction, { id }, { onError: () => {} })
+  const { data, loading } = useAction(SummariesAction, { id }, { onError: keepLast })
   const now = Date.now()
   if (!data)
     return (

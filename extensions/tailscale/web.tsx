@@ -17,6 +17,7 @@ import {
   defineWebExtension,
   errorMessage,
   events,
+  keepLast,
   useAction,
   useCopy,
   useEvent,
@@ -48,9 +49,8 @@ const problems: Record<Problem, { title: string; link?: { href: string; label: s
  */
 function useStatus() {
   const system = useSystem()
-  // Failures show where the status does, not as notices: the status line reads it on every page.
   return useAction(StatusAction, null, {
-    onError: () => {},
+    onError: keepLast,
     on: [
       system?.access.origins,
       system?.extensionDiagnostics,
