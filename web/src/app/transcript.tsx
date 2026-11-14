@@ -409,7 +409,6 @@ function TranscriptEntries() {
     const room = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
     if (move > room) setTailSpace(tailSpace + move - room + rowGap(contentRef.current))
     // Through the library's setter, so its scroll handler does not take the move for the reader's.
-    // oxlint-disable-next-line react/immutability -- the library's state is its own mutable object; it writes it the same way.
     state.scrollTop += move
   })
   useEffect(() => {
@@ -906,38 +905,40 @@ function EmptyState() {
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
   )?.reasoning
   const cwd = agent.cwd ?? system?.execution.defaultCwd ?? ''
-  const rows: [string, ReactNode][] = [
-    [
-      'repo',
-      <>
-        {elidePath(shortenPath(cwd, { home: system?.machine.home }), 44)}
-        {system?.code.branch && cwd === system.code.ultimateRoot && (
-          <span className="text-muted-foreground"> ({system.code.branch})</span>
-        )}
-      </>,
-    ],
-    [
-      'model',
-      agent.model ? (
+  const rows: { label: string; value: ReactNode }[] = [
+    {
+      label: 'repo',
+      value: (
+        <>
+          {elidePath(shortenPath(cwd, { home: system?.machine.home }), 44)}
+          {system?.code.branch && cwd === system.code.ultimateRoot && (
+            <span className="text-muted-foreground"> ({system.code.branch})</span>
+          )}
+        </>
+      ),
+    },
+    {
+      label: 'model',
+      value: agent.model ? (
         `${agent.model.provider}/${agent.model.modelId}${reasoning !== false && agent.thinkingLevel ? ` · ${agent.thinkingLevel}` : ''}`
       ) : (
-        // oxlint-disable-next-line react/jsx-key -- a [label, value] row, not a rendered list
         <span className="text-warning">none configured</span>
       ),
-    ],
-    [
-      'ext',
-      system?.extensions
-        .filter((extension) => extension.enabled)
-        .map((extension) => extension.name)
-        .join(' · ') ?? '…',
-    ],
-    [
-      'host',
-      system
+    },
+    {
+      label: 'ext',
+      value:
+        system?.extensions
+          .filter((extension) => extension.enabled)
+          .map((extension) => extension.name)
+          .join(' · ') ?? '…',
+    },
+    {
+      label: 'host',
+      value: system
         ? `${system.machine.hostname} · ${system.process.node} · gen ${system.process.generation}`
         : '…',
-    ],
+    },
   ]
   return (
     <ConversationEmptyState className="min-h-[55vh]">
@@ -951,7 +952,7 @@ function EmptyState() {
             : `A coding agent that edits ${system.project.name}, and can change itself too.`}
         </div>
         <div className="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
-          {rows.map(([label, value]) => (
+          {rows.map(({ label, value }) => (
             <Fragment key={label}>
               <span className="text-muted-foreground/70">{label}</span>
               <span className="truncate text-foreground/85">{value}</span>

@@ -5,8 +5,7 @@ import type { CoreReport } from '../server/supervisor-protocol.ts'
 
 const plain = (text: string) =>
   // Child diagnostics must not be able to control the terminal, including carriage returns.
-  // eslint-disable-next-line no-control-regex
-  stripVTControlCharacters(text).replace(/[\r\x00-\x08\x0b-\x1f\x7f]/g, '')
+  stripVTControlCharacters(text).replace(/(?![\t\n\u0080-\u009f])\p{Cc}/gu, '')
 const row = (text: string) => plain(text).replaceAll('\n', ' ').slice(0, 240)
 
 export function dashboard(logPath: string, output: NodeJS.WriteStream = process.stdout) {

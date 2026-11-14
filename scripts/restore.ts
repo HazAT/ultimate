@@ -12,7 +12,7 @@ import type { Register } from '../lib/cloud.ts'
 import { moveDatabase } from '../lib/database-files.ts'
 import { projectIdentity } from '../lib/project-identity.ts'
 import { readSecret } from '../lib/secrets.ts'
-import { projectHome } from '../server/project.ts'
+import { projectHome } from '../lib/project-paths.ts'
 import { writeJson } from '../lib/json-file.ts'
 import { chapterKey, writeBackup } from '../extensions/cloud/backup.ts'
 import {

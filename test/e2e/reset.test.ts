@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { projectHome } from '../../server/project.ts'
+import { projectHome } from '../../lib/project-paths.ts'
 import { cleanEnv, temp } from '../helpers.ts'
 
 const run = promisify(execFile)

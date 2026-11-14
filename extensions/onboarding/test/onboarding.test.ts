@@ -6,7 +6,7 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { fauxServer, post, temp, removeTemp } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
 import { git } from '../../../lib/git.ts'
-import { projectDecision } from '../../../server/project-setup.ts'
+import { projectDecision } from '../../../lib/project-setup.ts'
 import { updateSettings } from '../../../lib/settings.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 

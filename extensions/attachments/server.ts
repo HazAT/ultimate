@@ -12,8 +12,7 @@ const folder = (home: string) => join(home, 'attachments')
 /** A file name safe to store and to quote in a prompt line: its last segment, without control characters or backticks. */
 export function safeName(name: string) {
   const cleaned = basename(name.replaceAll('\\', '/'))
-    // oxlint-disable-next-line no-control-regex -- Control characters are what this strips.
-    .replace(/[\u0000-\u001f\u007f`]/g, '')
+    .replace(/(?![\u0080-\u009f])[\p{Cc}`]/gu, '')
     .trim()
   return cleaned && cleaned !== '.' && cleaned !== '..' ? cleaned.slice(0, 200) : 'file'
 }

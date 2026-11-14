@@ -415,6 +415,8 @@ function SpeakNew({ voice }: { voice: number }) {
   const loading = useConversation((conversation) => conversation.loading)
   const actions = useUltimate()
   const commands = useCommands()
+  const navigation = useRef({ actions, commands })
+  navigation.current = { actions, commands }
   const seen = useRef<number>(undefined)
   useEffect(() => {
     if (loading) return
@@ -438,10 +440,10 @@ function SpeakNew({ voice }: { voice: number }) {
       const line = entry.data as unknown as VoiceLine
       if (line.role === 'ultimate' && line.speech) live.hear(line.text, entry.id)
       else if (line.role === 'note') live.note(line.text)
-      else if (line.role === 'action' && line.go) navigate(line.go, actions, commands)
+      else if (line.role === 'action' && line.go)
+        navigate(line.go, navigation.current.actions, navigation.current.commands)
     }
     seen.current = Math.max(seen.current, last)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- only new entries act; actions and commands are read then.
   }, [entries, loading])
   // A new Voice conversation starts counting afresh.
   useEffect(() => () => (seen.current = undefined), [voice])

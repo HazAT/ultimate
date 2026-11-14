@@ -1,11 +1,17 @@
 import { readFile, realpath } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
-import { compareExtensions, discoverExtensions } from './discovery.ts'
-import { decisionRoot, projectSetup, projectSettings, projectDiagnostics } from './project-setup.ts'
+import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
+import {
+  decisionRoot,
+  projectSetup,
+  projectSettings,
+  projectDiagnostics,
+} from '../lib/project-setup.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
-import { discoveryRoots, projects } from './project.ts'
+import { projects } from './project.ts'
+import { discoveryRoots } from '../lib/project-paths.ts'
 import type { ProjectInfo } from './project.ts'
-import { extensionSettingsFiles } from './extension-settings.ts'
+import { extensionSettingsFiles } from '../lib/extension-settings.ts'
 import { watchRoots } from './watch-roots.ts'
 import { actionExec } from './actions.ts'
 import type { ExtensionAction } from './actions.ts'

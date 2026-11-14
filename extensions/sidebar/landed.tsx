@@ -14,13 +14,13 @@ import { useShell, useSidebarState } from './state.tsx'
  * The latest landings of every root (up to 20 each), newest first. Read again whenever a root's token count changes,
  * which every new entry in it does: a new count means something may have landed.
  */
-export function useLandings(roots: readonly number[]) {
-  const key = roots.join(',')
+export function useLandings(rootIds: readonly number[]) {
+  const key = rootIds.join(',')
+  const roots = useMemo(() => (key ? key.split(',').map(Number) : []), [key])
   useEffect(() => {
     const stops = roots.map((id) => store.watchDocOf(id, TallyDoc.kind))
     return () => stops.forEach((stop) => stop())
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-  }, [key])
+  }, [roots])
   const tokens = useStore((state) =>
     roots
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
@@ -32,8 +32,7 @@ export function useLandings(roots: readonly number[]) {
       roots.map((id) =>
         reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
       ),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-    [key],
+    [roots],
   )
   useEffect(() => {
     const releases = list.map((read) => read.use({ onError: keepLast }))
@@ -72,8 +71,7 @@ export function useLandings(roots: readonly number[]) {
           })),
         )
         .toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `states` follows `list`, which follows `key`
-    [states],
+    [states, roots],
   )
 }
 

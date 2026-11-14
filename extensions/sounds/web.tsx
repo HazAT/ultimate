@@ -1,5 +1,5 @@
 import { AudioLinesIcon, PlayIcon, SquareIcon, Volume2Icon, VolumeOffIcon } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
@@ -118,6 +118,8 @@ function Player() {
   const [narrate] = useState(narratorOfTab)
   // The narrator speaks while the tab is hidden too; only a reconnect or the tab opening counts as catching up.
   const catchingUp = useCatchingUp(narrating)
+  const titles = useRef(conversations)
+  titles.current = conversations
   useEffect(() => tones.setVolume(muted ? 0 : volume), [muted, volume])
   useEffect(() => {
     conductor
@@ -134,7 +136,7 @@ function Player() {
         messages: (log ?? emptyMessages).messages,
         landings: landings.map(({ id, data }) => ({ id, title: spoken(data.title) })),
         branches: branched.map(({ id, data }) => ({ id, title: spoken(data.title) })),
-        title: (id) => spoken(conversations.find((row) => row.id === id)?.title),
+        title: (id) => spoken(titles.current.find((row) => row.id === id)?.title),
       },
       catchingUp(),
     ).filter(
@@ -148,8 +150,20 @@ function Player() {
         for (const cue of mine) await tones.play(cue.sound)
       })
       .catch((error: unknown) => console.warn('Sound failed', error))
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `catchingUp` reads the time; titles are read when news comes.
-  }, [hear, overview, log, agent, landings, branched, muted, off, narrating, branches])
+  }, [
+    hear,
+    overview,
+    log,
+    agent,
+    landings,
+    branched,
+    muted,
+    off,
+    narrating,
+    branches,
+    catchingUp,
+    narrate,
+  ])
   // The Landed notification plays each landing once; the band lands with it only when that notification is off.
   return agents !== 'off' && !muted ? <Listener landings={off.includes('landed')} /> : null
 }
@@ -165,6 +179,8 @@ const settleMs = 3000
  */
 function useCatchingUp(hidden = false) {
   const connection = useConnection()
+  const latest = useRef({ connection, hidden })
+  latest.current = { connection, hidden }
   const opened = useRef(Date.now())
   const shown = useRef(Date.now())
   useEffect(() => {
@@ -175,10 +191,16 @@ function useCatchingUp(hidden = false) {
     return () => document.removeEventListener('visibilitychange', update)
   }, [])
   // With `hidden`, a hidden tab still hears what happens now: only the tab opening or the stream reconnecting catch up.
-  return () =>
-    connection.status !== 'open' ||
-    (!hidden && document.hidden) ||
-    Date.now() < Math.max(hidden ? opened.current : shown.current, connection.since) + settleMs
+  return useCallback(() => {
+    const current = latest.current
+    return (
+      current.connection.status !== 'open' ||
+      (!current.hidden && document.hidden) ||
+      Date.now() <
+        Math.max(current.hidden ? opened.current : shown.current, current.connection.since) +
+          settleMs
+    )
+  }, [])
 }
 
 /** While the sound of agents plays: follows every conversation, tool call and landing, and hands them to the band. */
@@ -196,7 +218,10 @@ function Listener({ landings }: { landings: boolean }) {
   useEffect(() => {
     // Until every source has arrived, a later one would bring its whole history as news.
     if (!overview || !standing || !events) return
-    const live = busy.map((id) => rounds[id]).filter((round) => round !== undefined)
+    const live = conversations
+      .filter((conversation) => conversation.busy)
+      .map(({ id }) => rounds[id])
+      .filter((round) => round !== undefined)
     const happenings = follow(
       {
         conversations,
@@ -209,8 +234,7 @@ function Listener({ landings }: { landings: boolean }) {
     )
     for (const happening of happenings)
       if (landings || happening.kind !== 'landed') conductor.hit(happening)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `busy` follows `conversations`; `catchingUp` reads the time.
-  }, [follow, conversations, standing, rounds, overview, events, landings])
+  }, [follow, conversations, standing, rounds, overview, events, landings, catchingUp])
   return busy.map((id) => <RoundOf id={id} key={id} report={setRounds} />)
 }
 

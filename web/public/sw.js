@@ -44,7 +44,6 @@ self.addEventListener('push', (event) => {
  */
 async function announce() {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- A Client's postMessage has no target origin.
   for (const client of windows) client.postMessage({ type: 'ultimate:shown' })
 }
 
@@ -106,7 +105,6 @@ async function open(path) {
     return
   }
   await shown.focus()
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- A Client's postMessage has no target origin.
   shown.postMessage({ type: 'ultimate:open', url })
 }
 

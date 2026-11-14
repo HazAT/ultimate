@@ -48,7 +48,7 @@ import { Branch, Roots } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
-import { UiState } from '../../../server/ui-state.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 
 const homes: string[] = []
 const hosts: OpenHost[] = []

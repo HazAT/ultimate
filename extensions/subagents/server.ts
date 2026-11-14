@@ -34,7 +34,7 @@ import type {
   SubmissionRecord,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import type { Source } from '../../server/project.ts'
+import type { Source } from '../../lib/project-paths.ts'
 import {
   agentRoots,
   deleteDefinition,

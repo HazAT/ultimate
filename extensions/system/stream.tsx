@@ -65,29 +65,27 @@ function useStream(filter: SystemFilter, live: boolean) {
         },
       )
   }
+  const ask = useRef(request)
+  ask.current = request
   useEffect(() => {
     setState({ ...empty, key })
-    request({}, loaded)
+    ask.current({}, loaded)
     return () => call.current?.abort()
-    // `filter` is compared through `key`.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
   useEffect(() => {
     if (!live) return undefined
     return every(POLL, () => {
       const { head, loading } = latest.current
       if (loading || latest.current.key !== key) return
-      if (head === undefined) request({}, loaded)
-      else request({ after: head }, (feed, page) => followed(feed, head, page))
+      if (head === undefined) ask.current({}, loaded)
+      else ask.current({ after: head }, (feed, page) => followed(feed, head, page))
     })
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live])
   // Older rows are asked for once wanted and nothing else is on its way, also when a live refresh ends.
   useEffect(() => {
-    if (!pagesOlder(state)) return
-    const next = state.next!
-    request({ before: next }, (feed, page) => older(feed, next, page))
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    if (!pagesOlder(latest.current)) return
+    const next = latest.current.next!
+    ask.current({ before: next }, (feed, page) => older(feed, next, page))
   }, [state.wanted, state.loading, state.next])
   const more = () => setState((previous) => ({ ...previous, ...wantOlder(previous) }))
   return { ...state, older: more }

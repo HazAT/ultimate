@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { acquireLock, alive } from '../../lib/lock.ts'
-// oxlint-disable-next-line no-restricted-imports -- the project's own server is the one on its default, lock-held home
-import { projectHome } from '../../server/project.ts'
+import { projectHome } from '../../lib/project-paths.ts'
 import { access, mkdir } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import { join } from 'node:path'

@@ -10,7 +10,7 @@ import { git } from '../lib/git.ts'
 import { meansNone } from '../lib/errors.ts'
 import { readJson, writeJson } from '../lib/json-file.ts'
 import { acquireLock, readOwner } from '../lib/lock.ts'
-import { projectHome } from '../server/project.ts'
+import { projectHome } from '../lib/project-paths.ts'
 import type { BackupFile } from '../extensions/cloud/backup.ts'
 
 /**

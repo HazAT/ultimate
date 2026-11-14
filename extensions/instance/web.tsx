@@ -359,7 +359,6 @@ function Embedded() {
   const { preview, url } = current
   return (
     <div className="fixed inset-x-0 top-9 bottom-0 z-40 bg-background">
-      {/* oxlint-disable-next-line react/iframe-missing-sandbox -- a whole Ultimate on its own origin, trusted as in its own tab */}
       <iframe
         allow="clipboard-read; clipboard-write"
         className="size-full border-0"

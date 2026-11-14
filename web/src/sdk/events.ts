@@ -10,8 +10,7 @@ export const events: EventBus = {
   on: (channel, handler) => {
     const safe = async (data: unknown) => {
       try {
-        // oxlint-disable-next-line typescript/await-thenable -- Pi's void-returning type also permits async handlers
-        await handler(data)
+        await Promise.resolve(handler(data))
       } catch (error) {
         console.error(`Event handler error (${channel}):`, error)
       }

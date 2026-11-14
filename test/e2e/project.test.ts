@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
-import { projectHome } from '../../server/project.ts'
+import { projectHome } from '../../lib/project-paths.ts'
 import { attach, temp, sourceCopy, cleanEnv, until, post as requestPost } from '../helpers.ts'
 
 const children: ChildProcess[] = []

@@ -12,7 +12,7 @@ import {
 } from 'node:os'
 import { relative, basename, join } from 'node:path'
 import { projectSkills } from './skills.ts'
-import { projectSetup, projectSettings } from './project-setup.ts'
+import { projectSetup, projectSettings } from '../lib/project-setup.ts'
 import { loadProjectContextFiles } from '@earendil-works/pi-coding-agent'
 import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
