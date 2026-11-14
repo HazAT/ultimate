@@ -49,14 +49,21 @@ function useKeys(card: string) {
 
 /**
  * The card's state in durable UI state, by card: leaving the surface for another, a reload or another window find the
- * picks and the note where they were. questions' web.tsx drops it once the message settles.
+ * picks and the note where they were. questions' web.tsx drops a local message's once it settles; any card drops its
+ * own once its answer or dismissal went through.
  */
 function useCard(card: string) {
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
   const state = cardOf(cards, card)
   const change = (edit: (old: CardState) => CardState) =>
     setCards((old) => ({ ...old, [card]: edit(cardOf(old, card)) }))
-  return [state, change] as const
+  const forget = () =>
+    setCards((old) => {
+      if (!(card in old)) return old
+      const { [card]: _, ...rest } = old
+      return rest
+    })
+  return [state, change, forget] as const
 }
 
 /**
@@ -77,7 +84,7 @@ export function MessageQuestions({
   const shown = useKeys(card)
   if (!waitsOnUser(message)) return null
   return (
-    <Card
+    <QuestionsCard
       card={card}
       questions={questions}
       keys={questions.length > 0 && (keys ?? shown)}
@@ -241,7 +248,12 @@ function Note({
   )
 }
 
-function Card({
+/**
+ * The answer card for `questions`, wherever they are answered: `submit`, `reply` (no questions) and `dismiss` send it,
+ * and a rejection shows its message on the card. `card` keys its picks and note in durable UI state; a local message's
+ * is `message:<id>`, another source's its own (`my-source:12`). `keys` whether it takes the desktop 1–9 and Enter keys.
+ */
+export function QuestionsCard({
   card,
   questions,
   keys,
@@ -258,7 +270,7 @@ function Card({
   dismiss: () => Promise<unknown>
   className?: string
 }) {
-  const [state, setState] = useCard(card)
+  const [state, setState, forget] = useCard(card)
   const { drafts, note, current, text } = state
   const root = useRef<HTMLDivElement>(null)
   // What went out, kept while the card settles: the store drops the card's state as soon as the message settles.
@@ -354,6 +366,7 @@ function Card({
     setError(undefined)
     try {
       await action()
+      forget()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -370,7 +383,10 @@ function Card({
       setPhase('sending')
       setError(undefined)
       submit(list, extra || undefined, keepalive).then(
-        () => setPhase('sent'),
+        () => {
+          setPhase('sent')
+          forget()
+        },
         (failure: unknown) => {
           setPhase('answering')
           setError(errorMessage(failure))

@@ -10,9 +10,11 @@ actions of its own.
 
 Another extension puts its own things to do in the Inbox (a command to run in a terminal, say) by providing the
 `InboxItems` point from its `web.tsx`: `provide(InboxItems, () => items)`, a hook returning
-`{ key, at, conversation?, tag, title, gist?, pane }[]`. `key` is unique across providers (`shell:12`), `at` when it
-started waiting, `tag` the row's kind tag, `pane` the reading pane's content below the title, its buttons included;
-with `conversation` the row names it and the pane offers **Open in branch**. Every provider's items count in the
+`{ key, at, conversation?, from?, tag, title, gist?, pane }[]`. `key` is unique across providers (`shell:12`), `at`
+when it started waiting, `tag` the row's kind tag, `pane` the reading pane's content below the title, its buttons
+included; with `conversation` the row names it and the pane offers **Open in branch**; `from` (a node, such as another
+project's tile and name) takes the asker's place instead. A pane that asks questions can use questions'
+`QuestionsCard` with its own `submit`, `reply` and `dismiss`. Every provider's items count in the
 sidebar row and the To-dos' "For you" row too: they all read `Waiting` from `ui.tsx`. A provider that throws is left
 out behind its inline error card. Items are entries keyed by string; a question's key is `message:<id>`.
 

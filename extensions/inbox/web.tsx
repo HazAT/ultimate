@@ -88,11 +88,15 @@ const KindTag = ({ entry }: { entry: Entry }) => (
 
 const titleOf = (entry: Entry) => (entry.item ? entry.item.title : lead(entry.message.text).title)
 
-/** Who asks: a question's sender, a provided item's conversation, or nothing. */
+/** Who asks: a question's sender, a provided item's `from` or conversation, or nothing. */
 function From({ entry }: { entry: Entry }) {
   if (entry.message) return <Asker id={entry.message.from} />
+  if (entry.item.from) return entry.item.from
   return entry.item.conversation === undefined ? null : <Asker id={entry.item.conversation} />
 }
+
+const hasFrom = (entry: Entry) =>
+  !!entry.message || !!entry.item.from || entry.item.conversation !== undefined
 
 function Row({
   entry,
@@ -236,7 +240,7 @@ function Reading({
     <>
       <header className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
         <From entry={entry} />
-        {conversation !== undefined && <span>·</span>}
+        {hasFrom(entry) && <span>·</span>}
         <KindTag entry={entry} />
         <span className="ml-auto flex items-center gap-1">
           waited <Waited at={entry.at} now={now} />
@@ -256,27 +260,29 @@ function Reading({
           <MessageImages conversation={item.from} entry={item.images.entry} />
         </div>
       )}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {preview && (
-          <Button asChild size="sm" variant="outline">
-            <a href={preview} rel="noreferrer" target="_blank">
-              <ExternalLinkIcon className="size-3.5" />
-              Open preview
-            </a>
-          </Button>
-        )}
-        {conversation !== undefined && (
-          <Button
-            className="text-muted-foreground"
-            onClick={() => openBranch(entry)}
-            size="sm"
-            variant="ghost"
-          >
-            <GitBranchIcon className="size-3.5" />
-            Open in branch #{conversation}
-          </Button>
-        )}
-      </div>
+      {(preview || conversation !== undefined) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {preview && (
+            <Button asChild size="sm" variant="outline">
+              <a href={preview} rel="noreferrer" target="_blank">
+                <ExternalLinkIcon className="size-3.5" />
+                Open preview
+              </a>
+            </Button>
+          )}
+          {conversation !== undefined && (
+            <Button
+              className="text-muted-foreground"
+              onClick={() => openBranch(entry)}
+              size="sm"
+              variant="ghost"
+            >
+              <GitBranchIcon className="size-3.5" />
+              Open in branch #{conversation}
+            </Button>
+          )}
+        </div>
+      )}
     </>
   )
   // The card takes the desktop keys here, whatever conversation is shown behind the Inbox; keyed by message so a new
