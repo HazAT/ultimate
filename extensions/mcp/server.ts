@@ -19,6 +19,7 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -43,7 +44,7 @@ type Server = Omit<McpServerStatus, 'tools'> & {
   client?: McpClient
   tools: Tool[]
   attempts: number
-  timer?: ReturnType<typeof setTimeout>
+  cancelRetry?: Cancel
   /** The connect or reconnect running now; the next one queues behind it. */
   connecting?: Promise<void>
   /** The secret values its config resolved, kept out of every error it shows. */
@@ -199,12 +200,11 @@ export default async function mcp(host: ExtensionHost) {
     server.error = error
     const delay = Math.min(FIRST_RETRY * 2 ** server.attempts++, LAST_RETRY)
     server.retryAt = Date.now() + delay
-    server.timer = setTimeout(() => void begin(server), delay)
-    server.timer.unref?.()
+    server.cancelRetry = retryAfter(delay, () => void begin(server), { unref: true })
   }
 
   async function connect(server: Server) {
-    clearTimeout(server.timer)
+    server.cancelRetry?.()
     delete server.retryAt
     delete server.error
     delete server.missing
@@ -333,7 +333,7 @@ export default async function mcp(host: ExtensionHost) {
   })
   host.onClose(async () => {
     closed = true
-    for (const server of servers.values()) clearTimeout(server.timer)
+    for (const server of servers.values()) server.cancelRetry?.()
     await Promise.all([...servers.values()].map((server) => close(server.client)))
   })
 

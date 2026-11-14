@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { realpath } from 'node:fs/promises'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -9,6 +8,7 @@ import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durabl
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { EventToken } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { deadline, every, pace } from '../../lib/timers.ts'
 import { compareUrl } from '../../lib/compare.ts'
 import { exec } from '../../lib/exec.ts'
 import { fastForward, Refusal } from '../../lib/fast-forward.ts'
@@ -163,8 +163,8 @@ export function loadable(host: ExtensionHost): Promise<void> {
       // Not a git checkout: nothing moves its files under us.
       () => undefined,
     )
-    const deadline = Date.now() + CHECKOUT_WAIT
-    if (index) while (existsSync(index) && Date.now() < deadline) await sleep(50)
+    const waitUntil = Date.now() + CHECKOUT_WAIT
+    if (index) while (existsSync(index) && Date.now() < waitUntil) await pace(50)
     const failure = (error: string) =>
       new Error(`pnpm install failed, so the packages on disk are not the lockfile's:\n${error}`)
     // Before comparing lockfiles: a failed install may have left them equal. Tried again for another lockfile only.
@@ -264,11 +264,11 @@ export default function update(host: ExtensionHost) {
     },
     { from: 'now' },
   )
-  const start = setTimeout(tick, 30_000)
-  const timer = setInterval(tick, TICK)
+  const cancelStart = deadline(30_000, tick)
+  const stopTicking = every(TICK, tick)
   host.onClose(async () => {
-    clearTimeout(start)
-    clearInterval(timer)
+    cancelStart()
+    stopTicking()
     await shared.ticking
     // Its failure was reported to whoever waited for it.
     await shared.installing?.catch(() => {})

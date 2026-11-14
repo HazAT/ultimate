@@ -1,6 +1,7 @@
 // `window.ultimate` on pages the browser tool drives: send input, set up state through the page's SDK `api` and wait on
 // Ultimate's state instead of on time.
 import type { EventRecord } from '../../../shared/events.ts'
+import { deadline } from '../../../lib/timers.ts'
 import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
@@ -71,15 +72,15 @@ export function createTestHook(store: Store, api: Api) {
         const value = test(store.getState())
         if (value === undefined) return false
         stop()
-        clearTimeout(timer)
+        cancel()
         resolve(value)
         return true
       }
       const stop = store.subscribe(check)
-      const timer = setTimeout(() => {
+      const cancel = deadline(timeoutMs, () => {
         stop()
         reject(new Error(`Timed out after ${timeoutMs / 1000}s: ${describe(store.getState())}`))
-      }, timeoutMs)
+      })
       check()
     })
   }

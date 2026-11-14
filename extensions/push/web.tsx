@@ -1,3 +1,4 @@
+import { every } from '../../lib/timers.ts'
 import { BellIcon, BellOffIcon, SendIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -101,11 +102,11 @@ function Pusher() {
     const changed = () => report(document.visibilityState === 'visible')
     const hide = () => report(false)
     tick()
-    const timer = setInterval(tick, presentMs)
+    const stopReporting = every(presentMs, tick)
     document.addEventListener('visibilitychange', changed)
     window.addEventListener('pagehide', hide)
     return () => {
-      clearInterval(timer)
+      stopReporting()
       document.removeEventListener('visibilitychange', changed)
       window.removeEventListener('pagehide', hide)
     }

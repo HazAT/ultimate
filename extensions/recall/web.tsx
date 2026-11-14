@@ -1,3 +1,5 @@
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { useEffect, useRef, useState } from 'react'
 import { cn, defineWebExtension, useDoc, useTranscript } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
@@ -20,15 +22,15 @@ function RecallBubble({ entry }: { entry: EntryRecord }) {
   // A check takes about 0.2 s: the light runs at least one lap so it reads as a check, not a flicker.
   const [lap, setLap] = useState(false)
   // Started when the check starts and left running when it ends early; only unmounting cancels it.
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const cancelLap = useRef<Cancel>(undefined)
   useEffect(() => {
     if (!pending) return
     setWatched(true)
     setLap(true)
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => setLap(false), 1200)
+    cancelLap.current?.()
+    cancelLap.current = deadline(1200, () => setLap(false))
   }, [pending])
-  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => () => cancelLap.current?.(), [])
   const checking = pending || lap
   return (
     <>

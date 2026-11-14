@@ -2,6 +2,8 @@
  * The one band of this tab: which variant plays, what the live project and the demo feed it, and whether the browser
  * lets it play yet. Loads the Tone.js engine only once the sound of agents is on.
  */
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { demo, demoLength, demoPlayer } from './agents.ts'
 import type { Happening, Variant } from './agents.ts'
 import type { Band } from './engine.ts'
@@ -17,7 +19,7 @@ export type Stage = {
 
 let stage: Stage = { blocked: false }
 let band: Band | undefined
-let timers: ReturnType<typeof setTimeout>[] = []
+let cancels: Cancel[] = []
 const listeners = new Set<() => void>()
 
 const set = (next: Partial<Stage>) => {
@@ -76,17 +78,17 @@ export const hit = (happening: Happening) => {
 export function startDemo() {
   stopDemo()
   const step = demoPlayer()
-  timers = demo.map((s) =>
-    setTimeout(() => {
+  cancels = demo.map((s) =>
+    deadline(s.at * 1000, () => {
       const happening = step(s)
       if (happening) hit(happening)
-    }, s.at * 1000),
+    }),
   )
-  timers.push(setTimeout(stopDemo, demoLength * 1000))
+  cancels.push(deadline(demoLength * 1000, stopDemo))
   set({ demoUntil: Date.now() + demoLength * 1000 })
 }
 export function stopDemo() {
-  for (const timer of timers) clearTimeout(timer)
-  timers = []
+  for (const cancel of cancels) cancel()
+  cancels = []
   if (stage.demoUntil !== undefined) set({ demoUntil: undefined })
 }

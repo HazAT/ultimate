@@ -23,6 +23,7 @@ import { groupTarget, identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
+import { within as withinDeadline } from '../../lib/timers.ts'
 
 /** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
@@ -92,13 +93,7 @@ function timeout(ms: number) {
 
 /** `work`, unless `ms` pass first; a promise Playwright never settles (evaluate has no timeout) cannot hang the call. */
 function within<T>(ms: number, work: Promise<T>, error = timeout(ms)) {
-  let timer: NodeJS.Timeout | undefined
-  return Promise.race([
-    work,
-    new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(error), Math.max(0, ms))
-    }),
-  ]).finally(() => clearTimeout(timer))
+  return withinDeadline(ms, work, () => error)
 }
 
 /** The browser's process, which leads its own group, and its start time, which tells it from a later one with its pid. */

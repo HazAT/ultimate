@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import { LoaderCircleIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -110,8 +111,7 @@ function VoiceButton() {
   }, [now, recording])
   useEffect(() => {
     if (!error) return undefined
-    const timer = setTimeout(() => setError(undefined), 8000)
-    return () => clearTimeout(timer)
+    return deadline(8000, () => setError(undefined))
   }, [error])
 
   function finish(active: Recording | undefined, cancel: boolean) {

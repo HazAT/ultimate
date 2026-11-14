@@ -9,6 +9,7 @@ import type { JsonObject } from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
+import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
@@ -189,10 +190,10 @@ export async function runLanderCheck(
     watchdog.abort()
   }
   const stalled = () => stop(`Stalled: no output for ${seconds(limits.stall)}, stopped`)
-  let stallTimer = setTimeout(stalled, limits.stall * 1000)
-  const totalTimer = setTimeout(
-    () => stop(`Timed out after ${seconds(limits.total)}`),
-    limits.total * 1000,
+  const stallDeadline = debounce(limits.stall * 1000, stalled)
+  stallDeadline()
+  const cancelTotal = deadline(limits.total * 1000, () =>
+    stop(`Timed out after ${seconds(limits.total)}`),
   )
   /** A failure report: what ended the check, the failed tests seen (at most 20), then the output tail. */
   const report = (reason: string, heading: string) => {
@@ -207,8 +208,7 @@ export async function runLanderCheck(
       const plain = stripVTControlCharacters(line).trim()
       if (failedLine.test(plain)) failed.add(plain.slice(0, 300))
     }
-    clearTimeout(stallTimer)
-    stallTimer = setTimeout(stalled, limits.stall * 1000)
+    stallDeadline()
   }
   try {
     let exitCode: number
@@ -231,8 +231,8 @@ export async function runLanderCheck(
     const last = lines(stripVTControlCharacters(output)).findLast((line) => line.trim())
     return { summary: last?.trim().slice(0, 200) }
   } finally {
-    clearTimeout(stallTimer)
-    clearTimeout(totalTimer)
+    stallDeadline.cancel()
+    cancelTotal()
     // Best effort: detached processes an e2e test leaves behind (supervisors, preview homes) can still be writing here,
     // the same race #43 fixed in test/sweep-temp.ts. Without retry and catch, rm throws ENOTEMPTY and refuses a landing
     // whose checks passed. sweepChecks removes the leftover at the next start. Can go once no check leaves writers.

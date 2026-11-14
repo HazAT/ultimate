@@ -3,6 +3,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { api, cn, defineWebExtension, errorMessage, formatAgo, formatBytes } from '@/sdk'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { JoinDialog, joinDialog } from './join.tsx'
 import { BackupAction, StateAction } from './refs.ts'
 import type { CloudState } from './types.ts'
@@ -13,13 +14,13 @@ function poll<T>(
   every: (value: T | undefined) => number,
 ) {
   let value: T | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let cancelPoll: Cancel | undefined
   let controller: AbortController | undefined
   let generation = 0
   const listeners = new Set<() => void>()
   const tick = async () => {
     const current = ++generation
-    clearTimeout(timer)
+    cancelPoll?.()
     controller?.abort()
     controller = new AbortController()
     try {
@@ -30,7 +31,7 @@ function poll<T>(
     } catch {
       // Aborted, restarting or unreachable: keep what was loaded, and the next poll tries again.
     }
-    if (current === generation && listeners.size) timer = setTimeout(tick, every(value))
+    if (current === generation && listeners.size) cancelPoll = retryAfter(every(value), tick)
   }
   return {
     subscribe: (listener: () => void) => {
@@ -41,7 +42,7 @@ function poll<T>(
         listeners.delete(listener)
         if (listeners.size) return
         generation++
-        clearTimeout(timer)
+        cancelPoll?.()
         controller?.abort()
       }
     },

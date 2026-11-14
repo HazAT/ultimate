@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import {
   ArrowRightIcon,
@@ -377,17 +378,13 @@ function Announce() {
   }, [log])
   useEffect(() => {
     if (!due.length || busy) return undefined
-    const timer = setTimeout(
-      () => {
-        setDue([])
-        for (const message of due)
-          api
-            .action(AskedAction, { message })
-            .catch((error: unknown) => console.warn('Voice announce failed', error))
-      },
-      Math.max(0, quietSince + QUIET_MS - Date.now()),
-    )
-    return () => clearTimeout(timer)
+    return deadline(Math.max(0, quietSince + QUIET_MS - Date.now()), () => {
+      setDue([])
+      for (const message of due)
+        api
+          .action(AskedAction, { message })
+          .catch((error: unknown) => console.warn('Voice announce failed', error))
+    })
   }, [due, busy, quietSince])
   return null
 }
@@ -485,8 +482,7 @@ function Stage() {
   if (inFront && !shown) setShown(true)
   useEffect(() => {
     if (inFront) return undefined
-    const timer = setTimeout(() => setShown(false), duration + 60)
-    return () => clearTimeout(timer)
+    return deadline(duration + 60, () => setShown(false))
   }, [inFront])
 
   useLayoutEffect(() => {

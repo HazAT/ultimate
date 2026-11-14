@@ -3,6 +3,7 @@
  * use (`import('./engine.ts')`): Tone opens an AudioContext when it loads, and a page plays only after a click.
  */
 import * as Tone from 'tone'
+import { deadline, pace } from '../../lib/timers.ts'
 import type { Sound } from './cues.ts'
 import type { Happening, Role, Tool, Variant } from './agents.ts'
 
@@ -108,7 +109,7 @@ export async function say(sound: Sound, text: string, pcm: ArrayBuffer | undefin
   const now = Tone.now() + 0.03
   strike(sound, now)
   if (!pcm) {
-    await new Promise((resolve) => setTimeout(resolve, leadIn * 1000))
+    await pace(leadIn * 1000)
     const utterance = new SpeechSynthesisUtterance(text)
     await new Promise((resolve) => {
       utterance.addEventListener('end', resolve)
@@ -124,7 +125,7 @@ export async function say(sound: Sound, text: string, pcm: ArrayBuffer | undefin
   const voice = new Tone.Player(buffer).connect(master)
   voice.onstop = () => voice.dispose()
   voice.start(now + leadIn)
-  await new Promise((resolve) => setTimeout(resolve, (leadIn + buffer.duration) * 1000))
+  await pace((leadIn + buffer.duration) * 1000)
 }
 
 /** Plays `notes` as bells at `volume` (the notification cues use 0.18). */
@@ -227,9 +228,9 @@ export function band(variant: Variant): Band {
       transport.cancel()
       // Let held notes release and reverb tails ring out before the voices go: a release scheduled on a disposed
       // synth throws inside Tone.
-      setTimeout(() => {
+      deadline(12_000, () => {
         for (const node of part.nodes) node.dispose()
-      }, 12_000)
+      })
     },
   }
 }

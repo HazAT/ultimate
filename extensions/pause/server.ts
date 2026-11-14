@@ -4,6 +4,8 @@ import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-dur
 import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
@@ -180,26 +182,26 @@ const autoPlayAt = (doc: PauseDocState) =>
 
 /** The timer that plays a rate-limit pause by itself; outside the scheduler, which the pause holds. */
 const timer = (host: Pick<ExtensionHost, 'resource'>) =>
-  host.resource('pause.autoplay', () => ({ handle: undefined as NodeJS.Timeout | undefined }))
+  host.resource('pause.autoplay', () => ({ cancel: undefined as Cancel | undefined }))
 
 /** Set the timer for `doc`'s pause, or clear it when that pause never plays by itself. */
 function arm(host: Host, doc: PauseDocState) {
   const slot = timer(host)
-  clearTimeout(slot.handle)
-  slot.handle = undefined
+  slot.cancel?.()
+  slot.cancel = undefined
   const at = autoPlayAt(doc)
   if (at === undefined) return
-  slot.handle = setTimeout(
+  // A pending Play keeps no process alive; the pause document re-arms it on the next open.
+  slot.cancel = deadline(
+    Math.max(0, at - Date.now()),
     () => {
       autoPlay(host).catch((error: unknown) => {
         // The pause stands with Play in the status line; the user can still press it.
         console.error('pause: playing by itself failed:', error)
       })
     },
-    Math.max(0, at - Date.now()),
+    { unref: true },
   )
-  // A pending Play keeps no process alive; the pause document re-arms it on the next open.
-  slot.handle.unref()
 }
 
 /**
@@ -407,7 +409,7 @@ export default function pauseExtension(host: Host) {
   const close = async () => {
     unsubscribe?.()
     unsubscribe = undefined
-    clearTimeout(timer(host).handle)
+    timer(host).cancel?.()
   }
   host.onClose(close)
   host.onRelease(close)

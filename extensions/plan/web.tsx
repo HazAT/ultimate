@@ -7,6 +7,7 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from 'lucide-react'
+import { deadline } from '../../lib/timers.ts'
 import type { ReactNode, SyntheticEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -245,7 +246,7 @@ function CopyLink({
           .writeText(url.href)
           .then(() => {
             setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
+            deadline(1200, () => setCopied(false))
           })
           .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
       }}

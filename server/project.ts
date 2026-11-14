@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from './lock.ts'
+import { debounce } from '../lib/timers.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,
@@ -72,11 +73,12 @@ export async function projects(userHome: string, currentHome: string): Promise<P
 export function conversationIndex(home: string) {
   let latest = '[]'
   let written: string | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
   let writing = Promise.resolve()
+  const schedule = debounce(1000, () => {
+    void flush().catch((error: unknown) => console.error('Conversation index:', error))
+  })
   const flush = () => {
-    clearTimeout(timer)
-    timer = undefined
+    schedule.cancel()
     writing = writing.then(async () => {
       if (latest === written) return
       const value = latest
@@ -101,10 +103,7 @@ export function conversationIndex(home: string) {
             answerAt,
           })),
       )
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        void flush().catch((error: unknown) => console.error('Conversation index:', error))
-      }, 1000)
+      schedule()
     },
     flush,
   }

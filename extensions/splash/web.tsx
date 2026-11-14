@@ -1,3 +1,4 @@
+import { pace } from '../../lib/timers.ts'
 import { TriangleAlertIcon, XIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, defineWebExtension, errorMessage, resumed, useReady, useStore } from '@/sdk'
@@ -109,7 +110,6 @@ const signatureRate = 0.8
 const out = 'cubic-bezier(0.22, 1, 0.36, 1)'
 const inOut = 'cubic-bezier(0.45, 0, 0.25, 1)'
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 const finished = (animations: readonly Animation[]) =>
   Promise.allSettled(animations.map((animation) => animation.finished))
 
@@ -221,7 +221,7 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
       revealing ??= (async () => {
         // The first run's signature may still arrive meanwhile.
         const left = () => (still ? minimum.still : minimum.motion) - (performance.now() - started)
-        while (left() > 0) await wait(left())
+        while (left() > 0) await pace(left())
         if (cancelled) return false
         committed = true
         /** The app takes input from here on, as it comes up. */

@@ -1,4 +1,6 @@
 import { actionRef } from '../../../shared/extension-api.ts'
+import { retryAfter } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import { actionMessage } from './api.ts'
 import type { ActionArgs, ActionError, ActionOptions, Api } from './api.ts'
 import type { Store } from './store.ts'
@@ -97,20 +99,20 @@ export function createReads(api: Api, store: Store) {
     const readers = new Set<Reader>()
     let controller: AbortController | undefined
     let queued: Promise<unknown> | undefined
-    let poll: ReturnType<typeof setTimeout> | undefined
+    let cancelPoll: Cancel | undefined
     let answered = 0
     const set = (change: Partial<ReadState>) => {
       state = { ...state, ...change }
       for (const listener of listeners) listener()
     }
     function repoll() {
-      clearTimeout(poll)
+      cancelPoll?.()
       const every = Math.min(...[...readers].map((reader) => reader.every ?? Infinity))
-      if (every !== Infinity && !controller) poll = setTimeout(() => void run(), every)
+      if (every !== Infinity && !controller) cancelPoll = retryAfter(every, () => void run())
     }
     async function run() {
       controller?.abort()
-      clearTimeout(poll)
+      cancelPoll?.()
       const own = new AbortController()
       controller = own
       // The readers' reporting as the call starts: one that leaves meanwhile still keeps its failure quiet.
@@ -173,7 +175,7 @@ export function createReads(api: Api, store: Store) {
           readers.delete(reader)
           if (readers.size) return repoll()
           // A call in flight finishes: a component remounting at once, as the shell does while its facets load, takes it.
-          clearTimeout(poll)
+          cancelPoll?.()
           missed.delete(read)
           evict()
         }

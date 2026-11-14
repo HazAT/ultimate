@@ -1,3 +1,4 @@
+import { pace } from '../../lib/timers.ts'
 import type { Cue } from './cues.ts'
 import { linesOf } from './narration.ts'
 import type { Line } from './narration.ts'
@@ -28,7 +29,7 @@ export function speaker(
     busy = true
     try {
       while (waiting.length) {
-        await new Promise((resolve) => setTimeout(resolve, gatherMs))
+        await pace(gatherMs)
         const cues = waiting
         waiting = []
         for (const line of linesOf(cues)) {

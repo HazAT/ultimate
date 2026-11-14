@@ -1,3 +1,5 @@
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -98,13 +100,13 @@ export function MessageQuestions({
 /** Sends the answer waiting out its undo window now, if one does. */
 function flushPending(
   pending: {
-    current?: { timer: ReturnType<typeof setTimeout>; fire: (keepalive?: boolean) => void }
+    current?: { cancel: Cancel; fire: (keepalive?: boolean) => void }
   },
   keepalive = false,
 ) {
   const waiting = pending.current
   if (!waiting) return
-  clearTimeout(waiting.timer)
+  waiting.cancel()
   waiting.fire(keepalive)
 }
 
@@ -268,10 +270,10 @@ function Card({
   const [error, setError] = useState<string>()
   // The send waiting out its undo window, and the click that folds a chosen question away.
   const pending = useRef<{
-    timer: ReturnType<typeof setTimeout>
+    cancel: Cancel
     fire: (keepalive?: boolean) => void
   }>(undefined)
-  const advance = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const cancelAdvance = useRef<Cancel>(undefined)
   const flush = () => flushPending(pending)
   const phone = useViewport() === 'phone'
   const hints = keys && !phone
@@ -289,7 +291,7 @@ function Card({
     window.addEventListener('pagehide', leave)
     return () => {
       window.removeEventListener('pagehide', leave)
-      clearTimeout(advance.current)
+      cancelAdvance.current?.()
       flush()
     }
   }, [])
@@ -301,7 +303,7 @@ function Card({
         ?.focus({ preventScroll: true }),
     )
   const go = (index: number) => {
-    clearTimeout(advance.current)
+    cancelAdvance.current?.()
     const next = Math.min(questions.length - 1, Math.max(0, index))
     setState((old) => ({ ...old, current: next }))
     if (questions[next]?.kind === 'text') focusField(next)
@@ -333,9 +335,9 @@ function Card({
         : { ...old, chosen: [option], other: false },
     )
     // A click on a single answer lets its check land, then folds the question and opens the next.
-    clearTimeout(advance.current)
+    cancelAdvance.current?.()
     if (click && !choice.custom && index < questions.length - 1)
-      advance.current = setTimeout(() => go(index + 1), 320)
+      cancelAdvance.current = deadline(320, () => go(index + 1))
   }
   /**
    * Takes @ultimate's picks for questions `indices`: the answers ready then and the drafts they came from, so the
@@ -363,7 +365,7 @@ function Card({
   const send = (list: Answer[] = ready, picked: Record<number, Draft> = drafts) => {
     const extra = note.trim()
     if ((!list.length && !extra) || pending.current || phase !== 'answering') return
-    clearTimeout(advance.current)
+    cancelAdvance.current?.()
     setSent({ drafts: picked, note })
     const fire = (keepalive = false) => {
       pending.current = undefined
@@ -377,13 +379,13 @@ function Card({
         },
       )
     }
-    pending.current = { timer: setTimeout(fire, UNDO_MS), fire }
+    pending.current = { cancel: deadline(UNDO_MS, fire), fire }
     setPhase('undo')
   }
   const now = flush
   const undo = () => {
     if (!pending.current) return
-    clearTimeout(pending.current.timer)
+    pending.current.cancel()
     pending.current = undefined
     setPhase('answering')
   }
@@ -404,7 +406,7 @@ function Card({
     send()
   }
   const clear = () => {
-    clearTimeout(advance.current)
+    cancelAdvance.current?.()
     setState((old) => ({ ...old, drafts: { ...old.drafts, [current]: { chosen: [] } } }))
   }
   const focusNote = () =>

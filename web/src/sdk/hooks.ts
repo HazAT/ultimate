@@ -9,6 +9,8 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { deadline, every } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import type {
   AgentState,
@@ -419,15 +421,12 @@ export function useRestart(timeoutMs = 120000): Restart {
       })
       return undefined
     }
-    const timer = setTimeout(
-      () =>
-        setState({
-          phase: 'idle',
-          error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
-        }),
-      timeoutMs,
+    return deadline(timeoutMs, () =>
+      setState({
+        phase: 'idle',
+        error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
+      }),
     )
-    return () => clearTimeout(timer)
   }, [state, serving, connection, system, timeoutMs])
   return {
     pending: state.phase === 'swapping' ? state.target : undefined,
@@ -515,15 +514,15 @@ export function useAction<Args, T>(
 /** `copy(text)` puts text on the clipboard; `copied` is true for 1.2 s after, and a failure becomes an error notice. */
 export function useCopy() {
   const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const cancelReset = useRef<Cancel>(undefined)
+  useEffect(() => () => cancelReset.current?.(), [])
   const copy = (text: string) =>
     void navigator.clipboard
       .writeText(text)
       .then(() => {
         setCopied(true)
-        clearTimeout(timer.current)
-        timer.current = setTimeout(() => setCopied(false), 1200)
+        cancelReset.current?.()
+        cancelReset.current = deadline(1200, () => setCopied(false))
       })
       .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
   return { copied, copy }
@@ -535,8 +534,7 @@ export function useNow(intervalMs = 1000, active = true): number {
   useEffect(() => {
     if (!active) return undefined
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), intervalMs)
-    return () => clearInterval(timer)
+    return every(intervalMs, () => setNow(Date.now()))
   }, [intervalMs, active])
   return now
 }

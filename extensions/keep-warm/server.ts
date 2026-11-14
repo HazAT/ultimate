@@ -18,6 +18,7 @@ import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { every } from '../../lib/timers.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { PauseApi } from '../pause/api.ts'
@@ -281,15 +282,15 @@ export default function keepWarm(host: ExtensionHost) {
   const shared = host.resource('keep-warm.timer', () => ({
     running: undefined as Promise<void> | undefined,
   }))
-  const timer = setInterval(() => {
+  const stopPolling = every(TICK, () => {
     shared.running ??= tick(host)
       .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
       .finally(() => {
         shared.running = undefined
       })
-  }, TICK)
+  })
   host.onClose(async () => {
-    clearInterval(timer)
+    stopPolling()
     await shared.running
   })
   return defineExtension({ name: 'keep-warm' })
