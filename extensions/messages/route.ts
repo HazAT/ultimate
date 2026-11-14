@@ -137,7 +137,9 @@ export async function reported(host: ExtensionHost, tx: Tx, starter: number, ans
       if (serves && !told(serves, (m) => m.at >= at))
         askers.push({
           source: `automation ${String(data?.id)} "${String(data?.name)}"`,
-          key: `automation:${String(data?.id)}`,
+          // By the request, not the automation's id: a project slug may be 63 characters, and `tell` must keep the
+          // key within the 100 another Ultimate accepts.
+          key: `request:${serves.message}`,
           serves: { ...serves, ...(serves.remote ? { remote: { ...serves.remote } } : {}) },
         })
       continue
