@@ -381,6 +381,7 @@ function Diffs({
       const root = document
         .getElementById(anchor(target.file))
         ?.querySelector('diffs-container')?.shadowRoot
+      if (root) rendering.observe(root, { childList: true, subtree: true })
       const line =
         root?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
         root?.querySelector(`[data-line="${target.line}"]`)
@@ -394,15 +395,10 @@ function Diffs({
       giveUp()
       reachedTarget()
     }
-    const rendering = new MutationObserver(() => {
-      const root = document
-        .getElementById(anchor(target.file))
-        ?.querySelector('diffs-container')?.shadowRoot
-      if (root) rendering.observe(root, { childList: true, subtree: true })
-      reach()
-    })
+    const rendering = new MutationObserver(reach)
     const giveUp = deadline(2000, settle)
-    if (!reach()) rendering.observe(document.body, { childList: true, subtree: true })
+    rendering.observe(document.body, { childList: true, subtree: true })
+    reach()
     return () => {
       rendering.disconnect()
       giveUp()
