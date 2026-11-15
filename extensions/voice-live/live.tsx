@@ -1,8 +1,3 @@
-/**
- * This tab's voice mode: at most one live session, outside React, so a hot reload of `web.tsx` never orphans a running
- * session and its microphone. Voice mode outlasts its sessions: an idle session closes and the mode sleeps until an
- * answer arrives to speak or the user taps resume. Only End leaves it.
- */
 import { deadline, every } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { api, errorMessage, events } from '@/sdk'
@@ -16,45 +11,30 @@ import type { LiveEvent } from './relay.ts'
 import { startLive } from './session.ts'
 import type { LiveSession } from './session.ts'
 
-/** `paused`: in voice mode without a session, listening paused until an answer or a tap wakes it. */
 export type Phase = 'off' | 'starting' | 'live' | 'paused' | 'ending'
 export type VoiceMode = {
   phase: Phase
-  /** When the current session went live: its billed time. */
-  since?: number
-  /** Kept across sessions, so a session that wakes for an answer never opens a muted microphone. */
+  sessionBilledSinceMs?: number
   muted: boolean
-  /** Why the session stopped, or what failed: shown in the indicator, never only in the console. */
   problem?: string
-  /** An answer that arrived while paused, when this browser would not restart without a tap. */
   waiting?: string
-  /** The Voice conversation sits in front of @ultimate's. Not durable: voice mode ends with its page. */
   front: boolean
-  /** Who has the floor in the live session: the user mid-sentence, or GPT-Live talking. */
   floor?: 'user' | 'voice'
-  /** The words of the line the user is saying now, before a pause finishes it. */
   partial?: string
-  /** A line just finished and on its way to Voice: shown until its `voice.heard` entry arrives. */
   sending?: { text: string; at: number }
-  /** The Voice line GPT-Live is reading out now, and how many of its words it has said so far. */
   speaking?: { entry: number; words: number; at: number }
 }
 
-let mode: VoiceMode = { phase: 'off', muted: false, front: false }
+let pageModeAcrossSessions: VoiceMode = { phase: 'off', muted: false, front: false }
 let session: LiveSession | undefined
-/** Answers to speak once the session starting now is live, with the Voice line each one is. */
-let queued: { text: string; entry?: number }[] = []
+
+let answersAfterStartup: { text: string; entry?: number }[] = []
 let cancelled = false
 let closing: Promise<void> | undefined
 let stopTicking: Cancel | undefined
 const listeners = new Set<() => void>()
 
-/**
- * Cues for the ear, softer and shorter than the notification bells: ready rises a fourth (G5, C6), paused falls back
- * (C6, G5), ended steps down to rest (G5, E5, C5), failed drops low (E4, C♯4). Part of using voice, so the sounds
- * switch does not mute them.
- */
-const cues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
+const unmutedByNotificationSwitchCues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
   ready: [
     [0, 783.99, 0.25],
     [0.1, 1046.5, 0.45],
@@ -74,38 +54,33 @@ const cues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
   ],
 }
 
-/** The cue a phase change sounds: going live, an idle or dropped session pausing, voice mode ending. */
 function cueOf(from: Phase, to: Phase) {
   if (from === to) return undefined
-  if (to === 'live') return cues.ready
-  if (to === 'paused' && from === 'live') return cues.paused
-  if (to === 'off' && from !== 'starting') return cues.ended
+  if (to === 'live') return unmutedByNotificationSwitchCues.ready
+  if (to === 'paused' && from === 'live') return unmutedByNotificationSwitchCues.paused
+  if (to === 'off' && from !== 'starting') return unmutedByNotificationSwitchCues.ended
   return undefined
 }
 
-/**
- * The connecting cue: a quiet hum, G4 under its fifth, breathing at 0.8 Hz until the session is live. Its own audio
- * context, created inside the tap that starts voice so the browser lets it play; closing it silences everything.
- */
-let hum: { context: AudioContext; out: GainNode } | undefined
+let connectingHum: { context: AudioContext; out: GainNode } | undefined
 
-function startHum() {
-  if (hum) return
+function startConnectingHum() {
+  if (connectingHum) return
   const context = new AudioContext()
   const now = context.currentTime
   const out = context.createGain()
-  // Fades in, so it never clicks.
+  const clickFreeFadeInSeconds = 0.4
   out.gain.setValueAtTime(0, now)
-  out.gain.linearRampToValueAtTime(0.05, now + 0.4)
+  out.gain.linearRampToValueAtTime(0.05, now + clickFreeFadeInSeconds)
   out.connect(context.destination)
-  // The pulse: a slow oscillator swings the swell between near silence and full.
+
   const swell = context.createGain()
   swell.gain.value = 0.5
-  const lfo = context.createOscillator()
+  const breathingOscillator = context.createOscillator()
   const depth = context.createGain()
-  lfo.frequency.value = 0.8
+  breathingOscillator.frequency.value = 0.8
   depth.gain.value = 0.45
-  lfo.connect(depth).connect(swell.gain)
+  breathingOscillator.connect(depth).connect(swell.gain)
   swell.connect(out)
   for (const [frequency, level] of [
     [392, 1],
@@ -118,17 +93,16 @@ function startHum() {
     oscillator.connect(gain).connect(swell)
     oscillator.start(now)
   }
-  lfo.start(now)
-  hum = { context, out }
-  // Without a gesture behind it (an answer waking a paused session) the browser may keep it shut: silence is fine.
+  breathingOscillator.start(now)
+  connectingHum = { context, out }
+
   if (context.state === 'suspended')
     context.resume().catch((error: unknown) => console.warn('Connecting hum blocked', error))
 }
 
-/** Fades the hum out in 80 ms and releases its audio context; nothing happens when none plays. */
-function stopHum() {
-  const current = hum
-  hum = undefined
+function stopConnectingHum() {
+  const current = connectingHum
+  connectingHum = undefined
   if (!current) return
   const { context, out } = current
   const now = context.currentTime
@@ -140,15 +114,17 @@ function stopHum() {
   })
 }
 
-function set(next: Partial<VoiceMode>, failed = false) {
-  const cue = failed ? cues.failed : next.phase && cueOf(mode.phase, next.phase)
-  // The connecting hum lasts exactly as long as `starting`: it hands over to the ready, failed or no cue.
-  if (next.phase === 'starting' && mode.phase !== 'starting') startHum()
-  else if (next.phase && next.phase !== 'starting') stopHum()
-  mode = { ...mode, ...next }
-  // While voice mode is on, Voice announces questions; the narrator keeps only their sound.
-  voiceQuestions(mode.phase !== 'off')
-  // The indicator already shows the phase; a cue the browser refuses is only worth a warning.
+function publishModeAndCue(next: Partial<VoiceMode>, failed = false) {
+  const cue = failed
+    ? unmutedByNotificationSwitchCues.failed
+    : next.phase && cueOf(pageModeAcrossSessions.phase, next.phase)
+
+  if (next.phase === 'starting' && pageModeAcrossSessions.phase !== 'starting') startConnectingHum()
+  else if (next.phase && next.phase !== 'starting') stopConnectingHum()
+  pageModeAcrossSessions = { ...pageModeAcrossSessions, ...next }
+
+  voiceQuestions(pageModeAcrossSessions.phase !== 'off')
+
   if (cue) playNotes(cue, 0.08).catch((error: unknown) => console.warn('Voice cue failed', error))
   for (const listener of listeners) listener()
 }
@@ -157,21 +133,20 @@ export const subscribe = (listener: () => void) => {
   listeners.add(listener)
   return () => void listeners.delete(listener)
 }
-export const voiceMode = () => mode
-export const setFront = (front: boolean) => set({ front })
-export const clearProblem = () => set({ problem: undefined })
+export const voiceMode = () => pageModeAcrossSessions
+export const setFront = (front: boolean) => publishModeAndCue({ front })
+export const clearProblem = () => publishModeAndCue({ problem: undefined })
 
-/** The last key status the composer read: a command then starts without a round trip, inside the user's gesture. */
-let status: VoiceStatus | undefined
-export const rememberStatus = (next: VoiceStatus) => (status = next)
+let cachedKeyStatusForGesture: VoiceStatus | undefined
+export const rememberStatus = (next: VoiceStatus) => (cachedKeyStatusForGesture = next)
 
-/** Start from a click or a command: a missing key opens its row in Secrets instead of asking for the microphone. */
 export async function start() {
-  status ??= await api.action(StatusAction)
-  if (!status.available) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+  cachedKeyStatusForGesture ??= await api.action(StatusAction)
+  if (!cachedKeyStatusForGesture.available)
+    return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
   await open()
 }
-/** The live session's microphone analyser, for a level meter. */
+
 export const analyser = () => session?.analyser
 
 const describe = (error: unknown) => {
@@ -181,14 +156,13 @@ const describe = (error: unknown) => {
   return errorMessage(error).replace(/^voice-live\/\w+: /, '')
 }
 
-/** Close the session we hold; `phase` is where the mode goes once it has. */
 function release(next: VoiceMode['phase'], problem?: string) {
   const current = session
   session = undefined
   stopTicking?.()
-  set({
+  publishModeAndCue({
     phase: next,
-    since: undefined,
+    sessionBilledSinceMs: undefined,
     floor: undefined,
     partial: undefined,
     speaking: undefined,
@@ -197,100 +171,115 @@ function release(next: VoiceMode['phase'], problem?: string) {
   if (!current) return
   closing = current
     .close()
-    .catch((error: unknown) => set({ problem: describe(error) }))
+    .catch((error: unknown) => publishModeAndCue({ problem: describe(error) }))
     .finally(() => (closing = undefined))
 }
 
-/** Each tick: follow who has the floor, notice a session that closed under us (expiry, a dropped peer), and close one gone idle. */
 function tick() {
   if (!session) return
-  if (session.analyser.context.state === 'closed') {
-    // startLive already released it and recorded the end; the mode sleeps, as after idling.
+  const sessionAlreadyReleasedAndEnded = session.analyser.context.state === 'closed'
+  if (sessionAlreadyReleasedAndEnded) {
     session = undefined
     stopTicking?.()
-    set({
+    publishModeAndCue({
       phase: 'paused',
-      since: undefined,
+      sessionBilledSinceMs: undefined,
       floor: undefined,
       partial: undefined,
       speaking: undefined,
-      problem: mode.problem ?? 'The session closed',
+      problem: pageModeAcrossSessions.problem ?? 'The session closed',
     })
     return
   }
   const now = Date.now()
   const floor = session.relay.hearing() ? 'user' : session.relay.talking() ? 'voice' : undefined
   const partial = session.relay.partial() || undefined
-  if (floor !== mode.floor || partial !== mode.partial)
-    set({
+  if (floor !== pageModeAcrossSessions.floor || partial !== pageModeAcrossSessions.partial)
+    publishModeAndCue({
       floor,
       partial,
-      sending: partial ? undefined : mode.partial ? { text: mode.partial, at: now } : mode.sending,
+      sending: partial
+        ? undefined
+        : pageModeAcrossSessions.partial
+          ? { text: pageModeAcrossSessions.partial, at: now }
+          : pageModeAcrossSessions.sending,
     })
-  else if (mode.sending && now - mode.sending.at > 6000) set({ sending: undefined })
-  // Follow the line being read out word by word; once GPT-Live falls quiet after it, show it whole.
-  if (mode.speaking) {
+  else if (pageModeAcrossSessions.sending && now - pageModeAcrossSessions.sending.at > 6000)
+    publishModeAndCue({ sending: undefined })
+
+  if (pageModeAcrossSessions.speaking) {
     const words = session.relay.spokenWords()
-    // GPT-Live may never read it (it was interrupted, or paraphrased into silence): then show it whole after 8 s.
-    const silent = words === 0 && now - mode.speaking.at > 8000
-    if ((words > 0 && !session.relay.talking()) || silent) set({ speaking: undefined })
-    else if (words !== mode.speaking.words) set({ speaking: { ...mode.speaking, words } })
+
+    const unreadSpeechTimeoutMs = 8000
+    const unreadSpeechTimedOut =
+      words === 0 && now - pageModeAcrossSessions.speaking.at > unreadSpeechTimeoutMs
+    if ((words > 0 && !session.relay.talking()) || unreadSpeechTimedOut)
+      publishModeAndCue({ speaking: undefined })
+    else if (words !== pageModeAcrossSessions.speaking.words)
+      publishModeAndCue({ speaking: { ...pageModeAcrossSessions.speaking, words } })
   }
-  // A forwarded request still unanswered: a short spoken "still on it", first after 20 s, then every 45 s.
-  if (asked !== undefined && now - asked >= (nudged ? 45_000 : 20_000)) {
-    asked = now
-    nudged = true
+
+  const pendingRequestNudgeMs = hasNudgedPendingRequest ? 45_000 : 20_000
+  if (
+    pendingRequestOrNudgeAtMs !== undefined &&
+    now - pendingRequestOrNudgeAtMs >= pendingRequestNudgeMs
+  ) {
+    pendingRequestOrNudgeAtMs = now
+    hasNudgedPendingRequest = true
     try {
       session.speak('Still on it.')
     } catch (error) {
-      set({ problem: describe(error) })
+      publishModeAndCue({ problem: describe(error) })
     }
   }
   if (session.relay.idleFor(now) >= IDLE_MS) release('paused')
 }
-/** Often enough that the words on screen follow speech; the relay itself joins lines every 100 ms. */
-const TICK_MS = 150
 
-/** When the open forwarded request went out (or was last nudged about), until its answer is heard. */
-let asked: number | undefined
-let nudged = false
+const transcriptFollowMs = 150
+
+let pendingRequestOrNudgeAtMs: number | undefined
+let hasNudgedPendingRequest = false
 
 function onEvent(event: LiveEvent) {
-  if (event.type === 'session.closed' && session && mode.phase === 'live')
-    set({
+  if (event.type === 'session.closed' && session && pageModeAcrossSessions.phase === 'live')
+    publishModeAndCue({
       problem: event.reason ? `Session closed: ${event.reason}` : 'The session closed',
     })
 }
 
-/** Start a session, from a user gesture or for an answer that arrived while paused. Never two at once. */
+const callTypedActionWithRestArgs = <A, R>(ref: ActionRef<A, R>, args: A) =>
+  api.action(ref as ActionRef<null, R>, args as null)
+
 export async function open(speech?: string, entry?: number): Promise<void> {
-  if (speech) queued.push({ text: speech, entry })
-  if (mode.phase === 'starting' || mode.phase === 'live' || mode.phase === 'ending') return
-  const from = mode.phase
+  if (speech) answersAfterStartup.push({ text: speech, entry })
+  const sessionAlreadyActiveOrTransitioning =
+    pageModeAcrossSessions.phase === 'starting' ||
+    pageModeAcrossSessions.phase === 'live' ||
+    pageModeAcrossSessions.phase === 'ending'
+  if (sessionAlreadyActiveOrTransitioning) return
+  const from = pageModeAcrossSessions.phase
   cancelled = false
-  set({
+  publishModeAndCue({
     phase: 'starting',
     problem: undefined,
     waiting: undefined,
     ...(from === 'off' ? { front: true } : {}),
   })
-  // Awaiting nothing would still yield, and Safari wants getUserMedia within the tap.
+
   if (closing) await closing
   let started: LiveSession
   try {
     started = await startLive({
-      // api.action's rest arguments do not take a generic A; the ref still names the real args.
-      action: <A, R>(ref: ActionRef<A, R>, args: A) =>
-        api.action(ref as ActionRef<null, R>, args as null),
+      action: callTypedActionWithRestArgs,
       onEvent,
-      onError: (error) => set({ problem: describe(error) }),
+      onError: (error) => publishModeAndCue({ problem: describe(error) }),
     })
   } catch (error) {
-    const waiting = queued.at(-1)?.text
-    queued = []
-    if (cancelled) return set({ phase: 'off', problem: undefined, front: false })
-    // An answer that could not wake the session waits for a tap; a failed first start leaves voice mode.
-    return set(
+    const waiting = answersAfterStartup.at(-1)?.text
+    answersAfterStartup = []
+    if (cancelled) return publishModeAndCue({ phase: 'off', problem: undefined, front: false })
+
+    return publishModeAndCue(
       {
         phase: from === 'paused' ? 'paused' : 'off',
         problem: describe(error),
@@ -301,26 +290,24 @@ export async function open(speech?: string, entry?: number): Promise<void> {
   }
   session = started
   if (cancelled) return release('off')
-  stopTicking = every(TICK_MS, tick)
-  set({ phase: 'live', since: Date.now() })
+  stopTicking = every(transcriptFollowMs, tick)
+  publishModeAndCue({ phase: 'live', sessionBilledSinceMs: Date.now() })
   try {
-    if (mode.muted) started.mute()
-    for (const item of queued) say(started, item.text, item.entry)
+    if (pageModeAcrossSessions.muted) started.mute()
+    for (const item of answersAfterStartup) say(started, item.text, item.entry)
   } catch (error) {
-    set({ problem: describe(error) })
+    publishModeAndCue({ problem: describe(error) })
   }
-  queued = []
+  answersAfterStartup = []
 }
 
-/** Driven by open forwarded lines, not an acknowledgement or small-talk say. */
-export function working(pending: boolean) {
-  if (pending && asked === undefined) {
-    asked = Date.now()
-    nudged = false
-  } else if (!pending) asked = undefined
+export function working(forwardedRequestPending: boolean) {
+  if (forwardedRequestPending && pendingRequestOrNudgeAtMs === undefined) {
+    pendingRequestOrNudgeAtMs = Date.now()
+    hasNudgedPendingRequest = false
+  } else if (!forwardedRequestPending) pendingRequestOrNudgeAtMs = undefined
 }
 
-/** Quiet context is only useful to the current live session. */
 export function note(text: string) {
   if (!session) return
   try {
@@ -330,28 +317,29 @@ export function note(text: string) {
       content: text,
     })
   } catch (error) {
-    set({ problem: describe(error) })
+    publishModeAndCue({ problem: describe(error) })
   }
 }
 
-/** Read a line out, following it word by word when it is a Voice line on screen. */
 function say(live: LiveSession, text: string, entry?: number) {
   live.speak(text)
-  set({ speaking: entry === undefined ? undefined : { entry, words: 0, at: Date.now() } })
+  publishModeAndCue({
+    speaking: entry === undefined ? undefined : { entry, words: 0, at: Date.now() },
+  })
 }
 
-/** An answer to speak: now while live, after the start in flight, or by waking a paused session. */
 export function hear(text: string, entry?: number) {
-  if (mode.phase === 'live' && session) {
+  if (pageModeAcrossSessions.phase === 'live' && session) {
     try {
       say(session, text, entry)
     } catch (error) {
-      set({ problem: describe(error) })
+      publishModeAndCue({ problem: describe(error) })
     }
-  } else if (mode.phase === 'starting') queued.push({ text, entry })
-  else if (mode.phase === 'paused') {
-    // Without an earlier gesture on this page the browser keeps the microphone and audio shut: ask for a tap.
-    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) set({ waiting: text })
+  } else if (pageModeAcrossSessions.phase === 'starting') answersAfterStartup.push({ text, entry })
+  else if (pageModeAcrossSessions.phase === 'paused') {
+    const browserNeedsWakeGesture =
+      navigator.userActivation && !navigator.userActivation.hasBeenActive
+    if (browserNeedsWakeGesture) publishModeAndCue({ waiting: text })
     else void open(text, entry)
   }
 }
@@ -362,26 +350,24 @@ export function setMuted(muted: boolean) {
       if (muted) session.mute()
       else session.unmute()
     }
-    set({ muted })
+    publishModeAndCue({ muted })
   } catch (error) {
-    set({ problem: describe(error) })
+    publishModeAndCue({ problem: describe(error) })
   }
 }
 
-/** Leave voice mode: close the session, or cancel the one starting. */
 export function end() {
-  if (mode.phase === 'off') return
-  queued = []
-  if (mode.phase === 'starting') {
+  if (pageModeAcrossSessions.phase === 'off') return
+  answersAfterStartup = []
+  if (pageModeAcrossSessions.phase === 'starting') {
     cancelled = true
-    return set({ phase: 'ending' })
+    return publishModeAndCue({ phase: 'ending' })
   }
   release('off')
-  set({ problem: undefined, waiting: undefined, muted: false, front: false })
+  publishModeAndCue({ problem: undefined, waiting: undefined, muted: false, front: false })
 }
 
-// A session never outlives its page.
 addEventListener('pagehide', () => {
-  stopHum()
+  stopConnectingHum()
   if (session) release('off')
 })
