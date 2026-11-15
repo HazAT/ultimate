@@ -249,7 +249,7 @@ function PhasedFlightRow({
               </span>
             </span>
             <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
-              {feature && <FeatureTag feature={feature} />}
+              {feature && <FeatureTag className="max-w-[35%] shrink-0" feature={feature} />}
               <span className={cn('min-w-0 truncate', tones[state.tone])} title={state.label}>
                 {state.label}
               </span>
