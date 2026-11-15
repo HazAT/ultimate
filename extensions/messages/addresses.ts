@@ -1,6 +1,5 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx, TaskId } from '@earendil-works/pi-durable'
-/** Who a message is from and to: resolving addresses, naming senders, and a subagent's parent. */
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -10,26 +9,19 @@ import { Messages } from './api.ts'
 import { isOwed } from '../../lib/message-state.ts'
 
 export type { Serves }
-/**
- * The newest agent's request `to` still owes an answer: what a branch or an automation it makes now works on, so its
- * later result reaches that agent (route.ts). Undefined when no agent waits on `to`.
- */
+
 export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
-  const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
+  const newestOwedRequestProxy = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
     (m) => m.to === to && m.from !== 'user' && isOwed(m),
   )
-  if (!owed || owed.from === 'user') return undefined
-  // A copy: the doc's proxy is unusable once the commit settles.
+  if (!newestOwedRequestProxy || newestOwedRequestProxy.from === 'user') return undefined
   return {
-    message: owed.id,
-    from: owed.from,
-    ...(owed.remote ? { remote: { ...owed.remote } } : {}),
+    message: newestOwedRequestProxy.id,
+    from: newestOwedRequestProxy.from,
+    ...(newestOwedRequestProxy.remote ? { remote: { ...newestOwedRequestProxy.remote } } : {}),
   }
 }
-/**
- * Who started a branch through `branch`, so its later final answers reach that conversation, and the request it serves.
- * `yielded` is the newest generation observed, so a replayed hook creates no second observer.
- */
+
 export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves?: Serves }>({
   kind: 'board.started',
   checkpointWhen: () => false,
@@ -39,15 +31,12 @@ export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves
   fork: 'initial',
   initial: () => ({}),
 })
-/** The conversation that started branch `id`, which hears its final answers; undefined for anything else. */
+
 export async function starterOf(host: ExtensionHost, id: ConversationId | 'user', ctx: Context) {
   if (typeof id !== 'number') return undefined
   return (await host.harness().snapshot(Started, id, ctx))?.by
 }
-/**
- * Inside `tx`, for the starter `to` reading branch `from`'s reply or report: whose request the branch serves, and that
- * concluding it sends the starter's final answer there. Empty for anything else.
- */
+
 export async function servesLine(
   tx: Tx,
   from: ConversationId | 'user' | 'remote',
@@ -59,7 +48,7 @@ export async function servesLine(
   const asker = serves.from === 'remote' ? remoteLabel(serves.remote!) : `#${serves.from}`
   return `\n#${from} works on ${asker}'s message ${serves.message}. Once #${from} is concluded, your final answer to it goes to ${asker} instead.`
 }
-/** The conversation that started `id` as a subagent, which is the only one it may message. */
+
 export async function parentOf(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const owner = (await host.harness().commit((tx) => tx.conversation(id), ctx))?.owner
     ?.conversationId
@@ -79,7 +68,7 @@ export async function senderName(
   const name = Object.keys(index ?? {}).find((candidate) => index?.[candidate] === id)
   return `#${id}${name ? ` (@${name})` : ''}`
 }
-export async function resolve(
+export async function resolveRecipientAfterSenderChecks(
   host: ExtensionHost,
   to: string,
   from: ConversationId | 'user',
@@ -116,6 +105,6 @@ export async function resolve(
   }, ctx)
   return id
 }
-/** How another project's Ultimate is named, as data.tsx names it in the browser. */
+
 export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
   `@ultimate@${remote.project} on ${remote.machine}`
