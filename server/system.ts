@@ -20,6 +20,7 @@ import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
 import { deadline } from '../lib/timers.ts'
+import { inBackground } from '../lib/errors.ts'
 import type { Cancel } from '../lib/timers.ts'
 
 export function skillInfo({
@@ -53,7 +54,7 @@ export async function createSystem(
   host: PreparedHost,
   watchRepo: Watch,
   url: string,
-  registry: (() => ExtensionInfo[]) & { diagnostics: () => string[] },
+  registry: (() => ExtensionInfo[]) & { diagnostics: () => Promise<string[]> },
   emit: (info: SystemInfo) => void,
   notice: (message: string) => void = () => {},
   processInfo: { activationError?: string } = {},
@@ -139,7 +140,7 @@ export async function createSystem(
       code,
       web: web(),
       extensions: registry(),
-      extensionDiagnostics: registry.diagnostics(),
+      extensionDiagnostics: await registry.diagnostics(),
       ...skillInfo(projectSkills(host)),
       contextFiles: loadProjectContextFiles({
         cwd: host.projectRoot,
@@ -156,7 +157,16 @@ export async function createSystem(
       emit(value)
     }
   }
+  const changed = () => {
+    if (!closed) chain = chain.then(() => refresh()).catch(reportError)
+    return chain
+  }
+  const secrets = join(host.userHome, '.ultimate/secrets.json')
   const schedule = (_event?: string, path?: string | null) => {
+    if (path === secrets) {
+      inBackground(changed())
+      return
+    }
     if (path && /^(server|shared)\//.test(relative(host.ultimateRoot, path))) {
       coreStale = true
       code.coreStale = true
@@ -176,7 +186,8 @@ export async function createSystem(
       join(host.projectRoot, '.agents/skills'),
       join(host.projectRoot, '.pi/skills'),
     ]
-    watcher.add(sourceRootsExcludingStorageHome)
+    const secretsClearMissingSecretNotices = secrets
+    watcher.add([...sourceRootsExcludingStorageHome, secretsClearMissingSecretNotices])
     const stopRoots = watchRoots([join(host.projectRoot, '.ultimate')], (root) => {
       watcher.add(root)
       schedule()
@@ -190,10 +201,7 @@ export async function createSystem(
   await refresh(true)
   return {
     current: () => value,
-    changed() {
-      if (!closed) chain = chain.then(() => refresh()).catch(reportError)
-      return chain
-    },
+    changed,
     async close() {
       closed = true
       cancelRefresh?.()

@@ -38,8 +38,9 @@ import { extensionApis } from './extension-apis.ts'
 import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
+import { secretMetadata } from '../lib/secrets.ts'
 import type { Device } from '../shared/events.ts'
-import { inBackground, isMissing } from '../lib/errors.ts'
+import { inBackground, isMissing, meansNone } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -58,7 +59,7 @@ export type ExtensionHost = Pick<
   | 'chapter'
 > & {
   access: Pick<Access, 'allow'>
-  notice(message: string): void
+  notice(message: string, options?: { untilSecretSet?: string }): void
   implement<S>(api: Api<string, S>, value: NoInfer<S>): void
   need<S>(api: Api<string, S>): S
   want<S>(api: Api<string, S>): S | undefined
@@ -115,8 +116,8 @@ export async function loadExtensions(
   const facetOpeners = new Map<ExtensionHost, Set<() => Promise<void>>>()
   const facetReleasers = new Map<ExtensionHost, Set<() => Promise<void>>>()
   const facetCleanups = new Map<ExtensionHost, Set<() => Promise<void>>>()
-  type NoticeRecordedInEventLog = boolean
-  const facetNotices = new Map<ExtensionHost, Map<string, NoticeRecordedInEventLog>>()
+  type FacetNotice = { recordedInEventLog: boolean; untilSecretSet?: string }
+  const facetNotices = new Map<ExtensionHost, Map<string, FacetNotice>>()
   const extensionOf = (facetHost: ExtensionHost) =>
     [...facetHosts].find(([, current]) => current === facetHost)?.[0]
   const apis = extensionApis(
@@ -170,13 +171,13 @@ export async function loadExtensions(
       need: <S>(api: Api<string, S>): S =>
         apis.need(facetHost, name, api, facetHosts.get(name) !== facetHost),
       want: <S>(api: Api<string, S>): S | undefined => apis.want(facetHost, name, api),
-      notice: (message) => {
+      notice: (message, options) => {
         const messages = facetNotices.get(facetHost)
         const facetWasDisposed = !messages
         if (facetWasDisposed) return
         const firstNoticeOfMessageThisFacetLoad = !messages.has(message)
         if (firstNoticeOfMessageThisFacetLoad) {
-          messages.set(message, open)
+          messages.set(message, { recordedInEventLog: open, ...options })
           if (open) log.notice(name, message)
         }
         notice(message)
@@ -778,14 +779,25 @@ export async function loadExtensions(
   })
   return {
     info: Object.assign(info, {
-      diagnostics: () => [
-        ...new Set([
-          ...diagnostics,
-          ...[...facetNotices.values()].flatMap((messages) => [...messages.keys()]),
-          ...apis.missing(),
-          ...projectDiagnostics(host.projectRoot, host.userHome),
-        ]),
-      ],
+      diagnostics: async () => {
+        const storedSecrets = new Set(
+          (await secretMetadata(host.userHome).catch(meansNone))?.map((secret) => secret.name),
+        )
+        return [
+          ...new Set([
+            ...diagnostics,
+            ...[...facetNotices.values()].flatMap((messages) =>
+              [...messages]
+                .filter(
+                  ([, { untilSecretSet }]) => !untilSecretSet || !storedSecrets.has(untilSecretSet),
+                )
+                .map(([message]) => message),
+            ),
+            ...apis.missing(),
+            ...projectDiagnostics(host.projectRoot, host.userHome),
+          ]),
+        ]
+      },
     }),
     action(name: string, action: string) {
       const table = actions.get(name)
@@ -802,9 +814,9 @@ export async function loadExtensions(
       open = true
       for (const [name, facetHost] of facetHosts)
         for (const [message, recorded] of facetNotices.get(facetHost) ?? [])
-          if (!recorded) {
+          if (!recorded.recordedInEventLog) {
             log.notice(name, message)
-            facetNotices.get(facetHost)!.set(message, true)
+            recorded.recordedInEventLog = true
           }
       await Promise.all([...openers].map(runOpener))
     },

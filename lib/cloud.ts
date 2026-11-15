@@ -29,7 +29,9 @@ export async function cloudConfig(
   const token =
     env.ULTIMATE_CLOUD_TOKEN ?? (await readSecret(host.userHome, 'ULTIMATE_CLOUD_TOKEN'))
   if (!token) {
-    host.notice('Missing ULTIMATE_CLOUD_TOKEN. Add it in the Secrets panel (⌘K → Secrets).')
+    host.notice('Missing ULTIMATE_CLOUD_TOKEN. Add it in the Secrets panel (⌘K → Secrets).', {
+      untilSecretSet: 'ULTIMATE_CLOUD_TOKEN',
+    })
     return undefined
   }
   const machine =
