@@ -281,8 +281,10 @@ export default function messages(host: ExtensionHost) {
       // Only @ultimate can tell; the list changes when a project or a standing agent is added, not per turn.
       section('projects', async (input, ctx) => {
         const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-        if (standing?.ultimate !== input.conversationId) return undefined
-        return projectsSection(host)
+        if (standing?.ultimate === input.conversationId) return projectsSection(host)
+        if (!input.agent.tools.some((tool) => tool.name === 'message')) return undefined
+        if ((await parentOf(host, input.conversationId, ctx)) !== undefined) return undefined
+        return 'To reach another project, ask @ultimate to relay.'
       }),
     ],
     tools: [

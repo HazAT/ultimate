@@ -473,7 +473,10 @@ export const actions = {
 }
 
 export default function codemode(host: ExtensionHost) {
-  const globalDeclarations = globals(host, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
+  // The description is the same for every conversation; only @ultimate can tell, so its `projects` section teaches it.
+  const globalDeclarations = globals(host, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT).filter(
+    (global) => global.name !== 'ultimate.tell',
+  )
   const codemodeTool = defineTool({
     name: 'codemode',
     replay: 'unsafe',
