@@ -965,6 +965,38 @@ it('queues a busy recipient as follow-up, or steers its current run; @ultimate s
     expect(steer ? released === -1 : released < delivered).toBe(true)
   }
 })
+it('delivers one answer to several messages once, and closes each', async () => {
+  // #590386 answered messages 434, 435 and 436 in one run; its answer reached @ultimate three times
+  // (#574726/590616, /590626, /590637), and @ultimate answered each.
+  const f = await fixture()
+  await f.recipient.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  // Pi places one steer per tool round: the first two keep the run going, so one final answer settles all three.
+  for (const text of ['First\nHOLD', 'Second\nHOLD', 'Third'])
+    await f.send(String(f.recipient.id), text, { reply: true, steer: true })
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(InboxDoc, f.recipient.id, context))!.items.length === 3,
+  )
+  f.hold.release()
+  await until(async () =>
+    (await f.log())!.messages.every((m) => m.from !== 1 || m.state === 'answered'),
+  )
+  await f.opened.harness.waitForIdle(context)
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      (t) => t.record.kind !== 'board.delivery',
+    ),
+  )
+  const log = (await f.log())!.messages
+  expect(log.filter((m) => m.from === 1).map((m) => m.state)).toEqual([
+    'answered',
+    'answered',
+    'answered',
+  ])
+  expect(log.filter((m) => m.from === f.recipient.id)).toHaveLength(1)
+  expect(await replies(f)).toHaveLength(1)
+})
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)

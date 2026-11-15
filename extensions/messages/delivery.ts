@@ -187,6 +187,20 @@ export function delivery(host: ExtensionHost) {
           }
           // The recipient answered with a message; its final answer stays where it is.
           if (original?.state === 'answered') return terminal
+          // One answer to several of the sender's messages goes back once: the others it answers just close. Another
+          // Ultimate's requests each wait on their own key, so they each get it.
+          const log = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
+          if (
+            answer !== undefined &&
+            !m.remote &&
+            log.some((r) => r.answer === answer && r.from === m.to && r.to === m.from)
+          ) {
+            if (original) {
+              original.state = 'answered'
+              original.answer = answer
+            }
+            return terminal
+          }
           const model =
             answer === undefined ? undefined : (await tx.entry(AssistantEntry, answer))?.model?.[0]
           const text =
