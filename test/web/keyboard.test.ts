@@ -5,7 +5,7 @@ const { runCommand, commands, ui } = vi.hoisted(() => {
   // keys.ts reads the platform once at import: pin it, so `mod` is Ctrl on every host, macOS included.
   vi.stubGlobal('navigator', { platform: 'Linux x86_64' })
   return {
-    runCommand: vi.fn<(id: string, context: { conversationId?: number }) => void>(),
+    runCommand: vi.fn<(id: string, context: { conversationId?: number }, via?: string) => void>(),
     commands: vi.fn<() => CommandItem[]>(),
     ui: { paletteOpen: false },
   }
@@ -99,7 +99,7 @@ it('respects typing, dialogs, sequences, timeout, composition and listener teard
   editable.isContentEditable = true
   expect(send('x', editable)).toBe(false)
   expect(send('x')).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('plain', { conversationId: 1 })
+  expect(runCommand).toHaveBeenLastCalledWith('plain', { conversationId: 1 }, 'keys')
   expect(send('y')).toBe(false)
   expect(send('x', input, { isComposing: true })).toBe(false)
   const calls = runCommand.mock.calls.length
@@ -110,26 +110,26 @@ it('respects typing, dialogs, sequences, timeout, composition and listener teard
   composer.composer = true
   composer.id = 'composer-input'
   expect(send('Tab', composer, { shiftKey: true })).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('thinking', { conversationId: 1 })
+  expect(runCommand).toHaveBeenLastCalledWith('thinking', { conversationId: 1 }, 'keys')
   // Escape in a side chat's composer, or on any focused button of its pane, stops the side chat, never main.
   const side = new Textarea()
   side.composer = true
   side.scope = 17
   expect(send('Escape', side)).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 17 })
+  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 17 }, 'keys')
   const sideButton = new Element()
   sideButton.scope = 17
   expect(send('Escape', sideButton)).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 17 })
+  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 17 }, 'keys')
   expect(send('Escape')).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 1 })
+  expect(runCommand).toHaveBeenLastCalledWith('stop', { conversationId: 1 }, 'keys')
   dialog.mockReturnValue({})
   expect(send('Tab', composer, { shiftKey: true })).toBe(false)
   dialog.mockReturnValue(null)
   expect(send('k', input, { ctrlKey: true })).toBe(true)
   ui.paletteOpen = true
   expect(send('m', input)).toBe(true)
-  expect(runCommand).toHaveBeenLastCalledWith('sequence', { conversationId: 1 })
+  expect(runCommand).toHaveBeenLastCalledWith('sequence', { conversationId: 1 }, 'keys')
   expect(ui.paletteOpen).toBe(false)
   send('k', input, { ctrlKey: true })
   ui.paletteOpen = true

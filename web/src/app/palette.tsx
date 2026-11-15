@@ -9,7 +9,7 @@ import {
   CommandShortcut,
 } from '@/components/ui/command'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { actions, applies, currentContext } from '../sdk/actions.ts'
+import { applies, currentContext, runCommand } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
 import { useCommands, useStore } from '../sdk/hooks.ts'
 import { formatKeys } from '../sdk/keys.ts'
@@ -59,7 +59,7 @@ export function CommandPalette() {
                   keywords={[command.id, command.extension]}
                   onSelect={() => {
                     store.setUi({ paletteOpen: false })
-                    actions.runCommand(command.id)
+                    runCommand(command.id, currentContext(), 'palette')
                   }}
                   value={`${command.title} ${command.id}`}
                 >
