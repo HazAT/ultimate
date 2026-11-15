@@ -413,27 +413,24 @@ export async function tallyText(
   }
 }
 
+type NoteBaselineAndInputCommitTogether = Tx
+
 // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
 export async function catchup(
   host: ExtensionHost,
   _input: EntryDraft,
-  api: { conversationId: ConversationId; tx: Tx },
+  placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
   ctx: Context,
   treeOf: (tx: Tx, id: ConversationId) => Promise<Tree | undefined>,
 ) {
-  const { tx: atomicNoteBaselineInputTx, conversationId } = api
-  const record = await atomicNoteBaselineInputTx.conversation(conversationId)
+  const { tx, conversationId } = placement
+  const record = await tx.conversation(conversationId)
   if (!record || record.owner) return undefined
-  const tree = await treeOf(atomicNoteBaselineInputTx, conversationId)
-  const main = await mainOf(host, conversationId, ctx, atomicNoteBaselineInputTx)
-  const alwaysAdvancedBaseline = await atomicNoteBaselineInputTx.doc(Seen, conversationId)
+  const tree = await treeOf(tx, conversationId)
+  const main = await mainOf(host, conversationId, ctx, tx)
+  const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
   const meanwhile = tree
-    ? await tallyText(
-        conversationId,
-        tree,
-        alwaysAdvancedBaseline.tally ?? tree.since,
-        atomicNoteBaselineInputTx,
-      )
+    ? await tallyText(conversationId, tree, alwaysAdvancedBaseline.tally ?? tree.since, tx)
     : undefined
   const commits =
     main && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
@@ -445,7 +442,7 @@ export async function catchup(
             main: alwaysAdvancedBaseline.main,
             at: alwaysAdvancedBaseline.at,
           },
-          atomicNoteBaselineInputTx,
+          tx,
         ).catch((error: unknown) => {
           host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
           return undefined

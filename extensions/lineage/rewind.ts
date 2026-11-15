@@ -62,8 +62,9 @@ export async function refusal(tx: Tx, id: ConversationId, at: EntryId) {
   const live = await tx.doc(LiveDoc, id)
   if (live.run || (await tx.doc(InboxDoc, id)).items.length)
     return `#${id} is busy: stop it or wait until it is idle, then go back.`
-  const compactionInProgress = live.compactions?.length
-  if (compactionInProgress) return `#${id} is compacting: wait until it finishes, then go back.`
+  const compactionWouldRestoreSetAside = live.compactions?.length
+  if (compactionWouldRestoreSetAside)
+    return `#${id} is compacting: wait until it finishes, then go back.`
   const marker = await tx.latestHeadMarker(id)
   if (marker && marker.id > at)
     return `#${id} was compacted after this point; it can't go back past a compaction.`
