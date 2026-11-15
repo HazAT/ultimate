@@ -234,12 +234,12 @@ function PreviewLink({
   const target = usePreviewTarget(href)
   if (!target) return core
   if (target.kind === 'self') return <a href={target.href}>{children}</a>
-  const chipStylesWithoutTranscriptAnchorRules =
+  const buttonChipStyles =
     'inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted/60 px-1.5 align-baseline font-mono text-[11.5px] leading-5 wrap-anywhere'
   if (target.kind === 'off')
     return (
       <span
-        className={cn(chipStylesWithoutTranscriptAnchorRules, 'text-muted-foreground')}
+        className={cn(buttonChipStyles, 'text-muted-foreground')}
         data-preview-link="off"
         title={target.reason}
       >
@@ -250,7 +250,7 @@ function PreviewLink({
   return (
     <button
       className={cn(
-        chipStylesWithoutTranscriptAnchorRules,
+        buttonChipStyles,
         'text-left text-foreground transition-colors hover:bg-accent',
       )}
       data-preview-link={target.kind}

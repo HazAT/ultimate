@@ -68,8 +68,8 @@ export async function previewModelSetting(
   const family = Object.hasOwn(families.families, assigned) ? assigned : DEFAULT_FAMILY
   const own = families.families[family].model
   if (own) return own
-  const usePiDefaultForUnpinnedDefaultFamily = family === DEFAULT_FAMILY
-  if (usePiDefaultForUnpinnedDefaultFamily) {
+  const unpinnedPiDefault = family === DEFAULT_FAMILY
+  if (unpinnedPiDefault) {
     const provider = host.settings?.getDefaultProvider()
     const id = host.settings?.getDefaultModel()
     return provider && id ? `${provider}/${id}` : DEFAULT_PREVIEW_MODEL
@@ -87,7 +87,7 @@ const PRIVATE_CONFIG_COPIES = [
   'agents',
   'skills',
 ]
-const SHARED_CODE_AND_PORT_REGISTRY_LINKS = ['extensions', 'tailscale.json']
+const SHARED_CODE_AND_REGISTRY = ['extensions', 'tailscale.json']
 
 export async function seedUserHome(from: string, to: string) {
   const source = join(from, '.ultimate')
@@ -103,8 +103,7 @@ export async function seedUserHome(from: string, to: string) {
       errorOnExist: true,
       force: false,
     }).catch(missing)
-  for (const name of SHARED_CODE_AND_PORT_REGISTRY_LINKS)
-    await symlink(join(source, name), join(target, name))
+  for (const name of SHARED_CODE_AND_REGISTRY) await symlink(join(source, name), join(target, name))
 }
 
 export async function linkHome(from: string, to: string) {

@@ -220,8 +220,8 @@ export default function update(host: ExtensionHost) {
     'install-landed',
     [SubmissionLanded],
     async () => {
-      const installWithoutHoldingEventTransaction = loadable(host)
-      installWithoutHoldingEventTransaction.catch((error: unknown) =>
+      const backgroundInstall = loadable(host)
+      backgroundInstall.catch((error: unknown) =>
         host.notice(`Install after landing: ${String(error)}`),
       )
     },

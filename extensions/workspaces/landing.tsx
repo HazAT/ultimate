@@ -136,7 +136,7 @@ export function CommitCount({
   )
 }
 
-function useStandingAgentOrSubmitTimeSubject(from: ConversationId, subject?: ConversationSubject) {
+function useStandingOrSubmittedSubject(from: ConversationId, subject?: ConversationSubject) {
   const agent = useStandingName(from)
   return agent ? { title: agent } : subject
 }
@@ -151,7 +151,7 @@ export function Subject({
   className?: string
 }) {
   const { switchConversation } = useUltimate()
-  const subject = useStandingAgentOrSubmitTimeSubject(from, given)
+  const subject = useStandingOrSubmittedSubject(from, given)
   return (
     <span className={cn('flex min-w-0 items-center gap-1.5', className)}>
       {subject?.feature && <FeatureTag className="shrink-0" feature={subject.feature} />}
@@ -199,7 +199,7 @@ export function LandingCard({
   children?: ReactNode
 }) {
   const [border, color, Icon, label] = tones[tone]
-  const named = useStandingAgentOrSubmitTimeSubject(from, subject)
+  const named = useStandingOrSubmittedSubject(from, subject)
   return (
     <Fold
       card={foldStateEntry}

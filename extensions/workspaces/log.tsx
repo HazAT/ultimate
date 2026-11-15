@@ -290,7 +290,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const workspace = useWorkspaceIndex()
   if (!LanderLog.is(entry)) return null
   const data = entry.data
-  const landingAccordingToQueueNotModelRun = workspace.queue.some(
+  const queueReportsLanding = workspace.queue.some(
     (item) => item.id === data.submission && item.state === 'landing',
   )
   const own = entries
@@ -302,7 +302,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const next = after[0]?.data
   const failed = next?.outcome === 'failed'
   const done = next !== undefined && !failed
-  const landing = landingAccordingToQueueNotModelRun && isStep(data) && inProgress(data, afterSteps)
+  const landing = queueReportsLanding && isStep(data) && inProgress(data, afterSteps)
   const steps = own.map((other) => other.data).filter(isStep)
   const rows = steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
   const took = (row: LanderStep) => {

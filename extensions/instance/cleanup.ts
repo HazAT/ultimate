@@ -10,8 +10,8 @@ export async function cleanPreview(home: string) {
   const heldCleanupTransactions: DatabaseSync[] = []
   try {
     for (const name of ['ultimate.lock', 'storage.lock']) {
-      const owner = await readStorageOwner(join(home, name))
-      if (owner && storageOwnerAlive(owner.pid)) return false
+      const startupShutdownPidLease = await readStorageOwner(join(home, name))
+      if (startupShutdownPidLease && storageOwnerAlive(startupShutdownPidLease.pid)) return false
       const database = new DatabaseSync(join(home, name + '.db'))
       heldCleanupTransactions.push(database)
       try {
@@ -55,13 +55,23 @@ export async function cleanPreview(home: string) {
       ).split('\0\0')
       for (const record of records) {
         const fields = record.split('\0')
-        const path = fields.find((field) => field.startsWith('worktree '))?.slice(9)
-        if (!path) continue
-        const inside = relative(resolve(home), path)
+        const previewCheckoutPath = fields.find((field) => field.startsWith('worktree '))?.slice(9)
+        if (!previewCheckoutPath) continue
+        const inside = relative(resolve(home), previewCheckoutPath)
         const outsidePreviewHome =
           !inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside)
         if (outsidePreviewHome) continue
-        await deletePreviewDirectoryThenUnregisterWorktree(common, path)
+        await rm(previewCheckoutPath, { recursive: true, force: true })
+        await git(
+          common,
+          '--git-dir',
+          common,
+          'worktree',
+          'remove',
+          '--force',
+          '--force',
+          previewCheckoutPath,
+        )
       }
       await git(common, '--git-dir', common, 'worktree', 'prune')
       const branchesWithoutCheckouts = await git(
@@ -80,11 +90,6 @@ export async function cleanPreview(home: string) {
   } finally {
     for (const database of heldCleanupTransactions) database.close()
   }
-}
-
-async function deletePreviewDirectoryThenUnregisterWorktree(common: string, previewPath: string) {
-  await rm(previewPath, { recursive: true, force: true })
-  await git(common, '--git-dir', common, 'worktree', 'remove', '--force', '--force', previewPath)
 }
 
 export async function sweepPreviews(directory: string, notice: (message: string) => void) {

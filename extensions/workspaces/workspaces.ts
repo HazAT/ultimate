@@ -25,7 +25,7 @@ import {
   addCheckout,
   clearCheckout,
   hasAddCommand,
-  removeCheckout,
+  removeCheckout as removeCheckoutWithoutForce,
   treeName,
   treePath,
 } from './tree.ts'
@@ -196,7 +196,8 @@ export function workspaces(host: Host) {
     conclude: (tx, id) => host.need(ConversationsApi).concludeIn(tx, [id]),
     release: (id, context) => release([id], context),
   })
-  const startLander = async (tx: Tx, index: WorkspaceIndex, source: string) => {
+  type IdleReadBeforeWrites = string
+  const startIdleLander = async (tx: Tx, index: WorkspaceIndex, source: IdleReadBeforeWrites) => {
     index.landers[source] = await tx.createTask(
       Lander,
       { source },
@@ -207,7 +208,7 @@ export function workspaces(host: Host) {
     )
     tasksStartedByThisModule.add(index.landers[source])
   }
-  async function ensureLander(
+  async function ensureLanderBeforeWrites(
     tx: Tx,
     index: WorkspaceIndex,
     source: string,
@@ -246,7 +247,7 @@ export function workspaces(host: Host) {
       for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) landers.push(id)
       if (source && target && path) {
-        const own = await ensureLander(tx, index, source, target, path)
+        const own = await ensureLanderBeforeWrites(tx, index, source, target, path)
         if (!landers.includes(own)) landers.push(own)
       }
       for (const id of landers)
@@ -267,7 +268,7 @@ export function workspaces(host: Host) {
             item.state = 'queued'
             delete item.step
           }
-        await startLander(tx, index, source)
+        await startIdleLander(tx, index, source)
       }
       return stopped.length
     }, context)
@@ -296,13 +297,13 @@ export function workspaces(host: Host) {
             let registered = await list()
             const pathReservedBeforeCrash = await runtime.memo<boolean>('started', context)
             const settings = await host.projectSettings()
-            const configuredAddInterruptedAfterReservation =
+            const reservedAddInterrupted =
               pathReservedBeforeCrash &&
               hasAddCommand(settings) &&
               (registered
                 ? !registered.split('\n').includes(`branch refs/heads/${workspace.branch}`)
                 : await onDisk(workspace.path))
-            if (configuredAddInterruptedAfterReservation) {
+            if (reservedAddInterrupted) {
               await clearCheckout(workspace.source, workspace.path)
               registered = await list()
             }
@@ -366,7 +367,7 @@ export function workspaces(host: Host) {
               )
             if (checkoutCreatedByPreparation) {
               if (registered)
-                await removeCheckout(
+                await removeCheckoutWithoutForce(
                   await host.projectSettings(),
                   workspace.source,
                   workspace.path,
@@ -448,17 +449,17 @@ export function workspaces(host: Host) {
     const workspace = await presentCheckout(id, context)
     if (!workspace) return undefined
     const registered = await listedBySource(workspace)
-    const unregisteredFolderMayBelongToSomeoneElse = !registered && workspace.state !== 'ready'
-    if (unregisteredFolderMayBelongToSomeoneElse) return undefined
+    const potentiallyForeignFolder = !registered && workspace.state !== 'ready'
+    if (potentiallyForeignFolder) return undefined
     return { workspace, registered }
   }
   async function progress(ids: ConversationId[], context: Context): Promise<KeptWork[]> {
     const result = await Promise.all(
       ids.map(async (id) => {
         const workspace = await get(id, context)
-        const readyWithGitFileWithoutSpawningGit =
+        const readyWithoutGitSpawn =
           workspace?.state === 'ready' && (await onDisk(join(workspace.path, '.git')))
-        if (!readyWithGitFileWithoutSpawningGit) return undefined
+        if (!readyWithoutGitSpawn) return undefined
         return changes(id, workspace).catch(meansNone)
       }),
     )
@@ -489,7 +490,7 @@ export function workspaces(host: Host) {
           }, context)
           return item
         }
-        await removeCheckout(
+        await removeCheckoutWithoutForce(
           await host.projectSettings(),
           workspace.source,
           workspace.path,
@@ -751,8 +752,8 @@ export function workspaces(host: Host) {
         throw new Error('Submitting requires a conversation entry for its breadcrumb')
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       const { source, target } = index.items[String(id)]
-      const idleBeforeAnyTransactionWrite = await landerIdle(tx, index, source)
-      const lander = await ensureLander(tx, index, source, target, path)
+      const idleReadBeforeWrites = await landerIdle(tx, index, source)
+      const lander = await ensureLanderBeforeWrites(tx, index, source, target, path)
       const queued = index.queue.find(
         (item) => item.conversationId === id && item.tip === tip && item.state === 'queued',
       )
@@ -772,7 +773,7 @@ export function workspaces(host: Host) {
         await log(tx, lander, entry, { step: 'queued' })
         index.queue.push(entry)
       }
-      if (idleBeforeAnyTransactionWrite) await startLander(tx, index, source)
+      if (idleReadBeforeWrites) await startIdleLander(tx, index, source)
       const position = index.queue
         .filter((item) => item.source === source)
         .findIndex((item) => item.id === entry.id)
@@ -994,7 +995,7 @@ export function workspaces(host: Host) {
       if (workspace.state === 'preparing') throw new Error('Workspace is preparing')
       if (workspace.state !== 'removed') {
         if (await listedBySource(workspace))
-          await removeCheckout(
+          await removeCheckoutWithoutForce(
             await host.projectSettings(),
             workspace.source,
             workspace.path,

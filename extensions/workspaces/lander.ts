@@ -119,8 +119,8 @@ const seconds = (value: number) => (value < 60 ? `${value} s` : `${+(value / 60)
 
 export const checkPids = (home: string) => join(home, 'lander-checks')
 export const sweepChecks = async (home: string) => {
-  const belongsToResumedCheckInCurrentProcess = (name: string) => name.startsWith(`${process.pid}-`)
-  await sweepPidFiles(checkPids(home), belongsToResumedCheckInCurrentProcess)
+  const isResumedProcessCheck = (name: string) => name.startsWith(`${process.pid}-`)
+  await sweepPidFiles(checkPids(home), isResumedProcessCheck)
   const names = await readdir(checkTemp(home)).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return []
     throw error
@@ -139,7 +139,7 @@ export async function runLanderCheck(
   temp: string,
   limits: CheckLimits = defaultCheckLimitsSeconds,
 ) {
-  const tmp = createCheckTempBeforeWatchdogStarts(temp)
+  const tmp = createTempBeforeWatchdog(temp)
   let output = ''
   let partial = ''
   const failed = new Set<string>()
@@ -203,7 +203,7 @@ export async function runLanderCheck(
   }
 }
 
-function createCheckTempBeforeWatchdogStarts(temp: string) {
+function createTempBeforeWatchdog(temp: string) {
   mkdirSync(temp, { recursive: true })
   return mkdtempSync(join(temp, `${process.pid}-`))
 }
@@ -283,16 +283,19 @@ type CommittedDeliveryDecision = {
 }
 type ConcludedBranchRelease = { phase: 'release'; conversationId: ConversationId }
 
+type BranchReportHeldAsNote = ConversationId
+type UnderwayReportPhase = {
+  phase: 'report'
+  id: string
+  conversationId: BranchReportHeldAsNote
+  text: string
+  outcome: WorkspaceIndex['results'][string]
+}
+
 type State =
   | { phase: 'next' }
   | { phase: 'land'; id: string; attempt: number; pushRetried?: boolean }
-  | {
-      phase: 'report'
-      id: string
-      conversationId: ConversationId
-      text: string
-      outcome: WorkspaceIndex['results'][string]
-    }
+  | UnderwayReportPhase
   | CommittedDeliveryDecision
   | ConcludedBranchRelease
 
@@ -308,7 +311,7 @@ export function createLander(
   },
   limits: CheckLimits = defaultCheckLimitsSeconds,
 ) {
-  async function resetIntegrationCheckoutKeepingIgnoredFiles(source: string, tip: string) {
+  async function resetTrackedIntegration(source: string, tip: string) {
     const path = await landerCheckout(host.home, source, await host.projectSettings(), tip)
     await git(path, 'reset', '--hard', '-q')
     await git(path, 'checkout', '-q', '--detach', '--force', tip)
@@ -375,7 +378,7 @@ export function createLander(
                 ms: Math.round(ran.ms),
               })
           }, context)
-        const commitOutcomeLogAndReportCheckpoint = (text: string, outcome: LanderOutcome) =>
+        const commitLandingOutcome = (text: string, outcome: LanderOutcome) =>
           runtime.commit(async (tx) => {
             const draft = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
             const steps = draft.queue.find((item) => item.id === id)!.steps
@@ -457,14 +460,14 @@ export function createLander(
             ...(hint ? { hint } : {}),
           }
           return landed
-            ? commitOutcomeLogAndReportCheckpoint(
+            ? commitLandingOutcome(
                 `${summary(landed, landed.sha, ' locally')}\nPush failed: ${detail}`,
                 {
                   ...landedOutcome(landed),
                   ...facts,
                 },
               )
-            : commitOutcomeLogAndReportCheckpoint(`was not landed: ${detail}`, {
+            : commitLandingOutcome(`was not landed: ${detail}`, {
                 outcome: 'failed',
                 ...facts,
               })
@@ -512,7 +515,7 @@ export function createLander(
           const needsRestart =
             (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
             restartNeeded(landed.paths)
-          return commitOutcomeLogAndReportCheckpoint(
+          return commitLandingOutcome(
             [summary(landed, sha), pushed.text, ...(needsRestart ? ['Needs restart.'] : [])].join(
               '\n',
             ),
@@ -542,7 +545,7 @@ export function createLander(
               `merged:${id}:${attempt}`,
               context,
             )
-            const path = await resetIntegrationCheckoutKeepingIgnoredFiles(
+            const path = await resetTrackedIntegration(
               source,
               mergedBeforeChecks?.sha ?? (await git(source, 'rev-parse', `refs/heads/${target}`)),
             )
@@ -618,22 +621,33 @@ export function createLander(
                   limitsFor(members[member], limits),
                 )
               const runCheckWithOneDurableRerun = async (command: string, member: number) => {
-                const key = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
-                let first = await runtime.memo<'passed' | 'failed'>(key, context)
-                if (!first) {
+                const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
+                let memoizedFirstRun = await runtime.memo<'passed' | 'failed'>(
+                  attemptMemoKey,
+                  context,
+                )
+                if (!memoizedFirstRun) {
                   await step(`checking: ${command}`, { runs: command })
                   const began = performance.now()
                   const ran = await run(command, member)
-                  const result = ran.failure === undefined ? 'passed' : 'failed'
-                  await step(`checked: ${command}`, {
-                    result: { command, result, ...(ran.summary ? { summary: ran.summary } : {}) },
+                  const unmemoizedResult = ran.failure === undefined ? 'passed' : 'failed'
+                  const logAttemptBeforeMemo = step
+                  await logAttemptBeforeMemo(`checked: ${command}`, {
+                    result: {
+                      command,
+                      result: unmemoizedResult,
+                      ...(ran.summary ? { summary: ran.summary } : {}),
+                    },
                     output: ran.failure,
                     ran: { ms: performance.now() - began, timedOut: ran.timedOut },
                   })
-                  first = await runtime.memo(key, result, context)
+                  memoizedFirstRun = await runtime.memo(attemptMemoKey, unmemoizedResult, context)
                 }
-                if (first === 'passed') return {}
-                let rerun = await runtime.memo<{ failure?: string }>(`${key}:rerun`, context)
+                if (memoizedFirstRun === 'passed') return {}
+                let rerun = await runtime.memo<{ failure?: string }>(
+                  `${attemptMemoKey}:rerun`,
+                  context,
+                )
                 if (!rerun) {
                   await step(`rerunning: ${command}`, { runs: command })
                   const began = performance.now()
@@ -658,17 +672,17 @@ export function createLander(
                       })
                     }, context)
                   rerun = await runtime.memo<{ failure?: string }>(
-                    `${key}:rerun`,
+                    `${attemptMemoKey}:rerun`,
                     ran.failure === undefined ? {} : { failure: ran.failure },
                     context,
                   )
                 }
                 return rerun.failure === undefined ? { flaky: true } : { failure: rerun.failure }
               }
-              const everyCommandSettledBeforeFailure = await Promise.allSettled(
+              const settledCheckGroup = await Promise.allSettled(
                 commands.map(runCheckWithOneDurableRerun),
               )
-              const results = everyCommandSettledBeforeFailure.map((outcome) => {
+              const results = settledCheckGroup.map((outcome) => {
                 if (outcome.status === 'rejected') throw outcome.reason
                 return outcome.value
               })
@@ -681,10 +695,10 @@ export function createLander(
                 )
               flaky.push(...commands.filter((_command, member) => results[member].flaky))
             }
-            const checkedCheckoutMovedOrBecameDirty =
+            const checkedTreeChanged =
               (await git(path, 'rev-parse', 'HEAD')) !== mergedBeforeChecks.sha ||
               (await git(path, 'status', '--porcelain'))
-            if (checkedCheckoutMovedOrBecameDirty)
+            if (checkedTreeChanged)
               return await fail(
                 'the integration checkout changed during checks',
                 `${await git(path, 'log', '--oneline', '-3')}\n${await git(path, 'status', '--short')}`.trim(),

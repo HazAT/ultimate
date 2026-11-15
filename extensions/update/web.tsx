@@ -139,8 +139,8 @@ function Popup({
     state.commits.length,
     state.summary ? commitCountUnderSummary : commitCountWithoutSummary,
   )
-  const owesInstallOrRestartWithoutNewCommits = !state.behind && (state.install || state.restart)
-  const current = !state.behind && !updated && !owesInstallOrRestartWithoutNewCommits
+  const owesInstallOrRestart = !state.behind && (state.install || state.restart)
+  const current = !state.behind && !updated && !owesInstallOrRestart
   return (
     <>
       <div className="border-b border-border/70 px-3 py-2 text-[11.5px]">
@@ -225,7 +225,7 @@ function Popup({
             )}
           </>
         )}
-        {owesInstallOrRestartWithoutNewCommits && !updated && (
+        {owesInstallOrRestart && !updated && (
           <div>
             {state.install
               ? 'pnpm-lock.yaml differs from the installed packages: pnpm install is owed.'
@@ -266,7 +266,7 @@ function Popup({
             busy={busy}
             coreStale={coreStale}
             merge={merge}
-            owes={owesInstallOrRestartWithoutNewCommits}
+            owes={owesInstallOrRestart}
             run={run}
             state={state}
           />
@@ -380,7 +380,7 @@ function Update() {
         void refetch()
       })
   }
-  const askUltimateToMergeAndOpenConversation = () => {
+  const openUltimateMerge = () => {
     setBusy(true)
     setError(undefined)
     api
@@ -458,7 +458,7 @@ function Update() {
           check={check}
           checking={checking}
           error={error}
-          merge={askUltimateToMergeAndOpenConversation}
+          merge={openUltimateMerge}
           run={run}
           state={state}
         />

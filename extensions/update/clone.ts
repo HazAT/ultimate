@@ -48,9 +48,9 @@ export async function withLock<T>(
   work: () => Promise<T>,
   waitMs = 0,
 ): Promise<T | undefined> {
-  let processLifetimeSqliteLock: Awaited<ReturnType<typeof acquireLock>>
+  let heldCloneLock: Awaited<ReturnType<typeof acquireLock>>
   try {
-    processLifetimeSqliteLock = await acquireLock(cloneWideLockFile, { pid: process.pid }, waitMs)
+    heldCloneLock = await acquireLock(cloneWideLockFile, { pid: process.pid }, waitMs)
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Ultimate core already owns'))
       return undefined
@@ -59,7 +59,7 @@ export async function withLock<T>(
   try {
     return await work()
   } finally {
-    await processLifetimeSqliteLock.close()
+    await heldCloneLock.close()
   }
 }
 
