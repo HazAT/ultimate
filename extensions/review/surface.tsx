@@ -377,17 +377,17 @@ function Diffs({
         root?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
         root?.querySelector(`[data-line="${target.line}"]`)
       if (!line) return false
-      consumeTargetAfterRenderedOrDeadline()
+      consumeRenderedOrExpiredTarget()
       line.scrollIntoView({ block: 'center' })
       return true
     }
-    const consumeTargetAfterRenderedOrDeadline = () => {
+    const consumeRenderedOrExpiredTarget = () => {
       rendering.disconnect()
       giveUp()
       reachedTarget()
     }
     const rendering = new MutationObserver(reach)
-    const giveUp = deadline(2000, consumeTargetAfterRenderedOrDeadline)
+    const giveUp = deadline(2000, consumeRenderedOrExpiredTarget)
     rendering.observe(document.body, { childList: true, subtree: true })
     reach()
     return () => {

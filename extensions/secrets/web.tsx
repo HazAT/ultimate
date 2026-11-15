@@ -202,11 +202,8 @@ function ValueInput({
 function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const cancelFocusedToPreventAccidentalDeletion = useRef<HTMLButtonElement>(null)
-  useEffect(
-    () => cancelFocusedToPreventAccidentalDeletion.current?.focus({ preventScroll: true }),
-    [],
-  )
+  const safeCancelFocus = useRef<HTMLButtonElement>(null)
+  useEffect(() => safeCancelFocus.current?.focus({ preventScroll: true }), [])
   const remove = async () => {
     setBusy(true)
     setError(undefined)
@@ -237,7 +234,7 @@ function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
         <Button
           className={small}
           onClick={onDone}
-          ref={cancelFocusedToPreventAccidentalDeletion}
+          ref={safeCancelFocus}
           size="sm"
           type="button"
           variant="ghost"

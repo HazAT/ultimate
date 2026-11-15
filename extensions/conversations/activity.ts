@@ -41,9 +41,9 @@ export function activityBehavior(
     }
     const inputTitle = title ? title.replace(/\s+/g, ' ').slice(0, 160) : undefined
     const previous = await host.harness().snapshot(host.metadata, id, context)
-    const inheritedInputPredatesBranchActivity =
+    const inheritedInputIsOlder =
       previous?.inputAt !== undefined && (inputAt === undefined || inputAt < previous.inputAt)
-    if (inheritedInputPredatesBranchActivity) inputAt = previous.inputAt
+    if (inheritedInputIsOlder) inputAt = previous.inputAt
     if (
       previous?.inputTitle === inputTitle &&
       previous?.inputAt === inputAt &&

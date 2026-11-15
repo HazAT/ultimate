@@ -568,13 +568,11 @@ export async function saveOverlay(
   )
   const base = definitions.find((definition) => definition.name === name)
   if (!base) throw new Error(`No definition named ${name} for an overlay to extend`)
-  const projectRootsThatWouldBeCopiedIntoUserFile = (
-    await agentRoots(ultimateRoot, projectRoot, userHome)
-  )
+  const projectRootsInUserScope = (await agentRoots(ultimateRoot, projectRoot, userHome))
     .filter((root) => scope === 'user' && root.source === 'project')
     .map((root) => root.path)
   const shadowing = [base.path, ...(base.overlays ?? [])].find((file) =>
-    projectRootsThatWouldBeCopiedIntoUserFile.includes(dirname(file)),
+    projectRootsInUserScope.includes(dirname(file)),
   )
   if (shadowing) throw new Error(`${shadowing} applies over the ${scope} file: save to project`)
 

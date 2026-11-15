@@ -25,11 +25,11 @@ self.addEventListener('push', (event) => {
         actions,
         data,
       })
-      .then(announceShownToRecheckAnsweredQuestions),
+      .then(announceShown),
   )
 })
 
-async function announceShownToRecheckAnsweredQuestions() {
+async function announceShown() {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
   for (const client of windows) client.postMessage({ type: 'ultimate:shown' })
 }

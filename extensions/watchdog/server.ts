@@ -65,7 +65,7 @@ const failedInput = (input: SubmissionRecord) =>
   input.status === 'unanswered' &&
   ['model_error', 'no_model'].includes(input.reason)
 
-async function lastAssistantErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Generation) {
+async function lastErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Generation) {
   let upper = sharedOrderTaskEntryBoundary(task.id)
   let assistant: AssistantMessage | undefined
   if (
@@ -132,10 +132,7 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
 type Generation = TaskRecord<JsonValue, JsonValue, JsonValue>
 const sharedOrderTaskEntryBoundary = (id: Generation['id']) => parseEntryId(Number(id))
 
-function advanceWatermarkThroughCompletedPrefix(
-  receipts: { highWater?: number },
-  tasks: Generation[],
-) {
+function advanceCompletedPrefixWatermark(receipts: { highWater?: number }, tasks: Generation[]) {
   for (const task of tasks) {
     if (task.state.status !== 'terminal') break
     receipts.highWater = task.id
@@ -158,21 +155,12 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
   const previous = generations.findLastIndex(
     (candidate) => candidate.id < task.id && failed(candidate),
   )
-  const { upper, assistant } = await lastAssistantErrorBeforeNextGeneration(
-    tx,
-    task,
-    generations[index + 1],
-  )
+  const { upper, assistant } = await lastErrorBeforeNextGeneration(tx, task, generations[index + 1])
   const lower =
     previous < 0
       ? 0
-      : (
-          await lastAssistantErrorBeforeNextGeneration(
-            tx,
-            generations[previous],
-            generations[previous + 1],
-          )
-        ).upper
+      : (await lastErrorBeforeNextGeneration(tx, generations[previous], generations[previous + 1]))
+          .upper
   let step = 'model request'
   cursor = undefined
   do {
@@ -420,7 +408,7 @@ export default function watchdog(host: ExtensionHost) {
     for (const task of tasks) await detect(task)
     await host.harness().commit(async (tx) => {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
-      advanceWatermarkThroughCompletedPrefix(receipts, tasks)
+      advanceCompletedPrefixWatermark(receipts, tasks)
     }, context)
   })
   return defineExtension({

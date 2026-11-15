@@ -121,11 +121,6 @@ export function estimateAfterHead(previous: readonly Message[], current: readonl
     toolsAdded: [...tools.values()],
     timestamp: 0,
   })
-  const nonSystemMessagesAvoidDoubleCounting = current.filter(
-    (message) => message.role !== 'system',
-  )
-  return nonSystemMessagesAvoidDoubleCounting.reduce(
-    (sum, message) => sum + estimateMessageTokens(message),
-    system,
-  )
+  const nonSystemMessages = current.filter((message) => message.role !== 'system')
+  return nonSystemMessages.reduce((sum, message) => sum + estimateMessageTokens(message), system)
 }

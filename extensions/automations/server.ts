@@ -111,7 +111,7 @@ function required(v: unknown, field: string): string {
   if (typeof v !== 'string' || !v.trim()) throw new Error(`${field} is required`)
   return v.trim()
 }
-const SUBSCRIBER_REPLACEMENTS_IN_CALL_ORDER = 'sequential'
+const SUBSCRIBERS_IN_CALL_ORDER = 'sequential'
 const operations = [
   'events',
   'list',
@@ -866,7 +866,7 @@ export default function automations(host: ExtensionHost) {
         ...safeToRerun(
           'Receipts deduplicate ledger changes; process effects reuse their committed pid on replay.',
         ),
-        executionMode: SUBSCRIBER_REPLACEMENTS_IN_CALL_ORDER,
+        executionMode: SUBSCRIBERS_IN_CALL_ORDER,
         description:
           'Automate background work: one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers: #id|@name). create {name, trigger, prompt?, subscribers?, key?, …}; with neither action the caller subscribes. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run (a whole agent turn every fire). schedule: cron "0 9 * * 1-5" Europe/Vienna, at <ISO time>, in 30m, every 15m. ask: a watcher writes a supervised script that fires on stdout FIRE (tokens only for setup and repair); once defaults to true, so the first FIRE finishes it: pass once:false to keep watching. event {name,where?}: action events lists them. condition {metric:"context",of:"@name"|"#id",above}. list; these take {id}: update, pause, resume, run, runs, log, abort {runId}, escalate {reason}, subscribe/unsubscribe {to?}, delete. Details: extensions/automations/README.md in the Ultimate clone.',
         parameters: obj({

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { cn } from '@/sdk'
 import type { GithubRepo } from '../workspaces/refs.ts'
 
-const COOL_HUES_EXCLUDING_WAIT_FAILURE_AND_BRAND = [145, 162, 179, 196, 213, 230, 247]
+const UNRESERVED_COOL_HUES = [145, 162, 179, 196, 213, 230, 247]
 const ULTIMATE_BRAND_COLOUR = { hue: 300, chroma: 0.11 }
 const PROJECT_CHROMA = 0.06
 const SIBLING_LIGHTNESS_AND_HUE_OFFSETS = [
@@ -42,9 +42,7 @@ export function colourOf(name: string, family: readonly string[] = []) {
     hue:
       (brand
         ? ULTIMATE_BRAND_COLOUR.hue
-        : COOL_HUES_EXCLUDING_WAIT_FAILURE_AND_BRAND[
-            hash(stem) % COOL_HUES_EXCLUDING_WAIT_FAILURE_AND_BRAND.length
-          ]) + shade.hueOffset,
+        : UNRESERVED_COOL_HUES[hash(stem) % UNRESERVED_COOL_HUES.length]) + shade.hueOffset,
     chroma: brand ? ULTIMATE_BRAND_COLOUR.chroma : PROJECT_CHROMA,
     lightness: shade.lightnessOffset,
   }

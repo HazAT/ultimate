@@ -28,8 +28,8 @@ export const LINE_CHARS = 120
 export const BODY_CHARS = 2000
 
 export const MEMORY_RULES = `slug kebab-case, matching ${MEMORY_SLUG.source} (at most 48 characters); line a single line of at most ${LINE_CHARS} characters; body at most ${BODY_CHARS} characters; at most ${MEMORY_LIMIT} memories per root`
-const MEMORY_OP_BATCH_WITH_REASONING_TOKENS = 16_384
-export { MEMORY_OP_BATCH_WITH_REASONING_TOKENS as MEMORIZE_TOKENS }
+const MEMORY_WITH_REASONING_TOKENS = 16_384
+export { MEMORY_WITH_REASONING_TOKENS as MEMORIZE_TOKENS }
 export const Memory = defineDoc<{ memories: Record<string, MemoryItem> }>({
   kind: MemoryDoc.kind,
   checkpointWhen: () => false,
@@ -324,7 +324,7 @@ export function memorizeTask(
     if (!model) return runtime.commit(() => done, ctx)
     let input = await runtime.memo<string>('input', ctx)
     if (input === undefined) {
-      const inputTextBuiltBeforeTransactionSettles = await host.harness().commit(async (tx) => {
+      const inputBeforeCommit = await host.harness().commit(async (tx) => {
         const placed = await tx.submissionByRequest(id, `lander-root:${submission}`)
         const entry = placed?.entry ? await tx.entry(placed.entry) : undefined
         const data: { source?: unknown; abstract?: { text?: string } } | undefined = NoteEntry.is(
@@ -344,7 +344,7 @@ export function memorizeTask(
           ...(slugs.length ? slugs.map((slug) => memoryText(slug, memories[slug])) : ['(empty)']),
         ].join('\n\n')
       }, ctx)
-      input = await runtime.memo('input', inputTextBuiltBeforeTransactionSettles, ctx)
+      input = await runtime.memo('input', inputBeforeCommit, ctx)
     }
     let response: ResponseReceipt | undefined
     try {
@@ -359,7 +359,7 @@ export function memorizeTask(
           model,
           response: await runtime.memo<ResponseReceipt>(memo, ctx),
           save: (received) => runtime.memo(memo, received, ctx),
-          maxTokens: MEMORY_OP_BATCH_WITH_REASONING_TOKENS,
+          maxTokens: MEMORY_WITH_REASONING_TOKENS,
         },
       )
     } catch (error) {
@@ -372,7 +372,7 @@ export function memorizeTask(
     try {
       if (response.stopReason === 'length')
         throw new Error(
-          `the answer was cut off at the output limit of ${MEMORY_OP_BATCH_WITH_REASONING_TOKENS} tokens, reasoning included: answer with fewer, shorter ops`,
+          `the answer was cut off at the output limit of ${MEMORY_WITH_REASONING_TOKENS} tokens, reasoning included: answer with fewer, shorter ops`,
         )
       if (response.stopReason !== 'stop')
         throw new Error(`the model stopped: ${response.stopReason}`)

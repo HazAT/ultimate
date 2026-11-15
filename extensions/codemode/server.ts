@@ -491,7 +491,7 @@ export default function codemode(host: ExtensionHost) {
         }
       }
       const controller = new AbortController()
-      const terminateSandboxBeforeReturningYield = () => controller.abort()
+      const terminateSandboxBeforeYield = () => controller.abort()
       const sandboxContext = withAbortSignal(controller.signal, context)
       let yielded = false
       const agent = await api.agent(context)
@@ -555,7 +555,7 @@ export default function codemode(host: ExtensionHost) {
                 call.conversationId = parseConversationId(details.conversationId)
               if (typeof details.background === 'boolean') call.background = details.background
               yielded = true
-              terminateSandboxBeforeReturningYield()
+              terminateSandboxBeforeYield()
               return undefined
             }
             const text =
@@ -659,12 +659,12 @@ export default function codemode(host: ExtensionHost) {
         )
         if (result.ok) {
           if (result.storeWrites.delete.length || Object.keys(result.storeWrites.set).length) {
-            const storeWriteCommitBeforeToolSettlement = api.commit(async (tx) => {
+            const storeCommitBeforeSettlement = api.commit(async (tx) => {
               const store = await tx.doc(Store, api.conversationId)
               for (const key of result.storeWrites.delete) delete store[key]
               Object.assign(store, result.storeWrites.set)
             }, context)
-            await storeWriteCommitBeforeToolSettlement
+            await storeCommitBeforeSettlement
           }
           return {
             output: content,

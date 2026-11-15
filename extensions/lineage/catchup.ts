@@ -249,10 +249,10 @@ const oneLine = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim()
 function full(activity: Activity) {
   const { id, title, feature, prompt, abstract, landings, notes } = activity
   if (!abstract && !landings.length && !notes.length) return `**#${id}** started: ${prompt}`
-  const latestLandingStateWithoutOpenAbstract = abstract
+  const fallbackLandingState = abstract
     ? undefined
     : landings.findLast((landing) => landing.state)?.state
-  const state = abstract ?? latestLandingStateWithoutOpenAbstract
+  const state = abstract ?? fallbackLandingState
   const items = [
     ...(state
       ? state.text
@@ -270,7 +270,7 @@ function full(activity: Activity) {
     ...notes.map((note) => `- Note: ${oneLine(note)}`),
   ]
   return [
-    `**#${id}${title ? ` ${title}` : ''}**${feature ? ` · ${feature}` : ''}${abstract ? ` — abstract as of #${id}/${abstract.at}:` : latestLandingStateWithoutOpenAbstract ? ` — state at landing, as of #${id}/${latestLandingStateWithoutOpenAbstract.at}:` : ':'}`,
+    `**#${id}${title ? ` ${title}` : ''}**${feature ? ` · ${feature}` : ''}${abstract ? ` — abstract as of #${id}/${abstract.at}:` : fallbackLandingState ? ` — state at landing, as of #${id}/${fallbackLandingState.at}:` : ':'}`,
     ...items,
   ].join('\n')
 }
@@ -299,7 +299,7 @@ export async function tallyText(
     cursor = page.next
   } while (cursor)
   const tip = entries.at(-1)?.id
-  const sourcesWhosePromptsAreAlreadyInherited = new Set<number>()
+  const inheritedPromptSources = new Set<number>()
   let oldestInheritedForkPoint = Number.POSITIVE_INFINITY
   for (let record = await tx.conversation(id); record?.parent;) {
     oldestInheritedForkPoint = Math.min(oldestInheritedForkPoint, record.parent.at)
@@ -307,8 +307,7 @@ export async function tallyText(
     if (up === root) break
     record = await tx.conversation(up)
     const first = await firstInput(tx, up, record?.parent?.at)
-    if (first !== undefined && first <= oldestInheritedForkPoint)
-      sourcesWhosePromptsAreAlreadyInherited.add(up)
+    if (first !== undefined && first <= oldestInheritedForkPoint) inheritedPromptSources.add(up)
   }
   const activities = new Map<number, Activity>()
   const of = (conversation: ConversationId, entry: EntryRecord) => {
@@ -321,10 +320,10 @@ export async function tallyText(
     activity.last = entry.id
     return activity
   }
-  const entriesNotReplacedByCompactionOrGenesis = entries.filter(
+  const unreplacedEntries = entries.filter(
     (entry) => (!marker || entry.id >= marker.head) && entry.id !== marker?.id,
   )
-  for (const entry of entriesNotReplacedByCompactionOrGenesis) {
+  for (const entry of unreplacedEntries) {
     const data = (entry.data ?? {}) as Record<string, unknown>
     if (entry.kind === 'lineage.abstract') {
       const conversation = parseConversationId(Number(data.conversation))
@@ -338,7 +337,7 @@ export async function tallyText(
     } else if (!entry.model) continue
     else if (entry.kind === 'lineage.branched') {
       const conversation = parseConversationId(Number(data.branch))
-      if (conversation === id || sourcesWhosePromptsAreAlreadyInherited.has(conversation)) continue
+      if (conversation === id || inheritedPromptSources.has(conversation)) continue
       of(conversation, entry).prompt = oneLine((data.intent as string).split('\n')[0])
     } else if (entry.kind === 'lineage.note' && typeof data.from === 'number' && data.from !== id) {
       const activity = of(parseConversationId(data.from), entry)
@@ -427,29 +426,24 @@ export async function catchup(
   if (!record || record.owner) return undefined
   const tree = await treeOf(atomicNoteBaselineInputTx, conversationId)
   const main = await mainOf(host, conversationId, ctx, atomicNoteBaselineInputTx)
-  const baselineAdvancedEvenWhenCatchupFails = await atomicNoteBaselineInputTx.doc(
-    Seen,
-    conversationId,
-  )
+  const alwaysAdvancedBaseline = await atomicNoteBaselineInputTx.doc(Seen, conversationId)
   const meanwhile = tree
     ? await tallyText(
         conversationId,
         tree,
-        baselineAdvancedEvenWhenCatchupFails.tally ?? tree.since,
+        alwaysAdvancedBaseline.tally ?? tree.since,
         atomicNoteBaselineInputTx,
       )
     : undefined
   const commits =
-    main &&
-    baselineAdvancedEvenWhenCatchupFails.main &&
-    baselineAdvancedEvenWhenCatchupFails.main !== main.sha
+    main && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
       ? await catchupText(
           host,
           conversationId,
           main,
           {
-            main: baselineAdvancedEvenWhenCatchupFails.main,
-            at: baselineAdvancedEvenWhenCatchupFails.at,
+            main: alwaysAdvancedBaseline.main,
+            at: alwaysAdvancedBaseline.at,
           },
           atomicNoteBaselineInputTx,
         ).catch((error: unknown) => {
@@ -457,11 +451,10 @@ export async function catchup(
           return undefined
         })
       : undefined
-  if (meanwhile?.tip !== undefined) baselineAdvancedEvenWhenCatchupFails.tally = meanwhile.tip
+  if (meanwhile?.tip !== undefined) alwaysAdvancedBaseline.tally = meanwhile.tip
   if (main) {
-    baselineAdvancedEvenWhenCatchupFails.main = main.sha
-    if (!baselineAdvancedEvenWhenCatchupFails.at || commits)
-      baselineAdvancedEvenWhenCatchupFails.at = Date.now()
+    alwaysAdvancedBaseline.main = main.sha
+    if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()
   }
   if (!meanwhile?.text && !commits) return undefined
   const text = [
@@ -476,9 +469,9 @@ export async function catchup(
         data: {
           source: 'main',
           text,
-          ...(baselineAdvancedEvenWhenCatchupFails.tally === undefined
+          ...(alwaysAdvancedBaseline.tally === undefined
             ? {}
-            : { tally: baselineAdvancedEvenWhenCatchupFails.tally }),
+            : { tally: alwaysAdvancedBaseline.tally }),
         },
         model: [{ role: 'user' as const, content: text, timestamp: Date.now() }],
       },

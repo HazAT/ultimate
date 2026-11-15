@@ -68,8 +68,8 @@ export function ReviewLink() {
     if (shown === null) url.searchParams.delete('review')
     else url.searchParams.set('review', shown)
 
-    const lineParametersBelongingToPreviousSpec = ['file', 'line', 'side']
-    for (const name of lineParametersBelongingToPreviousSpec) url.searchParams.delete(name)
+    const previousSpecLineParameters = ['file', 'line', 'side']
+    for (const name of previousSpecLineParameters) url.searchParams.delete(name)
     history.replaceState(history.state, '', url)
   }, [surface, spec])
   return null

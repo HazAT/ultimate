@@ -736,7 +736,7 @@ export async function loadExtensions(
     enqueue(() => reload(new Set([name]), new Set([name])))
   }
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
-  const watchRemovedDirectoryEntriesIncludingDanglingLinks = (directory: string) => {
+  const watchRemovals = (directory: string) => {
     try {
       return watchDirectory(directory, (_event, name) => {
         if (closed || !name || records.get(name)?.path !== join(directory, name)) return
@@ -758,17 +758,12 @@ export async function loadExtensions(
       ...roots.slice(1).map((root) => join(root.path, 'skills')),
     ]
     watcher.add(watchedRoots)
-    const entries = new Map(
-      directories.map((directory) => [
-        directory,
-        watchRemovedDirectoryEntriesIncludingDanglingLinks(directory),
-      ]),
-    )
+    const entries = new Map(directories.map((directory) => [directory, watchRemovals(directory)]))
     const stopRoots = watchRoots(watchedRoots, (root) => {
       watcher.add(root)
       if (entries.has(root)) {
         entries.get(root)?.close()
-        entries.set(root, watchRemovedDirectoryEntriesIncludingDanglingLinks(root))
+        entries.set(root, watchRemovals(root))
       }
       enqueue(() => (settingsFiles.includes(root) ? reloadSettings() : reload()))
     })

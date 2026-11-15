@@ -64,10 +64,10 @@ export function familyOf(
   if (!ref) return undefined
   const family = families?.families.find((item) => item.name === (recorded ?? DEFAULT_FAMILY))
   if (!family || recorded) return family
-  const unrecordedConversationStillUsesDefault =
+  const stillUsesDefault =
     runsOn(family) === `${ref.provider}/${ref.modelId}` &&
     (thinkingOf(family) ?? thinking) === thinking
-  return unrecordedConversationStillUsesDefault ? family : undefined
+  return stillUsesDefault ? family : undefined
 }
 
 export const modelIdOf = (ref: string) => ref.slice(ref.indexOf('/') + 1)

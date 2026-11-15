@@ -97,7 +97,7 @@ async function activity(host: ExtensionHost, doc: WarmDocState, now: number) {
 export const open = (paused: boolean | undefined, lastRequest: number, now: number) =>
   !paused && now - lastRequest < TTL
 
-async function commitInterruptedAttemptIfIdleAndUnchanged(
+async function commitIdleUnchangedAttempt(
   host: ExtensionHost,
   id: ConversationId,
   attempt: Ping,
@@ -161,7 +161,7 @@ async function sendOneShotPingWithoutSession(
   messages.push({ role: 'user', content: QUESTION, timestamp: at })
   if (!open(paused(), found.lastRequest, Date.now())) return
   if (
-    !(await commitInterruptedAttemptIfIdleAndUnchanged(
+    !(await commitIdleUnchangedAttempt(
       host,
       id,
       { at, provider, model: found.model, error: 'interrupted' },

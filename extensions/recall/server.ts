@@ -113,11 +113,11 @@ export default function recall(host: ExtensionHost) {
           const state = await api.snapshot(Recall, id, ctx)
           if (state?.last !== undefined && state.last >= input.id) {
             const placed = liveContextAfterCompaction.entries.at(-1)
-            const storedRecallCannotBeAppendedAtRequestCutoff =
+            const recallNotAppendable =
               !RecalledEntry.is(placed) ||
               placed.data.input !== message.id ||
               request.messages.length >= liveContextAfterCompaction.messages.length
-            if (storedRecallCannotBeAppendedAtRequestCutoff) return undefined
+            if (recallNotAppendable) return undefined
             return { messages: [...request.messages, ...placed.model!] }
           }
           const usage = await api.snapshot(ContextUsageDoc, id, ctx)

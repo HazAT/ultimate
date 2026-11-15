@@ -287,7 +287,7 @@ async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-const MANIFESTS_REQUIRING_WORKTREE_INSTALL = [
+const INSTALL_MANIFESTS = [
   'package.json',
   'composer.json',
   'Gemfile',
@@ -306,9 +306,7 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
   if (Array.isArray(commands) && commands.length)
     return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
-  const manifests = MANIFESTS_REQUIRING_WORKTREE_INSTALL.filter((name) =>
-    existsSync(join(host.projectRoot, name)),
-  )
+  const manifests = INSTALL_MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
   if (!manifests.length) return undefined
   return {
     area: 'Worktree setup',
@@ -319,20 +317,17 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-type ReadDocFromCurrentTransactionOrSnapshot = (
+type ReadCurrentDoc = (
   doc: ConversationDocToken<JsonObject>,
   id: ConversationId,
 ) => Promise<Readonly<JsonObject> | undefined>
 
 const snapshots =
-  (host: Pick<CheckHost, 'harness'>): ReadDocFromCurrentTransactionOrSnapshot =>
+  (host: Pick<CheckHost, 'harness'>): ReadCurrentDoc =>
   (doc, id) =>
     host.harness().snapshot(doc, id, BACKGROUND_CONTEXT)
 
-async function memoryArea(
-  host: CheckHost,
-  read: ReadDocFromCurrentTransactionOrSnapshot,
-): Promise<SetupIssue | undefined> {
+async function memoryArea(host: CheckHost, read: ReadCurrentDoc): Promise<SetupIssue | undefined> {
   const rootsDoc = host.doc('lineage.roots')
   const memoryDoc = host.doc('lineage.memory')
   const tallyDoc = host.doc('lineage.tally')
@@ -361,13 +356,13 @@ async function memoryArea(
 type SetupAreaResult = SetupIssue | SetupIssue[] | undefined
 type SetupAreaCheck = (
   host: CheckHost,
-  read: ReadDocFromCurrentTransactionOrSnapshot,
+  read: ReadCurrentDoc,
 ) => SetupAreaResult | Promise<SetupAreaResult>
 
 function checkAreaWithDeferredThrowHandling(
   area: SetupAreaCheck,
   host: CheckHost,
-  read: ReadDocFromCurrentTransactionOrSnapshot,
+  read: ReadCurrentDoc,
 ) {
   return Promise.resolve()
     .then(() => area(host, read))
@@ -380,7 +375,7 @@ function checkAreaWithDeferredThrowHandling(
 
 export async function check(
   host: CheckHost,
-  read: ReadDocFromCurrentTransactionOrSnapshot = snapshots(host),
+  read: ReadCurrentDoc = snapshots(host),
 ): Promise<SetupIssue[]> {
   const areas = await Promise.all(
     (

@@ -47,7 +47,7 @@ export const Phases = defineDoc<PhaseState>({
   initial: () => ({ conversations: {} }),
 })
 export const docs = [Phases]
-async function firstInputIdentifyingRunAcrossGenerations(tx: Tx, id: ConversationId) {
+async function firstRunInput(tx: Tx, id: ConversationId) {
   return (await tx.doc(LiveDoc, id)).run?.inputs[0]
 }
 const terminal = {
@@ -143,7 +143,7 @@ export default function phase(
       hook(GenerationTask, {
         beforeRequest: async (_request, api, context) => {
           await host.harness().commit(async (tx) => {
-            const run = await firstInputIdentifyingRunAcrossGenerations(tx, api.conversationId)
+            const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
             const row = state.conversations[api.conversationId]
             if (run === undefined || row?.run === run) return
@@ -156,7 +156,7 @@ export default function phase(
         afterTools: async (_assistant, _results, api, context) => {
           if (!host.want(ClassifyApi)) return
           await host.harness().commit(async (tx) => {
-            const run = await firstInputIdentifyingRunAcrossGenerations(tx, api.conversationId)
+            const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
             if (run === undefined || state.conversations[api.conversationId]?.pending !== undefined)
               return

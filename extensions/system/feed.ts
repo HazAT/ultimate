@@ -35,8 +35,8 @@ export function followed(feed: Feed, from: string, page: Page): Feed {
   if (feed.head !== from) return { ...feed, loading: false }
   const rows = [...page.rows, ...feed.rows]
   const { error: _, ...rest } = feed
-  const overflowNeedsFreshHeadWithoutSkippingPagedRows = rows.length > KEEP && !feed.paged
-  if (overflowNeedsFreshHeadWithoutSkippingPagedRows) {
+  const unpagedOverflowNeedsFreshHead = rows.length > KEEP && !feed.paged
+  if (unpagedOverflowNeedsFreshHead) {
     const { head: _head, ...restartFromNewestPage } = rest
     return { ...restartFromNewestPage, rows, loading: false }
   }

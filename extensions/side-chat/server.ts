@@ -404,8 +404,8 @@ export default (host: ExtensionHost) =>
             if (side.of === undefined) return undefined
             if (side.ended || (await tx.doc(Ending, api.conversationId)).mode)
               return { block: 'This side chat has ended' }
-            const attemptedPersistentEffectLocksDiscard = tracksEffect(call.name, call.arguments)
-            if (attemptedPersistentEffectLocksDiscard) side.effects = true
+            const attemptedPersistentEffect = tracksEffect(call.name, call.arguments)
+            if (attemptedPersistentEffect) side.effects = true
             return undefined
           }, ctx)
         },

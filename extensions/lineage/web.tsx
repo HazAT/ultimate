@@ -179,10 +179,10 @@ function Abstract({ entry }: { entry: EntryRecord }) {
   for (const other of transcript)
     if (other.id > latestAnchorEdit.id && other.edits?.some((edit) => edit.target === entry.id))
       latestAnchorEdit = other
-  const anchorOmittedByLandingOrLaterAbstract = latestAnchorEdit.edits?.some(
+  const anchorOmitted = latestAnchorEdit.edits?.some(
     (edit) => edit.target === entry.id && edit.action === 'omit',
   )
-  if (anchorOmittedByLandingOrLaterAbstract || !AbstractEntry.is(latestAnchorEdit)) return null
+  if (anchorOmitted || !AbstractEntry.is(latestAnchorEdit)) return null
   const { conversation, at, text, title } = latestAnchorEdit.data
   return (
     <Fold
@@ -690,8 +690,8 @@ const kindDots: Record<MemoryItem['kind'], string> = {
   lesson: 'bg-amber-500',
 }
 
-const MEMORY_AFTER_REVIEW_WITHOUT_RENUMBERING_SHORTCUTS = 70
-function StreamRootsForSynchronousCommandReaders() {
+const MEMORY_AFTER_REVIEW_ORDER = 70
+function StreamRootsForCommands() {
   useRoots()
   return null
 }
@@ -716,10 +716,10 @@ export default defineWebExtension({
       title: 'Memory',
       icon: BrainIcon,
       description: 'What every new branch starts from: decisions, facts and lessons',
-      order: MEMORY_AFTER_REVIEW_WITHOUT_RENUMBERING_SHORTCUTS,
+      order: MEMORY_AFTER_REVIEW_ORDER,
       component: MemorySurface,
     },
   ],
-  slots: { overlay: [StreamRootsForSynchronousCommandReaders] },
+  slots: { overlay: [StreamRootsForCommands] },
   provides: [provide(Unsummarized, (id) => useRoots()?.includes(id) ?? false)],
 })

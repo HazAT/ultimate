@@ -27,10 +27,7 @@ function conversationOf(value: unknown): ConversationId | undefined {
   return parseConversationId(value)
 }
 
-async function conversationCheckoutFollowingWorktreeSource(
-  host: ExtensionHost,
-  conversation?: ConversationId,
-) {
+async function sourceCheckout(host: ExtensionHost, conversation?: ConversationId) {
   if (conversation === undefined) return host.projectRoot
   const workspace = (await index(host, context))?.items[String(conversation)]
   if (workspace?.state === 'ready') return workspace.path
@@ -51,11 +48,7 @@ async function target(host: ExtensionHost, branch: string, cwd: string) {
   throw new Error(project.reason)
 }
 
-async function resolveRemovedBranchToLandingPreservingDraftLines(
-  host: ExtensionHost,
-  cwd: string,
-  spec: string,
-) {
+async function resolveLandedBranch(host: ExtensionHost, cwd: string, spec: string) {
   if (!spec.startsWith('branch:')) return spec
   const branch = spec.slice('branch:'.length)
   const existingBranchRef = await git(
@@ -83,7 +76,7 @@ async function resolveRemovedBranchToLandingPreservingDraftLines(
 const agoFromEpochSeconds = (seconds: number) => formatAgo(seconds * 1000)
 
 async function ranges(host: ExtensionHost, conversation?: ConversationId): Promise<ReviewRange[]> {
-  const cwd = await conversationCheckoutFollowingWorktreeSource(host, conversation)
+  const cwd = await sourceCheckout(host, conversation)
   const items = Object.entries((await index(host, context))?.items ?? {})
   const titles = new Map(host.conversations().map((item) => [item.id, item.title]))
   const liveWorktreeOwners = new Map(
@@ -199,13 +192,10 @@ export const actions = {
     if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
 
     const worktree = worktreeOf(input.spec)
-    const cwd = await conversationCheckoutFollowingWorktreeSource(
-      host,
-      worktree ?? conversationOf(input.conversation),
-    )
+    const cwd = await sourceCheckout(host, worktree ?? conversationOf(input.conversation))
     const shown =
       worktree === undefined
-        ? await resolveRemovedBranchToLandingPreservingDraftLines(host, cwd, input.spec.trim())
+        ? await resolveLandedBranch(host, cwd, input.spec.trim())
         : 'uncommitted'
     const diff = await reviewDiff(cwd, shown, {
       target: (branch) => target(host, branch, cwd),
@@ -224,10 +214,7 @@ export const actions = {
   recipient: implementAction(RecipientAction, async (args, { host }) => {
     const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
-    const cwd = await conversationCheckoutFollowingWorktreeSource(
-      host,
-      conversationOf(input.conversation),
-    )
+    const cwd = await sourceCheckout(host, conversationOf(input.conversation))
     return { conversation: await recipient(host, input.spec, cwd) }
   }),
   send: implementAction(SendAction, async (args, { host, device }) => {
@@ -251,15 +238,15 @@ export const actions = {
       context,
     )
 
-    const admittedInputBeforeSeparateTelemetryCommit = await submission.status(context)
+    const admittedInput = await submission.status(context)
     await host.harness().commit(
       (tx) =>
         host.emit(tx, UserInputEvent, {
           conversation: id,
           kind: 'review',
-          ...(admittedInputBeforeSeparateTelemetryCommit.entry === undefined
+          ...(admittedInput.entry === undefined
             ? { submission: submission.id }
-            : { entry: admittedInputBeforeSeparateTelemetryCommit.entry }),
+            : { entry: admittedInput.entry }),
           length: content.length,
           ...device,
         }),

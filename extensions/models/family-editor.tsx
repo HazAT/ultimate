@@ -101,7 +101,7 @@ function FamilyForm({
   const model = draft.model ?? family.follows
   const info = models?.models.find((item) => `${item.provider}/${item.id}` === model)
   const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
-  const canClearThinkingWithoutBuiltinDefault = !BUILTIN_FAMILIES[family.name]?.thinking
+  const hasNoBuiltinThinking = !BUILTIN_FAMILIES[family.name]?.thinking
   const builtin = Object.hasOwn(BUILTIN_FAMILIES, family.name)
   const changed = JSON.stringify(draft) !== JSON.stringify(initial)
   const set = (change: Partial<Spec>) => {
@@ -181,7 +181,7 @@ function FamilyForm({
           }
           value={draft.thinking ?? ''}
         >
-          {canClearThinkingWithoutBuiltinDefault && (
+          {hasNoBuiltinThinking && (
             <option value="">
               {family.name === DEFAULT_FAMILY && family.followsThinking
                 ? `Pi's default · ${family.followsThinking}`

@@ -153,7 +153,7 @@ function calls(
 const newestFinishedTimeThenId = (a: Item, b: Item) =>
   b.time - a.time || (a.row.id < b.row.id ? 1 : -1)
 
-function mergeSourcePrefixesWithoutReordering(
+function mergeOrderedPrefixes(
   a: Item[],
   b: Item[],
   limit: number,
@@ -194,11 +194,8 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
       ? calls(host, filter, after.c, true, sourceLimitWithLookahead)
       : undefined
     const end = fromCalls?.last ?? host.trace.page({ limit: 1 }).last
-    const merged = mergeSourcePrefixesWithoutReordering(
-      fromEvents,
-      fromCalls?.found ?? [],
-      limit,
-      (x, y) => newestFinishedTimeThenId(y, x),
+    const merged = mergeOrderedPrefixes(fromEvents, fromCalls?.found ?? [], limit, (x, y) =>
+      newestFinishedTimeThenId(y, x),
     )
 
     const newest = Math.max(after.e, latestEventIdBeforePageRead, fromEvents.at(-1)?.position ?? 0)
@@ -223,7 +220,7 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
     wantCalls && start.c > 0
       ? calls(host, filter, start.c, false, sourceLimitWithLookahead)
       : undefined
-  const merged = mergeSourcePrefixesWithoutReordering(
+  const merged = mergeOrderedPrefixes(
     fromEvents,
     fromCalls?.found ?? [],
     limit,

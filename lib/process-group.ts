@@ -92,9 +92,8 @@ function send(pid: number, name: NodeJS.Signals) {
   try {
     process.kill(target, name)
   } catch (error) {
-    const unexpectedFailureNotGroupEmptiedBeforeSignal =
-      !isNoProcess(error) && !darwinEnded(pid, error)
-    if (unexpectedFailureNotGroupEmptiedBeforeSignal) throw error
+    const unexpectedSignalFailure = !isNoProcess(error) && !darwinEnded(pid, error)
+    if (unexpectedSignalFailure) throw error
   }
 }
 

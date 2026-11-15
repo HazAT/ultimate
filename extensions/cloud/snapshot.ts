@@ -39,7 +39,7 @@ interface Remote {
   signal?: AbortSignal
 }
 
-const COMPRESSED_CHUNK_BYTES_UNDER_WORKER_LIMIT = 16 * 1024 * 1024
+const WORKER_SAFE_CHUNK_BYTES = 16 * 1024 * 1024
 const AES_GCM_NONCE_BYTES = 12
 const AES_GCM_TAG_BYTES = 16
 const CREATE_REF_ONLY_IF_ABSENT = ''
@@ -161,17 +161,13 @@ const commitCompletedSnapshotManifest = (remote: Remote, id: string, manifest: S
 function snapshotCipherKey(o: Remote, id: string) {
   return Buffer.from(hkdfSync('sha256', o.secret, o.key, `ultimate-snapshot:${id}`, 32))
 }
-const authenticatedChunkPositionAndFinality = (
-  id: string,
-  kind: string,
-  index: number,
-  last: boolean,
-) => Buffer.from(`${id}:${kind}:${index}:${last ? 'last' : 'more'}`)
+const authenticatedChunkBoundary = (id: string, kind: string, index: number, last: boolean) =>
+  Buffer.from(`${id}:${kind}:${index}:${last ? 'last' : 'more'}`)
 
 function encrypt(o: Remote, id: string, kind: string, index: number, last: boolean, data: Buffer) {
   const nonce = randomBytes(AES_GCM_NONCE_BYTES)
   const cipher = createCipheriv('aes-256-gcm', snapshotCipherKey(o, id), nonce)
-  cipher.setAAD(authenticatedChunkPositionAndFinality(id, kind, index, last))
+  cipher.setAAD(authenticatedChunkBoundary(id, kind, index, last))
   return Buffer.concat([nonce, cipher.update(data), cipher.final(), cipher.getAuthTag()])
 }
 function decrypt(o: Remote, id: string, kind: string, index: number, last: boolean, data: Buffer) {
@@ -182,7 +178,7 @@ function decrypt(o: Remote, id: string, kind: string, index: number, last: boole
       snapshotCipherKey(o, id),
       data.subarray(0, AES_GCM_NONCE_BYTES),
     )
-    decipher.setAAD(authenticatedChunkPositionAndFinality(id, kind, index, last))
+    decipher.setAAD(authenticatedChunkBoundary(id, kind, index, last))
     decipher.setAuthTag(data.subarray(-AES_GCM_TAG_BYTES))
     return Buffer.concat([
       decipher.update(data.subarray(AES_GCM_NONCE_BYTES, -AES_GCM_TAG_BYTES)),
@@ -228,12 +224,12 @@ async function seal(
       for await (const piece of source) {
         pieces.push(piece)
         size += piece.length
-        while (size >= COMPRESSED_CHUNK_BYTES_UNDER_WORKER_LIMIT) {
+        while (size >= WORKER_SAFE_CHUNK_BYTES) {
           const all = Buffer.concat(pieces)
           if (pendingFinalChunk) await upload(pendingFinalChunk, false)
-          pendingFinalChunk = all.subarray(0, COMPRESSED_CHUNK_BYTES_UNDER_WORKER_LIMIT)
-          pieces = [all.subarray(COMPRESSED_CHUNK_BYTES_UNDER_WORKER_LIMIT)]
-          size -= COMPRESSED_CHUNK_BYTES_UNDER_WORKER_LIMIT
+          pendingFinalChunk = all.subarray(0, WORKER_SAFE_CHUNK_BYTES)
+          pieces = [all.subarray(WORKER_SAFE_CHUNK_BYTES)]
+          size -= WORKER_SAFE_CHUNK_BYTES
         }
       }
       const rest = Buffer.concat(pieces)

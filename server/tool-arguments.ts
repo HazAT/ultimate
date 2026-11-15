@@ -158,7 +158,7 @@ export function guardStream(
   signal?: AbortSignal,
 ): AssistantMessageEventStream {
   const controller = new AbortController()
-  const sourceWithPossibleResultOnlyCompletion = open(
+  const sourceWithFinalResult = open(
     signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
   )
   const guarded = createAssistantMessageEventStream()
@@ -185,7 +185,7 @@ export function guardStream(
     guarded.push({ type: 'error', reason: 'error', error: { ...error, errorMessage } })
   }
   void (async () => {
-    for await (const event of sourceWithPossibleResultOnlyCompletion) {
+    for await (const event of sourceWithFinalResult) {
       if ('partial' in event) partial = event.partial
       if (event.type === 'toolcall_delta') {
         let run = whitespaceRunsIncludingStringValues.get(event.contentIndex) ?? 0
@@ -207,7 +207,7 @@ export function guardStream(
       guarded.push(event)
       if (event.type === 'done' || event.type === 'error') return guarded.end()
     }
-    guarded.end(await sourceWithPossibleResultOnlyCompletion.result())
+    guarded.end(await sourceWithFinalResult.result())
   })().catch((error: unknown) => {
     fail(`Model stream failed: ${String(error)}`)
     guarded.end()

@@ -125,7 +125,7 @@ export function ModelPicker() {
       all.filter((model) => model.provider === 'claude-code').map((model) => model.id),
     )
     const alsoOfferedByClaudeCode = (model: ModelInfo) => claudeCodeModelIds.has(model.id)
-    const runnableDirectAndSubscriptionFirstRank = (model: ModelInfo) =>
+    const runnableSubscriptionFirstRank = (model: ModelInfo) =>
       (model.available || (model.provider === 'claude-code' && terms.length) ? 0 : 2) +
       (model.provider === 'anthropic' && alsoOfferedByClaudeCode(model) ? 0.5 : 0) +
       (terms.length && !model.id.toLowerCase().startsWith(terms[0]) ? 1 : 0)
@@ -134,10 +134,7 @@ export function ModelPicker() {
         ? all.filter((model) => matchesEveryQueryTerm(model, terms))
         : all.filter((model) => model.available)
     )
-      .toSorted(
-        (a, b) =>
-          runnableDirectAndSubscriptionFirstRank(a) - runnableDirectAndSubscriptionFirstRank(b),
-      )
+      .toSorted((a, b) => runnableSubscriptionFirstRank(a) - runnableSubscriptionFirstRank(b))
       .slice(0, LIMIT)
     return [...Map.groupBy(found, (model) => model.provider)]
   }, [models, query])

@@ -47,9 +47,9 @@ export const defaultOff: readonly string[] = [
   'wire',
 ]
 
-type SortedExtensionNamesInDependencyCycle = string[]
+type SortedCycleNames = string[]
 export type Catalogue = {
   apis: { name: string; owner?: string; provider?: string; needs: string[]; wants: string[] }[]
   missing: string[]
-  cycles: SortedExtensionNamesInDependencyCycle[]
+  cycles: SortedCycleNames[]
 }

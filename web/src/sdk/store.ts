@@ -66,7 +66,7 @@ export interface StoreOptions {
   ui?: Partial<UiState>
 }
 
-const EVENT_SOURCE_CLOSED_WITHOUT_AUTO_RETRY = 2
+const EVENT_SOURCE_CLOSED_NO_RETRY = 2
 const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
 const names = [
   'stream',
@@ -304,7 +304,7 @@ export function createStore(options: StoreOptions = {}) {
       streamId = undefined
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
 
-      if (current.readyState === EVENT_SOURCE_CLOSED_WITHOUT_AUTO_RETRY)
+      if (current.readyState === EVENT_SOURCE_CLOSED_NO_RETRY)
         cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
     })
     for (const name of names)
@@ -322,10 +322,8 @@ export function createStore(options: StoreOptions = {}) {
           handlers.clear()
           openMain()
 
-          const subscriptionsBeforeReopeningMovesMapEntries = Array.from(
-            sharedSubscriptionsByConversation,
-          )
-          for (const [conversation, stream] of subscriptionsBeforeReopeningMovesMapEntries)
+          const subscriptionsBeforeReopen = Array.from(sharedSubscriptionsByConversation)
+          for (const [conversation, stream] of subscriptionsBeforeReopen)
             openDocs(conversation, stream.kinds, stream.view)
         } else if (snapshots.has(name)) {
           if (lastWholeStateEventText[name] !== raw) {

@@ -303,7 +303,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
       polls.clear()
       try {
         database = new DatabaseSync(typeof file === 'string' ? file : file())
-        const crashSafeTraceSchemaWithoutPerCommitFsync = `PRAGMA journal_mode = WAL;
+        const crashSafeBatchedSchema = `PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, parent TEXT, trace TEXT NOT NULL, at REAL NOT NULL,
   ms REAL NOT NULL, caller TEXT NOT NULL, callee TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,
@@ -311,7 +311,7 @@ CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, parent TEXT, trace TEXT N
 CREATE INDEX IF NOT EXISTS calls_trace ON calls (trace);
 CREATE INDEX IF NOT EXISTS calls_conversation ON calls (conversation);
 CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`
-        database.exec(crashSafeTraceSchemaWithoutPerCommitFsync)
+        database.exec(crashSafeBatchedSchema)
         insert = database.prepare(
           `INSERT OR IGNORE INTO calls (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})`,
         )

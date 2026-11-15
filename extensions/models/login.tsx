@@ -396,10 +396,7 @@ function Chooser({
   const [query, setQuery] = useState(initialQuery)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  const [
-    logoutAwaitingSharedCredentialConfirmation,
-    setLogoutAwaitingSharedCredentialConfirmation,
-  ] = useState<string>()
+  const [unconfirmedSharedLogout, setUnconfirmedSharedLogout] = useState<string>()
   const methods: Method[] = (models?.providers ?? [])
     .flatMap((provider) =>
       provider.authTypes.map((auth) => ({ provider, type: auth.type, name: auth.name })),
@@ -417,7 +414,7 @@ function Chooser({
     ),
   )
   const logout = (provider: ProviderInfo) => {
-    setLogoutAwaitingSharedCredentialConfirmation(undefined)
+    setUnconfirmedSharedLogout(undefined)
     setBusy(provider.id)
     setError(undefined)
     api.action(LogoutAction, { provider: provider.id }).then(
@@ -450,7 +447,7 @@ function Chooser({
         {shown.map((method) => {
           const label = authLabel(method.provider)
           const row = `${method.provider.id}:${method.type}`
-          if (logoutAwaitingSharedCredentialConfirmation === row)
+          if (unconfirmedSharedLogout === row)
             return (
               <div
                 className="flex flex-col gap-2 rounded-sm border border-warning/40 bg-warning/8 px-2.5 py-2"
@@ -465,7 +462,7 @@ function Chooser({
                   <Button
                     autoFocus
                     className="h-7 text-[12px]"
-                    onClick={() => setLogoutAwaitingSharedCredentialConfirmation(undefined)}
+                    onClick={() => setUnconfirmedSharedLogout(undefined)}
                     size="sm"
                     variant="ghost"
                   >
@@ -514,7 +511,7 @@ function Chooser({
                     <Button
                       className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                       disabled={busy === method.provider.id}
-                      onClick={() => setLogoutAwaitingSharedCredentialConfirmation(row)}
+                      onClick={() => setUnconfirmedSharedLogout(row)}
                       size="sm"
                       title={`Remove the stored ${method.provider.id} credential from ~/.pi/agent/auth.json`}
                       variant="ghost"

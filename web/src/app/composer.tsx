@@ -60,7 +60,7 @@ import {
 } from './queued.ts'
 
 const alt = isMac ? '⌥' : 'Alt'
-const chromeAndroidKeyboardImagePasteStyle = { WebkitUserModify: 'read-write' } as const
+const androidImagePasteStyle = { WebkitUserModify: 'read-write' } as const
 
 function blockedBy(agent: AgentState, models: ModelsResponse | undefined): string | undefined {
   const model = agent.model
@@ -178,7 +178,7 @@ export function Composer({ dock }: { dock?: boolean }) {
   const scoped = useContext(ConversationIdContext)
   const requested = useStore((state) => state.requested)
   const renderers = composerRenderers(useExtensions())
-  const conversationMountKeyIncludingLoading = id ?? scoped ?? requested
+  const loadingAwareMountKey = id ?? scoped ?? requested
   const core = renderers.reduce<ReactNode>(
     (previous, renderer) => {
       const Renderer = renderer.component
@@ -193,7 +193,7 @@ export function Composer({ dock }: { dock?: boolean }) {
         </ExtensionBoundary>
       )
     },
-    <ConversationComposer dock={dock} key={conversationMountKeyIncludingLoading} />,
+    <ConversationComposer dock={dock} key={loadingAwareMountKey} />,
   )
   return <TranscriptContext value={entries}>{core}</TranscriptContext>
 }
@@ -207,10 +207,7 @@ type Draft = {
   revision: number
 }
 
-const conversationDraftsIncludingSubmissions = new Map<
-  number | undefined,
-  ReturnType<typeof createDraft>
->()
+const draftsAndSubmissions = new Map<number | undefined, ReturnType<typeof createDraft>>()
 function createDraft(id: number | undefined) {
   const key = id === undefined ? undefined : `ultimate.draft.${id}`
   let value: Draft = {
@@ -241,9 +238,8 @@ function createDraft(id: number | undefined) {
 }
 
 function getDraft(id: number | undefined) {
-  if (!conversationDraftsIncludingSubmissions.has(id))
-    conversationDraftsIncludingSubmissions.set(id, createDraft(id))
-  return conversationDraftsIncludingSubmissions.get(id)!
+  if (!draftsAndSubmissions.has(id)) draftsAndSubmissions.set(id, createDraft(id))
+  return draftsAndSubmissions.get(id)!
 }
 
 export function fillComposer(id: number, text: string) {
@@ -281,7 +277,7 @@ function StableEditorUploadBridge({ value, set }: { value: Upload; set: (value: 
   return null
 }
 
-function BeforePaintStableEditorPlaceholderBridge({
+function BeforePaintPlaceholderBridge({
   values,
   set,
 }: {
@@ -304,9 +300,7 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
       </Provided>
       {id !== undefined && (
         <AllProvided input={{ conversation: id, busy }} point={ComposerPlaceholder}>
-          {(values) => (
-            <BeforePaintStableEditorPlaceholderBridge set={setPlaceholder} values={values} />
-          )}
+          {(values) => <BeforePaintPlaceholderBridge set={setPlaceholder} values={values} />}
         </AllProvided>
       )}
       <ComposerEditor dock={dock} placeholder={placeholder} upload={upload} />
@@ -511,7 +505,7 @@ function ComposerEditor({
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
-          style={touchKeyboard() ? chromeAndroidKeyboardImagePasteStyle : undefined}
+          style={touchKeyboard() ? androidImagePasteStyle : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}

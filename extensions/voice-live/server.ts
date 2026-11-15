@@ -331,9 +331,9 @@ export function answerTask(host: ExtensionHost) {
                 .need(MessagesApi)
                 .answer(explicitlyNamedQuestion, input.text, ctx)
                 .catch((error: unknown) => {
-                  const answeredElsewhereBeforeThisUtterance =
+                  const alreadyAnsweredElsewhere =
                     error instanceof Error && error.message === 'These questions are no longer open'
-                  if (answeredElsewhereBeforeThisUtterance) return undefined
+                  if (alreadyAnsweredElsewhere) return undefined
                   throw error
                 })))
         if (reply !== undefined) {

@@ -374,7 +374,7 @@ export default function messages(host: ExtensionHost) {
               inputs.map(async (s) => (await host.harness().submission(s, ctx))?.status(ctx)),
             )
           ).flatMap((s) => (s?.type === 'input' && s.entry !== undefined ? [s.entry] : []))
-          const hasReadRequestsOrBranchResultsToAnswer = await host
+          const hasPendingReplies = await host
             .harness()
             .commit(
               async (tx) =>
@@ -388,9 +388,7 @@ export default function messages(host: ExtensionHost) {
             )
           return {
             output: [{ type: 'text', text: `Message ${id} sent.` }],
-            ...(hasReadRequestsOrBranchResultsToAnswer
-              ? {}
-              : { control: { terminate: true as const } }),
+            ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
           }
         },
       }),

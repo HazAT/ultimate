@@ -243,7 +243,7 @@ export async function rootOf(
     .commit(async (tx) => climbOwnersThenForkSources(tx, await tx.conversation(id), roots), ctx)
 }
 
-async function unownedBranchTallyRootBeforeTableWrites(
+async function unownedRootBeforeWrites(
   tx: Tx,
   id: ConversationId,
   roots: readonly ConversationId[],
@@ -259,9 +259,7 @@ export async function branchOf(
   ctx: Context,
 ) {
   const roots = await rootsOf(host, ctx)
-  const root = await host
-    .harness()
-    .commit((tx) => unownedBranchTallyRootBeforeTableWrites(tx, id, roots), ctx)
+  const root = await host.harness().commit((tx) => unownedRootBeforeWrites(tx, id, roots), ctx)
   if (root === undefined) return undefined
   const intent = (await host.harness().snapshot(Branch, id, ctx))?.branch?.intent
   return { root, ...(intent ? { intent } : {}) }
@@ -270,15 +268,14 @@ export async function branchOf(
 export type AbstractInput = { text: string; at: EntryId; title?: string; feature?: string }
 export async function abstract(tx: Tx, id: ConversationId, input: AbstractInput) {
   const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-  const root = await unownedBranchTallyRootBeforeTableWrites(tx, id, roots)
+  const root = await unownedRootBeforeWrites(tx, id, roots)
   if (root === undefined) return
   const tally = await tx.doc(Tally, root)
   const open = tally.abstracts[String(id)] as OpenAbstract | undefined
   const marker = open && (await tx.latestHeadMarker(root))
   const compacting = !!open && (await liveTask(tx, root, CompactionTask.definition.name))
-  const anchorStillInContextAndOutsideCompaction =
-    open && !compacting && (!marker || open.anchor >= marker.head)
-  const anchor = anchorStillInContextAndOutsideCompaction ? open.anchor : undefined
+  const reusableUncompactedAnchor = open && !compacting && (!marker || open.anchor >= marker.head)
+  const anchor = reusableUncompactedAnchor ? open.anchor : undefined
   const { text, at, title, feature } = input
   const state = { at, text, ...(title ? { title } : {}), ...(feature ? { feature } : {}) }
   const data = { conversation: id, ...state }
@@ -461,12 +458,9 @@ function lineage(host: ExtensionHost) {
             const caller = runtime.conversationId
             const lastNotifiedAnswer = (await host.harness().snapshot(Notified, caller, ctx))
               ?.answers[target]
-            const boardReadByKindWithoutDependencyCycle = host.doc('board')
+            const boardByKind = host.doc('board')
             const log =
-              boardReadByKindWithoutDependencyCycle &&
-              (await host
-                .harness()
-                .snapshot(boardReadByKindWithoutDependencyCycle, ROOT_CONVERSATION_ID, ctx))
+              boardByKind && (await host.harness().snapshot(boardByKind, ROOT_CONVERSATION_ID, ctx))
             const answerAlreadyReplied = (
               log?.messages as { from: unknown; to: unknown; answer?: EntryId }[] | undefined
             )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
@@ -898,7 +892,7 @@ function note(text: string, source?: NoteSource) {
   return { data, content }
 }
 
-async function freezeAbstractAndPlaceLandingAtomically(
+async function freezeAndLandAtomically(
   tx: Tx,
   target: ConversationId,
   text: string,
@@ -907,9 +901,8 @@ async function freezeAbstractAndPlaceLandingAtomically(
   const tally = await tx.doc(Tally, target)
   if (tally.since === undefined) return false
   const { from, requestId } = source
-  const landingAlreadyPlacedBeforeNewerAbstract =
-    requestId && (await tx.submissionByRequest(target, requestId))
-  if (landingAlreadyPlacedBeforeNewerAbstract) return true
+  const landingAlreadyPlaced = requestId && (await tx.submissionByRequest(target, requestId))
+  if (landingAlreadyPlaced) return true
   const { data, content } = note(text, source)
   const open = tally.abstracts[String(from)] as OpenAbstract | undefined
   const model = { role: 'user' as const, content, timestamp: Date.now() }
@@ -961,10 +954,7 @@ export async function leaveNote(
     from !== undefined &&
     (await host
       .harness()
-      .commit(
-        (tx) => freezeAbstractAndPlaceLandingAtomically(tx, target, text, { ...source, from }),
-        context,
-      ))
+      .commit((tx) => freezeAndLandAtomically(tx, target, text, { ...source, from }), context))
   )
     return target
   const { data, content } = note(text, source)
@@ -1206,7 +1196,7 @@ export const actions = {
 }
 
 async function treeOf(tx: Tx, id: ConversationId): Promise<Tree | undefined> {
-  const root = await unownedBranchTallyRootBeforeTableWrites(
+  const root = await unownedRootBeforeWrites(
     tx,
     id,
     (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots,
@@ -1241,7 +1231,7 @@ export default function lineageExtension(host: ExtensionHost) {
     if (!roots.includes(id)) throw new Error(`#${id} is not a listed root`)
     return id
   }
-  const ultimateProjectMemoryBriefForCompaction = async (id: ConversationId, ctx: Context) => {
+  const ultimateCompactionMemoryBrief = async (id: ConversationId, ctx: Context) => {
     const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
     if (standing?.ultimate !== id) return undefined
     const roots = await rootsOf(host, ctx)
@@ -1305,7 +1295,7 @@ export default function lineageExtension(host: ExtensionHost) {
       requestId: `lander-root:${landing.submission}`,
       data,
     }
-    if (await freezeAbstractAndPlaceLandingAtomically(tx, root, text, source)) return
+    if (await freezeAndLandAtomically(tx, root, text, source)) return
     await tx.createTask(
       ReplaySafeNonTallyLandingNote,
       { to: root, text, source },
@@ -1324,14 +1314,9 @@ export default function lineageExtension(host: ExtensionHost) {
       const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
       const root = await climbOwnersThenForkSources(tx, await tx.conversation(from), roots)
       if (root === undefined || root === from) return
-      const permanentReceiptPerLandingSubmission = await tx.doc(
-        Memorized,
-        root,
-        landing.submission,
-        null,
-      )
-      if (permanentReceiptPerLandingSubmission.task !== undefined) return
-      permanentReceiptPerLandingSubmission.task = await tx.createTask(
+      const permanentLandingReceipt = await tx.doc(Memorized, root, landing.submission, null)
+      if (permanentLandingReceipt.task !== undefined) return
+      permanentLandingReceipt.task = await tx.createTask(
         Memorize,
         {
           root,
@@ -1422,7 +1407,7 @@ export default function lineageExtension(host: ExtensionHost) {
               modelVisibleCompactionIndexes.map((index) => view.contributions[index]),
               Number.POSITIVE_INFINITY,
             )
-            const brief = await ultimateProjectMemoryBriefForCompaction(api.conversationId, ctx)
+            const brief = await ultimateCompactionMemoryBrief(api.conversationId, ctx)
             const answer = await ask(
               api.models,
               (change) => host.harness().commit(change, ctx),

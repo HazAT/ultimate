@@ -62,9 +62,8 @@ export async function refusal(tx: Tx, id: ConversationId, at: EntryId) {
   const live = await tx.doc(LiveDoc, id)
   if (live.run || (await tx.doc(InboxDoc, id)).items.length)
     return `#${id} is busy: stop it or wait until it is idle, then go back.`
-  const compactionWouldRestoreSetAsideContext = live.compactions?.length
-  if (compactionWouldRestoreSetAsideContext)
-    return `#${id} is compacting: wait until it finishes, then go back.`
+  const compactionInProgress = live.compactions?.length
+  if (compactionInProgress) return `#${id} is compacting: wait until it finishes, then go back.`
   const marker = await tx.latestHeadMarker(id)
   if (marker && marker.id > at)
     return `#${id} was compacted after this point; it can't go back past a compaction.`
@@ -205,7 +204,7 @@ async function checkoutAndTreeFactsAfterEntry(
     after[0]?.data.parents[0] ??
     (await host.need(WorkspacesApi).get(id, ctx))?.base
   const conversation = (await host.harness().conversation(id, ctx))!
-  const allStoredMessagesIncludingPreviouslySetAside: Message[] = []
+  const allStoredMessages: Message[] = []
   let cursor: Cursor | undefined
   do {
     const page = await conversation.entries(
@@ -214,12 +213,11 @@ async function checkoutAndTreeFactsAfterEntry(
       cursor,
       ctx,
     )
-    for (const entry of page.items)
-      allStoredMessagesIncludingPreviouslySetAside.push(...(entry.model ?? []))
+    for (const entry of page.items) allStoredMessages.push(...(entry.model ?? []))
     cursor = page.next
   } while (cursor)
   const edited = top
-    ? await editedPaths(allStoredMessagesIncludingPreviouslySetAside, cwd, top, ctx)
+    ? await editedPaths(allStoredMessages, cwd, top, ctx)
     : { inside: new Set<string>(), outside: new Set<string>() }
   const paths = edited.inside
   if (top)
@@ -309,7 +307,7 @@ async function contextViewsAndRevision(
   return { current, past, plan: rewindPlan(current, past, at), setAside, revision }
 }
 
-async function refuseIfModelContextMovedBeforeTableWrites(
+async function refuseMovedContextBeforeWrites(
   tx: Tx,
   id: ConversationId,
   revision: EntryId | null,
@@ -390,7 +388,7 @@ export function rewindTask(host: ExtensionHost) {
           await runtime.commit(async (tx) => {
             const refused =
               (await refusal(tx, id, at)) ??
-              (await refuseIfModelContextMovedBeforeTableWrites(tx, id, revision))
+              (await refuseMovedContextBeforeWrites(tx, id, revision))
             if (refused) throw new Error(refused)
             const entry = await tx.appendEntry(id, {
               kind: RewoundEntry.kind,

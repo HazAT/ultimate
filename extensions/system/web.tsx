@@ -76,15 +76,11 @@ function useLanes(range: number, live: boolean) {
   useEffect(() => {
     const controller = new AbortController()
     const load = () => {
-      const sinceRoundedToMinuteForPollDeduplication = new Date(
+      const minuteRoundedSince = new Date(
         Math.floor((Date.now() - range) / 60_000) * 60_000,
       ).toISOString()
       return api
-        .action(
-          LanesAction,
-          { since: sinceRoundedToMinuteForPollDeduplication },
-          { signal: controller.signal },
-        )
+        .action(LanesAction, { since: minuteRoundedSince }, { signal: controller.signal })
         .then((data) => setState({ range, data }))
         .catch((error: unknown) => {
           if (!controller.signal.aborted) setState((previous) => ({ ...previous, error }))

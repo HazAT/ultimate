@@ -12,7 +12,7 @@ let appHasRendered = false
 export const resumed = previousPageCover !== null
 export const covered = () => covering
 
-function copyVisibleContentWithOffscreenPlaceholders(node: Node): Node {
+function copyViewportWithPlaceholders(node: Node): Node {
   if (!(node instanceof HTMLElement)) return node.cloneNode(true)
   const box = node.getBoundingClientRect()
   if (box.bottom < 0 || box.top > innerHeight || box.right < 0 || box.left > innerWidth) {
@@ -27,8 +27,7 @@ function copyVisibleContentWithOffscreenPlaceholders(node: Node): Node {
     view.dataset.resumeScroll = `${node.scrollTop},${node.scrollLeft}`
   if (node instanceof HTMLTextAreaElement) view.textContent = node.value
   else if (node.getClientRects().length > 0 || getComputedStyle(node).display === 'contents')
-    for (const child of node.childNodes)
-      view.append(copyVisibleContentWithOffscreenPlaceholders(child))
+    for (const child of node.childNodes) view.append(copyViewportWithPlaceholders(child))
   return view
 }
 
@@ -47,9 +46,8 @@ function captureForNextPage() {
   for (const element of document.body.children) {
     if (element.tagName === 'SCRIPT' || element === previousPageCover) continue
     if (element.id === 'app')
-      for (const child of element.childNodes)
-        view.append(copyVisibleContentWithOffscreenPlaceholders(child))
-    else view.append(copyVisibleContentWithOffscreenPlaceholders(element))
+      for (const child of element.childNodes) view.append(copyViewportWithPlaceholders(child))
+    else view.append(copyViewportWithPlaceholders(element))
   }
   const html = view.innerHTML
   const css = [...document.styleSheets]

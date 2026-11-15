@@ -9,8 +9,8 @@ const rotate = (value: number, by: number) => (value >>> by) | (value << (32 - b
 export function sha256(text: string) {
   const data = new TextEncoder().encode(text)
 
-  const whole64ByteBlocksWithOneBitAnd64BitLength = ((data.length + 9 + 63) >> 6) << 6
-  const padded = new Uint8Array(whole64ByteBlocksWithOneBitAnd64BitLength)
+  const padded64ByteLength = ((data.length + 9 + 63) >> 6) << 6
+  const padded = new Uint8Array(padded64ByteLength)
   padded.set(data)
   padded[data.length] = 0x80
   const view = new DataView(padded.buffer)

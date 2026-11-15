@@ -50,7 +50,7 @@ async function setup(host: ExtensionHost) {
   }
 }
 
-async function recordBackupEventWithoutFailingUpload<D extends JsonValue>(
+async function recordBackupEventNonfatally<D extends JsonValue>(
   host: ExtensionHost,
   event: EventToken<D>,
   data: D,
@@ -101,7 +101,7 @@ async function upload(
   force: boolean,
 ) {
   const started = Date.now()
-  await recordBackupEventWithoutFailingUpload(host, BackupEvent, {
+  await recordBackupEventNonfatally(host, BackupEvent, {
     phase: 'started',
     project: ready.key,
   })
@@ -125,7 +125,7 @@ async function upload(
       },
     })
     running.conflict = running.lastError = undefined
-    await recordBackupEventWithoutFailingUpload(host, BackupEvent, {
+    await recordBackupEventNonfatally(host, BackupEvent, {
       phase: 'done',
       project: ready.key,
       bytes: done.bytes,
@@ -143,7 +143,7 @@ async function upload(
       running.lastError = `Backup failed: ${message}`
       host.notice(running.lastError)
     }
-    await recordBackupEventWithoutFailingUpload(host, BackupEvent, {
+    await recordBackupEventNonfatally(host, BackupEvent, {
       phase: 'failed',
       project: ready.key,
       ms: Date.now() - started,

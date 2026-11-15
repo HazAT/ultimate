@@ -111,8 +111,8 @@ function listFiles(names: string, numbers: string): ReviewFile[] {
   let file = 0
   for (let index = 0; index < counts.length - 1; file++) {
     const [add, del, path] = counts[index++].split('\t')
-    const renameHasSeparateOldAndNewPathFields = path === ''
-    if (renameHasSeparateOldAndNewPathFields) index += 2
+    const renameHasTwoPaths = path === ''
+    if (renameHasTwoPaths) index += 2
     const entry = files[file]
     if (!entry) break
     const binaryHasNoNumericLineCounts = add === '-'
@@ -201,7 +201,7 @@ async function untrackedDiff(top: string, path: string, args: string[], signal?:
   return result.stdout
 }
 
-const symlinkTargetPatchWithoutFollowingDirectory = (path: string, target: string) =>
+const symlinkTargetPatch = (path: string, target: string) =>
   !/^[\x20-\x7e]+$/.test(path) || /["\\]/.test(path) || /\p{Cc}/u.test(target)
     ? undefined
     : `diff --git a/${path} b/${path}\nnew file mode 120000\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+${target}\n\\ No newline at end of file\n`
@@ -218,10 +218,7 @@ async function untracked(top: string, signal?: AbortSignal) {
   for (const path of list.stdout.split('\0').filter(Boolean)) {
     const info = await lstat(join(top, path))
     if (info.isSymbolicLink()) {
-      const patch = symlinkTargetPatchWithoutFollowingDirectory(
-        path,
-        await readlink(join(top, path)),
-      )
+      const patch = symlinkTargetPatch(path, await readlink(join(top, path)))
       files.push({
         path,
         status: 'added',

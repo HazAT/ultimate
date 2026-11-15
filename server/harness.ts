@@ -140,21 +140,17 @@ export async function prepareHarness(options: HostOptions) {
   const trace = callTrace(() => chapter.trace)
   const modelCalls = modelTrace(trace)
   registry.install(modelCalls.extension)
-  const guardedRuntimeForHarnessAndExtensions = guardToolArguments(runtime, modelCalls)
+  const guardedRuntime = guardToolArguments(runtime, modelCalls)
   const contextWindow = (provider: string, modelId: string) =>
-    guardedRuntimeForHarnessAndExtensions.getModel(provider, modelId)?.contextWindow
+    guardedRuntime.getModel(provider, modelId)?.contextWindow
   const { faux } = options
   if (faux) {
     runtime.registerNativeProvider(faux.provider)
     await runtime.refresh({ allowNetwork: false })
   }
-  const defaultAgentAfterExtensionRegistration = async () => {
+  const defaultAgentAfterRegistration = async () => {
     const family = (await readFamilies(userHome, projectRoot)).families.default
-    const agent = defaultAgent(
-      await guardedRuntimeForHarnessAndExtensions.getAvailable(),
-      settings,
-      family,
-    )
+    const agent = defaultAgent(await guardedRuntime.getAvailable(), settings, family)
     return faux
       ? { ...agent, model: { provider: faux.getModel().provider, modelId: faux.getModel().id } }
       : agent
@@ -180,9 +176,8 @@ export async function prepareHarness(options: HostOptions) {
       if (!active) throw new Error('Harness is not open')
       return active.storage.scanSubmissions(query, limit, cursor, caller)
     },
-    models: async () => (await listModels(guardedRuntimeForHarnessAndExtensions)).models,
-    model: (ref: ModelRef) =>
-      guardedRuntimeForHarnessAndExtensions.getModel(ref.provider, ref.modelId),
+    models: async () => (await listModels(guardedRuntime)).models,
+    model: (ref: ModelRef) => guardedRuntime.getModel(ref.provider, ref.modelId),
     skills: (cwd: string) => projectSkills({ ultimateRoot, projectRoot, userHome }, cwd).skills,
     restart: (approved: (generation: number) => Promise<void>) =>
       requestSwap(approved, builds.current()),
@@ -199,7 +194,7 @@ export async function prepareHarness(options: HostOptions) {
       return chapter
     },
     callTrace: trace,
-    modelRuntime: guardedRuntimeForHarnessAndExtensions,
+    modelRuntime: guardedRuntime,
     settings,
     registry,
     extensionOrders,
@@ -231,7 +226,7 @@ export async function prepareHarness(options: HostOptions) {
         harness = await Harness.open(
           storage,
           {
-            models: guardedRuntimeForHarnessAndExtensions,
+            models: guardedRuntime,
             registry,
             settings: createHarnessSettings(settings, contextWindow, () =>
               registry
@@ -258,7 +253,7 @@ export async function prepareHarness(options: HostOptions) {
           },
           context,
         )
-        const currentDefaultRootAgent = await defaultAgentAfterExtensionRegistration()
+        const currentDefaultRootAgent = await defaultAgentAfterRegistration()
         const root = await harness.root(context, { agent: { cwd: projectRoot } })
         await root.commit(async (tx) => {
           await tx.doc(UiState, root.id)

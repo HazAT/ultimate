@@ -363,12 +363,12 @@ export default async function mcp(host: ExtensionHost) {
                 })
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
-                const connectionBrokenButCallMustNotBeResent = !(
+                const brokenConnectionNoResend = !(
                   error instanceof McpError ||
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
                 )
-                if (connectionBrokenButCallMustNotBeResent && server.client === client)
+                if (brokenConnectionNoResend && server.client === client)
                   inBackground(restart(server))
                 return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
               }

@@ -27,7 +27,7 @@ export function useLandings(rootIds: readonly ConversationId[]) {
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
       .join(','),
   )
-  const sharedLandingReadsAcrossSidebarRemounts = useMemo(
+  const sharedLandingReads = useMemo(
     () =>
       roots.map((id) =>
         reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
@@ -35,30 +35,26 @@ export function useLandings(rootIds: readonly ConversationId[]) {
     [roots],
   )
   useEffect(() => {
-    const releases = sharedLandingReadsAcrossSidebarRemounts.map((read) =>
-      read.use({ onError: keepLast }),
-    )
+    const releases = sharedLandingReads.map((read) => read.use({ onError: keepLast }))
     return () => releases.forEach((release) => release())
-  }, [sharedLandingReadsAcrossSidebarRemounts])
+  }, [sharedLandingReads])
   const seen = useRef(tokens)
   useEffect(() => {
     if (seen.current === tokens) return
     seen.current = tokens
-    for (const read of sharedLandingReadsAcrossSidebarRemounts) void read.refetch()
-  }, [sharedLandingReadsAcrossSidebarRemounts, tokens])
+    for (const read of sharedLandingReads) void read.refetch()
+  }, [sharedLandingReads, tokens])
   const last = useRef<ReadState[]>([])
   const states = useSyncExternalStore(
     useCallback(
       (listener: () => void) => {
-        const stops = sharedLandingReadsAcrossSidebarRemounts.map((read) =>
-          read.subscribe(listener),
-        )
+        const stops = sharedLandingReads.map((read) => read.subscribe(listener))
         return () => stops.forEach((stop) => stop())
       },
-      [sharedLandingReadsAcrossSidebarRemounts],
+      [sharedLandingReads],
     ),
     () => {
-      const next = sharedLandingReadsAcrossSidebarRemounts.map((read) => read.get())
+      const next = sharedLandingReads.map((read) => read.get())
       const same =
         next.length === last.current.length && next.every((state, i) => state === last.current[i])
       if (!same) last.current = next

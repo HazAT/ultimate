@@ -189,11 +189,11 @@ async function concludeAndStopOtherTrees(
       ),
     )
     stopped.push(...[...tree].filter((id) => busy.has(id)).toSorted((a, b) => a - b))
-    const includeBackgroundAnchorsAndReporters = true
+    const includeBackgroundTasks = true
     for (const id of ids)
       await (
         await harness.conversation(id, context)
-      )?.abort(context, { background: includeBackgroundAnchorsAndReporters })
+      )?.abort(context, { background: includeBackgroundTasks })
   }
   const previews = (await host.want(Previews)?.stop([...tree], context)) ?? []
   const kept = (await host.want(Release)?.release(ids, context)) ?? []

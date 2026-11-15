@@ -5,8 +5,8 @@ import type { ReviewComment, ReviewComments } from './types.ts'
 
 export type { ReviewComment, ReviewComments } from './types.ts'
 
-const DRAFTS_BUDGET_WITHIN_SHARED_256_KIB_UI_STATE_BYTES = 96 * 1024
-const MAX_ESCAPED_SPEC_WITHIN_200_CHAR_UI_KEY = 140
+const DRAFTS_BUDGET_BYTES = 96 * 1024
+const UI_KEY_SPEC_LIMIT = 140
 
 export const limits = {
   comments: 50,
@@ -14,7 +14,7 @@ export const limits = {
   excerptLines: 40,
   excerptBytes: 8 * 1024,
 
-  drafts: DRAFTS_BUDGET_WITHIN_SHARED_256_KIB_UI_STATE_BYTES,
+  drafts: DRAFTS_BUDGET_BYTES,
 } as const
 
 const bytes = (text: string) => new TextEncoder().encode(text).length
@@ -53,7 +53,7 @@ export function draftsKey(spec: string, conversation?: ConversationId) {
     (char) => `_${char.codePointAt(0)!.toString(16)}_`,
   )
   const name =
-    escapedSpecWithoutHyphens.length <= MAX_ESCAPED_SPEC_WITHIN_200_CHAR_UI_KEY
+    escapedSpecWithoutHyphens.length <= UI_KEY_SPEC_LIMIT
       ? escapedSpecWithoutHyphens
       : `sha256-${sha256(spec)}`
   return `drafts:${conversation ?? 'project'}:${name}`

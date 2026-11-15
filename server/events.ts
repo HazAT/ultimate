@@ -166,47 +166,44 @@ export function eventLog(
         if (!active) return
         let attemptedUncommittedEventId: EntryId | undefined
         try {
-          const handled = await harness().commit(
-            async function handleEventAndAdvanceCursorAtomically(tx) {
-              const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
-              if (index.cursors[name] === undefined && active.from === 'now') {
-                const newest =
-                  index.conversation === undefined
-                    ? undefined
-                    : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
-                index.cursors[name] = newest?.id ?? parseEntryId(0)
-                return false
-              }
-              if (index.conversation === undefined) return false
-              const after = index.cursors[name] ?? parseEntryId(0)
-              let pending: EntryRecord | undefined
-              let last = after
-              await scan(tx, index.conversation, after, (entry) => {
-                last = entry.id
-                if (active.kinds.has(entry.kind)) pending = entry
-                return pending !== undefined
-              })
-              if (pending) {
-                attemptedUncommittedEventId = pending.id
-                const event = record(pending)
-                const emitterContextNotCommitListener = event.context ?? null
-                await trace(
-                  {
-                    kind: 'reactor',
-                    caller: event.name,
-                    callee: name.split('/')[0],
-                    name,
-                    args: { event: event.id },
-                  },
-                  () => active.handler(tx, event),
-                  emitterContextNotCommitListener,
-                )
-              }
-              if (last !== after) index.cursors[name] = last
+          const handled = await harness().commit(async function handleEventAtomically(tx) {
+            const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
+            if (index.cursors[name] === undefined && active.from === 'now') {
+              const newest =
+                index.conversation === undefined
+                  ? undefined
+                  : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
+              index.cursors[name] = newest?.id ?? parseEntryId(0)
+              return false
+            }
+            if (index.conversation === undefined) return false
+            const after = index.cursors[name] ?? parseEntryId(0)
+            let pending: EntryRecord | undefined
+            let last = after
+            await scan(tx, index.conversation, after, (entry) => {
+              last = entry.id
+              if (active.kinds.has(entry.kind)) pending = entry
               return pending !== undefined
-            },
-            context,
-          )
+            })
+            if (pending) {
+              attemptedUncommittedEventId = pending.id
+              const event = record(pending)
+              const emitterContextNotCommitListener = event.context ?? null
+              await trace(
+                {
+                  kind: 'reactor',
+                  caller: event.name,
+                  callee: name.split('/')[0],
+                  name,
+                  args: { event: event.id },
+                },
+                () => active.handler(tx, event),
+                emitterContextNotCommitListener,
+              )
+            }
+            if (last !== after) index.cursors[name] = last
+            return pending !== undefined
+          }, context)
           state.failure = undefined
           if (!handled) return
         } catch (error) {

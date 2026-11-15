@@ -163,7 +163,7 @@ export default function claudeCode(host: ExtensionHost) {
   host.modelRuntime.registerNativeProvider(provider)
   host.onOpen(async () => {
     void getClaudeStatus(claudeCodeEnv())
-      .then((status) => discoverCurrentModelsAfterRegistration(host, status))
+      .then((status) => discoverModelsAfterRegistration(host, status))
       .catch((error: unknown) =>
         host.notice(`Claude Code model discovery failed: ${String(error)}`),
       )
@@ -185,7 +185,7 @@ export default function claudeCode(host: ExtensionHost) {
   })
 }
 
-async function discoverCurrentModelsAfterRegistration(
+async function discoverModelsAfterRegistration(
   host: Pick<ExtensionHost, 'modelRuntime' | 'notice'>,
   status: { loggedIn: boolean },
   signal?: AbortSignal,
@@ -207,7 +207,7 @@ export const actions = {
     if (refreshed.aborted || refreshed.errors.has('claude-code'))
       throw new Error('Claude Code status refresh failed')
     const status = await getClaudeStatus(claudeCodeEnv(), signal)
-    await discoverCurrentModelsAfterRegistration(host, status, signal)
+    await discoverModelsAfterRegistration(host, status, signal)
     signal.throwIfAborted()
     return {
       available: status.available,

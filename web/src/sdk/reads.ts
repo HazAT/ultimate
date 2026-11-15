@@ -121,8 +121,8 @@ export function createReads(api: Api, store: Store) {
         if (own.signal.aborted) return undefined
         const failure = error as ActionError
 
-        const networkFailureWillRetryWithoutNotice = failure.status === 0
-        if (networkFailureWillRetryWithoutNotice) {
+        const silentRetryableFailure = failure.status === 0
+        if (silentRetryableFailure) {
           networkFailedReads.add(read)
           set({ loading: false })
           return undefined

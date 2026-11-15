@@ -91,8 +91,8 @@ export async function finishChapterSwitch(
     undefined,
   )
   if (!pending) return undefined
-  const sameProcessReopenedAfterFailedRestart = pending.by === process.pid
-  if (sameProcessReopenedAfterFailedRestart) {
+  const sameProcessReopened = pending.by === process.pid
+  if (sameProcessReopened) {
     await rm(join(lockedHomeBeforeStorageOpen, PENDING_CHAPTER))
     return undefined
   }

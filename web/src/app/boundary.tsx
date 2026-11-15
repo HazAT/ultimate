@@ -140,7 +140,7 @@ export function ErrorCard({
   )
 }
 
-type ExtensionAndContributionKeyedBoundaryProps = {
+type ContributionBoundaryProps = {
   extension: string
   version: number
   variant?: 'inline' | 'block'
@@ -150,7 +150,7 @@ type ExtensionAndContributionKeyedBoundaryProps = {
 }
 
 export class ExtensionBoundary extends Component<
-  ExtensionAndContributionKeyedBoundaryProps,
+  ContributionBoundaryProps,
   { error?: string; stack?: string; version: number }
 > {
   state: { error?: string; stack?: string; version: number } = { version: this.props.version }
