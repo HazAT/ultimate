@@ -52,7 +52,7 @@ async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): P
       return part?.type === 'toolCall' ? { tool: part.name } : {}
     }
     case 'ultimate.automation-scheduler': {
-      const a = await host.want(AutomationsApi)?.read(tx, input?.id as string)
+      const a = await host.need(AutomationsApi).read(tx, input?.id as string)
       return a ? { automation: a.name } : {}
     }
     case 'ultimate.automation-run':

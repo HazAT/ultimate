@@ -53,11 +53,11 @@ import {
   RecentAction,
   TallyDoc,
   LineageResetEntry,
-  NoteEntry,
   AbstractEntry,
   FinishedEntry,
 } from './refs.ts'
 import { BranchedEntry } from './entries.ts'
+import { NoteEntry } from '../entries/api.ts'
 import {
   applyMemoryOps,
   BODY_CHARS,

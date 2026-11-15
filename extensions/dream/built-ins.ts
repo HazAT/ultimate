@@ -143,7 +143,7 @@ export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: numbe
     if ((await tx.doc(item.doc, ROOT_CONVERSATION_ID)).id === id) builtIn = item
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (!builtIn || ultimate === undefined) return
-  const automation = await host.want(AutomationsApi)?.read(tx, id)
+  const automation = await host.need(AutomationsApi).read(tx, id)
   const condition = automation?.condition
   const pause =
     builtIn.doc === PauseDoc && condition && automation

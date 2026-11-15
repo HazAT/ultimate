@@ -292,8 +292,7 @@ export const actions = {
 }
 
 export default function goalExtension(host: ExtensionHost) {
-  // Optional: without automations a goal runs as before, with no reminder.
-  host.want(AutomationsApi)
+  host.need(AutomationsApi)
   return defineExtension({
     name: 'goal',
     tasks: [deliverTask(host), reminderTask(host, Goals)],

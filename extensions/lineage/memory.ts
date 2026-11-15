@@ -22,7 +22,7 @@ import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Roots } from './api.ts'
 import { MemoryDoc } from './refs.ts'
-import { NoteEntry } from './refs.ts'
+import { NoteEntry } from '../entries/api.ts'
 import type { MemoryItem } from './refs.ts'
 
 export const MEMORY_LIMIT = 150

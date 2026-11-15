@@ -59,9 +59,9 @@ import {
   TallyDoc,
   AbstractEntry,
   FinishedEntry,
-  NoteEntry,
   LineageResetEntry,
 } from './refs.ts'
+import { NoteEntry } from '../entries/ui.tsx'
 import { BranchedEntry } from './entries.ts'
 import type { MemoryItem } from './refs.ts'
 import { MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
