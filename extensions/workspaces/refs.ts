@@ -50,6 +50,16 @@ export const IsolationAction = actionRef<null, Isolation>('workspaces', 'isolati
 /** No arguments → `github.com/<owner>/<repo>` of the project's `origin`, or null off GitHub. */
 export const GithubAction = actionRef<null, string | null>('workspaces', 'github')
 export type { GithubRepo }
+/** A pull request on GitHub with its state. */
+export type PullRequest = { number: number; url: string; state: 'open' | 'merged' | 'closed' }
+/**
+ * `{ id }` → the GitHub pull request holding the tip of conversation `id`'s worktree, or null when it has none: no
+ * worktree, no commit of its own, or no pull request on GitHub.
+ */
+export const PullRequestAction = actionRef<{ id: ConversationId }, PullRequest | null>(
+  'workspaces',
+  'pullRequest',
+)
 /** No arguments → the project's `origin` on GitHub with its visibility, or null off GitHub. */
 export const RepoAction = actionRef<null, GithubRepo | null>('workspaces', 'repo')
 
