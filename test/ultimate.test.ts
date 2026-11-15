@@ -73,16 +73,24 @@ async function fixture(onRequest?: (text: string, home: string) => Promise<void>
       const text = textOf(last.content)
       requests.push(text)
       await onRequest?.(text, home)
-      if (last.role === 'user' && text.startsWith('BRANCH '))
-        return fauxAssistantMessage([fauxToolCall('branch', JSON.parse(text.slice(7)))], {
+      // A command is any input since the last answer, not only the last one: a late message from an earlier branch
+      // can join the same request after it, and the command would never run.
+      const command =
+        transcript.messages
+          .slice(transcript.messages.findLastIndex((message) => message.role === 'assistant') + 1)
+          .filter((message) => message.role === 'user')
+          .map((message) => textOf(message.content))
+          .find((input) => /^(BRANCH|CODE|SEND) /.test(input)) ?? ''
+      if (command.startsWith('BRANCH '))
+        return fauxAssistantMessage([fauxToolCall('branch', JSON.parse(command.slice(7)))], {
           stopReason: 'toolUse',
         })
-      if (last.role === 'user' && text.startsWith('CODE '))
-        return fauxAssistantMessage([fauxToolCall('codemode', { code: text.slice(5) })], {
+      if (command.startsWith('CODE '))
+        return fauxAssistantMessage([fauxToolCall('codemode', { code: command.slice(5) })], {
           stopReason: 'toolUse',
         })
-      if (last.role === 'user' && text.startsWith('SEND '))
-        return fauxAssistantMessage([fauxToolCall('message', JSON.parse(text.slice(5)))], {
+      if (command.startsWith('SEND '))
+        return fauxAssistantMessage([fauxToolCall('message', JSON.parse(command.slice(5)))], {
           stopReason: 'toolUse',
         })
       return fauxAssistantMessage(
