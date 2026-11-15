@@ -19,7 +19,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone, settled } from '../../lib/errors.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
@@ -92,8 +92,7 @@ function toggle(extensions: JsonObject, name: string, enabled: boolean) {
   if (extensions[opposite] !== undefined)
     extensions[opposite] = (extensions[opposite] as string[]).filter((entry) => entry !== name)
 }
-/** Names of the project's own agents and skills, read but never loaded, so an undecided project can show them. */
-async function adds(projectRoot: string) {
+async function inspectResourceNames(projectRoot: string) {
   const directory = join(projectRoot, '.ultimate/agents')
   const files = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
@@ -117,17 +116,17 @@ async function adds(projectRoot: string) {
   })
     .skills.map((skill) => skill.name)
     .toSorted()
-  return { agents, skills, ...(await declared(join(projectRoot, '.ultimate/settings.json'))) }
+  return {
+    agents,
+    skills,
+    ...(await declaredExtensionChoices(join(projectRoot, '.ultimate/settings.json'))),
+  }
 }
 
 const names = (value: unknown) =>
   Array.isArray(value) ? value.filter((name): name is string => typeof name === 'string') : []
 
-/**
- * The extension names a settings file enables and disables, read only to show them: a project's settings apply once
- * the project is chosen, so the host's gated settings are empty until then.
- */
-async function declared(path: string) {
+async function declaredExtensionChoices(path: string) {
   try {
     const { extensions } = JSON.parse(await readFile(path, 'utf8')) as {
       extensions?: { enable?: unknown; disable?: unknown }
@@ -140,8 +139,7 @@ async function declared(path: string) {
 
 const marker = (userHome: string) => join(userHome, '.ultimate/onboarding.json')
 
-/** Whether the conversation answered anything after entry `from`: a reply that is no error or abort. */
-async function answeredSince(tx: Tx, conversationId: ConversationId, from: EntryId) {
+async function answeredSuccessfullySince(tx: Tx, conversationId: ConversationId, from: EntryId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries(
@@ -165,7 +163,6 @@ async function answeredSince(tx: Tx, conversationId: ConversationId, from: Entry
   return false
 }
 
-/** The walkthrough's model fact: @ultimate's model and context window, so beat 4 can recommend 1M+. */
 async function modelLine(host: ExtensionHost, conversation: Conversation) {
   const ref = (await conversation.agent(context)).model
   const model = (await host.models()).find(
@@ -229,12 +226,8 @@ export const actions: Record<string, ExtensionAction> = {
       String(root)
     ]
     if (existing !== undefined) {
-      // A start whose run failed before answering (no model, an expired login, a provider error) never began. While
-      // @ultimate's newest run failed that way and nothing since the start was answered (inputs typed meanwhile may
-      // have failed too), continue it. Checked and admitted in one commit, so a second call finds it busy (#552022: a
-      // start without a model was a dead end).
       const conversation = (await harness.conversation(existing, context))!
-      await harness.commit(async (tx) => {
+      await harness.commit(async function retryUnansweredStart(tx) {
         const sent = await tx.submissionByRequest(conversation.id, requestId)
         const { run, runFailure } = await tx.doc(LiveDoc, conversation.id)
         if (
@@ -242,7 +235,7 @@ export const actions: Record<string, ExtensionAction> = {
           sent.entry === undefined ||
           run !== undefined ||
           !['no_model', 'model_error'].includes(runFailure?.reason ?? '') ||
-          (await answeredSince(tx, conversation.id, sent.entry))
+          (await answeredSuccessfullySince(tx, conversation.id, sent.entry))
         )
           return
         await conversation.submit(tx, { type: 'continue' })
@@ -357,9 +350,10 @@ export const actions: Record<string, ExtensionAction> = {
         ? 'Git is ready'
         : 'Let @ultimate set up Git: write a project-appropriate .gitignore and make the first commit without secrets, dependencies, build output or generated files. Do not add a remote or push.'
     } else throw new Error('Expected extensions, project with local, or git with initialize')
-    // Keep competing tabs serialized through settings reloads, including the gap before submit.
-    const queue = host.resource('onboarding.choose', () => ({ tail: Promise.resolve() }))
-    const operation = queue.tail.then(async () => {
+    const sharedChoiceQueue = host.resource('onboarding.choose', () => ({
+      tail: Promise.resolve(),
+    }))
+    const operation = sharedChoiceQueue.tail.then(async () => {
       const harness = host.harness()
       const id = conversationId
       const requestId = `onboarding-choice:${toolCallId}`
@@ -376,8 +370,7 @@ export const actions: Record<string, ExtensionAction> = {
           await actions.applyFirstRun({ extensions: payload.extensions! }, actionContext)
         else if (card === 'project') await actions.decide({ local: payload.local! }, actionContext)
         else if (payload.initialize) await host.need(WorkspacesApi).setupGit()
-        // Persist the payload before admission: queued submissions have no transcript entry yet.
-        await harness.commit(async (tx) => {
+        await harness.commit(async function saveChoiceBeforeSubmit(tx) {
           ;(await tx.doc(ChoiceRequests, id)).payloads[toolCallId] = payload
         }, context)
       }
@@ -393,26 +386,19 @@ export const actions: Record<string, ExtensionAction> = {
       )
       return { sent: true }
     })
-    queue.tail = operation.then(
-      () => {},
-      () => {
-        // This caller receives its failure; the next choice must still be able to retry.
-      },
-    )
+    sharedChoiceQueue.tail = settled(operation)
     return operation
   }),
   status: implementAction(StatusAction, async (_args, { host }) => {
     const folders = await host.projectExtensions()
-    // `"onboarding": false` in the user's settings: an experienced machine skips the first run and Start here.
     const off = (await readSettings(userSettingsPath(host.userHome))).onboarding === false
     return {
       firstRun: !off && !existsSync(marker(host.userHome)),
       off,
       project: await host.projectSetup(),
-      // The user's own lists, for the first run's checkboxes.
-      user: await declared(userSettingsPath(host.userHome)),
+      user: await declaredExtensionChoices(userSettingsPath(host.userHome)),
       adds: {
-        ...(await adds(host.projectRoot)),
+        ...(await inspectResourceNames(host.projectRoot)),
         extensions: folders.filter((entry) => !entry.replaces).map((entry) => entry.name),
         replaces: folders.filter((entry) => entry.replaces).map((entry) => entry.name),
       },
@@ -422,11 +408,6 @@ export const actions: Record<string, ExtensionAction> = {
     await writeJson(marker(host.userHome), { firstRunDone: true })
     return { firstRun: false }
   }),
-  /**
-   * The first run's choices in one step: checked names join the user's `extensions.enable` (and leave `disable`),
-   * unchecked names join `disable`; `local`, when given, is the project decision. Records the first run, then applies
-   * it all with one reload.
-   */
   applyFirstRun: async (args, { host }) => {
     const choices =
       args && typeof args === 'object' && !Array.isArray(args) ? args.extensions : undefined
@@ -553,7 +534,6 @@ export const actions: Record<string, ExtensionAction> = {
 }
 
 export default function onboarding(host: ExtensionHost) {
-  // Core, always on; resolved where they are called, declared here so the catalogue lists them.
   host.need(LineageApi)
   host.need(SubagentsApi)
   host.need(WorkspacesApi)
@@ -586,7 +566,7 @@ export default function onboarding(host: ExtensionHost) {
             card === 'git' && checkout && 'reason' in checkout
               ? checkout.reason
               : card === 'project'
-                ? `Project has a .ultimate/ setup; undecided. ${JSON.stringify(await adds(host.projectRoot))}`
+                ? `Project has a .ultimate/ setup; undecided. ${JSON.stringify(await inspectResourceNames(host.projectRoot))}`
                 : 'Choose recommended extensions. Settings apply only when the user continues.'
           return { output: [{ type: 'text', text }] }
         },

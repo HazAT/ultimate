@@ -33,21 +33,16 @@ import { DescribeAction, StartedAction } from './refs.ts'
 import type { TaskFacts } from './refs.ts'
 
 interface Tree {
-  /** Live tasks by owner task id. */
   children: Map<number, TaskGraphNode[]>
-  /** Conversation-owned running work by conversation id: the tree the Running group draws. */
   roots: Map<ConversationId, TaskGraphNode[]>
   summaries: Map<number, ConversationSummary>
-  /** When each task first ran, in wall-clock milliseconds. */
   started: Record<string, number>
-  /** What each task means, by task id. */
   meanings: Map<number, Meaning>
-  /** Feature tags of top-level conversations. */
   features: Map<number, string>
   now: number
 }
 
-function build(
+function buildVisibleTaskTree(
   graph: TaskGraph | undefined,
   conversations: readonly ConversationSummary[],
   concluded: number[],
@@ -60,9 +55,10 @@ function build(
   let changed = true
   while (changed) {
     changed = false
-    // Task ownership can arrive before the child's summary; child runs have no task owner.
     for (const task of all) {
-      if (hidden.has(task.conversationId) || (task.owner != null && hiddenTasks.has(task.owner))) {
+      const ownershipHidesTask =
+        hidden.has(task.conversationId) || (task.owner != null && hiddenTasks.has(task.owner))
+      if (ownershipHidesTask) {
         if (!hiddenTasks.has(task.id)) {
           hiddenTasks.add(task.id)
           changed = true
@@ -99,12 +95,13 @@ function build(
       roots.set(task.conversationId, [...(roots.get(task.conversationId) ?? []), task])
     else children.set(task.owner, [...(children.get(task.owner) ?? []), task])
   }
-  // Conversations a live task owns appear under that task; the rest are top-level.
-  const owned = new Set<number>(tasks.flatMap((task) => task.conversations))
-  const top = [...roots.keys()].filter((id) => !owned.has(id)).toSorted((a, b) => a - b)
+  const taskOwnedConversations = new Set<number>(tasks.flatMap((task) => task.conversations))
+  const topConversations = [...roots.keys()]
+    .filter((id) => !taskOwnedConversations.has(id))
+    .toSorted((a, b) => a - b)
   return {
     tasks,
-    top,
+    top: topConversations,
     children,
     roots,
     summaries: new Map(conversations.map((summary) => [summary.id, summary])),
@@ -152,21 +149,13 @@ function status(task: TaskGraphNode): {
   }
 }
 
-/**
- * Where a row sits in the tree: its depth, and for each ancestor level whether a sibling follows below (its rail goes
- * on); `last` when no sibling follows this row.
- */
-type Place = { depth: number; rails?: readonly boolean[]; last?: boolean }
+type HasFollowingSibling = boolean
+type Place = { depth: number; rails?: readonly HasFollowingSibling[]; last?: boolean }
 
 const INDENT = 14
 const EDGE = 12
-/** The x of the icon's centre at `depth`, where its children's lines start. */
-const axis = (depth: number) => EDGE + depth * INDENT + 6
+const iconCenterAt = (depth: number) => EDGE + depth * INDENT + 6
 
-/**
- * Dashed elbows from a parent's icon to each child's, with the rails of ancestors that have more children below: the
- * shape of the task graph, kept quieter and distinct from the sidebar's solid branch rails.
- */
 function Guides({ depth, rails = [], last = true }: Place) {
   if (depth === 0) return null
   const line = 'pointer-events-none absolute border-muted-foreground/35 border-dashed'
@@ -179,23 +168,22 @@ function Guides({ depth, rails = [], last = true }: Place) {
             <span
               className={cn(line, 'inset-y-0 border-l')}
               key={level}
-              style={{ left: axis(level) }}
+              style={{ left: iconCenterAt(level) }}
             />
           ) : null,
         )}
       <span
         className={cn(line, 'top-0 border-l', last ? 'h-1/2' : 'bottom-0')}
-        style={{ left: axis(depth - 1) }}
+        style={{ left: iconCenterAt(depth - 1) }}
       />
       <span
         className={cn(line, 'top-1/2 border-t')}
-        style={{ left: axis(depth - 1), width: INDENT - 8 }}
+        style={{ left: iconCenterAt(depth - 1), width: INDENT - 8 }}
       />
     </span>
   )
 }
 
-/** The places of a row's children, tasks then conversations, in order. */
 const places = (count: number, { depth, rails = [], last = true }: Place) =>
   Array.from({ length: count }, (_, index) => ({
     depth: depth + 1,
@@ -203,12 +191,8 @@ const places = (count: number, { depth, rails = [], last = true }: Place) =>
     last: index === count - 1,
   }))
 
-/** The root conversation: the project itself, never shown as a conversation of its own. */
+const LONG_RUNNING_WARNING_MS = 10 * 60_000
 
-/** Ten minutes: a running task or chore older than this shows in warning colour, so a stuck one stands out. */
-const LONG = 10 * 60_000
-
-/** Raw facts for hover: kind, id, phase and marks, as the graph has them. */
 const rawTitle = (task: TaskGraphNode) =>
   [
     `${task.kind} #${task.id}`,
@@ -220,7 +204,6 @@ const rawTitle = (task: TaskGraphNode) =>
     .filter(Boolean)
     .join(' · ')
 
-/** Who a meaning names: a conversation by its name, the user, another project. */
 function Who({ who }: { who: Meaning['who'] }) {
   if (who === undefined) return null
   return (
@@ -230,7 +213,6 @@ function Who({ who }: { who: Meaning['who'] }) {
   )
 }
 
-/** How long it has run, or when it wakes for a scheduled one; warning colour past `LONG` where that matters. */
 function Clock({ task, tree, plain }: { task: TaskGraphNode; tree: Tree; plain?: boolean }) {
   const until = tree.meanings.get(task.id)?.until
   if (until !== undefined)
@@ -248,7 +230,9 @@ function Clock({ task, tree, plain }: { task: TaskGraphNode; tree: Tree; plain?:
     <span
       className={cn(
         'shrink-0 text-[10.5px] tabular-nums',
-        !plain && tree.now - started >= LONG ? 'text-warning' : 'text-muted-foreground/70',
+        !plain && tree.now - started >= LONG_RUNNING_WARNING_MS
+          ? 'text-warning'
+          : 'text-muted-foreground/70',
       )}
       title={`Running since ${new Date(started).toLocaleString()}`}
     >
@@ -358,8 +342,7 @@ function ConversationRow({ id, tree, ...place }: { id: ConversationId; tree: Tre
   )
 }
 
-/** Facts a value never changes for, asked once per id: start times, what a task's input says. */
-function useOnce<T>(
+function useTaskFactsOnce<T>(
   ref: Parameters<typeof useAction<{ ids: number[] }, Record<string, T>>>[0],
   ids: number[],
 ) {
@@ -381,13 +364,13 @@ function Heading({ children, count }: { children: ReactNode; count?: number }) {
   )
 }
 
-/** Background chores, folded to a count; a blocked or long-running one stays out of the fold, so it is seen. */
 function Background({ tasks, tree }: { tasks: TaskGraphNode[]; tree: Tree }) {
-  const loud = (task: TaskGraphNode) =>
+  const needsAttention = (task: TaskGraphNode) =>
     task.blocked !== undefined ||
-    (tree.started[task.id] !== undefined && tree.now - tree.started[task.id] >= LONG)
-  const shown = tasks.filter(loud)
-  const folded = tasks.filter((task) => !loud(task))
+    (tree.started[task.id] !== undefined &&
+      tree.now - tree.started[task.id] >= LONG_RUNNING_WARNING_MS)
+  const shown = tasks.filter(needsAttention)
+  const folded = tasks.filter((task) => !needsAttention(task))
   return (
     <Collapsible className="group/bg">
       <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-1.5 px-3 pt-3 pb-1 section-label hover:text-foreground">
@@ -411,37 +394,41 @@ function TasksPanel() {
   const graph = useTasks()
   const conversations = useConversations()
   const [concluded] = useUiState<number[]>('ext.conversations.concluded', [])
-  const { tasks, children, roots, summaries } = build(graph, conversations, concluded)
+  const { tasks, children, roots, summaries } = buildVisibleTaskTree(
+    graph,
+    conversations,
+    concluded,
+  )
   const log = useDocOf(ROOT, MessagesDoc)
   const overview = useOverview()
   const now = useNow(1000, tasks.length > 0)
   const ids = tasks.map((task) => task.id)
-  const started = useOnce(StartedAction, ids)
-  const facts = useOnce<TaskFacts>(DescribeAction, ids)
+  const started = useTaskFactsOnce(StartedAction, ids)
+  const facts = useTaskFactsOnce<TaskFacts>(DescribeAction, ids)
   const states = new Map(log?.messages.map((message) => [message.id, message.state]))
   const { queue } = useWorkspaceIndex()
-  // A lander works its queue one submission after another: the one it lands now names it.
-  const landing = (fact: TaskFacts | undefined) => {
+  const activeLanding = (fact: TaskFacts | undefined) => {
     const item = queue.find((entry) => entry.source === fact?.source && entry.state === 'landing')
     return item ? { ...fact, conversation: item.conversationId } : fact
   }
   const meanings = new Map(
     tasks.map((task) => {
-      const fact = task.kind === 'workspaces.lander' ? landing(facts[task.id]) : facts[task.id]
+      const fact =
+        task.kind === 'workspaces.lander' ? activeLanding(facts[task.id]) : facts[task.id]
       return [task.id, meaning(task, fact, fact?.message && states.get(fact.message.id))]
     }),
   )
   const groupOf = (task: TaskGraphNode) => meanings.get(task.id)?.group ?? 'background'
-  // Running work stays a tree under its conversation; the rest is listed by meaning, whoever owns it. The root's
-  // running work (an automation run) is the project's: listed on its own, never under a conversation header.
   const running = new Map(
     [...roots].flatMap(([id, list]) => {
       const kept = list.filter((task) => groupOf(task) === 'running')
       return kept.length && id !== ROOT ? [[id, kept] as const] : []
     }),
   )
-  const owned = new Set<number>(tasks.flatMap((task) => task.conversations))
-  const top = [...running.keys()].filter((id) => !owned.has(id)).toSorted((a, b) => a - b)
+  const taskOwnedConversations = new Set<number>(tasks.flatMap((task) => task.conversations))
+  const topConversations = [...running.keys()]
+    .filter((id) => !taskOwnedConversations.has(id))
+    .toSorted((a, b) => a - b)
   const listed = (group: Group) =>
     tasks.filter((task) => task.owner == null && groupOf(task) === group)
   const project = (roots.get(ROOT) ?? []).filter((task) => groupOf(task) === 'running')
@@ -469,13 +456,13 @@ function TasksPanel() {
       </div>
       {groups.map(({ id, title }) => {
         if (id === 'running')
-          return top.length || project.length ? (
+          return topConversations.length || project.length ? (
             <section data-group={id} key={id}>
               <Heading>{title}</Heading>
               {project.map((task) => (
                 <TaskRow depth={0} key={task.id} task={task} tree={tree} />
               ))}
-              {top.map((conversation) => (
+              {topConversations.map((conversation) => (
                 <ConversationRow depth={0} id={conversation} key={conversation} tree={tree} />
               ))}
             </section>
@@ -506,7 +493,6 @@ function TasksPanel() {
   )
 }
 
-/** When run task `id` first ran, asked once per run, for the transcript's working clock. */
 function useRunStart(id: number | undefined): number | undefined {
   const { data } = useAction(
     StartedAction,

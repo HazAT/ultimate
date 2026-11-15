@@ -4,42 +4,28 @@ import { writeJson } from '../../lib/json-file.ts'
 import { settled } from '../../lib/errors.ts'
 import type { ProviderHealth } from './refs.ts'
 
-/** One provider's record in `health.json`; times are epoch milliseconds. */
+type EpochMilliseconds = number
+
 export interface HealthEntry {
-  lastOk?: number
-  /** The newest failure of any kind. */
-  lastFail?: number
-  /** The newest failure's sanitised message. */
+  lastOk?: EpochMilliseconds
+  lastFail?: EpochMilliseconds
   error?: string
-  lastUsed?: number
-  /** The newest auth failure: it alone turns the provider failing. */
-  lastAuth?: number
-  /** The newest `STREAK` transient failures, oldest first; only those newer than `lastOk` count. */
-  transient?: number[]
+  lastUsed?: EpochMilliseconds
+  lastAuth?: EpochMilliseconds
+  transient?: EpochMilliseconds[]
 }
 
 export type HealthFile = { providers: Record<string, HealthEntry> }
 
-/** The machine's health file, shared by every Ultimate home of the user. */
 export const healthPath = (userHome: string) => join(userHome, '.ultimate/health.json')
 
-const STAMPS = ['lastOk', 'lastFail', 'lastUsed', 'lastAuth'] as const
+const MAX_TIMESTAMP_FIELDS = ['lastOk', 'lastFail', 'lastUsed', 'lastAuth'] as const
 
-/** Transient failures in a row that turn a provider failing. */
 export const STREAK = 3
-/** A transient failure this long after the first of its streak, with no success between, turns it failing too. */
 export const STREAK_WINDOW = 5 * 60_000
-/**
- * A streak failure this old no longer counts when health is read: a provider nobody called since says nothing about
- * now, and its warning would otherwise stay until its next success (a 402 from a provider the user stopped using).
- */
 export const STALE = 24 * 60 * 60_000
 
-/**
- * The only words an error summary may contain: provider and OAuth error codes, network errors and a few plain words.
- * A fixed list, so nothing from a credential can ever pass, whatever its shape.
- */
-const KNOWN = new Set([
+const SAFE_ERROR_WORDS = new Set([
   'invalid_grant',
   'invalid_token',
   'invalid_client',
@@ -77,17 +63,16 @@ const KNOWN = new Set([
   'EAI_AGAIN',
 ])
 
-/**
- * A structured summary of a failure instead of its text, so no credential can reach `health.json`: the
- * HTTP status when the message starts with one or names it (`status 401`, `HTTP 429`), then the words of `KNOWN` it
- * contains, in order, without duplicates. Anything else is dropped; without a recognisable part it is "request failed".
- */
 export function sanitize(error: string) {
   const parts: string[] = []
   const status = /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b/i.exec(error)
   if (status) parts.push(status[1] ?? status[2])
   for (const word of error.split(/[^A-Za-z_]+/)) {
-    const known = KNOWN.has(word) ? word : KNOWN.has(word.toLowerCase()) ? word.toLowerCase() : ''
+    const known = SAFE_ERROR_WORDS.has(word)
+      ? word
+      : SAFE_ERROR_WORDS.has(word.toLowerCase())
+        ? word.toLowerCase()
+        : ''
     if (known && !parts.includes(known)) parts.push(known)
     if (parts.length >= 5) break
   }
@@ -122,11 +107,6 @@ const CAPACITY = new Set([
   'quota',
 ])
 
-/**
- * What a failure says about the provider, from its `sanitize` summary: `auth` (the login is broken), `billing` (402:
- * the account hit a credit or spending limit; never the login), `capacity` (the provider is busy or rate-limited) or
- * `transient` (timeouts, network errors, anything else).
- */
 export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 'transient' {
   const parts = sanitize(error).split(' ')
   if (parts.some((part) => AUTH.has(part))) return 'auth'
@@ -135,61 +115,50 @@ export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 't
   return 'transient'
 }
 
-/**
- * Why a provider is failing, or `undefined` when it is not: `auth` after an auth failure newer than the last success,
- * else a streak of `STREAK` transient or billing failures, or one spanning `STREAK_WINDOW`, newer than both the last
- * success and `since` (`billing` when the newest failure is one, else `transient`); capacity failures never count.
- */
+const spansFailureWindow = (failures: number[]) =>
+  failures.length && failures.at(-1)! - failures[0] >= STREAK_WINDOW
+
 export function failingCause(
   entry: HealthEntry,
   since = -Infinity,
 ): ProviderHealth['cause'] | undefined {
-  const ok = entry.lastOk ?? -Infinity
-  if (entry.lastAuth !== undefined && entry.lastAuth > ok) return 'auth'
-  const streak = (entry.transient ?? []).filter((at) => at > ok && at > since)
-  if (streak.length >= STREAK || (streak.length && streak.at(-1)! - streak[0] >= STREAK_WINDOW))
+  const lastSuccess = entry.lastOk ?? -Infinity
+  if (entry.lastAuth !== undefined && entry.lastAuth > lastSuccess) return 'auth'
+  const recentFailures = (entry.transient ?? []).filter((at) => at > lastSuccess && at > since)
+  const failureCountReached = recentFailures.length >= STREAK
+  if (failureCountReached || spansFailureWindow(recentFailures))
     return failureKind(entry.error ?? '') === 'billing' ? 'billing' : 'transient'
   return undefined
 }
 
-/** `failing` when it has a `failingCause`, otherwise `ok` once it has a success, else `unknown`. */
 export function state(entry: HealthEntry, since?: number): ProviderHealth['state'] {
   if (failingCause(entry, since)) return 'failing'
   return entry.lastOk !== undefined ? 'ok' : 'unknown'
 }
 
-/**
- * `before` with `update` merged, its failure counted by kind: an auth failure stamps `lastAuth`, a transient or
- * billing one joins `transient`, a capacity one only `lastFail` and `error`. A success clears nothing: `state` counts only failures newer
- * than `lastOk`, so writes arriving out of order still count right.
- */
 export function apply(before: HealthEntry, update: HealthEntry): HealthEntry {
-  const failed = update.lastFail
-  if (failed === undefined) return merge(before, update)
+  const newestFailure = update.lastFail
+  if (newestFailure === undefined) return merge(before, update)
   const kind = failureKind(update.error ?? '')
   return merge(before, {
     ...update,
-    ...(kind === 'auth' ? { lastAuth: failed } : {}),
-    ...(kind === 'transient' || kind === 'billing' ? { transient: [failed] } : {}),
+    ...(kind === 'auth' ? { lastAuth: newestFailure } : {}),
+    ...(kind === 'transient' || kind === 'billing' ? { transient: [newestFailure] } : {}),
   })
 }
 
-/**
- * Each timestamp by its maximum, the newest `STREAK` transient failures of both; the error belongs to the newest
- * `lastFail`.
- */
 export function merge(a: HealthEntry, b: HealthEntry): HealthEntry {
   const merged: HealthEntry = {}
-  for (const key of STAMPS) {
+  for (const key of MAX_TIMESTAMP_FIELDS) {
     const value = Math.max(a[key] ?? -Infinity, b[key] ?? -Infinity)
     if (Number.isFinite(value)) merged[key] = value
   }
-  const transient = [...new Set([...(a.transient ?? []), ...(b.transient ?? [])])]
+  const latestFailuresAscending = [...new Set([...(a.transient ?? []), ...(b.transient ?? [])])]
     .toSorted((x, y) => x - y)
     .slice(-STREAK)
-  if (transient.length) merged.transient = transient
-  const failed = (b.lastFail ?? -Infinity) >= (a.lastFail ?? -Infinity) ? b : a
-  const error = failed.error ?? (failed === b ? a.error : b.error)
+  if (latestFailuresAscending.length) merged.transient = latestFailuresAscending
+  const newestFailure = (b.lastFail ?? -Infinity) >= (a.lastFail ?? -Infinity) ? b : a
+  const error = newestFailure.error ?? (newestFailure === b ? a.error : b.error)
   if (merged.lastFail !== undefined && error !== undefined) merged.error = error
   return merged
 }
@@ -197,7 +166,14 @@ export function merge(a: HealthEntry, b: HealthEntry): HealthEntry {
 const stamp = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
-/** The stored file; a missing or unreadable one is empty. */
+function parseOrEmptyHealthFile(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {}
+  }
+}
+
 export async function readFileHealth(userHome: string): Promise<HealthFile> {
   const text = await readFile(healthPath(userHome), 'utf8').catch(
     (error: NodeJS.ErrnoException) => {
@@ -205,13 +181,7 @@ export async function readFileHealth(userHome: string): Promise<HealthFile> {
       return '{}'
     },
   )
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    // A torn or hand-edited file starts over: the next real call rewrites it.
-    parsed = {}
-  }
+  const parsed = parseOrEmptyHealthFile(text)
   const providers: Record<string, HealthEntry> = {}
   const raw =
     parsed && typeof parsed === 'object' && 'providers' in parsed ? parsed.providers : undefined
@@ -220,7 +190,7 @@ export async function readFileHealth(userHome: string): Promise<HealthFile> {
       if (!value || typeof value !== 'object') continue
       const fields = value as Record<string, unknown>
       const entry: HealthEntry = {}
-      for (const key of STAMPS) {
+      for (const key of MAX_TIMESTAMP_FIELDS) {
         const at = stamp(fields[key])
         if (at !== undefined) entry[key] = at
       }
@@ -234,28 +204,27 @@ export async function readFileHealth(userHome: string): Promise<HealthFile> {
   return { providers }
 }
 
-/** Each provider's health at `now`: streak failures older than `STALE` no longer count. */
 export const toHealth = (file: HealthFile, now: number): ProviderHealth[] =>
   Object.entries(file.providers)
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([provider, entry]) => {
-      // The counting fields decide the state; they are not part of what a provider's health shows.
-      const { lastAuth: _auth, transient: _transient, ...shown } = entry
-      const cause = failingCause(entry, now - STALE)
-      return { provider, state: state(entry, now - STALE), ...(cause ? { cause } : {}), ...shown }
+      const { lastAuth: _auth, transient: _transient, ...publicHealth } = entry
+      const streakExpiryCutoff = now - STALE
+      const cause = failingCause(entry, streakExpiryCutoff)
+      return {
+        provider,
+        state: state(entry, streakExpiryCutoff),
+        ...(cause ? { cause } : {}),
+        ...publicHealth,
+      }
     })
 
 export async function readHealth(userHome: string, now = Date.now()): Promise<ProviderHealth[]> {
   return toHealth(await readFileHealth(userHome), now)
 }
 
-const writes = new Map<string, Promise<unknown>>()
+const processWriteQueue = new Map<string, Promise<unknown>>()
 
-/**
- * Merge `update` into `provider`'s entry: read, merge by max timestamp, then write through a same-directory temporary
- * file and an atomic rename. Writes from this process run one at a time; another home's concurrent write can at worst
- * lose one event. Resolves the provider's state before and after, and its error when it is failing.
- */
 export async function record(
   userHome: string,
   provider: string,
@@ -263,7 +232,7 @@ export async function record(
 ): Promise<Flip> {
   const clean = update.error === undefined ? update : { ...update, error: sanitize(update.error) }
   let flip: Flip = { provider, from: 'unknown', to: 'unknown' }
-  await write(userHome, (file) => {
+  await serializeHealthWrite(userHome, (file) => {
     const before = file.providers[provider] ?? {}
     const after = apply(before, clean)
     file.providers[provider] = after
@@ -278,7 +247,6 @@ export async function record(
   return flip
 }
 
-/** A provider's state before and after one write, and its error after. */
 export type Flip = {
   provider: string
   from: ProviderHealth['state']
@@ -286,13 +254,9 @@ export type Flip = {
   error?: string
 }
 
-/**
- * Forget `providers`' entries, so each reads `unknown` until its next call: its login was added, replaced or
- * removed, and what the old login did says nothing about the new one.
- */
 export async function reset(userHome: string, providers: string[]): Promise<Flip[]> {
   const flips: Flip[] = []
-  await write(userHome, (file) => {
+  await serializeHealthWrite(userHome, (file) => {
     for (const provider of providers) {
       flips.push({ provider, from: state(file.providers[provider] ?? {}), to: 'unknown' })
       delete file.providers[provider]
@@ -301,14 +265,14 @@ export async function reset(userHome: string, providers: string[]): Promise<Flip
   return flips
 }
 
-function write(userHome: string, change: (file: HealthFile) => void) {
+function serializeHealthWrite(userHome: string, change: (file: HealthFile) => void) {
   const path = healthPath(userHome)
-  const operation = settled(writes.get(path) ?? Promise.resolve()).then(async () => {
+  const operation = settled(processWriteQueue.get(path) ?? Promise.resolve()).then(async () => {
     const file = await readFileHealth(userHome)
     change(file)
     await writeJson(path, file)
     return file
   })
-  writes.set(path, operation)
+  processWriteQueue.set(path, operation)
   return operation
 }

@@ -17,7 +17,6 @@ import {
 } from './refs.ts'
 import type { Subscription } from './refs.ts'
 
-/** This browser's service worker and push subscription, once known; `error` says why the last step failed. */
 type Here = {
   registration?: ServiceWorkerRegistration
   subscription?: PushSubscription
@@ -43,28 +42,18 @@ const json = (subscription: PushSubscription): Subscription => ({
   ...(subscription.toJSON() as Omit<Subscription, 'origin'>),
   origin: location.origin,
 })
-/** A base64url key as the bytes `pushManager.subscribe` takes. */
 const bytes = (key: string) =>
   Uint8Array.from(atob(key.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0))
 
-/**
- * Whether this browser can show pushes. Every path goes through it: without it the extension does nothing. An Android
- * WebView (react-native-webview 13.16.1, 2026-11-11) has service workers but no Notifications or Push API, and once
- * threw "getNotifications is not a function" on every page.
- */
-const supported =
+const hasPushSupport =
   'serviceWorker' in navigator &&
   'Notification' in window &&
   'pushManager' in ServiceWorkerRegistration.prototype &&
   'getNotifications' in ServiceWorkerRegistration.prototype
 
 let launched = false
-/**
- * The service worker (registering it again is a no-op beside the share extension's); a subscribed browser sends its
- * subscription again, in case the server lost it.
- */
 function launch() {
-  if (launched || !supported) return
+  if (launched || !hasPushSupport) return
   launched = true
   navigator.serviceWorker
     .register('/sw.js')
@@ -78,13 +67,8 @@ function launch() {
     .catch(failed)
 }
 
-/** How often a shown page says so; the server skips a browser seen in the last 15 s. */
-const presentMs = 10_000
+const VISIBLE_PAGE_HEARTBEAT_MS = 10_000
 
-/**
- * Renders nothing: registers the service worker, reports while a subscribed page is on screen, closes the
- * notifications of questions answered elsewhere and opens what a tapped notification names.
- */
 function Pusher() {
   const { registration, subscription } = useHere()
   const { showSurface, switchConversation } = useUltimate()
@@ -95,7 +79,6 @@ function Pusher() {
     const report = (visible: boolean) => {
       api
         .action(PresentAction, { endpoint, visible }, { keepalive: !visible })
-        // A missed report costs one push too many or too few; the next one corrects it.
         .catch((error: unknown) => console.warn('Push presence', error))
     }
     const tick = () => {
@@ -104,7 +87,7 @@ function Pusher() {
     const changed = () => report(document.visibilityState === 'visible')
     const hide = () => report(false)
     tick()
-    const stopReporting = every(presentMs, tick)
+    const stopReporting = every(VISIBLE_PAGE_HEARTBEAT_MS, tick)
     document.addEventListener('visibilitychange', changed)
     window.addEventListener('pagehide', hide)
     return () => {
@@ -113,8 +96,6 @@ function Pusher() {
       window.removeEventListener('pagehide', hide)
     }
   }, [endpoint])
-  // A question answered on its card or another device takes its notification with it, as does a tag another
-  // extension closed (`PushApi.close`).
   const log = useDocOf(ROOT, MessagesDoc)
   const closed = useDocOf(ROOT, ClosedDoc)?.tags ?? []
   const settled = [
@@ -126,34 +107,31 @@ function Pusher() {
   useEffect(() => {
     if (!settled || !registration) return undefined
     const tags = new Set(settled.split('\n'))
-    // A newer list (a tag reopened by a new push) replaces this scan: it must not close the new notification.
-    let current = true
+    let scanIsCurrent = true
     const scan = () => {
       registration
         .getNotifications()
         .then((shown) => {
-          if (!current) return
+          if (!scanIsCurrent) return
           for (const notification of shown) if (tags.has(notification.tag)) notification.close()
         })
         .catch((error: unknown) => console.warn('Closing answered notifications', error))
     }
-    // A push still on its way when the list changed shows later: the service worker says so, and it is scanned again.
-    const arrived = (event: MessageEvent<{ type?: string }>) => {
+    const rescanShownPush = (event: MessageEvent<{ type?: string }>) => {
       if (event.data?.type === 'ultimate:shown') scan()
     }
     scan()
-    navigator.serviceWorker.addEventListener('message', arrived)
+    navigator.serviceWorker.addEventListener('message', rescanShownPush)
     return () => {
-      current = false
-      navigator.serviceWorker.removeEventListener('message', arrived)
+      scanIsCurrent = false
+      navigator.serviceWorker.removeEventListener('message', rescanShownPush)
     }
   }, [settled, registration])
   useEffect(() => {
-    if (!supported) return undefined
+    if (!hasPushSupport) return undefined
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
-      // A question or another Inbox item opens the Inbox at it, where it is answered.
       const key = url.searchParams.get('inbox')
       if (key) {
         events.emit('inbox:open', { key })
@@ -174,9 +152,8 @@ function Pusher() {
   return null
 }
 
-/** Why this browser cannot get pushes, or nothing. */
 function blocked() {
-  if (!supported)
+  if (!hasPushSupport)
     return "This browser can't receive push notifications; install Ultimate as an app first."
   if (Notification.permission === 'denied')
     return 'Notifications are blocked for this app; allow them in its settings.'
@@ -201,7 +178,6 @@ async function turnOff(subscription: PushSubscription) {
 
 const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[12px]'
 
-/** The status line's bell: notifications on this device, a test push, and why they cannot be on. */
 function Bell() {
   const { registration, subscription, error } = useHere()
   const [test, setTest] = useState<string>()

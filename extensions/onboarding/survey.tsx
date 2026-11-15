@@ -20,7 +20,6 @@ import { onboarded } from './onboarded.ts'
 import { firstRunDialog } from './parts.tsx'
 import { DismissAction, StartAction, StartsDoc, StatusAction } from './refs.ts'
 
-/** Above @ultimate's composer until onboarding has run for the project: one click starts it. */
 export function StartComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
@@ -39,10 +38,9 @@ function StartHere({ dock }: { dock?: boolean }) {
   const memories = useDocOf(root ?? ROOT, MemoryDoc)
   const project = useSystem()?.project.name
   const status = useAction(StatusAction).data
-  // @ultimate's model, as Get ready checks it: without a login and an available model, setup opens Get ready first.
   const models = useModels()
   const agent = useConversation((conversation) => conversation.agent.model)
-  const ready = models?.models.some(
+  const runnableUltimateModel = models?.models.some(
     (model) => model.provider === agent?.provider && model.id === agent.modelId && model.available,
   )
   const [, openGetReady] = useDialog(firstRunDialog)
@@ -82,7 +80,9 @@ function StartHere({ dock }: { dock?: boolean }) {
           <Button
             disabled={sending}
             onClick={() =>
-              ready ? void run(() => api.action(StartAction, { root })) : openGetReady(true)
+              runnableUltimateModel
+                ? void run(() => api.action(StartAction, { root }))
+                : openGetReady(true)
             }
           >
             {sending ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <CompassIcon />}
