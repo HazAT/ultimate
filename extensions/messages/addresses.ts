@@ -68,7 +68,7 @@ export async function senderName(
   const name = Object.keys(index ?? {}).find((candidate) => index?.[candidate] === id)
   return `#${id}${name ? ` (@${name})` : ''}`
 }
-export async function resolveRecipientAfterSenderChecks(
+export async function resolveRecipient(
   host: ExtensionHost,
   to: string,
   from: ConversationId | 'user',

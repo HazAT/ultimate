@@ -13,7 +13,7 @@ import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
 import type { ImagesRef } from './images.ts'
 import { append } from './log.ts'
-import { parentOf, resolveRecipientAfterSenderChecks, senderName, starterOf } from './addresses.ts'
+import { parentOf, resolveRecipient, senderName, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 
@@ -110,12 +110,12 @@ export async function send(
     throw new Error(
       `Subagents report to the conversation that started them: message only #${parent}. Your final answer reaches it anyway.`,
     )
-  const to = await resolveRecipientAfterSenderChecks(host, input.to, from, ctx)
+  const to = await resolveRecipient(host, input.to, from, ctx)
   const fromLabel = via
     ? `user (settled for them by @ultimate, from what they said in its chat)`
     : await senderName(host, from, ctx)
   const toLabel = await senderName(host, to, ctx)
-  return host.harness().commit(async function admitMessageAndCommitReceipts(tx) {
+  return host.harness().commit(async (tx) => {
     const receipt =
       taskId === undefined ? undefined : await tx.doc(AtomicallyCommittedCallReceipts, taskId)
     const requests =

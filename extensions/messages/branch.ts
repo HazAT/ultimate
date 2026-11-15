@@ -89,7 +89,7 @@ export const branchTool = (host: ExtensionHost) =>
           ctx,
         )
 
-        await host.harness().commit(async function configureForkBeforeFirstInput(tx) {
+        await host.harness().commit(async (tx) => {
           await configure(tx, branch.id, {
             instructions: coordinator.instructions,
             ...(modelTools && 'add' in modelTools && modelTools.add?.length ? { modelTools } : {}),

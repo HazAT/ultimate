@@ -115,10 +115,7 @@ function MessageNavigation() {
     if (call)
       api.action(CallerAction, { conversation: id, call }).then(
         ({ entry }) => entry !== undefined && reveal(entry),
-
-        function keepConversationOpenWithoutScroll() {
-          return undefined
-        },
+        () => undefined,
       )
     return undefined
   }, [surface, id, entries, loading, target, ready])

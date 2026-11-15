@@ -16,6 +16,13 @@ import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
+const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
+  message.re !== undefined ? { re: message.re } : {}
+
+function retainOneWayAnswer(message: Message | undefined, answer: Message['answer']) {
+  if (message && answer !== undefined) message.answer = answer
+}
+
 export function delivery(host: ExtensionHost) {
   const refreshActiveStandingDefinition = async (id: number, ctx: Context) => {
     const index = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
@@ -68,8 +75,7 @@ export function delivery(host: ExtensionHost) {
             from: m.from,
             text: m.text,
             reply: m.reply,
-
-            ...(m.re !== undefined ? { re: m.re } : {}),
+            ...questionLinkOutsideLog(m),
             ...(m.routed !== undefined ? { routed: true } : {}),
             ...(m.echo ? { echo: true } : {}),
             delivery: task.input.note ? 'note' : task.input.steer ? 'steer' : 'followUp',
@@ -109,7 +115,7 @@ export function delivery(host: ExtensionHost) {
               ctx,
             )
 
-        const receipt = await placing.catch(async function failRolledBackPlacement(cause: unknown) {
+        const receipt = await placing.catch(async (cause: unknown) => {
           if (runtime.signal.aborted) throw cause
           const error = `Not delivered to ${task.input.toLabel}: ${cause instanceof Error ? cause.message : String(cause)}`
           await runtime.commit(async (tx) => {
@@ -167,14 +173,14 @@ export function delivery(host: ExtensionHost) {
         }, ctx)
         if (task.input.note) return
         const settled = await receipt.wait(ctx)
-        await runtime.commit(async function recordAnswerAppendReplyAndCheckpoint(tx) {
+        await runtime.commit(async (tx) => {
           const answer =
             settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
           const original = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
             (item) => item.id === m.id,
           )
           if (!m.reply) {
-            if (original && answer !== undefined) original.answer = answer
+            retainOneWayAnswer(original, answer)
             return terminal
           }
 

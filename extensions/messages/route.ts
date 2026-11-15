@@ -287,11 +287,14 @@ export function route(host: ExtensionHost) {
           if (everyInputReturnsToAnotherAsker) {
             if (!report) return []
 
+            const promoteLastNote = (last: Message | undefined) => {
+              if (last?.from !== id || last.reply || last.report || last.re !== undefined) return []
+              return routeToStarter(last.text, {})
+            }
             const last = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
               (m) => (m.from === id && m.to === by) || (m.from === by && m.to === id),
             )
-            if (last?.from !== id || last.reply || last.report || last.re !== undefined) return []
-            return routeToStarter(last.text, {})
+            return promoteLastNote(last)
           }
           return routeToStarter(text, { echo: answersOnlyRoutedInputs })
         }, ctx)

@@ -88,10 +88,12 @@ export async function tell(
     throw new Error(
       `Your answer to ${remoteLabel(openQuestionFromTarget.remote!)}'s message ${openQuestionFromTarget.id} is sent back automatically. Answer instead of telling.`,
     )
+  const senderScopedRouteKey = (routeRequest: { key: string }) =>
+    `${self.project}@${self.machine}:${routeRequest.key}`
   const remote = {
     project: target.name,
     machine: target.machine ?? self.machine,
-    key: route ? `${self.project}@${self.machine}:${route.key}` : randomUUID(),
+    key: route ? senderScopedRouteKey(route) : randomUUID(),
   }
 
   const replayedRouteMessage = route

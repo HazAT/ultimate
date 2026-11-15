@@ -732,10 +732,7 @@ export function MessageImages({
     const controller = new AbortController()
     api.history(conversation, offsetEntryId(entry, 1), controller.signal, entry).then(
       (page) => setFetched(page.entries.find((item) => item.id === entry)),
-
-      function keepMessageWithoutThumbnails() {
-        return undefined
-      },
+      () => undefined,
     )
     return () => controller.abort()
   }, [conversation, entry, loaded])

@@ -127,13 +127,10 @@ export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, 
     .join(
       '\n',
     )}${canSettleEveryOpenQuestion ? `\nWhen the user decides one in your chat, settle it with ultimate.action('messages', 'settle', { messageId, text }).` : ''}`
-  return {
-    entries: [
-      {
-        kind: 'board.open',
-        data: { ids: open.map((m) => m.id) },
-        model: [{ role: 'user' as const, content: text, timestamp: now }],
-      },
-    ],
+  const perInputCacheReminder = {
+    kind: 'board.open',
+    data: { ids: open.map((m) => m.id) },
+    model: [{ role: 'user' as const, content: text, timestamp: now }],
   }
+  return { entries: [perInputCacheReminder] }
 }
