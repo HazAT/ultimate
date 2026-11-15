@@ -19,7 +19,7 @@ import { Messages } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
-import type { Remote } from './refs.ts'
+import type { DeliveredMessage, Remote } from './refs.ts'
 import { MessageEntry, ReplyEntry } from './refs.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
@@ -148,18 +148,20 @@ export async function reported(
     if (LanderReportEntry.is(entry)) {
       // A landing card is an input only when the landing concluded the branch, which is when its result is ready.
       const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
-      const branch = results[entry.data.id]?.conversationId
+      const data: { id?: string } | undefined = entry.data
+      const branch = results[String(data?.id)]?.conversationId
       if (branch === undefined || (await tx.doc(Started, branch)).by !== starter) continue
       const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
       latest.set(branch, Math.max(latest.get(branch) ?? 0, last))
       continue
     }
-    if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && entry.data.reply === false)) continue
-    const data = entry.data
-    if (typeof data.from !== 'number' || data.echo === true) continue
+    const data: Partial<DeliveredMessage> | undefined =
+      MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+    if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && data?.reply === false)) continue
+    if (typeof data?.from !== 'number' || data.echo === true) continue
     const from = data.from
     if ((await tx.doc(Started, from)).by !== starter) continue
-    latest.set(from, Math.max(latest.get(from) ?? 0, data.id))
+    latest.set(from, Math.max(latest.get(from) ?? 0, data.id ?? 0))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
   const branches: ConversationId[] = []
@@ -287,9 +289,9 @@ export function route(host: ExtensionHost) {
           let echo = true
           for (const entryId of answered) {
             const entry = await tx.entry(entryId)
-            const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
-            const asked =
-              MessageEntry.is(entry) && entry.data.reply === true && entry.data.from !== 'user'
+            const data: Partial<DeliveredMessage> | undefined =
+              MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+            const asked = MessageEntry.is(entry) && data?.reply === true && data.from !== 'user'
             if (asked && data?.from === by) return []
             if (!asked) elsewhere = false
             if (data?.routed !== true) echo = false

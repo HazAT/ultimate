@@ -333,8 +333,10 @@ async function inheritedTally(tx: Tx, from: ConversationId, at: EntryId, root: C
       // A memory brief stands in for the tally up to the tip it covers.
       if (LineageResetEntry.is(entry) && entry.data?.lineage?.brief)
         return entry.data.lineage.brief.tally ?? undefined
-      if (NoteEntry.is(entry) && entry.data.source === 'main' && entry.data.tally !== undefined)
-        return entry.data.tally
+      if (NoteEntry.is(entry)) {
+        const data: { source?: string; tally?: EntryId } | undefined = entry.data
+        if (data?.source === 'main' && data.tally !== undefined) return data.tally
+      }
     }
     cursor = page.next
   } while (cursor)

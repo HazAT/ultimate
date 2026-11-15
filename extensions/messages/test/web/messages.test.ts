@@ -8,6 +8,8 @@ import {
   backgroundRow,
   conversationState,
   counterparts,
+  landed,
+  landedSha,
   stateWord,
   messageStatus,
   offscreen,
@@ -238,6 +240,14 @@ const row = (kind: string, data?: object, model?: object, calls: object[] = []) 
   calls: calls as { id: string; name: string; arguments: unknown }[],
 })
 const said = (stopReason: string) => ({ role: 'assistant', stopReason, content: [] })
+
+it.each([row('lineage.note').entry, row('workspaces.lander-report', { id: 'submission' }).entry])(
+  'does not mark $kind without landing data as landed',
+  (entry) => {
+    expect(landed(entry)).toBe(false)
+    expect(landedSha(entry)).toBeUndefined()
+  },
+)
 
 describe("background in @ultimate's compact transcript", () => {
   const base = { text: 'Ship it?', at: 100, state: 'answered' as const }

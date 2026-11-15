@@ -372,8 +372,12 @@ export function memorizeTask(
         // The landing note in a tally carries the submitter's abstract it froze; before that, it is still open.
         const placed = await tx.submissionByRequest(id, `lander-root:${submission}`)
         const entry = placed?.entry ? await tx.entry(placed.entry) : undefined
-        const frozen =
-          NoteEntry.is(entry) && entry.data.source === 'lander' ? entry.data.abstract : undefined
+        const data: { source?: unknown; abstract?: { text?: string } } | undefined = NoteEntry.is(
+          entry,
+        )
+          ? entry.data
+          : undefined
+        const frozen = data?.abstract
         const abstract = frozen?.text ?? (await openAbstract(tx, id, from))
         const { memories } = await tx.doc(Memory, id)
         const slugs = Object.keys(memories).toSorted()

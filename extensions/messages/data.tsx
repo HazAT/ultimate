@@ -192,7 +192,10 @@ export function backgroundRow(
   if (hiddenKinds.has(entry.kind)) return 'hidden'
   if (landed(entry)) return false
   if (backgroundKinds.has(entry.kind)) return true
-  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) return entry.data.from !== 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from !== 'user'
+  }
   const message = entry.model?.[0]
   if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') return false
   if (calls.length)
@@ -225,7 +228,10 @@ export function threadRow(
   const { entry, calls } = row
   if (hiddenKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
   if (entry.kind === 'pi.user') return true
-  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) return entry.data.from === 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from === 'user'
+  }
   if (entry.kind !== 'pi.assistant' || backgroundRow(row, log) !== false) return false
   if (calls.length)
     return calls.some(
@@ -244,12 +250,9 @@ export function threadRow(
 
 /** The short commit a landing row says landed, for a summary line. */
 export function landedSha(entry: EntryRecord): string | undefined {
-  const sha =
-    NoteEntry.is(entry) && entry.data.source === 'lander'
-      ? entry.data.sha
-      : LanderReportEntry.is(entry)
-        ? entry.data.outcome.sha
-        : undefined
+  const data: { source?: unknown; sha?: unknown; outcome?: { sha?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  const sha = NoteEntry.is(entry) ? data?.sha : data?.outcome?.sha
   return typeof sha === 'string' ? sha.slice(0, 7) : undefined
 }
 
@@ -261,8 +264,10 @@ const idOf = (value: unknown): (ConversationId | 'remote')[] =>
  * for, so they stay in the compact transcript and split background around them; a failed report stays background.
  */
 export function landed(entry: EntryRecord) {
-  if (NoteEntry.is(entry)) return entry.data.source === 'lander'
-  return LanderReportEntry.is(entry) && entry.data.outcome.outcome === 'landed'
+  const data: { source?: unknown; outcome?: { outcome?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  if (NoteEntry.is(entry)) return data?.source === 'lander'
+  return LanderReportEntry.is(entry) && data?.outcome?.outcome === 'landed'
 }
 
 /** Who a background row is with: the conversations it came from or went to, `lander` for the lander. */
@@ -276,21 +281,27 @@ export function counterparts(
   switch (entry.kind) {
     case 'board.message':
     case 'board.reply':
-    case 'lineage.finished':
-      return MessageEntry.is(entry) || ReplyEntry.is(entry) || FinishedEntry.is(entry)
-        ? idOf(entry.data.from)
-        : []
-    case 'lineage.note':
-      return NoteEntry.is(entry)
-        ? entry.data.source === 'lander'
-          ? ['lander']
-          : idOf(entry.data.from)
-        : []
-    case 'lineage.abstract':
-      return AbstractEntry.is(entry) ? idOf(entry.data.conversation) : []
+    case 'lineage.finished': {
+      if (!MessageEntry.is(entry) && !ReplyEntry.is(entry) && !FinishedEntry.is(entry)) return []
+      const data: { from?: unknown } | undefined = entry.data
+      return idOf(data?.from)
+    }
+    case 'lineage.note': {
+      if (!NoteEntry.is(entry)) return []
+      const data: { source?: unknown; from?: unknown } | undefined = entry.data
+      return data?.source === 'lander' ? ['lander'] : idOf(data?.from)
+    }
+    case 'lineage.abstract': {
+      if (!AbstractEntry.is(entry)) return []
+      const data: { conversation?: unknown } | undefined = entry.data
+      return idOf(data?.conversation)
+    }
     case 'subagents.report':
-    case 'subagents.instruction':
-      return InstructionEntry.is(entry) || ReportEntry.is(entry) ? idOf(entry.data.sender) : []
+    case 'subagents.instruction': {
+      if (!InstructionEntry.is(entry) && !ReportEntry.is(entry)) return []
+      const data: { sender?: unknown } | undefined = entry.data
+      return idOf(data?.sender)
+    }
     case 'workspaces.lander-report':
       return ['lander']
   }

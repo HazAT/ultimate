@@ -83,7 +83,8 @@ function recentlyRecalled(view: ContextView, limit: number) {
 
 /** Who an input is from, in the classifier's words: the user, or the branch that messaged. */
 function senderOf(entry: EntryRecord) {
-  const from = MessageEntry.is(entry) ? entry.data.from : undefined
+  const data: { from?: unknown } | undefined = MessageEntry.is(entry) ? entry.data : undefined
+  const from = data?.from
   return typeof from === 'number' ? `a branch (#${from}) reporting to @ultimate` : 'the user'
 }
 

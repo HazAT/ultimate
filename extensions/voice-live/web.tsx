@@ -744,7 +744,8 @@ function useStep(mode: VoiceMode): Step {
   const settled = new Map<number, { answered: boolean; spoken: boolean; failed: boolean }>()
   for (const entry of transcript) {
     if (!VoiceLineEntry.is(entry) && !VoiceAnswerEntry.is(entry)) continue
-    const re = entry.data.re
+    const data: { re?: number } | undefined = entry.data
+    const re = data?.re
     if (re === undefined) continue
     const state = settled.get(re) ?? {
       answered: false,
@@ -1455,7 +1456,8 @@ function LiveTurn() {
   const { partial, sending } = useMode()
   if (id === undefined || id !== voice) return null
   const last = transcript.findLast((candidate) => VoiceHeardEntry.is(candidate))
-  const arrived = sending && last?.data.text === sending.text
+  const data: { text?: string } | undefined = last?.data
+  const arrived = sending && data?.text === sending.text
   const text = partial ?? (arrived ? undefined : sending?.text)
   if (!text) return null
   return (
