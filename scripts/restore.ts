@@ -1,6 +1,3 @@
-// Install a project's cloud backup as its state on this machine: the current state moves into a backup folder first.
-// Usage: pnpm restore [name|key] [--snapshot <id>] [--chapter <name>] [--dir <project dir>] [--yes] [--dry-run].
-// See "Cloud backups" in extensions/cloud/README.md.
 import { existsSync } from 'node:fs'
 import { mkdir, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -42,7 +39,6 @@ const SNAPSHOT_KEY = 'ULTIMATE_CLOUD_SNAPSHOT_KEY'
 const USAGE =
   'Usage: pnpm restore [name|key] [--snapshot <id>] [--chapter <name>] [--dir <project dir>] [--yes] [--dry-run]'
 
-/** The register's project named `query` (its name or key, case-insensitively), or the one with key `key`. */
 export function findProject(
   register: Register,
   query: string | undefined,
@@ -76,27 +72,20 @@ export interface RestoreOptions {
   secret: string
   key: string
   id: string
-  /** The project's Ultimate home, created when missing. */
   home: string
-  /** Omitted selects the home's active chapter. */
   chapter?: string
-  /** The project's checkout, which receives the backup's `ultimate/*` branches. */
   projectRoot: string
-  /** `~/.ultimate/backups`. */
   backups: string
   now?: Date
 }
 
-/** What a restore of the chapter in `dir` moves aside: its state files, never other chapters. */
-const chapterState = async (dir: string) =>
+const stateFilesExcludingOtherChapters = async (dir: string) =>
   (await movable(dir)).filter(
     (name) => !/^(chapters|chapters\.json|pending-chapter\.json)$/.test(name),
   )
 
-/** The home-wide journal still blocks every chapter until installation and registration finish. */
 type RestoreJournal = Journal & { chapter?: string }
 
-/** Both locks of `home`, held for `step`; refused while an Ultimate runs there. */
 async function locked<T>(home: string, step: () => Promise<T>) {
   const lock = await lockHome(home, 'pnpm restore')
   try {
@@ -106,12 +95,6 @@ async function locked<T>(home: string, step: () => Promise<T>) {
   }
 }
 
-/**
- * Download and verify backup `id`, then, holding the home's locks (refused while Ultimate runs there), journal the
- * restore, move the home's state into `<backups>/restore-<time>/<home>/`, install the backup as `state.sqlite` and
- * record it as the parent of the next backup. Nothing in the home moves until the download verified; a snapshot taken
- * of a checkout at another path is refused.
- */
 export async function restore(o: RestoreOptions) {
   await mkdir(o.home, { recursive: true })
   return locked(o.home, async () => {
@@ -129,7 +112,11 @@ export async function restore(o: RestoreOptions) {
     const chapter = chapterName(o.chapter ?? (await readChapters(o.home)).active)
     const files = chapterFiles(o.home, chapter)
     await mkdir(files.dir, { recursive: true })
-    const { database, manifest, keptRefs } = await downloadSnapshot({
+    const {
+      database: verifiedDownload,
+      manifest,
+      keptRefs,
+    } = await downloadSnapshot({
       url: o.url,
       token: o.token,
       secret: o.secret,
@@ -143,7 +130,7 @@ export async function restore(o: RestoreOptions) {
       ...(chapter !== FIRST_CHAPTER && { chapter }),
       backup: backupFolder(o.backups, 'restore', files.dir, o.now),
       restore: {
-        database,
+        database: verifiedDownload,
         record: {
           key: o.key,
           parent: manifest.id,
@@ -160,28 +147,21 @@ export async function restore(o: RestoreOptions) {
     try {
       await writeJson(join(o.home, JOURNAL), journal)
     } catch (error) {
-      // Without a journal nothing moved: the download is the only trace, and it goes.
-      await rm(database, { force: true })
+      await rm(verifiedDownload, { force: true })
       throw error
     }
-    return { ...(await install(o.home, journal)), manifest, keptRefs }
+    return { ...(await finishJournaledRestore(o.home, journal)), manifest, keptRefs }
   })
 }
 
-/**
- * Carry out a journaled restore; each step can be repeated. Until the download is installed, the home's state (and
- * its `cloud-backup.json`) moves to the backup; then the download becomes `state.sqlite`, the record is written, and
- * the journal goes last. An interruption leaves the journal, which keeps Ultimate from opening the home.
- */
-async function install(home: string, journal: RestoreJournal) {
+async function finishJournaledRestore(home: string, journal: RestoreJournal) {
   const { backup, restore: pending } = journal
   const chapter = journal.chapter ?? FIRST_CHAPTER
   const { dir, database } = chapterFiles(home, chapter)
   if (!pending) throw new Error(`${join(home, JOURNAL)} is a reset's; finish it with pnpm reset`)
   const moves: string[] = []
   if (existsSync(pending.database)) {
-    // Only this chapter's state moves: the other chapters and their record stay.
-    moves.push(...(await chapterState(dir)))
+    moves.push(...(await stateFilesExcludingOtherChapters(dir)))
     if (existsSync(join(dir, 'cloud-backup.json'))) moves.push('cloud-backup.json')
     await moveInto(dir, backup, moves)
     await moveDatabase(pending.database, database)
@@ -190,29 +170,26 @@ async function install(home: string, journal: RestoreJournal) {
       `${pending.database} is gone and ${dir} has no state.sqlite; the restore cannot finish`,
     )
   await writeBackup(dir, pending.record)
-  // The restored chapter becomes active; a home that only ever had the first chapter keeps no chapters file.
-  if (chapter !== FIRST_CHAPTER || existsSync(join(home, CHAPTERS_FILE))) {
+  const chapterRecordNeeded = chapter !== FIRST_CHAPTER || existsSync(join(home, CHAPTERS_FILE))
+  if (chapterRecordNeeded) {
     const chapters = await readChapters(home)
     if (!chapters.chapters.some(({ name }) => name === chapter))
       chapters.chapters.push({ name: chapter, createdAt: Date.now() })
     chapters.active = chapter
     await writeJson(join(home, CHAPTERS_FILE), chapters)
   }
-  // The backup may predate conversations of the chapters kept here: ids continue after theirs.
   await continueChapterIds(home, chapter)
   await rm(join(home, JOURNAL))
   return { backup, moves, dir, database }
 }
 
-/** Finish the restore an interrupted `pnpm restore` journaled in `home`, into the same backup folder. */
 export const finishRestore = (home: string) =>
   locked(home, async () => {
     const journal: RestoreJournal | undefined = await readJournal(home)
     if (!journal?.restore) throw new Error(`No interrupted restore in ${home}`)
-    return { ...(await install(home, journal)), record: journal.restore.record }
+    return { ...(await finishJournaledRestore(home, journal)), record: journal.restore.record }
   })
 
-/** `pnpm restore` with `args`; exported for tests, which point HOME and the cloud variables at scratch values. */
 export async function main(args = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({
     options: {
@@ -260,7 +237,6 @@ export async function main(args = process.argv.slice(2)) {
   )
   const files = chapterFiles(home, chapter)
   const key = chapterKey(identity.key, chapter, chapter === FIRST_CHAPTER)
-  // A named snapshot needs no register: its project is this checkout's, and older backups predate the register.
   const project = values.snapshot
     ? { key, name: basename(dir), latest: undefined }
     : findProject(await fetchRegister(cloud), query, identity.key, chapter)
@@ -283,7 +259,7 @@ export async function main(args = process.argv.slice(2)) {
         : '') +
       '\n',
   )
-  const moves = existsSync(files.dir) ? await chapterState(files.dir) : []
+  const moves = existsSync(files.dir) ? await stateFilesExcludingOtherChapters(files.dir) : []
   for (const name of moves) console.log(`  move ${name} (${await size(join(files.dir, name))})`)
   if (!moves.length) console.log('  nothing to move: the home holds no state yet')
   const { running } = existsSync(home) ? await holder(home) : {}
