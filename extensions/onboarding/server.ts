@@ -227,7 +227,7 @@ export const actions: Record<string, ExtensionAction> = {
     ]
     if (existing !== undefined) {
       const conversation = (await harness.conversation(existing, context))!
-      await harness.commit(async function retryUnansweredStart(tx) {
+      await harness.commit(async (tx) => {
         const sent = await tx.submissionByRequest(conversation.id, requestId)
         const { run, runFailure } = await tx.doc(LiveDoc, conversation.id)
         if (
@@ -370,7 +370,7 @@ export const actions: Record<string, ExtensionAction> = {
           await actions.applyFirstRun({ extensions: payload.extensions! }, actionContext)
         else if (card === 'project') await actions.decide({ local: payload.local! }, actionContext)
         else if (payload.initialize) await host.need(WorkspacesApi).setupGit()
-        await harness.commit(async function saveChoiceBeforeSubmit(tx) {
+        await harness.commit(async (tx) => {
           ;(await tx.doc(ChoiceRequests, id)).payloads[toolCallId] = payload
         }, context)
       }

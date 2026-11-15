@@ -42,6 +42,11 @@ type Host = Pick<
 const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
   host.resource('pause.flag', () => ({ paused: false }))
 
+function holdRetryDuringPublication(host: Host) {
+  sharedPauseFlag(host).paused = true
+  host.harness().hold()
+}
+
 const read = async (host: Host) =>
   (await host.harness().snapshot(State, ROOT_CONVERSATION_ID, context)) ?? { paused: false }
 
@@ -370,7 +375,7 @@ export default function pauseExtension(host: Host) {
   }
   host.onClose(close)
   host.onRelease(close)
-  host.onOpen(async function holdBeforeScheduling() {
+  host.onOpen(async () => {
     unsubscribe?.()
     await serializePause(host, async () => {
       const doc = await read(host)
@@ -407,8 +412,7 @@ export default function pauseExtension(host: Host) {
           at: message.timestamp,
           conversationId: change.value.conversationId,
         }
-        sharedPauseFlag(host).paused = true
-        host.harness().hold()
+        holdRetryDuringPublication(host)
         serializePause(host, () => holdRetryOrRelease(host, limit)).catch((error: unknown) => {
           console.error('pause: pausing for a rate limit failed:', error)
         })

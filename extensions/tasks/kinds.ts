@@ -109,9 +109,9 @@ export function meaning(
     task.kind === 'ultimate.automation-delivery' && facts?.automation
       ? `${chore} · ${facts.automation}`
       : chore
-  const nonRootSubject =
+  const subjectConversation =
     facts?.conversation ?? (task.conversationId === ROOT ? undefined : task.conversationId)
   return label
-    ? { group: 'background', text: label, who: nonRootSubject }
+    ? { group: 'background', text: label, who: subjectConversation }
     : { group: 'background', text: task.kind }
 }

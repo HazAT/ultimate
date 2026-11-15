@@ -158,7 +158,7 @@ export const actions = {
     if (typeof callId !== 'string' || conversationId === undefined)
       throw new Error('Invalid bash call')
     const id = conversationId
-    await host.harness().commit(async function cancelAndPruneEndedCalls(tx) {
+    await host.harness().commit(async (tx) => {
       const live = await tx.doc(LiveDoc, id)
       const running = new Set(
         [...(live.tools ?? []), ...(live.nestedTools ?? [])].flatMap((slot) =>

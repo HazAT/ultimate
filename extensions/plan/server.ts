@@ -141,7 +141,7 @@ export default (host: ExtensionHost) => {
     hooks: [
       // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
       hook(GenerationTask, {
-        beforeInput: async function resetFirstInputPlan(_input, { tx, conversationId }) {
+        beforeInput: async (_input, { tx, conversationId }) => {
           if ((await tx.doc(Started, conversationId)).started) return undefined
           const branch = (await tx.doc(Branch, conversationId)).branch
           const unusedForkPlan =

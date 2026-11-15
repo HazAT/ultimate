@@ -135,7 +135,7 @@ function pushToHiddenBrowsers(host: ExtensionHost, push: Push) {
 export default function pushExtension(host: ExtensionHost) {
   host.need(SecretsApi)
   host.implement(PushApi, {
-    notify: function reopenThenPush(push) {
+    notify: (push) => {
       trackPushUntilClosed(
         host,
         markTagClosed(host, push.tag, false).then(() => pushToHiddenBrowsers(host, push)),
@@ -181,7 +181,7 @@ export default function pushExtension(host: ExtensionHost) {
     if (ultimate === undefined) return undefined
     return failedPush((overview as OverviewState | undefined)?.conversations[ultimate], ultimate)
   }
-  host.onOpen(async function watchNewFailures() {
+  host.onOpen(async () => {
     lastFailureTag = (await failed())?.tag
     stop = onCommit(host.harness(), (publication) => {
       if (

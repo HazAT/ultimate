@@ -47,15 +47,15 @@ export async function recordHealth(
 
 export default function health(host: ExtensionHost) {
   const announceHealthFlip = (flips: Flip[]) => announce(host, flips)
-  host.react('login-changed', [LoginChanged], async function resetLoginHealth(tx, { data }) {
+  host.react('login-changed', [LoginChanged], async (tx, { data }) => {
     for (const { provider, from, to } of await reset(host.userHome, [data.provider]))
       if (from !== to) await host.emit(tx, Changed, { provider, state: to })
   })
   host.implement(HealthApi, {
     providers: async () =>
-      (await readHealth(host.userHome)).filter(function hasLocalLogin(entry) {
-        return host.modelRuntime.getProviderAuthStatus(entry.provider).configured
-      }),
+      (await readHealth(host.userHome)).filter(
+        (entry) => host.modelRuntime.getProviderAuthStatus(entry.provider).configured,
+      ),
   })
   return defineExtension({
     name: 'health',

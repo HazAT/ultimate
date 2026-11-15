@@ -304,6 +304,7 @@ export default function goalExtension(host: ExtensionHost) {
       defineTool({
         name: 'goal',
         deferred: true,
+        replay: 'unsafe',
         description:
           "The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
         parameters: obj({
@@ -320,7 +321,7 @@ export default function goalExtension(host: ExtensionHost) {
         }),
         async execute(args, api, ctx) {
           const actingMain = await actingAs(host, api.conversationId, ctx)
-          const recordedOnce = await api.commit(async (tx) => {
+          const result = await api.commit(async (tx) => {
             if ((await ultimateOf(tx)) !== actingMain)
               throw new Error('Only @ultimate keeps the hands-off goal.')
             const acted = await act(
@@ -341,7 +342,7 @@ export default function goalExtension(host: ExtensionHost) {
             if (changed !== undefined) await enqueueReminderSync(host, tx, changed)
             return acted
           }, ctx)
-          return { output: [{ type: 'text', text: recordedOnce.answer }] }
+          return { output: [{ type: 'text', text: result.answer }] }
         },
       }),
     ],
