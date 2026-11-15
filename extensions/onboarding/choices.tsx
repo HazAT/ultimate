@@ -15,6 +15,22 @@ export const offered: readonly { name: string; needs?: string }[] = [
 ]
 
 /**
+ * What a setup card shows as chosen: the answer given on it, else a choice that holds now however it was made, so a card
+ * never offers a decision already taken elsewhere (the project's setup in the Extensions panel, or on another card).
+ * Only the project card has such a standing decision; `decision` is the project's (null: undecided).
+ */
+export function settledChoice(
+  card: string,
+  answer: string | undefined,
+  decision: boolean | null | undefined,
+) {
+  if (answer) return answer
+  if (card === 'project' && typeof decision === 'boolean')
+    return decision ? 'Using project setup' : 'Keeping global setup'
+  return undefined
+}
+
+/**
  * Where the Extensions panel's switches save: the user's settings unless they pick this project, which needs the
  * project's setup chosen. A project's settings file is usually committed, so a personal switch never lands there.
  */
