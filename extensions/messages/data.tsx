@@ -299,7 +299,7 @@ export function openMessages(
   return {
     waiting: messages.filter((m) => m.from === id && isOwed(m)),
     requests: messages.filter(
-      (m) => m.to === id && isOwed(m) && !branches.some((b) => b.starter === id && b.id === m.from),
+      (m) => m.to === id && isOwed(m) && !owedBranches.some((b) => b.id === m.from),
     ),
     owed: owedBranches,
     delivering: messages.filter((m) => m.from === id && m.state === 'sent'),

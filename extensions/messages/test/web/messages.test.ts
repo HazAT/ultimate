@@ -601,7 +601,7 @@ describe('conversation state', () => {
     expect(open(branch, []).owed.map((b) => b.id)).toEqual([5])
     expect(openMessages(messages, 3, [{ ...branch, concluded: true }]).owed).toEqual([])
     expect(openMessages(messages, 3, [{ ...branch, working: true }]).owed).toEqual([])
-    expect(openMessages(messages, 3, [{ ...branch, working: true }]).requests).toEqual([])
+    expect(openMessages(messages, 3, [{ ...branch, working: true }]).requests).toHaveLength(1)
     expect(
       openMessages(messagesLog({ from: 5 as ConversationId, to: 'user' }).messages, 3, [branch])
         .owed,

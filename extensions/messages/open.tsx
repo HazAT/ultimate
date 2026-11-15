@@ -76,14 +76,29 @@ function Open({ timers }: { timers: WaitFacts['automations'] }) {
   const concludedSince = useConcludedSince()
   const starters = useStarters()
   const overview = useOverview()
-  const branches = useConversations()
+  const conversations = useConversations()
+  const topOf = (c: (typeof conversations)[number]) => {
+    let top: (typeof conversations)[number] | undefined = c
+    let topId = c.id
+    while (top) {
+      topId = top.id
+      const parent: number | undefined =
+        top.ownerTaskId === undefined ? undefined : top.parentConversationId
+      top = parent === undefined ? undefined : conversations.find((p) => p.id === parent)
+    }
+    return topId
+  }
+  const busyTops = new Set(conversations.filter((c) => c.busy).map(topOf))
+  const branches = conversations
     .filter((c) => c.branchOf)
     .map((c) => ({
       id: c.id,
       title: c.title,
       starter: starters(c.id),
       working:
-        c.busy || overview[c.id]?.runState === 'working' || overview[c.id]?.runState === 'queued',
+        busyTops.has(c.id) ||
+        overview[c.id]?.runState === 'working' ||
+        overview[c.id]?.runState === 'queued',
       concluded: concludedSince(c.id) === Infinity,
     }))
   const now = useNow(30_000)
