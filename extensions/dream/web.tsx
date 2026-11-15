@@ -30,33 +30,24 @@ import { ReadyCard, RequestedCard } from './requested.tsx'
 import { DreamDoc } from './refs.ts'
 import { PreparedCard } from './sleep.tsx'
 
-/** Above this share of its context window, a compacted @ultimate has lived long enough to be worth a dream. */
-const FULL = 0.5
+const CONTEXT_SHARE_WORTH_DREAMING = 0.5
 
-/**
- * The share of the context window the latest response was sent with, or undefined when a compaction or reset came
- * after it (the context is fresh then) or nothing answered yet.
- */
 function contextShare(entries: readonly EntryRecord[], window: number) {
-  let marker = -1
-  let answered = -1
+  let latestCompactionOrReset = -1
+  let latestAnswer = -1
   let used = 0
   for (const entry of entries) {
     if (entry.kind === 'pi.compaction' || entry.kind === 'pi.reset')
-      marker = Math.max(marker, entry.id)
+      latestCompactionOrReset = Math.max(latestCompactionOrReset, entry.id)
     const model = entry.model?.[0]
-    if (entry.kind === 'pi.assistant' && model?.role === 'assistant' && entry.id > answered) {
-      answered = entry.id
+    if (entry.kind === 'pi.assistant' && model?.role === 'assistant' && entry.id > latestAnswer) {
+      latestAnswer = entry.id
       used = model.usage.input + model.usage.cacheRead + model.usage.cacheWrite
     }
   }
-  return answered > marker ? used / window : undefined
+  return latestAnswer > latestCompactionOrReset ? used / window : undefined
 }
 
-/**
- * A quiet hint in the status line when @ultimate is shown, has compacted at least once and is past half its context
- * again, and no fresh chapter is prepared: a good time to dream. Clicking it explains what a dream does.
- */
 function TimeToDream() {
   const { id, entries, agent } = useConversation()
   const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
@@ -71,7 +62,7 @@ function TimeToDream() {
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
   )?.contextWindow
   const share = window ? contextShare(entries, window) : undefined
-  if (share === undefined || share <= FULL) return null
+  if (share === undefined || share <= CONTEXT_SHARE_WORTH_DREAMING) return null
   return (
     <button
       className="-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -86,10 +77,6 @@ function TimeToDream() {
   )
 }
 
-/**
- * The Memory surface's header: which chapter this memory belongs to (a way to the others), and the Dream button, since
- * dreaming distils this memory, among other things.
- */
 function useDreamButton() {
   const actions = useUltimate()
   const chapters = useChapters()
@@ -123,7 +110,6 @@ function useDreamButton() {
   )
 }
 
-/** After a Fall asleep the reloaded page opens @ultimate, where the morning card waits. */
 function WakeUp() {
   const actions = useUltimate()
   useWakeUp(() => talkToUltimate(actions))

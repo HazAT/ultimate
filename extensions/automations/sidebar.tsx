@@ -21,7 +21,6 @@ import type { Automation } from './refs.ts'
 
 const FIRST = 5
 
-/** A few words for a row, fewer than the panel's line since the sidebar is narrow. */
 function short(automation: Automation, now: number) {
   const look = lookOf(automation, now)
   const last = automation.runs.at(-1)
@@ -31,11 +30,6 @@ function short(automation: Automation, now: number) {
   return looks[look].word
 }
 
-/**
- * The Agent sidebar's Automations section: enabled or busy automations of both kinds, worst first; hidden while none is.
- * The heading folds it; its count opens the panel with every automation, paused ones included, and turns red while one
- * needs attention.
- */
 export function AutomationsSection() {
   const { data } = useAutomations(5000)
   const now = useNow(10_000)
@@ -100,7 +94,6 @@ function Row({ automation, now }: { automation: Automation; now: number }) {
   const openAutomation = useOpenAutomation()
   const look = lookOf(automation, now)
   const last = automation.runs.at(-1)
-  // A run that is going or just failed is what the user wants to see; a script opens beside its watcher.
   const run =
     last && (last.status === 'running' || look === 'failed') ? last.conversationId : undefined
   return (

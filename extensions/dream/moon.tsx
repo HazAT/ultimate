@@ -1,7 +1,6 @@
 import { cn } from '@/sdk'
 import type { PassName } from './types.ts'
 
-/** How each pass reads to a person, in the journal's order. */
 export const passLabels: Record<PassName, string> = {
   memory: 'Memory',
   failures: 'Failures',
@@ -11,10 +10,7 @@ export const passLabels: Record<PassName, string> = {
   project: 'This project',
 }
 
-/**
- * A step as a moon phase: waiting is a new moon, running a waxing crescent that breathes slowly (still under reduced
- * motion), done a full moon, failed a dim moon with an error rim.
- */
+const WAXING_CRESCENT_RIGHT_RIM = 'M6 1 A5 5 0 0 1 6 11 A2.4 5 0 0 0 6 1 Z'
 export function Moon({
   status,
   className,
@@ -43,10 +39,9 @@ export function Moon({
         strokeWidth="1"
       />
       {status === 'running' && (
-        // The lit right side: the outer rim's half, closed by a shallow inner curve.
         <path
           className="motion-safe:animate-pulse-dot"
-          d="M6 1 A5 5 0 0 1 6 11 A2.4 5 0 0 0 6 1 Z"
+          d={WAXING_CRESCENT_RIGHT_RIM}
           fill="currentColor"
           style={{ animationDuration: '2.8s' }}
         />
