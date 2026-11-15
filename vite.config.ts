@@ -85,7 +85,14 @@ export default defineConfig({
         rules: { 'ultimate/no-raw-timer': 'error' },
       },
       {
-        files: ['extensions/*/api.ts', 'extensions/*/refs.ts', 'extensions/*/ui.tsx'],
+        files: [
+          'extensions/*/api.ts',
+          'extensions/*/refs.ts',
+          'extensions/*/ui.tsx',
+          'extensions/lineage/**',
+          'extensions/sidebar/**',
+        ],
+        excludeFiles: ['extensions/*/test/**'],
         rules: { 'ultimate/no-comments': 'error' },
       },
       {
