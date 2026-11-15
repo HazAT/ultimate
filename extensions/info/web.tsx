@@ -23,7 +23,6 @@ import { SkillPicker, skillDialog } from './skill-picker.tsx'
 
 const pad = (value: number) => String(value).padStart(2, '0')
 
-/** 3d 04h, 2h 14m, 5m 03s, 42s. */
 function uptime(ms: number) {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   const [d, h, m, s] = [
@@ -38,7 +37,6 @@ function uptime(ms: number) {
   return `${s}s`
 }
 
-/** `~/…` paths, elided in the middle to fit the panel. */
 function usePath(system: SystemInfo) {
   return (path: string, max = 34) =>
     elidePath(shortenPath(path, { home: system.machine.home }), max)
@@ -431,7 +429,6 @@ function Workspaces() {
   )
 }
 
-/** `…/name/SKILL.md` as `name`, any other file by its name. */
 function shortSkill(path: string) {
   const parts = path.split('/')
   return parts.at(-1) === 'SKILL.md' ? (parts.at(-2) ?? path) : (parts.at(-1) ?? path)
@@ -447,7 +444,6 @@ function InfoPanel() {
     return <div className="p-3 font-mono text-[11.5px] text-muted-foreground">connecting…</div>
   return (
     <div className="pb-4">
-      {/* The shown conversation first, then this host, then what loads into every prompt. */}
       <Workspaces />
       <Model />
       <Code system={system} />

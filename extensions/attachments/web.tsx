@@ -15,8 +15,7 @@ async function upload(file: File) {
   return path
 }
 
-/** One value for every composer, so they re-render only when this module reloads. */
-const uploads = { upload, maxBytes: MAX_FILE_BYTES, keptMs: KEPT_MS }
-const useUpload = () => uploads
+const stableComposerUploads = { upload, maxBytes: MAX_FILE_BYTES, keptMs: KEPT_MS }
+const useUpload = () => stableComposerUploads
 
 export default defineWebExtension({ provides: [provide(FileUpload, useUpload)] })

@@ -2,15 +2,14 @@ export type Rates = { input: number; output: number; cacheRead: number; cacheWri
 export type RateSample = { rates: Rates; elapsed: number }
 export const keys = ['input', 'output', 'cacheRead', 'cacheWrite'] as const
 export const zero = (): Rates => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
-const samplingGap = 5000
+const maxSamplingGapMs = 5000
 const windowMs = 30000
 
-/** Aggregate snapshots preserve signed partial corrections; only displayed rates clamp. */
 export function createRateSampler() {
   let points: { at: number; total: Rates }[] = []
   return (at: number, total: Rates): RateSample | null => {
     const previous = points.at(-1)
-    if (!previous || at < previous.at || at - previous.at > samplingGap) {
+    if (!previous || at < previous.at || at - previous.at > maxSamplingGapMs) {
       points = [{ at, total: { ...total } }]
       return null
     }
@@ -26,7 +25,8 @@ export function createRateSampler() {
     const rates = zero()
     for (const key of keys) {
       const baseline = first.total[key] + (next.total[key] - first.total[key]) * fraction
-      rates[key] = Math.max(0, (total[key] - baseline) / elapsed)
+      const signedCorrectionPerSecond = (total[key] - baseline) / elapsed
+      rates[key] = Math.max(0, signedCorrectionPerSecond)
     }
     return { rates, elapsed }
   }

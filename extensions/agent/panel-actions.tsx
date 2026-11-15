@@ -8,17 +8,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn, usePanels, useUltimate, useViewport } from '@/sdk'
 
-/** The panels a tablet's title bar shows as icons; the rest go behind its `⋯` menu. */
 const quickPanels = ['todos', 'tasks', 'activity', 'info']
 
 const action =
   'flex size-7 cursor-pointer items-center justify-center rounded-md transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring'
 
-/**
- * On a tablet (an unfolded foldable) the panels overlay the conversation and the header's toggle sits far from the
- * hand, so the title bar's right end gets the `quickPanels` as icons, each opening its panel or closing it when
- * shown, and a `⋯` menu with the rest. Only on the Agent surface, whose panels they are.
- */
 export function PanelActions() {
   const { open, active, tabs } = usePanels()
   const { surface, openPanel, closePanel } = useUltimate()

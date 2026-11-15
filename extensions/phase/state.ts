@@ -13,16 +13,18 @@ function textOf(entry: EntryRecord | undefined) {
     .join(' ')
 }
 
-/** Entries are chronological; roots include the project and the conversation's worktree. */
-export function phaseState(entries: readonly EntryRecord[], roots: readonly string[]) {
+export function phaseState(
+  chronologicalEntries: readonly EntryRecord[],
+  projectAndWorktreeRoots: readonly string[],
+) {
   const results = new Map(
-    entries.flatMap((entry) =>
+    chronologicalEntries.flatMap((entry) =>
       (entry.model ?? []).flatMap((message) =>
         message.role === 'toolResult' ? [[message.toolCallId, message] as const] : [],
       ),
     ),
   )
-  const calls = entries.flatMap((entry) =>
+  const calls = chronologicalEntries.flatMap((entry) =>
     (entry.model ?? []).flatMap((message) =>
       message.role === 'assistant'
         ? message.content.filter((block) => block.type === 'toolCall')
@@ -30,7 +32,7 @@ export function phaseState(entries: readonly EntryRecord[], roots: readonly stri
     ),
   )
   return {
-    request: clip(textOf(entries.findLast(isInput)), 1500),
+    request: clip(textOf(chronologicalEntries.findLast(isInput)), 1500),
     recentTools: calls.slice(-15).map((call) => {
       const args = call.arguments
       let value: string
@@ -48,7 +50,7 @@ export function phaseState(entries: readonly EntryRecord[], roots: readonly stri
         case 'edit':
         case 'write': {
           const path = typeof args.path === 'string' ? args.path : ''
-          const root = roots.find((candidate) => path.startsWith(candidate + '/'))
+          const root = projectAndWorktreeRoots.find((candidate) => path.startsWith(candidate + '/'))
           value = root ? relative(root, path) : path
           break
         }
@@ -85,7 +87,7 @@ export function phaseState(entries: readonly EntryRecord[], roots: readonly stri
     }),
     agentSaid: clip(
       textOf(
-        entries.findLast((entry) =>
+        chronologicalEntries.findLast((entry) =>
           entry.model?.some(
             (message) =>
               message.role === 'assistant' &&

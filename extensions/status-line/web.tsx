@@ -28,7 +28,6 @@ import { RatesAction } from './refs.ts'
 import type { RateSample } from './refs.ts'
 import { responseAfter, turnOf } from './turns.ts'
 
-/** A status-line item with a tooltip of details. */
 function Item({
   children,
   tip,
@@ -145,8 +144,8 @@ function Tokens() {
   if (total.cacheRead) parts.push(`R${formatTokens(total.cacheRead)}`)
   if (total.cacheWrite) parts.push(`W${formatTokens(total.cacheWrite)}`)
   if (hit !== undefined) parts.push(`CH${hit.toFixed(1)}%`)
-  // A subscription's $0.000 says something once there is usage, and looks broken before.
-  if (total.cost || (subscription && parts.length > 0))
+  const hasSpendOrSubscriptionUsage = total.cost || (subscription && parts.length > 0)
+  if (hasSpendOrSubscriptionUsage)
     parts.push(
       <span className="text-foreground/80">
         ${total.cost.toFixed(3)}
@@ -156,7 +155,6 @@ function Tokens() {
   if (!parts.length) return null
   return (
     <Item
-      // On a phone the status line below already sums the usage.
       className="max-md:hidden"
       tip={
         <>
@@ -264,10 +262,6 @@ function Context() {
 
 const dollars = (cost: number) => `$${cost.toFixed(cost < 1 ? 3 : 2)}`
 
-/**
- * A stored message's readout on its hover row: the context its response was sent with, and what it cost. A turn's
- * last response adds up the turn since its input; an input shows the context it was sent into.
- */
 function MessageUsage({ entry }: { entry: EntryRecord }) {
   const entries = useTranscript()
   const models = useModels()
