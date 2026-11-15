@@ -55,10 +55,8 @@ import { useShell, useSidebarState } from './state.tsx'
 import { topLevelRows } from './listed.ts'
 import { UnderUltimate, Unlisted } from './ui.tsx'
 
-/** The shown conversation, also while its snapshot is still on the way. */
 const useShownId = () => useStore((state) => state.view?.conversation.id ?? state.requested)
 
-/** The top-level conversation above `id` by parent links, or `id`'s own summary when it is top-level. */
 function topOf(id: number | undefined, conversations: readonly ConversationSummary[]) {
   let current = conversations.find((conversation) => conversation.id === id)
   while (current?.parentConversationId !== undefined) {
@@ -68,7 +66,6 @@ function topOf(id: number | undefined, conversations: readonly ConversationSumma
   return current
 }
 
-/** Why a top-level conversation is working: its own run, or only runs of conversations below it. */
 function workingByTop(conversations: readonly ConversationSummary[]) {
   const working = new Map<number, 'self' | 'subagents'>()
   for (const conversation of conversations) {
@@ -84,17 +81,15 @@ function workingByTop(conversations: readonly ConversationSummary[]) {
   return working
 }
 
-/** Siblings by latest input, newest first. */
-const byInput = (a: ConversationSummary, b: ConversationSummary) =>
+const newestInputFirst = (a: ConversationSummary, b: ConversationSummary) =>
   (b.inputAt ?? 0) - (a.inputAt ?? 0) || b.id - a.id
 
-const pinned = (conversation: ConversationSummary) =>
+const neverConcludedStandingAgent = (conversation: ConversationSummary) =>
   conversation.label === 'lander' ||
   (conversation.label === 'agent' &&
     conversation.parentConversationId === undefined &&
     conversation.ownerTaskId === undefined)
 
-/** The project tree, with owned subagents under each row and earlier/concluded work at the bottom. */
 export function Conversations() {
   const ultimateId = useDocOf(ROOT, StandingDoc)?.ultimate
   return (
@@ -113,7 +108,6 @@ export function Conversations() {
 }
 const none: ReadonlySet<number> = new Set()
 
-/** The tree, with how many messages and answers wait on the user for @ultimate's row. */
 function Tree({
   waiting,
   parked,
@@ -121,29 +115,27 @@ function Tree({
 }: {
   waiting: number
   parked: ReadonlySet<number>
-  /** Each provider's conversations no section lists. */
   unlisted: readonly ReadonlySet<number>[]
 }) {
   const overview = useOverview()
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const tasks = useTasks()
-  const foreground = new Set<number>(
+  const foregroundTaskConversations = new Set<number>(
     Object.values(tasks?.tasks ?? {})
       .filter((task) => !task.background)
       .map((task) => task.conversationId),
   )
-  // The task graph reflects the run; the timestamp/title list can lag. A run a pause parked is not working.
   const conversations = useConversations().map((conversation) => ({
     ...conversation,
     busy:
       !parked.has(conversation.id) &&
-      (foreground.has(conversation.id) || overview[conversation.id]?.runState === 'working'),
+      (foregroundTaskConversations.has(conversation.id) ||
+        overview[conversation.id]?.runState === 'working'),
   }))
   const actions = useShell()
   const workspacesEnabled = useSystem()?.extensions.some(
     (extension) => extension.name === 'workspaces' && extension.enabled,
   )
-  // Beside another surface (Memory) no conversation shows, so no row is highlighted.
   const conversationShown = useShownId()
   const shownId = actions.surface === 'agent' ? conversationShown : undefined
   const now = useNow(60_000)
@@ -154,40 +146,50 @@ function Tree({
   const hiddenIds = hiddenConversationIds(conversations, concludedIds)
   const roots = new Set(useRoots())
   const summary =
-    shownTop && !pinned(shownTop) && !roots.has(shownTop.id) && !hiddenIds.has(shownTop.id)
+    shownTop &&
+    !neverConcludedStandingAgent(shownTop) &&
+    !roots.has(shownTop.id) &&
+    !hiddenIds.has(shownTop.id)
       ? overview[shownTop.id]
       : undefined
   const [expanded, setExpanded] = useSidebarState<number[]>('expanded', [])
   const working = workingByTop(conversations)
   const topLevel = topLevelRows(conversations, new Set(unlisted.flatMap((set) => [...set])))
-  // @ultimate first, then the lander and other standing agents: pinned above the rest and never concluded.
   const standingIds = useDocOf(ROOT, StandingDoc)
   const ultimateId = standingIds?.ultimate
   const ultimate = topLevel.find((conversation) => conversation.id === ultimateId)
   const agents = topLevel
-    .filter((conversation) => pinned(conversation) && conversation.id !== ultimateId)
+    .filter(
+      (conversation) => neverConcludedStandingAgent(conversation) && conversation.id !== ultimateId,
+    )
     .toSorted((a, b) => Number(b.label === 'lander') - Number(a.label === 'lander') || a.id - b.id)
   const workspaceIndex = useWorkspaceIndex()
   const listed = topLevel
-    .filter((conversation) => !pinned(conversation) && !hiddenIds.has(conversation.id))
-    .toSorted(byInput)
+    .filter(
+      (conversation) =>
+        !neverConcludedStandingAgent(conversation) && !hiddenIds.has(conversation.id),
+    )
+    .toSorted(newestInputFirst)
   const hidden = topLevel
-    .filter((conversation) => !pinned(conversation) && hiddenIds.has(conversation.id))
-    .toSorted(byInput)
+    .filter(
+      (conversation) =>
+        !neverConcludedStandingAgent(conversation) && hiddenIds.has(conversation.id),
+    )
+    .toSorted(newestInputFirst)
   const branchesBySource = new Map<number, ConversationSummary[]>()
-  for (const conversation of topLevel.toSorted(byInput)) {
+  for (const conversation of topLevel.toSorted(newestInputFirst)) {
     if (roots.has(conversation.id) || !conversation.branchOf) continue
     const source = conversation.branchOf.conversationId
     branchesBySource.set(source, [...(branchesBySource.get(source) ?? []), conversation])
   }
-  const rootRows = listed.filter((conversation) => roots.has(conversation.id)).toSorted(byInput)
+  const rootRows = listed
+    .filter((conversation) => roots.has(conversation.id))
+    .toSorted(newestInputFirst)
   const landings = useLandings(rootRows.map((root) => root.id))
-  /** The listed branches below `id`, at any depth. */
   const branchesBelow = (id: number): ConversationSummary[] =>
     (branchesBySource.get(id) ?? [])
       .filter((branch) => !hiddenIds.has(branch.id))
       .flatMap((branch) => [branch, ...branchesBelow(branch.id)])
-  // Every branch of a tree is in flight until it landed after its latest input; landed ones wait in Earlier.
   const openBranches = rootRows
     .flatMap((root) => branchesBelow(root.id))
     .filter(
@@ -195,12 +197,13 @@ function Tree({
         inFlight(branch, workspaceIndex) &&
         stillOpen({ conversation: branch, working: working.has(branch.id) }, landings),
     )
-    .toSorted(byInput)
+    .toSorted(newestInputFirst)
   const rest = listed.filter(
     (conversation) =>
-      !roots.has(conversation.id) && !pinned(conversation) && !openBranches.includes(conversation),
+      !roots.has(conversation.id) &&
+      !neverConcludedStandingAgent(conversation) &&
+      !openBranches.includes(conversation),
   )
-  // The rest, with branches nested under their source when it is there too.
   const earlier = rest.filter(
     (conversation) => !rest.some((source) => source.id === conversation.branchOf?.conversationId),
   )
@@ -236,20 +239,17 @@ function Tree({
         }
       } catch (failure) {
         setWarning({ id, failure: errorMessage(failure) })
-        // Unhandled ActionErrors become notices; the dialog still lets the user conclude.
         throw failure
       }
     }
     await setConclude(id, conclude)
   }
-  /** A standing agent's or the lander's row: status and age, the lander's latest landing, @ultimate's questions. */
   const standingRow = (conversation: ConversationSummary | undefined) => {
     const busy = conversation !== undefined && working.has(conversation.id)
     const latest = Math.max(conversation?.inputAt ?? 0, conversation?.answerAt ?? 0)
     const lander = conversation?.label === 'lander'
     const isUltimate = conversation === undefined || conversation.id === ultimateId
     const shown = conversation !== undefined && conversation.id === shownTop?.id
-    // A lander lands without a model run: its dot pulses for the landing too.
     const landing =
       lander &&
       workspaceIndex.queue.some(
@@ -279,18 +279,15 @@ function Tree({
       : waiting > 0
         ? 'waits'
         : 'idle'
+    const markKeepsPulsingWhileUserWaits =
+      state === 'working' || landing || (busy && state === 'waits')
     return (
       <StandingRow
         conversation={conversation}
         key={conversation?.id ?? 'ultimate'}
         name={name}
-        // Its mark keeps pulsing while it works, also when its word says what waits on you.
         presence={
-          state === 'working' || landing || (busy && state === 'waits')
-            ? 'working'
-            : state === 'waits'
-              ? 'waiting'
-              : 'idle'
+          markKeepsPulsingWhileUserWaits ? 'working' : state === 'waits' ? 'waiting' : 'idle'
         }
         onOpen={() =>
           conversation && !isUltimate
@@ -306,7 +303,6 @@ function Tree({
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
             ) : (
-              // No count: the Inbox row under it carries how many wait on the user.
               <span className={cn('shrink-0', stateTone[state])}>{stateWord(state)}</span>
             )}
             {latest > 0 && (
@@ -323,7 +319,7 @@ function Tree({
     )
   }
   const row = (conversation: ConversationSummary, shown = conversation.id === shownTop?.id) => {
-    if (pinned(conversation)) return standingRow(conversation)
+    if (neverConcludedStandingAgent(conversation)) return standingRow(conversation)
     if (roots.has(conversation.id))
       return (
         <MemoryRow
@@ -345,8 +341,7 @@ function Tree({
       },
       log,
     )
-    // Queued input counts as working too; subagents working below it say so. A question to the user outranks both.
-    const state =
+    const workingUnlessQuestionWaitsOnUser =
       derived === 'waits'
         ? undefined
         : (working.get(conversation.id) ?? (derived === 'working' ? 'self' : undefined))
@@ -366,9 +361,9 @@ function Tree({
           recorded !== undefined &&
           (conversation.answerAt ?? 0) > recorded &&
           conversation.id !== shownId &&
-          state === undefined
+          workingUnlessQuestionWaitsOnUser === undefined
         }
-        working={state}
+        working={workingUnlessQuestionWaitsOnUser}
       />
     )
   }
@@ -382,10 +377,11 @@ function Tree({
     childrenByParent.set(parent, children)
   }
   const tree = (conversation: ConversationSummary, nested = false, concluded = false) => {
-    // A listed root runs no turns, so anything it owns predates its tally: leftovers stay readable by link and search.
-    const children = roots.has(conversation.id) ? [] : (childrenByParent.get(conversation.id) ?? [])
-    const open = expanded.includes(conversation.id)
-    // Open branches are listed in In flight and a root's Memory row lists none: the rest nest under their source.
+    const tallyHasOnlyHistoricalOwnedChildren = roots.has(conversation.id)
+    const children = tallyHasOnlyHistoricalOwnedChildren
+      ? []
+      : (childrenByParent.get(conversation.id) ?? [])
+    const mountSubagentRows = expanded.includes(conversation.id)
     const ownBranches =
       roots.has(conversation.id) && !concluded
         ? []
@@ -394,7 +390,7 @@ function Tree({
           )
     const subagents = children.length > 0 && (
       <Collapsible
-        open={open}
+        open={mountSubagentRows}
         onOpenChange={(next) =>
           setExpanded((previous) => [
             ...previous.filter((id) => id !== conversation.id),
@@ -410,8 +406,7 @@ function Tree({
           Sub-agents · {children.length}
         </CollapsibleTrigger>
         <CollapsibleContent className="ml-4 border-l border-border/60">
-          {/* Closed sections mount nothing, so their rows are not built either: a long history has thousands. */}
-          {open && children.map((child) => tree(child, true, concluded))}
+          {mountSubagentRows && children.map((child) => tree(child, true, concluded))}
         </CollapsibleContent>
       </Collapsible>
     )
@@ -437,7 +432,6 @@ function Tree({
       </div>
     )
   }
-  /** A branch's subagents at any depth, one line each, for its In flight row. */
   const subagentLines = (id: number, depth = 0): ReactNode[] =>
     (childrenByParent.get(id) ?? []).flatMap((child) => [
       <SubagentLine
@@ -554,7 +548,6 @@ function Tree({
             )}
           </div>
         )}
-        {/* What watches or runs in the background, from optional extensions; each section brings its own rule. */}
         <Slot name="sidebar.top" />
         <InFlight
           flights={flights}
@@ -634,7 +627,6 @@ function Tree({
   )
 }
 
-/** Records the answer the user has seen: the shown top-level conversation's latest, once it is idle. */
 export function Seen() {
   const id = useShownId()
   const summary = useConversationSummary(id)

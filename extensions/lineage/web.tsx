@@ -76,7 +76,6 @@ function userText(entry: EntryRecord) {
     : message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
 }
 
-/** A branch started from this conversation: in its tree's root a card with its intent, elsewhere a quiet divider. */
 function Branched({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   if (!BranchedEntry.is(entry)) return null
@@ -99,7 +98,6 @@ function Branched({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** The wake-up after a manual compaction of @ultimate: a quiet divider, not a user bubble. */
 function Woken() {
   return (
     <div
@@ -114,7 +112,6 @@ function Woken() {
   )
 }
 
-/** The tally's branch node: which branch started, from where, with what intent (older nodes carry the whole prompt). */
 function Started({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   const [open, setOpen] = useState(false)
@@ -174,21 +171,19 @@ function Started({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * A conversation's abstract at its anchor, with the text of the newest carrier that replaced it; carriers show nothing.
- * Once a landing froze it (or, in older tallies, a later abstract superseded it), it is not shown.
- */
 function Abstract({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   const transcript = useTranscript()
   if (!AbstractEntry.is(entry) || entry.data.anchor !== undefined) return null
-  let latest: EntryRecord = entry
+  let latestAnchorEdit: EntryRecord = entry
   for (const other of transcript)
-    if (other.id > latest.id && other.edits?.some((edit) => edit.target === entry.id))
-      latest = other
-  const omitted = latest.edits?.some((edit) => edit.target === entry.id && edit.action === 'omit')
-  if (omitted || !AbstractEntry.is(latest)) return null
-  const { conversation, at, text, title } = latest.data
+    if (other.id > latestAnchorEdit.id && other.edits?.some((edit) => edit.target === entry.id))
+      latestAnchorEdit = other
+  const anchorOmittedByLandingOrLaterAbstract = latestAnchorEdit.edits?.some(
+    (edit) => edit.target === entry.id && edit.action === 'omit',
+  )
+  if (anchorOmittedByLandingOrLaterAbstract || !AbstractEntry.is(latestAnchorEdit)) return null
+  const { conversation, at, text, title } = latestAnchorEdit.data
   return (
     <Fold
       card={entry.id}
@@ -227,7 +222,6 @@ function Abstract({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** A conversation this one asked `notify` about has finished: its title and last answer. */
 function Finished({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   if ((!FinishedEntry.is(entry) && !NoteEntry.is(entry)) || entry.data.from === undefined)
@@ -257,7 +251,6 @@ function Finished({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** A note between conversations, tinted yellow: as received (`Note from #N`) and as left (`Note → #N`). */
 function NoteCard({
   label,
   id,
@@ -298,7 +291,6 @@ function NoteCard({
   )
 }
 
-/** A note another conversation (or the lander, a quiet `notify`, a catch-up on the tally and main) left here. */
 function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
   if (!NoteEntry.is(entry)) return core
   const { from, text, source } = entry.data
@@ -308,7 +300,6 @@ function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
   return <NoteCard id={from} label="Note from" note="received" text={text} />
 }
 
-/** A catch-up on the tally and main. */
 function Catchup({ text }: { text: string }) {
   return (
     <Card data-lineage-note="main">
@@ -323,7 +314,6 @@ function Catchup({ text }: { text: string }) {
   )
 }
 
-/** The `note` tool as the note it left; a failed call keeps the generic card with its error. */
 function NoteCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   if (call.status === 'error' || call.status === 'interrupted') return core
   const left = /^Left a note in #(\d+)\.$/.exec(call.output)
@@ -340,7 +330,6 @@ function NoteCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   )
 }
 
-/** A conversation's history distilled into the start of its tally. */
 function Genesis({ entry }: { entry: EntryRecord }) {
   const text = userText(entry)
   const from = /^<tally from="#(\d+)\/(\d+)">/.exec(text)
@@ -370,7 +359,6 @@ function Genesis({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** A tally's genesis, or the empty reset a new tally starts with, which shows nothing. */
 function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const roots = useRoots()
   const lineage = LineageResetEntry.is(entry) ? entry.data?.lineage : undefined
@@ -379,7 +367,6 @@ function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   return core
 }
 
-/** A root is the project's history: read-only, with the way back to @ultimate in place of its composer. */
 function RootComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const roots = useRoots()
@@ -407,7 +394,6 @@ function HistoryBanner({ id, dock }: { id: ConversationId; dock?: boolean }) {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1">
-          {/* Zed opens on the machine Ultimate runs on, so a phone gets only the GitHub link. */}
           <Button
             className="pointer-coarse:hidden"
             onClick={() =>
@@ -451,7 +437,6 @@ function HistoryBanner({ id, dock }: { id: ConversationId; dock?: boolean }) {
   )
 }
 
-/** Where a memory was learned, `#conversation/entry`, as that conversation's chip; a click opens it at the entry. */
 function MemorySource({ source }: { source: string }) {
   const { switchConversation, showSurface } = useUltimate()
   const [conversationSource, entrySource] = source.slice(1).split('/')
@@ -478,7 +463,6 @@ function MemorySource({ source }: { source: string }) {
   )
 }
 
-/** One memory under its kind's heading: slug, line and age; a click shows its body and source. The trash icon forgets it. */
 function MemoryRow({
   root,
   slug,
@@ -492,15 +476,17 @@ function MemoryRow({
 }) {
   const [open, setOpen] = useState(false)
   const [forgetting, setForgetting] = useState(false)
-  // A recall chip asks for this memory: unfold it, bring it into view, and take the request.
-  const [focus, setFocus] = useUiState<string | null>(MEMORY_FOCUS, null)
+  const [requestedMemorySlug, consumeMemoryFocusRequest] = useUiState<string | null>(
+    MEMORY_FOCUS,
+    null,
+  )
   const row = useRef<HTMLLIElement>(null)
   useEffect(() => {
-    if (focus !== slug) return
+    if (requestedMemorySlug !== slug) return
     setOpen(true)
     row.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    setFocus(null)
-  }, [focus, slug, setFocus])
+    consumeMemoryFocusRequest(null)
+  }, [requestedMemorySlug, slug, consumeMemoryFocusRequest])
   return (
     <li className="group/memory min-w-0 rounded-md hover:bg-muted/40" data-memory={slug} ref={row}>
       <div className="flex min-w-0 items-start">
@@ -572,11 +558,6 @@ const kindSections = [
   ['lesson', 'Lessons'],
 ] as const
 
-/**
- * The Memory surface: each root's project memory, what every new branch starts from, in a reading column beside the
- * sidebar, grouped into decisions, facts and lessons, newest first. A row unfolds its body and source; @ultimate
- * maintains it. The filter narrows every group to the memories whose slug, line or body contain its text.
- */
 function MemorySurface() {
   const roots = useRoots() ?? []
   const [filter, setFilter] = useState('')
@@ -593,7 +574,6 @@ function MemorySurface() {
           </Header>
           <div className="min-h-0 flex-1 overflow-y-auto" data-lineage-memory-surface>
             <div className={cn(column(), 'pt-4 pb-10')}>
-              {/* The header pads itself for a panel; in the column it aligns with the rows' edges. */}
               <div className="[&>*]:px-0">
                 <Provided input={null} point={MemoryHeader}>
                   {(header) => header}
@@ -626,7 +606,6 @@ function RootMemory({
   root: ConversationId
   label: boolean
   filter: string
-  /** The filter box shows above the first root's memories only, and filters every root. */
   setFilter?: (text: string) => void
 }) {
   const needle = filter.trim().toLowerCase()
@@ -711,8 +690,8 @@ const kindDots: Record<MemoryItem['kind'], string> = {
   lesson: 'bg-amber-500',
 }
 
-/** Keeps the roots streaming for synchronous readers, such as the `when` of the agent's Compact command. */
-function Roots() {
+const MEMORY_AFTER_REVIEW_WITHOUT_RENUMBERING_SHORTCUTS = 70
+function StreamRootsForSynchronousCommandReaders() {
   useRoots()
   return null
 }
@@ -731,18 +710,16 @@ export default defineWebExtension({
   },
   messageActions: [GoBackAction],
   composer: RootComposer,
-  // After Review, so the switcher's existing mod+1…9 keys stay put.
   surfaces: [
     {
       id: MEMORY_SURFACE,
       title: 'Memory',
       icon: BrainIcon,
       description: 'What every new branch starts from: decisions, facts and lessons',
-      order: 70,
+      order: MEMORY_AFTER_REVIEW_WITHOUT_RENUMBERING_SHORTCUTS,
       component: MemorySurface,
     },
   ],
-  slots: { overlay: [Roots] },
-  // A root runs no turns and gets no summaries: its tally speaks for it.
+  slots: { overlay: [StreamRootsForSynchronousCommandReaders] },
   provides: [provide(Unsummarized, (id) => useRoots()?.includes(id) ?? false)],
 })

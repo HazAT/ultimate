@@ -1,7 +1,3 @@
-/**
- * Going back to an entry in the browser: the "Go back to here" message action and its confirm dialog, the note card
- * the go-back leaves, and the marker on conversations that built on the set-aside path.
- */
 import { FileIcon, GitCommitIcon, GitForkIcon, HistoryIcon } from 'lucide-react'
 import { useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -18,7 +14,6 @@ import { useRoots } from './ui.tsx'
 
 const via = { subagent: 'subagent', branch: 'branch', message: 'messaged' } as const
 
-/** Changed files with their line counts, as a landing card lists them. */
 function Files({ files }: { files: readonly RewindFile[] }) {
   return (
     <ul className="flex flex-col gap-0.5 font-mono text-[11.5px]">
@@ -71,7 +66,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-/** Confirms going back to `entry`: what it sets aside, what stays in the checkout, who built on it. */
 function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => void }) {
   const { conversationId: conversation, id: at } = entry
   const preview = useAction(RewindPreviewAction, { conversation, at })
@@ -172,7 +166,6 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
   )
 }
 
-/** The hover action on a stored message of any conversation but a root. */
 export function GoBackAction({ entry }: { entry: EntryRecord }) {
   const roots = useRoots()
   const shown = useConversation((conversation) => conversation.id)
@@ -195,7 +188,6 @@ export function GoBackAction({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** The note a go-back left: where it went back to, the summary when asked for, the files and who built on the path. */
 export function Rewound({ entry }: { entry: EntryRecord }) {
   if (!RewoundEntry.is(entry)) return null
   const { at, steps, files, commits, dependents, summary, summaryMissing } = entry.data
@@ -271,7 +263,6 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** In a conversation that built on a path its source later set aside: a quiet divider that opens the go-back. */
 export function RewoundDependent({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   if (!RewoundDependentEntry.is(entry)) return null
