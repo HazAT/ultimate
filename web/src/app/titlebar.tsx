@@ -16,7 +16,7 @@ import { actions } from '../sdk/actions.ts'
 import { shortenPath } from '../sdk/format.ts'
 import { useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { Slot } from './boundary.tsx'
+import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
 import { sidebarWidthBeyondPhone as alignSurfaceTabsWithSidebar } from './primitives.tsx'
 
@@ -229,11 +229,12 @@ function SurfaceItems() {
     >
       {surfaces.map((surface, index) => {
         const active = surface.id === shown
+        const Badge = surface.badge
         const button = (
           <button
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex cursor-pointer items-center border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
+              'flex cursor-pointer items-center gap-1.5 border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
               active && 'border-b-brand text-foreground',
             )}
             data-selected={active || undefined}
@@ -243,6 +244,15 @@ function SurfaceItems() {
             type="button"
           >
             {surface.title}
+            {Badge && (
+              <ExtensionBoundary
+                extension={surface.extension}
+                variant="inline"
+                version={surface.version}
+              >
+                <Badge />
+              </ExtensionBoundary>
+            )}
           </button>
         )
         if (index >= 9) return button
