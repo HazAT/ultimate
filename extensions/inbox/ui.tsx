@@ -15,7 +15,7 @@ import type { Entry } from './items.tsx'
 export type InboxItem = {
   /** Unique across providers, such as `shell:12`; `?inbox=<key>` and `inbox:open {key}` select it. */
   key: string
-  /** When it started waiting, epoch ms: the list is oldest first. */
+  /** When it started waiting, epoch ms: the list is newest first. */
   at: number
   /** The conversation it belongs to: the row shows it and the reading pane offers "Open in branch". */
   conversation?: ConversationId
@@ -31,7 +31,7 @@ export type InboxItem = {
 /** Every provider's items; the Inbox, its sidebar row and the To-dos' "For you" count merge them with the questions. */
 export const InboxItems = definePoint<null, InboxItem[]>('inbox.items')
 
-/** Renders with everything that waits on the user, oldest first: the open questions and every provided item. */
+/** Renders with everything that waits on the user, newest first: the open questions and every provided item. */
 export function Waiting({
   children,
 }: {

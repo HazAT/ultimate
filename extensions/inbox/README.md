@@ -1,6 +1,6 @@
 # Inbox
 
-Everything that waits on the user, oldest first, answered in place: the `inbox` surface, first tab after Agent. Its
+Everything that waits on the user, newest first, answered in place: the `inbox` surface, first tab after Agent. Its
 items are the messages `waiting` (questions) returns over the Messages log, read live and never copied, merged with
 the items other extensions provide (`items.tsx`); a question leaves the moment it is answered or dismissed, wherever
 that happened, a provided item when its provider stops listing it. Browser only: no `server.ts`, no documents, no
@@ -24,7 +24,7 @@ out behind its inline error card. Items are entries keyed by string; a question'
 - **Reading pane** for the selected item: the title, the rest of the text (messages' `Body`), its forwarded images
   (`MessageImages`), **Open preview** (a new tab) when it links one, **Open in branch #id** (messages'
   `messages:open {conversation, message}`), and the answer card itself (questions' `MessageQuestions`). When the shown
-  item leaves, the one that took its place, the next oldest, shows.
+  item leaves, the one that took its place, the next older one, shows; the one before it when it was the oldest.
 - **Keys** (desktop): `j`/`k` move the selection, `⇧O` opens the branch (plain `o` is the card's "Something else…"),
   and the card's own keys (1–9, letters, ↵, ⇧↵) answer the shown item: the Inbox passes `keys` to the card. A
   branch's transcript keeps its own rule (`keyCard`) when the Inbox is not on screen.
@@ -37,7 +37,7 @@ same at runtime (a push notification's tap, `extensions/push`). A plain number, 
 
 ## Elsewhere
 
-- **Sidebar**: a row under @ultimate's (`sidebar.under-ultimate`), amber `Inbox · N · oldest 2h` while items wait,
+- **Sidebar**: a row under @ultimate's (`sidebar.under-ultimate`), amber `Inbox · N · oldest 2h` (how long the oldest has waited) while items wait,
   a quiet `Inbox` at zero; a click opens the surface. @ultimate's own row then says only `waits on you`.
 - **To-dos**: the panel's "For you" keeps one `Inbox · N` row, provided items counted, that opens it.
 - ⌘K **Open Inbox**.
