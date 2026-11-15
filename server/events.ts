@@ -33,7 +33,13 @@ export const EventFeed = defineDoc<{ events: EventRecord[] }>({
   initial: () => ({ events: [] }),
 })
 
-export type Reactor<D extends JsonValue> = (tx: Tx, event: EventRecord<D>) => void | Promise<void>
+type CursorAtomicWrites = Tx
+type AtLeastOnceExternalEffects<D extends JsonValue> = (
+  tx: CursorAtomicWrites,
+  event: EventRecord<D>,
+) => void | Promise<void>
+
+export type Reactor<D extends JsonValue> = AtLeastOnceExternalEffects<D>
 export interface ReactorStatus {
   name: string
   events: string[]

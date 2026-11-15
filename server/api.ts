@@ -75,10 +75,12 @@ const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)\/(\d+)$/
 const maxResentSummaryTitleCharacters = 200
 const taskGraphBroadcastIntervalMs = 100
 const liveViewMinimumEntries = 150
+type StreamUniqueSubscriptionId = number
+
 interface Connection {
   send: ReturnType<typeof eventStream>['send']
-  subscriptions: Map<number, () => Promise<void>>
-  closedBeforeOpen: Set<number>
+  subscriptions: Map<StreamUniqueSubscriptionId, () => Promise<void>>
+  closedBeforeOpen: Set<StreamUniqueSubscriptionId>
   ended: boolean
 }
 function reply(response: ServerResponse, status: number, data: unknown) {
@@ -330,7 +332,7 @@ export async function createApi(
   }
   async function subscribe(
     connection: Connection,
-    sub: number,
+    streamUniqueId: StreamUniqueSubscriptionId,
     id: ConversationId,
     kinds: string[],
     withView: boolean,
@@ -370,32 +372,35 @@ export async function createApi(
     }
     if (
       connection.ended ||
-      connection.closedBeforeOpen.has(sub) ||
-      connection.subscriptions.has(sub)
+      connection.closedBeforeOpen.has(streamUniqueId) ||
+      connection.subscriptions.has(streamUniqueId)
     ) {
       await stop()
       return
     }
-    connection.subscriptions.set(sub, stop)
+    connection.subscriptions.set(streamUniqueId, stop)
     const send = <K extends keyof ServerEvents>(name: K, data: ServerEvents[K]) =>
-      connection.send(name, data, sub)
+      connection.send(name, data, streamUniqueId)
     for (const kind of unknown)
       connection.send('notice', {
         level: 'warning',
         message: `Unknown extension document: ${kind}`,
       })
-    if (live) {
-      send('view', live.value)
-      live.start(async (call) => {
-        if (call.kind === 'value') send('ops', call.ops)
-      })
+    function deliverSnapshotsThenOps() {
+      if (live) {
+        send('view', live.value)
+        live.start(async (call) => {
+          if (call.kind === 'value') send('ops', call.ops)
+        })
+      }
+      for (const doc of docs) {
+        send('doc', { kind: doc.kind, value: doc.watch.value })
+        doc.watch.start(async (call) => {
+          if (call.kind === 'value') send('docOps', { kind: doc.kind, ops: call.ops })
+        })
+      }
     }
-    for (const doc of docs) {
-      send('doc', { kind: doc.kind, value: doc.watch.value })
-      doc.watch.start(async (call) => {
-        if (call.kind === 'value') send('docOps', { kind: doc.kind, ops: call.ops })
-      })
-    }
+    deliverSnapshotsThenOps()
   }
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
@@ -521,7 +526,7 @@ export async function createApi(
         }
         if (url.pathname === '/api/restart') {
           const error =
-            (await extensions.prepared()) ??
+            (await extensions.restartRefusal()) ??
             (await requestSwap(async (generation) => {
               json(202, { ok: true, generation })
             }, host.build()))
@@ -648,7 +653,7 @@ export async function createApi(
               break
             }
             case 'abort': {
-              for (;;) {
+              abortUntilIdle: for (;;) {
                 const ownTasksPreservingQueuedInputs = (
                   await harness.inspect(context)
                 ).tasks.filter(
@@ -657,7 +662,7 @@ export async function createApi(
                     !record.owner &&
                     !record.background,
                 )
-                if (ownTasksPreservingQueuedInputs.length === 0) break
+                if (ownTasksPreservingQueuedInputs.length === 0) break abortUntilIdle
                 for (const { record } of ownTasksPreservingQueuedInputs) {
                   await harness.abortTask(record.id, context)
                   await harness.waitForTask(record.id, context)

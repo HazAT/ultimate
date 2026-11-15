@@ -15,9 +15,11 @@ export const MOVES =
   /^((state|trace|state\.stale-.+)\.sqlite(-wal|-shm)?|chapters|chapters\.json|pending-chapter\.json|conversations\.json|previews\.json|supervisor\.log)$/
 export const JOURNAL = 'reset.json'
 
+type ReplayableInstallation = { database: string; record: BackupFile }
+
 export interface Journal {
   backup: string
-  restore?: { database: string; record: BackupFile }
+  restore?: ReplayableInstallation
 }
 
 export const readJournal = (home: string) =>
@@ -108,15 +110,19 @@ export async function moveInto(home: string, backup: string, names: string[]) {
   }
 }
 
+const journalBeforeMoves = (home: string, journal: Journal) =>
+  writeJson(join(home, JOURNAL), journal)
+const removeJournalLast = (home: string) => rm(join(home, JOURNAL))
+
 export async function apply(p: Plan) {
   const lock = await lockHome(p.home)
   try {
     const { journal: existingResetIntent, moves: stateRecheckedUnderLock } = await inventory(p.home)
     const backup = existingResetIntent?.backup ?? p.backup
     await mkdir(backup, { recursive: true })
-    if (!existingResetIntent) await writeJson(join(p.home, JOURNAL), { backup } satisfies Journal)
+    if (!existingResetIntent) await journalBeforeMoves(p.home, { backup } satisfies Journal)
     await moveInto(p.home, backup, stateRecheckedUnderLock)
-    await rm(join(p.home, JOURNAL))
+    await removeJournalLast(p.home)
     return { backup }
   } finally {
     await lock.close()

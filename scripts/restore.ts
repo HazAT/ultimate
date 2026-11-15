@@ -6,12 +6,12 @@ import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { cloudConfig, fetchRegister } from '../lib/cloud.ts'
 import type { Register } from '../lib/cloud.ts'
-import { moveDatabase } from '../lib/database-files.ts'
+import { moveDatabase as installDownloadedDatabase } from '../lib/database-files.ts'
 import { projectIdentity } from '../lib/project-identity.ts'
 import { readSecret } from '../lib/secrets.ts'
 import { projectHome } from '../lib/project-paths.ts'
 import { writeJson } from '../lib/json-file.ts'
-import { chapterKey, writeBackup } from '../extensions/cloud/backup.ts'
+import { chapterKey, writeBackup as recordInstallation } from '../extensions/cloud/backup.ts'
 import {
   chapterFiles,
   chapterName,
@@ -29,7 +29,7 @@ import {
   JOURNAL,
   lockHome,
   movable,
-  moveInto,
+  moveInto as backUpBeforeInstall,
   readJournal,
   refusal,
   size,
@@ -95,6 +95,10 @@ async function locked<T>(home: string, step: () => Promise<T>) {
   }
 }
 
+const journalBeforeMoves = (home: string, journal: RestoreJournal) =>
+  writeJson(join(home, JOURNAL), journal)
+const removeJournalLast = (home: string) => rm(join(home, JOURNAL))
+
 export async function restore(o: RestoreOptions) {
   await mkdir(o.home, { recursive: true })
   return locked(o.home, async () => {
@@ -145,31 +149,32 @@ export async function restore(o: RestoreOptions) {
       },
     }
     try {
-      await writeJson(join(o.home, JOURNAL), journal)
+      await journalBeforeMoves(o.home, journal)
     } catch (error) {
       await rm(verifiedDownload, { force: true })
       throw error
     }
-    return { ...(await finishJournaledRestore(o.home, journal)), manifest, keptRefs }
+    return { ...(await replayRestoreSteps(o.home, journal)), manifest, keptRefs }
   })
 }
 
-async function finishJournaledRestore(home: string, journal: RestoreJournal) {
-  const { backup, restore: pending } = journal
+async function replayRestoreSteps(home: string, journal: RestoreJournal) {
+  const { backup, restore: replayableInstall } = journal
   const chapter = journal.chapter ?? FIRST_CHAPTER
   const { dir, database } = chapterFiles(home, chapter)
-  if (!pending) throw new Error(`${join(home, JOURNAL)} is a reset's; finish it with pnpm reset`)
+  if (!replayableInstall)
+    throw new Error(`${join(home, JOURNAL)} is a reset's; finish it with pnpm reset`)
   const moves: string[] = []
-  if (existsSync(pending.database)) {
+  if (existsSync(replayableInstall.database)) {
     moves.push(...(await stateFilesExcludingOtherChapters(dir)))
     if (existsSync(join(dir, 'cloud-backup.json'))) moves.push('cloud-backup.json')
-    await moveInto(dir, backup, moves)
-    await moveDatabase(pending.database, database)
+    await backUpBeforeInstall(dir, backup, moves)
+    await installDownloadedDatabase(replayableInstall.database, database)
   } else if (!existsSync(database))
     throw new Error(
-      `${pending.database} is gone and ${dir} has no state.sqlite; the restore cannot finish`,
+      `${replayableInstall.database} is gone and ${dir} has no state.sqlite; the restore cannot finish`,
     )
-  await writeBackup(dir, pending.record)
+  await recordInstallation(dir, replayableInstall.record)
   const chapterRecordNeeded = chapter !== FIRST_CHAPTER || existsSync(join(home, CHAPTERS_FILE))
   if (chapterRecordNeeded) {
     const chapters = await readChapters(home)
@@ -179,7 +184,7 @@ async function finishJournaledRestore(home: string, journal: RestoreJournal) {
     await writeJson(join(home, CHAPTERS_FILE), chapters)
   }
   await continueChapterIds(home, chapter)
-  await rm(join(home, JOURNAL))
+  await removeJournalLast(home)
   return { backup, moves, dir, database }
 }
 
@@ -187,7 +192,7 @@ export const finishRestore = (home: string) =>
   locked(home, async () => {
     const journal: RestoreJournal | undefined = await readJournal(home)
     if (!journal?.restore) throw new Error(`No interrupted restore in ${home}`)
-    return { ...(await finishJournaledRestore(home, journal)), record: journal.restore.record }
+    return { ...(await replayRestoreSteps(home, journal)), record: journal.restore.record }
   })
 
 export async function main(args = process.argv.slice(2)) {

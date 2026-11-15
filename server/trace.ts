@@ -256,6 +256,22 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
     return { context, finish }
   }
 
+  function recordPreservingSettlement(
+    promise: Promise<unknown>,
+    finish: (ok: boolean, value: unknown) => void,
+  ) {
+    return promise.then(
+      (value: unknown) => {
+        finish(true, value)
+        return value
+      },
+      (error: unknown) => {
+        finish(false, error)
+        throw error
+      },
+    )
+  }
+
   function run<T>(
     call: Call,
     work: () => T,
@@ -273,16 +289,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
       finish(true, result)
       return result
     }
-    return result.then(
-      (value: unknown) => {
-        finish(true, value)
-        return value
-      },
-      (error: unknown) => {
-        finish(false, error)
-        throw error
-      },
-    ) as T
+    return recordPreservingSettlement(result, finish) as T
   }
 
   return {

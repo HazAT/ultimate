@@ -264,7 +264,7 @@ export async function loadExtensions(
   const openers = new Set<() => Promise<void>>()
   const loadErrorListeners = new Set<(name: string, error: string) => void>()
   const beforeLoad = new Set<() => Promise<void>>()
-  async function prepared() {
+  async function preparationError() {
     let failed: string | undefined
     for (const callback of beforeLoad)
       try {
@@ -275,8 +275,8 @@ export async function loadExtensions(
     return failed
   }
   let lastReportedPreparationFailure: string | undefined
-  async function preparedToLoad() {
-    const failed = await prepared()
+  async function prepareLoadBestEffort() {
+    const failed = await preparationError()
     if (failed && failed !== lastReportedPreparationFailure) notice(`Loading as it is: ${failed}`)
     lastReportedPreparationFailure = failed
     const modules = join(host.ultimateRoot, 'node_modules')
@@ -376,7 +376,7 @@ export async function loadExtensions(
       host.scanSubmissions(query, limit, cursor, caller),
     models: () => host.models(),
     skills: (cwd) => host.skills(cwd),
-    restart: async (approved) => (await prepared()) ?? host.restart(approved),
+    restart: async (approved) => (await preparationError()) ?? host.restart(approved),
     get chapter() {
       return host.chapter
     },
@@ -422,7 +422,7 @@ export async function loadExtensions(
     },
     reloadExtensions: async () => {
       const work = chain
-        .then(() => (closed ? undefined : preparedToLoad()))
+        .then(() => (closed ? undefined : prepareLoadBestEffort()))
         .then(() => (closed ? undefined : reloadSettings()))
       const recoveredQueueForLaterReloads = work.catch(() => changed())
       chain = recoveredQueueForLaterReloads
@@ -443,7 +443,7 @@ export async function loadExtensions(
   let chain = Promise.resolve()
   function enqueue(work: () => Promise<void>) {
     chain = chain
-      .then(() => (closed ? undefined : preparedToLoad()))
+      .then(() => (closed ? undefined : prepareLoadBestEffort()))
       .then(() => (closed ? undefined : work()))
       .catch((error: unknown) => {
         notice(`Extension reload failed: ${String(error)}`)
@@ -800,8 +800,8 @@ export async function loadExtensions(
     doc: findDoc,
     catalogue: () => apis.catalogue(),
     trace: trace.reader,
-    prepared,
-    preparedToLoad,
+    restartRefusal: preparationError,
+    prepareLoadBestEffort,
     async opened() {
       trace.open()
       open = true

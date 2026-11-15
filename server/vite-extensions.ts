@@ -20,6 +20,7 @@ export function extensionModules(
     join(root.path, 'extensions'),
   )
   let sourcesFile = ''
+  const invalidateTailwindByMtime = (sources: string) => writeFile(sourcesFile, sources)
   return {
     name: 'ultimate:extension-modules',
     configResolved(config) {
@@ -90,7 +91,7 @@ export function extensionModules(
         const current = await readFile(sourcesFile, 'utf8').catch(ignoring(isMissing))
         if (current !== sourcesExcludingExtensionTests) {
           await mkdir(dirname(sourcesFile), { recursive: true })
-          await writeFile(sourcesFile, sourcesExcludingExtensionTests)
+          await invalidateTailwindByMtime(sourcesExcludingExtensionTests)
         }
         return (
           (await readFile(join(ultimateRoot, 'web/src/index.css'), 'utf8')) +

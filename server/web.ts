@@ -179,15 +179,13 @@ export async function createWeb(options: {
         allFileNamesAndContentsHash.update(file + '\0').update(await readFile(full))
     }
     const id = allFileNamesAndContentsHash.digest('hex').slice(0, 12)
-    const existingIdenticalBundle = join(folder, id)
-    if (
-      await stat(existingIdenticalBundle).then(
-        () => true,
-        () => false,
-      )
+    const bundlePath = join(folder, id)
+    const identicalBundleExists = await stat(bundlePath).then(
+      () => true,
+      () => false,
     )
-      await rm(outDir, { recursive: true, force: true })
-    else await rename(outDir, existingIdenticalBundle)
+    if (identicalBundleExists) await rm(outDir, { recursive: true, force: true })
+    else await rename(outDir, bundlePath)
     const publicFiles = (
       await readdir(join(webRoot, 'public'), { recursive: true }).catch(() => [])
     ).map((file) => join(webRoot, 'public', file))
