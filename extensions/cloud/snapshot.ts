@@ -46,6 +46,8 @@ const CREATE_REF_ONLY_IF_ABSENT = ''
 const ULTIMATE_REF_NAMESPACE = 'refs/heads/ultimate'
 const gitWithoutTimeout = (repo: string, ...args: string[]) =>
   gitIn({ cwd: repo, timeout: 0, maxBuffer: 16 * 1024 * 1024 }, ...args)
+const compareAndSwapRef = (repo: string, ref: string, next: string, expected: string) =>
+  gitWithoutTimeout(repo, 'update-ref', ref, next, expected)
 
 export async function uploadSnapshot(o: {
   url: string
@@ -354,7 +356,7 @@ async function fetchBranches(repo: string, bundle: string, id: string) {
     if (!current) await gitWithoutTimeout(repo, 'update-ref', ref, oid, CREATE_REF_ONLY_IF_ABSENT)
     else if (current === oid || (await contains(current, oid))) continue
     else if (!checkedOut.has(ref) && (await contains(oid, current)))
-      await gitWithoutTimeout(repo, 'update-ref', ref, oid, current)
+      await compareAndSwapRef(repo, ref, oid, current)
     else {
       const moved = `refs/heads/ultimate-moved/${id}/${ref.slice(ULTIMATE_REF_NAMESPACE.length + 1)}`
       const previouslyKeptSnapshotCommit = await gitWithoutTimeout(

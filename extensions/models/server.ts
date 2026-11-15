@@ -29,7 +29,7 @@ import {
 import type { SaveFamilies } from './refs.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
-import { fallback as fallbackBeforeRunReadsAgent } from './fallback.ts'
+import { fallback } from './fallback.ts'
 import { inBackground } from '../../lib/errors.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]
@@ -163,6 +163,8 @@ export const actions = {
     }
     live.set(flowId, flow)
     const { signal } = flow.controller
+    const credentialSafeLoginRejection = (): 'cancel' | 'error' =>
+      signal.aborted ? 'cancel' : 'error'
     void host.modelRuntime
       .login(provider, type, {
         signal,
@@ -201,10 +203,7 @@ export const actions = {
             queueLoginDocumentUpdate((state) => state.events.push(withoutUndefined(event))),
           ),
       })
-      .then(
-        () => (signal.aborted ? 'cancel' : 'complete'),
-        () => (signal.aborted ? 'cancel' : 'error'),
-      )
+      .then(() => (signal.aborted ? 'cancel' : 'complete'), credentialSafeLoginRejection)
       .then(async (status) => {
         live.delete(flowId)
         if (status === 'complete') await invalidateLoginHealthBestEffort(host, provider)
@@ -273,8 +272,7 @@ export default function models(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-        beforeInput: (_input, { tx, conversationId }) =>
-          fallbackBeforeRunReadsAgent(host, tx, conversationId),
+        beforeInput: (_input, { tx, conversationId }) => fallback(host, tx, conversationId),
       }),
     ],
   })

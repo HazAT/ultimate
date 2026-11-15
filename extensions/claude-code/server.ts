@@ -6,8 +6,8 @@ import {
 import {
   getClaudeStatus,
   closeClaudeProcesses,
-  useExchangeTap as useRedactedExchangeTap,
-  useSpawn as useNonblockingProcessHelper,
+  useExchangeTap,
+  useSpawn,
 } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -30,22 +30,31 @@ export function createUltimateClaudeCodeProvider() {
   return { ...provider, getModels, getAllModels: getModels }
 }
 
-const reloadSharedFieldFactories = {
+type StableLifecycleFields = {
+  readonly active: Set<Promise<unknown>>
+  closing: boolean
+  readonly facets: Set<symbol>
+}
+type RenameOnMeaningChangeFields = {
+  provider: ReturnType<typeof createUltimateClaudeCodeProvider>
+  sessions: Map<string, ConversationId>
+}
+type ReloadSharedProviderState = StableLifecycleFields & RenameOnMeaningChangeFields
+
+const reloadSharedFieldFactories: {
+  [K in keyof ReloadSharedProviderState]: () => ReloadSharedProviderState[K]
+} = {
   provider: () => createUltimateClaudeCodeProvider(),
   active: () => new Set<Promise<unknown>>(),
   closing: () => false,
   facets: () => new Set<symbol>(),
   sessions: () => new Map<string, ConversationId>(),
 }
-type ReloadSharedProviderState = {
-  [K in keyof typeof reloadSharedFieldFactories]: ReturnType<(typeof reloadSharedFieldFactories)[K]>
-}
-
 export default function claudeCode(host: ExtensionHost) {
   // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useSpawn (patched).
-  useNonblockingProcessHelper(spawn)
+  useSpawn(spawn)
   // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useExchangeTap (patched).
-  useRedactedExchangeTap(({ sessionId, model, exchange }) => {
+  useExchangeTap(({ sessionId, model, exchange }) => {
     const exchanges = host.want(ClaudeCodeExchanges)
     if (!exchanges) return
     exchanges.record({
@@ -67,8 +76,7 @@ export default function claudeCode(host: ExtensionHost) {
     const state = {} as ReloadSharedProviderState
     host.onClose(async () => {
       state.closing = true
-      const requestsMustSettleBeforeWorkerClose = state.active.size
-      if (requestsMustSettleBeforeWorkerClose)
+      if (state.active.size)
         void Promise.allSettled(state.active)
           .then(() => closeClaudeProcesses())
           .catch((error: unknown) =>
@@ -150,8 +158,7 @@ export default function claudeCode(host: ExtensionHost) {
   shared.facets.add(facet)
   host.onClose(async () => {
     shared.facets.delete(facet)
-    const lastFacetReleased = !shared.facets.size
-    if (lastFacetReleased) host.modelRuntime.unregisterProvider(provider.id)
+    if (!shared.facets.size) host.modelRuntime.unregisterProvider(provider.id)
   })
   host.modelRuntime.registerNativeProvider(provider)
   host.onOpen(async () => {

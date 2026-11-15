@@ -169,7 +169,30 @@ async function sendOneShotPingWithoutSession(
     ))
   )
     return
-  if (!open(paused(), found.lastRequest, Date.now())) {
+  const startPingIfCacheOpen = ():
+    | { answer: Promise<AssistantMessage> }
+    | { error: unknown }
+    | undefined => {
+    if (!open(paused(), found.lastRequest, Date.now())) return undefined
+    try {
+      return {
+        answer: host.modelRuntime
+          .streamSimple(
+            model,
+            { messages },
+            {
+              ...(agent.thinkingLevel === 'off' ? {} : { reasoning: agent.thinkingLevel }),
+              signal: AbortSignal.timeout(180_000),
+            },
+          )
+          .result(),
+      }
+    } catch (error) {
+      return { error }
+    }
+  }
+  const started = startPingIfCacheOpen()
+  if (!started) {
     await commitPingOutcomeAndUsage(host, id, {
       at,
       provider,
@@ -180,16 +203,8 @@ async function sendOneShotPingWithoutSession(
   }
   let answer: AssistantMessage
   try {
-    answer = await host.modelRuntime
-      .streamSimple(
-        model,
-        { messages },
-        {
-          ...(agent.thinkingLevel === 'off' ? {} : { reasoning: agent.thinkingLevel }),
-          signal: AbortSignal.timeout(180_000),
-        },
-      )
-      .result()
+    if ('error' in started) throw started.error
+    answer = await started.answer
   } catch (error) {
     await commitPingOutcomeAndUsage(host, id, {
       at,
