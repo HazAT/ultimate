@@ -274,6 +274,13 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * A line the title bar shows under conversation `id`'s title, such as what the conversation is about; undefined shows
+ * none, and the bar keeps its single row.
+ */
+export const ConversationTitleBelow = definePoint<ConversationId, ReactNode | undefined>(
+  'ultimate.conversationTitleBelow',
+)
+/**
  * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
  * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
  * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;

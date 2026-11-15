@@ -15,7 +15,7 @@ import {
   useRegionOpen,
 } from '../sdk/hooks.ts'
 import { panelItems, slotItems } from '../sdk/registry.ts'
-import { ConversationKind } from '../sdk/types.ts'
+import { ConversationKind, ConversationTitleBelow } from '../sdk/types.ts'
 import { Provided, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
 import { useRegion } from './surface.ts'
@@ -122,6 +122,25 @@ function Trail() {
   )
 }
 
+function TitleBelow() {
+  const id = useStore((state) => state.view?.conversation.id ?? state.requested)
+  if (id === undefined || id === ROOT) return null
+  return (
+    <Provided input={id} point={ConversationTitleBelow}>
+      {(below) =>
+        below && (
+          <div
+            className="-mt-2 min-w-0 truncate pb-1.5 text-[12px] leading-4 text-muted-foreground"
+            data-ui="conversation-title-below"
+          >
+            {below}
+          </div>
+        )
+      }
+    </Provided>
+  )
+}
+
 export function Header({ children }: { children?: ReactNode }) {
   const records = useExtensions()
   const sidebar = useRegion('sidebar') && slotItems(records, 'sidebar').length > 0
@@ -129,16 +148,27 @@ export function Header({ children }: { children?: ReactNode }) {
   const panelOpen = useRegionOpen('panels')
   return (
     <header
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-2"
+      className="flex min-h-10 shrink-0 items-start gap-2 border-b border-border/70 px-2"
       data-ui="conversation-header"
     >
       {sidebar && (
-        <IconButton keys="mod+b" label="Toggle sidebar" onClick={actions.toggleSidebar}>
-          <PanelLeftIcon className="size-4" />
-        </IconButton>
+        <div className="flex h-10 shrink-0 items-center">
+          <IconButton keys="mod+b" label="Toggle sidebar" onClick={actions.toggleSidebar}>
+            <PanelLeftIcon className="size-4" />
+          </IconButton>
+        </div>
       )}
-      <div className="flex min-w-0 items-center gap-2">{children ?? <Trail />}</div>
-      <div className="ml-auto flex items-center gap-1">
+      {children ? (
+        <div className="flex h-10 min-w-0 items-center gap-2">{children}</div>
+      ) : (
+        <div className="flex min-w-0 flex-col">
+          <div className="flex min-h-10 min-w-0 items-center gap-2">
+            <Trail />
+          </div>
+          <TitleBelow />
+        </div>
+      )}
+      <div className="ml-auto flex h-10 items-center gap-1">
         <Slot name="header.right" variant="inline" />
         {panels && (
           <IconButton
