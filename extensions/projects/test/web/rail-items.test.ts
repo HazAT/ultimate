@@ -26,6 +26,7 @@ vi.mock('@/sdk', () => ({
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   defineWebExtension: (extension: object) => extension,
   definePoint: (point: string) => ({ point }),
+  keepLast: () => {},
   prettyName: (name: string) => name,
   useAction: (ref: { name: string }) => ({
     data: ref.name === 'list' ? state.projects : { pinned: false },
