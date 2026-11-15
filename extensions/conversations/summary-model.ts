@@ -22,11 +22,7 @@ export type SummaryModelHost = Pick<ExtensionHost, 'userHome' | 'projectSettings
 export async function summaryModelSetting(
   host: Pick<SummaryModelHost, 'userHome' | 'projectSettings' | 'settings' | 'projectRoot'>,
 ) {
-  const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(
-    function alreadyReportedSettingsFailureMeansUnset() {
-      return {}
-    },
-  )
+  const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
   const project = await host.projectSettings()
   for (const [source, settings] of [
     ['project', project],
@@ -122,8 +118,8 @@ export async function summaryModelStatus(host: SummaryModelHost): Promise<Summar
       configured,
       source,
     }
-  const defaultMayFallbackButExplicitPinCannot = source === 'default'
-  const fallback = defaultMayFallbackButExplicitPinCannot ? fallbackModel(available) : undefined
+  const usesDefault = source === 'default'
+  const fallback = usesDefault ? fallbackModel(available) : undefined
   if (!fallback) return { configured, source, problem: 'unavailable' }
   once(
     host,

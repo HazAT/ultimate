@@ -117,8 +117,9 @@ function CacheRebuilt({
   blocks?: readonly number[]
 }) {
   const bust = cacheBusts(useTranscript()).get(entry.id)
+  if (!bust) return core
   const continuationOfSplitResponse = blocks && blocks[0] !== 0
-  if (!bust || continuationOfSplitResponse) return core
+  if (continuationOfSplitResponse) return core
   return (
     <div className="flex flex-col gap-3">
       <Rendered input={{ entry, bust }} point={CacheRebuiltLine}>

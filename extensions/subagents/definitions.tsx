@@ -430,11 +430,11 @@ function Form({
               <ModelField
                 inherited={familyModel}
                 onChange={(model) => {
-                  const inheritThinkingUnsupportedByNewModel =
+                  const unsupportedThinking =
                     draft.thinking && !levelsOf(model ?? familyModel).includes(draft.thinking)
                   set({
                     model,
-                    ...(inheritThinkingUnsupportedByNewModel ? { thinking: null } : {}),
+                    ...(unsupportedThinking ? { thinking: null } : {}),
                   })
                 }}
                 value={draft.model}

@@ -122,8 +122,7 @@ async function effectiveSummaryModel(host: ExtensionHost) {
   return setting.source === 'project' ? { ...setting, path: projectFile(host) } : setting
 }
 
-const appendChangingSectionsLast = 100
-export const order = appendChangingSectionsLast
+export const order = 100
 
 export const actions = {
   conclude: implementAction(ConcludeAction, async (args, { host, conversationId, device }) =>

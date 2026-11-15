@@ -56,14 +56,14 @@ export function ConversationRef({
   const overview = useOverview()
   const live = useConversationSummary(id)?.title
   const agent = useStandingName(id)
-  const featureFromBranchOnly = agent ? undefined : overview[id]?.feature
-  const name = agent ?? title ?? (featureFromBranchOnly ? undefined : live)
+  const nonStandingFeature = agent ? undefined : overview[id]?.feature
+  const name = agent ?? title ?? (nonStandingFeature ? undefined : live)
   return (
     <span
       className={cn('inline-flex max-w-full min-w-0 items-center gap-1.5', className)}
       data-conversation-ref={id}
     >
-      {featureFromBranchOnly && <FeatureTag className="shrink-0" feature={featureFromBranchOnly} />}
+      {nonStandingFeature && <FeatureTag className="shrink-0" feature={nonStandingFeature} />}
       {name && (
         <span className="min-w-0 truncate" title={name}>
           {name}

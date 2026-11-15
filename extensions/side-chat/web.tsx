@@ -110,7 +110,7 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
-function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
+function StableComposerFrame({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const { main, index } = useMain()
   const active = id !== undefined && id === main && !dock
@@ -352,12 +352,9 @@ function SidePane({
   const can = endings(state)
   const { ending, error } = useSyncExternalStore(sideEndings.subscribe, () => sideEndings.get(side))
   const openedAt = index?.sides.find((item) => item.id === side)?.openedAt
-  useEffect(
-    function focusComposerWhenBroughtForward() {
-      if (front) document.getElementById(`composer-input-${side}`)?.focus()
-    },
-    [front, side],
-  )
+  useEffect(() => {
+    if (front) document.getElementById(`composer-input-${side}`)?.focus()
+  }, [front, side])
   const end = (how: 'discard' | 'inject') =>
     sideEndings.end(side, how, () =>
       api.action(how === 'inject' ? InjectAction : DiscardAction, { id: side }),
@@ -546,7 +543,7 @@ function useSideIds(main: ConversationId | undefined): ReadonlySet<number> {
 }
 
 export default defineWebExtension({
-  composer: SideComposer,
+  composer: StableComposerFrame,
   slots: { 'conversation.overlay': [Stage] },
   entries: { 'sidechat.summary': SummaryCard },
   provides: [provide(UnderUltimate, useSideRows), provide(Unlisted, useSideIds)],

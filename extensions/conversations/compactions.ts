@@ -1,6 +1,7 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { CompactionEntry, CompactionTask } from '@earendil-works/pi-durable'
+import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Compacted } from './refs.ts'
 
@@ -12,6 +13,20 @@ export function compactionEvents(
     'conversations.compaction-failures',
     () => new Set<number>(),
   )
+  const emitWithoutCrashRecovery = (entry: EntryRecord, reason: string | undefined) => {
+    host
+      .harness()
+      .commit(
+        (tx) =>
+          host.emit(tx, Compacted, {
+            conversation: entry.conversationId,
+            entry: entry.id,
+            ...(reason ? { reason } : {}),
+          }),
+        context,
+      )
+      .catch((error: unknown) => host.notice(`Compaction event: ${String(error)}`))
+  }
   let stop: (() => void) | undefined
   host.onOpen(async () => {
     stop?.()
@@ -36,18 +51,7 @@ export function compactionEvents(
         emittedAcrossReloads.add(entry.id)
         const data: { reason?: string } | undefined = entry.data
         const reason = data?.reason
-        host
-          .harness()
-          .commit(
-            (tx) =>
-              host.emit(tx, Compacted, {
-                conversation: entry.conversationId,
-                entry: entry.id,
-                ...(reason ? { reason } : {}),
-              }),
-            context,
-          )
-          .catch((error: unknown) => host.notice(`Compaction event: ${String(error)}`))
+        emitWithoutCrashRecovery(entry, reason)
       }
     })
   })

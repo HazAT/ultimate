@@ -214,8 +214,8 @@ function createReporter() {
               const failure = settled.reason
               return { status: 'running', checkpoint: { phase: 'report', report: failure } }
             }
-            const childStoppedButParentStillOwnsNextAnswer = settled.status === 'unanswered'
-            if (childStoppedButParentStillOwnsNextAnswer) action.status = 'interrupted'
+            const childStopped = settled.status === 'unanswered'
+            if (childStopped) action.status = 'interrupted'
             return { status: 'running', checkpoint: { phase: 'report' } }
           }, context)
         } catch (error) {
@@ -314,7 +314,7 @@ const reply = (text: string, info?: ReturnType<typeof details>) => ({
   ...(info === undefined ? {} : { details: info }),
 })
 
-async function waitLocallyWithoutStoppingChild(
+async function waitForChildLocally(
   api: ToolExecutionApi,
   id: ConversationId,
   reporters: TaskId[],
@@ -338,7 +338,7 @@ async function waitLocallyWithoutStoppingChild(
   })
   inspect(inbox.value)
   const child = (await api.conversation(id, context))!
-  const reportersReadyDespiteQueuedSteer = async () => {
+  const reportersReady = async () => {
     if (idle && (await api.snapshot(LiveDoc, id, context))?.run !== undefined) return false
     for (const reporter of reporters) {
       const task = await api.getTask(reporter, context)
@@ -361,7 +361,7 @@ async function waitLocallyWithoutStoppingChild(
     const result = await Promise.race([
       completion().then(() => true),
       steering.then(async () => {
-        if (await reportersReadyDespiteQueuedSteer()) {
+        if (await reportersReady()) {
           await completion()
           return true
         }
@@ -375,8 +375,7 @@ async function waitLocallyWithoutStoppingChild(
   }
 }
 
-const retireStandingWhenExtensionsDisable = true
-export const reloadOnSettings = retireStandingWhenExtensionsDisable
+export const reloadOnSettings = true
 
 export const actions = {
   standing: implementAction(StandingAction, async (args, { host }) => {
@@ -502,9 +501,9 @@ export const actions = {
       ...(!summaries ? { summaries } : {}),
       ...preserveUneditedAppearance(existing),
     }
-    const saveDifferencesInsteadOfFreezingMergedDefinition =
+    const needsDiffOverlay =
       existing?.overlays?.length || (overlay === true && existing && existing.source !== scope)
-    if (saveDifferencesInsteadOfFreezingMergedDefinition) {
+    if (needsDiffOverlay) {
       await saveOverlay(host, host.modelRuntime, scope, name, fields, instructions)
       const { definitions: saved } = await discoverAgents(
         host.ultimateRoot,
@@ -574,8 +573,8 @@ export default function subagents(
       for (const name of Object.keys(index)) {
         const id = index[name]
         const exists = await tx.conversation(id)
-        const keepStandingUntilEveryDefinitionParses = kept.has(name) || errors.length > 0
-        if (keepStandingUntilEveryDefinitionParses) {
+        const keepStanding = kept.has(name) || errors.length > 0
+        if (keepStanding) {
           if (exists) {
             await conversations.setAutomaticSummaries(tx, id, false)
             await conversations.setStanding(tx, id, true)
@@ -623,9 +622,7 @@ export default function subagents(
       const main = await root.agent(ctx)
       const result = await host
         .harness()
-        .commit(async function refreshStandingFromDefinitionInsideSerialCommit(
-          tx,
-        ): Promise<{ id: ConversationId } | { missing: string[] }> {
+        .commit(async (tx): Promise<{ id: ConversationId } | { missing: string[] }> => {
           const definitions = await residentDefinitions()
           const definition = definitions.find((item) => item.name === name)
           if (!definition) return { missing: definitions.map((item) => `@${item.name}`) }
@@ -725,7 +722,7 @@ export default function subagents(
   const Reporter = createReporter()
   let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
-  const recoverUnreportedCommittedAnswer = async (submission: SubmissionRecord) => {
+  const recoverUnreportedAnswer = async (submission: SubmissionRecord) => {
     if (
       submission.type !== 'input' ||
       submission.status !== 'done' ||
@@ -755,9 +752,7 @@ export default function subagents(
         if (sibling?.status === 'done' && sibling.answer === submission.answer)
           parentMessageNeedsReporter = false
       }
-      const watchdogContinuationMayLackReporter =
-        submission.requestId?.startsWith('watchdog-retry:')
-      if (!parentMessageNeedsReporter && !watchdogContinuationMayLackReporter) {
+      if (!parentMessageNeedsReporter && !submission.requestId?.startsWith('watchdog-retry:')) {
         const action = childActions.at(-1)
         const interrupted = action?.status === 'interrupted'
         if (
@@ -769,12 +764,13 @@ export default function subagents(
           submission.conversationId,
           `subagent:${action.reporter}`,
         )
-        const notContinuationAfterFailedInputInSharedAllocationOrder =
+        const invalidContinuation =
           failed?.status !== 'unanswered' ||
           (failed.reason === 'aborted') !== interrupted ||
-          (failed.entry === undefined && !interrupted) ||
-          submission.entry <= (failed.entry ?? failed.id)
-        if (notContinuationAfterFailedInputInSharedAllocationOrder) return
+          (failed.entry === undefined && !interrupted)
+        if (invalidContinuation) return
+        const notNewerThanFailure = submission.entry <= (failed.entry ?? failed.id)
+        if (notNewerThanFailure) return
       }
       const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
         | AssistantMessage
@@ -806,8 +802,8 @@ export default function subagents(
   host.onOpen(async () => {
     await pruneRetired(BACKGROUND_CONTEXT)
     for (const { name } of await residentDefinitions()) {
-      const eagerlyCreateResidentsExceptUltimate = name !== 'ultimate'
-      if (eagerlyCreateResidentsExceptUltimate)
+      const eagerResident = name !== 'ultimate'
+      if (eagerResident)
         await service
           .standing(name, BACKGROUND_CONTEXT)
           .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
@@ -817,7 +813,7 @@ export default function subagents(
       for (const change of publication.changes) {
         if (change.type !== 'submission') continue
         recovery = recovery
-          .then(() => recoverUnreportedCommittedAnswer(change.value))
+          .then(() => recoverUnreportedAnswer(change.value))
           .catch((error: unknown) => {
             host.notice(`Subagent answer recovery failed: ${String(error)}`)
           })
@@ -826,7 +822,7 @@ export default function subagents(
     let cursor: Cursor | undefined
     do {
       const page = await host.scanSubmissions({ status: 'done' }, 500, cursor, BACKGROUND_CONTEXT)
-      for (const submission of page.items) await recoverUnreportedCommittedAnswer(submission)
+      for (const submission of page.items) await recoverUnreportedAnswer(submission)
       cursor = page.next
     } while (cursor)
   })
@@ -835,12 +831,7 @@ export default function subagents(
     tasks: [Anchor, Reporter],
     hooks: [
       hook(GenerationTask, {
-        afterTools: async function acknowledgeOnlyCommittedOuterToolResults(
-          _assistant,
-          results,
-          api,
-          context,
-        ) {
+        afterTools: async (_assistant, results, api, context) => {
           await host.harness().commit(async (tx) => {
             const answers = new Set<EntryId>()
             for (const id of results) {
@@ -870,8 +861,8 @@ export default function subagents(
             const inbox = await tx.doc(InboxDoc, api.conversationId)
             inbox.items = inbox.items.filter((item) => !queued.includes(item.id))
             for (const { answer, submission } of submissions) {
-              const reporterHasNotSubmittedReceiptYet = !submission
-              if (reporterHasNotSubmittedReceiptYet)
+              const receiptMissing = !submission
+              if (receiptMissing)
                 await tx.createSubmission({
                   conversationId: api.conversationId,
                   requestId: reportRequestForAnswer(answer),
@@ -911,8 +902,8 @@ export default function subagents(
               running.push(label)
             else if (pending.has(agent.conversationId)) queued.push(label)
           }
-          const emptySlotPreservingPromptOrder = ''
-          if (!running.length && !queued.length) return emptySlotPreservingPromptOrder
+          const idlePromptSlot = ''
+          if (!running.length && !queued.length) return idlePromptSlot
           const text = [
             ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
             ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
@@ -1056,13 +1047,13 @@ export default function subagents(
             const task = await api.getTask(api.taskId, context)
             // Pi upstream: @earendil-works/pi-durable@1.5.2 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
             const assistant = (task?.input as { assistant: EntryId } | undefined)?.assistant
-            let parentHistoryBeforeCallingAssistant: EntryId | undefined
+            let historyBeforeAssistant: EntryId | undefined
             if (definition && args.fork) {
               const conversation = (await host.harness().conversation(api.conversationId, context))!
               const { entries } = await conversation.context(context)
-              parentHistoryBeforeCallingAssistant =
+              historyBeforeAssistant =
                 entries[entries.findIndex((entry) => entry.id === assistant) - 1]?.id
-              if (parentHistoryBeforeCallingAssistant === undefined)
+              if (historyBeforeAssistant === undefined)
                 throw new Error('No parent history before this call')
             }
             const model = definition ? await conversations.summaryModel() : undefined
@@ -1092,12 +1083,12 @@ export default function subagents(
                   ...(args.agent ? {} : { adhoc: true as const }),
                   excludeTools: definition.tools?.includes('subagent') ? [] : ['subagent'],
                   excludeExtensions: definition.tools?.includes('subagent') ? [] : ['subagents'],
-                  ...(parentHistoryBeforeCallingAssistant === undefined
+                  ...(historyBeforeAssistant === undefined
                     ? {}
                     : {
                         fork: {
                           conversationId: api.conversationId,
-                          at: parentHistoryBeforeCallingAssistant,
+                          at: historyBeforeAssistant,
                         },
                       }),
                   cwd: parent.cwd ?? host.projectRoot,
@@ -1155,7 +1146,7 @@ export default function subagents(
                 info,
               )
             if (
-              !(await waitLocallyWithoutStoppingChild(
+              !(await waitForChildLocally(
                 api,
                 action.conversationId,
                 [action.reporter],
@@ -1234,17 +1225,14 @@ export default function subagents(
               await host.harness().abortTask(reporter, context)
               await api.waitForTask(reporter, context)
             }
-            const submissions = await api.commit(
-              async function readAdmissionsAfterJoiningCapturedDeliveries(tx) {
-                return Promise.all(
-                  [
-                    ...capturedStopTarget.reporters.map((reporter) => `subagent:${reporter}`),
-                    ...capturedStopTarget.watchdogs.map((task) => task.request),
-                  ].map((request) => tx.submissionByRequest(id, request)),
-                )
-              },
-              context,
-            )
+            const submissions = await api.commit(async (tx) => {
+              return Promise.all(
+                [
+                  ...capturedStopTarget.reporters.map((reporter) => `subagent:${reporter}`),
+                  ...capturedStopTarget.watchdogs.map((task) => task.request),
+                ].map((request) => tx.submissionByRequest(id, request)),
+              )
+            }, context)
             for (const submission of submissions)
               if (submission?.status === 'queued')
                 await host.harness().abortSubmission(submission.id, context, id)
@@ -1254,11 +1242,11 @@ export default function subagents(
             ])
             while (true) {
               const run = (await api.snapshot(LiveDoc, id, context))?.run
-              const outsideCapturedRunOrInputHandoff =
+              const outsideStopTarget =
                 !run ||
                 (run.taskId !== capturedStopTarget.run &&
                   !run.inputs.some((input) => inputs.has(input)))
-              if (outsideCapturedRunOrInputHandoff) break
+              if (outsideStopTarget) break
               await host.harness().abortTask(run.taskId, context)
               await api.waitForTask(run.taskId, context)
             }
@@ -1290,7 +1278,7 @@ export default function subagents(
           const reporters = Object.values(index.actions).flatMap((action) =>
             action.conversationId === id ? [action.reporter] : [],
           )
-          if (!(await waitLocallyWithoutStoppingChild(api, id, reporters, true, context)))
+          if (!(await waitForChildLocally(api, id, reporters, true, context)))
             return finish(
               `Wait yielded for subagent ${id}; work continues.`,
               details(id, index.agents[String(id)].background, { yielded: true }),

@@ -58,14 +58,14 @@ export type ResponseReceipt = {
   stopReason: AssistantMessage['stopReason']
 }
 
-type LatestConsideredSteerSubmission = SubmissionId
+type ConsideredSteerId = SubmissionId
 
 export type SummaryState = {
   exchanges: number
   revision: number
   automatic?: false
   intentRequested?: boolean
-  steered?: LatestConsideredSteerSubmission
+  steered?: ConsideredSteerId
   lastYield?: TaskId
   lastAnswer?: EntryId
   pending?: TaskId
@@ -184,7 +184,7 @@ export type SummaryReceipt = {
 }
 
 type OutputTokensIncludingReasoning = number
-const defaultSummaryOutputTokensIncludingReasoning = 2048
+const summaryOutputBudget = 2048
 
 export async function askSummaryModel(
   models: Models,
@@ -202,10 +202,7 @@ export async function askSummaryModel(
     { systemPrompt, messages: [{ role: 'user', content: input, timestamp: Date.now() }] },
     {
       ...(thinking === 'off' ? {} : { reasoning: thinking }),
-      maxTokens: Math.min(
-        receipt.maxTokens ?? defaultSummaryOutputTokensIncludingReasoning,
-        model.maxTokens || Infinity,
-      ),
+      maxTokens: Math.min(receipt.maxTokens ?? summaryOutputBudget, model.maxTokens || Infinity),
       signal,
     },
   )
@@ -554,7 +551,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           await runtime.commit(() => terminal, context)
           return
         }
-        await runtime.commit(async function countExchangeAndPrepareLatestReply(tx) {
+        await runtime.commit(async (tx) => {
           const state = await tx.doc(Summaries, runtime.conversationId)
           if (state.revision !== task.input.revision) return terminal
           if (state.lastAnswer === undefined || answer > state.lastAnswer) state.lastAnswer = answer
@@ -630,7 +627,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           }
         }, context)
       },
-      generate: async function resumeWithMemoizedModelAndResponse(task, runtime, context) {
+      generate: async (task, runtime, context) => {
         let response = await runtime.memo<ResponseReceipt>('response', context)
         let model = await runtime.memo<SummaryModel>('model', context)
         const current = await runtime.snapshot(Summaries, runtime.conversationId, context)
@@ -650,7 +647,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
         }
         const checkpoint = task.state.checkpoint
         let result: Awaited<ReturnType<typeof generate>> | undefined
-        let summaryFailureNotMainRunFailure: string | undefined
+        let summaryFailure: string | undefined
         result = await runtime.memo('reply', context)
         if (!result && !model) {
           const chosen = await summaryModel(host)
@@ -697,7 +694,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           }
         } catch (error) {
           if (runtime.signal.aborted) throw error
-          summaryFailureNotMainRunFailure = error instanceof Error ? error.message : String(error)
+          summaryFailure = error instanceof Error ? error.message : String(error)
         }
         const completed = submissionsForAnswer(
           await Promise.all(
@@ -707,7 +704,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           ),
           checkpoint.answer,
         )
-        await runtime.commit(async function accountUsageAndSettleSummaryAtomically(tx) {
+        await runtime.commit(async (tx) => {
           await accountResponse(tx, runtime.conversationId, response)
           const state = await tx.doc(Summaries, runtime.conversationId)
           const now = runtime.now()
@@ -738,21 +735,19 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           if (!result || !usable)
             return discard(tx, runtime.conversationId, {
               reason: result ? 'stale' : 'error',
-              cause: result
-                ? 'newer work or a reset'
-                : (summaryFailureNotMainRunFailure ?? 'no result'),
+              cause: result ? 'newer work or a reset' : (summaryFailure ?? 'no result'),
               ...modelOf(response, model),
               at: now,
             })
-          const abstractBeforeEntryWrites = checkpoint.abstract && result.abstract
-          if (abstractBeforeEntryWrites && completed !== undefined) {
-            await host.want?.(Trees)?.abstract(tx, runtime.conversationId, {
-              text: abstractBeforeEntryWrites,
+          if (checkpoint.abstract && result.abstract && completed !== undefined) {
+            const lineageBeforeEntries = host.want?.(Trees)
+            await lineageBeforeEntries?.abstract(tx, runtime.conversationId, {
+              text: result.abstract,
               at: checkpoint.answer,
               title: result.title ?? state.generatedTitle,
               feature: result.feature ?? state.feature,
             })
-            state.abstract = abstractBeforeEntryWrites
+            state.abstract = result.abstract
           }
           if (completed !== undefined) {
             state.activity = result.activity
@@ -835,26 +830,20 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
       hook(GenerationTask, {
         beforeRequest: async (_request, api, context) => {
           const model = await summaryModel(host)
-          await host.harness().commit(function requestIntentWithFreshReadTransaction(tx) {
-            return requestSummary(
-              tx,
-              host,
-              api.conversationId,
-              { reason: 'intent' },
-              model,
-              generate,
+          await host
+            .harness()
+            .commit(
+              (tx) =>
+                requestSummary(tx, host, api.conversationId, { reason: 'intent' }, model, generate),
+              context,
             )
-          }, context)
-          await host.harness().commit(function requestSteerWithFreshReadTransaction(tx) {
-            return requestSummary(
-              tx,
-              host,
-              api.conversationId,
-              { reason: 'steer' },
-              model,
-              generate,
+          await host
+            .harness()
+            .commit(
+              (tx) =>
+                requestSummary(tx, host, api.conversationId, { reason: 'steer' }, model, generate),
+              context,
             )
-          }, context)
           return undefined
         },
         onYield: async (_answer, api, context) => {

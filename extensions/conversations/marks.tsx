@@ -15,8 +15,8 @@ const agentTitle = (name: string) =>
 
 export function useAgentTitle(name: string) {
   const marks = useDocOf(ROOT, MarksDoc)
-  const waitForMarksWithoutFlashingDefaultTitle = marks === undefined
-  if (waitForMarksWithoutFlashingDefaultTitle) return { title: '', brand: false }
+  const marksPending = marks === undefined
+  if (marksPending) return { title: '', brand: false }
   const title = marks?.[name]?.title
   return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
 }

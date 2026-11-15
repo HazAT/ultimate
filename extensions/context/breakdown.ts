@@ -120,7 +120,7 @@ function plain(entry: EntryRecord) {
   return text && `${message.role}: ${text}`
 }
 
-function inheritedHistoryKeepingOnlyNewestCompaction(
+function inheritedWithLatestCompaction(
   entries: readonly EntryRecord[],
   own: number,
 ): Injected | undefined {
@@ -163,7 +163,7 @@ export function breakdownAt(entries: readonly EntryRecord[], anchor: number): Br
         }
       : start
         ? undefined
-        : inheritedHistoryKeepingOnlyNewestCompaction(entries, anchor)
+        : inheritedWithLatestCompaction(entries, anchor)
   const systemIndex = firstSystemFoldingReorder(entries, anchor)
   const prompt = systemIndex < 0 ? undefined : promptAt(entries, systemIndex)
   let model: Breakdown['model']

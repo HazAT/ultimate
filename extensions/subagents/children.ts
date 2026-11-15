@@ -44,12 +44,12 @@ export async function reconfigure(
   modelRuntime: ModelRuntime,
 ) {
   const own = await tx.doc(AgentDoc, id)
-  const currentModelAndThinkingBeforeDefinition = {
+  const currentModelSettings = {
     ...parent,
     ...(own.model ? { model: own.model } : {}),
     ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
   }
-  const change = definitionAgent(definition, currentModelAndThinkingBeforeDefinition, modelRuntime)
+  const change = definitionAgent(definition, currentModelSettings, modelRuntime)
   await configure(tx, id, change)
   ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
   ;(await tx.doc(Profile, id)).definition = definition.name

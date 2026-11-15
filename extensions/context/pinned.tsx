@@ -35,23 +35,33 @@ function useStartInView() {
 export function PinnedPrompt() {
   const id = useConversation((conversation) => conversation.id)
   const owned = useConversationSummary(id)?.parentConversationId
-  return id === undefined || owned !== undefined ? null : <Pinned id={id} key={id} />
+  const promptTargetUnknown = id === undefined
+  return promptTargetUnknown || owned !== undefined ? null : (
+    <ConversationPromptState id={id} key={id} />
+  )
 }
 
-function Pinned({ id }: { id: number }) {
+function ConversationPromptState({ id }: { id: number }) {
   const agent = useConversation((conversation) => conversation.agent)
   const entries = useTranscript()
   const startInView = useStartInView()
   const refetchOnSystemEntry = entries.findLast((entry) => entry.kind === 'pi.system')?.id
-  const [seen, setSeen] = useUiState<number | null>(`context.seen.${id}`, null)
-  const shown = useAction(CurrentPromptAction, seen === null ? {} : { since: seen }, {
-    onError: keepLast,
-    on: refetchOnSystemEntry,
-  })
-  const current = shown.data
+  const [acknowledgedPrompt, setAcknowledgedPrompt] = useUiState<number | null>(
+    `context.seen.${id}`,
+    null,
+  )
+  const conversationPrompt = useAction(
+    CurrentPromptAction,
+    acknowledgedPrompt === null ? {} : { since: acknowledgedPrompt },
+    {
+      onError: keepLast,
+      on: refetchOnSystemEntry,
+    },
+  )
+  const current = conversationPrompt.data
   useEffect(() => {
-    if (seen === null && current?.at !== undefined) setSeen(current.at)
-  }, [seen, current?.at, setSeen])
+    if (acknowledgedPrompt === null && current?.at !== undefined) setAcknowledgedPrompt(current.at)
+  }, [acknowledgedPrompt, current?.at, setAcknowledgedPrompt])
   const breakdown = useMemo((): Breakdown | undefined => {
     if (!current?.at) return undefined
     const sum = (items: readonly { tokens: number }[]) =>
@@ -86,7 +96,7 @@ function Pinned({ id }: { id: number }) {
                 <span className="section-label text-brand">Changed since you last looked</span>
                 <Button
                   className="ml-auto h-6 cursor-pointer px-2 font-mono text-[11px]"
-                  onClick={() => current.at !== undefined && setSeen(current.at)}
+                  onClick={() => current.at !== undefined && setAcknowledgedPrompt(current.at)}
                   size="sm"
                   variant="outline"
                 >
