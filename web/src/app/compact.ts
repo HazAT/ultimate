@@ -94,7 +94,8 @@ export function compactRows(
  */
 export function setAsideIds(entries: readonly EntryRecord[]): Set<number> {
   const backs = entries.flatMap((entry) => {
-    const at = (entry.data as { setAside?: unknown } | undefined)?.setAside
+    const data = entry.data
+    const at = data && typeof data === 'object' && 'setAside' in data ? data.setAside : undefined
     return typeof at === 'number' ? [{ id: entry.id, at }] : []
   })
   const aside = new Set<number>()

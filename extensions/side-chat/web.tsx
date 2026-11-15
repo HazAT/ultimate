@@ -1,5 +1,5 @@
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
-import { ROOT } from '@/sdk'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT, renderEntry } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
 import {
   ArrowLeftIcon,
@@ -39,7 +39,8 @@ import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.tsx'
 import { createEndings, endings, frontSide, openSides, togglesSideMode } from './logic.ts'
 import { DiscardAction, InjectAction, OpenAction, SideChatDoc, SideChatsDoc } from './refs.ts'
-import type { SideChatIndex, SideChatSummary } from './refs.ts'
+import { SideChatSummaryEntry } from './entries.ts'
+import type { SideChatIndex } from './refs.ts'
 import { useSideChatFront as useFront } from './ui.tsx'
 
 // ---- state ---------------------------------------------------------------------------------------------------------
@@ -476,8 +477,8 @@ function Cut({ at }: { at: number }) {
 // ---- in main: the summary card -------------------------------------------------------------------------------------
 
 /** A side chat's summary in main, the card main reads with its next input. */
-function SummaryCard({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as SideChatSummary
+const SummaryCard = renderEntry(SideChatSummaryEntry, function SummaryCard({ entry }) {
+  const data = entry.data
   const { switchConversation } = useUltimate()
   const index = useDocOf(data.to, SideChatsDoc)
   const openedAt = index?.sides.find((item) => item.id === data.side)?.openedAt
@@ -508,7 +509,7 @@ function SummaryCard({ entry }: { entry: EntryRecord }) {
       </div>
     </Card>
   )
-}
+})
 
 // ---- sidebar: open side chats under @ultimate ----------------------------------------------------------------------
 

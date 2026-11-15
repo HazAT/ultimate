@@ -1,5 +1,5 @@
 import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
-import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   ArrowLeftIcon,
   BrainIcon,
@@ -52,7 +52,17 @@ import { store } from '@/sdk/client'
 import { ConversationRef, Unsummarized } from '../conversations/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { Open, useGithubRepo } from '../workspaces/ui.tsx'
-import { ForgetAction, MemoryDoc, OpenEditorAction, TallyDoc } from './refs.ts'
+import {
+  ForgetAction,
+  MemoryDoc,
+  OpenEditorAction,
+  TallyDoc,
+  AbstractEntry,
+  FinishedEntry,
+  NoteEntry,
+  LineageResetEntry,
+} from './refs.ts'
+import { BranchedEntry } from './entries.ts'
 import type { MemoryItem } from './refs.ts'
 import { MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.tsx'
@@ -69,7 +79,8 @@ function userText(entry: EntryRecord) {
 /** A branch started from this conversation: in its tree's root a card with its intent, elsewhere a quiet divider. */
 function Branched({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { branch, intent } = entry.data as { branch: ConversationId; intent: string }
+  if (!BranchedEntry.is(entry)) return null
+  const { branch, intent } = entry.data
   if (entry.model) return <Started entry={entry} />
   return (
     <button
@@ -106,14 +117,9 @@ function Woken() {
 /** The tally's branch node: which branch started, from where, with what intent (older nodes carry the whole prompt). */
 function Started({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { branch, at, intent, images, from } = entry.data as {
-    branch: ConversationId
-    at: EntryId
-    intent: string
-    images?: number
-    from?: ConversationId
-  }
   const [open, setOpen] = useState(false)
+  if (!BranchedEntry.is(entry)) return null
+  const { branch, at, intent, images, from } = entry.data
   const timestamp = entry.model?.[0]?.timestamp
   return (
     <Card data-lineage-started={branch}>
@@ -168,14 +174,6 @@ function Started({ entry }: { entry: EntryRecord }) {
   )
 }
 
-type AbstractData = {
-  conversation: ConversationId
-  at: EntryId
-  text: string
-  title?: string
-  anchor?: EntryId
-}
-
 /**
  * A conversation's abstract at its anchor, with the text of the newest carrier that replaced it; carriers show nothing.
  * Once a landing froze it (or, in older tallies, a later abstract superseded it), it is not shown.
@@ -183,14 +181,14 @@ type AbstractData = {
 function Abstract({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   const transcript = useTranscript()
-  if ((entry.data as AbstractData).anchor !== undefined) return null
-  let latest = entry
+  if (!AbstractEntry.is(entry) || entry.data.anchor !== undefined) return null
+  let latest: EntryRecord = entry
   for (const other of transcript)
     if (other.id > latest.id && other.edits?.some((edit) => edit.target === entry.id))
       latest = other
   const omitted = latest.edits?.some((edit) => edit.target === entry.id && edit.action === 'omit')
-  if (omitted) return null
-  const { conversation, at, text, title } = latest.data as AbstractData
+  if (omitted || !AbstractEntry.is(latest)) return null
+  const { conversation, at, text, title } = latest.data
   return (
     <Fold
       card={entry.id}
@@ -232,7 +230,9 @@ function Abstract({ entry }: { entry: EntryRecord }) {
 /** A conversation this one asked `notify` about has finished: its title and last answer. */
 function Finished({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { from, title, text } = entry.data as { from: ConversationId; title?: string; text: string }
+  if ((!FinishedEntry.is(entry) && !NoteEntry.is(entry)) || entry.data.from === undefined)
+    return null
+  const { from, title, text } = entry.data
   return (
     <section
       className="min-w-0 rounded-md border border-l-2 border-border border-l-success/70 bg-muted/20"
@@ -300,11 +300,8 @@ function NoteCard({
 
 /** A note another conversation (or the lander, a quiet `notify`, a catch-up on the tally and main) left here. */
 function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
-  const { from, text, source } = entry.data as {
-    from?: ConversationId
-    text: string
-    source?: 'lander' | 'finished' | 'main'
-  }
+  if (!NoteEntry.is(entry)) return core
+  const { from, text, source } = entry.data
   if (source === 'lander') return core
   if (source === 'finished') return <Finished entry={entry} />
   if (source === 'main') return <Catchup text={text} />
@@ -376,7 +373,7 @@ function Genesis({ entry }: { entry: EntryRecord }) {
 /** A tally's genesis, or the empty reset a new tally starts with, which shows nothing. */
 function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const roots = useRoots()
-  const lineage = (entry.data as { lineage?: { tally?: true } } | undefined)?.lineage
+  const lineage = LineageResetEntry.is(entry) ? entry.data?.lineage : undefined
   if (lineage?.tally) return <Genesis entry={entry} />
   if (!entry.model && entry.data === undefined && roots?.includes(entry.conversationId)) return null
   return core

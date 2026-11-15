@@ -5,7 +5,7 @@ import { cn, defineWebExtension, useDoc, useTranscript } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import { MemoryChip } from '../lineage/ui.tsx'
 import { RecallDoc } from './refs.ts'
-import { RECALL_ENTRY } from './types.ts'
+import { RecalledEntry } from './types.ts'
 import type { Recalled } from './types.ts'
 
 /**
@@ -14,9 +14,9 @@ import type { Recalled } from './types.ts'
  */
 function RecallBubble({ entry }: { entry: EntryRecord }) {
   const pending = useDoc(RecallDoc)?.pending === entry.id
-  const recalled = useTranscript().find(
-    (other) => other.kind === RECALL_ENTRY && (other.data as Recalled).input === entry.id,
-  )?.data as Recalled | undefined
+  const recalled = useTranscript()
+    .filter((candidate) => RecalledEntry.is(candidate))
+    .find((other) => other.data.input === entry.id)?.data
   // Mounted once this view saw the check start, so the fade-out and the fly-in play; history shows chips still.
   const [watched, setWatched] = useState(false)
   // A check takes about 0.2 s: the light runs at least one lap so it reads as a check, not a flicker.
@@ -96,5 +96,5 @@ function Chips({ recalled, animate }: { recalled: Recalled; animate: boolean }) 
 export default defineWebExtension({
   userBubble: [RecallBubble],
   // The bubble shows what was recalled; the entry carries the memories for the model.
-  entries: { [RECALL_ENTRY]: () => null },
+  entries: { [RecalledEntry.kind]: () => null },
 })

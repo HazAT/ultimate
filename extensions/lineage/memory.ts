@@ -22,6 +22,7 @@ import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Roots } from './api.ts'
 import { MemoryDoc } from './refs.ts'
+import { NoteEntry } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
 
 export const MEMORY_LIMIT = 150
@@ -371,7 +372,8 @@ export function memorizeTask(
         // The landing note in a tally carries the submitter's abstract it froze; before that, it is still open.
         const placed = await tx.submissionByRequest(id, `lander-root:${submission}`)
         const entry = placed?.entry ? await tx.entry(placed.entry) : undefined
-        const frozen = (entry?.data as { abstract?: { text?: string } } | undefined)?.abstract
+        const frozen =
+          NoteEntry.is(entry) && entry.data.source === 'lander' ? entry.data.abstract : undefined
         const abstract = frozen?.text ?? (await openAbstract(tx, id, from))
         const { memories } = await tx.doc(Memory, id)
         const slugs = Object.keys(memories).toSorted()

@@ -2,9 +2,11 @@
  * Subagents in the browser: the standing agents' conversations, and the actions that open a standing agent and read,
  * save and delete agent definitions. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
+import type { AgentOrigin } from './types.ts'
 
 /** Where a definition file lives: shipped with Ultimate, in the user's home, or in the project. */
 export type Source = 'builtin' | 'user' | 'project'
@@ -122,3 +124,9 @@ export const DeleteDefinitionAction = actionRef<{ name: string; scope: Scope }, 
   'subagents',
   'deleteDefinition',
 )
+
+/** Instruction delivered to a child. */
+export const InstructionEntry = defineEntry<AgentOrigin>('subagents.instruction')
+
+/** Child report delivered to its parent. */
+export const ReportEntry = defineEntry<AgentOrigin>('subagents.report')

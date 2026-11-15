@@ -3,6 +3,7 @@
  * and the sounds read, and the event of a question to the user. Browser-safe.
  * Stored identifiers keep the board prefix because history, tasks and events persist under them.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -82,6 +83,32 @@ export type Message = {
 export type Via = { conversation: ConversationId; entry?: EntryId }
 export type MessagesData = { messages: Message[]; next: number }
 
+/** A message or reply delivered to a conversation. */
+export type DeliveredMessage = {
+  id: number
+  from: ConversationId | 'user' | 'remote'
+  text: string
+  reply?: boolean
+  re?: number
+  routed?: true
+  echo?: true
+  delivery?: 'note' | 'steer' | 'followUp'
+  images?: number
+  remote?: Remote
+  failed?: boolean
+  stopped?: boolean
+}
+
+/** A branch's question pointer in @ultimate. */
+export type QuestionNotice = {
+  message: number
+  from: ConversationId
+  call?: string
+  summary?: string
+  dismissed?: boolean
+  via?: Via
+}
+
 /** Every message between conversations and the user, oldest first, on conversation 1. */
 export const MessagesDoc = docRef<MessagesData>('board')
 
@@ -116,3 +143,9 @@ export const MessageSent = defineEvent<{
   reply: boolean
   steer: boolean
 }>('board.sent')
+
+/** Message delivered as a conversation input. */
+export const MessageEntry = defineEntry<DeliveredMessage>('board.message')
+
+/** Reply delivered as a conversation input. */
+export const ReplyEntry = defineEntry<DeliveredMessage>('board.reply')

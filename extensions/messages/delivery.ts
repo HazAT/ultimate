@@ -21,6 +21,7 @@ import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
+import { MessageEntry, ReplyEntry } from './refs.ts'
 
 export function delivery(host: ExtensionHost) {
   // A standing recipient is reconfigured from its current definition before each delivery, by name or by number.
@@ -70,7 +71,7 @@ export function delivery(host: ExtensionHost) {
           ? imagesOf(await host.harness().commit((tx) => tx.entry(m.images!.entry), ctx))
           : []
         const entry = {
-          kind: 'board.message',
+          kind: MessageEntry.kind,
           data: {
             id: m.id,
             from: m.from,
@@ -288,7 +289,7 @@ export function delivery(host: ExtensionHost) {
             ? imagesOf(await host.harness().commit((tx) => tx.entry(m.images!.entry), ctx))
             : []
           const entry = {
-            kind: 'board.reply',
+            kind: ReplyEntry.kind,
             data: {
               id: m.id,
               re: m.re!,

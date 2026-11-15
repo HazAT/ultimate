@@ -19,7 +19,8 @@ import type { MemoryItem } from '../lineage/refs.ts'
 import { Standing } from '../subagents/api.ts'
 import { RecallDoc } from './refs.ts'
 import type { RecallState } from './refs.ts'
-import { RECALL_ENTRY } from './types.ts'
+import { RecalledEntry } from './types.ts'
+import { MessageEntry } from '../messages/api.ts'
 import type { Recalled } from './types.ts'
 
 /** Below this context fill a memory is still fresh in the prompt: nothing is recalled. */
@@ -74,8 +75,7 @@ function recentlyRecalled(view: ContextView, limit: number) {
   let after = 0
   for (let index = view.entries.length - 1; index >= 0 && after < limit; index--) {
     const entry = view.entries[index]
-    if (entry.kind === RECALL_ENTRY)
-      for (const { slug } of (entry.data as Recalled).memories) slugs.add(slug)
+    if (RecalledEntry.is(entry)) for (const { slug } of entry.data.memories) slugs.add(slug)
     after += view.contributions[index].reduce((sum, m) => sum + estimateMessageTokens(m), 0)
   }
   return slugs
@@ -83,7 +83,7 @@ function recentlyRecalled(view: ContextView, limit: number) {
 
 /** Who an input is from, in the classifier's words: the user, or the branch that messaged. */
 function senderOf(entry: EntryRecord) {
-  const from = (entry.data as { from?: unknown } | undefined)?.from
+  const from = MessageEntry.is(entry) ? entry.data.from : undefined
   return typeof from === 'number' ? `a branch (#${from}) reporting to @ultimate` : 'the user'
 }
 
@@ -127,8 +127,8 @@ export default function recall(host: ExtensionHost) {
             // only while the recall is the live context's newest entry, so it lands exactly where it is stored.
             const placed = view.entries.at(-1)
             if (
-              placed?.kind !== RECALL_ENTRY ||
-              (placed.data as Recalled).input !== message.id ||
+              !RecalledEntry.is(placed) ||
+              placed.data.input !== message.id ||
               request.messages.length >= view.messages.length
             )
               return undefined
@@ -204,7 +204,7 @@ export default function recall(host: ExtensionHost) {
                 confidence: Math.round(confidence * 100) / 100,
               })),
             }
-            await tx.appendEntry(id, { kind: RECALL_ENTRY, data, model: [recalled] })
+            await tx.appendEntry(id, { kind: RecalledEntry.kind, data, model: [recalled] })
           }, ctx)
           return recalled ? { messages: [...request.messages, recalled] } : undefined
         },

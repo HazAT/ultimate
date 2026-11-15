@@ -28,6 +28,7 @@ import { idleNote } from './idle.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
+import { FailureEntry } from './entries.ts'
 
 /** How long after a temporary failure its one retry starts. */
 const RETRY_AFTER = 60_000
@@ -241,7 +242,7 @@ export default function watchdog(host: ExtensionHost) {
             {
               type: 'input',
               content: `${content}\nCheck the conversation; resume it with a message, or tell the user if it needs them.`,
-              entry: { kind: 'watchdog.failure', data },
+              entry: { kind: FailureEntry.kind, data },
               requestId: `watchdog-report:${failedTask}`,
               whenBusy: 'steer',
             },

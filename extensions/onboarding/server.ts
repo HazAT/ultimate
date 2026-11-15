@@ -12,7 +12,6 @@ import { basename, join } from 'node:path'
 import { loadSkillsFromDir, parseFrontmatter } from '@earendil-works/pi-coding-agent'
 import {
   defineDoc,
-  defineEntry,
   defineExtension,
   defineTool,
   LiveDoc,
@@ -47,6 +46,7 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
+import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export const Starts = defineDoc<{ roots: Record<string, ConversationId>; dismissed?: boolean }>({
@@ -68,19 +68,6 @@ const ChoiceRequests = defineDoc<{ payloads: Record<string, JsonObject> }>({
   initial: () => ({ payloads: {} }),
 })
 export const docs = [Starts]
-export const StartEntry = defineEntry<{
-  root: ConversationId
-  instructions?: string
-  facts: {
-    project: { name: string; path: string }
-    firstRun: boolean
-    projectUndecided: boolean
-    gitReason?: string
-    root: ConversationId
-    rootEmpty: boolean
-  }
-}>('onboarding.start')
-export const WalkthroughEntry = defineEntry<Record<string, never>>('walkthrough.start')
 
 function lists(value: JsonObject) {
   const extensions = value.extensions ?? {}
@@ -564,10 +551,6 @@ export const actions: Record<string, ExtensionAction> = {
     )
   }),
 }
-
-export const ChoiceEntry = defineEntry<{ card: string; summary: string; toolCallId: string }>(
-  'onboarding.choice',
-)
 
 export default function onboarding(host: ExtensionHost) {
   // Core, always on; resolved where they are called, declared here so the catalogue lists them.

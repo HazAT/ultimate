@@ -2,6 +2,7 @@
  * Lineage in the browser: the project's roots, each root's tally size, the actions behind a root's sidebar row and
  * landing cards, and the branch and root events. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
 import type { TaskId, ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -17,6 +18,15 @@ export const RootsDoc = docRef<{ roots: ConversationId[] }>('lineage.roots')
 export const TallyDoc = docRef<{ tokens: number; briefTokens?: number; since?: EntryId }>(
   'lineage.tally',
 )
+
+export type AbstractData = {
+  conversation: ConversationId
+  at: EntryId
+  text: string
+  title?: string
+  feature?: string
+  anchor?: EntryId
+}
 
 /** One project memory: a durable decision, fact or lesson a future branch needs. */
 export type MemoryItem = {
@@ -118,3 +128,45 @@ export const Branched = defineEvent<{
 }>('lineage.branched')
 /** A root was created: conversation `id`, titled `intent`. Emitted in the creating commit. */
 export const Rooted = defineEvent<{ id: ConversationId; intent: string }>('lineage.rooted')
+
+/** Lineage metadata on resets written as tally genesis or branch memory briefs. */
+export const LineageResetEntry = defineEntry<{
+  lineage?: { tally?: true; brief?: { tally?: EntryId | null } }
+}>('pi.reset')
+
+/** A branch abstract, or a carrier replacing its anchor. */
+export const AbstractEntry = defineEntry<AbstractData>('lineage.abstract')
+
+/** A notify result delivered as an input. */
+export const FinishedEntry = defineEntry<{ from: ConversationId; title?: string; text: string }>(
+  'lineage.finished',
+)
+
+/** A note received from another conversation, the lander, or tally catch-up. */
+export const NoteEntry = defineEntry<
+  | {
+      text: string
+      from?: ConversationId
+      title?: string
+      source?: 'finished' | 'main'
+      tally?: EntryId
+    }
+  | {
+      source: 'lander'
+      text: string
+      from: ConversationId
+      at?: number
+      divergence?: string
+      sha: string
+      base?: string
+      target: string
+      title?: string
+      summary?: string
+      feature?: string
+      commits: { sha: string; subject: string }[]
+      paths: string[]
+      more: number
+      pushed?: string
+      abstract?: Omit<AbstractData, 'conversation'>
+    }
+>('lineage.note')

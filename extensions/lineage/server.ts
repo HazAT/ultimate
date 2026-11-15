@@ -46,7 +46,18 @@ import { Branch, Branched, LineageApi, Rooted, Roots } from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
-import { CompactAction, ForgetAction, OpenEditorAction, RecentAction, TallyDoc } from './refs.ts'
+import {
+  CompactAction,
+  ForgetAction,
+  OpenEditorAction,
+  RecentAction,
+  TallyDoc,
+  LineageResetEntry,
+  NoteEntry,
+  AbstractEntry,
+  FinishedEntry,
+} from './refs.ts'
+import { BranchedEntry } from './entries.ts'
 import {
   applyMemoryOps,
   BODY_CHARS,
@@ -295,13 +306,13 @@ export async function abstract(tx: Tx, id: ConversationId, input: AbstractInput)
     root,
     anchor === undefined
       ? {
-          kind: 'lineage.abstract',
+          kind: AbstractEntry.kind,
           data,
           model,
           ...(compacting ? { edits: [{ target: open.anchor, action: 'omit' as const }] } : {}),
         }
       : {
-          kind: 'lineage.abstract',
+          kind: AbstractEntry.kind,
           data: { ...data, anchor },
           edits: [{ target: anchor, action: 'replace', messages: model }],
         },
@@ -319,14 +330,11 @@ async function inheritedTally(tx: Tx, from: ConversationId, at: EntryId, root: C
     const page = await tx.scanEntries({ conversationId: from, maxEntryId: at }, 100, cursor)
     for (const entry of page.items) {
       if (entry.conversationId === root) return entry.id
-      const data = entry.data as
-        | { source?: string; tally?: EntryId; lineage?: { brief?: { tally?: EntryId | null } } }
-        | undefined
       // A memory brief stands in for the tally up to the tip it covers.
-      if (entry.kind === 'pi.reset' && data?.lineage?.brief)
-        return data.lineage.brief.tally ?? undefined
-      if (entry.kind === 'lineage.note' && data?.source === 'main' && data.tally !== undefined)
-        return data.tally
+      if (LineageResetEntry.is(entry) && entry.data?.lineage?.brief)
+        return entry.data.lineage.brief.tally ?? undefined
+      if (NoteEntry.is(entry) && entry.data.source === 'main' && entry.data.tally !== undefined)
+        return entry.data.tally
     }
     cursor = page.next
   } while (cursor)
@@ -544,7 +552,7 @@ function lineage(host: ExtensionHost) {
               whenBusy: 'followUp',
               requestId,
               entry: {
-                kind: 'lineage.finished',
+                kind: FinishedEntry.kind,
                 data: { from: target, text, ...(title ? { title } : {}) },
               },
             },
@@ -889,7 +897,7 @@ async function forkBranch(
   const marker = { branch: fork.id, at, intent, ...(images ? { images } : {}) }
   if (root !== undefined)
     await tx.appendEntry(root, {
-      kind: 'lineage.branched',
+      kind: BranchedEntry.kind,
       data: {
         ...marker,
         ...(root === from ? {} : { from }),
@@ -903,7 +911,7 @@ async function forkBranch(
       ],
     })
   // A source inside the tree keeps a display-only marker; its model never sees it.
-  if (root !== from) await tx.appendEntry(from, { kind: 'lineage.branched', data: marker })
+  if (root !== from) await tx.appendEntry(from, { kind: BranchedEntry.kind, data: marker })
   if (input.deliver !== false)
     await tx.createTask(
       Prompt,
@@ -963,7 +971,7 @@ async function placeLanding(
   if (open) {
     const { anchor, ...state } = open
     entry = await tx.appendEntry(target, {
-      kind: 'lineage.note',
+      kind: NoteEntry.kind,
       data: { ...data, abstract: state },
       model: [
         {
@@ -974,7 +982,7 @@ async function placeLanding(
       edits: [{ target: anchor, action: 'omit' }],
     })
     delete tally.abstracts[String(from)]
-  } else entry = await tx.appendEntry(target, { kind: 'lineage.note', data, model: [model] })
+  } else entry = await tx.appendEntry(target, { kind: NoteEntry.kind, data, model: [model] })
   await tx.createSubmission({
     conversationId: target,
     ...(requestId ? { requestId } : {}),
@@ -1021,7 +1029,7 @@ export async function leaveNote(
       type: 'write',
       ...(requestId ? { requestId } : {}),
       entry: {
-        kind: 'lineage.note',
+        kind: NoteEntry.kind,
         data,
         model: [{ role: 'user', content, timestamp: Date.now() }],
       },
@@ -1459,7 +1467,15 @@ export default function lineageExtension(host: ExtensionHost) {
             // marked `transient` (a voice session's brief, placed afresh each time) stay out of the summary.
             const replaced = new Set(
               compaction.entries
-                .filter((entry) => !(entry.data as { transient?: unknown } | undefined)?.transient)
+                .filter((entry) => {
+                  const data = entry.data
+                  return !(
+                    data &&
+                    typeof data === 'object' &&
+                    'transient' in data &&
+                    data.transient
+                  )
+                })
                 .map((entry) => entry.id),
             )
             const view = await (await host

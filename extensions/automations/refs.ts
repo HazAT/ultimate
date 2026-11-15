@@ -1,4 +1,6 @@
 /** Automations: durable triggers, actions, runs and script lifecycle events. Browser-safe. */
+import { defineEntry } from '@earendil-works/pi-durable'
+import type { Serves } from '../messages/refs.ts'
 import { actionRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type {
@@ -62,6 +64,15 @@ export const EscalateAction = actionRef<Id & { reason: string }, Automation>(
   'automations',
   'escalate',
 )
+/** An automation input delivered to a subscriber or its watcher. */
+export type AutomationInput = {
+  id: string
+  name: string
+  text: string
+  serves?: Serves
+  at?: number
+}
+
 /** A trigger fired; fire is its lifetime count. */
 export const Fired = defineEvent<{ id: string; text: string; fire: number }>('automations.fired')
 /** Supervised executable started. */
@@ -74,3 +85,6 @@ export const Exited = defineEvent<{ id: string; code: number | null; signal?: st
 export const Done = defineEvent<{ id: string; text?: string }>('automations.done')
 /** Watcher could not recover its script, or a trigger exceeded its hourly fire cap. */
 export const Escalated = defineEvent<{ id: string; reason: string }>('automations.escalated')
+
+/** Fired trigger delivered to a subscriber. */
+export const FiredEntry = defineEntry<AutomationInput>('automations.fired')

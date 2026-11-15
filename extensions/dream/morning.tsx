@@ -30,15 +30,8 @@ import { OpenAction, SideChatsDoc, useSideChatFront } from '../side-chat/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { BusyBlocker, chapterLabel, Refusal, switchChapter, useBusyElsewhere } from './chapters.tsx'
 import type { Seed } from './types.ts'
-
-/** `dream.chapter` entry data; `learned` and `carried` came later, so older entries lack them. */
-export type ChapterEntry = {
-  from: { name: string; number: number }
-  number: number
-  name: string
-  learned?: string[]
-  carried?: Seed['counts']
-}
+import { ChapterStarted } from './entries.ts'
+import type { ChapterEntry } from './refs.ts'
 
 /** The first input of the wake-up side chat: the four things a colleague back from leave should know. */
 export const AWAKE_PROMPT = [
@@ -62,7 +55,8 @@ const nouns: Record<keyof Seed['counts'], [string, string]> = {
 }
 
 export function MorningCard({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as ChapterEntry
+  if (!ChapterStarted.is(entry)) return null
+  const data = entry.data
   const at = entry.model?.[0]?.timestamp
   return (
     <Card data-dream-morning={data.name}>

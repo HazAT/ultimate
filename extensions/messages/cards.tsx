@@ -62,6 +62,7 @@ import { cacheBusts } from '../../lib/context-usage.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { callerOf } from './caller.ts'
 import { MessagesDoc } from './refs.ts'
+import { MessageEntry, ReplyEntry } from './refs.ts'
 import type { Message, Remote } from './refs.ts'
 import { MessageAnswers } from './points.tsx'
 
@@ -617,20 +618,12 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
 }
 
 export function MessageInput({ entry }: { entry: EntryRecord }) {
-  const origin = entry.data as {
-    id: number
-    from: ConversationId | 'user' | 'remote'
-    text: string
-    reply: boolean
-    delivery?: 'steer' | 'followUp' | 'note'
-    failed?: boolean
-    stopped?: boolean
-    remote?: Remote
-  }
+  const origin = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
   const receiver = useConversation((conversation) => conversation.id)
   const { switchConversation } = useUltimate()
   const reply = entry.kind === 'board.reply'
-  const accent = useAccentOf(origin.from)
+  const accent = useAccentOf(origin?.from ?? 'user')
+  if (!origin) return null
   if (origin.from === 'user') return <UserTurn entry={entry} id={origin.id} text={origin.text} />
   return (
     <Fold

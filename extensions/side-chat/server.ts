@@ -18,6 +18,7 @@ import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { DiscardAction, InjectAction, OpenAction, SideChatDoc, SideChatsDoc } from './refs.ts'
 import type { SideChat, SideChatIndex, SideChatSummary } from './refs.ts'
+import { SideChatSummaryEntry } from './entries.ts'
 
 export const Side = defineDoc<Partial<SideChat>>({
   kind: SideChatDoc.kind,
@@ -274,7 +275,7 @@ export function endTask(host: ExtensionHost) {
               type: 'write',
               requestId: `sidechat:summary:${id}`,
               entry: {
-                kind: 'sidechat.summary',
+                kind: SideChatSummaryEntry.kind,
                 data,
                 model: [
                   {

@@ -13,7 +13,6 @@ import type {
 import { copyJson } from '@earendil-works/chord/json'
 import {
   defineDoc,
-  defineEntry,
   defineTask,
   GenerationTask,
   hook,
@@ -33,34 +32,15 @@ import { Trees } from './api.ts'
 import { summaryModel } from './summary-model.ts'
 import { isInput } from '../../lib/entries.ts'
 import type { SummaryModel, SummaryModelHost } from './summary-model.ts'
-import type {
-  FeatureChange,
-  IntentSummary,
-  ReplySummary,
-  SpawnSummary,
-  SummaryDiscard,
-  SummaryRecord,
-  SummaryStatus,
-  TitleChange,
-} from './types.ts'
-
-export const TitleChanged = defineEntry<TitleChange>('conversations.title-changed')
-
-export const FeatureChanged = defineEntry<FeatureChange>('conversations.feature-changed')
-
-export const IntentSummarized = defineEntry<IntentSummary>('conversations.intent-summarized')
-
-/** An accepted spawn or steer refresh; `byTaskId` is the summary task, whose input names the delegation or steer. */
-export const SpawnSummarized = defineEntry<SpawnSummary>('conversations.summarized')
-
-/**
- * An accepted reply summary; `byTaskId` is the summary task, whose input names the generation. Entries written before
- * the judgement was removed also carry `value`, which nothing reads.
- */
-export const ReplySummarized = defineEntry<ReplySummary>('conversations.assessed')
-
-/** A summary task result that was not accepted: superseded (`stale`) or failed (`error`). */
-export const SummaryDiscarded = defineEntry<SummaryDiscard>('conversations.summary-discarded')
+import type { SummaryRecord, SummaryStatus, SummaryDiscard } from './types.ts'
+import {
+  TitleChanged,
+  FeatureChanged,
+  IntentSummarized,
+  SpawnSummarized,
+  ReplySummarized,
+  SummaryDiscarded,
+} from './entries.ts'
 
 export type SummaryResult = {
   activity: string
@@ -367,7 +347,7 @@ export async function summaryHistory(tx: Tx, id: ConversationId, limit = 50) {
       if (entry.conversationId !== id) continue
       const data =
         IntentSummarized.is(entry) || SpawnSummarized.is(entry) || ReplySummarized.is(entry)
-          ? (entry.data as { summary?: string; at: number })
+          ? entry.data
           : undefined
       if (data?.summary) found.push({ summary: data.summary, at: data.at })
       if (found.length >= limit) break

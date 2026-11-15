@@ -14,7 +14,8 @@ import {
   useUltimate,
 } from '@/sdk'
 import { ConversationRef, ConversationTask } from '../conversations/ui.tsx'
-import type { AgentOrigin } from './message-types.ts'
+import type { AgentOrigin } from './types.ts'
+import { InstructionEntry, ReportEntry } from './refs.ts'
 import { openAgentSource } from './ui.tsx'
 
 type Destination = { conversation: ConversationId; entry?: number }
@@ -61,10 +62,11 @@ function Sender({ origin, label }: { origin: AgentOrigin; label?: string }) {
 }
 
 export function AgentInput({ entry }: { entry: EntryRecord }) {
-  const origin = entry.data as AgentOrigin
+  const origin = InstructionEntry.is(entry) || ReportEntry.is(entry) ? entry.data : undefined
   const id = useConversation((conversation) => conversation.id)
   const { switchConversation } = useUltimate()
-  const sender = useConversationSummary(origin.sender)
+  const sender = useConversationSummary(origin?.sender)
+  if (!origin) return null
   const body = origin.body
   return (
     <Fold
@@ -131,13 +133,13 @@ export function AgentInbox({
 }) {
   const { id } = useConversation()
   const { switchConversation } = useUltimate()
-  const sender = useConversationSummary((item.entry?.data as AgentOrigin | undefined)?.sender)
-  if (
-    item.mode === 'write' ||
-    !['subagents.instruction', 'subagents.report'].includes(item.entry?.kind ?? '')
-  )
-    return core
-  const origin = item.entry!.data as AgentOrigin
+  const origin =
+    item.mode !== 'write' &&
+    ['subagents.instruction', 'subagents.report'].includes(item.entry?.kind ?? '')
+      ? (item.entry?.data as AgentOrigin | undefined)
+      : undefined
+  const sender = useConversationSummary(origin?.sender)
+  if (item.mode === 'write' || !origin) return core
   const body = origin.body
   return (
     <Card

@@ -37,6 +37,7 @@ import { WorkspacesApi } from '../workspaces/api.ts'
 import { Roots } from './api.ts'
 import { RewindAction, RewindPreviewAction, Rewound } from './refs.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
+import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
 
 type View = {
   entries: readonly { id: EntryId; kind: string }[]
@@ -421,7 +422,7 @@ export function rewindTask(host: ExtensionHost) {
             const refused = (await refusal(tx, id, at)) ?? (await moved(tx, id, revision))
             if (refused) throw new Error(refused)
             const entry = await tx.appendEntry(id, {
-              kind: 'lineage.rewound',
+              kind: RewoundEntry.kind,
               data: {
                 at,
                 // The transcript folds the rows after `setAside` up to this entry as set aside.
@@ -475,7 +476,7 @@ export function rewindTask(host: ExtensionHost) {
               type: 'write',
               requestId: `lineage:rewound:${entry}`,
               entry: {
-                kind: 'lineage.rewound-dependent',
+                kind: RewoundDependentEntry.kind,
                 data: { from: id, at: task.input.at, entry, via: dependent.via },
               },
             },

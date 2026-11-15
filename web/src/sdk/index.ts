@@ -17,6 +17,7 @@ export {
   RunStart,
 } from './types.ts'
 export { ROOT } from './api.ts'
+export { renderEntry } from './entry-renderer.tsx'
 export { events, useEvent } from './events.ts'
 export { resumed } from './resume.ts'
 export type {

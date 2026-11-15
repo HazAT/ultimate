@@ -22,6 +22,7 @@ import {
 } from './chapters.tsx'
 import { Moon } from './moon.tsx'
 import { DreamDoc } from './refs.ts'
+import { ChapterPrepared } from './entries.ts'
 import type { Prepared, Sleep } from './refs.ts'
 
 type Step = Exclude<Sleep['phase'], 'asleep' | 'failed'>
@@ -42,7 +43,8 @@ const elapsed = (now: number, at: number) => {
 /** `dream.prepared`: the card for the preparation it announced; a later one replaces it. */
 export function PreparedCard({ entry }: { entry: EntryRecord }) {
   const doc = useDocOf(ROOT, DreamDoc)
-  const at = (entry.data as { at: number }).at
+  if (!ChapterPrepared.is(entry)) return null
+  const at = entry.data.at
   if (doc === undefined) return null
   if (doc?.prepared?.at !== at)
     return (

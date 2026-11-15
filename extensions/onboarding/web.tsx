@@ -6,6 +6,7 @@ import {
   attention,
   Card,
   defineWebExtension,
+  renderEntry,
   errorMessage,
   useAction,
   useConversation,
@@ -32,6 +33,7 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
+import { StartEntry, ChoiceEntry } from './entries.ts'
 
 function useIsolation() {
   const workspaces = useExtensions().some((extension) => extension.name === 'workspaces')
@@ -171,18 +173,16 @@ function NoGit() {
   return reason && !dismissed && !off ? <SetupLink card="git">set up git</SetupLink> : null
 }
 
-type Choice = { card: string; summary: string; toolCallId: string }
 function SetupCall({ call }: { call: ToolCallView }) {
   const transcript = useTranscript()
   const conversationId = useConversation((conversation) => conversation.id)
   const status = useAction(StatusAction)
   const isolation = useIsolation()
   const card = typeof call.args.card === 'string' ? call.args.card : ''
-  const entry = transcript.find(
-    (candidate) =>
-      candidate.kind === 'onboarding.choice' && (candidate.data as Choice).toolCallId === call.id,
-  )
-  const settled = (entry?.data as Choice | undefined)?.summary
+  const entry = transcript
+    .filter((candidate) => ChoiceEntry.is(candidate))
+    .find((candidate) => candidate.data.toolCallId === call.id)
+  const settled = entry?.data.summary
   const done = async (payload: {
     extensions?: Record<string, boolean>
     local?: boolean
@@ -232,7 +232,8 @@ function SetupCall({ call }: { call: ToolCallView }) {
   )
 }
 function ChoiceCard({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as Choice
+  if (!ChoiceEntry.is(entry)) return null
+  const data = entry.data
   return (
     <section className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
       <span className="font-mono">Setup choice · {data.card}</span>
@@ -315,14 +316,16 @@ export default defineWebExtension({
     'onboarding.choice': ChoiceCard,
     // Marked `attention` so the start stays in @ultimate's thread instead of folding into the stretch before its first
     // message: it is all a newcomer sees while that first turn runs (#554687).
-    'onboarding.start': attention(({ entry }) => (
-      <StartCard
-        entry={entry}
-        instructions={(entry.data as { instructions?: string }).instructions}
-        title="Onboarding started"
-        preparing="@ultimate is reading your project. In a moment it starts a short walkthrough of how Ultimate works, with a few questions you answer here."
-      />
-    )),
+    'onboarding.start': attention(
+      renderEntry(StartEntry, ({ entry }) => (
+        <StartCard
+          entry={entry}
+          instructions={entry.data.instructions}
+          title="Onboarding started"
+          preparing="@ultimate is reading your project. In a moment it starts a short walkthrough of how Ultimate works, with a few questions you answer here."
+        />
+      )),
+    ),
     'walkthrough.start': attention(({ entry }) => (
       <StartCard
         entry={entry}

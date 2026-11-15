@@ -2,7 +2,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { AgentDoc, defineEntry, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { UserInputEvent } from '../../shared/events.ts'
@@ -12,13 +12,10 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import { checkReview, reviewText } from './comments.ts'
-import type { ReviewComments } from './comments.ts'
 import { reviewDiff } from './diff.ts'
 import { DiffAction, RangesAction, RecipientAction, SendAction } from './refs.ts'
+import { ReviewCommentsEntry } from './entries.ts'
 import type { ReviewRange } from './refs.ts'
-
-/** A review the user sent: the input its recipient reads as `reviewText`; card.tsx renders it. */
-export const ReviewCommentsEntry = defineEntry<ReviewComments>('review.comments')
 
 const index = (host: ExtensionHost, ctx: Context) =>
   host.harness().snapshot(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID, ctx)

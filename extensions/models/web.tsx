@@ -23,6 +23,7 @@ import { nextThinking, openLogin, openPicker, thinkingDialog, useCurrentModel } 
 import type { ThinkingLevel } from './state.tsx'
 import { switchAt } from './switches.ts'
 import type { Fallback } from './refs.ts'
+import { FallbackEntry } from './entries.ts'
 
 const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
@@ -175,8 +176,9 @@ const switchedTo: Record<Exclude<Fallback['reason'], 'none'>, string> = {
  * login to replace it, kept its model and waits for the user.
  */
 function FellBack({ entry }: { entry: EntryRecord }) {
-  const { from, to, reason } = entry.data as Fallback
   const actions = useUltimate()
+  if (!FallbackEntry.is(entry)) return null
+  const { from, to, reason } = entry.data
   const provider = from.split('/')[0]
   return (
     <section

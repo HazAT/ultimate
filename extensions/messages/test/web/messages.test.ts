@@ -24,6 +24,9 @@ import type { Message } from '../../refs.ts'
 import { questionsOf } from '../../waiting.tsx'
 
 vi.mock('@/sdk', () => ({ events: { emit: vi.fn<() => void>() } }))
+vi.mock('../../../lineage/ui.tsx', async () => import('../../../lineage/refs.ts'))
+vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))
+vi.mock('../../../subagents/ui.tsx', async () => import('../../../subagents/refs.ts'))
 
 const response = (id: number, calls: string[]) =>
   ({

@@ -12,7 +12,7 @@ import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
 import { withAbortSignal } from '@earendil-works/chord/context'
-import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
 import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
@@ -24,11 +24,9 @@ import { CheckRan, SubmissionFailed, SubmissionLanded } from './api.ts'
 import { setup } from './setup.ts'
 import { addCheckout, treePath } from './tree.ts'
 import type { Landed, LanderEntry, LanderOutcome, QueueEntry, WorkspaceIndex } from './types.ts'
+import { LanderLog } from './entries.ts'
+import { LanderReportEntry } from './refs.ts'
 
-/** One line of the lander conversation's log; it carries no model message, so no model ever sees it. */
-export const LanderLog = defineEntry<LanderEntry>('ultimate.lander')
-/** The entry kind of a submission's report: its outcome card, in the submitter and in whoever started it. */
-export const LanderReportEntry = 'workspaces.lander-report'
 /** Outcomes kept in the index for submit cards; older ones live on in the lander conversation. */
 const kept = 50
 /** The lander's own detached checkout of `source`, also its conversation's cwd. */
@@ -807,7 +805,7 @@ export function createLander(
       report: async (task, runtime, context) => {
         const { id, conversationId, text, outcome } = task.state.checkpoint
         const branch = conversationId
-        const entry = { kind: LanderReportEntry, data: { id, outcome } }
+        const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const next = { status: 'running', checkpoint: { phase: 'next' } } as const
         if (outcome.outcome === 'failed') {
           await (
@@ -867,7 +865,7 @@ export function createLander(
       // own report when it stops, so the card goes as a note.
       deliver: async (task, runtime, context) => {
         const { id, conversationId, text, outcome, concluded, starter } = task.state.checkpoint
-        const entry = { kind: LanderReportEntry, data: { id, outcome } }
+        const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (

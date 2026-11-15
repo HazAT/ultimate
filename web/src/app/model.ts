@@ -1,5 +1,6 @@
 import type { AssistantMessage, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord, LiveState, ToolDiagnostic, ToolSlot } from '@earendil-works/pi-durable'
+import { ToolResultEntry } from '@earendil-works/pi-durable'
 import type { ToolCallView } from '../sdk/types.ts'
 
 export interface ToolResult {
@@ -13,8 +14,8 @@ export function indexTools(entries: readonly EntryRecord[]) {
   const calls = new Set<string>()
   for (const entry of entries) {
     const message = entry.model?.[0]
-    if (entry.kind === 'pi.tool-result' && message?.role === 'toolResult') {
-      const data = entry.data as { diagnostics?: ToolDiagnostic[] } | undefined
+    if (ToolResultEntry.is(entry) && message?.role === 'toolResult') {
+      const data = entry.data
       results.set(message.toolCallId, {
         message,
         diagnostics: data?.diagnostics ?? [],

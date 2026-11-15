@@ -4,8 +4,8 @@
  */
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
-import { demo, demoLength, demoPlayer } from './agents.ts'
-import type { Happening, Variant } from './agents.ts'
+import { demo, demoLength, demoPlayer } from './agents.tsx'
+import type { Happening, Variant } from './agents.tsx'
 import type { Band } from './engine.ts'
 import { engine } from './tones.ts'
 

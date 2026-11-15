@@ -6,6 +6,7 @@ import { Branch } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
+import { IdleEntry } from './entries.ts'
 
 const Seen = defineDoc<{ key?: string }>({
   kind: 'watchdog.seen',
@@ -89,7 +90,7 @@ export async function idleNote(
   return {
     entries: [
       {
-        kind: 'watchdog.idle',
+        kind: IdleEntry.kind,
         data: { ids: idle.map((branch) => branch.id), text: content },
         model: [{ role: 'user' as const, content, timestamp: now }],
       },

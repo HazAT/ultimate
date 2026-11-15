@@ -1,4 +1,3 @@
-import { parseConversationId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   EntryId,
@@ -21,15 +20,12 @@ import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
 import type { Remote } from './refs.ts'
+import { MessageEntry, ReplyEntry } from './refs.ts'
+import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
 import { tell } from './remote.ts'
 import { Started } from './addresses.ts'
 import type { Serves } from './addresses.ts'
-
-/** The lander's card in the starter, an input only when the landing concluded the branch (workspaces' lander.ts). */
-const LANDED = 'workspaces.lander-report'
-/** A fired automation's input in a subscriber; its data carries `serves` on the first fire only (automations). */
-const FIRED = 'automations.fired'
 
 /** Every task state but `terminal`: queried by status, so finished tasks are never scanned. */
 const LIVE = ['pending', 'running', 'waiting', 'sleeping', 'completing'] as const
@@ -135,15 +131,13 @@ export async function reported(
     )
   for (const entryId of answered) {
     const entry = await tx.entry(entryId as never)
-    const data = entry?.data as
-      | { id?: unknown; name?: unknown; from?: unknown; reply?: unknown; echo?: unknown }
-      | undefined
-    if (entry?.kind === FIRED) {
+    if (entry?.kind === 'automations.fired') {
+      const data = entry.data as { id: string; name: string; serves?: Serves; at?: number }
       // `at`: when it fired. Only what the starter sent since then is this run's own answer.
-      const { serves, at = 0 } = data as { serves?: Serves; at?: number }
+      const { serves, at = 0 } = data
       if (serves && !told(serves, (m) => m.at >= at))
         askers.push({
-          source: `automation ${String(data?.id)} "${String(data?.name)}"`,
+          source: `automation ${data.id} "${data.name}"`,
           // By the request, not the automation's id: a project slug may be 63 characters, and `tell` must keep the
           // key within the 100 another Ultimate accepts.
           key: `request:${serves.message}`,
@@ -151,21 +145,21 @@ export async function reported(
         })
       continue
     }
-    if (entry?.kind === LANDED) {
+    if (LanderReportEntry.is(entry)) {
       // A landing card is an input only when the landing concluded the branch, which is when its result is ready.
       const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
-      const branch = results[String(data?.id)]?.conversationId
+      const branch = results[entry.data.id]?.conversationId
       if (branch === undefined || (await tx.doc(Started, branch)).by !== starter) continue
       const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
       latest.set(branch, Math.max(latest.get(branch) ?? 0, last))
       continue
     }
-    const report =
-      entry?.kind === 'board.reply' || (entry?.kind === 'board.message' && data?.reply === false)
-    if (!report || typeof data?.from !== 'number' || data.echo === true) continue
-    const from = parseConversationId(data.from)
+    if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && entry.data.reply === false)) continue
+    const data = entry.data
+    if (typeof data.from !== 'number' || data.echo === true) continue
+    const from = data.from
     if ((await tx.doc(Started, from)).by !== starter) continue
-    latest.set(from, Math.max(latest.get(from) ?? 0, Number(data.id ?? 0)))
+    latest.set(from, Math.max(latest.get(from) ?? 0, data.id))
   }
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
   const branches: ConversationId[] = []
@@ -293,12 +287,10 @@ export function route(host: ExtensionHost) {
           let echo = true
           for (const entryId of answered) {
             const entry = await tx.entry(entryId)
-            const data = entry?.data as
-              | { from?: unknown; reply?: unknown; routed?: unknown }
-              | undefined
+            const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
             const asked =
-              entry?.kind === 'board.message' && data?.reply === true && data.from !== 'user'
-            if (asked && data.from === by) return []
+              MessageEntry.is(entry) && entry.data.reply === true && entry.data.from !== 'user'
+            if (asked && data?.from === by) return []
             if (!asked) elsewhere = false
             if (data?.routed !== true) echo = false
           }

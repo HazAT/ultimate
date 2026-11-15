@@ -1,4 +1,4 @@
-import { ROOT } from '@/sdk'
+import { ROOT, renderEntry } from '@/sdk'
 /**
  * The goal's two transcript cards in @ultimate's conversation: `goal.started`, live while it works (criteria, the latest
  * decisions, End), and `goal.report`, what happened while the user was away: every decision with its reason.
@@ -27,10 +27,10 @@ import {
   useUltimate,
 } from '@/sdk'
 import { plural } from '@/sdk'
-import type { EntryRecord } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'
-import type { Criterion, Decision, Goal, GoalEntry } from './refs.ts'
+import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
+import type { Criterion, Decision, Goal } from './refs.ts'
 
 function useGoal(id: number) {
   return useDocOf(ROOT, GoalDoc)?.goals.find((goal) => goal.id === id)
@@ -166,8 +166,8 @@ function Words({ goal }: { goal: Goal }) {
 }
 
 /** `goal.started`: the goal while @ultimate works on it, with End; once ended, a pointer to its report. */
-export function StartedCard({ entry }: { entry: EntryRecord }) {
-  const { goal: id } = entry.data as GoalEntry
+export const StartedCard = renderEntry(GoalStartedEntry, function StartedCard({ entry }) {
+  const { goal: id } = entry.data
   const goal = useGoal(id)
   const open = !!goal && !goal.ended
   return (
@@ -204,7 +204,7 @@ export function StartedCard({ entry }: { entry: EntryRecord }) {
       )}
     </Card>
   )
-}
+})
 
 /** The goal reminder's state: waking @ultimate every 30 minutes, or paused while it waits on the user. */
 function Reminder({ goal }: { goal: Goal }) {
@@ -277,8 +277,8 @@ const headlines = {
 }
 
 /** `goal.report`: how the goal ended, its criteria, and every decision @ultimate took for the user. */
-export function ReportCard({ entry }: { entry: EntryRecord }) {
-  const { goal: id } = entry.data as GoalEntry
+export const ReportCard = renderEntry(GoalReportEntry, function ReportCard({ entry }) {
+  const { goal: id } = entry.data
   const goal = useGoal(id)
   const ended = goal?.ended
   return (
@@ -329,4 +329,4 @@ export function ReportCard({ entry }: { entry: EntryRecord }) {
       )}
     </Card>
   )
-}
+})

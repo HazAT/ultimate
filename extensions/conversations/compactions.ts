@@ -33,11 +33,11 @@ export function compactionEvents(
           )
           continue
         }
-        if (change.type !== 'entry' || change.value.kind !== CompactionEntry.kind) continue
+        if (change.type !== 'entry') continue
         const entry = change.value
-        if (emitted.has(entry.id)) continue
+        if (!CompactionEntry.is(entry) || emitted.has(entry.id)) continue
         emitted.add(entry.id)
-        const reason = (entry.data as { reason?: string } | undefined)?.reason
+        const reason = entry.data.reason
         host
           .harness()
           .commit(

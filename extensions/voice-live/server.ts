@@ -40,6 +40,14 @@ import {
   StartAction,
   StatusAction,
 } from './refs.ts'
+import {
+  VoiceLineEntry,
+  VoiceContextEntry,
+  VoiceAnswerEntry,
+  VoiceHeardEntry,
+  VoiceQuestionEntry,
+  VoiceUtteranceEntry,
+} from './entries.ts'
 import type {
   VoiceAnswer,
   VoiceContext,
@@ -111,7 +119,7 @@ async function lines(tx: Tx, id: ConversationId, limit: number) {
   do {
     const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
     for (const entry of page.items) {
-      if (entry.kind === 'voice.line') result.push(entry.data as VoiceLine)
+      if (VoiceLineEntry.is(entry)) result.push(entry.data)
       if (result.length === limit) return result.toReversed()
     }
     cursor = page.next
@@ -134,7 +142,7 @@ async function newestBrief(tx: Tx, id: ConversationId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
-    const found = page.items.find((entry) => entry.kind === 'voice.context')
+    const found = page.items.find((candidate) => VoiceContextEntry.is(candidate))
     if (found) return found
     cursor = page.next
   } while (cursor)
@@ -160,7 +168,7 @@ async function placeBrief(
       type: 'write',
       requestId: `voice:context:${session}`,
       entry: {
-        kind: 'voice.context',
+        kind: VoiceContextEntry.kind,
         data: { ...brief, transient: true },
         ...(brief.error ? {} : { model: [briefMessage(brief.text)] }),
         ...(previous ? { edits: [{ target: previous.id, action: 'omit' as const }] } : {}),
@@ -275,7 +283,7 @@ async function answerVoice(
       type: 'input',
       requestId: `voice:answer:${line}`,
       whenBusy: 'steer',
-      entry: { kind: 'voice.answer', data },
+      entry: { kind: VoiceAnswerEntry.kind, data },
       content: `@ultimate answered (to forwarded line ${line}):\n${text}`,
     },
     context,
@@ -375,7 +383,7 @@ export function answerTask(host: ExtensionHost) {
               requestId: `voice:${line}`,
               whenBusy: 'steer',
               entry: {
-                kind: 'voice.utterance',
+                kind: VoiceUtteranceEntry.kind,
                 data: { text: input.text, line },
               },
               content: `The user, by voice (live transcript, may contain mistakes):\n${input.text}`,
@@ -574,7 +582,7 @@ export const actions = {
       {
         type: 'input',
         whenBusy: 'steer',
-        entry: { kind: 'voice.heard', data: { text: text.trim() } },
+        entry: { kind: VoiceHeardEntry.kind, data: { text: text.trim() } },
         content: `The user, by voice (live transcript, may contain mistakes):\n${text.trim()}`,
       },
       context,
@@ -605,7 +613,7 @@ export const actions = {
         type: 'input',
         requestId: `voice:asked:${id}`,
         whenBusy: 'steer',
-        entry: { kind: 'voice.question', data },
+        entry: { kind: VoiceQuestionEntry.kind, data },
         content: `A new question for the user arrived: message ${id} from ${data.title}: ${data.gist}`,
       },
       context,
@@ -709,12 +717,12 @@ export default (host: ExtensionHost) => {
           if (!view.head) return undefined
           const message = await host.harness().commit(async (tx) => {
             const newest = await newestBrief(tx, id)
-            const data = newest?.data as VoiceContext | undefined
+            const data = newest?.data
             if (!newest || !data || data.error || view.entries.some((e) => e.id === newest.id))
               return undefined
             const again = briefMessage(data.text)
             await tx.appendEntry(id, {
-              kind: 'voice.context',
+              kind: VoiceContextEntry.kind,
               data: { ...data, again: true, transient: true },
               model: [again],
             })
@@ -756,7 +764,7 @@ export default (host: ExtensionHost) => {
                     cursor,
                   )
                   for (const entry of page.items) {
-                    if (entry.kind === 'voice.answer') return (entry.data as { re: number }).re
+                    if (VoiceAnswerEntry.is(entry)) return entry.data.re
                     if (entry.kind === 'voice.heard') return false
                   }
                   cursor = page.next

@@ -2,6 +2,10 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
+import { MessageEntry, ReplyEntry } from './refs.ts'
+import { NoteEntry, FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
+import { LanderReportEntry } from '../workspaces/ui.tsx'
+import { InstructionEntry, ReportEntry } from '../subagents/ui.tsx'
 
 export { isOpen, isOwed, openQuestion }
 
@@ -188,8 +192,7 @@ export function backgroundRow(
   if (hiddenKinds.has(entry.kind)) return 'hidden'
   if (landed(entry)) return false
   if (backgroundKinds.has(entry.kind)) return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from !== 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) return entry.data.from !== 'user'
   const message = entry.model?.[0]
   if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') return false
   if (calls.length)
@@ -222,8 +225,7 @@ export function threadRow(
   const { entry, calls } = row
   if (hiddenKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
   if (entry.kind === 'pi.user') return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from === 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) return entry.data.from === 'user'
   if (entry.kind !== 'pi.assistant' || backgroundRow(row, log) !== false) return false
   if (calls.length)
     return calls.some(
@@ -242,8 +244,12 @@ export function threadRow(
 
 /** The short commit a landing row says landed, for a summary line. */
 export function landedSha(entry: EntryRecord): string | undefined {
-  const data = entry.data as { sha?: unknown; outcome?: { sha?: unknown } } | undefined
-  const sha = entry.kind === 'lineage.note' ? data?.sha : data?.outcome?.sha
+  const sha =
+    NoteEntry.is(entry) && entry.data.source === 'lander'
+      ? entry.data.sha
+      : LanderReportEntry.is(entry)
+        ? entry.data.outcome.sha
+        : undefined
   return typeof sha === 'string' ? sha.slice(0, 7) : undefined
 }
 
@@ -255,9 +261,8 @@ const idOf = (value: unknown): (ConversationId | 'remote')[] =>
  * for, so they stay in the compact transcript and split background around them; a failed report stays background.
  */
 export function landed(entry: EntryRecord) {
-  const data = entry.data as { source?: unknown; outcome?: { outcome?: unknown } } | undefined
-  if (entry.kind === 'lineage.note') return data?.source === 'lander'
-  return entry.kind === 'workspaces.lander-report' && data?.outcome?.outcome === 'landed'
+  if (NoteEntry.is(entry)) return entry.data.source === 'lander'
+  return LanderReportEntry.is(entry) && entry.data.outcome.outcome === 'landed'
 }
 
 /** Who a background row is with: the conversations it came from or went to, `lander` for the lander. */
@@ -268,24 +273,24 @@ export function counterparts(
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData>,
 ): (ConversationId | 'remote' | 'lander')[] {
-  const data = (entry.data ?? {}) as {
-    from?: unknown
-    sender?: unknown
-    conversation?: unknown
-    source?: unknown
-  }
   switch (entry.kind) {
     case 'board.message':
     case 'board.reply':
     case 'lineage.finished':
-      return idOf(data.from)
+      return MessageEntry.is(entry) || ReplyEntry.is(entry) || FinishedEntry.is(entry)
+        ? idOf(entry.data.from)
+        : []
     case 'lineage.note':
-      return data.source === 'lander' ? ['lander'] : idOf(data.from)
+      return NoteEntry.is(entry)
+        ? entry.data.source === 'lander'
+          ? ['lander']
+          : idOf(entry.data.from)
+        : []
     case 'lineage.abstract':
-      return idOf(data.conversation)
+      return AbstractEntry.is(entry) ? idOf(entry.data.conversation) : []
     case 'subagents.report':
     case 'subagents.instruction':
-      return idOf(data.sender)
+      return InstructionEntry.is(entry) || ReportEntry.is(entry) ? idOf(entry.data.sender) : []
     case 'workspaces.lander-report':
       return ['lander']
   }

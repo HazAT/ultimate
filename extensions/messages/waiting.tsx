@@ -8,6 +8,7 @@ import { callerOf } from './caller.ts'
 import { offscreen, openQuestion } from './data.tsx'
 import type { Place, Pointer } from './data.tsx'
 import { MessagesDoc } from './refs.ts'
+import { AskedEntry } from './entries.ts'
 import type { Message } from './refs.ts'
 
 /** An open question in this transcript: its card's selector, and the entry it shows in once loaded. */
@@ -38,15 +39,11 @@ export function questionsOf(
       go: () => events.emit('messages:open', { conversation: id, message: m.id }),
     }))
   const pointed = entries
-    .filter(
-      (e) =>
-        e.conversationId === id &&
-        e.kind === 'board.asked' &&
-        open.has((e.data as { message: number }).message ?? -1),
-    )
+    .filter((candidate) => AskedEntry.is(candidate))
+    .filter((e) => e.conversationId === id && open.has(e.data.message ?? -1))
     .map((e) => ({
       key: `p${e.id}`,
-      card: `[data-message-pointer="${(e.data as { message: number }).message}"]`,
+      card: `[data-message-pointer="${e.data.message}"]`,
       entry: e.id,
       go: () => events.emit('ultimate:reveal-entry', { conversationId: id, entryId: e.id }),
     }))

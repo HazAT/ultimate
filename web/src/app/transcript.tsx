@@ -1,4 +1,5 @@
 import { parseEntryId } from '../../../lib/ids.ts'
+import { CompactionEntry } from '@earendil-works/pi-durable'
 import type {
   ConversationId,
   EntryId,
@@ -1210,7 +1211,7 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
   const end = wrapped.lastIndexOf('\n</summary>')
   const summary =
     start >= 0 && end > start ? wrapped.slice(start + '<summary>\n'.length, end) : wrapped
-  const reason = (entry.data as { reason?: string } | undefined)?.reason
+  const reason = CompactionEntry.is(entry) ? entry.data?.reason : undefined
   return (
     <Collapsible className="group/compaction rounded-lg border border-brand/30 bg-brand/5">
       <CollapsibleTrigger className="flex w-full cursor-pointer flex-col gap-1 px-3.5 py-2.5 text-left">
