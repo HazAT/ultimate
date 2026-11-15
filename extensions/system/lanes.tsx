@@ -298,7 +298,7 @@ export function LaneRow({
               )}
               <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
                 <span
-                  className={cn('min-w-0 max-w-full shrink-0 truncate', laneTone(state))}
+                  className={cn('max-w-full shrink-0 truncate', laneTone(state))}
                   title={waitLabel}
                 >
                   {laneWord(state, waitLabel)}
@@ -308,7 +308,7 @@ export function LaneRow({
                     · {lane.kind === 'branch' ? 'branch · coordinator' : lane.agent}
                   </span>
                 )}
-                {lane.model && <span className="truncate">· {modelName(lane.model)}</span>}
+                {lane.model && <span className="min-w-0 truncate">· {modelName(lane.model)}</span>}
               </span>
             </span>
           </button>
