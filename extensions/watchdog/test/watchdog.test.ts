@@ -1,3 +1,11 @@
+import type {
+  ConversationId,
+  EntryRecord,
+  TaskId,
+  Task,
+  ToolExecutionApi,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import { until } from '../../../test/helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import { createModels } from '@earendil-works/pi-ai/models'
@@ -19,13 +27,6 @@ import {
   MemoryStorage,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  EntryRecord,
-  TaskId,
-  Task,
-  ToolExecutionApi,
-} from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import watchdog, { diagnose } from '../server.ts'
 import { idleNote } from '../idle.ts'
@@ -37,7 +38,7 @@ import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { UiState } from '../../../server/ui-state.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -717,7 +718,11 @@ it('injects idle changes before @ultimate inputs only, never as a system section
   const f = await fixture()
   const branch = await f.conversation('Idle feature')
   await f.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, branch)).branch = { from: ROOT_CONVERSATION_ID, at: 0, intent: 'idle' }
+    ;(await tx.doc(Branch, branch)).branch = {
+      from: ROOT_CONVERSATION_ID,
+      at: 0 as EntryId,
+      intent: 'idle',
+    }
     ;(await tx.doc(Metadata, branch)).inputAt = Date.now() - 3 * 3_600_000
   }, context)
   const other = await f.conversation('Other agent')
@@ -840,7 +845,11 @@ it('checks all siblings of a dense owner and times idleNote with 1500 conversati
   const f = await fixture()
   const branch = await f.conversation('Dense branch')
   const last = await f.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, branch)).branch = { from: ROOT_CONVERSATION_ID, at: 0, intent: 'idle' }
+    ;(await tx.doc(Branch, branch)).branch = {
+      from: ROOT_CONVERSATION_ID,
+      at: 0 as EntryId,
+      intent: 'idle',
+    }
     ;(await tx.doc(Metadata, branch)).inputAt = 1
     const anchor = await tx.createTask(Anchor, null, {
       conversationId: branch,
@@ -883,7 +892,11 @@ it('includes only idle open branches, does not repeat unchanged IDs, clears the 
     const id = await f.conversation(name)
     ids[name] = id
     await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = { from: ROOT_CONVERSATION_ID, at: 0, intent: name }
+      ;(await tx.doc(Branch, id)).branch = {
+        from: ROOT_CONVERSATION_ID,
+        at: 0 as EntryId,
+        intent: name,
+      }
       Object.assign(await tx.doc(Metadata, id), {
         inputAt: 1,
         answerAt: name === 'recent' ? 20_000_000 : 1,
@@ -924,7 +937,11 @@ it('includes only idle open branches, does not repeat unchanged IDs, clears the 
   for (let i = 0; i < 12; i++) {
     const id = await f.conversation(`idle ${i}`)
     await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = { from: ROOT_CONVERSATION_ID, at: 0, intent: 'idle' }
+      ;(await tx.doc(Branch, id)).branch = {
+        from: ROOT_CONVERSATION_ID,
+        at: 0 as EntryId,
+        intent: 'idle',
+      }
       ;(await tx.doc(Metadata, id)).inputAt = 1
     }, context)
   }
@@ -938,7 +955,11 @@ it('reports a branch idle after 30 minutes, and one awaiting a reply only after 
     const id = await f.conversation(name)
     ids[name] = id
     await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = { from: ROOT_CONVERSATION_ID, at: 0, intent: name }
+      ;(await tx.doc(Branch, id)).branch = {
+        from: ROOT_CONVERSATION_ID,
+        at: 0 as EntryId,
+        intent: name,
+      }
       ;(await tx.doc(Metadata, id)).answerAt = name === 'fresh' ? 20 * 60_000 : 0
     }, context)
   }

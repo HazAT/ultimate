@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 /**
  * Chapters in the browser: their names, the switch between them and the night veil while the server restarts into
  * another one. A successful switch never answers: the process exits, the page reconnects to the new one and reloads.
@@ -11,6 +13,7 @@ import {
   api,
   cn,
   errorMessage,
+  keepLast,
   useAction,
   useConnection,
   useConversations,
@@ -35,7 +38,7 @@ export const chaptersDialog = 'dream.chapters'
 
 /** The chapters of this home; they change only with a restart, which reloads the page. */
 export function useChapters() {
-  return useAction(ChaptersAction, null, { onError: () => {} }).data
+  return useAction(ChaptersAction, null, { onError: keepLast }).data
 }
 
 /**
@@ -125,7 +128,7 @@ export function SwitchVeil() {
   const ours = usePending()
   const system = useSystem()
   const connection = useConnection()
-  const doc = useDocOf(1, DreamDoc)
+  const doc = useDocOf(ROOT, DreamDoc)
   const sleep = doc?.sleep?.phase === 'switching' ? doc.sleep : undefined
   const current = useChapters()
   const now = useNow(1000, ours !== undefined)
@@ -238,9 +241,7 @@ function useReloadOnChapterChange(pid: number | undefined) {
         if (loaded.current === undefined) loaded.current = chapters.active
         else if (loaded.current !== chapters.active) location.replace('/')
       })
-      .catch(() => {
-        // Unreadable while the server restarts again: the next process's effect reads it.
-      })
+      .catch(keepLast)
     return () => controller.abort()
   }, [pid])
 }
@@ -251,7 +252,6 @@ export function useWakeUp(open: () => Promise<void>) {
   useEffect(() => {
     if (!system || !sessionStorage.getItem(WAKE)) return
     sessionStorage.removeItem(WAKE)
-    // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
     void open()
   }, [system, open])
 }
@@ -405,7 +405,7 @@ export function BusyBlocker({
   busy,
   onGo,
 }: {
-  busy: { id: number; title: string }[]
+  busy: { id: ConversationId; title: string }[]
   onGo?: () => void
 }) {
   const actions = useUltimate()

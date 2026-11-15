@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import {
   GitBranchIcon,
   CircleCheckIcon,
@@ -494,7 +495,7 @@ function TaskedSubagentLine({
   task,
 }: ChildRowProps & { depth: number; task?: { chip: ReactNode; title: string } }) {
   const actions = useShell()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const state = conversationState(
     {
       id: conversation.id,
@@ -617,7 +618,7 @@ function TaskedChildRow({
   task,
 }: ChildRowProps & { task?: { chip: ReactNode; title: string } }) {
   const actions = useShell()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const state = conversationState(
     {
       id: conversation.id,

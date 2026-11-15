@@ -1,15 +1,26 @@
 import { PencilIcon } from 'lucide-react'
 import { Fold, formatTime, Provided, useCompact, useTranscript } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
-import type {
-  FeatureChange,
-  IntentSummary,
-  ReplySummary,
-  SpawnSummary,
-  SummaryDiscard,
-  TitleChange,
-} from './types.ts'
+import {
+  TitleChanged,
+  FeatureChanged,
+  IntentSummarized,
+  SpawnSummarized,
+  ReplySummarized,
+  SummaryDiscarded,
+} from './entries.ts'
 import { Unsummarized } from './ui.tsx'
+
+function isSummary(entry: EntryRecord) {
+  return (
+    TitleChanged.is(entry) ||
+    FeatureChanged.is(entry) ||
+    IntentSummarized.is(entry) ||
+    SpawnSummarized.is(entry) ||
+    ReplySummarized.is(entry) ||
+    SummaryDiscarded.is(entry)
+  )
+}
 
 /** The entry kinds a summary task writes, each with the word the folded line names it by. */
 const summaryKinds: Record<string, string> = {
@@ -28,26 +39,16 @@ const invisible = new Set(['conversations.identity', 'pi.tool-result'])
 
 /** What a summary task concluded, as one quiet line; each entry traces to its task by `byTaskId`. */
 function summaryText(entry: EntryRecord) {
-  switch (entry.kind) {
-    case 'conversations.intent-summarized':
-      return `Intent: ${(entry.data as IntentSummary).summary}`
-    case 'conversations.title-changed':
-      return `Title changed to “${(entry.data as TitleChange).title}”`
-    case 'conversations.feature-changed': {
-      const data = entry.data as FeatureChange
-      return `Tag changed from “${data.from}” to “${data.feature}”`
-    }
-    case 'conversations.summarized':
-      return `Summary: ${(entry.data as SpawnSummary).summary}`
-    case 'conversations.assessed':
-      return `Reply: ${(entry.data as ReplySummary).activity}`
-    default: {
-      const data = entry.data as SummaryDiscard
-      return data.reason === 'stale'
-        ? 'Summary superseded by newer work'
-        : `Summary unavailable: ${data.cause}`
-    }
-  }
+  if (IntentSummarized.is(entry)) return `Intent: ${entry.data.summary}`
+  if (TitleChanged.is(entry)) return `Title changed to “${entry.data.title}”`
+  if (FeatureChanged.is(entry))
+    return `Tag changed from “${entry.data.from}” to “${entry.data.feature}”`
+  if (SpawnSummarized.is(entry)) return `Summary: ${entry.data.summary}`
+  if (ReplySummarized.is(entry)) return `Reply: ${entry.data.activity}`
+  if (!SummaryDiscarded.is(entry)) return ''
+  return entry.data.reason === 'stale'
+    ? 'Summary superseded by newer work'
+    : `Summary unavailable: ${entry.data.cause}`
 }
 
 /**
@@ -80,7 +81,9 @@ export function SummaryAction({ entry }: { entry: EntryRecord }) {
 /** Neighbouring summary lines fold into one quiet line naming what changed; opening it shows each line. */
 function SummaryRun({ run }: { run: readonly EntryRecord[] }) {
   const names = [...new Set(run.map((entry) => summaryKinds[entry.kind]))]
-  const date = new Date((run.at(-1)!.data as { at: number }).at)
+  const last = run.at(-1)!
+  if (!isSummary(last)) return null
+  const date = new Date(last.data.at)
   return (
     <Fold
       always
@@ -106,7 +109,8 @@ function SummaryRun({ run }: { run: readonly EntryRecord[] }) {
 
 function SummaryLine({ entry }: { entry: EntryRecord }) {
   const text = summaryText(entry)
-  const date = new Date((entry.data as { at: number }).at)
+  if (!isSummary(entry)) return null
+  const date = new Date(entry.data.at)
   return (
     <div
       className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground"

@@ -11,7 +11,7 @@ const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-fo
 function headline(args: ToolCallView['args']): [string, string] {
   const n = typeof args.n === 'number' ? args.n : undefined
   const count = Array.isArray(args.criteria) ? args.criteria.length : 0
-  switch (args.action) {
+  switch (words(args.action)) {
     case 'criteria':
       return ['Set criteria', count ? `${count} to meet` : '']
     case 'decide':
@@ -59,7 +59,6 @@ export function GoalCall({ call, core }: { call: ToolCallView; core: ReactNode }
           <ToolSection label="Done means">
             <ol className={`list-decimal space-y-0.5 pl-5 ${prose}`}>
               {criteria.map((item, index) => (
-                // oxlint-disable-next-line react/no-array-index-key -- Fixed call arguments; criteria may repeat.
                 <li key={index}>{item}</li>
               ))}
             </ol>

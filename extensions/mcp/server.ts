@@ -19,11 +19,13 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
+import { inBackground } from '../../lib/errors.ts'
 
 export const reloadOnSettings = true
 export const pollActions = ['status']
@@ -43,7 +45,7 @@ type Server = Omit<McpServerStatus, 'tools'> & {
   client?: McpClient
   tools: Tool[]
   attempts: number
-  timer?: ReturnType<typeof setTimeout>
+  cancelRetry?: Cancel
   /** The connect or reconnect running now; the next one queues behind it. */
   connecting?: Promise<void>
   /** The secret values its config resolved, kept out of every error it shows. */
@@ -199,12 +201,11 @@ export default async function mcp(host: ExtensionHost) {
     server.error = error
     const delay = Math.min(FIRST_RETRY * 2 ** server.attempts++, LAST_RETRY)
     server.retryAt = Date.now() + delay
-    server.timer = setTimeout(() => void begin(server), delay)
-    server.timer.unref?.()
+    server.cancelRetry = retryAfter(delay, () => inBackground(begin(server)), { unref: true })
   }
 
   async function connect(server: Server) {
-    clearTimeout(server.timer)
+    server.cancelRetry?.()
     delete server.retryAt
     delete server.error
     delete server.missing
@@ -279,11 +280,11 @@ export default async function mcp(host: ExtensionHost) {
   function queue(server: Server, work: () => Promise<void>) {
     const next = (server.connecting ?? Promise.resolve()).then(work)
     server.connecting = next
-    // work never rejects (connect and close report into the server's state).
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    void next.finally(() => {
-      if (server.connecting === next) delete server.connecting
-    })
+    inBackground(
+      next.finally(() => {
+        if (server.connecting === next) delete server.connecting
+      }),
+    )
     return next
   }
 
@@ -327,13 +328,11 @@ export default async function mcp(host: ExtensionHost) {
   host.onOpen(async () => {
     if (started) return
     started = true
-    // Each server reports its own failure in its state, and connect() never rejects; none waits for another.
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    for (const server of servers.values()) void begin(server)
+    for (const server of servers.values()) inBackground(begin(server))
   })
   host.onClose(async () => {
     closed = true
-    for (const server of servers.values()) clearTimeout(server.timer)
+    for (const server of servers.values()) server.cancelRetry?.()
     await Promise.all([...servers.values()].map((server) => close(server.client)))
   })
 
@@ -384,9 +383,7 @@ export default async function mcp(host: ExtensionHost) {
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
                 )
-                // restart never rejects; the server's state shows how it went.
-                // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-                if (broken && server.client === client) void restart(server)
+                if (broken && server.client === client) inBackground(restart(server))
                 return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
               }
             },

@@ -1,6 +1,6 @@
 ---
 name: ultimate-landing-smoke
-description: Check the running Ultimate host after a landing card arrives, before reporting the landing as live: the clone is on the landed sha and clean, a restart happens only when the landing needs one and after warning preview owners, the host is healthy afterwards, and one read proves the landed behaviour. Use after every landing on this repository, by @ultimate or any agent reporting one.
+description: 'Check the running Ultimate host after a landing card arrives, before reporting the landing as live: the clone is on the landed sha and clean, a restart happens only when the landing needs one and after warning preview owners, the host is healthy afterwards, and one read proves the landed behaviour. Use after every landing on this repository, by @ultimate or any agent reporting one.'
 ---
 
 # Smoke-check a landing

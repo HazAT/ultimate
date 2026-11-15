@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { inBackground, meansNone } from '../../lib/errors.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import type { GithubRepo } from '../../lib/project-identity.ts'
@@ -36,10 +37,7 @@ async function counts(name: string, url: string, signal: AbortSignal) {
     'status',
     {},
     AbortSignal.any([signal, AbortSignal.timeout(STATUS_WAIT)]),
-  ).catch(() => {
-    // Down, slow or without the status extension: the rail lists it without live state.
-    return undefined
-  })) as { busy?: unknown; questions?: { count?: unknown } } | undefined
+  ).catch(meansNone)) as { busy?: unknown; questions?: { count?: unknown } } | undefined
   const busy = status?.busy
   const questions = status?.questions?.count
   return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}
@@ -55,12 +53,13 @@ function repoOf(root: string | undefined) {
   if (!root) return undefined
   if (!repos.has(root) && !reading.has(root)) {
     reading.add(root)
-    // oxlint-disable-next-line typescript/no-floating-promises -- neither call rejects: githubRepo settles to undefined, readGithubRepo to the repository without its visibility.
-    void (async () => {
-      const key = await githubRepo(root)
-      repos.set(root, key ? await readGithubRepo(key) : null)
-      reading.delete(root)
-    })()
+    inBackground(
+      (async () => {
+        const key = await githubRepo(root)
+        repos.set(root, key ? await readGithubRepo(key) : null)
+        reading.delete(root)
+      })(),
+    )
   }
   return repos.get(root) ?? undefined
 }

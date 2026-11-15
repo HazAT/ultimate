@@ -8,6 +8,7 @@ import {
   errorMessage,
   events,
   shortenPath,
+  keepLast,
   useAction,
   useDialog,
   useEvent,
@@ -144,8 +145,7 @@ function Loader({
   close: () => void
 }) {
   const discovery = useAction(DefinitionsAction)
-  // Shown inline, as the dialog's content, rather than as a notice.
-  const shown = useAction(DefinitionAction, { name }, { enabled: name !== '', onError: () => {} })
+  const shown = useAction(DefinitionAction, { name }, { enabled: name !== '', onError: keepLast })
   const [revision, setRevision] = useState(0)
   if (!discovery.data || (name && !shown.data))
     return (

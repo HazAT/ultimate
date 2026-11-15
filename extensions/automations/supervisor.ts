@@ -1,13 +1,14 @@
+import type { ConversationId, Agent, Cursor, Tx } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Agent, ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { FIRST_CHAPTER } from '../../lib/chapters.ts'
+import { isMissing, settled } from '../../lib/errors.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import {
   closeOutput,
@@ -101,7 +102,7 @@ export type Prepared = {
   profile?: AgentDefinition
   parent?: Agent
   slug?: string
-  target?: number
+  target?: ConversationId
   subscriber?: Subscriber
   /** A create's explicit subscribers, validated. */
   subscribers?: Subscriber[]
@@ -169,7 +170,7 @@ export function supervisor(
         withFileTypes: true,
       })
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return found
+      if (isMissing(error)) return found
       throw error
     }
     for (const entry of entries) {
@@ -178,7 +179,7 @@ export function supervisor(
       try {
         text = await readFile(join(projectDir(entry.name), MANIFEST), 'utf8')
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+        if (isMissing(error)) continue
         throw error
       }
       let parsed: Manifest | undefined
@@ -303,16 +304,14 @@ export function supervisor(
     return child.id
   }
   /** The agent a new automation conversation is configured from, and whose model and tools it copies: the caller, else @ultimate. */
-  async function agentFor(caller?: number): Promise<Prepared> {
+  async function agentFor(caller?: ConversationId): Promise<Prepared> {
     const profile = (
       await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
     ).definitions.find((d) => d.name === 'watcher')
     if (!profile) throw new Error('Missing watcher agent definition')
     const parentId =
       caller ?? (await host.need(SubagentsApi).standing('ultimate', BACKGROUND_CONTEXT))
-    const conversation = await host
-      .harness()
-      .conversation(parentId as ConversationId, BACKGROUND_CONTEXT)
+    const conversation = await host.harness().conversation(parentId, BACKGROUND_CONTEXT)
     if (!conversation) throw new Error(`Unknown caller #${parentId}`)
     return { profile, parent: await conversation.agent(BACKGROUND_CONTEXT) }
   }
@@ -346,7 +345,7 @@ export function supervisor(
         .slice(-lines)
         .join('\n')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      if (isMissing(error)) return ''
       throw error
     }
   }
@@ -381,11 +380,10 @@ export function supervisor(
         for (const target of targets) {
           // `@name` follows the standing agent to its conversation of the moment, across chapters; one not made yet
           // is made now, as a message to it would.
-          const id = (
+          const id =
             typeof target === 'string'
               ? await host.need(SubagentsApi).standing(target.slice(1), ctx)
               : target
-          ) as ConversationId
           // The escalation message already reached @ultimate.
           if (kind === 'escalated' && id === ultimate) continue
           // A lander conversation is its log and takes no input; a subscriber stored before that stays harmless.
@@ -402,7 +400,18 @@ export function supervisor(
               requestId,
               entry: {
                 kind: `automations.${kind}`,
-                data: { id: sub.id, name: sub.name, text },
+                data: {
+                  id: sub.id,
+                  name: sub.name,
+                  text,
+                  // The run this wakes in its creator answers the request the creator owed then (messages' route.ts).
+                  ...(kind === 'fired' && sub.serves?.by === id
+                    ? {
+                        serves: (({ by: _by, ...serves }) => serves)(sub.serves),
+                        at: sub.lastFireAt ?? 0,
+                      }
+                    : {}),
+                },
               },
             },
             ctx,
@@ -713,26 +722,25 @@ export function supervisor(
     const work = previous.then(async () => {
       await effect(value)
     })
-    // A failed start has already become an investigating automation; it must not block its repair.
-    const settled = work.catch(() => {})
-    effects.set(value.id, settled)
+    const done = settled(work)
+    effects.set(value.id, done)
     try {
       await work
     } finally {
-      if (effects.get(value.id) === settled) effects.delete(value.id)
+      if (effects.get(value.id) === done) effects.delete(value.id)
     }
   }
   /**
    * A watcher gave its final answer. When its script is still being written or investigated and no input waits for
    * it, nobody would ever look again: escalate with its answer. A replay finds the script failed and does nothing.
    */
-  async function watcherYielded(conversationId: number, answer: string) {
+  async function watcherYielded(conversationId: ConversationId, answer: string) {
     await host.harness().commit(async (tx) => {
       const sub = Object.values((await tx.doc(Automations)).automations).find(
         (a) => a.script?.conversationId === conversationId,
       )
       if (!sub?.enabled || !['writing', 'investigating'].includes(sub.script!.state)) return
-      if ((await tx.doc(InboxDoc, conversationId as ConversationId)).items.length) return
+      if ((await tx.doc(InboxDoc, conversationId)).items.length) return
       // A brief or failure committed but not yet delivered is still coming: the watcher will look again.
       for (const live of ['pending', 'running'] as const) {
         let cursor: Cursor | undefined
@@ -776,7 +784,7 @@ export function supervisor(
     try {
       folders = await readdir(scriptsRoot(), { withFileTypes: true })
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!isMissing(error)) throw error
       folders = []
     }
     // Sweep files, not ledger records: stop/delete may have committed just before a crash.

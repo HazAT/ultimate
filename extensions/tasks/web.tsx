@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon, GitBranchIcon, ListTreeIcon, MessageSquareIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -34,7 +36,7 @@ interface Tree {
   /** Live tasks by owner task id. */
   children: Map<number, TaskGraphNode[]>
   /** Conversation-owned running work by conversation id: the tree the Running group draws. */
-  roots: Map<number, TaskGraphNode[]>
+  roots: Map<ConversationId, TaskGraphNode[]>
   summaries: Map<number, ConversationSummary>
   /** When each task first ran, in wall-clock milliseconds. */
   started: Record<string, number>
@@ -91,10 +93,11 @@ function build(
       conversations: task.conversations.filter((id) => !hidden.has(id)),
     }))
   const children = new Map<number, TaskGraphNode[]>()
-  const roots = new Map<number, TaskGraphNode[]>()
+  const roots = new Map<ConversationId, TaskGraphNode[]>()
   for (const task of tasks) {
-    const [map, key] = task.owner == null ? [roots, task.conversationId] : [children, task.owner]
-    map.set(key, [...(map.get(key) ?? []), task])
+    if (task.owner == null)
+      roots.set(task.conversationId, [...(roots.get(task.conversationId) ?? []), task])
+    else children.set(task.owner, [...(children.get(task.owner) ?? []), task])
   }
   // Conversations a live task owns appear under that task; the rest are top-level.
   const owned = new Set<number>(tasks.flatMap((task) => task.conversations))
@@ -140,11 +143,12 @@ function status(task: TaskGraphNode): {
       }
     case 'sleeping':
       return { text: `${state.phase} · sleeping`, icon: 'pending' }
-    default:
-      return {
-        text: `completing → ${state.outcome}`,
-        icon: state.outcome === 'completed' ? 'done' : 'interrupted',
-      }
+    case 'completing':
+      break
+  }
+  return {
+    text: `completing → ${state.outcome}`,
+    icon: state.outcome === 'completed' ? 'done' : 'interrupted',
   }
 }
 
@@ -168,16 +172,17 @@ function Guides({ depth, rails = [], last = true }: Place) {
   const line = 'pointer-events-none absolute border-muted-foreground/35 border-dashed'
   return (
     <span aria-hidden>
-      {rails.slice(0, depth - 1).map((on, level) =>
-        on ? (
-          <span
-            className={cn(line, 'inset-y-0 border-l')}
-            // oxlint-disable-next-line react/no-array-index-key -- Guide columns are addressed by tree depth.
-            key={level}
-            style={{ left: axis(level) }}
-          />
-        ) : null,
-      )}
+      {rails
+        .slice(0, depth - 1)
+        .map((on, level) =>
+          on ? (
+            <span
+              className={cn(line, 'inset-y-0 border-l')}
+              key={level}
+              style={{ left: axis(level) }}
+            />
+          ) : null,
+        )}
       <span
         className={cn(line, 'top-0 border-l', last ? 'h-1/2' : 'bottom-0')}
         style={{ left: axis(depth - 1) }}
@@ -199,7 +204,6 @@ const places = (count: number, { depth, rails = [], last = true }: Place) =>
   }))
 
 /** The root conversation: the project itself, never shown as a conversation of its own. */
-const ROOT = 1
 
 /** Ten minutes: a running task or chore older than this shows in warning colour, so a stuck one stands out. */
 const LONG = 10 * 60_000
@@ -302,7 +306,7 @@ export function TaskRow({ task, tree, ...place }: { task: TaskGraphNode; tree: T
   )
 }
 
-function ConversationRow({ id, tree, ...place }: { id: number; tree: Tree } & Place) {
+function ConversationRow({ id, tree, ...place }: { id: ConversationId; tree: Tree } & Place) {
   const { conversationId, switchConversation } = useUltimate()
   const summary = tree.summaries.get(id)
   const link = useTaskOf(id)
@@ -408,7 +412,7 @@ function TasksPanel() {
   const conversations = useConversations()
   const [concluded] = useUiState<number[]>('ext.conversations.concluded', [])
   const { tasks, children, roots, summaries } = build(graph, conversations, concluded)
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const overview = useOverview()
   const now = useNow(1000, tasks.length > 0)
   const ids = tasks.map((task) => task.id)

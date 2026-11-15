@@ -1,4 +1,6 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
+import { deadline } from '../../lib/timers.ts'
 import {
   ArrowRightIcon,
   AudioLinesIcon,
@@ -58,22 +60,23 @@ import type { VoiceMode } from './live.tsx'
 import { openQuestion } from '../../lib/message-state.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { AskedAction, LogAction, StatusAction } from './refs.ts'
-import type {
-  VoiceAnswer,
-  VoiceContext,
-  VoiceGo,
-  VoiceLine,
-  VoiceQuestion,
-  VoiceSession,
-  VoiceUtterance,
-} from './refs.ts'
+import {
+  VoiceLineEntry,
+  VoiceSessionEntry,
+  VoiceContextEntry,
+  VoiceQuestionEntry,
+  VoiceUtteranceEntry,
+  VoiceAnswerEntry,
+  VoiceHeardEntry,
+} from './entries.ts'
+import type { VoiceAnswer, VoiceGo, VoiceLine } from './refs.ts'
 
 const KEYS = 'alt+v'
 const useMode = () => useSyncExternalStore(live.subscribe, live.voiceMode)
 /** @ultimate's conversation and the Voice conversation, once start created it. */
 function useIds() {
-  const main = useDocOf(1, StandingDoc)?.ultimate
-  const voice = useDocOf(1, StandingDoc)?.voice
+  const main = useDocOf(ROOT, StandingDoc)?.ultimate
+  const voice = useDocOf(ROOT, StandingDoc)?.voice
   return { main, voice }
 }
 
@@ -83,7 +86,6 @@ const start = live.start
 function toggleFront(actions: Pick<UltimateActions, 'switchConversation' | 'showSurface'>) {
   const front = !live.voiceMode().front
   live.setFront(front)
-  // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
   if (front) void talkToUltimate(actions)
 }
 
@@ -185,7 +187,6 @@ function StartButton() {
             if (status.loading) return
             if (missing) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
             if (on) return toggleFront(actions)
-            // oxlint-disable-next-line typescript/no-floating-promises -- open shows its own failures in the indicator.
             void start()
           }}
           // Keeps the editor's focus, so a phone's keyboard neither opens nor closes under the tap.
@@ -354,7 +355,7 @@ const QUIET_MS = 2000
  * have been quiet a moment; never one that was open before. The server takes each message once.
  */
 function Announce() {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const mode = useMode()
   const seen = useRef<Set<number>>(undefined)
   const [due, setDue] = useState<number[]>([])
@@ -377,17 +378,13 @@ function Announce() {
   }, [log])
   useEffect(() => {
     if (!due.length || busy) return undefined
-    const timer = setTimeout(
-      () => {
-        setDue([])
-        for (const message of due)
-          api
-            .action(AskedAction, { message })
-            .catch((error: unknown) => console.warn('Voice announce failed', error))
-      },
-      Math.max(0, quietSince + QUIET_MS - Date.now()),
-    )
-    return () => clearTimeout(timer)
+    return deadline(Math.max(0, quietSince + QUIET_MS - Date.now()), () => {
+      setDue([])
+      for (const message of due)
+        api
+          .action(AskedAction, { message })
+          .catch((error: unknown) => console.warn('Voice announce failed', error))
+    })
   }, [due, busy, quietSince])
   return null
 }
@@ -420,18 +417,17 @@ function SpeakNew({ voice }: { voice: number }) {
   const loading = useConversation((conversation) => conversation.loading)
   const actions = useUltimate()
   const commands = useCommands()
+  const navigation = useRef({ actions, commands })
+  navigation.current = { actions, commands }
   const seen = useRef<number>(undefined)
   useEffect(() => {
     if (loading) return
     const last = entries.at(-1)?.id ?? 0
-    const lines = entries.filter((e) => e.kind === 'voice.line')
+    const lines = entries.filter((candidate) => VoiceLineEntry.is(candidate))
     live.working(
       lines.some((entry) => {
-        const line = entry.data as unknown as VoiceLine
-        return (
-          line.forwarded &&
-          !lines.some((reply) => (reply.data as unknown as VoiceLine).re === entry.id)
-        )
+        const line = entry.data
+        return line.forwarded && !lines.some((reply) => reply.data.re === entry.id)
       }),
     )
     if (seen.current === undefined) {
@@ -439,14 +435,14 @@ function SpeakNew({ voice }: { voice: number }) {
       return
     }
     for (const entry of entries) {
-      if (entry.id <= seen.current || entry.kind !== 'voice.line') continue
-      const line = entry.data as unknown as VoiceLine
+      if (entry.id <= seen.current || !VoiceLineEntry.is(entry)) continue
+      const line = entry.data
       if (line.role === 'ultimate' && line.speech) live.hear(line.text, entry.id)
       else if (line.role === 'note') live.note(line.text)
-      else if (line.role === 'action' && line.go) navigate(line.go, actions, commands)
+      else if (line.role === 'action' && line.go)
+        navigate(line.go, navigation.current.actions, navigation.current.commands)
     }
     seen.current = Math.max(seen.current, last)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- only new entries act; actions and commands are read then.
   }, [entries, loading])
   // A new Voice conversation starts counting afresh.
   useEffect(() => () => (seen.current = undefined), [voice])
@@ -485,8 +481,7 @@ function Stage() {
   if (inFront && !shown) setShown(true)
   useEffect(() => {
     if (inFront) return undefined
-    const timer = setTimeout(() => setShown(false), duration + 60)
-    return () => clearTimeout(timer)
+    return deadline(duration + 60, () => setShown(false))
   }, [inFront])
 
   useLayoutEffect(() => {
@@ -748,7 +743,9 @@ function useStep(mode: VoiceMode): Step {
   if (mode.phase === 'ending') return { step: 'ending' }
   const settled = new Map<number, { answered: boolean; spoken: boolean; failed: boolean }>()
   for (const entry of transcript) {
-    const re = (entry.data as { re?: number } | undefined)?.re
+    if (!VoiceLineEntry.is(entry) && !VoiceAnswerEntry.is(entry)) continue
+    const data: { re?: number } | undefined = entry.data
+    const re = data?.re
     if (re === undefined) continue
     const state = settled.get(re) ?? {
       answered: false,
@@ -756,22 +753,22 @@ function useStep(mode: VoiceMode): Step {
       failed: false,
     }
     if (entry.kind === 'voice.answer') state.answered = true
-    const role = entry.kind === 'voice.line' && (entry.data as unknown as VoiceLine).role
+    const role = VoiceLineEntry.is(entry) && entry.data.role
     if (role === 'ultimate') state.spoken = true
     if (role === 'notice') state.failed = true
     settled.set(re, state)
   }
   const open = transcript.findLast(
     (entry) =>
-      entry.kind === 'voice.line' &&
-      (entry.data as unknown as VoiceLine).forwarded &&
+      VoiceLineEntry.is(entry) &&
+      entry.data.forwarded &&
       !settled.get(entry.id)?.answered &&
       !settled.get(entry.id)?.failed,
   )
   const unspoken = [...settled.values()].some((state) => state.answered && !state.spoken)
   // The session's brief follows its start divider; until it is there, Voice holds the user's first line for it.
   const started = transcript.findLastIndex(
-    (entry) => entry.kind === 'voice.session' && (entry.data as VoiceSession).phase === 'started',
+    (entry) => VoiceSessionEntry.is(entry) && entry.data.phase === 'started',
   )
   const briefed =
     started < 0 || transcript.slice(started).some((entry) => entry.kind === 'voice.context')
@@ -781,8 +778,8 @@ function useStep(mode: VoiceMode): Step {
   if (mode.floor === 'voice') return { step: 'speaking' }
   if (unspoken) return { step: 'answer' }
   if (deciding) return { step: 'deciding' }
-  if (open) {
-    const line = open.data as unknown as VoiceLine
+  if (VoiceLineEntry.is(open)) {
+    const line = open.data
     return { step: 'working', request: line.text, since: line.at }
   }
   return { step: mode.muted ? 'muted' : 'listening' }
@@ -1060,9 +1057,10 @@ function useVoiceIds(): ReadonlySet<number> {
  * under who spoke: @ultimate's answer with its source, the voice assistant's own words quieter.
  */
 function LineRow({ entry }: { entry: EntryRecord }) {
-  const line = entry.data as unknown as VoiceLine
   const actions = useUltimate()
   const mode = useMode()
+  if (!VoiceLineEntry.is(entry)) return null
+  const line = entry.data
   if (line.role === 'note') return null
   if (line.role === 'user' && line.forwarded) return <RequestCard entry={entry} line={line} />
   if ((line.role === 'ultimate' || line.role === 'notice') && line.re !== undefined) return null
@@ -1149,20 +1147,15 @@ function LineRow({ entry }: { entry: EntryRecord }) {
 function RequestCard({ entry, line }: { entry: EntryRecord; line: VoiceLine }) {
   const transcript = useTranscript()
   const { main } = useIds()
-  const replies = transcript.filter(
-    (e) =>
-      (e.kind === 'voice.line' || e.kind === 'voice.answer') &&
-      (e.data as { re?: number }).re === entry.id,
-  )
-  const find = (kind: string, role?: VoiceLine['role']) =>
-    replies.find(
-      (e) => e.kind === kind && (!role || (e.data as unknown as VoiceLine).role === role),
-    )
-  const data = (kind: string, role?: VoiceLine['role']) => find(kind, role)?.data as unknown
-  const spokenEntry = find('voice.line', 'ultimate')
-  const spoken = spokenEntry?.data as unknown as VoiceLine | undefined
-  const notice = data('voice.line', 'notice') as VoiceLine | undefined
-  const answer = data('voice.answer') as VoiceAnswer | undefined
+  const lines = transcript
+    .filter((candidate) => VoiceLineEntry.is(candidate))
+    .filter((e) => e.data.re === entry.id)
+  const spokenEntry = lines.find((e) => e.data.role === 'ultimate')
+  const spoken = spokenEntry?.data
+  const notice = lines.find((e) => e.data.role === 'notice')?.data
+  const answer = transcript
+    .filter((candidate) => VoiceAnswerEntry.is(candidate))
+    .find((e) => e.data.re === entry.id)?.data
   const state = notice ? 'failed' : answer || spoken ? 'answered' : 'working'
   if (main === undefined) return null
   return (
@@ -1204,7 +1197,7 @@ function Asked({ text }: { text: string }) {
 }
 
 /** @ultimate on it: the phase the sidebar shows for it (else working, or waiting its turn) and the time so far. */
-function Working({ main, since }: { main: number; since?: number }) {
+function Working({ main, since }: { main: ConversationId; since?: number }) {
   const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, since !== undefined)
   return (
@@ -1327,7 +1320,8 @@ function VoiceMark({ children, className }: { children: ReactNode; className?: s
 
 /** Where a session started or ended: a quiet rule. */
 function SessionRow({ entry }: { entry: EntryRecord }) {
-  const session = entry.data as unknown as VoiceSession
+  if (!VoiceSessionEntry.is(entry)) return null
+  const session = entry.data
   const minutes =
     session.seconds === undefined ? undefined : Math.max(1, Math.round(session.seconds / 60))
   return (
@@ -1353,8 +1347,9 @@ function SessionRow({ entry }: { entry: EntryRecord }) {
  * An earlier session's brief no longer reaches the model, so it reads as past.
  */
 function ContextRow({ entry }: { entry: EntryRecord }) {
-  const brief = entry.data as unknown as VoiceContext
   const transcript = useTranscript()
+  if (!VoiceContextEntry.is(entry)) return null
+  const brief = entry.data
   const newest = transcript.findLast((e) => e.kind === 'voice.context')?.id === entry.id
   const counts = brief.error
     ? `couldn't load · ${brief.error}`
@@ -1402,7 +1397,8 @@ function ContextRow({ entry }: { entry: EntryRecord }) {
 
 /** In @ultimate: what the user said, as their turn, marked as spoken. */
 function UtteranceRow({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as VoiceUtterance
+  if (!VoiceUtteranceEntry.is(entry)) return null
+  const data = entry.data
   const message = entry.model?.[0]
   if (message?.role !== 'user') return null
   return (
@@ -1418,7 +1414,8 @@ function UtteranceRow({ entry }: { entry: EntryRecord }) {
  * than the request cards they may become.
  */
 function HeardRow({ entry }: { entry: EntryRecord }) {
-  const { text } = entry.data as { text: string }
+  if (!VoiceHeardEntry.is(entry)) return null
+  const { text } = entry.data
   return (
     <Message className="mt-4 first:mt-0" data-voice-line="user" from="user">
       <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[13px] group-[.is-user]:text-foreground/80">
@@ -1439,7 +1436,6 @@ function Spoken({ entry, text }: { entry: number; text: string }) {
   return words.map((word, index) => (
     <span
       className={cn('transition-opacity duration-300', index >= speaking.words && 'opacity-25')}
-      // oxlint-disable-next-line react/no-array-index-key -- Word positions track spoken progress in this line.
       key={index}
     >
       {index ? ' ' : ''}
@@ -1459,8 +1455,9 @@ function LiveTurn() {
   const { voice } = useIds()
   const { partial, sending } = useMode()
   if (id === undefined || id !== voice) return null
-  const last = transcript.findLast((entry) => entry.kind === 'voice.heard')
-  const arrived = sending && (last?.data as { text?: string } | undefined)?.text === sending.text
+  const last = transcript.findLast((candidate) => VoiceHeardEntry.is(candidate))
+  const data: { text?: string } | undefined = last?.data
+  const arrived = sending && data?.text === sending.text
   const text = partial ?? (arrived ? undefined : sending?.text)
   if (!text) return null
   return (
@@ -1472,7 +1469,6 @@ function LiveTurn() {
         >
           <span>
             {text.split(' ').map((word, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Existing word positions stay mounted as speech streams.
               <span className="animate-fade-in" key={index}>
                 {index ? ' ' : ''}
                 {word}
@@ -1490,7 +1486,8 @@ function LiveTurn() {
 
 /** A question that arrived during the session, handed to Voice to announce: one quiet line naming it. */
 function QuestionRow({ entry }: { entry: EntryRecord }) {
-  const question = entry.data as unknown as VoiceQuestion
+  if (!VoiceQuestionEntry.is(entry)) return null
+  const question = entry.data
   return (
     <div
       className="mt-2 flex items-center gap-2 font-mono text-[11.5px] text-warning first:mt-0"

@@ -13,7 +13,6 @@ import {
   defineTask,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction } from '../../lib/remote.ts'
@@ -22,6 +21,7 @@ import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
+import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 export function delivery(host: ExtensionHost) {
   // A standing recipient is reconfigured from its current definition before each delivery, by name or by number.
@@ -64,14 +64,14 @@ export function delivery(host: ExtensionHost) {
         const m = task.input.message
         if (typeof m.to !== 'number') throw new Error('Only conversations take a delivery')
         await refresh(m.to, ctx)
-        const recipient = await host.harness().conversation(m.to as ConversationId, ctx)
+        const recipient = await host.harness().conversation(m.to, ctx)
         if (!recipient) throw new Error(`Unknown conversation #${m.to}`)
         // Entries never change, so a replayed delivery attaches the same images.
         const images = m.images
           ? imagesOf(await host.harness().commit((tx) => tx.entry(m.images!.entry), ctx))
           : []
         const entry = {
-          kind: 'board.message',
+          kind: MessageEntry.kind,
           data: {
             id: m.id,
             from: m.from,
@@ -209,6 +209,21 @@ export function delivery(host: ExtensionHost) {
               ? `ended its turn without an answer (${settled.status === 'unanswered' ? settled.reason : settled.status})`
               : undefined
           const state = stopped ? 'stopped' : failed ? 'failed' : undefined
+          // One answer to several of the sender's messages goes back once: the others it answers just close. Another
+          // Ultimate's requests each wait on their own key, so they each get it.
+          if (
+            !failed &&
+            !m.remote &&
+            (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
+              (r) => r.answer === answer && r.from === m.to && r.to === m.from,
+            )
+          ) {
+            if (original) {
+              original.state = 'answered'
+              original.answer = answer
+            }
+            return terminal
+          }
           if (original) {
             original.state = state ?? 'answered'
             if (answer !== undefined) original.answer = answer
@@ -283,13 +298,13 @@ export function delivery(host: ExtensionHost) {
         }
         if (m.to !== 'user') {
           await refresh(m.to, ctx)
-          const sender = await runtime.conversation(m.to as ConversationId, ctx)
+          const sender = await runtime.conversation(m.to, ctx)
           // Entries never change, so a replayed reply attaches the same images.
           const images = m.images
             ? imagesOf(await host.harness().commit((tx) => tx.entry(m.images!.entry), ctx))
             : []
           const entry = {
-            kind: 'board.reply',
+            kind: ReplyEntry.kind,
             data: {
               id: m.id,
               re: m.re!,

@@ -1,3 +1,6 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import { ROOT } from '@/sdk'
+import { every } from '../../lib/timers.ts'
 import { BellIcon, BellOffIcon, SendIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -101,19 +104,19 @@ function Pusher() {
     const changed = () => report(document.visibilityState === 'visible')
     const hide = () => report(false)
     tick()
-    const timer = setInterval(tick, presentMs)
+    const stopReporting = every(presentMs, tick)
     document.addEventListener('visibilitychange', changed)
     window.addEventListener('pagehide', hide)
     return () => {
-      clearInterval(timer)
+      stopReporting()
       document.removeEventListener('visibilitychange', changed)
       window.removeEventListener('pagehide', hide)
     }
   }, [endpoint])
   // A question answered on its card or another device takes its notification with it, as does a tag another
   // extension closed (`PushApi.close`).
-  const log = useDocOf(1, MessagesDoc)
-  const closed = useDocOf(1, ClosedDoc)?.tags ?? []
+  const log = useDocOf(ROOT, MessagesDoc)
+  const closed = useDocOf(ROOT, ClosedDoc)?.tags ?? []
   const settled = [
     ...(log?.messages ?? [])
       .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
@@ -157,7 +160,7 @@ function Pusher() {
         showSurface('inbox')
         return
       }
-      const id = Number(url.searchParams.get('conversation'))
+      const id = parseConversationId(Number(url.searchParams.get('conversation')))
       if (!Number.isSafeInteger(id) || id <= 0) return
       const message = Number(url.searchParams.get('message'))
       if (url.searchParams.has('message') && Number.isSafeInteger(message))

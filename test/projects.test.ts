@@ -1,8 +1,10 @@
+import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { fauxServer, post, temp, until } from './helpers.ts'
-import { projectHome, projects, conversationIndex } from '../server/project.ts'
+import { projects, conversationIndex } from '../server/project.ts'
+import { projectHome } from '../lib/project-paths.ts'
 import { context } from '../server/harness.ts'
 
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
@@ -109,9 +111,9 @@ it('lists unknown homes and ignores dead locks; skips unchanged index writes and
   ])
   const index = conversationIndex(home)
   const summaries = [
-    { id: 1, cwd: '/a', busy: false },
-    { id: 2, cwd: '/a', busy: false, parentConversationId: 1 },
-    { id: 3, cwd: '/a', busy: false, ownerTaskId: 1 },
+    { id: 1 as ConversationId, cwd: '/a', busy: false },
+    { id: 2 as ConversationId, cwd: '/a', busy: false, parentConversationId: 1 as ConversationId },
+    { id: 3 as ConversationId, cwd: '/a', busy: false, ownerTaskId: 1 as TaskId },
   ]
   index.update(summaries)
   await index.flush()

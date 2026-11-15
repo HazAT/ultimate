@@ -1,12 +1,13 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { hiddenConversationIds } from '../../visible.tsx'
 
 const conversations = [
   { id: 1 },
-  { id: 2, branchOf: { conversationId: 1 } },
-  { id: 3, branchOf: { conversationId: 2 } },
-  { id: 4, parentConversationId: 3 },
-  { id: 5, branchOf: { conversationId: 1 } },
+  { id: 2, branchOf: { conversationId: 1 as ConversationId } },
+  { id: 3, branchOf: { conversationId: 2 as ConversationId } },
+  { id: 4, parentConversationId: 3 as ConversationId },
+  { id: 5, branchOf: { conversationId: 1 as ConversationId } },
   { id: 6 },
 ]
 

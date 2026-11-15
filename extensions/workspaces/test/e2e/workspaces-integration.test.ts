@@ -11,12 +11,12 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
-import type { ConversationId, JsonObject, Submission, TaskId, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, JsonObject, Submission, Tx } from '@earendil-works/pi-durable'
 import { afterAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
 import { eventLog } from '../../../../server/events.ts'
-import { UiState } from '../../../../server/ui-state.ts'
+import { UiState } from '../../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ActionContext } from '../../../../server/actions.ts'
 import workspaceExtension, { actions, order as workspacesOrder } from '../../server.ts'
@@ -750,7 +750,7 @@ async function submitted(f: Awaited<ReturnType<typeof fixture>>, id: Conversatio
 /** The lander conversation of the project source and its `ultimate.lander` log. */
 async function landerLog(f: Awaited<ReturnType<typeof fixture>>) {
   const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
-  const id = index.landerConversations[await realpath(f.projectRoot)] as ConversationId
+  const id = index.landerConversations[await realpath(f.projectRoot)]
   const conversation = (await f.opened.harness.conversation(id, context))!
   const view = await conversation.context(context)
   return {
@@ -1512,7 +1512,7 @@ it.concurrent('kills the whole process group of a running check when the lander 
   const pid = Number(await readFile(pidFile, 'utf8'))
   expect(() => process.kill(pid, 0)).not.toThrow()
   const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
-  await f.opened.harness.abortTask(Object.values(index.landers)[0] as TaskId, context)
+  await f.opened.harness.abortTask(Object.values(index.landers)[0], context)
   await until(() => {
     try {
       process.kill(pid, 0)
@@ -1589,7 +1589,7 @@ it.concurrent('resumes a landing interrupted before its push: pushes and reports
     sha: landed,
     commits: [expect.stringContaining('landed.txt')],
   })
-  const first = Object.values((await index())!.landers)[0] as TaskId
+  const first = Object.values((await index())!.landers)[0]
   await f.opened.harness.abortTask(first, context)
   await until(
     async () =>
@@ -1691,7 +1691,7 @@ it.concurrent('starts a lander for queued submissions left by a lander task that
   await f.service.submit(id, 'None', context)
   const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
   await until(async () => (await index())!.queue[0]?.state === 'landing')
-  const first = Object.values((await index())!.landers)[0] as TaskId
+  const first = Object.values((await index())!.landers)[0]
   await f.opened.harness.abortTask(first, context)
   await until(
     async () =>
@@ -1801,7 +1801,7 @@ it.concurrent('resumes a group after a restart without a third run of its twice-
   const head = await git(f.projectRoot, 'rev-parse', 'HEAD')
   const { id: submission } = await f.service.submit(id, 'None', context)
   const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
-  const task = Object.values((await index())!.landers)[0] as TaskId
+  const task = Object.values((await index())!.landers)[0]
   // The failing member's rerun outcome is stored while its sibling still runs.
   await until(async () => {
     const record = await f.opened.harness.commit((tx) => tx.task(task), context)

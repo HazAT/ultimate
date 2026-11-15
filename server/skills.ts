@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { useProjectSetup } from './project-setup.ts'
+import { useProjectSetup } from '../lib/project-setup.ts'
 import { loadSkills, stripFrontmatter } from '@earendil-works/pi-coding-agent'
 import type { Skill } from '@earendil-works/pi-coding-agent'
 

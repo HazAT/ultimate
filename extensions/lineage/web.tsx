@@ -1,3 +1,5 @@
+import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   ArrowLeftIcon,
   BrainIcon,
@@ -50,7 +52,17 @@ import { store } from '@/sdk/client'
 import { ConversationRef, Unsummarized } from '../conversations/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { Open, useGithubRepo } from '../workspaces/ui.tsx'
-import { ForgetAction, MemoryDoc, OpenEditorAction, TallyDoc } from './refs.ts'
+import {
+  ForgetAction,
+  MemoryDoc,
+  OpenEditorAction,
+  TallyDoc,
+  AbstractEntry,
+  FinishedEntry,
+  LineageResetEntry,
+} from './refs.ts'
+import { NoteEntry } from '../entries/ui.tsx'
+import { BranchedEntry } from './entries.ts'
 import type { MemoryItem } from './refs.ts'
 import { MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.tsx'
@@ -67,7 +79,8 @@ function userText(entry: EntryRecord) {
 /** A branch started from this conversation: in its tree's root a card with its intent, elsewhere a quiet divider. */
 function Branched({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { branch, intent } = entry.data as { branch: number; intent: string }
+  if (!BranchedEntry.is(entry)) return null
+  const { branch, intent } = entry.data
   if (entry.model) return <Started entry={entry} />
   return (
     <button
@@ -104,14 +117,9 @@ function Woken() {
 /** The tally's branch node: which branch started, from where, with what intent (older nodes carry the whole prompt). */
 function Started({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { branch, at, intent, images, from } = entry.data as {
-    branch: number
-    at: number
-    intent: string
-    images?: number
-    from?: number
-  }
   const [open, setOpen] = useState(false)
+  if (!BranchedEntry.is(entry)) return null
+  const { branch, at, intent, images, from } = entry.data
   const timestamp = entry.model?.[0]?.timestamp
   return (
     <Card data-lineage-started={branch}>
@@ -166,14 +174,6 @@ function Started({ entry }: { entry: EntryRecord }) {
   )
 }
 
-type AbstractData = {
-  conversation: number
-  at: number
-  text: string
-  title?: string
-  anchor?: number
-}
-
 /**
  * A conversation's abstract at its anchor, with the text of the newest carrier that replaced it; carriers show nothing.
  * Once a landing froze it (or, in older tallies, a later abstract superseded it), it is not shown.
@@ -181,14 +181,14 @@ type AbstractData = {
 function Abstract({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
   const transcript = useTranscript()
-  if ((entry.data as AbstractData).anchor !== undefined) return null
-  let latest = entry
+  if (!AbstractEntry.is(entry) || entry.data.anchor !== undefined) return null
+  let latest: EntryRecord = entry
   for (const other of transcript)
     if (other.id > latest.id && other.edits?.some((edit) => edit.target === entry.id))
       latest = other
   const omitted = latest.edits?.some((edit) => edit.target === entry.id && edit.action === 'omit')
-  if (omitted) return null
-  const { conversation, at, text, title } = latest.data as AbstractData
+  if (omitted || !AbstractEntry.is(latest)) return null
+  const { conversation, at, text, title } = latest.data
   return (
     <Fold
       card={entry.id}
@@ -230,7 +230,9 @@ function Abstract({ entry }: { entry: EntryRecord }) {
 /** A conversation this one asked `notify` about has finished: its title and last answer. */
 function Finished({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { from, title, text } = entry.data as { from: number; title?: string; text: string }
+  if ((!FinishedEntry.is(entry) && !NoteEntry.is(entry)) || entry.data.from === undefined)
+    return null
+  const { from, title, text } = entry.data
   return (
     <section
       className="min-w-0 rounded-md border border-l-2 border-border border-l-success/70 bg-muted/20"
@@ -263,7 +265,7 @@ function NoteCard({
   note,
 }: {
   label: string
-  id?: number | string
+  id?: ConversationId | string
   text: string
   note: 'received' | 'left'
 }) {
@@ -298,11 +300,8 @@ function NoteCard({
 
 /** A note another conversation (or the lander, a quiet `notify`, a catch-up on the tally and main) left here. */
 function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
-  const { from, text, source } = entry.data as {
-    from?: number
-    text: string
-    source?: 'lander' | 'finished' | 'main'
-  }
+  if (!NoteEntry.is(entry)) return core
+  const { from, text, source } = entry.data
   if (source === 'lander') return core
   if (source === 'finished') return <Finished entry={entry} />
   if (source === 'main') return <Catchup text={text} />
@@ -331,7 +330,9 @@ function NoteCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const to = left ? Number(left[1]) : call.args.to
   return (
     <NoteCard
-      id={typeof to === 'number' ? to : typeof to === 'string' ? to : undefined}
+      id={
+        typeof to === 'number' ? parseConversationId(to) : typeof to === 'string' ? to : undefined
+      }
       label="Note →"
       note="left"
       text={typeof call.args.text === 'string' ? call.args.text : ''}
@@ -362,7 +363,7 @@ function Genesis({ entry }: { entry: EntryRecord }) {
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="border-t border-brand/20 px-3.5 py-2.5 text-[13px]">
-        {from && <Open id={Number(from[1])} entry={Number(from[2])} />}
+        {from && <Open id={parseConversationId(Number(from[1]))} entry={Number(from[2])} />}
         <MessageResponse>{genesis}</MessageResponse>
       </CollapsibleContent>
     </Collapsible>
@@ -372,7 +373,7 @@ function Genesis({ entry }: { entry: EntryRecord }) {
 /** A tally's genesis, or the empty reset a new tally starts with, which shows nothing. */
 function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const roots = useRoots()
-  const lineage = (entry.data as { lineage?: { tally?: true } } | undefined)?.lineage
+  const lineage = LineageResetEntry.is(entry) ? entry.data?.lineage : undefined
   if (lineage?.tally) return <Genesis entry={entry} />
   if (!entry.model && entry.data === undefined && roots?.includes(entry.conversationId)) return null
   return core
@@ -386,7 +387,7 @@ function RootComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   return <HistoryBanner dock={dock} id={id} />
 }
 
-function HistoryBanner({ id, dock }: { id: number; dock?: boolean }) {
+function HistoryBanner({ id, dock }: { id: ConversationId; dock?: boolean }) {
   const actions = useUltimate()
   const github = useGithubRepo()
   return (
@@ -453,7 +454,9 @@ function HistoryBanner({ id, dock }: { id: number; dock?: boolean }) {
 /** Where a memory was learned, `#conversation/entry`, as that conversation's chip; a click opens it at the entry. */
 function MemorySource({ source }: { source: string }) {
   const { switchConversation, showSurface } = useUltimate()
-  const [conversation, entry] = source.slice(1).split('/').map(Number)
+  const [conversationSource, entrySource] = source.slice(1).split('/')
+  const conversation = parseConversationId(Number(conversationSource))
+  const entry = parseEntryId(Number(entrySource))
   return (
     <p className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10.5px] text-muted-foreground/70">
       <span className="shrink-0">learned in</span>
@@ -482,7 +485,7 @@ function MemoryRow({
   item,
   now,
 }: {
-  root: number
+  root: ConversationId
   slug: string
   item: MemoryItem
   now: number
@@ -620,7 +623,7 @@ function RootMemory({
   filter,
   setFilter,
 }: {
-  root: number
+  root: ConversationId
   label: boolean
   filter: string
   /** The filter box shows above the first root's memories only, and filters every root. */

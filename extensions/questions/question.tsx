@@ -1,5 +1,5 @@
 import { CheckIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { MessageResponse } from '@/components/ai/message'
 import { cn } from '@/sdk'
@@ -55,10 +55,13 @@ function Field({
   onChange: (value: string) => void
   onKey: (event: KeyboardEvent<HTMLInputElement>) => void
 }) {
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (autoFocus) input.current?.focus()
+  }, [autoFocus])
   return (
     <input
-      // oxlint-disable-next-line jsx-a11y/no-autofocus -- "Something else…" opens this field to type in at once.
-      autoFocus={autoFocus}
+      ref={input}
       aria-label={label}
       placeholder={placeholder}
       value={value}
@@ -244,7 +247,6 @@ export function QuestionItem({
         const chosen = choice.custom ? !!draft?.other : !!draft?.chosen.includes(number)
         return (
           <div
-            // oxlint-disable-next-line react/no-array-index-key -- Fixed options addressed by position in the draft.
             key={number}
             className={cn(choice.custom && question.kind === 'confirm' && 'col-span-2')}
           >

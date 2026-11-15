@@ -2,6 +2,7 @@
  * The plan in the browser: a coordinator's epics and tasks, and the root's index of which child conversation works
  * on which task. Browser-safe.
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { docRef } from '../../shared/extension-api.ts'
 
 /** One task of an epic; `child` is the conversation working on it. */
@@ -12,7 +13,7 @@ export type Task = {
   description: string
   deps: string[]
   status: string
-  child?: number
+  child?: ConversationId
   verdict?: string
   notes: { at: string; text: string }[]
 }
@@ -29,7 +30,7 @@ export type Epic = {
 export type Plan = { next: number; epics: Record<string, Epic> }
 /** The plan task a child conversation works on, and whose plan it is in. */
 export type TaskLink = {
-  coordinator: number
+  coordinator: ConversationId
   epic: string
   key: string
   title: string

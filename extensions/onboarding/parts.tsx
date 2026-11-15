@@ -59,7 +59,6 @@ export function Line({ text, className }: { text: string; className?: string }) 
     <span className={className} title={text.replaceAll('`', '')}>
       {text.split('`').map((part, index) =>
         index % 2 ? (
-          // oxlint-disable-next-line react/no-array-index-key -- Code span positions in split text.
           <code className="font-mono text-[0.92em] text-foreground/75" key={index}>
             {part}
           </code>

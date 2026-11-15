@@ -1,14 +1,14 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { onCommit } from '../lib/commits.ts'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../lib/ids.ts'
 import type {
   ConversationId,
   Cursor,
   DocumentWatch,
-  EntryId,
   JsonObject,
   SubmissionId,
   TaskGraph,
 } from '@earendil-works/pi-durable'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { onCommit } from '../lib/commits.ts'
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
@@ -19,7 +19,7 @@ import { context } from './harness.ts'
 import type { OpenHost, PreparedHost } from './harness.ts'
 import type { createSystem } from './system.ts'
 import { requestSwap } from './supervisor-protocol.ts'
-import { UiState } from './ui-state.ts'
+import { UiState } from '../shared/ui-state.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import { Metadata } from './metadata.ts'
@@ -29,6 +29,7 @@ import { admit, deviceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
 import { shortTitle } from '../lib/title.ts'
+import { batch, every } from '../lib/timers.ts'
 
 class HttpError extends Error {
   status: number
@@ -102,9 +103,9 @@ function eventStream(response: ServerResponse) {
     'X-Accel-Buffering': 'no',
   })
   response.write('retry: 500\n\n')
-  const heartbeat = setInterval(() => {
+  const stopHeartbeat = every(15000, () => {
     if (!response.destroyed) response.write(': heartbeat\n\n')
-  }, 15000)
+  })
   return {
     send: (name: keyof ServerEvents, data: ServerEvents[keyof ServerEvents], sub?: number) => {
       if (!response.destroyed)
@@ -113,7 +114,7 @@ function eventStream(response: ServerResponse) {
         )
     },
     end: () => {
-      clearInterval(heartbeat)
+      stopHeartbeat()
       response.end()
     },
   }
@@ -145,7 +146,7 @@ async function runAction(
       key,
       args,
       controller.signal,
-      id,
+      id === undefined ? undefined : parseConversationId(id),
       'ui',
       deviceOf(request.headers),
     )
@@ -190,7 +191,6 @@ export async function createApi(
   )
   latest.tasks ??= graph.value
   const tasks = () => latest.tasks!
-  let timer: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let summaries: ConversationSummary[] = []
   const projectIndex = conversationIndex(host.home)
@@ -258,26 +258,25 @@ export async function createApi(
   await refreshConversations()
   projectIndex.update(summaries)
   let lastGraph = JSON.stringify(tasks())
-  onGraph = () => {
-    if (closed || timer) return
-    timer = setTimeout(() => {
-      timer = undefined
-      const graphJson = JSON.stringify(tasks())
-      if (graphJson !== lastGraph) {
-        lastGraph = graphJson
-        events.emit('tasks', tasks())
-        const next = summaries.map((summary) => ({
-          ...summary,
-          busy: Object.values(tasks().tasks).some(
-            (task) => task.conversationId === summary.id && !task.background,
-          ),
-        }))
-        if (JSON.stringify(next) !== JSON.stringify(summaries)) {
-          summaries = next
-          events.emit('conversations', summaries)
-        }
+  const scheduleGraph = batch(100, () => {
+    const graphJson = JSON.stringify(tasks())
+    if (graphJson !== lastGraph) {
+      lastGraph = graphJson
+      events.emit('tasks', tasks())
+      const next = summaries.map((summary) => ({
+        ...summary,
+        busy: Object.values(tasks().tasks).some(
+          (task) => task.conversationId === summary.id && !task.background,
+        ),
+      }))
+      if (JSON.stringify(next) !== JSON.stringify(summaries)) {
+        summaries = next
+        events.emit('conversations', summaries)
       }
-    }, 100)
+    }
+  })
+  onGraph = () => {
+    if (!closed) scheduleGraph()
   }
   const unsubscribe = onCommit(harness, (publication) => {
     if (closed) return
@@ -413,7 +412,7 @@ export async function createApi(
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
     if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(400, 'Invalid conversation id')
-    return id as ConversationId
+    return parseConversationId(id)
   }
   return {
     conversations() {
@@ -464,10 +463,12 @@ export async function createApi(
         }
         const history = /^\/api\/conversations\/(\d+)\/history$/.exec(url.pathname)
         if (request.method === 'GET' && history) {
-          const id = Number(history[1])
-          const before = Number(url.searchParams.get('before'))
+          const id = parseConversationId(Number(history[1]))
+          const before = parseEntryId(Number(url.searchParams.get('before')))
           // `after` bounds the page from below, so a reveal reads down to one entry in large pages.
-          const after = url.searchParams.has('after') ? Number(url.searchParams.get('after')) : 0
+          const after = parseEntryId(
+            url.searchParams.has('after') ? Number(url.searchParams.get('after')) : 0,
+          )
           if (
             !Number.isSafeInteger(id) ||
             id < 1 ||
@@ -477,11 +478,11 @@ export async function createApi(
             after < 0
           )
             throw new HttpError(400, 'Invalid history cursor or conversation id')
-          const conversation = await harness.conversation(id as ConversationId, context)
+          const conversation = await harness.conversation(id, context)
           if (!conversation) throw new HttpError(404, 'Unknown conversation')
           const size = after ? 512 : 64
           const page = await conversation.entries(
-            { maxEntryId: (before - 1) as EntryId, ...(after && { minEntryId: after as EntryId }) },
+            { maxEntryId: offsetEntryId(before, -1), ...(after && { minEntryId: after }) },
             size + 1,
             undefined,
             context,
@@ -589,7 +590,7 @@ export async function createApi(
         )
         if (match) {
           const conversation = await harness.conversation(
-            Number(match[1]) as ConversationId,
+            parseConversationId(Number(match[1])),
             context,
           )
           if (!conversation) throw new HttpError(404, 'Unknown conversation')
@@ -749,7 +750,7 @@ export async function createApi(
       closed = true
       unsubscribe()
       graph.detach()
-      clearTimeout(timer)
+      scheduleGraph.cancel()
       await Promise.all([...streams].map((stop) => stop()))
       await refreshing
       events.listeners.delete(indexListener)

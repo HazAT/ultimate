@@ -107,7 +107,7 @@ see [integration details](docs/worktrees.md#standing-permission-to-push-this-rep
 - Core server/web contracts live in `shared/protocol.ts`; extension-local types live with their extension.
 - Pin `@earendil-works/*` packages to exact versions; Pi Durable is experimental.
 - Tests live with what they test: one extension's in `extensions/<name>/test/` (browser-side ones in `test/web/`, spawned-process ones in `test/e2e/` there), and the core's (`server/`, `shared/`, `lib/`, `web/`, scripts, lint) plus those that exercise several extensions together in the top-level `test/`, which also keeps the shared helpers and fixtures (`test/helpers.ts`). `pnpm test extensions/<name>/` runs one extension's fast tests, `pnpm test:e2e extensions/<name>/` its e2e tests; without a path each runs everything. An extension's `test/` folder is not part of the extension: saving a file there reloads nothing, and its imports are free of the extension import rules and stay out of `pnpm deps`.
-- Checks: `pnpm check` (format, lint, types) and the tests covering your change must pass before a commit; the lander runs every suite. Keep `pnpm test` fast: no real-time waits, no spawned processes (those go to a `test/e2e` folder), and fix or delete a flaky test rather than skipping it or raising its timeout. Lint enforces this with `ultimate/no-test-timeout` and `ultimate/no-real-wait-in-fast-tests` (`test/e2e` folders are exempt); justified exceptions need a `fast-test-reason:` comment. Use the real-deadline `until` from `test/helpers.ts` (`ultimate/no-local-test-polling`). `ultimate/no-retired-ui` keeps retired UI labels and surfaces out of extensions and web code.
+- Checks: `pnpm check` (format, lint, types) and the tests covering your change must pass before a commit; the lander runs every suite. Keep `pnpm test` fast: no real-time waits, no spawned processes (those go to a `test/e2e` folder), and fix or delete a flaky test rather than skipping it or raising its timeout. Lint enforces this with `ultimate/no-test-timeout` and `ultimate/no-real-wait-in-fast-tests` (`test/e2e` folders are exempt); justified exceptions need a `fast-test-reason:` comment. Use the real-deadline `until` from `test/helpers.ts` (`ultimate/no-local-test-polling`). Tests may break production rules when that makes them simpler and more robust: different rules apply to them.
 - Every user-visible result is designed, not dumped: status and outcomes (a subagent report, a landing, a failure) get a
   renderer that matches the existing cards (see `extensions/subagents/messages.tsx`, `extensions/workspaces/log.tsx`),
   never plain Markdown in a message. Look at the running app and recent screenshots first, write the expected look into
@@ -116,13 +116,29 @@ see [integration details](docs/worktrees.md#standing-permission-to-push-this-rep
 ## Review quality
 
 Rules about how agents behave live in prompts and agent definitions, not in code. Code checks protect only safety and
-invalid states: data loss, security, impossible states. Lint enforces only what the user explicitly asked for.
+invalid states: data loss, security, impossible states. Lint enforces only what the user explicitly asked for, and
+every lint message says why we don't want the pattern and what to do instead.
 
-A swallowed error needs a reason comment explaining why ignoring it is correct; `ultimate/no-silent-catch` enforces this for empty catch blocks and empty or `undefined`-returning `.catch` handlers.
-Likewise, code that exists only because of something outside it (an upstream bug, a provider quirk, a helper that
-papers over a library, an edge case found in the wild) carries a short comment at the code naming its origin (the
-issue or PR URL, our PR number or the `#conversation`), what breaks without it and, if known, when it can go, so a
-later agent can rethink it.
+The code base is the example every agent copies, so it carries no exceptions to copy: fix the code rather than explain
+or excuse it. Code that exists only because of something outside it (an upstream bug, a provider quirk, an edge case
+found in the wild) gets its reason in its commit message and a regression test that fails without it.
+
+Each rule and what enforces it. A new check proves in its test that it fails on a real past mistake; a rule leaves the
+table once its mistake can no longer happen.
+
+| Rule                                                                     | Enforced by                                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Time is never a stand-in for an event; timers only through named helpers | `ultimate/no-raw-timer`, `lib/timers.ts`                            |
+| Extensions meet only at contracts; the core tier runs without the rest   | `ultimate/api-only-imports`, `ultimate/core-tier-deps`, `pnpm deps` |
+| Contract files hold only documented contracts, named for their owner     | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
+| Extension UI reaches the server only through the SDK                     | `ultimate/no-raw-stream`                                            |
+| No swallowed errors                                                      | `ultimate/no-silent-catch`                                          |
+| A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
+| Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
+| One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |
+| A switch over a union names every case                                   | `typescript/switch-exhaustiveness-check`                            |
+| Pi couplings are listed and marked                                       | `scripts/pi-upstream.ts`                                            |
+| No dead code, shims, slop or tests that restate the implementation       | the review team (`reviewer-simplicity`)                             |
 
 Reject slop and jargon: keep code and explanations direct, minimal, and grounded in evidence. No backward-compatibility
 shims or speculative fallbacks; move forward and update callers. Commit tests for a feature's core path and one

@@ -1,3 +1,6 @@
+import { parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
 import { arr, int, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
@@ -5,6 +8,7 @@ import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { CallRow, CallTree } from '../../server/trace.ts'
+import { readOnly } from '../../lib/replay.ts'
 
 /** The most text one call returns; rows past it are cut with a note. */
 const BUDGET = 16_000
@@ -63,7 +67,7 @@ export default function debug(host: ExtensionHost) {
     since?: number | string
     limit?: number
     trace?: string
-    conversation?: number
+    conversation?: ConversationId
     name?: string
   }) {
     const limit = args.limit ?? (args.call === 'events' ? 20 : 50)
@@ -73,7 +77,7 @@ export default function debug(host: ExtensionHost) {
           throw new Error('events: since is an event id (a number)')
         const events = await host.eventLog.recent({
           ...(args.events ? { events: args.events.map((name) => defineEvent(name)) } : {}),
-          ...(args.since === undefined ? {} : { since: args.since }),
+          ...(args.since === undefined ? {} : { since: parseEntryId(args.since) }),
           limit,
         })
         const lines = events.map((event) =>
@@ -170,8 +174,7 @@ export default function debug(host: ExtensionHost) {
       defineTool({
         name: 'debug',
         deferred: true,
-        // Reads events, reactor status, the catalogue, traces and contract files; changes nothing.
-        replay: 'safe',
+        ...readOnly,
         description:
           "Inspect Ultimate's running system to find out why something did or did not happen, and to follow one chain of work across extensions. " +
           'call: `events` lists durable events newest first (filter `events` by name like `workspaces.landed`, `since` an event id); ' +
@@ -198,7 +201,20 @@ export default function debug(host: ExtensionHost) {
           limit: opt(int({ minimum: 1, maximum: 1000 })),
         }),
         async execute(args) {
-          return { output: [{ type: 'text', text: await run(args) }] }
+          return {
+            output: [
+              {
+                type: 'text',
+                text: await run({
+                  ...args,
+                  conversation:
+                    args.conversation === undefined
+                      ? undefined
+                      : parseConversationId(args.conversation),
+                }),
+              },
+            ],
+          }
         },
       }),
     ],

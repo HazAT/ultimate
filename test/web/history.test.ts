@@ -1,4 +1,4 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, EntryId } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
 import { gapAfter, mergeRows } from '../../web/src/app/history.ts'
 
@@ -10,10 +10,10 @@ const row = (id: number, text = '') =>
 
 it('fills what a fresh window leaves between it and the rows kept below it', () => {
   // A reconnect brought a window starting at 500; the reader had rows up to 120 loaded.
-  expect(gapAfter([row(100), row(120), row(600)], 500)).toBe(121)
+  expect(gapAfter([row(100), row(120), row(600)], 500 as EntryId)).toBe(121)
   // The window starts right after the kept rows, or nothing is kept below it: nothing to fill.
-  expect(gapAfter([row(100), row(120)], 121)).toBeUndefined()
-  expect(gapAfter([row(600)], 500)).toBeUndefined()
+  expect(gapAfter([row(100), row(120)], 121 as EntryId)).toBeUndefined()
+  expect(gapAfter([row(600)], 500 as EntryId)).toBeUndefined()
 })
 
 it('merges rows by entry id, the copy read last winning', () => {

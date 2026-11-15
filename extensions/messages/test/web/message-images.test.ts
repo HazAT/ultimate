@@ -1,7 +1,7 @@
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 import { Bubble } from '../../cards.tsx'
 import type { Message } from '../../refs.ts'
 
@@ -21,6 +21,7 @@ const shot = {
   ],
 } as unknown as EntryRecord
 vi.mock('@/sdk', async () => ({
+  ROOT: 1,
   api: { history: () => new Promise(() => {}) },
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   definePoint: (name: string) => ({ name }),
@@ -49,7 +50,7 @@ it("shows the images @ultimate's message to you carries, as thumbnails that open
     images: { entry: 9, count: 1 },
   } as Message
   const html = renderToStaticMarkup(
-    createElement(Bubble, { from: 43, message, text: 'Look', running: false }),
+    createElement(Bubble, { from: 43 as ConversationId, message, text: 'Look', running: false }),
   )
   expect(html).toContain('src="data:image/png;base64,AAAA"')
   expect(html).toContain('cursor-zoom-in')

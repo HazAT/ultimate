@@ -1,5 +1,5 @@
+import type { EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 
 /** A transcript row: an entry, or only some content blocks of an assistant message. */
 export interface CompactPart {
@@ -94,7 +94,8 @@ export function compactRows(
  */
 export function setAsideIds(entries: readonly EntryRecord[]): Set<number> {
   const backs = entries.flatMap((entry) => {
-    const at = (entry.data as { setAside?: unknown } | undefined)?.setAside
+    const data = entry.data
+    const at = data && typeof data === 'object' && 'setAside' in data ? data.setAside : undefined
     return typeof at === 'number' ? [{ id: entry.id, at }] : []
   })
   const aside = new Set<number>()
@@ -146,7 +147,7 @@ export function openIn(keys: ReadonlySet<string>, row: WorkRun, value: boolean) 
  * it an earlier first one); a row inside an open run below it, never the run, which can carry the same id; any other
  * row by its id.
  */
-export function anchorSelector(anchor: { entryId: number; last?: number; inner?: boolean }) {
+export function anchorSelector(anchor: { entryId: EntryId; last?: number; inner?: boolean }) {
   if (anchor.last !== undefined) return `:scope > [data-run-last="${anchor.last}"]`
   return anchor.inner
     ? `[data-run-last] [data-entry-id="${anchor.entryId}"]:not([data-run-last])`

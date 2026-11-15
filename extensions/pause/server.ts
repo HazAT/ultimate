@@ -1,9 +1,13 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { settled } from '../../lib/errors.ts'
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
@@ -48,8 +52,7 @@ function serial<T>(host: Pick<ExtensionHost, 'resource'>, work: () => Promise<T>
     chain: Promise.resolve() as Promise<unknown>,
   }))
   const next = queue.chain.then(work)
-  // The caller gets the failure; the chain only waits for the work to settle.
-  queue.chain = next.catch(() => undefined)
+  queue.chain = settled(next)
   return next
 }
 
@@ -180,26 +183,26 @@ const autoPlayAt = (doc: PauseDocState) =>
 
 /** The timer that plays a rate-limit pause by itself; outside the scheduler, which the pause holds. */
 const timer = (host: Pick<ExtensionHost, 'resource'>) =>
-  host.resource('pause.autoplay', () => ({ handle: undefined as NodeJS.Timeout | undefined }))
+  host.resource('pause.autoplay', () => ({ cancel: undefined as Cancel | undefined }))
 
 /** Set the timer for `doc`'s pause, or clear it when that pause never plays by itself. */
 function arm(host: Host, doc: PauseDocState) {
   const slot = timer(host)
-  clearTimeout(slot.handle)
-  slot.handle = undefined
+  slot.cancel?.()
+  slot.cancel = undefined
   const at = autoPlayAt(doc)
   if (at === undefined) return
-  slot.handle = setTimeout(
+  // A pending Play keeps no process alive; the pause document re-arms it on the next open.
+  slot.cancel = deadline(
+    Math.max(0, at - Date.now()),
     () => {
       autoPlay(host).catch((error: unknown) => {
         // The pause stands with Play in the status line; the user can still press it.
         console.error('pause: playing by itself failed:', error)
       })
     },
-    Math.max(0, at - Date.now()),
+    { unref: true },
   )
-  // A pending Play keeps no process alive; the pause document re-arms it on the next open.
-  slot.handle.unref()
 }
 
 /**
@@ -285,7 +288,7 @@ async function limited(host: Host, limit: RateLimit) {
  */
 async function held(host: Host, limit: RateLimit) {
   const harness = host.harness()
-  const child = limit.conversationId as ConversationId
+  const child = limit.conversationId
   const parent = await harness.commit(
     async (tx) => (await tx.conversation(child))?.owner?.conversationId,
     context,
@@ -359,7 +362,7 @@ async function play(host: Host, auto = false) {
     const until = Date.now()
     const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
-      const id = Number(key) as ConversationId
+      const id = parseConversationId(Number(key))
       const how = await noted(host, id, recorded)
       if (!how) continue
       const note: PauseNote = {
@@ -407,7 +410,7 @@ export default function pauseExtension(host: Host) {
   const close = async () => {
     unsubscribe?.()
     unsubscribe = undefined
-    clearTimeout(timer(host).handle)
+    timer(host).cancel?.()
   }
   host.onClose(close)
   host.onRelease(close)

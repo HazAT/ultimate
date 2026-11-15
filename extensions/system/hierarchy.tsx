@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 // The lanes as a tree: rows indented under the lane that started them, a dotted overlay linking each spawning call to
 // its child's first block, and the chain of a hovered or picked lane lit while the rest dims.
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -81,11 +82,11 @@ export function LaneTree({
   window: WindowName
   since: number
   now: number
-  onFilter: (conversation: number) => void
+  onFilter: (conversation: ConversationId) => void
 }) {
   const { expanded, toggle } = useExpanded()
-  const [hovered, setHovered] = useState<number>()
-  const [picked, setPicked] = useState<number>()
+  const [hovered, setHovered] = useState<ConversationId>()
+  const [picked, setPicked] = useState<ConversationId>()
   const list = useRef<HTMLUListElement>(null)
   const summaries = useConversations()
   // @ultimate always leads, with the conversations it started under it.
@@ -113,7 +114,7 @@ export function LaneTree({
           frame,
         )
       : []
-  const on = (from: number, to: number) => !lit || (lit.has(from) && lit.has(to))
+  const on = (from: ConversationId, to: ConversationId) => !lit || (lit.has(from) && lit.has(to))
   return (
     <ul className="relative" ref={list}>
       {rows.map((row) =>
@@ -186,7 +187,6 @@ export function LaneTree({
             </g>
           ))}
           {sent.map((link, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Computed message paths have no id and can overlap.
             <g className="stroke-brand opacity-45" key={`m${index}`}>
               <path d={link.d} fill="none" strokeDasharray="1 3" strokeLinecap="round" />
               <circle

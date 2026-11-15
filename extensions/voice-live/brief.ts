@@ -1,9 +1,9 @@
+import type { ConversationId, Cursor, EntryRecord } from '@earendil-works/pi-durable'
 /**
  * The context brief a voice session starts from, put together in code, no model: the project memory a branch starts
  * from, the user's recent requests to @ultimate with the gist of each answer, and the open branches.
  */
 import type { Context } from '@earendil-works/chord/context'
-import type { ConversationId, Cursor, EntryRecord } from '@earendil-works/pi-durable'
 import type { Message } from '@earendil-works/pi-ai'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { formatAgo } from '../../lib/ago.ts'
@@ -104,7 +104,7 @@ async function openBranches(host: ExtensionHost, ctx: Context) {
   const now = Date.now()
   return host
     .conversations()
-    .filter((c) => c.branchOf && !c.parentConversationId && !concluded.has(c.id as ConversationId))
+    .filter((c) => c.branchOf && !c.parentConversationId && !concluded.has(c.id))
     .toSorted((a, b) => (b.inputAt ?? 0) - (a.inputAt ?? 0))
     .slice(0, BRANCHES)
     .map(

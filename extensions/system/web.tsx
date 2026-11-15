@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon, GanttChartIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
@@ -26,6 +27,7 @@ import { LaneTree } from './hierarchy.tsx'
 import { Axis, laneState } from './lanes.tsx'
 import { windows } from './layout.ts'
 import type { WindowName } from './layout.ts'
+import { every } from '../../lib/timers.ts'
 import { LanesAction } from './refs.ts'
 import type { Lane, LaneLink } from './refs.ts'
 import { NavigationReporter } from './navigation.tsx'
@@ -44,10 +46,10 @@ function useLive() {
 
 /** Each lane's conversation state, the same the sidebar shows: only the primary agent can wait on you. */
 function useStates(parked: ReadonlySet<number>) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
   const conversations = useConversations()
-  const primary = useDocOf(1, StandingDoc)?.ultimate
+  const primary = useDocOf(ROOT, StandingDoc)?.ultimate
   const concludedSince = useConcludedSince()
   return (lane: Lane) => {
     const id = lane.conversation
@@ -91,11 +93,10 @@ function useLanes(range: number, live: boolean) {
           // Aborted when the window changes or the surface hides; the next fetch owns the state.
           if (!controller.signal.aborted) setState((previous) => ({ ...previous, error }))
         })
-    // oxlint-disable-next-line typescript/no-floating-promises -- load catches fetch failures and stores them in the displayed error state.
     void load()
-    const timer = live ? setInterval(() => void load(), 2000) : undefined
+    const stop = live ? every(2000, () => void load()) : undefined
     return () => {
-      clearInterval(timer)
+      stop?.()
       controller.abort()
     }
   }, [range, live])

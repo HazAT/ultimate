@@ -1,4 +1,5 @@
 import { git } from './git.ts'
+import { meansNone } from './errors.ts'
 
 /**
  * Token weight: what the repository costs an agent that reads it. Estimated as bytes ÷ 4 from git blob sizes, so
@@ -66,7 +67,4 @@ export async function weightDelta(cwd: string, base: string, sha: string) {
  * landing goes ahead, instead of failing on it.
  */
 export const landingWeight = (cwd: string, base: string, sha: string) =>
-  weightDelta(cwd, base, sha).catch(() => {
-    // The listing is the only thing that can fail, and it says nothing about whether the landing is fine.
-    return undefined
-  })
+  weightDelta(cwd, base, sha).catch(meansNone)

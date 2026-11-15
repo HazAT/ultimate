@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest'
 import type { ConversationId, TaskGraphNode, TaskId } from '@earendil-works/pi-durable'
+import { expect, it } from 'vitest'
 import { meaning } from '../../kinds.ts'
 
 const task = (kind: string, state: TaskGraphNode['state'], extra: Partial<TaskGraphNode> = {}) =>
@@ -14,7 +14,14 @@ const task = (kind: string, state: TaskGraphNode['state'], extra: Partial<TaskGr
     ...extra,
   }) as TaskGraphNode
 const deliver = task('board.delivery', { status: 'running', phase: 'deliver' })
-const message = { id: 132, from: 4, to: 21, reply: true, note: false, gist: 'Simplify messaging' }
+const message = {
+  id: 132,
+  from: 4 as ConversationId,
+  to: 21 as ConversationId,
+  reply: true,
+  note: false,
+  gist: 'Simplify messaging',
+}
 
 it('names a delivery by where its message stands: on its way, waiting for the answer, carrying it back', () => {
   expect(meaning(deliver, { message }, 'sent')).toMatchObject({
@@ -43,7 +50,9 @@ it('groups by meaning, whoever owns the task, and keeps an unknown kind under it
     ),
   ).toMatchObject({ group: 'scheduled', text: 'Dream before compaction', until: at })
   expect(
-    meaning(task('workspaces.lander', { status: 'running', phase: 'land' }), { conversation: 7 }),
+    meaning(task('workspaces.lander', { status: 'running', phase: 'land' }), {
+      conversation: 7 as ConversationId,
+    }),
   ).toMatchObject({ group: 'landing', who: 7, detail: 'land' })
   expect(
     meaning(
@@ -59,7 +68,7 @@ it('groups by meaning, whoever owns the task, and keeps an unknown kind under it
   ).toMatchObject({ group: 'running', text: 'Subagent' })
   expect(
     meaning(task('conversations.summary', { status: 'running', phase: 'generate' }), {
-      conversation: 5,
+      conversation: 5 as ConversationId,
     }),
   ).toEqual({
     group: 'background',

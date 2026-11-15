@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { ROOT } from '@/sdk'
+import { useEffect, useRef } from 'react'
 import { api, defineWebExtension, insertIntoComposer, useDocOf, useUltimate } from '@/sdk'
 import { StandingAction, StandingDoc } from '../subagents/ui.tsx'
 
@@ -56,10 +57,11 @@ async function drop(id: number, files: File[]) {
  * as a dropped file would: images inline, others through the attachments extension.
  */
 function Share() {
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   const { showSurface, switchConversation } = useUltimate()
+  const latest = useRef({ ultimate, showSurface, switchConversation })
+  latest.current = { ultimate, showSurface, switchConversation }
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- registration failing leaves the page as it was without one.
     navigator.serviceWorker
       ?.register('/sw.js')
       .catch((error: unknown) => console.warn('Service worker', error))
@@ -67,21 +69,21 @@ function Share() {
   const [id] = [new URL(location.href).searchParams.get('share')]
   useEffect(() => {
     if (!id) return
+    const current = latest.current
     const url = new URL(location.href)
     url.searchParams.delete('share')
     history.replaceState(history.state, '', url)
     take(id)
       .then(async ({ share, files }) => {
-        const conversation = ultimate ?? (await api.action(StandingAction, { name: 'ultimate' }))
-        showSurface('agent')
-        switchConversation(conversation)
+        const conversation =
+          current.ultimate ?? (await api.action(StandingAction, { name: 'ultimate' }))
+        current.showSurface('agent')
+        current.switchConversation(conversation)
         const text = textOf(share)
         if (text) insertIntoComposer(conversation, text)
         if (files.length) await drop(conversation, files)
       })
       .catch((error: unknown) => console.warn('Shared content', error))
-    // Once per page a share opened; the standing id is read as it is then.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
   return null
 }

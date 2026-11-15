@@ -1,4 +1,8 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** Browser WebRTC lifecycle, independent of React and the shell. Never holds an API key. */
+import { deadline, every, within } from '../../lib/timers.ts'
+import { inBackground, settled } from '../../lib/errors.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import type { ActionRef } from '../../shared/extension-api.ts'
 import { EndAction, HeardAction, LogAction, StartAction } from './refs.ts'
 import { Relay } from './relay.ts'
@@ -11,7 +15,7 @@ export type LiveOptions = {
   onError: (error: Error) => void
 }
 export type LiveSession = {
-  conversation: number
+  conversation: ConversationId
   analyser: AnalyserNode
   relay: Relay
   send: (event: Record<string, unknown>) => void
@@ -33,25 +37,22 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   const relay = new Relay(Date.now())
   const started = Promise.withResolvers<void>()
   const closed = Promise.withResolvers<void>()
-  // Rejections can arrive while the SDP action is still in flight.
-  void started.promise.catch(() => {
-    /* Observed below after SDP exchange. */
-  })
-  let timer: ReturnType<typeof setInterval> | undefined
-  let startupTimer: ReturnType<typeof setTimeout> | undefined
+  inBackground(settled(started.promise))
+  let stopPolling: Cancel | undefined
+  let cancelStartup: Cancel | undefined
   let seconds: number | undefined
   let didStart = false
   let didClose = false
   let releasing = false
   let closePromise: Promise<void> | undefined
   let pending = Promise.resolve()
-  let conversation: number | undefined
+  let conversation: ConversationId | undefined
   const errorOf = (error: unknown) => (error instanceof Error ? error : new Error(String(error)))
   const cleanup = async () => {
     if (releasing) return
     releasing = true
-    clearInterval(timer)
-    clearTimeout(startupTimer)
+    stopPolling?.()
+    cancelStartup?.()
     stream.getTracks().forEach((track) => track.stop())
     pc.close()
     audio.pause()
@@ -122,23 +123,17 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   const close = (): Promise<void> => {
     if (closePromise) return closePromise
     closePromise = (async () => {
-      clearInterval(timer)
-      let deadline: ReturnType<typeof setTimeout> | undefined
+      stopPolling?.()
       try {
         if (!didClose) {
           send({ type: 'session.close' })
-          await Promise.race([
+          await within(
+            5000,
             closed.promise,
-            new Promise<never>((_, reject) => {
-              deadline = setTimeout(
-                () => reject(new Error('Live voice did not confirm session.closed')),
-                5000,
-              )
-            }),
-          ])
+            () => new Error('Live voice did not confirm session.closed'),
+          )
         }
       } finally {
-        clearTimeout(deadline)
         // Always release the microphone, even if the peer disappears before confirming close.
         await cleanup()
         await pending
@@ -149,9 +144,8 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     return closePromise
   }
   try {
-    startupTimer = setTimeout(
-      () => started.reject(new Error('Timed out waiting for session.started')),
-      30_000,
+    cancelStartup = deadline(30_000, () =>
+      started.reject(new Error('Timed out waiting for session.started')),
     )
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -159,9 +153,9 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     conversation = answer.conversation
     await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp })
     await started.promise
-    clearTimeout(startupTimer)
+    cancelStartup?.()
     await audioContext.resume()
-    timer = setInterval(() => accept(relay.tick(Date.now())), 100)
+    stopPolling = every(100, () => accept(relay.tick(Date.now())))
     return {
       conversation: answer.conversation,
       analyser,

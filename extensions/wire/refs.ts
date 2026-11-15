@@ -1,4 +1,5 @@
 /** Wire in the browser: the raw requests a conversation's model calls sent and what came back. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 export type WireUsage = { input: number; output: number; cacheRead: number; cacheWrite: number }
@@ -11,7 +12,7 @@ export type WireUsage = { input: number; output: number; cacheRead: number; cach
 export type WireCall = {
   /** The call's number in its conversation, counting up. */
   n: number
-  conversationId: number
+  conversationId: ConversationId
   source: 'relay' | 'payload'
   provider: string
   model: string

@@ -36,7 +36,6 @@ export function TranscriptSkeleton({ dock, ref }: { dock?: boolean; ref: Ref<HTM
         {skeletonBlocks.map((className, index) => (
           <div
             className="animate-fade-in"
-            // oxlint-disable-next-line react/no-array-index-key -- Fixed placeholder positions.
             key={index}
             style={{
               animationDelay: `${80 + (skeletonBlocks.length - 1 - index) * 12}ms`,

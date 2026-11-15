@@ -2,8 +2,11 @@
  * Subagents in the browser: the standing agents' conversations, and the actions that open a standing agent and read,
  * save and delete agent definitions. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
+import type { AgentOrigin } from './types.ts'
 
 /** Where a definition file lives: shipped with Ultimate, in the user's home, or in the project. */
 export type Source = 'builtin' | 'user' | 'project'
@@ -75,11 +78,11 @@ export type DefinitionFields = {
  * forked from). `agent` is the definition or label, `model` `provider/modelId`. Emitted in the creating commit.
  */
 export const Started = defineEvent<{
-  id: number
+  id: ConversationId
   agent: string
   model?: string
   thinking?: string
-  parent?: number
+  parent?: ConversationId
   kind: 'child' | 'standing' | 'branch'
 }>('subagents.started')
 
@@ -92,10 +95,10 @@ export type Run = { model?: string; adhoc?: true }
 export const RunsDoc = docRef<Record<string, Run>>('subagents.runs')
 
 /** `{ [name]: conversationId }` of the standing agents, on conversation 1. */
-export const StandingDoc = docRef<Record<string, number>>('ultimate.standing-agents')
+export const StandingDoc = docRef<Record<string, ConversationId>>('ultimate.standing-agents')
 
 /** `{ name }` → the conversation id of standing agent `name`, created or refreshed from its definition. */
-export const StandingAction = actionRef<{ name: string }, number>('subagents', 'standing')
+export const StandingAction = actionRef<{ name: string }, ConversationId>('subagents', 'standing')
 /** No arguments → every definition, the files that failed to parse, and the main agent's model and tools. */
 export const DefinitionsAction = actionRef<null, Discovery>('subagents', 'definitions')
 /** `{ name }` → the definition that applies to `name`, its source and path, the raw file, and the scopes with one. */
@@ -121,3 +124,9 @@ export const DeleteDefinitionAction = actionRef<{ name: string; scope: Scope }, 
   'subagents',
   'deleteDefinition',
 )
+
+/** Instruction delivered to a child. */
+export const InstructionEntry = defineEntry<AgentOrigin>('subagents.instruction')
+
+/** Child report delivered to its parent. */
+export const ReportEntry = defineEntry<AgentOrigin>('subagents.report')

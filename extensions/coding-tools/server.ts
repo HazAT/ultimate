@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,7 +7,6 @@ import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import {
-  type ConversationId,
   defineDoc,
   defineExtension,
   defineTool,
@@ -50,7 +50,7 @@ const bashTripwireMessage = (seconds: number) =>
  */
 const where = `"$(git symbolic-ref -q --short HEAD)" "$(git rev-parse --show-toplevel)" "$(git rev-parse --path-format=absolute --git-common-dir)"`
 const logCommit = `printf 'commit\\t%s\\t%s\\t%s\\t%s\\n' "$(git rev-parse HEAD)" ${where} 2>/dev/null >> "$ULTIMATE_COMMIT_LOG" || true #`
-const hooks = (conversation: number) => ({
+const hooks = (conversation: ConversationId) => ({
   'prepare-commit-msg': `git interpret-trailers --in-place --if-exists doNothing --trailer "Ultimate-Conversation: ${conversation}" "$1" #`,
   'post-commit': logCommit,
   // `git am` and the apply backend of rebase make commits without post-commit.
@@ -185,7 +185,7 @@ export const actions = {
       args && typeof args === 'object' && !Array.isArray(args) ? args.callId : undefined
     if (typeof callId !== 'string' || conversationId === undefined)
       throw new Error('Invalid bash call')
-    const id = conversationId as ConversationId
+    const id = conversationId
     await host.harness().commit(async (tx) => {
       const live = await tx.doc(LiveDoc, id)
       const running = new Set(
@@ -216,7 +216,7 @@ type Made = {
  * line for a real merge commit (first parent the HEAD before it, not a fast-forward), records a commit; a rewrite line
  * only adds `rewrittenFrom` to one, since a resumed rebase also lists commits an earlier call made.
  */
-async function madeCommits(path: string, conversation: number) {
+async function madeCommits(path: string, conversation: ConversationId) {
   const log = await readFile(path, 'utf8').catch(() => '')
   await rm(path, { force: true })
   const made = new Map<string, Made>()

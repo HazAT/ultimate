@@ -11,6 +11,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { configuredModel, familyDefault, hasLogin } from '../../lib/agents.ts'
 import { Family, Pin } from './api.ts'
 import type { Fallback } from './refs.ts'
+import { FallbackEntry } from './entries.ts'
 
 type Ref = { provider: string; modelId: string }
 const name = (ref: Ref) => `${ref.provider}/${ref.modelId}`
@@ -77,7 +78,7 @@ export async function fallback(
     : `Model ${data.from} has no login here and no subscription login can replace it, so this conversation keeps it until the user logs in to ${from.provider} or picks another model.`
   return {
     entries: [
-      { kind: 'models.fallback', data, model: [{ role: 'user', content, timestamp: Date.now() }] },
+      { kind: FallbackEntry.kind, data, model: [{ role: 'user', content, timestamp: Date.now() }] },
     ],
   }
 }
@@ -114,9 +115,9 @@ function wasSubscription(host: ExtensionHost, provider: string) {
 /** Whether this conversation's newest fallback entry already asks about `from`, so each next input says it once. */
 async function alreadyAsked(tx: Tx, conversationId: ConversationId, from: string) {
   for (let page = await tx.scanEntries({ conversationId }, 200); ;) {
-    const entry = page.items.find((item) => item.kind === 'models.fallback')
+    const entry = page.items.find((candidate) => FallbackEntry.is(candidate))
     if (entry) {
-      const data = entry.data as Fallback
+      const data = entry.data
       return data.reason === 'none' && data.from === from
     }
     if (!page.next) return false

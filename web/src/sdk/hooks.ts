@@ -1,3 +1,14 @@
+import { offsetEntryId } from '../../../lib/ids.ts'
+import type {
+  AgentState,
+  EntryRecord,
+  InboxItem,
+  JsonObject,
+  LiveState,
+  UsageState,
+  ConversationId,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import {
   createContext,
   useCallback,
@@ -9,15 +20,9 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { deadline, every } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
-import type {
-  AgentState,
-  EntryRecord,
-  InboxItem,
-  JsonObject,
-  LiveState,
-  UsageState,
-} from '@earendil-works/pi-durable'
 import { actions, allCommands, ownDefault, regionKeys, shellKeys, shownSurface } from './actions.ts'
 import type { Region } from './actions.ts'
 import { ROOT } from './api.ts'
@@ -61,7 +66,7 @@ export function useStore<T>(select: (state: State) => T): T {
 
 export interface ConversationState {
   /** The scoped (or shown) conversation, once its snapshot arrived. */
-  id?: number
+  id?: ConversationId
   /** True until this conversation's snapshot arrived. */
   loading: boolean
   /**
@@ -70,7 +75,7 @@ export interface ConversationState {
    */
   entries: readonly EntryRecord[]
   /** The exclusive `api.history` cursor for entries the stream left out; absent when it sent them all. */
-  older?: number
+  older?: EntryId
   /** `pi.agent`: model, thinking level, cwd, extensions, tools. */
   agent: AgentState
   /** `pi.usage`: spend per model and per tool. */
@@ -104,7 +109,7 @@ function derive(view: StreamedView | undefined): ConversationState {
       id: view.conversation.id,
       loading: false,
       entries: view.entries,
-      older: view.before === undefined ? undefined : view.before + 1,
+      older: view.before === undefined ? undefined : offsetEntryId(view.before, 1),
       agent: docs['pi.agent'] ?? {},
       usage: (docs['pi.usage'] ?? empty.usage) as UsageState,
       live,
@@ -134,7 +139,7 @@ export function useConversation<T>(select?: (conversation: ConversationState) =>
  * The shown conversation now, or the streamed conversation `id` (a command's `context.conversationId`), outside React:
  * for commands and callbacks. Components use `useConversation()`.
  */
-export const getConversation = (id?: number): ConversationState => {
+export const getConversation = (id?: ConversationId): ConversationState => {
   const { view, viewsOf } = store.getState()
   return derive(id === undefined || id === view?.conversation.id ? view : viewsOf[id])
 }
@@ -146,7 +151,7 @@ export const useConversations = () => useStore((state) => state.conversations)
  * One conversation's summary: it re-renders only when that row changes, not when another conversation's busy, title or
  * answer time does. Use it instead of `useConversations().find(…)`.
  */
-export const useConversationSummary = (id: number | undefined) =>
+export const useConversationSummary = (id: ConversationId | undefined) =>
   useStore((state) =>
     id === undefined ? undefined : state.conversations.find((summary) => summary.id === id),
   )
@@ -183,7 +188,7 @@ export function useDocKind(kind: string): Readonly<JsonObject> | null | undefine
  * `conversation` is undefined and until its stream delivers it. Every hook on one conversation shares one stream.
  */
 export function useDocOf<T>(
-  conversation: number | undefined,
+  conversation: ConversationId | undefined,
   ref: DocRef<T>,
 ): Readonly<T> | null | undefined {
   const { kind } = ref
@@ -354,7 +359,7 @@ function useCompactConfig() {
   const conversation = useConversationSummary(id)
   const kinds = useMemo(() => compactDocs(records).join(','), [records])
   useEffect(() => {
-    const releases = kinds ? kinds.split(',').map((kind) => store.watchDocOf(1, kind)) : []
+    const releases = kinds ? kinds.split(',').map((kind) => store.watchDocOf(ROOT, kind)) : []
     return () => releases.forEach((release) => release())
   }, [kinds])
   const docs = useStore((state) => (kinds ? state.docsOf[1] : undefined)) ?? noDocs
@@ -419,15 +424,12 @@ export function useRestart(timeoutMs = 120000): Restart {
       })
       return undefined
     }
-    const timer = setTimeout(
-      () =>
-        setState({
-          phase: 'idle',
-          error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
-        }),
-      timeoutMs,
+    return deadline(timeoutMs, () =>
+      setState({
+        phase: 'idle',
+        error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
+      }),
     )
-    return () => clearTimeout(timer)
   }, [state, serving, connection, system, timeoutMs])
   return {
     pending: state.phase === 'swapping' ? state.target : undefined,
@@ -501,7 +503,6 @@ export function useAction<Args, T>(
   useEffect(() => {
     if (seen.current === on) return
     seen.current = on
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     if (enabled) void read.refetch()
   }, [read, on, enabled])
   return {
@@ -515,15 +516,15 @@ export function useAction<Args, T>(
 /** `copy(text)` puts text on the clipboard; `copied` is true for 1.2 s after, and a failure becomes an error notice. */
 export function useCopy() {
   const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const cancelReset = useRef<Cancel>(undefined)
+  useEffect(() => () => cancelReset.current?.(), [])
   const copy = (text: string) =>
     void navigator.clipboard
       .writeText(text)
       .then(() => {
         setCopied(true)
-        clearTimeout(timer.current)
-        timer.current = setTimeout(() => setCopied(false), 1200)
+        cancelReset.current?.()
+        cancelReset.current = deadline(1200, () => setCopied(false))
       })
       .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
   return { copied, copy }
@@ -535,8 +536,7 @@ export function useNow(intervalMs = 1000, active = true): number {
   useEffect(() => {
     if (!active) return undefined
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), intervalMs)
-    return () => clearInterval(timer)
+    return every(intervalMs, () => setNow(Date.now()))
   }, [intervalMs, active])
   return now
 }

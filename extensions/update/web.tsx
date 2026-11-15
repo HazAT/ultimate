@@ -15,6 +15,7 @@ import {
   defineWebExtension,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useRestart,
   useSystem,
@@ -54,7 +55,6 @@ function Touches({ layers }: { layers: Layers }) {
   return (
     <span>
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional layer fragments built for this render.
         <span key={index}>
           {index > 0 && ' · '}
           {part}
@@ -87,7 +87,6 @@ function After({ layers, install }: { layers: Layers; install?: UpdateResult & {
   return (
     <ul className="space-y-0.5">
       {lines.map((line, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed instructions derived from this update's layers.
         <li className="flex gap-1.5" key={index}>
           <span className="text-muted-foreground">·</span>
           <span className="min-w-0">{line}</span>
@@ -351,12 +350,7 @@ function Action({
 
 /** The status-line item: quiet while the clone is current, prominent while it is behind or owes a restart. */
 function Update() {
-  const { data, refetch } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {}, every: 60_000 },
-  )
+  const { data, refetch } = useAction(StateAction, null, { onError: keepLast, every: 60_000 })
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
@@ -387,7 +381,6 @@ function Update() {
       )
       .finally(() => {
         setBusy(false)
-        // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
         void refetch()
       })
   }

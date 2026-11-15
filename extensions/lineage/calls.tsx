@@ -1,3 +1,4 @@
+import { parseConversationId } from '../../lib/ids.ts'
 /** The memory and notify tools as what they did: friendly rows with an icon, memory slugs as chips. */
 import { BellIcon, BookOpenIcon, BrainIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -107,7 +108,6 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
       />
       <ToolContent>
         {ops.map((op, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Ordered batch operations can target the same slug.
           <ToolSection className="border-b border-border/50 last:border-b-0" key={index}>
             <div className="flex min-w-0 items-center gap-2">
               <span
@@ -165,7 +165,7 @@ export function MemoryCall({ call, core }: { call: ToolCallView; core: ReactNode
 export function NotifyCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const { switchConversation } = useUltimate()
   if (failed(call)) return core
-  const id = typeof call.args.id === 'number' ? call.args.id : undefined
+  const id = typeof call.args.id === 'number' ? parseConversationId(call.args.id) : undefined
   return (
     <Tool>
       <div className="flex h-8 min-w-0 items-center gap-2 px-2.5 text-muted-foreground">

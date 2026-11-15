@@ -2,20 +2,20 @@
  * Messages: messages between conversations and the user, delivered as inputs or notes. Other extensions send one-way
  * messages and answer the user's open questions here.
  */
+import type { EntryId, TaskId, Tx, ConversationId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { EntryId, TaskId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Via } from './refs.ts'
+import type { Question, Remote, Serves, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
   id: number
   /** `remote`: another project's Ultimate, named by `remote`. */
-  from: number | 'user' | 'remote'
-  to: number | 'user' | 'remote'
+  from: ConversationId | 'user' | 'remote'
+  to: ConversationId | 'user' | 'remote'
   text: string
   at: number
   reply: boolean
@@ -73,7 +73,7 @@ export type MessagesService = {
    */
   openQuestions(
     ctx: Context,
-  ): Promise<{ message: number; conversation: number; at: number; text: string }[]>
+  ): Promise<{ message: number; conversation: ConversationId; at: number; text: string }[]>
   /**
    * Close open message `messageId` unanswered; its sender gets a one-way note. Returns the note's message id. `call`
    * works as for `answer`.
@@ -86,7 +86,7 @@ export type MessagesService = {
   ): Promise<number>
   /** Send a one-way message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
   send(
-    from: number,
+    from: ConversationId,
     input: { to: string; text: string; reply: false },
     requestId: string,
     ctx: Context,
@@ -97,14 +97,19 @@ export type MessagesService = {
    * message and the target's id of the delivered one; throws a sentence naming the machine when it cannot be reached.
    */
   tell(
-    from: number,
+    from: ConversationId,
     input: { project: string; machine?: string; text: string; reply?: boolean },
     ctx: Context,
     signal?: AbortSignal,
   ): Promise<{ message: number; delivered: number }>
+  /**
+   * Inside `tx`, the newest agent's request conversation `to` still owes an answer: work it starts now serves it. An
+   * `automations.fired` input whose data carries it routes the woken run's final answer to that agent (route.ts).
+   */
+  owed(tx: Tx, to: ConversationId): Promise<Serves | undefined>
 }
 export { MessageSent } from './refs.ts'
-export type { Question } from './refs.ts'
+export type { Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
 

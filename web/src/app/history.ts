@@ -1,4 +1,5 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { offsetEntryId } from '../../../lib/ids.ts'
+import type { EntryRecord, ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../sdk/client.ts'
 import { reachedFork } from './fork.ts'
@@ -14,15 +15,23 @@ export function mergeRows(previous: readonly EntryRecord[], rows: readonly Entry
  * Where a fresh window starting at `older` leaves stored history unread: the entry after the newest loaded row below
  * it, or `undefined` when no row below it is loaded (nothing to bridge) or it starts right there.
  */
-export function gapAfter(loaded: readonly EntryRecord[], older: number) {
-  const below = Math.max(0, ...loaded.flatMap((entry) => (entry.id < older ? [entry.id] : [])))
-  return below && below + 1 < older ? below + 1 : undefined
+export function gapAfter(loaded: readonly EntryRecord[], older: EntryId) {
+  let below: EntryId | undefined
+  for (const { id } of loaded) if (id < older && (below === undefined || id > below)) below = id
+  return below !== undefined && offsetEntryId(below, 1) < older
+    ? offsetEntryId(below, 1)
+    : undefined
 }
 
 /** Every stored entry of `id` below `upTo` (from `after` on, or one page without it), following the server's pages. */
-async function read(id: number, upTo: number, after: number | undefined, signal?: AbortSignal) {
+async function read(
+  id: ConversationId,
+  upTo: EntryId,
+  after: EntryId | undefined,
+  signal?: AbortSignal,
+) {
   const rows: EntryRecord[] = []
-  let next: number | undefined = upTo
+  let next: EntryId | undefined = upTo
   do {
     const page = await api.history(id, next, signal, after)
     rows.push(...page.entries)
@@ -41,24 +50,24 @@ const message = (failure: unknown) => (failure instanceof Error ? failure.messag
  * when there is nothing earlier to show.
  */
 export function useHistory(
-  id: number | undefined,
+  id: ConversationId | undefined,
   active: readonly EntryRecord[],
-  older: number | undefined,
+  older: EntryId | undefined,
 ) {
   const [history, setHistory] = useState<EntryRecord[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [exhausted, setExhausted] = useState(false)
-  const [before, setBefore] = useState<number>()
+  const [before, setBefore] = useState<EntryId>()
   const [filling, setFilling] = useState(0)
   const previousActive = useRef(active)
-  const previousOlder = useRef<number>(undefined)
+  const previousOlder = useRef<EntryId>(undefined)
   // The one page request at a time; fills run beside it.
   const request = useRef<AbortController | null>(null)
   // Ranges a fresh window does not cover, by their `after:upTo` key: discarded markers after a head marker, and what
   // arrived while a reconnect was away. Filled once each; failed ones wait for Retry.
   const filled = useRef(new Set<string>())
-  const failed = useRef<[number, number][]>([])
+  const failed = useRef<[EntryId, EntryId][]>([])
   // A fork's history before its own first entry is its source's and stays hidden: paging stops at the fork point.
   const forked = reachedFork([...active, ...history], id)
   const cursor = exhausted || forked ? undefined : (before ?? older)
@@ -68,12 +77,11 @@ export function useHistory(
       mergeRows(mergeRows(history, previousActive.current), active).toSorted((a, b) => a.id - b.id),
     [history, active],
   )
-  const fill = useEffectEvent((after: number, upTo: number) => {
+  const fill = useEffectEvent((after: EntryId, upTo: EntryId) => {
     const key = `${after}:${upTo}`
     if (id === undefined || filled.current.has(key)) return
     filled.current.add(key)
     setFilling((count) => count + 1)
-    // oxlint-disable-next-line typescript/no-floating-promises -- this task catches history failures and displays them with setError.
     void (async () => {
       try {
         const { rows } = await read(id, upTo, after)
@@ -105,7 +113,7 @@ export function useHistory(
   }, [active, older])
   useEffect(() => () => request.current?.abort(), [])
   /** Read from the cursor down (one page, or to `target`), then `arrived(rows)` before they show. */
-  const load = async (target: number | undefined, arrived: (rows: EntryRecord[]) => void) => {
+  const load = async (target: EntryId | undefined, arrived: (rows: EntryRecord[]) => void) => {
     if (id === undefined || request.current || cursor === undefined) return
     const controller = new AbortController()
     request.current = controller
@@ -139,6 +147,6 @@ export function useHistory(
     /** The page before the cursor; `arrived` sees its rows before they show. */
     loadEarlier: (arrived: (rows: EntryRecord[]) => void) => load(undefined, arrived),
     /** Stored history down to entry `target`, in large pages bounded by it, so a reveal can scroll there. */
-    loadDown: (target: number, arrived: () => void) => load(target, arrived),
+    loadDown: (target: EntryId, arrived: () => void) => load(target, arrived),
   }
 }

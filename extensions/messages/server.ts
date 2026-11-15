@@ -1,3 +1,11 @@
+import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  GenerationResult,
+  TaskId,
+  Tx,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { bool, obj, opt, str } from '@earendil-works/pi-schema'
 import {
@@ -9,7 +17,6 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, GenerationResult, TaskId, Tx } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
@@ -24,7 +31,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import { parentOf, Started, starterOf } from './addresses.ts'
+import { owedRequest, parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
@@ -33,6 +40,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages]
 
@@ -113,7 +121,7 @@ async function dismiss(
 /** The user's own input that started `id`'s current run, which a settlement names as its source. */
 async function runInput(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const run = (await host.harness().snapshot(LiveDoc, id, ctx))?.run
-  let found: number | undefined
+  let found: EntryId | undefined
   for (const submission of run?.inputs ?? []) {
     const record = await (await host.harness().submission(submission, ctx))?.status(ctx)
     if (record?.type !== 'input' || record.entry === undefined) continue
@@ -135,7 +143,7 @@ export const actions = {
       let cursor: Parameters<Tx['scanEntries']>[2]
       do {
         const page = await tx.scanEntries(
-          { conversationId: conversation as ConversationId },
+          { conversationId: parseConversationId(Number(conversation)) },
           SCAN_PAGE,
           cursor,
         )
@@ -158,10 +166,10 @@ export const actions = {
     if (
       conversationId === undefined ||
       primary === undefined ||
-      (await actingAs(host, conversationId as ConversationId, ctx)) !== primary
+      (await actingAs(host, conversationId, ctx)) !== primary
     )
       throw new Error("Only @ultimate settles the user's questions")
-    const entry = await runInput(host, conversationId as ConversationId, ctx)
+    const entry = await runInput(host, conversationId, ctx)
     const via = { conversation: conversationId, ...(entry === undefined ? {} : { entry }) }
     return {
       id: closing
@@ -214,6 +222,7 @@ export default function messages(host: ExtensionHost) {
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
+    owed: owedRequest,
   })
   return defineExtension({
     name: 'messages',
@@ -272,8 +281,11 @@ export default function messages(host: ExtensionHost) {
       // Only @ultimate can tell; the list changes when a project or a standing agent is added, not per turn.
       section('projects', async (input, ctx) => {
         const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-        if (standing?.ultimate !== input.conversationId) return undefined
-        return projectsSection(host)
+        if (standing?.ultimate === (await actingAs(host, input.conversationId, ctx)))
+          return projectsSection(host)
+        if (!input.agent.tools.some((tool) => tool.name === 'message')) return undefined
+        if ((await parentOf(host, input.conversationId, ctx)) !== undefined) return undefined
+        return 'To reach another project, ask @ultimate to relay.'
       }),
     ],
     tools: [
@@ -290,8 +302,9 @@ export default function messages(host: ExtensionHost) {
           images: opt(imagesParameter),
           questions: opt(questionsParameter),
         }),
-        // The task-scoped receipt deduplicates admission; the memo returns the same id on replay.
-        replay: 'safe',
+        ...safeToRerun(
+          'The task-scoped receipt deduplicates admission; the memo returns the same id on replay.',
+        ),
         async execute(input, api, ctx) {
           // A temporary copy cannot use main's privilege to message the user.
           const from =
@@ -300,10 +313,21 @@ export default function messages(host: ExtensionHost) {
             (await api.memo<number>('message-id', ctx)) ??
             (await api.memo(
               'message-id',
-              await send(host, from, { ...input, imagesFrom: api.conversationId }, ctx, {
-                taskId: api.taskId,
-                callId: api.callId,
-              }),
+              await send(
+                host,
+                from,
+                {
+                  ...input,
+                  images:
+                    typeof input.images === 'number' ? parseEntryId(input.images) : input.images,
+                  imagesFrom: api.conversationId,
+                },
+                ctx,
+                {
+                  taskId: api.taskId,
+                  callId: api.callId,
+                },
+              ),
               ctx,
             ))
           const sent = (await host
@@ -340,7 +364,8 @@ export default function messages(host: ExtensionHost) {
           // The message is @ultimate's answer: the run ends here instead of restating it, unless a reply it has read
           // is owed. One still queued gets its own turn. Pi ends the run only when every call of the tool round
           // terminates, and codemode's nested calls never end it. Nor does it end while a branch whose reply or report
-          // this run read awaits its answer: the final answer goes there (#570368).
+          // this run read awaits its answer, or an agent whose request a concluded branch or a fired automation served:
+          // the final answer goes there (#570368).
           const inputs =
             (await host.harness().snapshot(LiveDoc, api.conversationId, ctx))?.run?.inputs ?? []
           const read = (
@@ -354,7 +379,10 @@ export default function messages(host: ExtensionHost) {
               async (tx) =>
                 (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
                   (m) => m.to === api.conversationId && isOwed(m),
-                ) || (await reported(host, tx, api.conversationId, read)).branches.length > 0,
+                ) ||
+                (({ branches, askers }) => branches.length + askers.length > 0)(
+                  await reported(host, tx, api.conversationId, read),
+                ),
               ctx,
             )
           return {

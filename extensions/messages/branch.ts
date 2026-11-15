@@ -1,7 +1,7 @@
+import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
 /** The `branch` tool: start a lineage branch and send it its first message. */
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import {
   definitionAgent,
@@ -16,9 +16,8 @@ import { LineageApi, Roots } from '../lineage/api.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter } from './images.ts'
 import { send } from './send.ts'
-import { Started } from './addresses.ts'
-import { Messages } from './api.ts'
-import { isOwed } from '../../lib/message-state.ts'
+import { owedRequest, Started } from './addresses.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
 export const branchTool = (host: ExtensionHost) =>
   defineTool({
@@ -34,8 +33,9 @@ export const branchTool = (host: ExtensionHost) =>
       isolated: opt(bool()),
       images: opt(imagesParameter),
     }),
-    // Lineage atomically deduplicates the fork; Sent deduplicates its first message.
-    replay: 'safe',
+    ...safeToRerun(
+      'Lineage atomically deduplicates the fork; Sent deduplicates its first message.',
+    ),
     async execute(input, api, ctx) {
       const from = await actingAs(host, api.conversationId, ctx)
       let id = await api.memo<number>('branch-id', ctx)
@@ -43,7 +43,7 @@ export const branchTool = (host: ExtensionHost) =>
         const lineage = host.need(LineageApi)
         const roots = (await host.harness().snapshot(Roots, ROOT_CONVERSATION_ID, ctx))?.roots ?? []
         const root =
-          input.root ??
+          (input.root === undefined ? undefined : parseConversationId(input.root)) ??
           (await lineage.rootOf(api.conversationId, ctx)) ??
           (roots.length === 1 ? roots[0] : undefined)
         if (root === undefined || !roots.includes(root))
@@ -70,9 +70,7 @@ export const branchTool = (host: ExtensionHost) =>
         // The model and thinking level the definition pins when its provider has a login here, thinking clamped to
         // what the model supports; without one, the current default model and thinking level, never what the root
         // last stored.
-        const rootAgent = await (await host
-          .harness()
-          .conversation(root as ConversationId, ctx))!.agent(ctx)
+        const rootAgent = await (await host.harness().conversation(root, ctx))!.agent(ctx)
         const change = definitionAgent(
           coordinator,
           { ...rootAgent, ...(await hostDefault(host)) },
@@ -104,18 +102,11 @@ export const branchTool = (host: ExtensionHost) =>
           ;(await tx.doc(Family, branch.id)).name = definitionFamily(coordinator, change)
           const started = await tx.doc(Started, branch.id)
           started.by = from
-          // An agent's request the starter still owes an answer (send.ts's test for what is owed) is what the branch
-          // works on: its result reaches that agent once it is concluded (route.ts). Without the link, a result routed
-          // to a concluded branch reached no one (danielgriesser.com #13859/15161, @writer's briefing).
-          const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
-            (m) => m.to === from && m.from !== 'user' && isOwed(m),
-          )
-          if (owed && owed.from !== 'user')
-            started.serves = {
-              message: owed.id,
-              from: owed.from,
-              ...(owed.remote ? { remote: owed.remote } : {}),
-            }
+          // An agent's request the starter still owes an answer is what the branch works on: its result reaches that
+          // agent once it is concluded (route.ts). Without the link, a result routed to a concluded branch reached no
+          // one (danielgriesser.com #13859/15161, @writer's briefing).
+          const serves = await owedRequest(tx, from)
+          if (serves) started.serves = serves
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
       }
@@ -126,7 +117,12 @@ export const branchTool = (host: ExtensionHost) =>
           to: `#${id}`,
           text: input.prompt,
           reply: true,
-          ...(input.images === undefined ? {} : { images: input.images }),
+          ...(input.images === undefined
+            ? {}
+            : {
+                images:
+                  typeof input.images === 'number' ? parseEntryId(input.images) : input.images,
+              }),
           imagesFrom: api.conversationId,
         },
         ctx,

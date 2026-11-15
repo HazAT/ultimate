@@ -2,6 +2,7 @@
 import { open } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
+import { isMissing } from './errors.ts'
 
 export type Store = { secrets: Record<string, { value: string; updatedAt: string }> }
 export function validateName(name: unknown): asserts name is string {
@@ -23,7 +24,7 @@ export async function readStore(userHome: string): Promise<Store> {
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { secrets: {} }
+    if (isMissing(error)) return { secrets: {} }
     throw new Error('Cannot open secret store', { cause: error })
   }
   try {

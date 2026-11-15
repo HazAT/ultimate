@@ -4,8 +4,9 @@ import type { ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, realpath } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { projectHome } from '../server/project.ts'
-import { acquireLock, readOwner, retireStorageOwner, pause } from '../server/lock.ts'
+import { projectHome } from '../lib/project-paths.ts'
+import { acquireLock, readOwner, retireStorageOwner } from '../lib/lock.ts'
+import { deadline, pace } from '../lib/timers.ts'
 import { watch, existsSync } from 'node:fs'
 import { watchRoots } from '../server/watch-roots.ts'
 import { join, resolve as resolvePath } from 'node:path'
@@ -229,7 +230,7 @@ function wait(
 ): Promise<ChildMessage> {
   return new Promise((resolve, reject) => {
     const finish = (error?: Error, message?: ChildMessage) => {
-      clearTimeout(timer)
+      cancel()
       core.child.off('message', check)
       core.child.off('exit', exited)
       if (error) reject(error)
@@ -244,9 +245,8 @@ function wait(
       else if (index !== -1) finish(undefined, core.messages.splice(index, 1)[0])
     }
     const exited = () => finish(new Error(`Core exited before ${type}: ${core.stderr}`))
-    const timer = setTimeout(
-      () => finish(new Error(`Timed out waiting for ${type}: ${core.stderr}`)),
-      timeout,
+    const cancel = deadline(timeout, () =>
+      finish(new Error(`Timed out waiting for ${type}: ${core.stderr}`)),
     )
     core.child.on('message', check)
     core.child.once('exit', exited)
@@ -265,19 +265,19 @@ async function kill(core: Core) {
 }
 async function exit(core: Core) {
   if (core.child.exitCode !== null || core.child.signalCode !== null) return
-  const deadline = Date.now() + 10000
+  const expiresAt = Date.now() + 10000
   try {
     const released = wait(core, 'released', undefined, 10000)
     send(core, { type: 'release' })
     await released
     const exited = once(core.child, 'exit')
     send(core, { type: 'exit' })
-    await Promise.race([exited, pause(Math.max(0, deadline - Date.now()))])
+    await Promise.race([exited, pace(Math.max(0, expiresAt - Date.now()))])
   } catch {
-    // A child that cannot release must be killed before another owner opens.
-  } finally {
     await kill(core)
+    return
   }
+  await kill(core)
 }
 function boot(previousBuild?: BuildInfo): Core {
   const child = fork(join(ultimateRoot, 'server/main.ts'), [], {
@@ -454,7 +454,7 @@ async function recover() {
   try {
     while (!active && failures < 3) {
       display.lifecycle(failures ? 'recovering' : 'starting')
-      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** failures))
+      await pace(500 * 2 ** failures)
       if (stopping) break
       let core: Core | undefined
       try {

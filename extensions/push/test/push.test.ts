@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createECDH, createPublicKey, verify } from 'node:crypto'
 import { expect, it } from 'vitest'
 import { encrypt, newKey, publicKey, vapidToken } from '../push.ts'
@@ -61,7 +62,7 @@ it('signs a VAPID JWT that verifies with the derived public key', () => {
 it('offers Approve only when every question has a recommended answer', () => {
   const asked = {
     id: 7,
-    from: 12,
+    from: 12 as ConversationId,
     to: 'user' as const,
     reply: true,
     text: 'Two decisions.',

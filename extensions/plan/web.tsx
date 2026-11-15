@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -7,6 +9,7 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from 'lucide-react'
+import { deadline } from '../../lib/timers.ts'
 import type { ReactNode, SyntheticEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -38,6 +41,7 @@ import {
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
 import { InfoAction, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
+import { meansNone } from '../../lib/errors.ts'
 import { criteriaOf, sectionsOf, verbatim } from './body.tsx'
 import { criteriaOfBody, finished, number, pillOf, progressLabel } from './progress.tsx'
 import { PlanDoc } from './refs.ts'
@@ -82,7 +86,6 @@ function Criteria({ items, met }: { items: string[]; met: boolean }) {
   return (
     <ol className="space-y-1">
       {items.map((item, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered by position.
         <li className="flex min-w-0 gap-1.5" key={index}>
           <span className="pt-0.5">
             <StatusIcon status={met ? 'done' : 'todo'} />
@@ -107,7 +110,6 @@ function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteri
         if (criteria && section.label === 'Acceptance criteria') return null
         const items = section.label === 'Acceptance criteria' && criteriaOf(section.text)
         return (
-          // oxlint-disable-next-line react/no-array-index-key -- Sections are positional; labels can repeat.
           <div key={index}>
             {section.label && <div className="pb-0.5 section-label">{section.label}</div>}
             {items ? (
@@ -186,7 +188,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
 }
 
 /** The linked child: "open #id" like the Agents tab, with a dot while it works. */
-function ChildLink({ id, child }: { id: number; child?: ConversationSummary }) {
+function ChildLink({ id, child }: { id: ConversationId; child?: ConversationSummary }) {
   const { switchConversation } = useUltimate()
   return (
     <Button
@@ -245,7 +247,7 @@ function CopyLink({
           .writeText(url.href)
           .then(() => {
             setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
+            deadline(1200, () => setCopied(false))
           })
           .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
       }}
@@ -352,7 +354,6 @@ function TaskRow({
               <div className="space-y-1">
                 <div className="section-label">Notes</div>
                 {task.notes.map((note, index) => (
-                  // oxlint-disable-next-line react/no-array-index-key -- Notes are append-only; timestamps can repeat.
                   <Note key={index} note={note} />
                 ))}
               </div>
@@ -572,11 +573,10 @@ function Panel({
 }
 
 /** Where the pill floats: the right edge of the conversation's prompt, just above it. */
-function useAnchor(conversationId: number | undefined) {
+function useAnchor(conversationId: ConversationId | undefined) {
   const [anchor, setAnchor] = useState<{ right: number; bottom: number }>()
   useEffect(() => {
     let form: HTMLFormElement | null | undefined
-    let retry: ReturnType<typeof setTimeout> | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
@@ -587,19 +587,21 @@ function useAnchor(conversationId: number | undefined) {
     const attach = () => {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
-      if (!container?.parentElement || !form) {
-        setAnchor(undefined)
-        retry = setTimeout(attach, 250)
-        return
-      }
+      if (!container?.parentElement || !form) return false
+      appeared.disconnect()
       observer.observe(container.parentElement)
       observer.observe(form)
       measure()
+      return true
     }
-    attach()
+    const appeared = new MutationObserver(attach)
+    if (!attach()) {
+      setAnchor(undefined)
+      appeared.observe(document.body, { childList: true, subtree: true })
+    }
     addEventListener('resize', measure)
     return () => {
-      clearTimeout(retry)
+      appeared.disconnect()
       observer.disconnect()
       removeEventListener('resize', measure)
     }
@@ -607,7 +609,7 @@ function useAnchor(conversationId: number | undefined) {
   return anchor
 }
 
-type Open = { conversation: number; key: string } | null
+type Open = { conversation: ConversationId; key: string } | null
 
 /**
  * The plan beside the conversation: a pill above the prompt (the open epic's progress, or a worker's task and its
@@ -621,7 +623,7 @@ function PlanOverlay() {
   useEffect(() => {
     const url = new URL(location.href)
     const key = url.searchParams.get('task')
-    const conversation = Number(url.searchParams.get('conversation'))
+    const conversation = parseConversationId(Number(url.searchParams.get('conversation')))
     if (!key) return
     url.searchParams.delete('task')
     history.replaceState(history.state, '', url)
@@ -651,7 +653,7 @@ function CoordinatorPlan({
   request,
   settle,
 }: {
-  conversation: number
+  conversation: ConversationId
   request: Open
   settle: () => void
 }) {
@@ -698,7 +700,7 @@ function CoordinatorPlan({
   )
 }
 
-function WorkerPlan({ conversation, task }: { conversation: number; task: TaskLink }) {
+function WorkerPlan({ conversation, task }: { conversation: ConversationId; task: TaskLink }) {
   const [expanded, setExpanded] = useUiState('plan.panel', false)
   const plan = useDocOf(expanded ? task.coordinator : undefined, PlanDoc)
   const openTask = useOpenTask()
@@ -785,8 +787,8 @@ function PlanCall({ call }: { call: ToolCallView }) {
   if (call.status === 'done') {
     try {
       result = JSON.parse(call.output)
-    } catch {
-      // Error outputs may be plain text; the card can still describe the call from its arguments.
+    } catch (error) {
+      meansNone(error)
     }
   }
   const key =
@@ -861,7 +863,7 @@ function useConversationTask(id: number | undefined) {
 }
 
 /** The epic coordinator `id` works itself, for its sidebar row; one with a task linked to a subagent has none. */
-function useConversationEpic(id: number) {
+function useConversationEpic(id: ConversationId) {
   const epics = useDocOf(id, PlanDoc)?.epics ?? {}
   const openTask = useOpenTask()
   const epic =

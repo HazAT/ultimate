@@ -1,10 +1,17 @@
+import type {
+  Conversation,
+  ConversationId,
+  Cursor,
+  EntryId,
+  Tx,
+  JsonObject,
+} from '@earendil-works/pi-durable'
 import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { loadSkillsFromDir, parseFrontmatter } from '@earendil-works/pi-coding-agent'
 import {
   defineDoc,
-  defineEntry,
   defineExtension,
   defineTool,
   LiveDoc,
@@ -12,13 +19,12 @@ import {
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import type { Conversation, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
-import type { JsonObject } from '@earendil-works/pi-durable'
 import type { ExtensionAction } from '../../server/actions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { LineageApi } from '../lineage/api.ts'
@@ -40,8 +46,10 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
+import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
-export const Starts = defineDoc<{ roots: Record<string, number>; dismissed?: boolean }>({
+export const Starts = defineDoc<{ roots: Record<string, ConversationId>; dismissed?: boolean }>({
   kind: StartsDoc.kind,
   checkpointWhen: () => false,
   version: 1,
@@ -60,19 +68,6 @@ const ChoiceRequests = defineDoc<{ payloads: Record<string, JsonObject> }>({
   initial: () => ({ payloads: {} }),
 })
 export const docs = [Starts]
-export const StartEntry = defineEntry<{
-  root: number
-  instructions?: string
-  facts: {
-    project: { name: string; path: string }
-    firstRun: boolean
-    projectUndecided: boolean
-    gitReason?: string
-    root: number
-    rootEmpty: boolean
-  }
-}>('onboarding.start')
-export const WalkthroughEntry = defineEntry<Record<string, never>>('walkthrough.start')
 
 function lists(value: JsonObject) {
   const extensions = value.extensions ?? {}
@@ -109,15 +104,11 @@ async function adds(projectRoot: string) {
       .filter((file) => file.endsWith('.md'))
       .toSorted()
       .map(async (file) => {
-        try {
-          const { name } = parseFrontmatter(
-            await readFile(join(directory, file), 'utf8'),
-          ).frontmatter
-          if (typeof name === 'string' && name.trim()) return name.trim()
-        } catch {
-          // An invalid definition still shows by its file name; the subagents extension reports the error.
-        }
-        return basename(file, '.md')
+        const definition = await readFile(join(directory, file), 'utf8')
+          .then((text) => parseFrontmatter(text))
+          .catch(meansNone)
+        const name = definition?.frontmatter.name
+        return typeof name === 'string' && name.trim() ? name.trim() : basename(file, '.md')
       }),
   )
   const skills = loadSkillsFromDir({
@@ -218,7 +209,7 @@ export const actions: Record<string, ExtensionAction> = {
     return { id }
   }),
   start: implementAction(StartAction, async (args, { host, conversationId }) => {
-    const input = args as { root?: number; instructions?: string } | null
+    const input = args as { root?: ConversationId; instructions?: string } | null
     if (
       input !== null &&
       (typeof input !== 'object' ||
@@ -231,7 +222,7 @@ export const actions: Record<string, ExtensionAction> = {
     const root =
       input?.root ??
       (conversationId === undefined ? undefined : await lineage.rootOf(conversationId, context)) ??
-      1
+      ROOT_CONVERSATION_ID
     const harness = host.harness()
     const requestId = `onboarding:${root}`
     const existing = (await harness.snapshot(Starts, ROOT_CONVERSATION_ID, context))?.roots[
@@ -242,7 +233,7 @@ export const actions: Record<string, ExtensionAction> = {
       // @ultimate's newest run failed that way and nothing since the start was answered (inputs typed meanwhile may
       // have failed too), continue it. Checked and admitted in one commit, so a second call finds it busy (#552022: a
       // start without a model was a dead end).
-      const conversation = (await harness.conversation(existing as ConversationId, context))!
+      const conversation = (await harness.conversation(existing, context))!
       await harness.commit(async (tx) => {
         const sent = await tx.submissionByRequest(conversation.id, requestId)
         const { run, runFailure } = await tx.doc(LiveDoc, conversation.id)
@@ -269,8 +260,7 @@ export const actions: Record<string, ExtensionAction> = {
       ...('reason' in checkout ? { gitReason: checkout.reason } : {}),
       root,
       rootEmpty: await harness.commit(
-        async (tx) =>
-          !(await tx.scanEntries({ conversationId: root as ConversationId }, 1)).items.length,
+        async (tx) => !(await tx.scanEntries({ conversationId: root }, 1)).items.length,
         context,
       ),
     }
@@ -371,7 +361,7 @@ export const actions: Record<string, ExtensionAction> = {
     const queue = host.resource('onboarding.choose', () => ({ tail: Promise.resolve() }))
     const operation = queue.tail.then(async () => {
       const harness = host.harness()
-      const id = conversationId as ConversationId
+      const id = conversationId
       const requestId = `onboarding-choice:${toolCallId}`
       const existing = await harness.commit((tx) => tx.submissionByRequest(id, requestId), context)
       if (existing) {
@@ -562,10 +552,6 @@ export const actions: Record<string, ExtensionAction> = {
   }),
 }
 
-export const ChoiceEntry = defineEntry<{ card: string; summary: string; toolCallId: string }>(
-  'onboarding.choice',
-)
-
 export default function onboarding(host: ExtensionHost) {
   // Core, always on; resolved where they are called, declared here so the catalogue lists them.
   host.need(LineageApi)
@@ -582,8 +568,9 @@ export default function onboarding(host: ExtensionHost) {
         parameters: obj({
           card: strEnum(['extensions', 'project', 'git']),
         }),
-        // Read-only inspection: repeating a card changes no state.
-        replay: 'safe',
+        ...safeToRerun(
+          'a rerun shows the same card again; reading the trust decision only creates its lock file',
+        ),
         async execute({ card }) {
           const project = await host.projectSetup()
           if (card === 'project' && (!project.config || project.decision !== null))

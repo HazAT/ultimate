@@ -6,7 +6,7 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { fauxServer, post, temp, removeTemp } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
 import { git } from '../../../lib/git.ts'
-import { projectDecision } from '../../../server/project-setup.ts'
+import { projectDecision } from '../../../lib/project-setup.ts'
 import { updateSettings } from '../../../lib/settings.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 
@@ -42,7 +42,7 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     JSON.stringify({
       defaultSurface: 'workbench',
       custom: { keep: 1 },
-      extensions: { disable: ['automations'], extra: 'keep' },
+      extensions: { disable: ['plan'], extra: 'keep' },
     }),
   )
   const options = {
@@ -84,7 +84,7 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
         extensions: ['x'],
         replaces: [],
         enable: [],
-        disable: ['automations'],
+        disable: ['plan'],
       },
     })
     expect(server.system.current().project).toMatchObject({
@@ -93,8 +93,8 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
       settings: {},
     })
     expect(enabled('x')).toBe(false)
-    expect(enabled('automations')).toBe(true)
-    expect(await tools()).toContain('automation')
+    expect(enabled('plan')).toBe(true)
+    expect(await tools()).toContain('plan')
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(false)
     expect(
       (await action('extensions')).find((entry: { name: string }) => entry.name === 'x'),
@@ -124,8 +124,8 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     expect(denied.data.error).toContain('local setup')
     await action('decide', { local: true })
     expect(enabled('x')).toBe(true)
-    expect(enabled('automations')).toBe(false)
-    expect(await tools()).not.toContain('automation')
+    expect(enabled('plan')).toBe(false)
+    expect(await tools()).not.toContain('plan')
     expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(true)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(true)
     expect(projectDecision(project, home)).toBe(true)
@@ -143,7 +143,7 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     expect(projectSettings).toMatchObject({
       custom: { keep: 1 },
       defaultSurface: 'workbench',
-      extensions: { extra: 'keep', enable: ['splash'], disable: ['automations'] },
+      extensions: { extra: 'keep', enable: ['splash'], disable: ['plan'] },
     })
     await Promise.all(
       ['info', 'documents'].map((name) =>
@@ -180,8 +180,8 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     ).toBe('user')
     await action('decide', { local: false })
     expect(enabled('x')).toBe(false)
-    expect(enabled('automations')).toBe(true)
-    expect(await tools()).toContain('automation')
+    expect(enabled('plan')).toBe(true)
+    expect(await tools()).toContain('plan')
     expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(false)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(false)
     const adoptDenied = await post(server, '/api/extensions/onboarding/actions/adoptProjectSetup', {
@@ -191,10 +191,10 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     await action('decide', { local: true })
     await action('adoptProjectSetup')
     await action('decide', { local: false })
-    expect(enabled('automations')).toBe(false)
+    expect(enabled('plan')).toBe(false)
     expect(JSON.parse(await readFile(userFile, 'utf8'))).toMatchObject({
       custom: 'user',
-      extensions: { extra: 2, enable: ['splash'], disable: ['sounds', 'automations'] },
+      extensions: { extra: 2, enable: ['splash'], disable: ['sounds', 'plan'] },
     })
     // `"onboarding": false` in the user's settings skips the first run without its marker.
     await updateSettings(userFile, (value) => {

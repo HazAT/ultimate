@@ -1,11 +1,12 @@
+import type { EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { groupLandings, groupRange } from '../../landings.ts'
 import type { Landing } from '../../landings.ts'
 
 const landing = (sha: string, base: string, feature?: string, title?: string): Landing => ({
   type: 'landed',
-  entry: Number.parseInt(sha, 16),
-  root: 1,
+  entry: Number.parseInt(sha, 16) as EntryId,
+  root: 1 as ConversationId,
   sha,
   base,
   commits: 1,

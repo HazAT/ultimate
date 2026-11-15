@@ -1,3 +1,5 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { cn, useConversationSummary, useDocOf } from '@/sdk'
 import { OverviewDoc } from './refs.ts'
 import type { OverviewRow } from './types.ts'
@@ -6,7 +8,7 @@ const none: Record<string, OverviewRow> = {}
 
 /** The root's overview rows by conversation id: one stream for all rows, unchanged when selection or expansion changes. */
 export function useOverview() {
-  return useDocOf(1, OverviewDoc)?.conversations ?? none
+  return useDocOf(ROOT, OverviewDoc)?.conversations ?? none
 }
 
 const hues = [
@@ -39,7 +41,7 @@ export function FeatureTag({ feature, className }: { feature: string; className?
 }
 
 /** A standing agent's `@name`, the only name it goes by: titles and feature tags passed along with it go stale. */
-export function useStandingName(id: number) {
+export function useStandingName(id: ConversationId | undefined) {
   const live = useConversationSummary(id)
   return live?.label === 'agent' ? live.title : undefined
 }
@@ -55,7 +57,7 @@ export function ConversationRef({
   title,
   className,
 }: {
-  id: number
+  id: ConversationId
   title?: string
   className?: string
 }) {

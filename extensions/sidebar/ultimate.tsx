@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import type { ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -23,7 +24,7 @@ import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 
 /** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
-  return children(waitingOnUser(useDocOf(1, MessagesDoc) ?? emptyMessages))
+  return children(waitingOnUser(useDocOf(ROOT, MessagesDoc) ?? emptyMessages))
 }
 
 /** A busy standing agent's word: its classified phase, lower case like its idle line, else "working". */
@@ -63,9 +64,9 @@ const name = 'ultimate'
 
 function Primary({ parked }: { parked?: ReadonlySet<number> }) {
   const actions = useUltimate()
-  const id = useDocOf(1, StandingDoc)?.[name]
+  const id = useDocOf(ROOT, StandingDoc)?.[name]
   const tasks = useTasks()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const runState = useOverview()[id ?? -1]?.runState
   const shown = useStore((state) => state.view?.conversation.id ?? state.requested)
   const paused = id !== undefined && parked?.has(id) === true

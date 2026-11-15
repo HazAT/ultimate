@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
 import { inboxItems, keyOf, selection } from '../../items.tsx'
 import type { InboxItem } from '../../ui.tsx'
@@ -8,7 +9,7 @@ vi.mock('../../../questions/card.tsx', () => ({ MessageQuestions: () => null }))
 
 const ask = (id: number, at: number, fields: Partial<Message> = {}): Message => ({
   id,
-  from: 40 + id,
+  from: (40 + id) as ConversationId,
   to: 'user',
   text: `Question ${id}`,
   at,
@@ -22,7 +23,7 @@ const log = [
   ask(2, 200, { state: 'answered' }),
   ask(3, 300),
   ask(4, 400, { reply: false }),
-  ask(5, 500, { to: 7 }),
+  ask(5, 500, { to: 7 as ConversationId }),
   ask(6, 600, { state: 'dismissed' }),
   ask(7, 700),
 ]

@@ -1,6 +1,6 @@
+import type { Tx } from '@earendil-works/pi-durable'
 /** The shared Messages log: appending to it, and the terminal outcome its tasks commit. */
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { isOpen } from '../../lib/message-state.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
@@ -13,7 +13,7 @@ export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
   const awaits =
     input.re !== undefined &&
     typeof input.from === 'number' &&
-    (await tx.doc(Started, input.from as ConversationId)).by === input.to
+    (await tx.doc(Started, input.from)).by === input.to
   const message = {
     ...input,
     ...(awaits ? { awaits: true as const } : {}),

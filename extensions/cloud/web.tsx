@@ -1,10 +1,20 @@
 import { CloudIcon, LoaderCircleIcon } from 'lucide-react'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { api, cn, defineWebExtension, errorMessage, formatAgo, formatBytes } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  errorMessage,
+  formatAgo,
+  formatBytes,
+  keepLast,
+  useEvents,
+} from '@/sdk'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { JoinDialog, joinDialog } from './join.tsx'
-import { BackupAction, StateAction } from './refs.ts'
+import { BackupAction, BackupEvent, StateAction } from './refs.ts'
 import type { CloudState } from './types.ts'
 
 /** One poll shared by every component that reads it, running while any is mounted; a failed poll keeps the last value. */
@@ -13,13 +23,13 @@ function poll<T>(
   every: (value: T | undefined) => number,
 ) {
   let value: T | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let cancelPoll: Cancel | undefined
   let controller: AbortController | undefined
   let generation = 0
   const listeners = new Set<() => void>()
   const tick = async () => {
     const current = ++generation
-    clearTimeout(timer)
+    cancelPoll?.()
     controller?.abort()
     controller = new AbortController()
     try {
@@ -27,21 +37,20 @@ function poll<T>(
       if (current !== generation) return
       value = next
       for (const listener of listeners) listener()
-    } catch {
-      // Aborted, restarting or unreachable: keep what was loaded, and the next poll tries again.
+    } catch (error) {
+      keepLast(error)
     }
-    if (current === generation && listeners.size) timer = setTimeout(tick, every(value))
+    if (current === generation && listeners.size) cancelPoll = retryAfter(every(value), tick)
   }
   return {
     subscribe: (listener: () => void) => {
       listeners.add(listener)
-      // oxlint-disable-next-line typescript/no-floating-promises -- tick catches load failures, keeps the previous value and retries on the next poll.
       if (listeners.size === 1) void tick()
       return () => {
         listeners.delete(listener)
         if (listeners.size) return
         generation++
-        clearTimeout(timer)
+        cancelPoll?.()
         controller?.abort()
       }
     },
@@ -57,10 +66,7 @@ const local = poll(
 const useLocal = () => useSyncExternalStore(local.subscribe, local.get)
 
 const backUp = async (force: boolean) => {
-  const done = api.action(BackupAction, force ? { force } : null)
-  // The upload's progress shows as soon as the server started it.
-  setTimeout(local.refresh, 300)
-  await done.finally(local.refresh)
+  await api.action(BackupAction, force ? { force } : null).finally(local.refresh)
 }
 
 const since = (at: number) => formatAgo(at, Date.now(), { ago: true })
@@ -218,6 +224,10 @@ const statusButton =
 /** The status line's cloud item: when this project was last backed up, and the popover to back up now. */
 function CloudStatus() {
   const state = useLocal()
+  const backup = useEvents({ events: [BackupEvent], limit: 1 })?.[0]?.id
+  useEffect(() => {
+    if (backup !== undefined) local.refresh()
+  }, [backup])
   if (!state || state.status === 'off') return null
   if (state.status === 'local')
     return (

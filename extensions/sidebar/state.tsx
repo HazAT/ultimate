@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { useUltimate, useUiState } from '@/sdk'
 import type { JsonValue } from '@/sdk'
 
@@ -13,7 +14,7 @@ export function useShell() {
   const actions = useUltimate()
   return {
     ...actions,
-    switchConversation: (id: number, options?: { replace?: boolean }) => {
+    switchConversation: (id: ConversationId, options?: { replace?: boolean }) => {
       actions.showSurface('agent')
       actions.switchConversation(id, options)
     },

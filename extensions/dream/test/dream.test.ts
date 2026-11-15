@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -285,7 +286,10 @@ it("marks the branch a dream request's turn started as the dream, and asks @ulti
       context,
     )
   const mark = (id: number, call: number, by: number = f.ultimate) =>
-    f.harness.commit((tx) => branched(tx, { id, by, call, at: 1000 + id }), context)
+    f.harness.commit(
+      (tx) => branched(tx, { id: id as ConversationId, by, call: call as EntryId, at: 1000 + id }),
+      context,
+    )
   const dreamOf = async () => (await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.dream
   // An ordinary branch, with no dream request in its turn, is not a dream.
   await mark(900, await append('pi.assistant', { stopReason: 'toolUse' }))

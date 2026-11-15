@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -38,8 +39,14 @@ it('names the branches that landed between two commits, a worker under its branc
   await commit('hand edit')
   const to = await commit('skills: chip', 60)
   const conversations = [
-    { id: 40, title: 'Answer card redesign', busy: false },
-    { id: 50, title: 'Prototype a card', label: 'designer', parentConversationId: 40, busy: false },
+    { id: 40 as ConversationId, title: 'Answer card redesign', busy: false },
+    {
+      id: 50 as ConversationId,
+      title: 'Prototype a card',
+      label: 'designer',
+      parentConversationId: 40 as ConversationId,
+      busy: false,
+    },
   ]
   const landed = await landings(cwd, from, to, conversations)
   expect(landed.map(({ conversation, title }) => ({ conversation, title }))).toEqual([

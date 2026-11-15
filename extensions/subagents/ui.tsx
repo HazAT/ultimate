@@ -2,6 +2,10 @@
  * Subagents for other extensions' browser code: opening the message that started an agent, the standing agents and
  * talking to the primary one, and the agent definitions.
  */
+export { InstructionEntry, ReportEntry } from './refs.ts'
+
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { WandSparklesIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { api, events, useDocOf } from '@/sdk'
@@ -13,7 +17,7 @@ export { DefinitionAction, DefinitionsAction, StandingAction, StandingDoc } from
 
 /** What child `id` was started on, its model id and whether it was made on the fly; undefined for other conversations. */
 export function useRun(id: number | undefined): Run | undefined {
-  const runs = useDocOf(1, RunsDoc)
+  const runs = useDocOf(ROOT, RunsDoc)
   return id === undefined ? undefined : runs?.[String(id)]
 }
 
@@ -50,9 +54,9 @@ export async function talkToUltimate(
 
 /** Show `source`, where an agent's message came from, with a way back to `receiver`, where it arrived. */
 export function openAgentSource(
-  switchConversation: (id: number) => void,
-  source: { conversation: number; entry?: number },
-  receiver: { conversation: number; entry?: number },
+  switchConversation: (id: ConversationId) => void,
+  source: { conversation: ConversationId; entry?: number },
+  receiver: { conversation: ConversationId; entry?: number },
 ) {
   events.emit('subagents:source', { target: source, back: receiver })
   switchConversation(source.conversation)

@@ -1,3 +1,12 @@
+import type {
+  ConversationId,
+  EntryId,
+  TaskId,
+  Extension,
+  ToolExecutionResult,
+  ToolRegistration,
+  ToolTaskInput,
+} from '@earendil-works/pi-durable'
 // The call trace: who called what, for how long, whether it failed, and the work it belongs to. Tool executions,
 // extension actions, reactor handlers and service calls each run in a trace context (AsyncLocalStorage, which survives
 // Pi Durable commits and its task runner); each call becomes the parent of the calls it makes, and events emitted
@@ -9,13 +18,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import type {
-  Extension,
-  ToolExecutionResult,
-  ToolRegistration,
-  ToolTaskInput,
-} from '@earendil-works/pi-durable'
 import type { EventContext } from '../shared/events.ts'
+import { batch, every } from '../lib/timers.ts'
+import { meansNone } from '../lib/errors.ts'
+import type { Cancel } from '../lib/timers.ts'
 
 export type TraceContext = EventContext & { traceId: string; parentCall: string }
 export type CallKind = 'service' | 'action' | 'reactor' | 'tool' | 'model'
@@ -26,9 +32,9 @@ export interface Call {
   callee: string
   name: string
   args?: unknown
-  conversationId?: number
-  taskId?: number
-  entryId?: number
+  conversationId?: ConversationId
+  taskId?: TaskId
+  entryId?: EntryId
   /** Record neither arguments nor result (a tool's live in the transcript). */
   sealed?: boolean
   /** A read-only poll: on success, counted in `polls()` instead of written, with the plain calls it makes. */
@@ -48,14 +54,14 @@ export interface CallRow {
   error?: string
   args?: string
   result?: string
-  conversation?: number
-  task?: number
-  entry?: number
+  conversation?: ConversationId
+  task?: TaskId
+  entry?: EntryId
 }
 export type CallTree = CallRow & { children: CallTree[] }
 export interface TraceQuery {
   trace?: string
-  conversation?: number
+  conversation?: ConversationId
   /** ISO time; only calls that started after it. */
   since?: string
   /** The newest calls, at most 1000; default 100. */
@@ -127,8 +133,8 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
   let database: DatabaseSync | undefined
   let insert: ReturnType<DatabaseSync['prepare']> | undefined
   let buffer: unknown[][] = []
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let pruning: ReturnType<typeof setInterval> | undefined
+  const scheduleFlush = batch(200, flush, { unref: true })
+  let stopPruning: Cancel | undefined
   let reported = false
   const failed = (error: unknown) => {
     if (reported) return
@@ -165,8 +171,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
   }
 
   function flush() {
-    clearTimeout(timer)
-    timer = undefined
+    scheduleFlush.cancel()
     const rows = buffer
     buffer = []
     if (!database || !rows.length) return
@@ -215,10 +220,15 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
    */
   function begin(call: Call, parent: EventContext | null) {
     const id = randomUUID()
-    const context: TraceContext = { traceId: parent?.traceId ?? id, parentCall: id }
-    for (const key of ['conversationId', 'taskId', 'entryId'] as const) {
-      const value = call[key] ?? parent?.[key]
-      if (value !== undefined) context[key] = value
+    const conversationId = call.conversationId ?? parent?.conversationId
+    const taskId = call.taskId ?? parent?.taskId
+    const entryId = call.entryId ?? parent?.entryId
+    const context: TraceContext = {
+      traceId: parent?.traceId ?? id,
+      parentCall: id,
+      ...(conversationId === undefined ? {} : { conversationId }),
+      ...(taskId === undefined ? {} : { taskId }),
+      ...(entryId === undefined ? {} : { entryId }),
     }
     const credentials = SEALED.has(call.callee)
     const sealed = call.sealed || credentials
@@ -272,7 +282,7 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
           context.taskId ?? null,
           context.entryId ?? null,
         ])
-        timer ??= setTimeout(flush, 200).unref()
+        scheduleFlush()
       } catch (error) {
         failed(error)
       }
@@ -345,7 +355,7 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
           `INSERT OR IGNORE INTO calls (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})`,
         )
         prune()
-        pruning = setInterval(prune, 36e5).unref()
+        stopPruning = every(36e5, prune, { unref: true })
       } catch (error) {
         database?.close()
         database = undefined
@@ -355,7 +365,7 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
     /** Write what is buffered and close; calls go on untraced until the next open. */
     close() {
       flush()
-      clearInterval(pruning)
+      stopPruning?.()
       database?.close()
       database = undefined
     },
@@ -368,8 +378,8 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
           let input: ToolTaskInput | undefined
           try {
             input = (await api.getTask(api.taskId, context))?.input as ToolTaskInput | undefined
-          } catch {
-            // The task read only labels the row (a test double may not offer it); the call runs regardless.
+          } catch (error) {
+            input = meansNone(error)
           }
           // A task runs its own call; a tool another tool calls in-process with its api (codemode's `tools.*`) runs
           // inside its caller's task. Its parent is the enclosing run, a Pi nested call's is its calling tool's run;
@@ -428,8 +438,8 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
           ['trace', query.trace],
           ['conversation', query.conversation],
         ] as const
-        const where = filters.flatMap(([column, value]) =>
-          value === undefined ? [] : [{ sql: `${column} = ?`, value }],
+        const where: { sql: string; value: string | number }[] = filters.flatMap(
+          ([column, value]) => (value === undefined ? [] : [{ sql: `${column} = ?`, value }]),
         )
         if (since !== undefined) where.push({ sql: 'at > ?', value: since })
         const limit = Math.min(Math.max(1, Math.trunc(Number(query.limit) || 100)), 1000)
@@ -451,7 +461,7 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`)
         since?: number
         until?: number
         kinds?: string[]
-        conversation?: number
+        conversation?: ConversationId
         errors?: boolean
         text?: string
         limit: number

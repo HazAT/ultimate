@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -10,11 +12,9 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSubject } from './types.ts'
-// oxlint-disable-next-line no-restricted-imports -- conversations publishes the core UI state document
-import { UiState } from '../../server/ui-state.ts'
+import { UiState } from '../../shared/ui-state.ts'
 import {
   accountResponse,
   askSummaryModel,
@@ -89,12 +89,14 @@ const record = (host: Pick<ExtensionHost, 'harness'>, id: ConversationId, caller
 
 /** The id of a top-level conversation: not owned by another conversation. */
 async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>) {
-  const id = args && typeof args === 'object' && !Array.isArray(args) ? args.id : undefined
-  if (typeof id !== 'number' || !Number.isInteger(id)) throw new Error('Expected a conversation id')
-  const found = await record(host, id as ConversationId, context)
+  const value = args && typeof args === 'object' && !Array.isArray(args) ? args.id : undefined
+  if (typeof value !== 'number' || !Number.isInteger(value))
+    throw new Error('Expected a conversation id')
+  const id = parseConversationId(value)
+  const found = await record(host, id, context)
   if (!found) throw new Error(`Unknown conversation ${id}`)
   if (found.owner) throw new Error(`Conversation ${id} is owned, not a top-level conversation`)
-  return id as ConversationId
+  return id
 }
 
 /**
@@ -193,14 +195,14 @@ export const actions = {
  * they hold. Only this explicit conclude stops work; automatic ones (a landed branch) wait until it is idle. An agent
  * concluding its own tree (`from`) is not stopped, since it would wait for itself; its worktree is then kept as busy.
  */
-async function conclude(host: ExtensionHost, ids: ConversationId[], from?: number) {
+async function conclude(host: ExtensionHost, ids: ConversationId[], from?: ConversationId) {
   const harness = host.harness()
   const { tree, inside } = await harness.commit(async (tx) => {
     await concludeIn(host, tx, ids)
     const owned = await ownedTree(tx, ids)
-    return { tree: owned, inside: from !== undefined && owned.has(from as ConversationId) }
+    return { tree: owned, inside: from !== undefined && owned.has(from) }
   }, context)
-  const stopped: number[] = []
+  const stopped: ConversationId[] = []
   if (!inside) {
     const busy = new Set(
       (await harness.inspect(context)).tasks.flatMap(({ record: task }) =>
@@ -267,7 +269,7 @@ function conversationIds(args: ActionInput<{ ids: number[] }>): ConversationId[]
     ids.some((id) => typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1)
   )
     throw new Error('Expected conversation ids')
-  return [...new Set(ids)] as ConversationId[]
+  return [...new Set(ids.map((id) => parseConversationId(Number(id))))]
 }
 
 function resume(host: ExtensionHost, ids: ConversationId[]) {
@@ -290,14 +292,14 @@ async function resumeIn(tx: Tx, ids: ConversationId[]) {
   const previous = ui['ext.conversations.concluded']
   const removed = Array.isArray(previous)
     ? previous.filter(
-        (id): id is number => typeof id === 'number' && ancestors.has(id as ConversationId),
+        (id): id is number => typeof id === 'number' && ancestors.has(parseConversationId(id)),
       )
     : []
   if (removed.length)
     ui['ext.conversations.concluded'] = (previous as JsonValue[]).filter(
-      (id) => !ancestors.has(id as ConversationId),
+      (id) => typeof id !== 'number' || !ancestors.has(parseConversationId(id)),
     )
-  return removed
+  return removed.map(parseConversationId)
 }
 
 export async function subject(

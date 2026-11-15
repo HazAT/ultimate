@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -52,13 +53,13 @@ it('never folds a card kept open, such as a user review', () => {
 
 it('keeps an opened card open across renders, per conversation and card, storing only the opened ones', () => {
   state.compact = true
-  writeFold(foldKey(7, 'call-1'), true)
+  writeFold(foldKey(7 as ConversationId, 'call-1'), true)
   expect(look('call-1')).toEqual({ fold: 'open', expanded: 'true', card: true })
   expect(look('call-2').fold).toBe('closed')
   state.conversation = 8
   expect(look('call-1').fold).toBe('closed')
   state.conversation = 7
-  writeFold(foldKey(7, 'call-1'), false)
+  writeFold(foldKey(7 as ConversationId, 'call-1'), false)
   expect(look('call-1').fold).toBe('closed')
   expect([...stored.keys()]).toEqual([])
 })

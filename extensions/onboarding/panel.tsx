@@ -18,6 +18,7 @@ import {
   errorMessage,
   events,
   shortenPath,
+  keepLast,
   useAction,
   useEvent,
   useExtensionUiState,
@@ -212,9 +213,8 @@ const openSecrets = (name?: string) => events.emit('secrets:open', name ? { name
  * or off, which changes who declares it.
  */
 function useSecrets(system: SystemInfo | undefined) {
-  // A failure only hides the secret lines; the Secrets panel shows it.
   const secrets = useAction(ListAction, null, {
-    onError: () => {},
+    onError: keepLast,
     on: system?.extensions.map((extension) => [extension.name, extension.enabled]),
   })
   useEvent('secrets:changed', () => void secrets.refetch())

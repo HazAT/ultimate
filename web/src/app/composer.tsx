@@ -376,7 +376,6 @@ function ComposerEditor({
       const on = event.target instanceof Element ? event.target : null
       // Every composer's editor takes its own drops, a side chat's too.
       if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')) return
-      // oxlint-disable-next-line typescript/no-floating-promises -- drop reports failures in the draft's error state.
       void dropRef.current(event)
     }
     document.addEventListener('dragenter', enter)
@@ -484,7 +483,6 @@ function ComposerEditor({
       const { value, selectionStart } = event.currentTarget
       if (!atFirstLine(value, selectionStart)) return
       event.preventDefault()
-      // oxlint-disable-next-line typescript/no-floating-promises -- recall catches failures and displays them in the draft's error state.
       void recall()
       return
     }
@@ -493,7 +491,6 @@ function ComposerEditor({
     // hardware keyboard's Cmd/Ctrl+Enter (iPad with Magic Keyboard), sends.
     if (touchKeyboard() && !event.metaKey && !event.ctrlKey) return
     event.preventDefault()
-    // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
     void send(event.altKey ? 'followUp' : 'steer')
   }
 
@@ -509,7 +506,6 @@ function ComposerEditor({
         className={cn(dragging && 'ring-2 ring-brand/60')}
         onSubmit={(event) => {
           event.preventDefault()
-          // oxlint-disable-next-line typescript/no-floating-promises -- send catches submission failures and displays them in the draft's error state.
           void send()
         }}
       >
@@ -583,7 +579,6 @@ function ComposerEditor({
                 onChange={(event) => {
                   const picked = Array.from(event.target.files ?? [])
                   event.target.value = ''
-                  // oxlint-disable-next-line typescript/no-floating-promises -- attach reports failures in the draft's error state.
                   void attach(picked)
                 }}
                 type="file"

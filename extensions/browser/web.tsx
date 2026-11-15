@@ -43,7 +43,6 @@ function Errors({ errors }: { errors: readonly string[] }) {
   return (
     <ToolSection label={`${errors.length} error${errors.length === 1 ? '' : 's'} while loading`}>
       {errors.map((error, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Loading errors are log lines and may repeat.
         <div className="break-words text-error" key={index}>
           {error}
         </div>
@@ -187,7 +186,6 @@ function Browser({ call }: { call: ToolCallView }) {
               const { action, shown } = describe(step)
               const value = outcome?.startsWith('OK ') ? outcome.slice(3) : undefined
               return (
-                // oxlint-disable-next-line react/no-array-index-key -- Browser steps and outcomes are addressed by position.
                 <div className="flex min-w-0 items-start gap-2 leading-[1.7]" key={index}>
                   <span
                     className={cn(

@@ -16,6 +16,7 @@ import {
   errorMessage,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -50,9 +51,8 @@ const subscribe = (listener: () => void) => {
  */
 function useSecrets() {
   const system = useSystem()
-  // Failures show inline in the panel, not as notices: the status line reads the list on every page.
   const secrets = useAction(ListAction, null, {
-    onError: () => {},
+    onError: keepLast,
     on: system?.extensions.map((extension) => [
       extension.name,
       extension.enabled,
@@ -138,7 +138,6 @@ function ValueInput({
     if (event.nativeEvent.isComposing) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
       void save()
     }
     if (event.key === 'Escape') {

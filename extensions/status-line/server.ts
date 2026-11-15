@@ -7,6 +7,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { createRateSampler, keys, zero, type Rates, type RateSample } from './rates.ts'
 import { usageTotals } from './context.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { every } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { RatesAction } from './refs.ts'
 
 type Totals = ReturnType<typeof usageTotals>
@@ -40,12 +42,12 @@ export default function statusLine(host: Host) {
   let latest: RateSample | null = null
   let spend: Totals = usageTotals({ models: {}, tools: {} })
   let unsubscribe: (() => void) | undefined
-  let timer: ReturnType<typeof setInterval> | undefined
+  let stopSampling: Cancel | undefined
   let epoch = 0
   snapshots.set(host, () => latest && { ...latest, totals: { ...spend } })
   const stop = () => {
     epoch++
-    clearInterval(timer)
+    stopSampling?.()
     unsubscribe?.()
     unsubscribe = undefined
     latest = null
@@ -114,9 +116,9 @@ export default function statusLine(host: Host) {
         })
       }, context)
       if (opened !== epoch) return
-      timer = setInterval(() => {
+      stopSampling = every(1000, () => {
         latest = sample(performance.now(), total)
-      }, 1000)
+      })
     } catch (error) {
       if (opened !== epoch) return
       stop()

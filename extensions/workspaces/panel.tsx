@@ -6,6 +6,7 @@ import {
   elidePath,
   formatBytes,
   shortenPath,
+  keepLast,
   useAction,
   useConversation,
   useConversationSummary,
@@ -59,8 +60,7 @@ function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
   const info = useAction(
     InfoAction,
     { id: conversation.id },
-    // A failure leaves the recorded workspace showing.
-    { onError: () => undefined, on: [recorded.state, recorded.landed, conversation.busy] },
+    { onError: keepLast, on: [recorded.state, recorded.landed, conversation.busy] },
   )
   const queued = useLanderQueue().find((item) => item.conversationId === conversation.id)
   const workspace =

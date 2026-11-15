@@ -3,20 +3,12 @@
  * and the sounds read, and the event of a question to the user. Browser-safe.
  * Stored identifiers keep the board prefix because history, tasks and events persist under them.
  */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
+import type { Remote } from '../entries/refs.ts'
 
-/**
- * Another project's Ultimate: its project and machine, and `id`, that instance's id of the same message (the sender's
- * for an incoming one, the target's once an outgoing one is delivered).
- */
-export type Remote = {
-  project: string
-  machine: string
-  id?: number
-  /** The sender's random key for the message: the target delivers it once, and only the target can reply to it. */
-  key: string
-}
+export type { DeliveredMessage, Remote, Serves } from '../entries/refs.ts'
 
 /**
  * One question an agent asks the user with a message, as the `message` tool's `questions` argument declares it: the
@@ -43,26 +35,26 @@ export type Question = {
 export type Message = {
   id: number
   /** `remote`: another project's Ultimate, named by `remote`. */
-  from: number | 'user' | 'remote'
-  to: number | 'user' | 'remote'
+  from: ConversationId | 'user' | 'remote'
+  to: ConversationId | 'user' | 'remote'
   text: string
   at: number
   reply: boolean
   re?: number
   state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
-  entry?: number
-  answer?: number
+  entry?: EntryId
+  answer?: EntryId
   error?: string
   /** The tool call that sent it: `message`'s own id, or `<script>/<n>` for a nested codemode call. */
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
-  images?: { entry: number; count: number }
+  images?: { entry: EntryId; count: number }
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
   /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
   awaits?: true
   /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
-  routed?: number
+  routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
@@ -73,8 +65,18 @@ export type Message = {
   via?: Via
 }
 /** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
-export type Via = { conversation: number; entry?: number }
+export type Via = { conversation: ConversationId; entry?: EntryId }
 export type MessagesData = { messages: Message[]; next: number }
+
+/** A branch's question pointer in @ultimate. */
+export type QuestionNotice = {
+  message: number
+  from: ConversationId
+  call?: string
+  summary?: string
+  dismissed?: boolean
+  via?: Via
+}
 
 /** Every message between conversations and the user, oldest first, on conversation 1. */
 export const MessagesDoc = docRef<MessagesData>('board')
@@ -83,10 +85,10 @@ export const MessagesDoc = docRef<MessagesData>('board')
  * `{ conversation, call }` → `{ entry }`: the response in `conversation`'s history that made tool call `call` (a
  * message's `call`), however old; no `entry` when the history has none.
  */
-export const CallerAction = actionRef<{ conversation: number; call: string }, { entry?: number }>(
-  'messages',
-  'caller',
-)
+export const CallerAction = actionRef<
+  { conversation: ConversationId; call: string },
+  { entry?: EntryId }
+>('messages', 'caller')
 
 /**
  * `{ messageId, text, dismiss? }` → `{ id }`: @ultimate (or its side chat) settles the user's open question
@@ -105,8 +107,8 @@ export const SettleAction = actionRef<
  */
 export const MessageSent = defineEvent<{
   message: number
-  from: number | 'user' | 'remote'
-  to: number | 'user' | 'remote'
+  from: ConversationId | 'user' | 'remote'
+  to: ConversationId | 'user' | 'remote'
   reply: boolean
   steer: boolean
 }>('board.sent')

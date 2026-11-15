@@ -28,6 +28,7 @@ import {
   cn,
   errorMessage,
   formatDuration,
+  keepLast,
   shortenPath,
   useAction,
   useCommands,
@@ -42,6 +43,7 @@ import {
   useUltimate,
   useViewport,
 } from '@/sdk'
+import { debounce, every } from '../../lib/timers.ts'
 import { AutomationForm } from './form.tsx'
 import {
   BusyDot,
@@ -103,14 +105,14 @@ export function useLive(overdue: boolean, now: number) {
   useEffect(() => {
     if (seen.current === signature) return undefined
     seen.current = signature
-    const timer = setTimeout(() => void refreshAutomations(), 100)
-    return () => clearTimeout(timer)
+    const refresh = debounce(100, () => void refreshAutomations())
+    refresh()
+    return refresh.cancel
   }, [signature])
   const polled = useRef(0)
   useEffect(() => {
     if (!overdue || now - polled.current < 2000) return
     polled.current = now
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in its state.
     void refreshAutomations()
   }, [overdue, now])
   useEffect(() => {
@@ -152,7 +154,7 @@ function useWords(schedule: Schedule | undefined, now: number) {
   const { data } = useAction(
     DescribeAction,
     { schedule: schedule ?? '' },
-    { enabled: !!schedule && schedule.kind !== 'at', onError: () => {} },
+    { enabled: !!schedule && schedule.kind !== 'at', onError: keepLast },
   )
   return schedule ? words(schedule, data?.description ?? raw(schedule), now) : ''
 }
@@ -322,7 +324,6 @@ function Toggle({
   const checked = pending ?? automation.enabled
   const toggle = (enabled: boolean) => {
     setPending(enabled)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(enabled ? ResumeAction : PauseAction, { id: automation.id })).finally(
       () => setPending(undefined),
     )
@@ -381,12 +382,10 @@ function AutomationRow({
   const runNow = () => {
     setBusy('run')
     if (!script) onExpand(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => setBusy(undefined))
   }
   const remove = () => {
     setBusy('delete')
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(async () => {
       await api.action(DeleteAction, { id: automation.id })
       onDeleted()
@@ -838,22 +837,18 @@ function Script({
   const home = useSystem()?.machine.home
   const [view, setView] = useExtensionUiState<'output' | 'script'>('pane', 'output')
   const [busy, setBusy] = useState(false)
-  // Read errors show inline in the pane instead of as a notice on every poll.
-  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: () => {} })
+  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: keepLast })
   // Always read once for the command's path; only the script tab polls it for edits.
-  const source = useAction(ScriptAction, { id: automation.id }, { onError: () => {} })
+  const source = useAction(ScriptAction, { id: automation.id }, { onError: keepLast })
   const { refetch: refetchLog } = log
   const { refetch: refetchSource } = source
   // Poll with the list, so new output arrives as the script prints it.
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
+    return every(2000, () => {
       void refetchLog()
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       if (view === 'script') void refetchSource()
-    }, 2000)
-    return () => clearInterval(timer)
+    })
   }, [live, view, refetchLog, refetchSource])
   const output = log.data?.text ?? ''
   const scroller = useRef<HTMLPreElement>(null)
@@ -866,10 +861,8 @@ function Script({
   const path = source.data?.path
   const restart = () => {
     setBusy(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors; useAction resolves undefined on failure.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => {
       setBusy(false)
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchLog()
     })
   }
@@ -1006,13 +999,11 @@ function Output({ text }: { text: string }) {
   if (!lines.some((line) => /^FIRE(\s|$)/.test(line))) return <AnsiOutput output={text} />
   return lines.map((line, index) =>
     /^FIRE(\s|$)/.test(line) ? (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div className="-mx-3 border-l-2 border-success bg-success/10 px-2.5" key={index}>
         <span className="font-semibold text-success">FIRE</span>
         {line.slice(4)}
       </div>
     ) : (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div key={index}>
         <AnsiOutput output={line || ' '} />
       </div>

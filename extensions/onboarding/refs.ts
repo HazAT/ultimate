@@ -2,6 +2,7 @@
  * Onboarding in the browser: the first run, the setup cards @ultimate shows while it gets familiar with a project,
  * and the actions behind the Extensions panel. Browser-safe.
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import type { ExtensionInfo } from '../../shared/protocol.ts'
 
@@ -53,16 +54,19 @@ export const FirstRunDoneAction = actionRef<null, { firstRun: boolean }>(
  * `{ root?, instructions? }` → `{ id }`: start getting familiar with the project in @ultimate for root `root` (by
  * default the caller's), with the user's optional focus as `instructions`; `id` is @ultimate's conversation.
  */
-export const StartAction = actionRef<{ root?: number; instructions?: string }, { id: number }>(
-  'onboarding',
-  'start',
-)
+export const StartAction = actionRef<
+  { root?: ConversationId; instructions?: string },
+  { id: ConversationId }
+>('onboarding', 'start')
 /** No arguments → `{ dismissed: true }`: hide the Start here card for this project; ⌘K Get ready… still starts setup. */
 export const DismissAction = actionRef<null, { dismissed: boolean }>('onboarding', 'dismiss')
 /** No arguments → `{ id }`: have @ultimate walk the user through how Ultimate works again, without project setup. */
-export const WalkthroughAction = actionRef<null, { id: number }>('onboarding', 'walkthrough')
+export const WalkthroughAction = actionRef<null, { id: ConversationId }>(
+  'onboarding',
+  'walkthrough',
+)
 /** `{ card }` → `{ id }`: ask @ultimate for help with the project or Git card; `id` is @ultimate's conversation. */
-export const HelpAction = actionRef<{ card: 'project' | 'git' }, { id: number }>(
+export const HelpAction = actionRef<{ card: 'project' | 'git' }, { id: ConversationId }>(
   'onboarding',
   'help',
 )

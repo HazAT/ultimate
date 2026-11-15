@@ -5,6 +5,7 @@
  */
 export { stateLabel, useWorkspaceConversations, useWorkspaceIndex, useWorkspaces } from './data.tsx'
 export type { WorkspaceConversation } from './data.tsx'
+export { LanderReportEntry } from './refs.ts'
 export { CommitCount, Open, Review, useGithubRepo, useProjectRepo } from './landing.tsx'
 export { Workspaces, useWorkspacesMeta } from './panel.tsx'
 export {

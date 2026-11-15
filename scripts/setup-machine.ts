@@ -7,6 +7,7 @@ import { homedir, userInfo } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { meansNone } from '../lib/errors.ts'
 
 export interface UnitOptions {
   /** The Ultimate clone that holds bin/ultimate.ts. */
@@ -110,8 +111,8 @@ export function loginPath(
         .split('\n')
         .find((line) => line.startsWith(marker))
         ?.slice(marker.length) ?? ''
-  } catch {
-    // A broken rc file must not stop the setup: the script's own PATH still goes into the units.
+  } catch (error) {
+    meansNone(error)
   }
   return [login, current].filter(Boolean).join(':')
 }

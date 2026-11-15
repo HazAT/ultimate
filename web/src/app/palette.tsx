@@ -18,7 +18,6 @@ export function Shortcut({ keys }: { keys: string }) {
   return (
     <span className="flex items-center gap-1">
       {formatKeys(keys).map((chord, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Chord positions in a fixed shortcut sequence.
         <KbdGroup key={index}>
           {chord.map((key) => (
             <Kbd key={key}>{key}</Kbd>

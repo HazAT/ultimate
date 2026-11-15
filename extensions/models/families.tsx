@@ -51,11 +51,9 @@ export function useFamilies() {
   useEffect(() => {
     if (fetchedFor === source) return
     fetchedFor = source
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshFamilies catches its failure; the next focus asks again.
     void refreshFamilies()
   }, [source])
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- as above.
     const refresh = () => void refreshFamilies()
     // A test renders without a window.
     globalThis.addEventListener?.('focus', refresh)

@@ -1,8 +1,9 @@
 /** Prompt in the browser: the note on an input that says what changed since the conversation's last run. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 
 /** A landing a build brought: the branch `conversation` (absent for a commit made outside Ultimate) and its title. */
 export type Landing = {
-  conversation?: number
+  conversation?: ConversationId
   title: string
   sha: string
 }

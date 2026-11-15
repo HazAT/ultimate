@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 /**
  * Dream: Ultimate processes what it learned, like people do while they sleep. A dream is ordinary work: @ultimate
  * starts a dream branch that follows DREAM.md, the user decides its proposals, approved ones become ordinary branches.
@@ -10,8 +11,8 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone, settled } from '../../lib/errors.ts'
 import {
   chapterFiles,
   chapterName,
@@ -60,13 +61,10 @@ const TURN_ENTRIES = 200
  * The `dream.requested` entry the turn that made entry `call` in @ultimate's conversation answered: the newest one
  * before it with no finished turn in between (an answer that called no tool ends a turn).
  */
-export async function requestOf(tx: Tx, ultimate: number, call: number) {
-  const page = await tx.scanEntries(
-    { conversationId: ultimate as ConversationId, maxEntryId: call as EntryId },
-    TURN_ENTRIES,
-  )
+export async function requestOf(tx: Tx, ultimate: ConversationId, call: EntryId) {
+  const page = await tx.scanEntries({ conversationId: ultimate, maxEntryId: call }, TURN_ENTRIES)
   for (const entry of page.items) {
-    if (entry.kind === 'dream.requested') return entry.id as number
+    if (entry.kind === 'dream.requested') return entry.id
     const message = entry.model?.at(-1)
     if (entry.id !== call && message?.role === 'assistant' && message.stopReason !== 'toolUse')
       return undefined
@@ -80,7 +78,7 @@ export async function requestOf(tx: Tx, ultimate: number, call: number) {
  */
 export async function branched(
   tx: Tx,
-  { id, by, call, at }: { id: number; by?: number; call?: number; at: number },
+  { id, by, call, at }: { id: ConversationId; by?: number; call?: EntryId; at: number },
 ) {
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (ultimate === undefined || by !== ultimate || call === undefined) return
@@ -146,7 +144,7 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
       ...group,
       examples: (
         sample.all(group.name, group.error) as {
-          conversation: number | null
+          conversation: ConversationId | null
           entry: number | null
           args: string | null
         }[]
@@ -224,9 +222,7 @@ async function finalBackup(host: ExtensionHost): Promise<NonNullable<Sleep['back
 export async function firstBackup(host: ExtensionHost) {
   const cloud = host.want(CloudApi)
   if ((await cloud?.status()) !== 'on' || (await cloud!.lastBackup())) return
-  // A refusal means another backup is running (@ultimate's, or this one's before a facet reload), or Ultimate is
-  // paused: the record that backup writes, or the next open, settles it. Upload failures are already reported.
-  await cloud!.backup().catch(() => undefined)
+  await cloud!.backup().catch(meansNone)
 }
 
 /**
@@ -435,8 +431,7 @@ export default function dream(host: ExtensionHost) {
   /** Queue a check behind the last one; a failure becomes a notice. */
   const ensure = () => {
     const run = queue.last.then(() => ensureAutomation(host))
-    // The queue only orders the checks: the failure is reported below, and the next check still runs.
-    queue.last = run.catch(() => undefined)
+    queue.last = settled(run)
     return run.catch((error: unknown) => host.notice(`Dream automations: ${String(error)}`))
   }
   host.onOpen(async () => {

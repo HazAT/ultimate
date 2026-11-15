@@ -1,6 +1,11 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
+import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/ui.tsx'
+import { FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
+import { LanderReportEntry } from '../workspaces/ui.tsx'
+import { InstructionEntry, ReportEntry } from '../subagents/ui.tsx'
 
 export { isOpen, isOwed, openQuestion }
 
@@ -9,7 +14,7 @@ export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
   `@ultimate@${remote.project} on ${remote.machine}`
 
 /** Only incoming requests belong to an answer, never the outgoing reply log item. */
-export function answeredMessages(messages: Message[], conversation: number, entry: number) {
+export function answeredMessages(messages: Message[], conversation: ConversationId, entry: number) {
   return messages.filter((message) => message.to === conversation && message.answer === entry)
 }
 
@@ -80,7 +85,7 @@ function awaitsPrimary(
   id: number,
   primary: number | undefined,
   log: MessagesData,
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   if (primary === undefined) return false
   return (
@@ -98,7 +103,7 @@ export function pendingReport(
   messages: readonly Message[],
   from: number | 'user' | 'remote',
   to: number | 'user' | 'remote',
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   let pending: Message | undefined
   for (const m of messages)
@@ -187,8 +192,10 @@ export function backgroundRow(
   if (hiddenKinds.has(entry.kind)) return 'hidden'
   if (landed(entry)) return false
   if (backgroundKinds.has(entry.kind)) return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from !== 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from !== 'user'
+  }
   const message = entry.model?.[0]
   if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') return false
   if (calls.length)
@@ -221,8 +228,10 @@ export function threadRow(
   const { entry, calls } = row
   if (hiddenKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
   if (entry.kind === 'pi.user') return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from === 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from === 'user'
+  }
   if (entry.kind !== 'pi.assistant' || backgroundRow(row, log) !== false) return false
   if (calls.length)
     return calls.some(
@@ -241,22 +250,24 @@ export function threadRow(
 
 /** The short commit a landing row says landed, for a summary line. */
 export function landedSha(entry: EntryRecord): string | undefined {
-  const data = entry.data as { sha?: unknown; outcome?: { sha?: unknown } } | undefined
-  const sha = entry.kind === 'lineage.note' ? data?.sha : data?.outcome?.sha
+  const data: { source?: unknown; sha?: unknown; outcome?: { sha?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  const sha = NoteEntry.is(entry) ? data?.sha : data?.outcome?.sha
   return typeof sha === 'string' ? sha.slice(0, 7) : undefined
 }
 
-const idOf = (value: unknown): (number | 'remote')[] =>
-  typeof value === 'number' || value === 'remote' ? [value] : []
+const idOf = (value: unknown): (ConversationId | 'remote')[] =>
+  typeof value === 'number' ? [parseConversationId(value)] : value === 'remote' ? [value] : []
 
 /**
  * Whether an entry says work landed: the lander's landing note, or its report of a landing. Landings are news you wait
  * for, so they stay in the compact transcript and split background around them; a failed report stays background.
  */
 export function landed(entry: EntryRecord) {
-  const data = entry.data as { source?: unknown; outcome?: { outcome?: unknown } } | undefined
-  if (entry.kind === 'lineage.note') return data?.source === 'lander'
-  return entry.kind === 'workspaces.lander-report' && data?.outcome?.outcome === 'landed'
+  const data: { source?: unknown; outcome?: { outcome?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  if (NoteEntry.is(entry)) return data?.source === 'lander'
+  return LanderReportEntry.is(entry) && data?.outcome?.outcome === 'landed'
 }
 
 /** Who a background row is with: the conversations it came from or went to, `lander` for the lander. */
@@ -266,25 +277,31 @@ export function counterparts(
     calls,
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData>,
-): (number | 'remote' | 'lander')[] {
-  const data = (entry.data ?? {}) as {
-    from?: unknown
-    sender?: unknown
-    conversation?: unknown
-    source?: unknown
-  }
+): (ConversationId | 'remote' | 'lander')[] {
   switch (entry.kind) {
     case 'board.message':
     case 'board.reply':
-    case 'lineage.finished':
-      return idOf(data.from)
-    case 'lineage.note':
-      return data.source === 'lander' ? ['lander'] : idOf(data.from)
-    case 'lineage.abstract':
-      return idOf(data.conversation)
+    case 'lineage.finished': {
+      if (!MessageEntry.is(entry) && !ReplyEntry.is(entry) && !FinishedEntry.is(entry)) return []
+      const data: { from?: unknown } | undefined = entry.data
+      return idOf(data?.from)
+    }
+    case 'lineage.note': {
+      if (!NoteEntry.is(entry)) return []
+      const data: { source?: unknown; from?: unknown } | undefined = entry.data
+      return data?.source === 'lander' ? ['lander'] : idOf(data?.from)
+    }
+    case 'lineage.abstract': {
+      if (!AbstractEntry.is(entry)) return []
+      const data: { conversation?: unknown } | undefined = entry.data
+      return idOf(data?.conversation)
+    }
     case 'subagents.report':
-    case 'subagents.instruction':
-      return idOf(data.sender)
+    case 'subagents.instruction': {
+      if (!InstructionEntry.is(entry) && !ReportEntry.is(entry)) return []
+      const data: { sender?: unknown } | undefined = entry.data
+      return idOf(data?.sender)
+    }
     case 'workspaces.lander-report':
       return ['lander']
   }
@@ -293,7 +310,7 @@ export function counterparts(
       const sent = log.messages.find((m) => m.call === call.id)
       if (sent) return idOf(sent.to)
       const to = /^#(\d+)$/.exec(String((call.arguments as { to?: unknown } | undefined)?.to))
-      return to ? [Number(to[1])] : []
+      return to ? [parseConversationId(Number(to[1]))] : []
     })
   return [
     ...answeredMessages(log.messages, entry.conversationId, entry.id).flatMap((m) => idOf(m.from)),
@@ -313,7 +330,7 @@ export const answerTo = (messages: readonly Message[], question: Message) =>
 export function openMessages(
   messages: readonly Message[],
   id: number,
-  concludedSince: (id: number) => number | undefined,
+  concludedSince: (id: ConversationId) => number | undefined,
 ) {
   const reporters = new Set(
     messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
@@ -331,8 +348,10 @@ export function openMessages(
 }
 
 /** Whether a report is settled: its sender was concluded after sending it (or is concluded now). */
-export const settled = (message: Message, concludedSince: (id: number) => number | undefined) =>
-  typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
+export const settled = (
+  message: Message,
+  concludedSince: (id: ConversationId) => number | undefined,
+) => typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
 
 /** Who waits on whom for one message; `yours` is an open question to the user. */
 export function messageStatus(message: Message) {

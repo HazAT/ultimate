@@ -1,3 +1,11 @@
+import type {
+  ConversationId,
+  Cursor,
+  PhaseHandler,
+  Tx,
+  TaskId,
+  EntryId,
+} from '@earendil-works/pi-durable'
 /**
  * Project memory: each root keeps durable decisions, facts and lessons by slug. Branches from a root with memories start
  * from a brief of its index and recent landings; each landing distils memory operations with the summary model.
@@ -8,13 +16,13 @@ import {
   defineTask,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, PhaseHandler, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Roots } from './api.ts'
 import { MemoryDoc } from './refs.ts'
+import { NoteEntry } from '../entries/api.ts'
 import type { MemoryItem } from './refs.ts'
 
 export const MEMORY_LIMIT = 150
@@ -45,7 +53,7 @@ export const Memory = defineDoc<{ memories: Record<string, MemoryItem> }>({
  * One receipt per landing a root distils memory from, keyed by submission and never evicted: a second event for one
  * landing starts no second task, however many landings came between.
  */
-export const Memorized = defineDocFamily<{ task?: number }, null>({
+export const Memorized = defineDocFamily<{ task?: TaskId }, null>({
   kind: 'lineage.memorize-receipt',
   checkpointWhen: () => false,
   version: 1,
@@ -166,7 +174,7 @@ export function normalizeMemoryOp(op: unknown): unknown {
  */
 export async function applyMemoryOps(
   tx: Tx,
-  root: number,
+  root: ConversationId,
   ops: readonly unknown[],
   now = Date.now(),
 ) {
@@ -174,7 +182,7 @@ export async function applyMemoryOps(
     throw new Error(`#${root} is not a listed root`)
   if (!Array.isArray(ops)) throw new Error('ops must be a list')
   const parsed = ops.map(parseOp)
-  const doc = await tx.doc(Memory, root as ConversationId)
+  const doc = await tx.doc(Memory, root)
   const next = new Map(Object.entries(doc.memories))
   const done: Record<MemoryOp['op'], string[]> = { add: [], update: [], delete: [] }
   for (const [index, op] of parsed.entries()) {
@@ -255,7 +263,7 @@ async function recentLandings(tx: Tx, root: ConversationId, limit: number) {
 export async function memoryBrief(tx: Tx, root: ConversationId) {
   const { memories } = await tx.doc(Memory, root)
   if (!Object.keys(memories).length) return undefined
-  const tip = (await tx.scanEntries({ conversationId: root }, 1)).items[0]?.id as number | undefined
+  const tip = (await tx.scanEntries({ conversationId: root }, 1)).items[0]?.id
   const landings = await recentLandings(tx, root, 10)
   const text = [
     `<project_memory root="#${root}">`,
@@ -315,10 +323,10 @@ export function parseMemoryOps(text: string): unknown[] {
 }
 
 export type MemorizeInput = {
-  root: number
+  root: ConversationId
   submission: string
-  from: number
-  at: number
+  from: ConversationId
+  at: EntryId
   note: string
 }
 
@@ -332,7 +340,7 @@ export type MemorizeInput = {
 export function memorizeTask(
   host: ExtensionHost,
   /** Inside `tx`: conversation `from`'s open abstract in root `root`'s tally, if any. */
-  openAbstract: (tx: Tx, root: ConversationId, from: number) => Promise<string | undefined>,
+  openAbstract: (tx: Tx, root: ConversationId, from: ConversationId) => Promise<string | undefined>,
 ) {
   const conversations = host.need(ConversationsApi)
   const done = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -347,7 +355,7 @@ export function memorizeTask(
     const checkpoint = task.state.checkpoint
     const retry = checkpoint.phase === 'retry' ? checkpoint : undefined
     const memo = retry ? 'retry-response' : 'response'
-    const id = root as ConversationId
+    const id = root
     let model = await runtime.memo<SummaryModel | false>('model', ctx)
     if (model === undefined)
       model = await runtime.memo(
@@ -364,7 +372,12 @@ export function memorizeTask(
         // The landing note in a tally carries the submitter's abstract it froze; before that, it is still open.
         const placed = await tx.submissionByRequest(id, `lander-root:${submission}`)
         const entry = placed?.entry ? await tx.entry(placed.entry) : undefined
-        const frozen = (entry?.data as { abstract?: { text?: string } } | undefined)?.abstract
+        const data: { source?: unknown; abstract?: { text?: string } } | undefined = NoteEntry.is(
+          entry,
+        )
+          ? entry.data
+          : undefined
+        const frozen = data?.abstract
         const abstract = frozen?.text ?? (await openAbstract(tx, id, from))
         const { memories } = await tx.doc(Memory, id)
         const slugs = Object.keys(memories).toSorted()

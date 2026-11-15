@@ -1,7 +1,9 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /** From a response in the transcript to the call that produced it in Wire. */
 import type { ReactNode } from 'react'
 import {
   cn,
+  keepLast,
   useAction,
   useConversation,
   useExtensionUiState,
@@ -16,7 +18,7 @@ import { ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
 
 /** Which call Wire shows, for the conversation it was picked in. */
-export type Picked = { conversation: number; n: number }
+export type Picked = { conversation: ConversationId; n: number }
 
 /** Wire is a tab of the System surface: a function that selects it there, then shows System. */
 export function useOpenWire() {
@@ -62,8 +64,7 @@ export function WireLink({
 }) {
   const message = entry.model?.[0]
   const busy = useConversation((conversation) => conversation.busy)
-  // A failed read only leaves the link out; the transcript has no place for a notice per response.
-  const calls = useAction(ListAction, null, { on: busy, onError: () => {} })
+  const calls = useAction(ListAction, null, { on: busy, onError: keepLast })
   const bust = cacheBusts(useTranscript()).has(entry.id)
   const [, setPicked] = useExtensionUiState<Picked | null>('picked', null)
   const openWire = useOpenWire()

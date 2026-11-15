@@ -1,5 +1,8 @@
+import { parseConversationId } from '../../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { ActionError, actionMessage, createApi } from './api.ts'
 import { createReads } from './reads.ts'
+import { deadline } from '../../../lib/timers.ts'
 import { linkedConversation } from './link.ts'
 import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
@@ -23,7 +26,7 @@ function urlConversation() {
   const id = value && /^\d+$/.test(value) ? Number(value) : undefined
   return id !== undefined && Number.isSafeInteger(id) && id > 0 ? id : undefined
 }
-function writeConversation(id: number, replace: boolean) {
+function writeConversation(id: ConversationId, replace: boolean) {
   const url = new URL(location.href)
   if (url.searchParams.get('conversation') === String(id)) return
   url.searchParams.set('conversation', String(id))
@@ -94,7 +97,7 @@ store.subscribe(() => {
       switchKey,
       JSON.stringify({ at: Date.now(), changed: system.web.changed }),
     )
-    setTimeout(() => location.reload(), switchDelay)
+    deadline(switchDelay, () => location.reload())
     return
   }
   // The stream sends `system` before `ui`, so a new process's snapshot finds the revisions forgotten.
@@ -146,7 +149,7 @@ export function replaceNextSelection() {
 function followSelection() {
   if (!initialized) return
   const value = uiState.get('shell.conversation')
-  const id = typeof value === 'number' ? value : undefined
+  const id = typeof value === 'number' ? parseConversationId(value) : undefined
   if (id !== selected) {
     selected = id
     if (id !== undefined) writeConversation(id, replaceSelection)

@@ -3,6 +3,7 @@
  * the primary agent, which conversations a conclusion hides, the overview document and the conversation actions, and
  * the points where optional extensions describe a conversation (its working phase, its plan task).
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ReactNode } from 'react'
 import { definePoint, useUiState } from '@/sdk'
 
@@ -11,14 +12,14 @@ import { definePoint, useUiState } from '@/sdk'
  * case in place of "working", and whether it only `waiting` on its subagents. Undefined while not known.
  */
 export const ConversationPhase = definePoint<
-  number | undefined,
+  ConversationId | undefined,
   { label: ReactNode; word: string; waiting: boolean } | undefined
 >('conversations.phase')
 /** Whether conversation `id` gets no summaries, so its transcript hides older summary lines (lineage: a root). */
-export const Unsummarized = definePoint<number, boolean>('conversations.unsummarized')
+export const Unsummarized = definePoint<ConversationId, boolean>('conversations.unsummarized')
 /** The plan task conversation `id` works on (`plan` provides it): its chip and title. */
 export const ConversationTask = definePoint<
-  number | undefined,
+  ConversationId | undefined,
   { chip: ReactNode; title: string } | undefined
 >('conversations.task')
 /**
@@ -26,7 +27,7 @@ export const ConversationTask = definePoint<
  * tasks went to a subagent; `open` shows it in the plan panel.
  */
 export const ConversationEpic = definePoint<
-  number,
+  ConversationId,
   { key: string; title: string; status: string; open: () => void } | undefined
 >('conversations.epic')
 
@@ -39,8 +40,8 @@ export { hiddenConversationIds } from './visible.tsx'
  * Since when each conversation counts as concluded: forever while it is, else when it was last concluded (kept when
  * it is resumed); undefined for one never concluded. What it said before then is settled.
  */
-export function useConcludedSince(): (id: number) => number | undefined {
-  const [concluded] = useUiState<number[]>('ext.conversations.concluded', [])
+export function useConcludedSince(): (id: ConversationId) => number | undefined {
+  const [concluded] = useUiState<ConversationId[]>('ext.conversations.concluded', [])
   const [at] = useUiState<Record<string, number>>('ext.conversations.concludedAt', {})
   return (id) => (concluded.includes(id) ? Infinity : at[id])
 }

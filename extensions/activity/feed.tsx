@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CircleXIcon,
   CloudIcon,
@@ -85,7 +86,7 @@ export const joined = (lists: readonly (readonly ActivityEvent[])[]) =>
   )
 
 /** Where a row leads: a conversation, at an entry when there is one. */
-type Target = { conversation: number; entry?: number }
+type Target = { conversation: ConversationId; entry?: number }
 
 /** Opens `target` on the Agent surface, revealing its entry, as the root row's landings do. */
 function useOpen() {

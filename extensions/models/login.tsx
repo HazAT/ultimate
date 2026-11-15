@@ -26,6 +26,7 @@ import {
   useUltimate,
 } from '@/sdk'
 import type { AuthEvent, AuthPrompt } from '@/sdk'
+import { meansNone } from '../../lib/errors.ts'
 import { authLabel, dialogs, reopenPicker, useLoginProvider } from './state.tsx'
 import type { ProviderInfo } from './state.tsx'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
@@ -35,10 +36,8 @@ function useLoginFlow(flowId: string | undefined) {
   const flows = useDoc(LoginDoc)?.flows
   return flowId === undefined ? undefined : flows?.[flowId]
 }
-/** Cancel a running flow; it may have just ended, which needs no notice. */
 const cancel = (flowId: string) =>
-  // The flow may have just ended; a failed cancel needs no notice.
-  api.action(CancelAction, { flowId }, { keepalive: true }).catch(() => undefined)
+  api.action(CancelAction, { flowId }, { keepalive: true }).catch(meansNone)
 interface Method {
   provider: ProviderInfo
   type: AuthType
@@ -119,9 +118,10 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
       )
     case 'device_code':
       return <DeviceCode event={event} since={seen.get(key) ?? Date.now()} />
-    default:
-      return <p className="text-[12px] text-muted-foreground">{event.message}</p>
+    case 'progress':
+      break
   }
+  return <p className="text-[12px] text-muted-foreground">{event.message}</p>
 }
 
 function DeviceCode({
@@ -285,7 +285,6 @@ function FlowView({
   const failure = error ?? flow?.error
   useEffect(() => onRunning(status === 'running' ? flowId : undefined), [flowId, onRunning, status])
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
     if (status === 'complete') void refreshModels()
   }, [status])
   return (
@@ -330,7 +329,6 @@ function FlowView({
       <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto px-4 py-4">
         {flowId &&
           flow?.events.map((event, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Login events append within this flow.
             <EventView event={event} flowId={flowId} index={index} key={index} />
           ))}
         {flow?.prompt && status === 'running' && flowId && (
@@ -429,7 +427,6 @@ function Chooser({
     api.action(LogoutAction, { provider: provider.id }).then(
       () => {
         setBusy(undefined)
-        // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
         void refreshModels()
       },
       (failure: unknown) => {
@@ -574,7 +571,6 @@ export function LoginDialog() {
       )
   }
   const close = () => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- cancel catches failures when a flow has already ended.
     if (running) void cancel(running)
     setOpen(false)
     setState(undefined)

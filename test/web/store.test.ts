@@ -1,5 +1,5 @@
+import type { ConversationView, ConversationId } from '@earendil-works/pi-durable'
 import type { Op } from '@earendil-works/chord/delta'
-import type { ConversationView } from '@earendil-works/pi-durable'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore } from '../../web/src/sdk/store.ts'
 import type { ServerEvents } from '../../shared/protocol.ts'
@@ -144,10 +144,10 @@ describe('web replica store', () => {
   it('streams documents of given conversations on one subscription per conversation', async () => {
     const { store, sources, server, latest } = setup()
     latest().open()
-    const tasks = store.watchDocOf(1, 'test.tasks')
-    const tasksAgain = store.watchDocOf(1, 'test.tasks')
-    const overview = store.watchDocOf(1, 'test.overview')
-    const plan = store.watchDocOf(7, 'test.plan')
+    const tasks = store.watchDocOf(1 as ConversationId, 'test.tasks')
+    const tasksAgain = store.watchDocOf(1 as ConversationId, 'test.tasks')
+    const overview = store.watchDocOf(1 as ConversationId, 'test.overview')
+    const plan = store.watchDocOf(7 as ConversationId, 'test.plan')
     await tick()
     // All on the tab's one stream: the shown conversation, then one subscription of all kinds per conversation.
     expect(sources).toHaveLength(1)
@@ -179,7 +179,7 @@ describe('web replica store', () => {
     expect(store.getState().docs).toEqual({})
 
     // Showing another conversation leaves these subscriptions alone.
-    store.show(7)
+    store.show(7 as ConversationId)
     await tick()
     expect([root.closed, coordinator.closed]).toEqual([false, false])
 
@@ -205,12 +205,12 @@ describe('web replica store', () => {
 
     // Released and watched again before the next tick: the subscription carries on.
     overview()
-    const watched = store.watchDocOf(1, 'test.overview')
+    const watched = store.watchDocOf(1 as ConversationId, 'test.overview')
     await tick()
     const both = server.of(1)!
     expect(both.docs).toEqual(['test.overview', 'test.tasks'])
     watched()
-    store.watchDocOf(1, 'test.overview')
+    store.watchDocOf(1 as ConversationId, 'test.overview')
     await tick()
     expect(both.closed).toBe(false)
 
@@ -239,7 +239,7 @@ describe('web replica store', () => {
     latest().open()
     server.of()!.send('view', view([user(1, 'root')]))
     server.refuse(7, 404)
-    store.show(7)
+    store.show(7 as ConversationId)
     expect(store.getState().view).toBeUndefined()
     await tick()
     // The server answered 404: the store subscribes the root instead.
@@ -254,7 +254,7 @@ describe('web replica store', () => {
   it('keeps the conversation list as it was when a reconnect resends it unchanged', async () => {
     const { store, latest } = setup()
     latest().open()
-    const list = [{ id: 1, cwd: '/my-app', busy: false }]
+    const list = [{ id: 1 as ConversationId, cwd: '/my-app', busy: false }]
     latest().send('conversations', list)
     const before = store.getState().conversations
     latest().drop()
@@ -271,13 +271,13 @@ describe('web replica store', () => {
     const { store, latest } = setup()
     latest().open()
     latest().send('conversations', [
-      { id: 1, title: 'my-app', busy: false },
-      { id: 2, title: 'fix login', busy: false },
+      { id: 1 as ConversationId, title: 'my-app', busy: false },
+      { id: 2 as ConversationId, title: 'fix login', busy: false },
     ])
     const [root, branch] = store.getState().conversations
     latest().send('conversations', [
-      { id: 1, title: 'my-app', busy: false },
-      { id: 2, title: 'fix login', busy: true, answerAt: 5 },
+      { id: 1 as ConversationId, title: 'my-app', busy: false },
+      { id: 2 as ConversationId, title: 'fix login', busy: true, answerAt: 5 },
     ])
     // Readers of row 1 (`useConversationSummary(1)`) see the same object and skip the re-render.
     expect(store.getState().conversations[0]).toBe(root)
@@ -290,7 +290,7 @@ describe('web replica store', () => {
     const { store, server, latest } = setup()
     latest().open()
     server.of()!.send('view', view([user(1, 'root')]))
-    store.show(7)
+    store.show(7 as ConversationId)
     await tick()
     const seven = view([user(2, 'seven')], {}, 7)
     server.of(7)!.send('view', seven)
@@ -299,7 +299,7 @@ describe('web replica store', () => {
     // Back to the root, then to 7 again: its last replica shows before any subscription answers.
     store.show(undefined)
     expect(store.getState().view).toBeUndefined()
-    store.show(7)
+    store.show(7 as ConversationId)
     const kept = store.getState()
     expect(kept.restored).toBe(true)
     expect(kept.view?.entries.map((entry) => entry.id)).toEqual([2])
@@ -314,7 +314,7 @@ describe('web replica store', () => {
     // Ops applied since make the replica newer than its snapshot: the next snapshot replaces it again.
     server.of(7)!.send('ops', [['p', ['entries'], 2, 0, [user(5, 'later')]]])
     store.show(undefined)
-    store.show(7)
+    store.show(7 as ConversationId)
     expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([2, 4, 5])
     await tick()
     server.of(7)!.send('view', seven)
@@ -326,15 +326,15 @@ describe('web replica store', () => {
     const { store, server, latest } = setup()
     latest().open()
     for (let id = 2; id <= 8; id++) {
-      store.show(id)
+      store.show(id as ConversationId)
       await tick()
       server.of(id)!.send('view', view([user(id, `c${id}`)], {}, id))
     }
     // Seven shown after the root: the oldest, 2, is gone; 3 is still at hand.
-    store.show(2)
+    store.show(2 as ConversationId)
     expect(store.getState().view).toBeUndefined()
     expect(store.getState().restored).toBe(false)
-    store.show(3)
+    store.show(3 as ConversationId)
     expect(store.getState().restored).toBe(true)
     expect(store.getState().view?.conversation.id).toBe(3)
     store.stop()

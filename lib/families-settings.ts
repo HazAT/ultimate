@@ -9,8 +9,7 @@ import type { JsonObject } from '@earendil-works/pi-durable'
 import { mergeFamilies, parseFamilies } from './families.ts'
 import type { Families } from './families.ts'
 import { readJson, updateJson } from './json-file.ts'
-// oxlint-disable-next-line no-restricted-imports -- family settings follow the core project trust decision, as definitions do
-import { decisionRoot, projectSettings } from '../server/project-setup.ts'
+import { decisionRoot, projectSettings } from './project-setup.ts'
 
 /** The families file of this machine. */
 export const familiesPath = (userHome: string) => join(userHome, '.ultimate/model-families.json')

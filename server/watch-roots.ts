@@ -1,5 +1,6 @@
 import { existsSync, watch } from 'node:fs'
 import { dirname } from 'node:path'
+import { isMissing } from '../lib/errors.ts'
 
 /** Watch missing roots through their nearest existing parent, without scanning siblings. */
 export function watchRoots(roots: string[], appeared: (root: string) => void) {
@@ -22,7 +23,7 @@ export function watchRoots(roots: string[], appeared: (root: string) => void) {
             watchedAncestor = ancestor
             break
           } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            if (!isMissing(error)) throw error
             ancestor = dirname(ancestor)
           }
         }

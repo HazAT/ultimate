@@ -30,9 +30,7 @@ export function reminderTask(host: ExtensionHost, Goals: Goals) {
     (await tx.doc(Goals, ROOT_CONVERSATION_ID)).goals.find((item) => item.id === id)
   /** One look: true when it changed something and must look again, false once the automation matches the goal. */
   async function step(id: number): Promise<boolean> {
-    const automations = host.want(AutomationsApi)
-    // Automations is off: the goal runs without a reminder.
-    if (!automations) return false
+    const automations = host.need(AutomationsApi)
     // A plain copy: the document's overlay is unusable after the commit.
     const goal = await host
       .harness()

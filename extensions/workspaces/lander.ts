@@ -1,3 +1,9 @@
+import type {
+  ConversationId,
+  JsonObject,
+  ConversationDocToken,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
@@ -5,11 +11,11 @@ import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
-import type { JsonObject } from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
-import { defineEntry, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationDocToken, ConversationId, Tx } from '@earendil-works/pi-durable'
+import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
+import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { landingWeight } from '../../lib/token-weight.ts'
@@ -18,11 +24,9 @@ import { CheckRan, SubmissionFailed, SubmissionLanded } from './api.ts'
 import { setup } from './setup.ts'
 import { addCheckout, treePath } from './tree.ts'
 import type { Landed, LanderEntry, LanderOutcome, QueueEntry, WorkspaceIndex } from './types.ts'
+import { LanderLog } from './entries.ts'
+import { LanderReportEntry } from './refs.ts'
 
-/** One line of the lander conversation's log; it carries no model message, so no model ever sees it. */
-export const LanderLog = defineEntry<LanderEntry>('ultimate.lander')
-/** The entry kind of a submission's report: its outcome card, in the submitter and in whoever started it. */
-export const LanderReportEntry = 'workspaces.lander-report'
 /** Outcomes kept in the index for submit cards; older ones live on in the lander conversation. */
 const kept = 50
 /** The lander's own detached checkout of `source`, also its conversation's cwd. */
@@ -48,23 +52,18 @@ export async function landerCheckout(
   tip = 'HEAD',
 ) {
   const path = await landerPath(home, source, settings)
-  const queued = (checkouts.get(path) ?? Promise.resolve())
-    .catch(
-      // The previous caller receives its failure; a later call must still be able to recover.
-      () => undefined,
-    )
-    .then(async () => {
-      const registered = (await git(source, 'worktree', 'list', '--porcelain'))
-        .split('\n\n')
-        .some((entry) => entry.split('\n').includes(`worktree ${path}`))
-      if (!registered) {
-        // The directory is the lander's own; a crash may have left it half created.
-        await rm(path, { recursive: true, force: true })
-        await git(source, 'worktree', 'prune')
-        await addCheckout(settings, source, path, landerName(source), ['--detach', tip])
-      }
-      return path
-    })
+  const queued = settled(checkouts.get(path) ?? Promise.resolve()).then(async () => {
+    const registered = (await git(source, 'worktree', 'list', '--porcelain'))
+      .split('\n\n')
+      .some((entry) => entry.split('\n').includes(`worktree ${path}`))
+    if (!registered) {
+      // The directory is the lander's own; a crash may have left it half created.
+      await rm(path, { recursive: true, force: true })
+      await git(source, 'worktree', 'prune')
+      await addCheckout(settings, source, path, landerName(source), ['--detach', tip])
+    }
+    return path
+  })
   checkouts.set(path, queued)
   try {
     return await queued
@@ -189,10 +188,10 @@ export async function runLanderCheck(
     watchdog.abort()
   }
   const stalled = () => stop(`Stalled: no output for ${seconds(limits.stall)}, stopped`)
-  let stallTimer = setTimeout(stalled, limits.stall * 1000)
-  const totalTimer = setTimeout(
-    () => stop(`Timed out after ${seconds(limits.total)}`),
-    limits.total * 1000,
+  const stallDeadline = debounce(limits.stall * 1000, stalled)
+  stallDeadline()
+  const cancelTotal = deadline(limits.total * 1000, () =>
+    stop(`Timed out after ${seconds(limits.total)}`),
   )
   /** A failure report: what ended the check, the failed tests seen (at most 20), then the output tail. */
   const report = (reason: string, heading: string) => {
@@ -207,8 +206,7 @@ export async function runLanderCheck(
       const plain = stripVTControlCharacters(line).trim()
       if (failedLine.test(plain)) failed.add(plain.slice(0, 300))
     }
-    clearTimeout(stallTimer)
-    stallTimer = setTimeout(stalled, limits.stall * 1000)
+    stallDeadline()
   }
   try {
     let exitCode: number
@@ -231,12 +229,11 @@ export async function runLanderCheck(
     const last = lines(stripVTControlCharacters(output)).findLast((line) => line.trim())
     return { summary: last?.trim().slice(0, 200) }
   } finally {
-    clearTimeout(stallTimer)
-    clearTimeout(totalTimer)
-    // Best effort: detached processes an e2e test leaves behind (supervisors, preview homes) can still be writing here,
-    // the same race #43 fixed in test/sweep-temp.ts. Without retry and catch, rm throws ENOTEMPTY and refuses a landing
-    // whose checks passed. sweepChecks removes the leftover at the next start. Can go once no check leaves writers.
-    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {})
+    stallDeadline.cancel()
+    cancelTotal()
+    await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+      retriedLater,
+    )
   }
 }
 
@@ -312,7 +309,7 @@ type State =
   | {
       phase: 'report'
       id: string
-      conversationId: number
+      conversationId: ConversationId
       text: string
       outcome: WorkspaceIndex['results'][string]
     }
@@ -320,14 +317,14 @@ type State =
   | {
       phase: 'deliver'
       id: string
-      conversationId: number
+      conversationId: ConversationId
       text: string
       outcome: WorkspaceIndex['results'][string]
       concluded: boolean
-      starter?: number
+      starter?: ConversationId
     }
   /** A landed branch concluded in the report's last commit: free its checkout. */
-  | { phase: 'release'; conversationId: number }
+  | { phase: 'release'; conversationId: ConversationId }
 
 export function createLander(
   host: Host,
@@ -336,7 +333,7 @@ export function createLander(
   serial: <T>(source: string, operation: () => Promise<T>) => Promise<T>,
   /** What a landing needs from the rest of Ultimate: who started a branch, whether it has work under way, conclude, release. */
   after: {
-    starter: (id: ConversationId, context: Context) => Promise<number | undefined>
+    starter: (id: ConversationId, context: Context) => Promise<ConversationId | undefined>
     working: (tx: Tx, id: ConversationId) => Promise<boolean>
     conclude: (tx: Tx, id: ConversationId) => Promise<void>
     release: (id: ConversationId, context: Context) => Promise<unknown>
@@ -460,9 +457,7 @@ export function createLander(
                 lander: runtime.conversationId,
                 divergence: entry.divergence,
                 title:
-                  subject.title ??
-                  (await tx.doc(host.metadata, entry.conversationId as ConversationId)).title ??
-                  '',
+                  subject.title ?? (await tx.doc(host.metadata, entry.conversationId)).title ?? '',
                 ...(subject.summary ? { summary: subject.summary } : {}),
                 ...(subject.feature ? { feature: subject.feature } : {}),
                 commits: commits.slice(0, 10),
@@ -599,8 +594,7 @@ export function createLander(
                   return false
                 } catch {
                   const conflicts = await git(path, 'diff', '--name-only', '--diff-filter=U')
-                  // The next attempt starts from a reset, cleaned checkout, so a failed abort cannot leak into it.
-                  await git(path, 'merge', '--abort').catch(() => undefined)
+                  await git(path, 'merge', '--abort').catch(overshadowed)
                   await fail(reason, conflicts, hint)
                   return true
                 }
@@ -715,8 +709,8 @@ export function createLander(
                 return rerun.failure === undefined ? { flaky: true } : { failure: rerun.failure }
               }
               // Every command settles before a failure hands over, so none still runs in the checkout.
-              const settled = await Promise.allSettled(commands.map(settle))
-              const results = settled.map((outcome) => {
+              const outcomes = await Promise.allSettled(commands.map(settle))
+              const results = outcomes.map((outcome) => {
                 if (outcome.status === 'rejected') throw outcome.reason
                 return outcome.value
               })
@@ -810,8 +804,8 @@ export function createLander(
        */
       report: async (task, runtime, context) => {
         const { id, conversationId, text, outcome } = task.state.checkpoint
-        const branch = conversationId as ConversationId
-        const entry = { kind: LanderReportEntry, data: { id, outcome } }
+        const branch = conversationId
+        const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const next = { status: 'running', checkpoint: { phase: 'next' } } as const
         if (outcome.outcome === 'failed') {
           await (
@@ -871,11 +865,11 @@ export function createLander(
       // own report when it stops, so the card goes as a note.
       deliver: async (task, runtime, context) => {
         const { id, conversationId, text, outcome, concluded, starter } = task.state.checkpoint
-        const entry = { kind: LanderReportEntry, data: { id, outcome } }
+        const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
-            await host.harness().conversation(starter as ConversationId, context)
+            await host.harness().conversation(starter, context)
           )?.submit(
             concluded
               ? { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` }
@@ -900,7 +894,7 @@ export function createLander(
       // At least once, like the Conclude action's release: it frees only what a concluded, idle branch holds.
       release: async (task, runtime, context) => {
         await after
-          .release(task.state.checkpoint.conversationId as ConversationId, context)
+          .release(task.state.checkpoint.conversationId, context)
           .catch((error: unknown) => {
             context.abortSignal?.throwIfAborted()
             // The landing stands; the next open's reconciliation frees the checkout instead.

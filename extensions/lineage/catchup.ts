@@ -1,8 +1,4 @@
-import { isAbsolute, relative, resolve } from 'node:path'
-import { onCommit } from '../../lib/commits.ts'
-import type { Context } from '@earendil-works/chord/context'
-import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   EntryDraft,
@@ -10,7 +6,13 @@ import type {
   EntryRecord,
   Tx,
 } from '@earendil-works/pi-durable'
+import { isAbsolute, relative, resolve } from 'node:path'
+import { onCommit } from '../../lib/commits.ts'
+import type { Context } from '@earendil-works/chord/context'
+import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { git } from '../../lib/git.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
@@ -20,7 +22,7 @@ import type { OpenAbstract } from './server.ts'
  * What a conversation last saw: the target tip (`main`, at time `at`) and the last entry of its tree's tally it
  * accounted for (`tally`). A branch gets its own baseline, not its source's.
  */
-export const Seen = defineDoc<{ main?: string; at?: number; tally?: number }>({
+export const Seen = defineDoc<{ main?: string; at?: number; tally?: EntryId }>({
   kind: 'lineage.seen',
   checkpointWhen: () => false,
   version: 1,
@@ -48,10 +50,7 @@ async function mainOf(
     (await git(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => ''))
   if (!target) return undefined
   // Projects without a main branch have nothing to catch up on.
-  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(
-    // An unborn target branch has no commits to catch up on.
-    () => undefined,
-  )
+  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(meansNone)
   // Only a ready checkout exists on disk: a concluded conversation's is released, and its next request recreates it.
   return sha
     ? { cwd, target, sha, ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}) }
@@ -228,11 +227,11 @@ async function catchupText(
 }
 
 /** The first input `id` placed itself; its own entries all follow the entry it was forked at. */
-async function firstInput(tx: Tx, id: ConversationId, forkedAt = 0) {
+async function firstInput(tx: Tx, id: ConversationId, forkedAt = parseEntryId(0)) {
   let cursor
   do {
     const page = await tx.scanEntries(
-      { conversationId: id, minEntryId: (forkedAt + 1) as EntryId, order: 'ascending' },
+      { conversationId: id, minEntryId: offsetEntryId(forkedAt, 1), order: 'ascending' },
       100,
       cursor,
     )
@@ -244,15 +243,15 @@ async function firstInput(tx: Tx, id: ConversationId, forkedAt = 0) {
 }
 
 /** A tally a top-level conversation catches up on: its tree root, once that root is a tally. */
-export type Tree = { root: ConversationId; since: number; abstracts: Record<string, OpenAbstract> }
+export type Tree = { root: ConversationId; since: EntryId; abstracts: Record<string, OpenAbstract> }
 
 /** Tokens the tally part of a catch-up may take. */
 export const TALLY_BUDGET = 6000
 
 /** What one conversation of the tree did since the baseline, as model-visible in the tally now. */
 type Activity = {
-  id: number
-  last: number
+  id: ConversationId
+  last: EntryId
   title?: string
   feature?: string
   prompt?: string
@@ -310,7 +309,7 @@ const collapsed = ({ id, title, feature, landings }: Activity) =>
 export async function tallyText(
   id: ConversationId,
   tree: Tree,
-  baseline: number,
+  baseline: EntryId,
   tx: Tx,
   budget = TALLY_BUDGET,
 ) {
@@ -320,7 +319,7 @@ export async function tallyText(
   let cursor
   do {
     const page = await tx.scanEntries(
-      { conversationId: root, minEntryId: (baseline + 1) as EntryId, order: 'ascending' },
+      { conversationId: root, minEntryId: offsetEntryId(baseline, 1), order: 'ascending' },
       100,
       cursor,
     )
@@ -341,12 +340,12 @@ export async function tallyText(
     if (first !== undefined && first <= cut) sources.add(up)
   }
   const activities = new Map<number, Activity>()
-  const of = (conversation: number, entry: EntryRecord) => {
+  const of = (conversation: ConversationId, entry: EntryRecord) => {
     let activity = activities.get(conversation)
     if (!activity)
       activities.set(
         conversation,
-        (activity = { id: conversation, last: 0, landings: [], notes: [] }),
+        (activity = { id: conversation, last: entry.id, landings: [], notes: [] }),
       )
     activity.last = entry.id
     return activity
@@ -359,7 +358,7 @@ export async function tallyText(
     const data = (entry.data ?? {}) as Record<string, unknown>
     if (entry.kind === 'lineage.abstract') {
       // An open abstract's anchor or a carrier updating it: the abstract as it reads now. A frozen one is the landing's.
-      const conversation = data.conversation as number
+      const conversation = parseConversationId(Number(data.conversation))
       const open = tree.abstracts[String(conversation)] as OpenAbstract | undefined
       if (conversation === id || open?.anchor !== ((data.anchor as number | undefined) ?? entry.id))
         continue
@@ -369,11 +368,11 @@ export async function tallyText(
       if (open.feature) activity.feature = open.feature
     } else if (!entry.model) continue
     else if (entry.kind === 'lineage.branched') {
-      const conversation = data.branch as number
+      const conversation = parseConversationId(Number(data.branch))
       if (conversation === id || sources.has(conversation)) continue
       of(conversation, entry).prompt = oneLine((data.intent as string).split('\n')[0])
     } else if (entry.kind === 'lineage.note' && typeof data.from === 'number' && data.from !== id) {
-      const activity = of(data.from, entry)
+      const activity = of(parseConversationId(data.from), entry)
       if (data.source === 'lander') {
         const state = data.abstract as Omit<OpenAbstract, 'anchor'> | undefined
         activity.landings.push({

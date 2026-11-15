@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 /**
  * The Fall asleep card: what @ultimate prepared for the next chapter (its name, three lines it learned, its handover),
  * then each step live from `sleep`: packing the seed, the last backup, the switch. A failed step says what failed and
@@ -21,6 +22,7 @@ import {
 } from './chapters.tsx'
 import { Moon } from './moon.tsx'
 import { DreamDoc } from './refs.ts'
+import { ChapterPrepared } from './entries.ts'
 import type { Prepared, Sleep } from './refs.ts'
 
 type Step = Exclude<Sleep['phase'], 'asleep' | 'failed'>
@@ -40,8 +42,9 @@ const elapsed = (now: number, at: number) => {
 
 /** `dream.prepared`: the card for the preparation it announced; a later one replaces it. */
 export function PreparedCard({ entry }: { entry: EntryRecord }) {
-  const doc = useDocOf(1, DreamDoc)
-  const at = (entry.data as { at: number }).at
+  const doc = useDocOf(ROOT, DreamDoc)
+  if (!ChapterPrepared.is(entry)) return null
+  const at = entry.data.at
   if (doc === undefined) return null
   if (doc?.prepared?.at !== at)
     return (

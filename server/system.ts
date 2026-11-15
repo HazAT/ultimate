@@ -12,13 +12,15 @@ import {
 } from 'node:os'
 import { relative, basename, join } from 'node:path'
 import { projectSkills } from './skills.ts'
-import { projectSetup, projectSettings } from './project-setup.ts'
+import { projectSetup, projectSettings } from '../lib/project-setup.ts'
 import { loadProjectContextFiles } from '@earendil-works/pi-coding-agent'
 import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
 import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
+import { deadline } from '../lib/timers.ts'
+import type { Cancel } from '../lib/timers.ts'
 
 /** The skills the Info tab lists, with their scope and overrides, and Pi's load diagnostics as text. */
 export function skillInfo({
@@ -69,7 +71,7 @@ export async function createSystem(
   }
   let value: SystemInfo
   let previous = ''
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let cancelRefresh: Cancel | undefined
   let lastGit = 0
   let closed = false
   let chain = Promise.resolve()
@@ -162,14 +164,11 @@ export async function createSystem(
       coreStale = true
       code.coreStale = true
     }
-    if (closed || timer) return
-    timer = setTimeout(
-      () => {
-        timer = undefined
-        chain = chain.then(() => refresh(true)).catch(reportError)
-      },
-      Math.max(100, 2000 - (Date.now() - lastGit)),
-    )
+    if (closed || cancelRefresh) return
+    cancelRefresh = deadline(Math.max(100, 2000 - (Date.now() - lastGit)), () => {
+      cancelRefresh = undefined
+      chain = chain.then(() => refresh(true)).catch(reportError)
+    })
   }
   // Not the storage home: it changes with every conversation update (conversations.json), each refresh runs git, and
   // nothing broadcast reads it (database sizes are left out above).
@@ -201,7 +200,7 @@ export async function createSystem(
     },
     async close() {
       closed = true
-      clearTimeout(timer)
+      cancelRefresh?.()
       unwatch()
       await chain
     },

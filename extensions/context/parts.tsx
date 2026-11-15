@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   cn,
   formatTokens,
+  keepLast,
   useAction,
   useConversation,
   useConversationSummary,
@@ -183,10 +184,8 @@ function Injected({ content }: { content: string | readonly (TextContent | Image
     <div className="flex flex-col gap-2">
       {blocks.map((block, index) =>
         block.type === 'text' ? (
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed injected content blocks are positional.
           <Text key={index} text={block.text} />
         ) : (
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed injected content blocks are positional.
           <ToolImage alt={`Injected image ${index + 1}`} image={block} key={index} />
         ),
       )}
@@ -202,8 +201,7 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const shown = useAction(
     DefinitionAction,
     { name: identity.definition ?? '' },
-    // A label that names no definition, such as `branch`, simply has none to show.
-    { enabled: !!identity.definition, onError: () => {} },
+    { enabled: !!identity.definition, onError: keepLast },
   )
   const definition = shown.data?.definition
   const model = modelLine(breakdown.model, agent)

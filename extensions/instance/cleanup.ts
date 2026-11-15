@@ -3,9 +3,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 // Cleanup must use the same owner validation and PID semantics as the storage lock.
-// oxlint-disable-next-line no-restricted-imports
-import { alive, readOwner } from '../../server/lock.ts'
+import { alive, readOwner } from '../../lib/lock.ts'
 import { git } from '../../lib/git.ts'
+import { sqliteCode } from '../../lib/errors.ts'
 
 /** Hold both lock transactions throughout cleanup; PID sidecars also protect startup and shutdown gaps. */
 export async function cleanPreview(home: string) {
@@ -19,7 +19,7 @@ export async function cleanPreview(home: string) {
       try {
         database.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE')
       } catch (error) {
-        if ((error as { errcode?: number }).errcode === 5) return false
+        if (sqliteCode(error) === 5) return false
         throw error
       }
     }
@@ -102,7 +102,7 @@ export async function sweepPreviews(directory: string, notice: (message: string)
     lock.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE')
   } catch (error) {
     lock.close()
-    if ((error as { errcode?: number }).errcode === 5) return
+    if (sqliteCode(error) === 5) return
     throw error
   }
   try {

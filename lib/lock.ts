@@ -1,14 +1,14 @@
 import { readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
-import { identify } from '../lib/process-group.ts'
-
-export const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+import { identify } from './process-group.ts'
+import { pace } from './timers.ts'
+import { isMissing, isNoProcess, sqliteCode } from './errors.ts'
 export function alive(pid: number) {
   try {
     process.kill(pid, 0)
     return true
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
+    return !isNoProcess(error)
   }
 }
 export async function retireStorageOwner(path: string) {
@@ -45,14 +45,14 @@ export async function retireStorageOwner(path: string) {
     try {
       process.kill(owner.pid, name)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
+      if (!isNoProcess(error))
         throw new Error(`Cannot signal Ultimate core pid ${owner.pid}`, { cause: error })
     }
     return true
   }
   if (!(await signal('SIGTERM'))) return
   const deadline = Date.now() + 10000
-  while (alive(owner.pid) && Date.now() < deadline) await pause(50)
+  while (alive(owner.pid) && Date.now() < deadline) await pace(50)
   if (alive(owner.pid)) await signal('SIGKILL')
 }
 export async function readOwner(
@@ -63,7 +63,7 @@ export async function readOwner(
     if (!Number.isSafeInteger(owner.pid) || owner.pid < 1) throw new Error('Invalid pid')
     return owner
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    if (isMissing(error)) return undefined
     throw new Error(`Cannot parse Ultimate lock ${path}`, { cause: error })
   }
 }
@@ -92,10 +92,10 @@ export async function acquireLock(
         database.exec('BEGIN EXCLUSIVE')
         break
       } catch (error) {
-        if ((error as { errcode?: number }).errcode !== 5) throw error
+        if (sqliteCode(error) !== 5) throw error
         let owner = await readOwner(path)
         if (!owner) {
-          await pause(50)
+          await pace(50)
           owner = await readOwner(path)
         }
         if (Date.now() >= deadline)
@@ -105,7 +105,7 @@ export async function acquireLock(
               : `Ultimate core already owns this storage (pid ${owner?.pid ?? 'unknown'})`,
             { cause: error },
           )
-        await pause(50)
+        await pace(50)
       }
     }
     const stale = Boolean(await readOwner(path))

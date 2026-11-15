@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import ultimate from '../lint/ultimate.ts'
 
-type Context = Parameters<(typeof ultimate.rules)['no-retired-ui']['create']>[0]
+type Context = Parameters<(typeof ultimate.rules)['no-raw-timer']['create']>[0]
 function context(text = '', reason = '') {
   const reports: string[] = []
   return {
@@ -61,21 +61,58 @@ it('rejects process imports and real sleeps, but allows IO yields, fake timers a
   expect(reason.reports).toEqual([])
 })
 
-it('rejects retired UI labels case-insensitively and only the board surface property', () => {
+it('rejects raw timers, as in the review surface polling the DOM for a diff line', async () => {
+  const { parseSync } = await import('vite-plus')
+  // Shipped in f16013b (extensions/review/surface.tsx): a 50 ms interval that tries 40 times to find a rendered line.
+  const shipped = `
+    import { setTimeout as sleep } from 'node:timers/promises'
+    const timer = setInterval(() => {
+      if (!line && ++tries <= 40) return
+      clearInterval(timer)
+    }, 50)
+    window.setTimeout(done, 0)
+    await import('node:timers/promises')
+  `
   const f = context()
-  const rule = ultimate.rules['no-retired-ui'].create(f.context)
-  for (const value of ['Branch from here', 'clear context', 'New conversation'])
-    rule.Literal({ type: 'Literal', value })
-  rule.Literal({
-    type: 'Literal',
-    value: 'board',
-    parent: { type: 'Property', key: { type: 'Identifier', name: 'surface' } },
-  })
+  const rule = ultimate.rules['no-raw-timer'].create(f.context)
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(visit)
+    if (!node || typeof node !== 'object') return
+    const typed = node as { type?: string }
+    if (typed.type === 'CallExpression') rule.CallExpression(typed as never)
+    if (typed.type === 'ImportDeclaration') rule.ImportDeclaration(typed as never)
+    if (typed.type === 'ImportExpression') rule.ImportExpression(typed as never)
+    for (const value of Object.values(node)) visit(value)
+  }
+  visit(parseSync('surface.tsx', shipped).program)
   expect(f.reports).toHaveLength(4)
-  rule.Literal({ type: 'Literal', value: 'board' })
-  rule.Literal({ type: 'Literal', value: 'Start a branch' })
-  rule.Literal({ type: 'Literal', value: 'SIDE CHAT' })
-  expect(f.reports).toHaveLength(4)
+  expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.ts/)
+})
+
+it('rejects a commented replay: safe, as the restart tool declared it, and accepts the named spreads', async () => {
+  const { parseSync } = await import('vite-plus')
+  const run = (source: string) => {
+    const f = context()
+    const rule = ultimate.rules['replay-safe-by-name'].create(f.context)
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit)
+      if (!node || typeof node !== 'object') return
+      if ((node as { type?: string }).type === 'Property') rule.Property(node as never)
+      for (const value of Object.values(node)) visit(value)
+    }
+    visit(parseSync('server.ts', source).program)
+    return f.reports
+  }
+  // Shipped in extensions/self/server.ts until the replay helpers: a comment was the only reason given.
+  const shipped = `defineTool({
+    // The target generation is memoized before the swap, so replay reports it without restarting again.
+    replay: 'safe',
+  })`
+  expect(run(shipped)).toEqual([expect.stringMatching(/\.\.\.readOnly.*\.\.\.safeToRerun/)])
+  expect(run(`defineTool({ ...readOnly })`)).toEqual([])
+  expect(run(`defineTool({ ...safeToRerun('the memoized generation'), replay2: 'safe' })`)).toEqual(
+    [],
+  )
 })
 
 it('rejects local polling function declarations in favor of the shared real-deadline helper', () => {

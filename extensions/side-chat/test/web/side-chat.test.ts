@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { createEndings, endings, frontSide, openSides, togglesSideMode } from '../../logic.ts'
 import { topLevelRows } from '../../../sidebar/listed.ts'
@@ -10,7 +11,7 @@ const tab = {
   metaKey: false,
   isComposing: false,
 }
-const atUltimate = { conversation: 44, ultimate: 44, popup: false }
+const atUltimate = { conversation: 44 as ConversationId, ultimate: 44, popup: false }
 
 it('toggles side chat mode on a bare Tab in @ultimate’s composer only', () => {
   expect(togglesSideMode(tab, atUltimate)).toBe(true)
@@ -22,16 +23,18 @@ it('toggles side chat mode on a bare Tab in @ultimate’s composer only', () => 
   // An open autocomplete or mention popup owns Tab.
   expect(togglesSideMode(tab, { ...atUltimate, popup: true })).toBe(false)
   // A side chat's composer, or any other conversation's, has no side mode: one level only.
-  expect(togglesSideMode(tab, { ...atUltimate, conversation: 82 })).toBe(false)
-  expect(togglesSideMode(tab, { conversation: 44, ultimate: undefined, popup: false })).toBe(false)
+  expect(togglesSideMode(tab, { ...atUltimate, conversation: 82 as ConversationId })).toBe(false)
+  expect(
+    togglesSideMode(tab, { conversation: 44 as ConversationId, ultimate: undefined, popup: false }),
+  ).toBe(false)
 })
 
 it('keeps only open side chats in front and in the sidebar', () => {
   const index = {
     sides: [
-      { id: 82, at: 81, openedAt: 1 },
-      { id: 120, at: 81, openedAt: 2, ended: 'injected' as const },
-      { id: 130, at: 81, openedAt: 3, ended: 'discarded' as const },
+      { id: 82 as ConversationId, at: 81 as EntryId, openedAt: 1 },
+      { id: 120 as ConversationId, at: 81 as EntryId, openedAt: 2, ended: 'injected' as const },
+      { id: 130 as ConversationId, at: 81 as EntryId, openedAt: 3, ended: 'discarded' as const },
     ],
   }
   expect(openSides(index).map((side) => side.id)).toEqual([82])
@@ -43,19 +46,19 @@ it('keeps only open side chats in front and in the sidebar', () => {
 })
 
 it('offers Discard only while the side chat changed nothing', () => {
-  expect(endings({ of: 44, at: 81, effects: false })).toEqual({
+  expect(endings({ of: 44 as ConversationId, at: 81 as EntryId, effects: false })).toEqual({
     inject: true,
     discard: true,
     locked: false,
   })
-  expect(endings({ of: 44, at: 81, effects: true })).toEqual({
+  expect(endings({ of: 44 as ConversationId, at: 81 as EntryId, effects: true })).toEqual({
     inject: true,
     discard: false,
     locked: true,
   })
   // Ended, still loading, or no side chat at all: nothing to end.
   for (const state of [
-    { of: 44, at: 81, effects: false, ended: 'injected' as const },
+    { of: 44 as ConversationId, at: 81 as EntryId, effects: false, ended: 'injected' as const },
     {},
     undefined,
   ])
@@ -69,7 +72,7 @@ it('lists side chats as no branch, root or earlier row in the sidebar', () => {
       { id: 44, label: 'agent' },
       { id: 82, label: 'renamed', branchOf: { conversationId: 44 } },
       { id: 90, label: 'side-chat', branchOf: { conversationId: 1 } },
-      { id: 91, parentConversationId: 90 },
+      { id: 91, parentConversationId: 90 as ConversationId },
     ],
     new Set([82]),
   )

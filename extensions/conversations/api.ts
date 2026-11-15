@@ -2,9 +2,9 @@
  * Conversations: titles, summaries, the summary model and concluding conversations. Other extensions read what a
  * conversation is about and ask the summary model through this service.
  */
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import { ContextDoc, MarksDoc } from './refs.ts'
 import type { AgentMarkStyle, ContextUsage } from './refs.ts'
@@ -62,16 +62,19 @@ export type ConversationsService = {
 }
 export type TreesService = {
   /** The root of the tree conversation `id` belongs to, or undefined outside any tree. */
-  rootOf(id: number, ctx: Context): Promise<number | undefined>
+  rootOf(id: ConversationId, ctx: Context): Promise<number | undefined>
   /** The root whose tally lists top-level conversation `id`, with its branch intent; undefined for roots and others. */
-  branchOf(id: number, ctx: Context): Promise<{ root: number; intent?: string } | undefined>
+  branchOf(
+    id: ConversationId,
+    ctx: Context,
+  ): Promise<{ root: ConversationId; intent?: string } | undefined>
   /**
    * Write the abstract of conversation `id` into its tree root's tally inside `tx`, before the transaction's first
    * entry; a no-op outside a tree.
    */
   abstract(
     tx: Tx,
-    id: number,
+    id: ConversationId,
     input: { text: string; at: number; title?: string; feature?: string },
   ): Promise<void>
 }
@@ -82,13 +85,13 @@ export type TreesService = {
 export const Trees = defineApi<TreesService>()('conversations.trees')
 export type ReleaseService = {
   /** Free what concluded conversations `ids` and their owned descendants hold; returns the work kept, and why. */
-  release(ids: number[], caller: Context): Promise<KeptWork[]>
+  release(ids: ConversationId[], caller: Context): Promise<KeptWork[]>
 }
 /** The extension point concluding frees resources through; workspaces provides it (worktrees). */
 export const Release = defineApi<ReleaseService>()('conversations.release')
 export type PreviewsService = {
   /** Stop the previews conversations `ids` started (each listed, descendants included); returns their instance ids. */
-  stop(ids: number[], caller: Context): Promise<string[]>
+  stop(ids: ConversationId[], caller: Context): Promise<string[]>
 }
 /** The extension point the Conclude action stops previews through; instance provides it. */
 export const Previews = defineApi<PreviewsService>()('conversations.previews')

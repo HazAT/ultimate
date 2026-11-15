@@ -28,11 +28,13 @@ import {
   errorMessage,
   events,
   formatKeys,
+  keepLast,
   useAction,
   useEvent,
   useNow,
   useUltimate,
 } from '@/sdk'
+import { debounce } from '../../lib/timers.ts'
 import { clock, full, until, words } from './parts.tsx'
 import { DefinitionsAction } from '../subagents/ui.tsx'
 import { CreateAction, DescribeAction, EventsAction, UpdateAction } from './refs.ts'
@@ -231,8 +233,9 @@ const matches = (draft: Draft, preset: Partial<Draft>) =>
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
+    const settle = debounce(ms, () => setSettled(value))
+    settle()
+    return settle.cancel
   }, [value, ms])
   return settled
 }
@@ -265,7 +268,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
   const described = useAction(
     DescribeAction,
     { schedule: settled ?? '' },
-    { enabled: settled !== undefined, onError: () => {} },
+    { enabled: settled !== undefined, onError: keepLast },
   )
   const now = useNow(1000)
   const data = settled === schedule ? described.data : undefined
@@ -330,7 +333,7 @@ const model = (agent: Model | undefined, fallback: string) =>
 /** Which agent runs the prompt: a copy of the main agent, or a shared agent definition with its own model. */
 function AgentPicker({ value, onChange }: { value: string; onChange: (agent: string) => void }) {
   const { data, refetch } = useAction(DefinitionsAction, null, {
-    onError: () => {},
+    onError: keepLast,
   })
   // A definition changed in its config dialog shows its new model here once the dialog closes, and focus comes back to
   // Configure: opened over the bus, that dialog has no trigger of its own to return focus to.
@@ -339,7 +342,6 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
   useEvent('subagents:definition-closed', () => {
     if (!opened.current) return
     opened.current = false
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
     void refetch()
     requestAnimationFrame(() => configure.current?.focus())
   })
@@ -455,7 +457,7 @@ export function AutomationForm({
 }) {
   const [draft, setDraft] = useState(() => draftOf(automation))
   const [saving, setSaving] = useState(false)
-  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: () => {} })
+  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: keepLast })
   const [error, setError] = useState<string>()
   const ids = useId()
   const name = useRef<HTMLInputElement>(null)
@@ -537,7 +539,6 @@ export function AutomationForm({
   const submitOnModEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
     event.preventDefault()
-    // oxlint-disable-next-line typescript/no-floating-promises -- save catches failures and displays them with setError.
     void save()
   }
   const mode = modes.find((candidate) => candidate.value === draft.mode)!
@@ -560,7 +561,6 @@ export function AutomationForm({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault()
-            // oxlint-disable-next-line typescript/no-floating-promises -- save catches failures and displays them with setError.
             void save()
           }}
         >

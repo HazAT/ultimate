@@ -1,7 +1,9 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
+import { every, type Cancel } from '../../lib/timers.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent, UserInputEvent } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
@@ -108,7 +110,7 @@ export function triggers(
 ) {
   async function resolve(of: string): Promise<ConversationId | undefined> {
     if (STANDING.test(of)) return host.need(SubagentsApi).standing(of.slice(1), BACKGROUND_CONTEXT)
-    if (/^#[1-9]\d*$/.test(of)) return Number(of.slice(1)) as ConversationId
+    if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
   /**
@@ -116,9 +118,9 @@ export function triggers(
    * crossing fires once and disarms until the value drops below `above - 10`, so a threshold of 10% or less never
    * re-arms. Creation, resume and open evaluate the current measurement, catching a crossing missed meanwhile.
    */
-  async function evaluate(tx: Tx, a: Automation, id?: number, measured?: ContextUsage) {
+  async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
-    const usage = measured ?? (await tx.doc(ContextUsageDoc, id as ConversationId))
+    const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
     if (usage.percent === undefined) return
     const condition = a.condition
     condition.value = usage.percent
@@ -153,7 +155,7 @@ export function triggers(
    * are evaluated in commit order, so a drop below the re-arm line followed by a crossing is seen as both, however far
    * evaluation lags.
    */
-  async function check(changed?: Map<number, ContextUsage>, idle = false) {
+  async function check(changed?: Map<ConversationId, ContextUsage>, idle = false) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
     for (const a of Object.values(state?.automations ?? {})) {
       if (closed || !a.enabled || !a.condition || (idle && !a.condition.idleFor)) continue
@@ -179,8 +181,9 @@ export function triggers(
         (id): id is number => typeof id === 'number',
       ),
     )
-    for (const id of ids) {
-      const creator = (await tx.conversation(id as ConversationId))?.owner
+    for (const value of ids) {
+      const id = parseConversationId(value)
+      const creator = (await tx.conversation(id))?.owner
       if (!creator) continue
       const owner = await tx.task(creator.taskId)
       if (
@@ -255,7 +258,7 @@ export function triggers(
     stop?.()
     // Not a reactor: context usage is a document, not a domain event.
     stop = onCommit(host.harness(), (publication) => {
-      const changed = new Map<number, ContextUsage>()
+      const changed = new Map<ConversationId, ContextUsage>()
       for (const change of publication.changes)
         if (
           change.type === 'document' &&
@@ -274,16 +277,16 @@ export function triggers(
     await check()
     // A close while the first check ran ends here: no timer outlives it.
     if (closed) return
-    clearInterval(timer)
-    timer = setInterval(idleTick, IDLE_TICK)
+    stopPolling?.()
+    stopPolling = every(IDLE_TICK, idleTick)
   }
-  let timer: ReturnType<typeof setInterval> | undefined
+  let stopPolling: Cancel | undefined
   async function close() {
     closed = true
     stop?.()
     stop = undefined
-    clearInterval(timer)
-    timer = undefined
+    stopPolling?.()
+    stopPolling = undefined
     await queue
   }
   return { resolve, evaluate, install, open, close, idleTick }

@@ -5,6 +5,7 @@ import { Feed, joined, shows } from '../../feed.tsx'
 import type { ActivityEvent } from '../../feed.tsx'
 
 vi.mock('@/sdk', async () => ({
+  ROOT: 1,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   formatAgo: (await import('../../../../lib/ago.ts')).formatAgo,
   definePoint: (name: string) => ({ name }),

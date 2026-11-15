@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
 import type { Device } from '../shared/events.ts'
+import { meansNone } from '../lib/errors.ts'
 
 export interface AccessRule {
   origin: string
@@ -58,8 +59,8 @@ export async function admit(
     if (host !== new URL(rule.origin).host || (origin && origin !== rule.origin)) continue
     try {
       if ((await rule.verify(request))?.login && rules.has(rule)) return true
-    } catch {
-      // A failed identity provider cannot admit a request.
+    } catch (error) {
+      meansNone(error)
     }
   }
   return false

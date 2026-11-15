@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { HourglassIcon, PauseIcon, PlayIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,7 @@ import {
   formatDuration,
   errorMessage,
   getState,
+  keepLast,
   ParkedRuns,
   provide,
   useAction,
@@ -39,19 +41,14 @@ const said = (error: string) =>
   error
 
 /** Whether the host is paused, live from the root's pause document. */
-const usePaused = () => useDocOf(1, PauseDoc)?.paused === true
+const usePaused = () => useDocOf(ROOT, PauseDoc)?.paused === true
 
 /** The pause and what still runs, refreshed when the doc changes and, while paused, with the task graph. */
 function usePauseState() {
-  const doc = useDocOf(1, PauseDoc)
+  const doc = useDocOf(ROOT, PauseDoc)
   const live = useTasks()
   const graph = doc?.paused ? live : undefined
-  const { data } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next change asks again.
-    { onError: () => {}, on: [doc, graph] },
-  )
+  const { data } = useAction(StateAction, null, { onError: keepLast, on: [doc, graph] })
   return data
 }
 
@@ -338,7 +335,7 @@ function Held({ entry }: { entry: EntryRecord }) {
   const data = (entry.data ?? {}) as Partial<HeldNote>
   const { switchConversation } = useUltimate()
   if (data.child === undefined || data.provider === undefined) return null
-  const child = data.child
+  const { child } = data
   return (
     <div
       className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
@@ -365,7 +362,7 @@ function Held({ entry }: { entry: EntryRecord }) {
 /** The card a rate limit leaves in @ultimate's transcript: who limited what, and Play while this pause holds. */
 function Limit({ entry }: { entry: EntryRecord }) {
   const limit = (entry.data ?? {}) as Partial<RateLimit>
-  const doc = useDocOf(1, PauseDoc)
+  const doc = useDocOf(ROOT, PauseDoc)
   const holding = doc?.paused === true && doc.limit?.at === limit.at
   const now = useNow(1000, holding)
   const { switchConversation } = useUltimate()

@@ -1,6 +1,9 @@
+import { parseConversationId } from '../../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 // `window.ultimate` on pages the browser tool drives: send input, set up state through the page's SDK `api` and wait on
 // Ultimate's state instead of on time.
 import type { EventRecord } from '../../../shared/events.ts'
+import { deadline } from '../../../lib/timers.ts'
 import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
@@ -31,10 +34,10 @@ const SENT_KEY = 'ultimate.sent'
 
 export function createTestHook(store: Store, api: Api) {
   const saved = JSON.parse(sessionStorage.getItem(SENT_KEY) ?? '{"sent":[]}') as {
-    sent: [number, Sent][]
-    last?: number
+    sent: [ConversationId, Sent][]
+    last?: ConversationId
   }
-  const sent = new Map<number, Sent>(saved.sent)
+  const sent = new Map<ConversationId, Sent>(saved.sent)
   let lastSent = saved.last === undefined ? undefined : sent.get(saved.last)
   const save = (last = saved.last) => {
     saved.last = last
@@ -45,8 +48,9 @@ export function createTestHook(store: Store, api: Api) {
   const feed = (state: State) =>
     (state.docsOf[ROOT]?.[EVENT_FEED] as { events?: EventRecord[] } | null)?.events ?? []
   const shown = (state: State) => state.view?.conversation.id ?? state.requested ?? ROOT
-  const summary = (state: State, id: number) => state.conversations.find((item) => item.id === id)
-  const lastEntry = (state: State, id: number) =>
+  const summary = (state: State, id: ConversationId) =>
+    state.conversations.find((item) => item.id === id)
+  const lastEntry = (state: State, id: ConversationId) =>
     (id === state.view?.conversation.id ? state.view : state.viewsOf[id])?.entries.at(-1)?.id ?? 0
   // A turn shorter than the server's busy refresh never shows busy; its answer timestamp still proves it ran.
   store.subscribe(() => {
@@ -71,15 +75,15 @@ export function createTestHook(store: Store, api: Api) {
         const value = test(store.getState())
         if (value === undefined) return false
         stop()
-        clearTimeout(timer)
+        cancel()
         resolve(value)
         return true
       }
       const stop = store.subscribe(check)
-      const timer = setTimeout(() => {
+      const cancel = deadline(timeoutMs, () => {
         stop()
         reject(new Error(`Timed out after ${timeoutMs / 1000}s: ${describe(store.getState())}`))
-      }, timeoutMs)
+      })
       check()
     })
   }
@@ -91,7 +95,7 @@ export function createTestHook(store: Store, api: Api) {
       () => 'the page never received its first snapshot',
     )
 
-  function busyLine(state: State, id: number) {
+  function busyLine(state: State, id: ConversationId) {
     const item = summary(state, id)
     const phases = Object.values(state.tasks?.tasks ?? {})
       .filter((task) => task.conversationId === id && !task.background && 'phase' in task.state)
@@ -119,7 +123,10 @@ export function createTestHook(store: Store, api: Api) {
     async send(text: string, options: { conversation?: number } = {}) {
       await ready()
       const state = store.getState()
-      const id = options.conversation ?? shown(state)
+      const id =
+        options.conversation === undefined
+          ? shown(state)
+          : parseConversationId(options.conversation)
       if (id !== shown(state)) store.watchConversation(id)
       const record: Sent = {
         at: Date.now(),
@@ -143,7 +150,10 @@ export function createTestHook(store: Store, api: Api) {
       await ready(timeoutMs)
       const left = () => Math.max(0, timeoutMs - (Date.now() - started))
       // The last send's conversation: a reloaded page may show another one.
-      const id = options.conversation ?? saved.last ?? shown(store.getState())
+      const id =
+        options.conversation === undefined
+          ? (saved.last ?? shown(store.getState()))
+          : parseConversationId(options.conversation)
       if (id !== shown(store.getState()) && typeof condition === 'object' && 'entry' in condition)
         store.watchConversation(id)
       const record = options.conversation === undefined ? lastSent : sent.get(id)

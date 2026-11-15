@@ -1,4 +1,5 @@
 /** Hands-off goals in the browser: the goal the user put @ultimate on, and every decision it took for them. Browser-safe. */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /** One decision @ultimate took instead of asking the user. */
@@ -10,9 +11,9 @@ export type Decision = {
   picked: string
   reason: string
   /** The branch the decision was for. */
-  conversation?: number
+  conversation?: ConversationId
   /** The entry of @ultimate's conversation holding the screenshots it judged, such as a UI preview it approved. */
-  images?: number
+  images?: EntryId
 }
 
 /** How a goal ended: met, blocked (every remaining criterion stuck), or ended by the user. */
@@ -52,6 +53,6 @@ export const StartAction = actionRef<{ text: string }, Goal>('goal', 'start')
 export const EndAction = actionRef<null, Goal>('goal', 'end')
 /** `{ goal, entry }` → the images of a decision's screenshot entry. */
 export const ImagesAction = actionRef<
-  { goal: number; entry: number },
+  { goal: number; entry: EntryId },
   { data: string; mimeType: string }[]
 >('goal', 'images')

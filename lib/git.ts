@@ -1,5 +1,6 @@
 import { readdir, realpath } from 'node:fs/promises'
 import { exec } from './exec.ts'
+import { meansNone } from './errors.ts'
 
 /** Where and how long a git command runs; defaults: 30 seconds, 1 MiB of output. `timeout: 0` waits indefinitely. */
 export type GitOptions = { cwd: string; timeout?: number; maxBuffer?: number; signal?: AbortSignal }
@@ -27,10 +28,7 @@ export async function empty(cwd: string) {
 export async function isolatable(
   cwd: string,
 ): Promise<{ source: string; target: string } | { reason: string }> {
-  const top = await git(cwd, 'rev-parse', '--show-toplevel').catch(
-    // Outside Git there is nothing to branch from; the reason says so.
-    () => undefined,
-  )
+  const top = await git(cwd, 'rev-parse', '--show-toplevel').catch(meansNone)
   if (!top) return { reason: noRepository }
   const source = await realpath(top)
   const target = await git(source, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => '')

@@ -1,5 +1,7 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import { events, formatAgo, useStore } from '@/sdk'
+import { events, formatAgo, keepLast, useStore } from '@/sdk'
 import { reads, store } from '@/sdk/client'
 import type { ReadState } from '@/sdk/reads'
 import { RecentAction, TallyDoc } from '../lineage/ui.tsx'
@@ -14,13 +16,16 @@ import { useShell, useSidebarState } from './state.tsx'
  * The latest landings of every root (up to 20 each), newest first. Read again whenever a root's token count changes,
  * which every new entry in it does: a new count means something may have landed.
  */
-export function useLandings(roots: readonly number[]) {
-  const key = roots.join(',')
+export function useLandings(rootIds: readonly ConversationId[]) {
+  const key = rootIds.join(',')
+  const roots = useMemo(
+    () => (key ? key.split(',').map((id) => parseConversationId(Number(id))) : []),
+    [key],
+  )
   useEffect(() => {
     const stops = roots.map((id) => store.watchDocOf(id, TallyDoc.kind))
     return () => stops.forEach((stop) => stop())
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-  }, [key])
+  }, [roots])
   const tokens = useStore((state) =>
     roots
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
@@ -32,19 +37,16 @@ export function useLandings(roots: readonly number[]) {
       roots.map((id) =>
         reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
       ),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-    [key],
+    [roots],
   )
   useEffect(() => {
-    // A root that cannot list its landings (one just unlisted) only leaves them out; the next entry reads again.
-    const releases = list.map((read) => read.use({ onError: () => {} }))
+    const releases = list.map((read) => read.use({ onError: keepLast }))
     return () => releases.forEach((release) => release())
   }, [list])
   const seen = useRef(tokens)
   useEffect(() => {
     if (seen.current === tokens) return
     seen.current = tokens
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     for (const read of list) void read.refetch()
   }, [list, tokens])
   const last = useRef<ReadState[]>([])
@@ -74,8 +76,7 @@ export function useLandings(roots: readonly number[]) {
           })),
         )
         .toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `states` follows `list`, which follows `key`
-    [states],
+    [states, roots],
   )
 }
 

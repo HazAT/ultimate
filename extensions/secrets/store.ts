@@ -2,8 +2,7 @@ import { chmod, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writeJson } from '../../lib/json-file.ts'
 import { readStore, validateName, validateValue } from '../../lib/secrets.ts'
-// oxlint-disable-next-line no-restricted-imports -- secret writes use the shared cross-process file lock
-import { acquireLock } from '../../server/lock.ts'
+import { acquireLock } from '../../lib/lock.ts'
 
 /** Set or (without `value`) remove a secret under the shared file lock, writing the store atomically with mode 600. */
 export async function writeSecret(userHome: string, name: string, value?: string) {

@@ -1,8 +1,8 @@
+import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import { afterAll, expect, it } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
 import {
@@ -18,7 +18,7 @@ import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { actions as conversationActions, concludedIn, setStanding } from '../server.ts'
-import { UiState } from '../../../server/ui-state.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { actionExec } from '../../../server/actions.ts'
 import { currentAnswer, exchangeUser } from '../summary.ts'
@@ -134,11 +134,10 @@ it.concurrent('tells each top-level conversation about the others in a fixed tex
   expect(child.inputAt).toEqual(expect.any(Number))
   expect(child.parentConversationId).toBe(root)
   expect(child.branchOf).toBeUndefined()
-  expect(await render('conversations', child.id as ConversationId)).toBeUndefined()
-  const childContext = await (await server.harness.conversation(
-    child.id as ConversationId,
+  expect(await render('conversations', child.id)).toBeUndefined()
+  const childContext = await (await server.harness.conversation(child.id, context))!.context(
     context,
-  ))!.context(context)
+  )
   const childNotes = childContext.entries.filter((entry) => entry.kind === 'conversations.identity')
   expect(childNotes).toHaveLength(1)
   expect(childNotes[0].model?.[0]).toMatchObject({ content: `You are conversation #${child.id}.` })
@@ -238,7 +237,11 @@ it.concurrent('renders identical system prompt sections and tools for a conversa
 
   // Audit the existing document exception: lineage.branch resets on raw forks.
   await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, id)).branch = { from: 1, at: at.id, intent: 'Branch work' }
+    ;(await tx.doc(Branch, id)).branch = {
+      from: 1 as ConversationId,
+      at: at.id,
+      intent: 'Branch work',
+    }
   }, context)
   const branchFork = await server.harness.commit(
     (tx) => tx.forkConversation(id, at.id, { ownership: { kind: 'ownerless' } }),
@@ -255,7 +258,11 @@ it.concurrent('renders identical system prompt sections and tools for a conversa
   expect(forked.sections.lineage).not.toContain('Branched from')
   // When the fork has the same branch facts, its entire prefix is identical too.
   await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, branchFork.id)).branch = { from: 1, at: at.id, intent: 'Branch work' }
+    ;(await tx.doc(Branch, branchFork.id)).branch = {
+      from: 1 as ConversationId,
+      at: at.id,
+      intent: 'Branch work',
+    }
   }, context)
   expect(JSON.stringify(await render(branchFork.id))).toBe(JSON.stringify(branchParent))
 })

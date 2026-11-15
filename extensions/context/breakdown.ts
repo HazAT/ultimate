@@ -101,10 +101,12 @@ export function opensContext(entries: readonly EntryRecord[], index: number, own
 
 const injectedLabel = (entry: EntryRecord) => {
   if (entry.kind === 'pi.compaction') return 'compaction summary'
-  const lineage = (entry.data as { lineage?: { brief?: unknown; tally?: unknown } } | undefined)
-    ?.lineage
-  if (lineage?.brief) return 'memory brief'
-  if (lineage?.tally) return 'tally'
+  const data = entry.data
+  const lineage = data && typeof data === 'object' && 'lineage' in data ? data.lineage : undefined
+  if (lineage && typeof lineage === 'object') {
+    if ('brief' in lineage && lineage.brief) return 'memory brief'
+    if ('tally' in lineage && lineage.tally) return 'tally'
+  }
   return 'handoff'
 }
 

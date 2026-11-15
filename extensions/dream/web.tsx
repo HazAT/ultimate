@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { LibraryIcon, MoonIcon } from 'lucide-react'
 import {
   attention,
@@ -58,8 +59,8 @@ function contextShare(entries: readonly EntryRecord[], window: number) {
  */
 function TimeToDream() {
   const { id, entries, agent } = useConversation()
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
-  const doc = useDocOf(1, DreamDoc)
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
+  const doc = useDocOf(ROOT, DreamDoc)
   const models = useModels()
   const actions = useUltimate()
   const awake = useAwake()

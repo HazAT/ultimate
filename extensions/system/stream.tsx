@@ -1,9 +1,11 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, cn, errorMessage, formatDuration, useUltimate } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
 import type { Feed } from './feed.ts'
+import { deadline, every } from '../../lib/timers.ts'
 import { StreamAction } from './refs.ts'
 import type { SystemFilter, SystemRow } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.tsx'
@@ -21,7 +23,12 @@ export const sources = {
 export type Source = keyof typeof sources
 
 /** What the user filters the stream by; kept in UI state so it survives reloads. */
-export type StreamView = { source: Source; errors: boolean; conversation?: number; text: string }
+export type StreamView = {
+  source: Source
+  errors: boolean
+  conversation?: ConversationId
+  text: string
+}
 
 /** This surface's own polls, which would otherwise fill the stream it shows. */
 export const ownPoll = (row: SystemRow) =>
@@ -64,30 +71,27 @@ function useStream(filter: SystemFilter, live: boolean) {
         },
       )
   }
+  const ask = useRef(request)
+  ask.current = request
   useEffect(() => {
     setState({ ...empty, key })
-    request({}, loaded)
+    ask.current({}, loaded)
     return () => call.current?.abort()
-    // `filter` is compared through `key`.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
+    return every(POLL, () => {
       const { head, loading } = latest.current
       if (loading || latest.current.key !== key) return
-      if (head === undefined) request({}, loaded)
-      else request({ after: head }, (feed, page) => followed(feed, head, page))
-    }, POLL)
-    return () => clearInterval(timer)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
+      if (head === undefined) ask.current({}, loaded)
+      else ask.current({ after: head }, (feed, page) => followed(feed, head, page))
+    })
   }, [key, live])
   // Older rows are asked for once wanted and nothing else is on its way, also when a live refresh ends.
   useEffect(() => {
-    if (!pagesOlder(state)) return
-    const next = state.next!
-    request({ before: next }, (feed, page) => older(feed, next, page))
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    if (!pagesOlder(latest.current)) return
+    const next = latest.current.next!
+    ask.current({ before: next }, (feed, page) => older(feed, next, page))
   }, [state.wanted, state.loading, state.next])
   const more = () => setState((previous) => ({ ...previous, ...wantOlder(previous) }))
   return { ...state, older: more }
@@ -212,10 +216,7 @@ function Filters({ view, setView }: { view: StreamView; setView: (view: StreamVi
 /** Debounces `value` by `ms`, so typing filters once the user pauses. */
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
+  useEffect(() => deadline(ms, () => setSettled(value)), [value, ms])
   return settled
 }
 
@@ -246,9 +247,9 @@ export function Stream({
     const observer = new IntersectionObserver((seen) => {
       if (seen.some((entry) => entry.isIntersecting)) page.current()
     })
-    const timer = setTimeout(() => observer.observe(end.current!), stream.error ? POLL : 0)
+    const cancel = deadline(stream.error ? POLL : 0, () => observer.observe(end.current!))
     return () => {
-      clearTimeout(timer)
+      cancel()
       observer.disconnect()
     }
   }, [stream.rows.length, stream.error])

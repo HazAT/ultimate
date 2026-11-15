@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readlink, realpath, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { errnoCode, isMissing, settled } from './errors.ts'
 
 /** A JSON file's value, `fallback` when the file is missing; other read and parse errors throw. */
 export async function readJson<T>(path: string, fallback: T): Promise<T> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as T
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (!isMissing(error)) throw error
     return fallback
   }
 }
@@ -21,12 +22,12 @@ export async function writeTarget(path: string): Promise<string> {
   try {
     return await realpath(path)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (!isMissing(error)) throw error
   }
   try {
     return await writeTarget(resolve(dirname(path), await readlink(path)))
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
+    const code = errnoCode(error)
     // Missing or not a link: a new plain file at `path`.
     if (code === 'ENOENT' || code === 'EINVAL') return path
     throw error
@@ -71,15 +72,11 @@ export async function updateJson<T>(
   read: (path: string) => Promise<T>,
   modify: (value: T) => void,
 ) {
-  const operation = (writes.get(path) ?? Promise.resolve())
-    .catch(() => {
-      // The previous caller receives its failure; later writes must still run.
-    })
-    .then(async () => {
-      const value = await read(path)
-      modify(value)
-      await writeJson(path, value)
-    })
+  const operation = settled(writes.get(path) ?? Promise.resolve()).then(async () => {
+    const value = await read(path)
+    modify(value)
+    await writeJson(path, value)
+  })
   writes.set(path, operation)
   try {
     await operation

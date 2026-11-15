@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
   CheckIcon,
@@ -27,14 +28,14 @@ import { useWorkspaceIndex } from './data.tsx'
 import { LandingCard, Open, Subject } from './landing.tsx'
 import type { LandingTone } from './landing.tsx'
 import { inProgress, superseded, tookFor } from './steps.tsx'
-import type {
-  LanderEntry,
-  LanderOutcome,
-  LanderStep,
-  SubmitResult,
-  WorkspaceIndex,
-} from './types.ts'
+import type { LanderEntry, LanderOutcome, LanderStep, SubmitResult } from './types.ts'
 import type { ConversationSubject } from '../conversations/types.ts'
+import { LanderLog } from './entries.ts'
+import { LanderReportEntry } from './refs.ts'
+
+const isStep = (data: LanderEntry): data is LanderEntry & LanderStep => data.step !== undefined
+const isOutcome = (data: LanderEntry): data is LanderEntry & LanderOutcome =>
+  data.outcome !== undefined
 
 const short = (sha: string) => sha.slice(0, 7)
 const time = (at: number) => formatTime(at, true)
@@ -113,15 +114,18 @@ const toneOf = (outcome: LanderOutcome): LandingTone =>
 
 /** The lander's stored report in the submitter's transcript. */
 export function LanderReport({ entry }: { entry: EntryRecord }) {
-  const { outcome } = entry.data as { id: string; outcome: WorkspaceIndex['results'][string] }
   // Reports from before the record named its conversation are in their submitter's transcript.
-  const own = useConversation((conversation) => conversation.id) ?? 0
+  const shown = useConversation((conversation) => conversation.id)
+  if (!LanderReportEntry.is(entry)) return null
+  const { outcome } = entry.data
+  const from = outcome.conversationId ?? shown
+  if (from === undefined) return null
   return (
     <div data-lander-report={toneOf(outcome)}>
       <LandingCard
         card={entry.id}
         sha={outcome.commits?.length ? outcome.sha : undefined}
-        from={outcome.conversationId ?? own}
+        from={from}
         sourceEntry={outcome.at}
         divergence={outcome.divergence}
         headline={headline(outcome, outcome.target)}
@@ -261,7 +265,7 @@ function Steps({
   ended,
 }: {
   steps: readonly LanderStep[]
-  lander: number
+  lander: ConversationId
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** The submission is landing: its last step is the one in progress. */
@@ -283,7 +287,6 @@ function Steps({
             active={running && inProgress(row, rows.slice(index + 1))}
             done={index < rows.length - 1 || ended === 'landed'}
             failed={ended === 'failed' && index === rows.length - 1}
-            // oxlint-disable-next-line react/no-array-index-key -- Progress rows have no id; steps and times may repeat.
             key={index}
             row={row}
             took={tookFor(row, index, rows, steps)}
@@ -303,45 +306,35 @@ function Steps({
 
 /** One `ultimate.lander` entry: a submission header, a step, a check result, or the outcome card. */
 export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as LanderEntry
   const entries = useTranscript()
+  const workspace = useWorkspaceIndex()
+  if (!LanderLog.is(entry)) return null
+  const data = entry.data
   // The lander is a task, not a model run, so the conversation is never busy: its queue says whether it lands.
-  const running = useWorkspaceIndex().queue.some(
+  const running = workspace.queue.some(
     (item) => item.id === data.submission && item.state === 'landing',
   )
-  const own = (other: EntryRecord) =>
-    other.kind === 'ultimate.lander' && (other.data as LanderEntry).submission === data.submission
-  const after = entries.filter((other) => other.id > entry.id && own(other))
-  if (
-    data.step &&
-    superseded(
-      data as LanderStep,
-      after.map((other) => other.data as LanderStep),
-    )
-  )
-    return null
+  const own = entries
+    .filter((candidate) => LanderLog.is(candidate))
+    .filter((other) => other.data.submission === data.submission)
+  const after = own.filter((other) => other.id > entry.id)
+  const afterSteps = after.map((other) => other.data).filter(isStep)
+  if (isStep(data) && superseded(data, afterSteps)) return null
   // A step is done once its submission logged another step; the last one spins while the lander works, and the step
   // right before a failed outcome is where it stopped.
-  const next = after[0]?.data as LanderEntry | undefined
+  const next = after[0]?.data
   const failed = next?.outcome === 'failed'
   const done = next !== undefined && !failed
-  const landing =
-    running &&
-    inProgress(
-      data as LanderStep,
-      after.map((other) => other.data as LanderStep),
-    )
+  const landing = running && isStep(data) && inProgress(data, afterSteps)
   // How long this step took, as the submitter's card shows it.
-  const steps = entries
-    .filter((other) => own(other) && (other.data as LanderEntry).step)
-    .map((other) => other.data as LanderStep)
+  const steps = own.map((other) => other.data).filter(isStep)
   const rows = steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
   const took = (row: LanderStep) => {
     const index = rows.findIndex((other) => other.at === row.at && other.step === row.step)
     return index < 0 ? undefined : tookFor(row, index, rows, steps)
   }
-  if (data.outcome) {
-    const outcome = data as LanderEntry & LanderOutcome
+  if (isOutcome(data)) {
+    const outcome = data
     return (
       <div data-lander-outcome={data.outcome}>
         <LandingCard
@@ -362,12 +355,11 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
       </div>
     )
   }
+  if (!isStep(data)) return null
   // A later submission is queued while an earlier one lands: its group starts when it starts, with its queued line.
   if (data.step === 'queued') return null
   if (data.step === 'started') {
-    const queued = entries.find(
-      (other) => own(other) && (other.data as LanderEntry).step === 'queued',
-    )
+    const queued = steps.find((other) => other.step === 'queued')
     return (
       <div className="space-y-0.5 border-t border-border/60 pt-3">
         <div className="flex items-center gap-2 font-mono text-[12px]">
@@ -378,27 +370,13 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
           </span>
           <Open id={data.conversationId} />
         </div>
-        {queued && (
-          <StepLine row={queued.data as LanderStep} took={took(queued.data as LanderStep)} />
-        )}
-        <StepLine
-          active={landing}
-          done={done}
-          failed={failed}
-          row={data as LanderStep}
-          took={took(data as LanderStep)}
-        />
+        {queued && <StepLine row={queued} took={took(queued)} />}
+        <StepLine active={landing} done={done} failed={failed} row={data} took={took(data)} />
       </div>
     )
   }
   const line = (
-    <StepLine
-      active={landing}
-      done={done}
-      failed={failed}
-      row={data as LanderStep}
-      took={took(data as LanderStep)}
-    />
+    <StepLine active={landing} done={done} failed={failed} row={data} took={took(data)} />
   )
   if (!data.output) return line
   return (
@@ -412,7 +390,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
 }
 
 type Submission = {
-  conversationId?: number
+  conversationId?: ConversationId
   subject?: ConversationSubject
   tip: string
   target: string

@@ -1,5 +1,13 @@
+import { parseEntryId } from '../../../lib/ids.ts'
+import { CompactionEntry } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  LiveState,
+  ToolSlot,
+} from '@earendil-works/pi-durable'
 import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai'
-import type { EntryRecord, LiveState, ToolSlot } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import {
   CheckIcon,
@@ -162,8 +170,7 @@ export function Transcript({ dock }: { dock?: boolean }) {
   }, [id])
   // A sent message pins the view to the bottom and follows the run, even when the reader had scrolled up.
   useEvent('ultimate:sent', (value) => {
-    if ((value as { conversationId?: number } | undefined)?.conversationId === id)
-      // oxlint-disable-next-line typescript/no-floating-promises -- use-stick-to-bottom's frame loop resolves a boolean; it performs no rejecting async work.
+    if ((value as { conversationId?: ConversationId } | undefined)?.conversationId === id)
       void stick.current?.scrollToBottom({ animation: 'instant' })
   })
   // Keyed so a conversation never inherits the previous one's scroll position or follow state.
@@ -190,7 +197,7 @@ function TranscriptEntries() {
     useHistory(id, active, older)
   const [tailSpace, setTailSpace] = useState(0)
   const anchor = useRef<{
-    entryId: number
+    entryId: EntryId
     /** The last entry of a folded run: its row keeps that id when a page brings earlier entries into the run. */
     last?: number
     /** A row inside an opened run. */
@@ -301,7 +308,7 @@ function TranscriptEntries() {
       )
       if (element) {
         anchor.current = {
-          entryId: Number(element.getAttribute('data-entry-id')),
+          entryId: parseEntryId(Number(element.getAttribute('data-entry-id'))),
           last: Number(element.getAttribute('data-run-last')) || undefined,
           inner: !element.parentElement?.isSameNode(contentRef.current),
           top: element.getBoundingClientRect().top,
@@ -346,7 +353,6 @@ function TranscriptEntries() {
       return undefined
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // oxlint-disable-next-line typescript/no-floating-promises -- loadEarlier catches history failures and displays them with setError.
         if (entry?.isIntersecting) void earlier()
       },
       { root, rootMargin: '100% 0px 0px 0px' },
@@ -411,7 +417,6 @@ function TranscriptEntries() {
     const room = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
     if (move > room) setTailSpace(tailSpace + move - room + rowGap(contentRef.current))
     // Through the library's setter, so its scroll handler does not take the move for the reader's.
-    // oxlint-disable-next-line react/immutability -- the library's state is its own mutable object; it writes it the same way.
     state.scrollTop += move
   })
   useEffect(() => {
@@ -432,10 +437,10 @@ function TranscriptEntries() {
   }, [scrollRef, contentRef])
   // Reveal a stored row, or one tool call in it, without the auto-follow animation overriding the jump; a row older than
   // those loaded needs the history down to it first, and one in a folded run needs the run open.
-  const [reveal, setReveal] = useState<{ entry: number; call?: string }>()
+  const [reveal, setReveal] = useState<{ entry: EntryId; call?: string }>()
   useEvent('ultimate:reveal-entry', (value) => {
     const target = value as
-      | { conversationId?: number; entryId?: number; toolCallId?: string }
+      | { conversationId?: ConversationId; entryId?: EntryId; toolCallId?: string }
       | undefined
     const entryId = target?.entryId
     if (target?.conversationId === id && entryId !== undefined && Number.isSafeInteger(entryId))
@@ -450,7 +455,6 @@ function TranscriptEntries() {
     const { entry: revealed, call } = reveal
     if (!entries.some((entry) => entry.id === revealed)) {
       if (cursor !== undefined && revealed < cursor) {
-        // oxlint-disable-next-line typescript/no-floating-promises -- loadDown catches history failures and displays them with setError.
         void loadDown(revealed, stopScroll)
         return
       }
@@ -671,18 +675,18 @@ const itemParts = (item: CompactPart | WorkRun | AsideGroup) =>
  * stays open when a page brings earlier rows into it or live rows join it.
  */
 const betweenKeys = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
 ) => {
   const parts = group.between.flatMap(itemParts)
   return [parts[0], parts.at(-1)!].map((part) => foldKey(id, `between:${partKey(part)}`))
 }
 const readBetween = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
 ) => betweenKeys(id, group).some(readFold)
 const writeBetween = (
-  id: number | undefined,
+  id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
   open: boolean,
 ) => {
@@ -909,38 +913,40 @@ function EmptyState() {
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
   )?.reasoning
   const cwd = agent.cwd ?? system?.execution.defaultCwd ?? ''
-  const rows: [string, ReactNode][] = [
-    [
-      'repo',
-      <>
-        {elidePath(shortenPath(cwd, { home: system?.machine.home }), 44)}
-        {system?.code.branch && cwd === system.code.ultimateRoot && (
-          <span className="text-muted-foreground"> ({system.code.branch})</span>
-        )}
-      </>,
-    ],
-    [
-      'model',
-      agent.model ? (
+  const rows: { label: string; value: ReactNode }[] = [
+    {
+      label: 'repo',
+      value: (
+        <>
+          {elidePath(shortenPath(cwd, { home: system?.machine.home }), 44)}
+          {system?.code.branch && cwd === system.code.ultimateRoot && (
+            <span className="text-muted-foreground"> ({system.code.branch})</span>
+          )}
+        </>
+      ),
+    },
+    {
+      label: 'model',
+      value: agent.model ? (
         `${agent.model.provider}/${agent.model.modelId}${reasoning !== false && agent.thinkingLevel ? ` · ${agent.thinkingLevel}` : ''}`
       ) : (
-        // oxlint-disable-next-line react/jsx-key -- a [label, value] row, not a rendered list
         <span className="text-warning">none configured</span>
       ),
-    ],
-    [
-      'ext',
-      system?.extensions
-        .filter((extension) => extension.enabled)
-        .map((extension) => extension.name)
-        .join(' · ') ?? '…',
-    ],
-    [
-      'host',
-      system
+    },
+    {
+      label: 'ext',
+      value:
+        system?.extensions
+          .filter((extension) => extension.enabled)
+          .map((extension) => extension.name)
+          .join(' · ') ?? '…',
+    },
+    {
+      label: 'host',
+      value: system
         ? `${system.machine.hostname} · ${system.process.node} · gen ${system.process.generation}`
         : '…',
-    ],
+    },
   ]
   return (
     <ConversationEmptyState className="min-h-[55vh]">
@@ -954,7 +960,7 @@ function EmptyState() {
             : `A coding agent that edits ${system.project.name}, and can change itself too.`}
         </div>
         <div className="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
-          {rows.map(([label, value]) => (
+          {rows.map(({ label, value }) => (
             <Fragment key={label}>
               <span className="text-muted-foreground/70">{label}</span>
               <span className="truncate text-foreground/85">{value}</span>
@@ -1123,7 +1129,6 @@ function AssistantView({
           case 'thinking':
             if (!block.thinking && !block.redacted) return null
             return (
-              // oxlint-disable-next-line react/no-array-index-key -- Message content blocks are addressed by index.
               <Reasoning isStreaming={streaming && index === last} key={index}>
                 <ReasoningTrigger
                   label={`${streaming && index === last ? 'Thinking' : 'Thought'}${block.redacted ? ' (redacted)' : ''}`}
@@ -1133,7 +1138,6 @@ function AssistantView({
             )
           case 'text':
             return block.text ? (
-              // oxlint-disable-next-line react/no-array-index-key -- Message content blocks are addressed by index.
               <MessageResponse isAnimating={streaming && index === last} key={index}>
                 {block.text}
               </MessageResponse>
@@ -1207,7 +1211,7 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
   const end = wrapped.lastIndexOf('\n</summary>')
   const summary =
     start >= 0 && end > start ? wrapped.slice(start + '<summary>\n'.length, end) : wrapped
-  const reason = (entry.data as { reason?: string } | undefined)?.reason
+  const reason = CompactionEntry.is(entry) ? entry.data?.reason : undefined
   return (
     <Collapsible className="group/compaction rounded-lg border border-brand/30 bg-brand/5">
       <CollapsibleTrigger className="flex w-full cursor-pointer flex-col gap-1 px-3.5 py-2.5 text-left">
@@ -1256,7 +1260,7 @@ function shows(message: AssistantMessage | undefined) {
 
 /** What the run is doing when the transcript alone does not show it; a run a pause parked says so instead. */
 function LiveStatus(props: {
-  id: number | undefined
+  id: ConversationId | undefined
   live: LiveState
   busy: boolean
   partial: AssistantMessage | undefined

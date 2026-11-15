@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff, Virtualizer } from '@pierre/diffs/react'
 import type {
@@ -26,6 +27,7 @@ import {
   api,
   cn,
   errorMessage,
+  keepLast,
   useAction,
   useExtensionUiState,
   useStore,
@@ -34,6 +36,7 @@ import {
 } from '@/sdk'
 import { Address } from '../messages/ui.tsx'
 import { compareUrl } from '../../lib/compare.ts'
+import { deadline } from '../../lib/timers.ts'
 import { useGithubRepo } from '../workspaces/ui.tsx'
 import { Composer, DraftCard } from './comment.tsx'
 import { draftsKey } from './comments.ts'
@@ -375,19 +378,33 @@ function Diffs({
     }
     setMarked(target)
     pick(target.file)
-    let tries = 0
-    const timer = setInterval(() => {
-      const host = document.getElementById(anchor(target.file))?.querySelector('diffs-container')
-      const side = target.side === 'old' ? 'deletions' : 'additions'
+    const side = target.side === 'old' ? 'deletions' : 'additions'
+    const reach = () => {
+      const root = document
+        .getElementById(anchor(target.file))
+        ?.querySelector('diffs-container')?.shadowRoot
+      if (root) rendering.observe(root, { childList: true, subtree: true })
       const line =
-        host?.shadowRoot?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
-        host?.shadowRoot?.querySelector(`[data-line="${target.line}"]`)
-      if (!line && ++tries <= 40) return
-      clearInterval(timer)
-      line?.scrollIntoView({ block: 'center' })
+        root?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
+        root?.querySelector(`[data-line="${target.line}"]`)
+      if (!line) return false
+      settle()
+      line.scrollIntoView({ block: 'center' })
+      return true
+    }
+    const settle = () => {
+      rendering.disconnect()
+      giveUp()
       reachedTarget()
-    }, 50)
-    return () => clearInterval(timer)
+    }
+    const rendering = new MutationObserver(reach)
+    const giveUp = deadline(2000, settle)
+    rendering.observe(document.body, { childList: true, subtree: true })
+    reach()
+    return () => {
+      rendering.disconnect()
+      giveUp()
+    }
   }, [target, diff])
   const byFile = Map.groupBy(drafts.comments, (draft) => draft.file)
   return (
@@ -438,8 +455,8 @@ function Sent({
   onOpen,
   onClose,
 }: {
-  sent: { conversation: number } | { error: string }
-  onOpen: (id: number) => void
+  sent: { conversation: ConversationId } | { error: string }
+  onOpen: (id: ConversationId) => void
   onClose: () => void
 }) {
   return (
@@ -485,14 +502,17 @@ export default function ReviewSurface() {
   const { conversationId, switchConversation, showSurface } = useUltimate()
   // Review reads the checkout of the conversation you are in: a project root that is no repository of its own keeps
   // its work in subfolder repositories, and the one to review is your conversation's.
-  const args: { spec: string; conversation?: number } = { spec, conversation: conversationId }
-  const diff = useAction(DiffAction, args, { onError: () => undefined })
+  const args: { spec: string; conversation?: ConversationId } = {
+    spec,
+    conversation: conversationId,
+  }
+  const diff = useAction(DiffAction, args, { onError: keepLast })
   const github = useGithubRepo()
   const [drafts, update] = useDrafts(draftsKey(spec, conversationId))
-  const suggested = useAction(RecipientAction, args, { onError: () => undefined })
+  const suggested = useAction(RecipientAction, args, { onError: keepLast })
   const to = drafts.to ?? suggested.data?.conversation
   const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState<{ conversation: number } | { error: string }>()
+  const [sent, setSent] = useState<{ conversation: ConversationId } | { error: string }>()
   const data = diff.data?.spec === spec ? diff.data : undefined
   // A branch gone without a landing shows another spec: follow it rather than ask for the deleted ref again.
   const moved = diff.data && diff.data.spec !== spec ? diff.data.spec : undefined

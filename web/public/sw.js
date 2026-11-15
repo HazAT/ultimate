@@ -8,13 +8,16 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 
 // A push's JSON (extensions/push/rules.ts): `{ title, body, tag, path, message?, approve? }`. `message` names a question
 // to the user, which gets a Reply action, and Approve when `approve` holds the answers it sends.
-self.addEventListener('push', (event) => {
-  let data = {}
+function pushData(event) {
   try {
-    data = event.data?.json() ?? {}
+    return event.data?.json() ?? {}
   } catch {
-    // A payload that is no JSON still shows, as a plain Ultimate notification: every push must show one.
+    return {}
   }
+}
+
+self.addEventListener('push', (event) => {
+  const data = pushData(event)
   const actions = []
   if (typeof data.message === 'number') {
     if (Array.isArray(data.approve)) actions.push({ action: 'approve', title: 'Approve' })
@@ -41,7 +44,6 @@ self.addEventListener('push', (event) => {
  */
 async function announce() {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- A Client's postMessage has no target origin.
   for (const client of windows) client.postMessage({ type: 'ultimate:shown' })
 }
 
@@ -103,7 +105,6 @@ async function open(path) {
     return
   }
   await shown.focus()
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- A Client's postMessage has no target origin.
   shown.postMessage({ type: 'ultimate:open', url })
 }
 

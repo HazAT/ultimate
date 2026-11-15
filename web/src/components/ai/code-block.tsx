@@ -93,7 +93,6 @@ const CodeBlockContent = memo(
       >
         <code className="grid">
           {tokens.map((line, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Code lines are positional and may repeat.
             <span className="flex" key={index}>
               {showLineNumbers && (
                 <span
@@ -108,7 +107,6 @@ const CodeBlockContent = memo(
                   ? ' '
                   : line.map((token, i) => (
                       <span
-                        // oxlint-disable-next-line react/no-array-index-key -- Token positions within a highlighted line.
                         key={i}
                         style={{
                           color: token.color,

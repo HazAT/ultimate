@@ -7,9 +7,10 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { git } from '../lib/git.ts'
+import { meansNone } from '../lib/errors.ts'
 import { readJson, writeJson } from '../lib/json-file.ts'
-import { acquireLock, readOwner } from '../server/lock.ts'
-import { projectHome } from '../server/project.ts'
+import { acquireLock, readOwner } from '../lib/lock.ts'
+import { projectHome } from '../lib/project-paths.ts'
 import type { BackupFile } from '../extensions/cloud/backup.ts'
 
 /**
@@ -83,8 +84,7 @@ export async function holder(home: string) {
     const lock = join(home, name)
     const running = await readOwner(lock)
     if (!running) continue
-    // Taking the lock fails only while its owner lives: that is the answer, not an error.
-    const probe = await acquireLock(lock, { pid: process.pid }).catch(() => undefined)
+    const probe = await acquireLock(lock, { pid: process.pid }).catch(meansNone)
     if (!probe) return { running }
     await probe.close()
   }

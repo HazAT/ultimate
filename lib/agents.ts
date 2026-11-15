@@ -6,17 +6,16 @@ import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { Agent, AgentChange } from '@earendil-works/pi-durable'
 import { parseFrontmatter, resolveCliModel } from '@earendil-works/pi-coding-agent'
 import type { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
-import type { Source } from '../server/project.ts'
+import type { Source } from './project-paths.ts'
 import { writeTextAtomically } from './json-file.ts'
 import { isIconName, isMarkTint, markTints } from './marks.ts'
 import type { MarkTint } from './marks.ts'
 import { DEFAULT_FAMILY, definitionRuns, isFamilyName, refName, refOf } from './families.ts'
 import type { Families } from './families.ts'
 import { readFamilies } from './families-settings.ts'
-// oxlint-disable-next-line no-restricted-imports -- agent discovery follows the core project trust decision
-import { projectDecision, useProjectSetup } from '../server/project-setup.ts'
-// oxlint-disable-next-line no-restricted-imports -- extension-owned definitions follow the same enabled folders as their facets
-import { discoverExtensions } from '../server/discovery.ts'
+import { projectDecision, useProjectSetup } from './project-setup.ts'
+import { discoverExtensions } from './discovery.ts'
+import { isMissing } from './errors.ts'
 
 export interface AgentDefinition {
   name: string
@@ -473,7 +472,7 @@ export async function discoverAgents(
     try {
       files = await readdir(directory)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      if (!isMissing(error))
         errors.push({ name: directory, path: directory, source, error: String(error) })
       continue
     }
@@ -561,7 +560,7 @@ function scalar(value: string) {
   try {
     if (parseFrontmatter(`---\nvalue: ${value}\n---\n`).frontmatter.value === value) return value
   } catch {
-    // Invalid plain YAML is serialized as a quoted JSON string below.
+    return JSON.stringify(value)
   }
   return JSON.stringify(value)
 }
@@ -730,8 +729,7 @@ export async function deleteDefinition(
   try {
     await rm(path)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      throw new Error(`No ${scope} definition named ${name}`, { cause: error })
+    if (isMissing(error)) throw new Error(`No ${scope} definition named ${name}`, { cause: error })
     throw error
   }
   return { path }

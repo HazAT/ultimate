@@ -3,6 +3,7 @@ import { lstat, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
+import { errnoCode, meansNone } from '../../lib/errors.ts'
 import type { ReviewDiff, ReviewFile, ReviewKind } from './refs.ts'
 
 /** Patches over this many bytes per file are listed without their hunks. */
@@ -50,10 +51,7 @@ const emptyTree = (cwd: string) => git(cwd, 'hash-object', '-t', 'tree', '/dev/n
 async function sides(cwd: string, spec: string, options: Options): Promise<Sides> {
   const { signal } = options
   if (spec === 'uncommitted') {
-    const head = await commit(cwd, 'HEAD', signal).catch(
-      // No commit yet: everything is new against the empty tree.
-      () => undefined,
-    )
+    const head = await commit(cwd, 'HEAD', signal).catch(meansNone)
     return {
       kind: 'uncommitted',
       title: 'Uncommitted changes',
@@ -76,10 +74,7 @@ async function sides(cwd: string, spec: string, options: Options): Promise<Sides
     return { kind: 'range', title: spec, base, head }
   }
   const head = await commit(cwd, plain(spec, spec), signal)
-  const parent = await commit(cwd, `${head}^1`, signal).catch(
-    // A root commit has no parent: it is compared with the empty tree.
-    () => undefined,
-  )
+  const parent = await commit(cwd, `${head}^1`, signal).catch(meansNone)
   const title = await git({ cwd, signal }, 'log', '-1', '--format=%s', head)
   return { kind: 'commit', title, base: parent ?? (await emptyTree(cwd)), head }
 }
@@ -171,8 +166,7 @@ function fit(files: ReviewFile[], patches: (string | undefined)[]) {
   return { patch: kept.join(''), truncated }
 }
 
-const tooBig = (error: unknown) =>
-  (error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+const tooBig = (error: unknown) => errnoCode(error) === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 
 /** The tracked changes between `base` and `head` (the work tree without `head`). */
 async function tracked(cwd: string, base: string, head: string | undefined, signal?: AbortSignal) {

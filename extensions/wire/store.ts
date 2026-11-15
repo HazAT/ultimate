@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 /**
  * Wire's files: one gzipped JSON file per model call, `<home>/wire/<conversation>/<n>.json.gz`, outside the durable
  * database. Each conversation keeps its newest `PER_CONVERSATION` calls; the whole folder stays under `TOTAL_BYTES`,
@@ -6,6 +7,7 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
+import { settled } from '../../lib/errors.ts'
 import type { WireCall, WireSummary } from './refs.ts'
 
 export const PER_CONVERSATION = 20
@@ -46,29 +48,25 @@ export type Queue = { tail: Promise<unknown> }
  */
 export function save(queue: Queue, home: string, call: Omit<WireCall, 'n'>): Promise<number> {
   const dir = join(folder(home), String(call.conversationId))
-  const run = queue.tail
-    .catch(() => {
-      // The previous write's caller got its failure; this one still runs.
-    })
-    .then(async () => {
-      await mkdir(dir, { recursive: true })
-      const existing = await calls(dir)
-      const n = (existing.at(-1) ?? 0) + 1
-      // The summary goes first: a call is listed by its file, which then always has one.
-      await writeFile(join(dir, summaryName(n)), JSON.stringify(summarize({ ...call, n })))
-      await writeFile(join(dir, name(n)), gzipSync(JSON.stringify({ ...call, n })))
-      for (const old of existing.slice(0, Math.max(0, existing.length + 1 - PER_CONVERSATION)))
-        await drop(dir, old)
-      await prune(home)
-      return n
-    })
+  const run = settled(queue.tail).then(async () => {
+    await mkdir(dir, { recursive: true })
+    const existing = await calls(dir)
+    const n = (existing.at(-1) ?? 0) + 1
+    // The summary goes first: a call is listed by its file, which then always has one.
+    await writeFile(join(dir, summaryName(n)), JSON.stringify(summarize({ ...call, n })))
+    await writeFile(join(dir, name(n)), gzipSync(JSON.stringify({ ...call, n })))
+    for (const old of existing.slice(0, Math.max(0, existing.length + 1 - PER_CONVERSATION)))
+      await drop(dir, old)
+    await prune(home)
+    return n
+  })
   queue.tail = run
   return run
 }
 
 export async function load(
   home: string,
-  conversationId: number,
+  conversationId: ConversationId,
   n: number,
 ): Promise<WireCall | undefined> {
   const bytes = await readFile(join(folder(home), String(conversationId), name(n))).catch(
@@ -81,7 +79,7 @@ export async function load(
 }
 
 /** The conversation's stored calls, oldest first, without their bodies (read from each call's small summary file). */
-export async function list(home: string, conversationId: number): Promise<WireSummary[]> {
+export async function list(home: string, conversationId: ConversationId): Promise<WireSummary[]> {
   const dir = join(folder(home), String(conversationId))
   const summaries = await Promise.all(
     (await calls(dir)).map((n) =>

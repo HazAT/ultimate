@@ -7,8 +7,8 @@ import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { createZstdCompress, createZstdDecompress } from 'node:zlib'
+import { pace } from '../../lib/timers.ts'
 import { vacuum } from '../../lib/database-files.ts'
 import { git as gitIn } from '../../lib/git.ts'
 
@@ -314,7 +314,7 @@ async function request(o: Remote, id: string, name: string, init: RequestInit) {
     if (response && (response.status < 500 || attempt === 3))
       throw new Error(`Snapshot ${name} returned ${response.status}`)
     await response?.body?.cancel()
-    await sleep(1000 * attempt, undefined, { signal: o.signal })
+    await pace(1000 * attempt, o.signal)
   }
 }
 async function put(o: Remote, id: string, name: string, data: Buffer) {

@@ -14,7 +14,8 @@ import { StartedEvent } from '../shared/events.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ChildMessage, SupervisorMessage } from './supervisor-protocol.ts'
 
-import { alive } from './lock.ts'
+import { alive } from '../lib/lock.ts'
+import { every } from '../lib/timers.ts'
 import { realpath } from 'node:fs/promises'
 import { extensionModules } from './vite-extensions.ts'
 import { createWeb } from './web.ts'
@@ -292,9 +293,13 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
   if (process.env.ULTIMATE_INSTANCE_OWNER) {
     const owner = Number(process.env.ULTIMATE_INSTANCE_OWNER)
     if (!Number.isSafeInteger(owner) || owner < 1) throw new Error('Invalid instance owner')
-    setInterval(() => {
-      if (!alive(owner)) process.exit(0)
-    }, 500).unref()
+    every(
+      500,
+      () => {
+        if (!alive(owner)) process.exit(0)
+      },
+      { unref: true },
+    )
   }
   let server: Awaited<ReturnType<typeof prepareServer>> | undefined
   let closing: Promise<void> | undefined

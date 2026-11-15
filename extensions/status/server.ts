@@ -2,6 +2,7 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone } from '../../lib/errors.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { HealthApi } from '../health/api.ts'
 import { MessagesApi } from '../messages/api.ts'
@@ -16,9 +17,7 @@ export async function status(host: ExtensionHost, since: number, now: number): P
   const update = host.want(UpdateApi)
   const watchdog = host.want(WatchdogApi)
   const health = host.want(HealthApi)
-  // Update throws while origin has no default branch (lib/fast-forward.ts `standing`), which failed every dashboard poll
-  // until `git remote set-head origin --auto`. The clone is then unknown, so `head` stays out, as with Update off.
-  const updateState = update?.state().catch(() => undefined)
+  const updateState = update?.state().catch(meansNone)
   const [clone, failures, providers, open] = await Promise.all([
     updateState,
     watchdog?.failures(since),

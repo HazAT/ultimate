@@ -1,4 +1,7 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../../shared/extension-api.ts'
+import { retryAfter } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import { actionMessage } from './api.ts'
 import type { ActionArgs, ActionError, ActionOptions, Api } from './api.ts'
 import type { Store } from './store.ts'
@@ -47,9 +50,7 @@ export function createReads(api: Api, store: Store) {
   /** Reads whose last call never reached the server (status 0), asked again once the page is back. */
   const missed = new Set<Read & { readers: Set<Reader> }>()
   function retryMissed() {
-    for (const read of missed)
-      // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
-      if (read.readers.size) void read.refetch()
+    for (const read of missed) if (read.readers.size) void read.refetch()
   }
   let process: string | undefined
   let connection = store.getState().connection.status
@@ -64,13 +65,11 @@ export function createReads(api: Api, store: Store) {
     if (next === process) return
     const restarted = process !== undefined
     process = next
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     if (restarted) for (const read of reads.values()) if (read.readers.size) void read.refetch()
   })
   if (typeof window !== 'undefined')
     window.addEventListener('focus', () => {
       for (const read of reads.values())
-        // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
         if ([...read.readers].some((reader) => reader.focus)) void read.refetch()
     })
   if (typeof window !== 'undefined') window.addEventListener('online', retryMissed)
@@ -90,27 +89,27 @@ export function createReads(api: Api, store: Store) {
     extension: string,
     name: string,
     args: unknown,
-    conversationId?: number,
+    conversationId?: ConversationId,
   ) {
     let state: ReadState = { loading: false, settled: false }
     const listeners = new Set<() => void>()
     const readers = new Set<Reader>()
     let controller: AbortController | undefined
     let queued: Promise<unknown> | undefined
-    let poll: ReturnType<typeof setTimeout> | undefined
+    let cancelPoll: Cancel | undefined
     let answered = 0
     const set = (change: Partial<ReadState>) => {
       state = { ...state, ...change }
       for (const listener of listeners) listener()
     }
     function repoll() {
-      clearTimeout(poll)
+      cancelPoll?.()
       const every = Math.min(...[...readers].map((reader) => reader.every ?? Infinity))
-      if (every !== Infinity && !controller) poll = setTimeout(() => void run(), every)
+      if (every !== Infinity && !controller) cancelPoll = retryAfter(every, () => void run())
     }
     async function run() {
       controller?.abort()
-      clearTimeout(poll)
+      cancelPoll?.()
       const own = new AbortController()
       controller = own
       // The readers' reporting as the call starts: one that leaves meanwhile still keeps its failure quiet.
@@ -166,14 +165,13 @@ export function createReads(api: Api, store: Store) {
         readers.add(reader)
         // A reader joining a call in flight, or an answer just given, takes that one: components of one page mount over
         // several commits, and each asking again aborted the call before it.
-        // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
         if (!controller && !queued && Date.now() - answered > FRESH) void read.refetch()
         else repoll()
         return () => {
           readers.delete(reader)
           if (readers.size) return repoll()
           // A call in flight finishes: a component remounting at once, as the shell does while its facets load, takes it.
-          clearTimeout(poll)
+          cancelPoll?.()
           missed.delete(read)
           evict()
         }
@@ -193,7 +191,7 @@ export function createReads(api: Api, store: Store) {
 
   return {
     /** The read of `extension/name` with `args` on `conversationId` (the shown conversation when absent). */
-    get(extension: string, name: string, args: unknown, conversationId?: number): Read {
+    get(extension: string, name: string, args: unknown, conversationId?: ConversationId): Read {
       const key = JSON.stringify([extension, name, args ?? null, conversationId ?? null])
       let read = reads.get(key)
       if (!read) {

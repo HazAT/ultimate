@@ -12,6 +12,7 @@ import { api, Card, errorMessage, Fold, useAction, useConversation, useUltimate 
 import type { EntryRecord } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { RewindAction, RewindPreviewAction } from './refs.ts'
+import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
 import { useRoots } from './ui.tsx'
 
@@ -194,20 +195,10 @@ export function GoBackAction({ entry }: { entry: EntryRecord }) {
   )
 }
 
-type RewoundData = {
-  at: number
-  steps: number
-  files: RewindFile[]
-  commits: { sha: string; subject: string }[]
-  dependents: RewindDependent[]
-  summary?: string
-  summaryMissing?: true
-}
-
 /** The note a go-back left: where it went back to, the summary when asked for, the files and who built on the path. */
 export function Rewound({ entry }: { entry: EntryRecord }) {
-  const { at, steps, files, commits, dependents, summary, summaryMissing } =
-    entry.data as RewoundData
+  if (!RewoundEntry.is(entry)) return null
+  const { at, steps, files, commits, dependents, summary, summaryMissing } = entry.data
   return (
     <Fold
       card={entry.id}
@@ -283,7 +274,8 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
 /** In a conversation that built on a path its source later set aside: a quiet divider that opens the go-back. */
 export function RewoundDependent({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const { from, at, entry: note } = entry.data as { from: number; at: number; entry: number }
+  if (!RewoundDependentEntry.is(entry)) return null
+  const { from, at, entry: note } = entry.data
   return (
     <button
       className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-warning/90 before:h-px before:flex-1 before:bg-warning/30 after:h-px after:flex-1 after:bg-warning/30 hover:text-warning"

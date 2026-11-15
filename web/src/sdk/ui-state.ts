@@ -1,5 +1,7 @@
 import type { JsonValue } from '@earendil-works/chord/json'
 import { UI_REVISION } from '../../../shared/protocol.ts'
+import { deadline } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import type { UiUpdateRequest, UiUpdateResponse } from '../../../shared/protocol.ts'
 
 /**
@@ -46,7 +48,7 @@ export function createUiState(
   let epoch = 0
   /** After a restart, until the new process's first snapshot: nothing is released, since its revisions start over. */
   let restarting = false
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let cancelSend: Cancel | undefined
 
   function update() {
     const next: Record<string, JsonValue> = { ...remote }
@@ -64,10 +66,10 @@ export function createUiState(
       if (entry.rev !== undefined && entry.rev <= shown) local.delete(key)
   }
   function schedule(delay: number) {
-    timer ??= setTimeout(() => {
-      timer = undefined
+    cancelSend ??= deadline(delay, () => {
+      cancelSend = undefined
       send(false)
-    }, delay)
+    })
   }
   /**
    * Send what is pending as one batch. One batch is in flight at a time, so the server commits them in write order;
@@ -157,8 +159,8 @@ export function createUiState(
     },
     /** Send what is pending now, such as before the page goes away. */
     flush: () => {
-      clearTimeout(timer)
-      timer = undefined
+      cancelSend?.()
+      cancelSend = undefined
       send(true)
     },
   }

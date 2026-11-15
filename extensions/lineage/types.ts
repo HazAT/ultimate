@@ -1,7 +1,8 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 /** One thing that happened in a root, newest first from the `recent` action, as its sidebar row lists it. */
 export type RootEvent = {
   /** The root's entry it happened at. */
-  entry: number
+  entry: EntryId
   at?: number
 } & (
   | {
@@ -14,12 +15,12 @@ export type RootEvent = {
       commits: number
       feature?: string
       title?: string
-      from?: number
+      from?: ConversationId
       /** `https://diffshub.com/<owner>/<repo>/compare/<base>...<sha>`, when `origin` is on GitHub. */
       compare?: string
     }
-  | { type: 'note'; from?: number; text: string }
-  | { type: 'branched'; branch: number; intent: string }
+  | { type: 'note'; from?: ConversationId; text: string }
+  | { type: 'branched'; branch: ConversationId; intent: string }
   | { type: 'compacted' }
   | { type: 'started' }
 )

@@ -271,7 +271,6 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
   return (
     <>
       {runs.map(({ step, count }, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Ordered command runs can repeat the same programs.
         <span key={index}>
           {index > 0 && (
             <span className="px-1.5 text-muted-foreground/50">
@@ -281,7 +280,6 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
           {step.programs.map((name, position) => {
             const [program, ...rest] = name.split(' ')
             return (
-              // oxlint-disable-next-line react/no-array-index-key -- Pipeline positions; programs can repeat.
               <span key={position}>
                 {position > 0 && <span className="px-1 text-brand/70">→</span>}
                 <span className="text-foreground/90">{program}</span>
@@ -389,7 +387,6 @@ function Bash({ call }: { call: ToolCallView }) {
               </div>
             )}
             {display.steps.map((step, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Command steps are positional and may repeat.
               <div className="flex gap-2" key={index}>
                 <span className="w-4 shrink-0 pt-px text-muted-foreground/50">
                   {step.operator ?? (display.directory ? '&&' : '$')}
@@ -401,7 +398,6 @@ function Bash({ call }: { call: ToolCallView }) {
                     language="bash"
                   />
                   {step.heredocs.map((heredoc, position) => (
-                    // oxlint-disable-next-line react/no-array-index-key -- Heredoc positions; delimiters and files may repeat.
                     <div className="border-l-2 border-border/80" key={position}>
                       <CodeBlock
                         className="rounded-none border-none"

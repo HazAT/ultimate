@@ -1,3 +1,9 @@
+import type {
+  ConversationDocToken,
+  ConversationId,
+  JsonObject,
+  Tx,
+} from '@earendil-works/pi-durable'
 import {
   defineDoc,
   defineExtension,
@@ -5,18 +11,13 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type {
-  ConversationDocToken,
-  ConversationId,
-  JsonObject,
-  Tx,
-} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readSecret, secretMetadata } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -353,13 +354,9 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
     | undefined
   const empty: number[] = []
   for (const root of listed?.roots ?? []) {
-    const tally = (await read(tallyDoc, root as ConversationId)) as
-      | (typeof TallyDoc)['value']
-      | undefined
+    const tally = (await read(tallyDoc, root)) as (typeof TallyDoc)['value'] | undefined
     if (tally?.since === undefined) continue
-    const doc = (await read(memoryDoc, root as ConversationId)) as
-      | (typeof MemoryDoc)['value']
-      | undefined
+    const doc = (await read(memoryDoc, root)) as (typeof MemoryDoc)['value'] | undefined
     if (!Object.keys(doc?.memories ?? {}).length) empty.push(root)
   }
   if (!empty.length) return undefined
@@ -477,8 +474,7 @@ export default function setup(host: ExtensionHost) {
         beforeInput: async (_input, { tx, conversationId }) => {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
-          // A check that fails here only skips the note; the status line still shows the setup.
-          return noteFor(tx, conversationId, await current(tx).catch(() => undefined), Date.now())
+          return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())
         },
       }),
     ],

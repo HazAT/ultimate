@@ -1,3 +1,11 @@
+import { parseEntryId, offsetEntryId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  Cursor,
+  SubmissionRecord,
+  TaskRecord,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -12,14 +20,6 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  Cursor,
-  EntryId,
-  SubmissionRecord,
-  TaskRecord,
-  Tx,
-} from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
@@ -28,6 +28,7 @@ import { idleNote } from './idle.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
+import { FailureEntry } from './entries.ts'
 
 /** How long after a temporary failure its one retry starts. */
 const RETRY_AFTER = 60_000
@@ -69,7 +70,7 @@ const failedInput = (input: SubmissionRecord) =>
 /** The final error entry of a generation, excluding any later run. Pi can append several
  * assistant errors during its internal retries; only the last one ended the run. */
 async function boundary(tx: Tx, task: Generation, next?: Generation) {
-  let upper = Number(task.id)
+  let upper = parseEntryId(Number(task.id))
   let assistant: AssistantMessage | undefined
   if (
     task.state.status === 'terminal' &&
@@ -81,8 +82,8 @@ async function boundary(tx: Tx, task: Generation, next?: Generation) {
       const page = await tx.scanEntries(
         {
           conversationId: task.conversationId,
-          minEntryId: task.id as number as EntryId,
-          ...(next ? { maxEntryId: (next.id - 1) as EntryId } : {}),
+          minEntryId: parseEntryId(Number(task.id)),
+          ...(next ? { maxEntryId: offsetEntryId(parseEntryId(Number(next.id)), -1) } : {}),
           order: 'descending',
         },
         100,
@@ -167,7 +168,7 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
   cursor = undefined
   do {
     const page = await tx.scanEntries(
-      { conversationId: task.conversationId, maxEntryId: upper as EntryId },
+      { conversationId: task.conversationId, maxEntryId: upper },
       100,
       cursor,
     )
@@ -200,7 +201,7 @@ export default function watchdog(host: ExtensionHost) {
       wait: (task, runtime, ctx) => runtime.sleepUntil(task.input.until, { phase: 'retry' }, ctx),
       retry: async (task, runtime, ctx) => {
         const { conversation, failedTask, error } = task.input
-        const child = (await runtime.conversation(conversation as ConversationId, ctx))!
+        const child = (await runtime.conversation(conversation, ctx))!
         // A replay after submit must finish, not mistake its own retry for someone else's recovery.
         let submitted = false
         let busy = false
@@ -241,7 +242,7 @@ export default function watchdog(host: ExtensionHost) {
             {
               type: 'input',
               content: `${content}\nCheck the conversation; resume it with a message, or tell the user if it needs them.`,
-              entry: { kind: 'watchdog.failure', data },
+              entry: { kind: FailureEntry.kind, data },
               requestId: `watchdog-report:${failedTask}`,
               whenBusy: 'steer',
             },
@@ -258,10 +259,7 @@ export default function watchdog(host: ExtensionHost) {
           const actions = Object.values((await tx.doc(Subagents, recipient)).actions)
           const action = actions.findLast((candidate) => candidate.conversationId === conversation)
           if (action?.status === 'failed') {
-            const input = await tx.submissionByRequest(
-              conversation as ConversationId,
-              `subagent:${action.reporter}`,
-            )
+            const input = await tx.submissionByRequest(conversation, `subagent:${action.reporter}`)
             if (input && failedInput(input)) action.status = 'given-up'
           }
           return terminal

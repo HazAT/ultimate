@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, realpath, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
@@ -10,9 +12,9 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, TaskId, Tx } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { meansNone, overshadowed, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -77,7 +79,7 @@ const started = new Set<number>()
 /** Whether `source` has no live lander task: none recorded, or one that ended (finished, faulted, aborted). */
 async function landerIdle(tx: Tx, index: WorkspaceIndex, source: string) {
   const running = index.landers[source]
-  const live = running === undefined ? undefined : await tx.task(running as TaskId)
+  const live = running === undefined ? undefined : await tx.task(running)
   return !live || live.state.status === 'terminal' || live.state.status === 'completing'
 }
 type Host = Pick<
@@ -131,14 +133,12 @@ async function onDisk(path: string) {
  * after `git worktree remove`) is not a repository to inspect, and holds none.
  */
 async function atRisk(
-  id: ConversationId,
   workspace: Pick<WorkspaceIndex['items'][string], 'path' | 'branch' | 'target'>,
-): Promise<KeptWork> {
+): Promise<Omit<KeptWork, 'id'>> {
   const branch = (await git(workspace.path, 'branch', '--list', workspace.branch))
     ? [workspace.branch]
     : []
   return {
-    id,
     uncommitted: (await git(workspace.path, 'status', '--porcelain')).split('\n').filter(Boolean)
       .length,
     unlanded: Number(
@@ -159,7 +159,9 @@ const held = (
   workspace: WorkspaceIndex['items'][string],
   registered: boolean,
 ): Promise<KeptWork> =>
-  registered ? atRisk(id, workspace) : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
+  registered
+    ? atRisk(workspace).then((work) => ({ id, ...work }))
+    : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
 /** Whether the source lists the path as a worktree; throws when the source cannot tell, so callers never guess. */
 async function listedBySource(workspace: WorkspaceIndex['items'][string]) {
   return (await git(workspace.source, 'worktree', 'list', '--porcelain'))
@@ -191,12 +193,7 @@ export function workspaces(host: Host) {
   const queues = host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
   /** Runs writes to one source checkout one at a time, across synchronous landing and the lander. */
   async function serial<T>(source: string, operation: () => Promise<T>): Promise<T> {
-    const queued = (queues.get(source) ?? Promise.resolve())
-      .catch(
-        // The previous caller receives its failure; it must not poison the next queued operation.
-        () => undefined,
-      )
-      .then(operation)
+    const queued = settled(queues.get(source) ?? Promise.resolve()).then(operation)
     queues.set(source, queued)
     try {
       return await queued
@@ -221,7 +218,7 @@ export function workspaces(host: Host) {
       Lander,
       { source },
       {
-        conversationId: index.landerConversations[source] as ConversationId,
+        conversationId: index.landerConversations[source],
         ownership: { kind: 'conversation' },
       },
     )
@@ -240,7 +237,7 @@ export function workspaces(host: Host) {
     /** `landerPath()` of `source`, resolved before the transaction. */
     path: string,
   ) {
-    const known = index.landerConversations[source] as ConversationId | undefined
+    const known = index.landerConversations[source]
     if (known !== undefined && (await tx.conversation(known))) {
       ;(await tx.doc(host.metadata, known)).title = '@lander'
       await host.need(ConversationsApi).setStanding(tx, known, true)
@@ -264,7 +261,7 @@ export function workspaces(host: Host) {
     // Landers stay standing even when preparing the checkout below fails.
     await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-      for (const id of Object.values(index.landerConversations) as ConversationId[])
+      for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) await host.need(ConversationsApi).setStanding(tx, id, true)
     }, context)
     const checkout = await isolatable(host.projectRoot)
@@ -275,7 +272,7 @@ export function workspaces(host: Host) {
     await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       const landers: ConversationId[] = []
-      for (const id of Object.values(index.landerConversations) as ConversationId[])
+      for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) landers.push(id)
       if (source && target && path) {
         const own = await ensureLander(tx, index, source, target, path)
@@ -413,17 +410,13 @@ export function workspaces(host: Host) {
                   workspace.source,
                   workspace.path,
                   treeName(workspace.branch),
-                ).catch(
-                  // Best-effort rollback: the preparation error is recorded below and must not be replaced.
-                  () => undefined,
-                )
+                ).catch(overshadowed)
               if (
                 !task.input.preserve &&
                 (await git(workspace.source, 'rev-parse', workspace.branch).catch(() => '')) ===
                   workspace.base
               )
-                // Best-effort rollback: the preparation error is recorded below and must not be replaced.
-                await git(workspace.source, 'branch', '-D', workspace.branch).catch(() => undefined)
+                await git(workspace.source, 'branch', '-D', workspace.branch).catch(overshadowed)
             }
           })
           await runtime.commit(async (tx) => {
@@ -456,7 +449,7 @@ export function workspaces(host: Host) {
     const reason = await busy(id, context)
     if (reason) throw new Error(reason)
   }
-  async function candidates(ids: number[], context: Context) {
+  async function candidates(ids: ConversationId[], context: Context) {
     const owned = new Set(ids)
     const parents = new Map<number, number>()
     await host.harness().commit(async (tx) => {
@@ -481,7 +474,7 @@ export function workspaces(host: Host) {
       return value
     }
     return {
-      ids: ([...owned] as ConversationId[]).toSorted((a, b) => depth(b) - depth(a)),
+      ids: [...owned].toSorted((a, b) => depth(b) - depth(a)),
       parents,
     }
   }
@@ -504,23 +497,20 @@ export function workspaces(host: Host) {
     return { workspace, registered }
   }
   /** The commits and uncommitted changes of each ready worktree among `ids`, without their subagents'. */
-  async function progress(ids: number[], context: Context): Promise<KeptWork[]> {
+  async function progress(ids: ConversationId[], context: Context): Promise<KeptWork[]> {
     const result = await Promise.all(
       ids.map(async (id) => {
-        const workspace = await get(id as ConversationId, context)
+        const workspace = await get(id, context)
         // Its `.git` file, not `git worktree list`: the sidebar asks often, and every git process blocks the host while
         // it forks. `git worktree remove` deletes that file and leaves only ignored files behind.
         if (workspace?.state !== 'ready' || !(await onDisk(join(workspace.path, '.git'))))
           return undefined
-        return changes(id as ConversationId, workspace).catch(
-          // A checkout gone from disk or mid-removal has nothing to show.
-          () => undefined,
-        )
+        return changes(id, workspace).catch(meansNone)
       }),
     )
     return result.filter((item) => item !== undefined)
   }
-  async function pending(ids: number[], context: Context): Promise<KeptWork[]> {
+  async function pending(ids: ConversationId[], context: Context): Promise<KeptWork[]> {
     const result: KeptWork[] = []
     for (const id of (await candidates(ids, context)).ids) {
       const checkout = await recordedCheckout(id, context)
@@ -540,7 +530,7 @@ export function workspaces(host: Host) {
     let item: KeptWork = { id, uncommitted: 0, unlanded: 0 }
     try {
       if (await listedBySource(workspace)) {
-        item = await atRisk(id, workspace)
+        item = { id, ...(await atRisk(workspace)) }
         if (item.uncommitted || item.unlanded) {
           await host.harness().commit(async (tx) => {
             ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'ready'
@@ -588,7 +578,7 @@ export function workspaces(host: Host) {
   }
 
   async function release(
-    ids: number[],
+    ids: ConversationId[],
     context: Context,
     signal?: AbortSignal,
   ): Promise<KeptWork[]> {
@@ -707,7 +697,7 @@ export function workspaces(host: Host) {
           .find((line) => line.startsWith('branch refs/heads/'))
           ?.slice('branch refs/heads/'.length)
         // A detached checkout counts its HEAD's commits not on the target as work only it holds.
-        const work = await atRisk(0 as ConversationId, { path, branch: branch ?? '', target })
+        const work = await atRisk({ path, branch: branch ?? '', target })
         if (work.uncommitted || work.unlanded) {
           kept.push(path)
           return
@@ -897,7 +887,7 @@ export function workspaces(host: Host) {
     )?.[0]
     const recreate = () =>
       serial(record.source, async () => {
-        if (parent && (await get(Number(parent) as ConversationId, context))?.state !== 'ready')
+        if (parent && (await get(parseConversationId(Number(parent)), context))?.state !== 'ready')
           return true
         const workspace = (await get(id, context))!
         if (workspace.state === 'ready' && !(await presentCheckout(id, context))) {
@@ -965,7 +955,7 @@ export function workspaces(host: Host) {
     let retry: boolean | KeptWork
     do {
       if (parent) {
-        const parentId = Number(parent) as ConversationId
+        const parentId = parseConversationId(Number(parent))
         await ready(parentId, context)
         const source = (await get(parentId, context))!
         if (source.state === 'failed')

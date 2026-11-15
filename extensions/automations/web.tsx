@@ -10,8 +10,12 @@ import {
   ToolSection,
 } from '@/components/ai/tool'
 import { Button } from '@/components/ui/button'
-import { cn, defineWebExtension, Fold, useToolDuration, useUltimate } from '@/sdk'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import { cn, defineWebExtension, renderEntry, Fold, useToolDuration, useUltimate } from '@/sdk'
+import type { TypedEntry } from '@earendil-works/pi-durable'
+import type { AutomationInput } from './refs.ts'
+import { FiredEntry } from '../entries/ui.tsx'
+import { FailedEntry, EscalatedEntry, WritingEntry } from './entries.ts'
+import type { ToolCallView } from '@/sdk'
 import { Chip } from './chip.tsx'
 import { AutomationsPanel } from './panel.tsx'
 import { Dot, looks, openAutomationsPanel, useOpenAutomation } from './parts.tsx'
@@ -33,15 +37,15 @@ function body(text: string) {
     try {
       return `\`\`\`json\n${JSON.stringify(JSON.parse(trimmed), null, 2)}\n\`\`\``
     } catch {
-      // Not JSON after all: it reads as Markdown like any other text.
+      return text
     }
   return text
 }
 
 /** An automation's input to a conversation: it fired, its script failed or was escalated, or the watcher's first task. */
 const card = (kind: Kind) =>
-  function AutomationEntry({ entry }: { entry: EntryRecord }) {
-    const { id, name, text } = entry.data as { id: string; name: string; text: string }
+  function AutomationEntry({ entry }: { entry: TypedEntry<AutomationInput> }) {
+    const { id, name, text } = entry.data
     const look = kinds[kind]
     const open = useOpenAutomation()
     const label: ReactNode = (
@@ -195,10 +199,10 @@ export default defineWebExtension({
     'sidebar.top': [{ component: AutomationsSection, order: -20 }],
   },
   entries: {
-    'automations.fired': card('fired'),
-    'automations.failed': card('failed'),
-    'automations.escalated': card('escalated'),
-    'automations.writing': card('writing'),
+    'automations.fired': renderEntry(FiredEntry, card('fired')),
+    'automations.failed': renderEntry(FailedEntry, card('failed')),
+    'automations.escalated': renderEntry(EscalatedEntry, card('escalated')),
+    'automations.writing': renderEntry(WritingEntry, card('writing')),
   },
   panels: [
     {

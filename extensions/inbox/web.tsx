@@ -49,7 +49,7 @@ const conversationOf = (entry: Entry) =>
 /** Who asks, as the sidebar draws a branch: its feature chip (or a standing agent's `@name`) and `#id`. */
 function Asker({ id }: { id: Message['from'] }) {
   const overview = useOverview()
-  const agent = useStandingName(typeof id === 'number' ? id : 0)
+  const agent = useStandingName(typeof id === 'number' ? id : undefined)
   if (typeof id !== 'number') return <span className="font-mono text-[10.5px]">{id}</span>
   const feature = agent ? undefined : overview[id]?.feature
   return (
@@ -325,11 +325,7 @@ function Zero({ messages, now }: { messages: readonly Message[]; now: number }) 
         </span>
         <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">Nothing waits on you</h2>
         <p className="mt-1 text-[14px] text-muted-foreground">Every branch has what it needs.</p>
-        <Button
-          className="mt-6"
-          // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
-          onClick={() => void talkToUltimate(actions)}
-        >
+        <Button className="mt-6" onClick={() => void talkToUltimate(actions)}>
           Back to @ultimate
         </Button>
         {today.length > 0 && (

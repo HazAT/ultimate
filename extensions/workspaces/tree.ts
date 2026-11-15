@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
+import { isMissing, overshadowed } from '../../lib/errors.ts'
 
 /** A configured command may fetch, build or register the tree: allow it more than git's 30 seconds. */
 const commandTimeout = 300_000
@@ -48,7 +49,7 @@ async function resolved(path: string): Promise<string> {
   try {
     return await realpath(path)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || dirname(path) === path) throw error
+    if (!isMissing(error) || dirname(path) === path) throw error
     return join(await resolved(dirname(path)), basename(path))
   }
 }
@@ -112,10 +113,7 @@ export async function addCheckout(
       throw new Error(`isolates.worktree.add left no worktree of ${source} at ${path}`)
     await git({ cwd: path, timeout: commandTimeout }, 'checkout', '-q', ...checkout)
   } catch (error) {
-    await clearCheckout(source, path).catch(
-      // The failure being reported matters more; a leftover is cleared again before the next attempt.
-      () => undefined,
-    )
+    await clearCheckout(source, path).catch(overshadowed)
     throw error
   }
 }

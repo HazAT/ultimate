@@ -21,6 +21,7 @@ export type AutomationsService = {
    */
   read(tx: Tx, id: string): Promise<Automation | undefined>
 }
-/** Optional automation service. */
+/** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')
+export const tier = 'core'
 export { Fired, Started, Exited, Done, Escalated } from './refs.ts'

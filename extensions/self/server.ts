@@ -5,6 +5,7 @@ import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
 export default function self(host: ExtensionHost) {
   // Core, always on; the handle resolves the current provider at each call.
@@ -37,8 +38,9 @@ export default function self(host: ExtensionHost) {
         description:
           'Restart the shared Ultimate host after authorized changes to server/, shared/ or its packages (patches/, pnpm-lock.yaml). Land an isolated workspace into the running clone first.',
         parameters: obj({}),
-        // The target generation is memoized before the swap, so replay reports it without restarting again.
-        replay: 'safe',
+        ...safeToRerun(
+          'The target generation is memoized before the swap, so replay reports it without restarting again.',
+        ),
         async execute(_args, api, context): Promise<ToolExecutionResult> {
           const own = await workspaces.get(api.conversationId, context)
           if (

@@ -1,29 +1,35 @@
-import { readFile, realpath } from 'node:fs/promises'
-import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
-import { compareExtensions, discoverExtensions } from './discovery.ts'
-import { decisionRoot, projectSetup, projectSettings, projectDiagnostics } from './project-setup.ts'
-import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
-import { discoveryRoots, projects } from './project.ts'
-import type { ProjectInfo } from './project.ts'
-import { extensionSettingsFiles } from './extension-settings.ts'
-import { watchRoots } from './watch-roots.ts'
-import { actionExec } from './actions.ts'
-import type { ExtensionAction } from './actions.ts'
-import type { JsonValue } from '@earendil-works/chord/json'
-import { join, resolve } from 'node:path'
 import type {
+  ConversationId,
   ConversationDocToken,
   Extension,
   Harness,
   JsonObject,
 } from '@earendil-works/pi-durable'
+import { readFile, realpath } from 'node:fs/promises'
+import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
+import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
+import {
+  decisionRoot,
+  projectSetup,
+  projectSettings,
+  projectDiagnostics,
+} from '../lib/project-setup.ts'
+import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
+import { projects } from './project.ts'
+import { discoveryRoots } from '../lib/project-paths.ts'
+import type { ProjectInfo } from './project.ts'
+import { extensionSettingsFiles } from '../lib/extension-settings.ts'
+import { watchRoots } from './watch-roots.ts'
+import { actionExec } from './actions.ts'
+import type { ExtensionAction } from './actions.ts'
+import type { JsonValue } from '@earendil-works/chord/json'
+import { join, resolve } from 'node:path'
 import type { ViteDevServer } from 'vite-plus'
 import type { ConversationSummary, ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { PreparedHost } from './harness.ts'
 import { Metadata } from './metadata.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
 import { EventFeed, eventLog } from './events.ts'
 import { contractOutline } from '../lib/api-files.ts'
@@ -33,6 +39,7 @@ import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
 import type { Device } from '../shared/events.ts'
+import { inBackground, isMissing } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -103,7 +110,7 @@ export type ExtensionHost = Pick<
     action: string,
     args: JsonValue,
     signal: AbortSignal,
-    conversationId?: number,
+    conversationId?: ConversationId,
   ): Promise<unknown>
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
@@ -231,8 +238,8 @@ export async function loadExtensions(
         else {
           facetOpeners.get(facetHost)!.add(callback)
           openers.add(callback)
-          // oxlint-disable-next-line typescript/no-floating-promises -- runOpener catches and reports opener failures.
-          if (open && [...facetHosts.values()].includes(facetHost)) void runOpener(callback)
+          if (open && [...facetHosts.values()].includes(facetHost))
+            inBackground(runOpener(callback))
         }
       },
       onRelease: (callback) => {
@@ -322,7 +329,7 @@ export async function loadExtensions(
     action: string,
     args: JsonValue,
     signal: AbortSignal,
-    conversationId?: number,
+    conversationId?: ConversationId,
     caller = 'ui',
     device?: Device,
   ) {
@@ -346,9 +353,7 @@ export async function loadExtensions(
           const agent =
             conversationId === undefined
               ? undefined
-              : await runtime
-                  .harness()
-                  .snapshot(AgentDoc, conversationId as ConversationId, BACKGROUND_CONTEXT)
+              : await runtime.harness().snapshot(AgentDoc, conversationId, BACKGROUND_CONTEXT)
           return actionExec(options?.cwd ?? agent?.cwd ?? host.projectRoot, signal)(
             command,
             commandArgs,
@@ -388,8 +393,7 @@ export async function loadExtensions(
     },
     onOpen: (callback) => {
       openers.add(callback)
-      // oxlint-disable-next-line typescript/no-floating-promises -- runOpener catches and reports opener failures.
-      if (open) void runOpener(callback)
+      if (open) inBackground(runOpener(callback))
     },
     onRelease: (callback) => {
       releasers.add(callback)
@@ -789,7 +793,7 @@ export async function loadExtensions(
       })
     } catch (error) {
       // A missing folder has no entries; watchRoots reports it once it appears.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!isMissing(error)) throw error
       return undefined
     }
   }

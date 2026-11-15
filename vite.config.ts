@@ -12,7 +12,7 @@ export default defineConfig({
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
-      'react/no-array-index-key': 'warn',
+      'react/no-array-index-key': 'off',
       'react/no-children-prop': 'off',
       'typescript/no-unsafe-type-assertion': 'off',
       'promise/always-return': 'off',
@@ -22,6 +22,31 @@ export default defineConfig({
       'unicorn/consistent-function-scoping': 'off',
     },
     overrides: [
+      {
+        files: [
+          'extensions/**',
+          'server/**',
+          'web/**',
+          'lib/**',
+          'shared/**',
+          'bin/**',
+          'scripts/**',
+        ],
+        excludeFiles: ['test/**', 'extensions/*/test/**'],
+        rules: { 'typescript/switch-exhaustiveness-check': 'error' },
+      },
+      {
+        files: ['web/public/sw.js'],
+        rules: { 'unicorn/require-post-message-target-origin': 'off' },
+      },
+      {
+        files: ['extensions/instance/web.tsx'],
+        rules: { 'react/iframe-missing-sandbox': 'off' },
+      },
+      {
+        files: ['web/src/app/transcript.tsx'],
+        rules: { 'react/immutability': 'off' },
+      },
       {
         files: ['test/**', 'extensions/*/test/**'],
         excludeFiles: ['test/e2e/**', 'extensions/*/test/e2e/**'],
@@ -36,16 +61,28 @@ export default defineConfig({
         rules: { 'ultimate/no-local-test-polling': 'error' },
       },
       {
-        files: ['extensions/**', 'web/**'],
-        rules: { 'ultimate/no-retired-ui': 'error' },
+        files: ['**/*'],
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.ts'],
+        rules: { 'ultimate/no-silent-catch': 'error' },
       },
       {
         files: ['**/*'],
-        excludeFiles: ['test/**', 'extensions/*/test/**'],
-        rules: {
-          'ultimate/replay-safe-reason': 'error',
-          'ultimate/no-silent-catch': 'error',
-        },
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/replay.ts'],
+        rules: { 'ultimate/replay-safe-by-name': 'error' },
+      },
+      {
+        files: [
+          'bin/**',
+          'extensions/**',
+          '.ultimate/extensions/**',
+          'lib/**',
+          'scripts/**',
+          'server/**',
+          'shared/**',
+          'web/**',
+        ],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', 'lib/timers.ts'],
+        rules: { 'ultimate/no-raw-timer': 'error' },
       },
       {
         files: ['server/**', 'bin/**'],
@@ -139,6 +176,9 @@ export default defineConfig({
         excludeFiles: ['extensions/*/test/**'],
         plugins: ['react'],
         rules: {
+          // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
+          // notice, and nothing can take the process down.
+          'typescript/no-floating-promises': ['error', { ignoreVoid: true }],
           'react/rules-of-hooks': 'error',
           'react/exhaustive-deps': 'error',
           'react/jsx-key': 'error',

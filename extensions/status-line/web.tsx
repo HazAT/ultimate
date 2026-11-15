@@ -1,3 +1,5 @@
+import { deadline, retryAfter } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -92,14 +94,14 @@ function useTokenRates() {
   const [observed, setObserved] = useState<{ key: string; sample: RateSample | null }>()
   useEffect(() => {
     let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let requestTimeout: ReturnType<typeof setTimeout> | undefined
+    let cancelPoll: Cancel | undefined
+    let cancelRequestTimeout: Cancel | undefined
     let request: AbortController | undefined
     setObserved({ key, sample: null })
     if (connection.status !== 'open' || generation === undefined) return undefined
     async function poll() {
       request = new AbortController()
-      requestTimeout = setTimeout(() => request?.abort(), 5000)
+      cancelRequestTimeout = deadline(5000, () => request?.abort())
       try {
         const sample = await api.action(RatesAction, null, {
           signal: request.signal,
@@ -111,16 +113,15 @@ function useTokenRates() {
           setObserved({ key, sample: null })
         }
       } finally {
-        clearTimeout(requestTimeout)
-        if (!cancelled) timer = setTimeout(poll, 1000)
+        cancelRequestTimeout?.()
+        if (!cancelled) cancelPoll = retryAfter(1000, poll)
       }
     }
-    // oxlint-disable-next-line typescript/no-floating-promises -- poll catches failures and clears the sample until the next poll.
     void poll()
     return () => {
       cancelled = true
-      clearTimeout(timer)
-      clearTimeout(requestTimeout)
+      cancelPoll?.()
+      cancelRequestTimeout?.()
       request?.abort()
     }
   }, [key, connection.status, generation])
@@ -171,7 +172,6 @@ function Tokens() {
       }
     >
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional usage fragments built for this render.
         <span key={index}>{part}</span>
       ))}
     </Item>

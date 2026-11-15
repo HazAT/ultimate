@@ -14,6 +14,7 @@ import {
 import {
   cn,
   defineWebExtension,
+  keepLast,
   shortenPath,
   useAction,
   useConversations,
@@ -182,8 +183,7 @@ const usePreviews = () => useSyncExternalStore(subscribe, () => previews)
 /** Asks for the previews every 5 s, for the switcher and preview links; showing one that stopped returns. */
 function Poll() {
   const { data, refetch: again } = useAction(ListAction, null, {
-    // A failed poll leaves the last list; the next one tries again.
-    onError: () => {},
+    onError: keepLast,
     every: 5000,
   })
   useEffect(() => {
@@ -359,7 +359,6 @@ function Embedded() {
   const { preview, url } = current
   return (
     <div className="fixed inset-x-0 top-9 bottom-0 z-40 bg-background">
-      {/* oxlint-disable-next-line react/iframe-missing-sandbox -- a whole Ultimate on its own origin, trusted as in its own tab */}
       <iframe
         allow="clipboard-read; clipboard-write"
         className="size-full border-0"

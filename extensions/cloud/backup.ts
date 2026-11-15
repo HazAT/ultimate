@@ -2,6 +2,7 @@
 import { basename, join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { httpBase } from '../../lib/cloud.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 import { uploadSnapshot } from './snapshot.ts'
 import type { LastBackup } from './types.ts'
@@ -26,9 +27,8 @@ export const chapterKey = (key: string, chapter: string, first: boolean) =>
 
 /** The backup record in chapter folder `dir` for `key`; undefined without one, or for another key. */
 export async function readBackup(dir: string, key: string) {
-  // An unreadable record counts as none: the next backup's parent check names what the cloud holds.
   const file = await readJson<Partial<BackupFile> | undefined>(backupPath(dir), undefined).catch(
-    () => undefined,
+    meansNone,
   )
   return file?.key === key && file.parent && file.last ? (file as BackupFile) : undefined
 }

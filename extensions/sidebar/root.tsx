@@ -1,6 +1,17 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import type { ReactNode } from 'react'
 import { useRef, useState } from 'react'
-import { cn, formatAgo, formatTokens, Provided, useAction, useDocOf, useEvents } from '@/sdk'
+import {
+  cn,
+  formatAgo,
+  formatTokens,
+  keepLast,
+  Provided,
+  useAction,
+  useDocOf,
+  useEvents,
+} from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
 import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
@@ -53,9 +64,9 @@ function useBranchState(
   parked = false,
 ) {
   const index = useWorkspaceIndex()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const runState = useOverview()[conversation.id]?.runState
-  const primary = useDocOf(1, StandingDoc)?.ultimate
+  const primary = useDocOf(ROOT, StandingDoc)?.ultimate
   const concludedSince = useConcludedSince()(conversation.id)
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
   if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
@@ -285,7 +296,7 @@ function useFlightWork(branches: ConversationSummary[]) {
   const progress = useAction(
     ProgressAction,
     { ids },
-    { enabled: ids.length > 0, onError: () => {}, on: [commit, runs.ended] },
+    { enabled: ids.length > 0, onError: keepLast, on: [commit, runs.ended] },
   )
   const byId = new Map((progress.data ?? []).map((item) => [item.id, item]))
   return new Map(
@@ -367,7 +378,7 @@ const kinds = [
  * click opens the Memory surface, and the row shows selected while it does. Its tally, the browsable history behind
  * it, opens from the project header above it. A root without memories yet shows its context's size.
  */
-export function useMemorySummary(id: number) {
+export function useMemorySummary(id: ConversationId) {
   const tally = useDocOf(id, TallyDoc)
   const memories = Object.values(useDocOf(id, MemoryDoc)?.memories ?? {})
   const counts = kinds

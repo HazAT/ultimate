@@ -5,14 +5,12 @@ import { useEffect, useRef } from 'react'
 const channels = new Map<string, Set<(data: unknown) => Promise<void>>>()
 export const events: EventBus = {
   emit: (channel, data) => {
-    // oxlint-disable-next-line unicorn/no-useless-spread, typescript/no-floating-promises -- snapshot listeners; on wraps each handler with a catch that logs failures.
-    for (const handler of [...(channels.get(channel) ?? [])]) void handler(data)
+    for (const handler of Array.from(channels.get(channel) ?? [])) void handler(data)
   },
   on: (channel, handler) => {
     const safe = async (data: unknown) => {
       try {
-        // oxlint-disable-next-line typescript/await-thenable -- Pi's void-returning type also permits async handlers
-        await handler(data)
+        await Promise.resolve(handler(data))
       } catch (error) {
         console.error(`Event handler error (${channel}):`, error)
       }

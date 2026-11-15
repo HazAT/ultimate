@@ -16,7 +16,7 @@ import {
   held,
 } from './helpers.ts'
 import { context } from '../server/harness.ts'
-import { UiState } from '../server/ui-state.ts'
+import { UiState } from '../shared/ui-state.ts'
 import { Metadata } from '../server/metadata.ts'
 import type { ConversationSummary, ServerEvents } from '../shared/protocol.ts'
 import { Logins } from '../extensions/models/server.ts'

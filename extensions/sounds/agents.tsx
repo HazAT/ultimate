@@ -1,3 +1,6 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { CheckRan } from '../workspaces/ui.tsx'
+import type { EventRecord } from '../../shared/events.ts'
 /**
  * The sound of agents, as data: what the live project does, turned into happenings a band plays. Pure and
  * browser-safe; `engine.ts` makes the music.
@@ -51,11 +54,11 @@ export type Snapshot = {
   /** The standing agents' conversation ids. */
   standing: ReadonlySet<number>
   /** Tool calls of the current rounds by a key unique to each call. */
-  tools: Readonly<Record<string, { name: string; conversationId: number }>>
+  tools: Readonly<Record<string, { name: string; conversationId: ConversationId }>>
   /** Run state and latest input of each conversation, for failures. */
   runs: Readonly<Record<string, { runState: string; inputId?: number }>>
   /** Recent durable events, any order. */
-  events: readonly { id: number; kind: string; data: unknown }[]
+  events: readonly EventRecord[]
 }
 
 /**
@@ -95,8 +98,7 @@ export function tracker() {
           ? 'commit'
           : event.kind === 'event.workspaces.landed'
             ? 'landed'
-            : event.kind === 'event.workspaces.check' &&
-                (event.data as { result?: string }).result === 'failed'
+            : CheckRan.is(event) && event.data.result === 'failed'
               ? 'failed'
               : undefined
       if (kind && fresh(`event:${event.id}`)) happenings.push({ kind })
