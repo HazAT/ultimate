@@ -167,8 +167,10 @@ function mergeSourcePrefixesWithoutReordering(
   return { taken, a: i, b: j }
 }
 
-const cursorAfterTakenSourcePrefix = (found: Item[], took: number, from: number, end: number) =>
-  took === found.length ? end : took ? found[took - 1].position : from
+const cursorAfterTakenSourcePrefix = (found: Item[], took: number, from: number, end: number) => {
+  const sourceExhaustedIncludingLookahead = took === found.length
+  return sourceExhaustedIncludingLookahead ? end : took ? found[took - 1].position : from
+}
 
 async function stream(host: ExtensionHost, args: Record<string, unknown>) {
   const filter = filterOf(args)
@@ -180,12 +182,17 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
   if (before && after) throw new Error('Give before or after, not both')
   const wantEvents = (!filter.sources || filter.sources.includes('event')) && !filter.errors
   const wantCalls = !filter.sources || filter.sources.includes('call')
+  const sourceLimitWithLookahead = limit + 1
 
   const latestEventIdBeforePageRead = (await host.eventLog.recent({ limit: 1 }))[0]?.id ?? 0
 
   if (after) {
-    const fromEvents = wantEvents ? await events(host, filter, after.e, true, limit + 1) : []
-    const fromCalls = wantCalls ? calls(host, filter, after.c, true, limit + 1) : undefined
+    const fromEvents = wantEvents
+      ? await events(host, filter, after.e, true, sourceLimitWithLookahead)
+      : []
+    const fromCalls = wantCalls
+      ? calls(host, filter, after.c, true, sourceLimitWithLookahead)
+      : undefined
     const end = fromCalls?.last ?? host.trace.page({ limit: 1 }).last
     const merged = mergeSourcePrefixesWithoutReordering(
       fromEvents,
@@ -209,9 +216,13 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
 
   const start = before ?? { e: latestEventIdBeforePageRead + 1, c: Number.MAX_SAFE_INTEGER }
   const fromEvents =
-    wantEvents && start.e > 0 ? await events(host, filter, start.e, false, limit + 1) : []
+    wantEvents && start.e > 0
+      ? await events(host, filter, start.e, false, sourceLimitWithLookahead)
+      : []
   const fromCalls =
-    wantCalls && start.c > 0 ? calls(host, filter, start.c, false, limit + 1) : undefined
+    wantCalls && start.c > 0
+      ? calls(host, filter, start.c, false, sourceLimitWithLookahead)
+      : undefined
   const merged = mergeSourcePrefixesWithoutReordering(
     fromEvents,
     fromCalls?.found ?? [],

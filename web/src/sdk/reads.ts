@@ -85,7 +85,7 @@ export function createReads(api: Api, store: Store) {
     const listeners = new Set<() => void>()
     const readers = new Set<Reader>()
     let controller: AbortController | undefined
-    let queued: Promise<unknown> | undefined
+    let sameTickRequest: Promise<unknown> | undefined
     let cancelPoll: Cancel | undefined
     let lastAnswerAtMs = 0
     const set = (change: Partial<ReadState>) => {
@@ -155,7 +155,7 @@ export function createReads(api: Api, store: Store) {
         readers.add(reader)
 
         const needsFreshCallAfterRemount =
-          !controller && !queued && Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS
+          !controller && !sameTickRequest && Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS
         if (needsFreshCallAfterRemount) void read.refetch()
         else repoll()
         return function releaseReaderKeepingInFlightCall() {
@@ -168,11 +168,11 @@ export function createReads(api: Api, store: Store) {
         }
       },
       refetch() {
-        queued ??= Promise.resolve().then(function runOnceForSameTickReaders() {
-          queued = undefined
+        sameTickRequest ??= Promise.resolve().then(() => {
+          sameTickRequest = undefined
           return run()
         })
-        return queued
+        return sameTickRequest
       },
       repoll,
     }

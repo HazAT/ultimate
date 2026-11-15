@@ -329,9 +329,7 @@ function reportCompact(extension: string, error: unknown) {
   if (compactFailures.has(message)) return
   compactFailures.add(message)
 
-  queueMicrotask(function notifyAfterCompactPredicateRender() {
-    store.notify({ level: 'error', message })
-  })
+  queueMicrotask(() => store.notify({ level: 'error', message }))
 }
 const noDocs = {}
 /**

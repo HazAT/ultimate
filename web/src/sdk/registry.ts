@@ -28,6 +28,7 @@ import type {
 } from './types.ts'
 
 export type ExtensionLoader = () => Promise<unknown>
+type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
@@ -261,13 +262,13 @@ export function createRegistry() {
       }
     },
 
-    async setLoaders(loaders: Readonly<Record<string, ExtensionLoader>>) {
+    async setLoaders(lastWinsDiscoveryOrder: BuiltinUserProjectByName) {
       if (!started) cancelDeadline = deadline(8000, () => refreshReady(true))
       started = true
       const current = ++generation
       settled = false
       tokens.clear()
-      const entries = Object.entries(loaders).flatMap(([path, loader]) => {
+      const entries = Object.entries(lastWinsDiscoveryOrder).flatMap(([path, loader]) => {
         const name = extensionName(path)
         return name ? [{ name, loader }] : []
       })
@@ -600,8 +601,9 @@ export function compactTools(
               return keepRowReadableOnPredicateFailure
             }
           })
+          if (verdicts.includes(true)) return true
           const everyFacetHidesRow = verdicts.every((v) => v === 'hidden')
-          return verdicts.includes(true) || (everyFacetHidesRow ? 'hidden' : false)
+          return everyFacetHidesRow ? 'hidden' : false
         }
       : undefined,
     summary: matching.flatMap(({ name, version, compact }) =>

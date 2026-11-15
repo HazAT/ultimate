@@ -164,9 +164,7 @@ export function applies(command: CommandItem, context: UltimateContext = current
     if (reported.has(message)) return
     reported.add(message)
 
-    queueMicrotask(function notifyAfterPredicateRender() {
-      store.notify({ level: 'error', message })
-    })
+    queueMicrotask(() => store.notify({ level: 'error', message }))
   })
 }
 

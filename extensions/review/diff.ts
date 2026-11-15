@@ -5,9 +5,12 @@ import { git } from '../../lib/git.ts'
 import { errnoCode, meansNone } from '../../lib/errors.ts'
 import type { ReviewDiff, ReviewFile, ReviewKind } from './refs.ts'
 
-export const FILE_CAP = 400 * 1024
+type FilePatchByteCap = number
+type TotalPatchByteCap = number
 
-export const TOTAL_CAP = 8 * 1024 * 1024
+export const FILE_CAP: FilePatchByteCap = 400 * 1024
+
+export const TOTAL_CAP: TotalPatchByteCap = 8 * 1024 * 1024
 
 const GIT_OUTPUT_BUFFER_BYTES = 16 * 1024 * 1024
 
@@ -135,8 +138,8 @@ function chunksJoiningRepeatedFileHeaders(patch: string) {
   return joined
 }
 
-function fit(files: ReviewFile[], patches: (string | undefined)[]) {
-  let total = 0
+function omitHunksOverByteCaps(files: ReviewFile[], patches: (string | undefined)[]) {
+  let retainedPatchBytes = 0
   let truncated = false
   const kept: string[] = []
   files.forEach((file, index) => {
@@ -149,12 +152,12 @@ function fit(files: ReviewFile[], patches: (string | undefined)[]) {
       file.tooLarge = true
       return
     }
-    if (total + bytes > TOTAL_CAP) {
+    if (retainedPatchBytes + bytes > TOTAL_CAP) {
       file.tooLarge = true
       truncated = true
       return
     }
-    total += bytes
+    retainedPatchBytes += bytes
     kept.push(patch)
   })
   return { patch: kept.join(''), truncated }
@@ -255,7 +258,7 @@ export async function reviewDiff(cwd: string, spec: string, options: Options): P
     changes.files.push(...extra.files)
     changes.patches.push(...extra.patches)
   }
-  const { patch, truncated } = fit(changes.files, changes.patches)
+  const { patch, truncated } = omitHunksOverByteCaps(changes.files, changes.patches)
   return {
     spec,
     kind: side.kind,

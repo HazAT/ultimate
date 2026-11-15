@@ -15,7 +15,8 @@ type Page = { rows: SystemRow[]; next?: string; head: string }
 
 export const empty: Feed = { rows: [], loading: true, paged: false }
 
-export const asking = (feed: Feed): Feed => ({ ...feed, loading: true })
+const requestKeepingPendingPage = (feed: Feed): Feed => ({ ...feed, loading: true })
+export const asking = requestKeepingPendingPage
 
 export const wantOlder = (feed: Feed): Feed => ({ ...feed, wanted: true })
 
@@ -55,9 +56,10 @@ export function older(feed: Feed, from: string, page: Omit<Page, 'head'>): Feed 
   }
 }
 
-export const failed = (feed: Feed, error: string): Feed => ({
+const failUntilEndObserved = (feed: Feed, error: string): Feed => ({
   ...feed,
   loading: false,
   wanted: false,
   error,
 })
+export const failed = failUntilEndObserved

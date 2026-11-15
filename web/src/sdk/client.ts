@@ -81,6 +81,17 @@ export const switched = ((): { at: number; changed: string[] } | undefined => {
 let uiStateServerProcess: string | undefined
 
 let previousProcessUiSnapshot: unknown
+
+function resetRevisionsBeforeUiSnapshot(process: string | undefined, shared: unknown) {
+  if (process !== uiStateServerProcess) {
+    if (uiStateServerProcess !== undefined) {
+      uiState.restarted()
+      previousProcessUiSnapshot = shared
+    }
+    uiStateServerProcess = process
+  }
+}
+
 store.subscribe(() => {
   const { shared, ui, system } = store.getState()
   if (system && !registry.getReady().ready) registry.receiveSystem()
@@ -97,13 +108,7 @@ store.subscribe(() => {
   }
 
   const process = system && `${system.process.pid}:${system.process.generation}`
-  if (process !== uiStateServerProcess) {
-    if (uiStateServerProcess !== undefined) {
-      uiState.restarted()
-      previousProcessUiSnapshot = shared
-    }
-    uiStateServerProcess = process
-  }
+  resetRevisionsBeforeUiSnapshot(process, shared)
   if (shared && shared !== previousProcessUiSnapshot) {
     if (!initialUrlSelectionResolved) {
       uiState.receive(shared)
