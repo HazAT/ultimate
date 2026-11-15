@@ -93,7 +93,6 @@ const membersOf = (declaration: Node): Node[] =>
   declaration.type === 'TSInterfaceDeclaration'
     ? (((declaration.body as Node | undefined)?.body as Node[] | undefined) ?? [])
     : literals(declaration.typeAnnotation)
-/** `import { defineEntry } from '@earendil-works/pi-durable'`: the one runtime import refs.ts takes from a package, so browser code can narrow another extension's entries. */
 const onlyDefineEntry = (node: Node) =>
   node.source?.value === '@earendil-works/pi-durable' &&
   node.specifiers?.length === 1 &&

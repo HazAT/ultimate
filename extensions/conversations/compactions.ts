@@ -37,7 +37,8 @@ export function compactionEvents(
         const entry = change.value
         if (!CompactionEntry.is(entry) || emitted.has(entry.id)) continue
         emitted.add(entry.id)
-        const reason = entry.data.reason
+        const data: { reason?: string } | undefined = entry.data
+        const reason = data?.reason
         host
           .harness()
           .commit(

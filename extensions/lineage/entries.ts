@@ -1,4 +1,3 @@
-/** Typed transcript entries written by this extension. Browser-safe. */
 import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import type { RewindFile, RewindDependent } from './refs.ts'

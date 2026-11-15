@@ -39,28 +39,16 @@ const invisible = new Set(['conversations.identity', 'pi.tool-result'])
 
 /** What a summary task concluded, as one quiet line; each entry traces to its task by `byTaskId`. */
 function summaryText(entry: EntryRecord) {
-  switch (entry.kind) {
-    case 'conversations.intent-summarized':
-      return IntentSummarized.is(entry) ? `Intent: ${entry.data.summary}` : ''
-    case 'conversations.title-changed':
-      return TitleChanged.is(entry) ? `Title changed to “${entry.data.title}”` : ''
-    case 'conversations.feature-changed': {
-      if (!FeatureChanged.is(entry)) return ''
-      const data = entry.data
-      return `Tag changed from “${data.from}” to “${data.feature}”`
-    }
-    case 'conversations.summarized':
-      return SpawnSummarized.is(entry) ? `Summary: ${entry.data.summary}` : ''
-    case 'conversations.assessed':
-      return ReplySummarized.is(entry) ? `Reply: ${entry.data.activity}` : ''
-    default: {
-      if (!SummaryDiscarded.is(entry)) return ''
-      const data = entry.data
-      return data.reason === 'stale'
-        ? 'Summary superseded by newer work'
-        : `Summary unavailable: ${data.cause}`
-    }
-  }
+  if (IntentSummarized.is(entry)) return `Intent: ${entry.data.summary}`
+  if (TitleChanged.is(entry)) return `Title changed to “${entry.data.title}”`
+  if (FeatureChanged.is(entry))
+    return `Tag changed from “${entry.data.from}” to “${entry.data.feature}”`
+  if (SpawnSummarized.is(entry)) return `Summary: ${entry.data.summary}`
+  if (ReplySummarized.is(entry)) return `Reply: ${entry.data.activity}`
+  if (!SummaryDiscarded.is(entry)) return ''
+  return entry.data.reason === 'stale'
+    ? 'Summary superseded by newer work'
+    : `Summary unavailable: ${entry.data.cause}`
 }
 
 /**
