@@ -3,7 +3,15 @@ import type { ReactNode } from 'react'
 import { ChevronRightIcon, GitMergeIcon } from 'lucide-react'
 import { MentionText } from '@/components/ai/message'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { cn, column, defineWebExtension, useConversation, useTranscript } from '@/sdk'
+import {
+  cn,
+  column,
+  ConversationTitle,
+  defineWebExtension,
+  provide,
+  useConversation,
+  useTranscript,
+} from '@/sdk'
 import { useWorkspaceIndex } from './data.tsx'
 import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
 import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
@@ -127,8 +135,37 @@ function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   )
 }
 
+/** `PR #12` or `pull request #12`; a bare `#12` may be an issue or a conversation, so it stays text. */
+const pullRequest = /\b(?:PR|pull request) #(\d+)\b/gi
+
+/** A title with its pull request references linked to the project's GitHub, or undefined when none link. */
+function useLinkedTitle(title: string) {
+  const github = useGithubRepo()
+  if (!github || !title.match(pullRequest)) return undefined
+  const parts: ReactNode[] = []
+  let last = 0
+  for (const match of title.matchAll(pullRequest)) {
+    parts.push(title.slice(last, match.index))
+    parts.push(
+      <a
+        className="hover:underline"
+        href={`https://${github}/pull/${match[1]}`}
+        key={match.index}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {match[0]}
+      </a>,
+    )
+    last = match.index + match[0].length
+  }
+  parts.push(title.slice(last))
+  return parts
+}
+
 export default defineWebExtension({
   composer: LanderComposer,
+  provides: [provide(ConversationTitle, useLinkedTitle)],
   tools: { workspace: WorkspaceCall },
   entries: {
     'lineage.note': ({ entry, core }) =>
