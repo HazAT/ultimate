@@ -18,6 +18,7 @@ import { WaitTimers } from './points.tsx'
 import { useStarters } from './started.tsx'
 import { Address } from './cards.tsx'
 import { useConcludedSince, useOverview } from '../conversations/ui.tsx'
+import { useWorkspaceIndex } from '../workspaces/ui.tsx'
 import { emptyMessages, openMessages } from './data.tsx'
 import { MessagesDoc } from './refs.ts'
 import type { Message } from './refs.ts'
@@ -89,6 +90,7 @@ function Open({ timers }: { timers: WaitFacts['automations'] }) {
     return topId
   }
   const busyTops = new Set(conversations.filter((c) => c.busy).map(topOf))
+  const landing = new Set(useWorkspaceIndex().queue.map((item) => item.conversationId))
   const branches = conversations
     .filter((c) => c.branchOf)
     .map((c) => ({
@@ -97,6 +99,7 @@ function Open({ timers }: { timers: WaitFacts['automations'] }) {
       starter: starters(c.id),
       working:
         busyTops.has(c.id) ||
+        landing.has(c.id) ||
         overview[c.id]?.runState === 'working' ||
         overview[c.id]?.runState === 'queued',
       concluded: concludedSince(c.id) === Infinity,
