@@ -13,6 +13,7 @@ function context(text = '', reason = '') {
         text,
         getCommentsBefore: () => (reason ? [{ value: reason }] : []),
         getCommentsInside: () => [],
+        getAllComments: () => [],
       },
       report: ({ message }) => reports.push(message),
     } satisfies Context,

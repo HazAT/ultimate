@@ -85,6 +85,10 @@ export default defineConfig({
         rules: { 'ultimate/no-raw-timer': 'error' },
       },
       {
+        files: ['extensions/*/api.ts', 'extensions/*/refs.ts', 'extensions/*/ui.tsx'],
+        rules: { 'ultimate/no-comments': 'error' },
+      },
+      {
         files: ['server/**', 'bin/**'],
         rules: {
           'no-restricted-imports': [
