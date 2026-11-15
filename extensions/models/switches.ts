@@ -11,11 +11,6 @@ const responseOf = (entry: EntryRecord): AssistantMessage | undefined => {
   return entry.kind === 'pi.assistant' && message?.role === 'assistant' ? message : undefined
 }
 
-/**
- * The thinking levels of two responses, when both record one the same way: the level the request asked for, or else
- * the one the provider reports using (responses from before levels were recorded have only the latter, and only for
- * providers that report it).
- */
 function levels(before: AssistantMessage, after: AssistantMessage) {
   if (before.thinkingLevel && after.thinkingLevel)
     return { from: before.thinkingLevel, to: after.thinkingLevel }
@@ -24,7 +19,6 @@ function levels(before: AssistantMessage, after: AssistantMessage) {
   return undefined
 }
 
-/** What changed since the response before `entry`; undefined for the first loaded response and one that changed nothing. */
 export function switchAt(entries: readonly EntryRecord[], entry: EntryRecord): Switch | undefined {
   const response = responseOf(entry)
   if (!response) return undefined

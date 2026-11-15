@@ -1,4 +1,3 @@
-/** How a call's request differs from the one before it, in cache order: where the cached prefix held, and where not. */
 import { ChevronRightIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn, formatBytes, useAction } from '@/sdk'
@@ -11,12 +10,10 @@ const parse = (json: string): Json => {
   try {
     return JSON.parse(json) as Json
   } catch {
-    // A segment is always JSON.stringify output; this only guards a hand-edited file.
     return json
   }
 }
 
-/** The prefix as one bar: unchanged segments, then what this call sent new. */
 function PrefixBar({ diff }: { diff: WireDiff }) {
   const added = diff.added.reduce((sum, segment) => sum + segment.json.length, 0)
   const total = diff.prefixBytes + added
@@ -32,7 +29,6 @@ function PrefixBar({ diff }: { diff: WireDiff }) {
   )
 }
 
-/** Where the prefix broke: the text before the first differing character, then both sides after it. */
 function Break({ change }: { change: NonNullable<WireDiff['firstChange']> }) {
   const lead = change.lead.length >= 160 ? `…${change.lead}` : change.lead
   const side = (label: string, text: string, tone: string) => (
@@ -63,7 +59,6 @@ function Break({ change }: { change: NonNullable<WireDiff['firstChange']> }) {
   )
 }
 
-/** A list of segment paths that folds once it is long. */
 function Removed({ paths }: { paths: string[] }) {
   return (
     <Collapsible>
@@ -162,7 +157,6 @@ function Body({ diff, previous }: { diff: WireDiff; previous?: WireSummary }) {
   )
 }
 
-/** The diff of call `n` against the call kept before it. */
 export function DiffView({ call, calls }: { call: WireSummary; calls: WireSummary[] }) {
   const diff = useAction(DiffAction, { n: call.n })
   const previous = calls.filter((other) => other.n < call.n).at(-1)
