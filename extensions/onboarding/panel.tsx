@@ -503,23 +503,23 @@ function Row({
             </span>
           )}
         </button>
-        <span className="mt-0.5">
-          <Switch
-            busy={pending !== undefined}
-            checked={checked}
-            disabled={unusable || extension.core}
-            aria-label={`${extension.name} ${scope === 'project' ? 'for this project' : 'everywhere'}`}
-            onCheckedChange={onToggle}
-            title={
-              extension.core
-                ? 'Core tier: always on'
-                : unusable
+        {!extension.core && (
+          <span className="mt-0.5">
+            <Switch
+              busy={pending !== undefined}
+              checked={checked}
+              disabled={unusable}
+              aria-label={`${extension.name} ${scope === 'project' ? 'for this project' : 'everywhere'}`}
+              onCheckedChange={onToggle}
+              title={
+                unusable
                   ? "Choose this project's setup to use it"
                   : `${checked ? 'Turn off' : 'Turn on'} ${scope === 'project' ? 'for this project' : 'everywhere'}`
-            }
-            ref={switchRef}
-          />
-        </span>
+              }
+              ref={switchRef}
+            />
+          </span>
+        )}
       </div>
       <RowSecrets secrets={secrets} />
       {open && <Details extension={extension} />}
@@ -608,9 +608,14 @@ export function ExtensionsPanel() {
     }
   }
   const sorted = system.extensions.toSorted((a, b) => a.name.localeCompare(b.name))
-  const groups: [string, ExtensionInfo[]][] = [
-    ['On', sorted.filter((extension) => extension.enabled)],
+  const groups: [string, ExtensionInfo[], string?][] = [
+    ['On', sorted.filter((extension) => extension.enabled && !extension.core)],
     ['Available', sorted.filter((extension) => !extension.enabled)],
+    [
+      'Always on',
+      sorted.filter((extension) => extension.core),
+      'The core Ultimate runs on. These stay on whatever the settings say.',
+    ],
   ]
   return (
     <div className="pb-4" ref={root}>
@@ -648,11 +653,14 @@ export function ExtensionsPanel() {
           saved in {file}
         </p>
       </div>
-      {groups.map(([title, extensions]) => (
+      {groups.map(([title, extensions, about]) => (
         <section aria-label={title} className="pt-3" key={title}>
           <Heading className="px-3 pb-1" meta={extensions.length}>
             {title}
           </Heading>
+          {about && (
+            <p className="px-3 pb-1 text-[12px] leading-snug text-muted-foreground/70">{about}</p>
+          )}
           <ul>
             {extensions.map((extension) => (
               <Row
