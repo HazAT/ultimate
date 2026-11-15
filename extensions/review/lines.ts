@@ -1,11 +1,9 @@
-/** The text of a parsed diff's lines by number, on either side: what a comment quotes. Pure and browser-safe. */
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs'
 import { excerptOf } from './comments.ts'
 import type { ReviewComment } from './comments.ts'
 
 const strip = (line: string | undefined) => (line ?? '').replace(/\r?\n$/, '')
 
-/** Each side's lines the patch shows, by line number, without their line endings. */
 export function linesOf(diff: FileDiffMetadata) {
   const old = new Map<number, string>()
   const next = new Map<number, string>()
@@ -29,23 +27,18 @@ export function linesOf(diff: FileDiffMetadata) {
   return { old, new: next }
 }
 
-/** The lines a comment covers, without its text or excerpt. */
 export type CommentLines = Pick<ReviewComment, 'file' | 'side' | 'start' | 'end'>
 
-/**
- * A selection as the lines a comment covers: on the side the selection ends on (a range dragged across both sides of a
- * unified diff keeps its numbers, read on that side).
- */
 export function commentRange(diff: FileDiffMetadata, range: SelectedLineRange): CommentLines {
+  const selectionEndSide = range.endSide ?? range.side
   return {
     file: diff.name,
-    side: (range.endSide ?? range.side) === 'deletions' ? 'old' : 'new',
+    side: selectionEndSide === 'deletions' ? 'old' : 'new',
     start: Math.min(range.start, range.end),
     end: Math.max(range.start, range.end),
   }
 }
 
-/** What a comment quotes: the lines the diff shows between its start and end, capped by `excerptOf`. */
 export function excerptFor(diff: FileDiffMetadata | undefined, comment: CommentLines) {
   if (!diff) return ''
   const lines = linesOf(diff)[comment.side]
