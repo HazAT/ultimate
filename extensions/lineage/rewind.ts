@@ -165,16 +165,16 @@ async function checkoutAndTreeFactsAfterEntry(
 ) {
   const allEventsAfterEntryAscending = async <D extends JsonValue>(token: EventToken<D>) => {
     const found: EventRecord<D>[] = []
-    for (let after = at; ;) {
+    for (let sharedEntryEventCursor = at; ;) {
       const page = await host.eventLog.recent({
         events: [token],
-        since: after,
+        since: sharedEntryEventCursor,
         order: 'ascending',
         limit: EVENTS_PER_PAGE,
       })
       found.push(...page)
       if (page.length < EVENTS_PER_PAGE) return found
-      after = page.at(-1)!.id
+      sharedEntryEventCursor = page.at(-1)!.id
     }
   }
   const fromConversation = (data: { conversation?: ConversationId; parent?: number }) =>
@@ -223,22 +223,19 @@ async function checkoutAndTreeFactsAfterEntry(
     : { inside: new Set<string>(), outside: new Set<string>() }
   const paths = edited.inside
   if (top)
-    for (const { data } of after)
-      for (const path of rows(
-        await git(
-          top,
-          'diff-tree',
-          '-r',
-          '--no-commit-id',
-          '--name-only',
-          '--root',
-          '--diff-merges=first-parent',
-          data.sha,
-        ).catch(function unavailableCommitHasNoListedPaths() {
-          return ''
-        }),
-      ))
-        paths.add(path)
+    for (const { data } of after) {
+      const commitPathsOrEmpty = await git(
+        top,
+        'diff-tree',
+        '-r',
+        '--no-commit-id',
+        '--name-only',
+        '--root',
+        '--diff-merges=first-parent',
+        data.sha,
+      ).catch(() => '')
+      for (const path of rows(commitPathsOrEmpty)) paths.add(path)
+    }
   const files = [
     ...(top ? await fileStates(top, paths, checkoutTipAtRewindPoint) : []),
     ...[...edited.outside].map((path): RewindFile => ({ path, outside: true })),
@@ -356,7 +353,7 @@ export function rewindTask(host: ExtensionHost) {
             throw new Error(`#${id} changed meanwhile; go back again`)
           const found = gathered.facts
           if (!plan.edits.length) throw new Error(nothing)
-          let response: ResponseReceipt | undefined
+          let optionalSummaryResponse: ResponseReceipt | undefined
           if (summarize) {
             const kept = await runtime.memo<SummaryModel | false>('summary-model', ctx)
             const model =
@@ -368,7 +365,7 @@ export function rewindTask(host: ExtensionHost) {
                   )
                 : kept
             if (model)
-              response = await conversations
+              optionalSummaryResponse = await conversations
                 .askSummaryModel(
                   runtime.models,
                   SUMMARY_SYSTEM,
@@ -380,14 +377,14 @@ export function rewindTask(host: ExtensionHost) {
                     save: (received) => runtime.memo('summary', received, ctx),
                   },
                 )
-                .catch(function optionalSummaryFailureLeavesFileFacts(error: unknown) {
+                .catch((error: unknown) => {
                   if (runtime.signal.aborted) throw error
                   return undefined
                 })
           }
           const summary =
-            response?.stopReason === 'stop' && response.text.trim()
-              ? response.text.trim()
+            optionalSummaryResponse?.stopReason === 'stop' && optionalSummaryResponse.text.trim()
+              ? optionalSummaryResponse.text.trim()
               : undefined
           const text = noteText(id, at, found, summary)
           await runtime.commit(async (tx) => {
@@ -414,7 +411,7 @@ export function rewindTask(host: ExtensionHost) {
               entry: entry.id,
               dependents: found.dependents.map((dependent) => dependent.id),
             })
-            await conversations.accountResponse(tx, id, response)
+            await conversations.accountResponse(tx, id, optionalSummaryResponse)
             return {
               status: 'running',
               checkpoint: { phase: 'mark', entry: entry.id, dependents: found.dependents },

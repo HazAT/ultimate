@@ -204,8 +204,9 @@ function PhasedRow({
             defaultValue={conversation.title ?? ''}
             onBlur={(event) => save(event.currentTarget.value)}
             onFocus={(event) => event.currentTarget.select()}
-            onKeyDown={function finishRenameWithoutActivatingRefocusedRow(event) {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            onKeyDown={(event) => {
+              const confirmRenameOnly = event.key === 'Enter' && !event.nativeEvent.isComposing
+              if (confirmRenameOnly) {
                 event.preventDefault()
                 refocusAfterKeyboardRename.current = true
                 event.currentTarget.blur()
@@ -287,7 +288,7 @@ export function RowMenu({
   onConclude: (conclude: boolean) => void
 }) {
   const actions = useShell()
-  const actionAfterMenuFocusRestores = useRef<() => void>(undefined)
+  const actionOnMenuClose = useRef<() => void>(undefined)
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
@@ -300,8 +301,8 @@ export function RowMenu({
         align="start"
         className="w-44 [&_[role=menuitem]]:cursor-pointer"
         onCloseAutoFocus={(event) => {
-          const next = actionAfterMenuFocusRestores.current
-          actionAfterMenuFocusRestores.current = undefined
+          const next = actionOnMenuClose.current
+          actionOnMenuClose.current = undefined
           if (!next) return
           event.preventDefault()
           next()
@@ -311,7 +312,7 @@ export function RowMenu({
           <DropdownMenuItem
             className="cursor-pointer text-[12.5px]"
             onSelect={() =>
-              (actionAfterMenuFocusRestores.current = () => {
+              (actionOnMenuClose.current = () => {
                 actions.switchConversation(conversation.id)
                 actions.openPanel('info')
               })
@@ -327,7 +328,7 @@ export function RowMenu({
               open && (
                 <DropdownMenuItem
                   className="cursor-pointer text-[12.5px]"
-                  onSelect={() => (actionAfterMenuFocusRestores.current = open)}
+                  onSelect={() => (actionOnMenuClose.current = open)}
                 >
                   <FileDiffIcon />
                   Review changes
@@ -338,7 +339,7 @@ export function RowMenu({
         )}
         <DropdownMenuItem
           className="text-[12.5px]"
-          onSelect={() => (actionAfterMenuFocusRestores.current = onRename)}
+          onSelect={() => (actionOnMenuClose.current = onRename)}
         >
           <PencilIcon />
           Rename

@@ -96,6 +96,7 @@ export type TallyState = {
   briefTokens?: number
   since?: EntryId
 }
+const newTallyWithIsolatedAnchors = (): TallyState => ({ abstracts: {}, tokens: 0 })
 export const Tally = defineDoc<TallyState>({
   kind: TallyDoc.kind,
   checkpointWhen: () => false,
@@ -103,7 +104,7 @@ export const Tally = defineDoc<TallyState>({
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ abstracts: {}, tokens: 0 }),
+  initial: newTallyWithIsolatedAnchors,
 })
 
 export const docs = [Roots, Branch, Tally, Seen, Memory]
@@ -359,30 +360,27 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   }
   host.onOpen(async () => {
     roots = new Set(await rootsOf(host, ctx))
-    unsubscribe = onCommit(
-      host.harness(),
-      function recountOnAnyRootEntryOrMemoryChange(publication) {
-        for (const change of publication.changes)
-          if (change.type === 'document' && change.record.kind === Roots.definition.kind)
-            roots = new Set(
-              change.kind === 'change'
-                ? ((change.value as { roots?: ConversationId[] }).roots ?? [])
-                : [],
-            )
-        const before = dirty.size
-        for (const change of publication.changes)
-          if (change.type === 'entry' && roots.has(change.value.conversationId))
-            dirty.add(change.value.conversationId)
-          else if (
-            change.type === 'document' &&
-            change.record.kind === Memory.definition.kind &&
-            change.conversationId !== undefined &&
-            roots.has(change.conversationId)
+    unsubscribe = onCommit(host.harness(), (publication) => {
+      for (const change of publication.changes)
+        if (change.type === 'document' && change.record.kind === Roots.definition.kind)
+          roots = new Set(
+            change.kind === 'change'
+              ? ((change.value as { roots?: ConversationId[] }).roots ?? [])
+              : [],
           )
-            dirty.add(change.conversationId)
-        if (dirty.size > before) recountContextAndMemoryBriefTokens()
-      },
-    )
+      const before = dirty.size
+      for (const change of publication.changes)
+        if (change.type === 'entry' && roots.has(change.value.conversationId))
+          dirty.add(change.value.conversationId)
+        else if (
+          change.type === 'document' &&
+          change.record.kind === Memory.definition.kind &&
+          change.conversationId !== undefined &&
+          roots.has(change.conversationId)
+        )
+          dirty.add(change.conversationId)
+      if (dirty.size > before) recountContextAndMemoryBriefTokens()
+    })
     for (const id of roots) dirty.add(id)
     recountContextAndMemoryBriefTokens()
   })
@@ -736,11 +734,11 @@ export async function startBranch(host: ExtensionHost, input: BranchInput, ctx: 
   const main = await projectCheckoutTip(host)
   const roots = await rootsOf(host, ctx)
   if (input.at === undefined)
-    await host.harness().commit(async function initializeEmptyRootWithForkableTallyEntry(tx) {
+    await host.harness().commit(async (tx) => {
       if (!(await tx.conversation(from))) throw new Error(`No conversation #${from}`)
       if ((await tx.scanEntries({ conversationId: from }, 1)).items.length) return
-      const entry = await tx.appendEntry(from, { kind: 'pi.reset', head: 'self' })
-      if (roots.includes(from)) (await tx.doc(Tally, from)).since = entry.id
+      const forkableEntry = await tx.appendEntry(from, { kind: 'pi.reset', head: 'self' })
+      if (roots.includes(from)) (await tx.doc(Tally, from)).since = forkableEntry.id
     }, ctx)
   const id = await host.harness().commit((tx) => forkBranch(host, tx, input, main, roots), ctx)
   host.harness().resume()
@@ -1538,26 +1536,25 @@ export default function lineageExtension(host: ExtensionHost) {
         parameters: obj({ instructions: opt(str()) }),
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
-          const taskId = await host
-            .harness()
-            .commit(async function createCompactionAndWakeAtomically(tx) {
-              const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
-              if (subagentWouldLoseWakeReport)
-                throw new Error(
-                  'A subagent does not compact itself: its automatic compaction continues the run. Finish and report instead.',
-                )
-              if (await liveTask(tx, id, CompactionTask.definition.name))
-                throw new Error('Already compacting')
-              const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === id
-              const created = await admitCompaction(tx, id, instructions)
-              if (!ultimate)
-                (await tx.doc(WokenReceipt, id, String(created), null)).task = await tx.createTask(
-                  WakeAfterPlacedManualCompaction,
-                  { id, compaction: created },
-                  { conversationId: id, ownership: { kind: 'conversation' }, background: true },
-                )
-              return created
-            }, ctx)
+          const compactionWithWake = async (tx: Tx) => {
+            const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
+            if (subagentWouldLoseWakeReport)
+              throw new Error(
+                'A subagent does not compact itself: its automatic compaction continues the run. Finish and report instead.',
+              )
+            if (await liveTask(tx, id, CompactionTask.definition.name))
+              throw new Error('Already compacting')
+            const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === id
+            const created = await admitCompaction(tx, id, instructions)
+            if (!ultimate)
+              (await tx.doc(WokenReceipt, id, String(created), null)).task = await tx.createTask(
+                WakeAfterPlacedManualCompaction,
+                { id, compaction: created },
+                { conversationId: id, ownership: { kind: 'conversation' }, background: true },
+              )
+            return created
+          }
+          const taskId = await host.harness().commit(compactionWithWake, ctx)
           return { output: [{ type: 'text', text: JSON.stringify({ taskId }) }] }
         },
       }),
@@ -1626,7 +1623,7 @@ export default function lineageExtension(host: ExtensionHost) {
             { minItems: 1 },
           ),
         }),
-        execute: async function applyUnreplayedUltimateMemoryBatch({ root, ops }, api, ctx) {
+        async execute({ root, ops }, api, ctx) {
           const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
           const callerMayWriteProjectMemory = standing?.ultimate === api.conversationId
           if (!callerMayWriteProjectMemory)

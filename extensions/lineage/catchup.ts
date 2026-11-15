@@ -156,7 +156,7 @@ async function catchupText(
   const ownFilePathspecForBoundedMergeNames = [...changed]
     .slice(0, MAX_PATHS_WITH_OVERLAP_MARKS)
     .map((path) => (main.workspace ? `:(top,literal)${path}` : `:(literal)${path}`))
-  const overlapping = ownFilePathspecForBoundedMergeNames.length
+  const overlapMarksOrEmpty = ownFilePathspecForBoundedMergeNames.length
     ? await firstParentTargetLogBoundedByRows(
         '--name-only',
         '--no-renames',
@@ -164,9 +164,7 @@ async function catchupText(
         range,
         '--',
         ...ownFilePathspecForBoundedMergeNames,
-      ).catch(function unavailableOverlapMarksAreEmpty() {
-        return ''
-      })
+      ).catch(() => '')
     : ''
   const parse = (records: string) =>
     records
@@ -177,7 +175,7 @@ async function catchupText(
         const [sha, subject, trailer, paths = ''] = record.split('\0')
         return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
       })
-  const overlaps = parse(overlapping)
+  const overlaps = parse(overlapMarksOrEmpty)
   const listed = new Set(overlaps.map((commit) => commit.sha))
   const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]
     .map(({ sha, subject, trailer, paths: overlap }) => {
@@ -424,18 +422,21 @@ export async function catchup(
   ctx: Context,
   treeOf: (tx: Tx, id: ConversationId) => Promise<Tree | undefined>,
 ) {
-  const { tx, conversationId } = api
-  const record = await tx.conversation(conversationId)
+  const { tx: atomicNoteBaselineInputTx, conversationId } = api
+  const record = await atomicNoteBaselineInputTx.conversation(conversationId)
   if (!record || record.owner) return undefined
-  const tree = await treeOf(tx, conversationId)
-  const main = await mainOf(host, conversationId, ctx, tx)
-  const baselineAdvancedEvenWhenCatchupFails = await tx.doc(Seen, conversationId)
+  const tree = await treeOf(atomicNoteBaselineInputTx, conversationId)
+  const main = await mainOf(host, conversationId, ctx, atomicNoteBaselineInputTx)
+  const baselineAdvancedEvenWhenCatchupFails = await atomicNoteBaselineInputTx.doc(
+    Seen,
+    conversationId,
+  )
   const meanwhile = tree
     ? await tallyText(
         conversationId,
         tree,
         baselineAdvancedEvenWhenCatchupFails.tally ?? tree.since,
-        tx,
+        atomicNoteBaselineInputTx,
       )
     : undefined
   const commits =
@@ -450,7 +451,7 @@ export async function catchup(
             main: baselineAdvancedEvenWhenCatchupFails.main,
             at: baselineAdvancedEvenWhenCatchupFails.at,
           },
-          tx,
+          atomicNoteBaselineInputTx,
         ).catch((error: unknown) => {
           host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
           return undefined

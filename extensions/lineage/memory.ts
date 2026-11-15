@@ -381,7 +381,7 @@ export function memorizeTask(
       refused = String(error)
     }
     const answer = response.text
-    await runtime.commit(async (tx) => {
+    const applyBatchAndCompleteTask = async (tx: Tx) => {
       await conversations.accountResponse(tx, id, response)
       if (ops?.length)
         try {
@@ -397,9 +397,10 @@ export function memorizeTask(
           refused = String(error)
         }
       if (refused && !retry)
-        return { status: 'running', checkpoint: { phase: 'retry', answer, refused } }
+        return { status: 'running', checkpoint: { phase: 'retry', answer, refused } } as const
       return done
-    }, ctx)
+    }
+    await runtime.commit(applyBatchAndCompleteTask, ctx)
     if (refused && retry)
       host.notice(`Memory from landing ${submission} in #${root} was not written: ${refused}`)
   }
