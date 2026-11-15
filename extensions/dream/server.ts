@@ -1,10 +1,4 @@
 import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
-/**
- * Dream: Ultimate processes what it learned, like people do while they sleep. A dream is ordinary work: @ultimate
- * starts a dream branch that follows DREAM.md, the user decides its proposals, approved ones become ordinary branches.
- * This extension keeps only what must not go wrong in code: the triggers, the next chapter @ultimate prepares, and the
- * switch into it (seed, backup, journaled restart).
- */
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -54,28 +48,23 @@ export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Drea
 export const docs = [Next, SeedState, BuiltInDoc, PauseDoc]
 export const userActions = ['start', 'ready', 'dismiss', 'asleep', 'switch']
 
-/** How far back from a branch call the turn that answered a dream request is looked for. */
-const TURN_ENTRIES = 200
+const REQUEST_LOOKBACK_ENTRIES = 200
 
-/**
- * The `dream.requested` entry the turn that made entry `call` in @ultimate's conversation answered: the newest one
- * before it with no finished turn in between (an answer that called no tool ends a turn).
- */
 export async function requestOf(tx: Tx, ultimate: ConversationId, call: EntryId) {
-  const page = await tx.scanEntries({ conversationId: ultimate, maxEntryId: call }, TURN_ENTRIES)
+  const page = await tx.scanEntries(
+    { conversationId: ultimate, maxEntryId: call },
+    REQUEST_LOOKBACK_ENTRIES,
+  )
   for (const entry of page.items) {
     if (entry.kind === 'dream.requested') return entry.id
     const message = entry.model?.at(-1)
-    if (entry.id !== call && message?.role === 'assistant' && message.stopReason !== 'toolUse')
-      return undefined
+    const previousTurnFinished =
+      entry.id !== call && message?.role === 'assistant' && message.stopReason !== 'toolUse'
+    if (previousTurnFinished) return undefined
   }
   return undefined
 }
 
-/**
- * Inside `tx`: branch `id` started by @ultimate's call at entry `call` is the dream when that turn answered a dream
- * request newer than the last dream's. From the start of the event log, so a dream from before this existed is found.
- */
 export async function branched(
   tx: Tx,
   { id, by, call, at }: { id: ConversationId; by?: number; call?: EntryId; at: number },
@@ -90,11 +79,9 @@ export async function branched(
 
 const LEARNED_LINES = 3
 const LINE_CHARS = 200
-/** The most a handover may carry into the new chapter's wake-up: about 3k tokens, beside the memory brief. */
 export const HANDOFF_CHARS = 12_000
 
-/** A document value copied out of its transaction's overlay. */
-const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const detachOverlay = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const fields = (args: unknown) =>
   args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
 const text = (value: unknown, name: string, max: number) => {
@@ -103,7 +90,6 @@ const text = (value: unknown, name: string, max: number) => {
   return value.trim()
 }
 
-/** Validate what @ultimate prepares for the next chapter. */
 export function prepare(args: unknown, now: number): Prepared {
   const input = fields(args)
   if (!Array.isArray(input.learned) || input.learned.length !== LEARNED_LINES)
@@ -116,7 +102,6 @@ export function prepare(args: unknown, now: number): Prepared {
   }
 }
 
-/** Tool calls in `trace.sqlite`: per tool, the most frequent errors, and `enabled` tools never called in its window. */
 export function toolStats(database: string, enabled: readonly string[]): ToolStats {
   if (!existsSync(database))
     return { calls: 0, tools: [], unused: [...enabled].toSorted(), errors: [] }
@@ -166,13 +151,11 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
   }
 }
 
-/** The chapter-change lock, and the harness it was last settled for; kept across facet reloads. */
-const switching = (host: ExtensionHost) =>
+const reloadStableChapterChangeLock = (host: ExtensionHost) =>
   host.resource('dream.switching', (): { busy: boolean; harness?: object } => ({ busy: false }))
 
-/** Serialize chapter-changing user actions, including their asynchronous backup. */
-async function changing<T>(host: ExtensionHost, run: () => Promise<T>) {
-  const state = switching(host)
+async function withChapterChangeLock<T>(host: ExtensionHost, run: () => Promise<T>) {
+  const state = reloadStableChapterChangeLock(host)
   if (state.busy) throw new Error('A chapter change is already running')
   state.busy = true
   try {
@@ -182,11 +165,7 @@ async function changing<T>(host: ExtensionHost, run: () => Promise<T>) {
   }
 }
 
-/**
- * No top-level conversation at work, @ultimate included: a switch parks whatever runs, and parked work in the chapter
- * left behind keeps it from ever being switched back to (`requestChapter` refuses it).
- */
-function idle(host: ExtensionHost) {
+function requireNoWorkParkedBySwitch(host: ExtensionHost) {
   const busy = busyElsewhere(host.conversations())
   if (busy.length)
     throw new Error(
@@ -194,10 +173,6 @@ function idle(host: ExtensionHost) {
     )
 }
 
-/**
- * The final cloud backup of the current chapter before a switch touches another store, or why there is none. A failed
- * backup throws: no switch without it.
- */
 async function finalBackup(host: ExtensionHost): Promise<NonNullable<Sleep['backup']>> {
   const cloud = host.want(CloudApi)
   const status = await cloud?.status()
@@ -214,34 +189,23 @@ async function finalBackup(host: ExtensionHost): Promise<NonNullable<Sleep['back
   }
 }
 
-/**
- * The first cloud backup of a chapter Fall asleep opened, when backups are on here and the chapter has none yet. Every
- * open checks again, so a backup a restart cut short runs on the next one; once any backup of the chapter, this one or
- * @ultimate's, is recorded, none follows. Cloud runs one backup at a time and reports a failed upload itself.
- */
 export async function firstBackup(host: ExtensionHost) {
   const cloud = host.want(CloudApi)
   if ((await cloud?.status()) !== 'on' || (await cloud!.lastBackup())) return
   await cloud!.backup().catch(meansNone)
 }
 
-/**
- * Journal the switch and restart into it. A successful restart never returns; a refused one returns its reason, and
- * the journal goes. Once the supervisor approves, nothing new starts here: the approval checks once more that nothing
- * is busy and holds the scheduler until the new core takes over. A restart that fails after its approval reopens
- * this process, which drops its own journal and settles the sleep (`settleSleep`).
- */
 async function restartChapter(
   host: ExtensionHost,
   name: string,
-  before?: () => Promise<unknown>,
+  backupBeforeRestart?: () => Promise<unknown>,
 ): Promise<never> {
   await requestChapter(host.home, name, process.pid)
   try {
-    await before?.()
+    await backupBeforeRestart?.()
     throw new Error(
       await host.restart(async () => {
-        idle(host)
+        requireNoWorkParkedBySwitch(host)
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
       }),
@@ -251,16 +215,11 @@ async function restartChapter(
   }
 }
 
-/**
- * On open, a sleep left `switching` either switched (its chapter now exists) or failed after the restart's approval and
- * came back here; one a restart stopped earlier failed. The chapter-change lock of that attempt goes too.
- */
 async function settleSleep(host: ExtensionHost) {
-  // Only a harness that really opened again settles: a facet reload runs onOpen on the same harness while a chapter
-  // change may still be running, and that change keeps its lock.
-  const state = switching(host)
+  const state = reloadStableChapterChangeLock(host)
   const harness = host.harness()
-  if (state.harness === harness) return
+  const facetReloadDuringSameHarness = state.harness === harness
+  if (facetReloadDuringSameHarness) return
   state.harness = harness
   state.busy = false
   const { chapters } = await readChapters(host.home)
@@ -283,32 +242,30 @@ async function settleSleep(host: ExtensionHost) {
   }, context)
 }
 
-/** Fall asleep into the prepared chapter (or `name`): seed, final backup, nothing at work, journaled restart. */
 async function fallAsleep(host: ExtensionHost, input: { name?: unknown }) {
   const chapters = await readChapters(host.home)
   const { prepared, name } = await host.harness().commit(async (tx) => {
     const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
     if (!doc.prepared)
       throw new Error('Nothing is prepared: @ultimate prepares the next chapter first')
-    idle(host)
+    requireNoWorkParkedBySwitch(host)
     const chapter = chapterName(input.name ?? doc.prepared.chapter)
     if (chapters.chapters.some((item) => item.name === chapter))
       throw new Error(`Chapter ${chapter} already exists; use switch instead`)
     doc.sleep = { chapter, phase: 'seeding', at: Date.now() }
-    return { prepared: plain(doc.prepared), name: chapter }
+    return { prepared: detachOverlay(doc.prepared), name: chapter }
   }, context)
   const progress = (change: Partial<Sleep>) =>
     host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
       doc.sleep = { ...doc.sleep!, ...change, at: Date.now() }
-      return plain(doc.sleep)
+      return detachOverlay(doc.sleep)
     }, context)
   try {
     const seed = await buildSeed(host, prepared)
     await progress({ phase: 'backing up' })
     await progress({ backup: await finalBackup(host) })
-    // The backup can take time; work started since must also finish before we switch.
-    idle(host)
+    requireNoWorkParkedBySwitch(host)
     await progress({ phase: 'switching' })
     await writeSeed(chapterFiles(host.home, name).dir, seed)
     return await restartChapter(host, name)
@@ -323,6 +280,10 @@ const ultimateOf = async (tx: Tx) => {
   return ultimate
 }
 
+function resetPreparationSleep(doc: { sleep?: Sleep }) {
+  delete doc.sleep
+}
+
 export const actions = {
   chapters: implementAction(ChaptersAction, async (_args, { host }) => {
     const { active, chapters } = await readChapters(host.home)
@@ -334,21 +295,19 @@ export const actions = {
     }
   }),
   switch: implementAction(SwitchAction, async (args, { host }) =>
-    changing(host, async () => {
+    withChapterChangeLock(host, async () => {
       const name = chapterName(fields(args).chapter)
       const chapters = await readChapters(host.home)
       if (name === chapters.active) throw new Error(`Chapter ${name} is already active`)
       if (!chapters.chapters.some((item) => item.name === name))
         throw new Error(`Unknown chapter ${name}`)
-      idle(host)
-      // Once the target is known to be free, the current chapter is backed up before the switch touches any store.
+      requireNoWorkParkedBySwitch(host)
       return restartChapter(host, name, () => finalBackup(host))
     }),
   ),
   asleep: implementAction(AsleepAction, async (args, { host }) =>
-    changing(host, () => fallAsleep(host, fields(args))),
+    withChapterChangeLock(host, () => fallAsleep(host, fields(args))),
   ),
-  /** The user's Dream button: the same ask a built-in automation's fire brings, as an input that wakes @ultimate. */
   start: implementAction(StartAction, async (_args, { host }) => {
     await host.harness().commit(async (tx) => {
       const ultimate = await ultimateOf(tx)
@@ -363,7 +322,6 @@ export const actions = {
     host.harness().resume()
     return { requested: true as const }
   }),
-  /** The user pressed Fall asleep on a finished dream: @ultimate writes its handover and prepares the chapter now. */
   ready: implementAction(ReadyAction, async (_args, { host }) => {
     const asked = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
@@ -385,7 +343,6 @@ export const actions = {
     host.harness().resume()
     return { asked }
   }),
-  /** The user stays in this chapter: the finished dream's Fall asleep cue goes until the next dream. */
   dismiss: implementAction(DismissAction, async (_args, { host }) => {
     await host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
@@ -399,9 +356,7 @@ export const actions = {
       if (doc.sleep && !['asleep', 'failed'].includes(doc.sleep.phase))
         throw new Error(`Falling asleep is under way (${doc.sleep.phase})`)
       doc.prepared = prepare(args, Date.now())
-      // A new preparation is a new card: the record of an earlier sleep from this chapter goes.
-      delete doc.sleep
-      // The Fall asleep card, in @ultimate's conversation; a passive write its running turn reads.
+      resetPreparationSleep(doc)
       await deliver(host, tx, await ultimateOf(tx), {
         type: 'write',
         requestId: `dream.prepared:${doc.prepared.at}`,
@@ -409,7 +364,7 @@ export const actions = {
         data: { at: doc.prepared.at },
         content: `You prepared Chapter ${doc.prepared.chapter}; the Fall asleep card above shows it to the user, who taps Fall asleep. Never call asleep yourself.`,
       })
-      return plain(doc.prepared)
+      return detachOverlay(doc.prepared)
     }, context)
     host.harness().resume()
     return prepared
@@ -426,37 +381,34 @@ export const actions = {
 }
 
 export default function dream(host: ExtensionHost) {
-  // One at a time, across facet reloads: two concurrent checks would both make the automation.
-  const queue = host.resource('dream.after-compaction', () => ({ last: Promise.resolve() }))
-  /** Queue a check behind the last one; a failure becomes a notice. */
-  const ensure = () => {
-    const run = queue.last.then(() => ensureAutomation(host))
-    queue.last = settled(run)
+  const reloadStableCreationQueue = host.resource('dream.after-compaction', () => ({
+    last: Promise.resolve(),
+  }))
+  const initializeWithOwnCommit = () => {
+    const run = reloadStableCreationQueue.last.then(() => ensureAutomation(host))
+    reloadStableCreationQueue.last = settled(run)
     return run.catch((error: unknown) => host.notice(`Dream automations: ${String(error)}`))
+  }
+  const backupInBackground = () => {
+    firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`))
   }
   host.onOpen(async () => {
     await settleSleep(host)
-    // In the background: an upload takes minutes, and the rest of the opening must not wait for it.
-    if (await applySeed(host))
-      firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`))
-    await ensure()
+    if (await applySeed(host)) backupInBackground()
+    await initializeWithOwnCommit()
   })
-  // A fresh project has no @ultimate when it opens: the automations follow once it exists. Outside the transaction:
-  // making them commits.
   host.react(
     'ultimate-started',
     [StandingStarted],
     (_tx, { data }) => {
       if (data.kind === 'standing' && data.agent === 'ultimate')
-        ensure().catch((error: unknown) => host.notice(String(error)))
+        initializeWithOwnCommit().catch((error: unknown) => host.notice(String(error)))
     },
     { from: 'now' },
   )
-  // A built-in automation's fire wakes @ultimate itself; dream adds what a dream is and where its workflow lives.
   host.react('requested', [Fired], (tx, { data }) => fired(host, tx, data.id, data.fire), {
     from: 'now',
   })
-  // The branch a dream request's turn started is the dream; once it is concluded, the user is shown Fall asleep.
   host.react('dream-branch', [Branched], (tx, event) =>
     branched(tx, {
       id: event.data.id,

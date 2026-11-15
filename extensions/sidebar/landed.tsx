@@ -12,10 +12,6 @@ import { FeatureTag } from '../conversations/ui.tsx'
 import { More, Section } from './section.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 
-/**
- * The latest landings of every root (up to 20 each), newest first. Read again whenever a root's token count changes,
- * which every new entry in it does: a new count means something may have landed.
- */
 export function useLandings(rootIds: readonly ConversationId[]) {
   const key = rootIds.join(',')
   const roots = useMemo(
@@ -31,8 +27,7 @@ export function useLandings(rootIds: readonly ConversationId[]) {
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
       .join(','),
   )
-  // The page's shared reads (`useAction`'s, one per root): a remounted sidebar, such as a phone's, shows them at once.
-  const list = useMemo(
+  const sharedLandingReads = useMemo(
     () =>
       roots.map((id) =>
         reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
@@ -40,26 +35,26 @@ export function useLandings(rootIds: readonly ConversationId[]) {
     [roots],
   )
   useEffect(() => {
-    const releases = list.map((read) => read.use({ onError: keepLast }))
+    const releases = sharedLandingReads.map((read) => read.use({ onError: keepLast }))
     return () => releases.forEach((release) => release())
-  }, [list])
+  }, [sharedLandingReads])
   const seen = useRef(tokens)
   useEffect(() => {
     if (seen.current === tokens) return
     seen.current = tokens
-    for (const read of list) void read.refetch()
-  }, [list, tokens])
+    for (const read of sharedLandingReads) void read.refetch()
+  }, [sharedLandingReads, tokens])
   const last = useRef<ReadState[]>([])
   const states = useSyncExternalStore(
     useCallback(
       (listener: () => void) => {
-        const stops = list.map((read) => read.subscribe(listener))
+        const stops = sharedLandingReads.map((read) => read.subscribe(listener))
         return () => stops.forEach((stop) => stop())
       },
-      [list],
+      [sharedLandingReads],
     ),
     () => {
-      const next = list.map((read) => read.get())
+      const next = sharedLandingReads.map((read) => read.get())
       const same =
         next.length === last.current.length && next.every((state, i) => state === last.current[i])
       if (!same) last.current = next
@@ -82,11 +77,6 @@ export function useLandings(rootIds: readonly ConversationId[]) {
 
 const FIRST = 5
 
-/**
- * The lander's Landed section, under its row: what shipped, newest first, every recent landing of one feature as one
- * row with their commits summed. A row opens the branch that landed it (else the root at its landing note); the commit
- * count opens the range in Review when the landings follow each other.
- */
 export function Landed({ landings, now }: { landings: readonly Landing[]; now: number }) {
   const [all, setAll] = useSidebarState<boolean>('landedAll', false)
   const groups = groupLandings(landings)

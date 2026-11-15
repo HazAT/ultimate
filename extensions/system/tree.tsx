@@ -20,7 +20,6 @@ const icons: Record<string, typeof WrenchIcon> = {
   reactor: WorkflowIcon,
 }
 
-/** The icon of a row's kind: events, tools, model calls, actions, services and reactors each their own. */
 export function KindIcon({ kind, ok = true }: { kind: string; ok?: boolean }) {
   const Icon = ok ? (icons[kind] ?? PlugIcon) : CircleXIcon
   return (
@@ -40,7 +39,6 @@ export function KindIcon({ kind, ok = true }: { kind: string; ok?: boolean }) {
   )
 }
 
-/** `14:02:31`: a row's time of day. */
 export const clock = (at: string) => new Date(at).toLocaleTimeString(undefined, { hour12: false })
 
 function Node({ call, depth }: { call: SystemCall; depth: number }) {
@@ -67,7 +65,6 @@ function Node({ call, depth }: { call: SystemCall; depth: number }) {
   )
 }
 
-/** The call tree of trace `trace`, with the events emitted in it, as quiet indented lines. */
 export function TraceTree({ trace }: { trace: string }) {
   const tree = useAction(TreeAction, { trace })
   const events: SystemRow[] = tree.data?.events ?? []

@@ -136,7 +136,6 @@ function ThinkingButton() {
   )
 }
 
-/** A response that ran on another model or thinking level than the one before it, marked above it. */
 function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const change = switchAt(useTranscript(), entry)
   if (!change) return core
@@ -171,10 +170,6 @@ const switchedTo: Record<Exclude<Fallback['reason'], 'none'>, string> = {
   default: 'the default model',
 }
 
-/**
- * A conversation whose model had no login here switched to another as its next run started, or, with no subscription
- * login to replace it, kept its model and waits for the user.
- */
 function FellBack({ entry }: { entry: EntryRecord }) {
   const actions = useUltimate()
   if (!FallbackEntry.is(entry)) return null
@@ -253,7 +248,6 @@ export default defineWebExtension({
       title: 'Cycle the thinking level',
       keys: 'shift+tab',
       whileTyping: true,
-      // Shift+Tab in a side chat's composer cycles the side chat's level, not main's.
       run: async (context) => {
         const { agent, loading } = getConversation(context.conversationId)
         if (loading) return undefined

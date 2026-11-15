@@ -29,7 +29,6 @@ if (positionals.length > 1) throw new Error('Usage: ultimate [dir] [--port N] [-
 const opening = !values['no-open'] && process.env.ULTIMATE_NO_OPEN !== '1'
 const available = (name: string) =>
   process.env.PATH?.split(':').some((path) => existsSync(join(path, name)))
-/** Opens a chromeless app window, like an installed web app, in the first Chrome-family browser; else a tab. */
 function openWindow(port: number) {
   const app = `http://ultimate.localhost:${port}`
   const tab = `http://127.0.0.1:${port}`
@@ -78,17 +77,20 @@ const lock = await acquireLock(lockPath, {
   port,
   project: projectRoot,
 }).catch(async (error) => {
-  // Starting a running project again opens its window.
-  const owner = opening && (await readOwner(lockPath))
-  if (owner && owner.port !== undefined && String(error).includes('already running')) {
-    openWindow(owner.port)
+  const runningProjectToReopen = opening && (await readOwner(lockPath))
+  if (
+    runningProjectToReopen &&
+    runningProjectToReopen.port !== undefined &&
+    String(error).includes('already running')
+  ) {
+    openWindow(runningProjectToReopen.port)
     process.exit(0)
   }
   console.error(String(error))
   process.exit(1)
 })
-// An interrupted `pnpm reset` or `pnpm restore` left the home half moved; storage must not open until it is finished.
-if (existsSync(join(home, 'reset.json'))) {
+const resetOrRestoreInterrupted = existsSync(join(home, 'reset.json'))
+if (resetOrRestoreInterrupted) {
   await lock.close()
   console.error(
     `A reset or restore of ${home} was interrupted. Rerun \`pnpm reset ${projectRoot}\` or \`pnpm restore --dir ${projectRoot}\`, then start Ultimate.`,
@@ -284,7 +286,7 @@ function boot(previousBuild?: BuildInfo): Core {
     cwd: projectRoot,
     env: {
       ...process.env,
-      MIMALLOC_ALLOW_THP: '0', // Avoid huge-page amplification in Rolldown's allocator.
+      MIMALLOC_ALLOW_THP: '0',
       ULTIMATE_HOME: home,
       ULTIMATE_PROJECT: projectRoot,
       ULTIMATE_SUPERVISED: '1',

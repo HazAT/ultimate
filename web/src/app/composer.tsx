@@ -60,6 +60,7 @@ import {
 } from './queued.ts'
 
 const alt = isMac ? '⌥' : 'Alt'
+const androidImagePasteStyle = { WebkitUserModify: 'read-write' } as const
 
 function blockedBy(agent: AgentState, models: ModelsResponse | undefined): string | undefined {
   const model = agent.model
@@ -85,7 +86,6 @@ function inboxText(item: InboxItem): string {
     .join(' ')
 }
 
-/** A queued text on one line that keeps its start and its end: the head gives way, the tail always shows. */
 function QueuedPreview({ text }: { text: string }) {
   const parts = previewParts(text)
   return (
@@ -96,7 +96,6 @@ function QueuedPreview({ text }: { text: string }) {
   )
 }
 
-/** Steers and follow-ups waiting for the run, as Pi lists them above its editor. */
 function Inbox({ items }: { items: readonly InboxItem[] }) {
   const { id } = useConversation()
   const [error, setError] = useState<string>()
@@ -164,16 +163,11 @@ function Inbox({ items }: { items: readonly InboxItem[] }) {
   )
 }
 
-/** Where a composer sends instead of its conversation, such as a new side chat: `send` gets the text; images stay. */
 export interface ComposerTarget {
   placeholder: string
   send: (text: string) => Promise<unknown>
 }
 const ComposerTargetContext = createContext<ComposerTarget | undefined>(undefined)
-/**
- * Redirects the composer inside it to `to` while it is set; a composer renderer wraps `core` in it. Unset, it keeps an
- * outer redirect, so a renderer that only sometimes redirects (side chat) does not hide another renderer's.
- */
 export function ComposerRedirect({ to, children }: { to?: ComposerTarget; children: ReactNode }) {
   const outer = useContext(ComposerTargetContext)
   return <ComposerTargetContext value={to ?? outer}>{children}</ComposerTargetContext>
@@ -181,10 +175,10 @@ export function ComposerRedirect({ to, children }: { to?: ComposerTarget; childr
 
 export function Composer({ dock }: { dock?: boolean }) {
   const { id, entries } = useConversation()
-  // Keyed by the conversation it is for, also while that one loads: one mount per switch, not one for the loading state.
   const scoped = useContext(ConversationIdContext)
   const requested = useStore((state) => state.requested)
   const renderers = composerRenderers(useExtensions())
+  const loadingAwareMountKey = id ?? scoped ?? requested
   const core = renderers.reduce<ReactNode>(
     (previous, renderer) => {
       const Renderer = renderer.component
@@ -199,7 +193,7 @@ export function Composer({ dock }: { dock?: boolean }) {
         </ExtensionBoundary>
       )
     },
-    <ConversationComposer dock={dock} key={id ?? scoped ?? requested} />,
+    <ConversationComposer dock={dock} key={loadingAwareMountKey} />,
   )
   return <TranscriptContext value={entries}>{core}</TranscriptContext>
 }
@@ -213,8 +207,7 @@ type Draft = {
   revision: number
 }
 
-// In-flight submissions and retryable failures belong to the conversation, not its mounted editor.
-const drafts = new Map<number | undefined, ReturnType<typeof createDraft>>()
+const draftsAndSubmissions = new Map<number | undefined, ReturnType<typeof createDraft>>()
 function createDraft(id: number | undefined) {
   const key = id === undefined ? undefined : `ultimate.draft.${id}`
   let value: Draft = {
@@ -245,21 +238,16 @@ function createDraft(id: number | undefined) {
 }
 
 function getDraft(id: number | undefined) {
-  if (!drafts.has(id)) drafts.set(id, createDraft(id))
-  return drafts.get(id)!
+  if (!draftsAndSubmissions.has(id)) draftsAndSubmissions.set(id, createDraft(id))
+  return draftsAndSubmissions.get(id)!
 }
 
-/** Replace conversation `id`'s draft with `text`, as typing it would; the caller focuses the composer. */
 export function fillComposer(id: number, text: string) {
   const draft = getDraft(id)
   draft.set({ text, revision: draft.get().revision + 1 })
   if (draft.key) localStorage.setItem(draft.key, text)
 }
 
-/**
- * Insert `text` into conversation `id`'s draft at its editor's cursor (or at the end without one), with a space on
- * each side where the neighbouring text needs one, as typing it would. The composer keeps focus as it was.
- */
 export function insertIntoComposer(id: number, text: string) {
   const draft = getDraft(id)
   const current = draft.get().text
@@ -269,7 +257,6 @@ export function insertIntoComposer(id: number, text: string) {
   const { text: next, cursor } = spliced(current, start, end, text)
   draft.set({ text: next, revision: draft.get().revision + 1 })
   if (draft.key) localStorage.setItem(draft.key, next)
-  // The cursor follows the inserted text once React has rendered the new value.
   requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
 }
 
@@ -278,20 +265,19 @@ function clearDraft(
   snapshot: { text: string; revision: number },
 ) {
   const stored = draft.key ? (localStorage.getItem(draft.key) ?? '') : ''
-  if (draft.get().revision !== snapshot.revision) return
+  const editedAfterSubmission = draft.get().revision !== snapshot.revision
+  if (editedAfterSubmission) return
   if (draft.key && stored === snapshot.text) localStorage.removeItem(draft.key)
   draft.set({ text: stored === snapshot.text ? '' : stored })
 }
 
 type Upload = typeof FileUpload.value
-/** Hands the provided upload to the editor beside it: a provider installing late never remounts the editor mid-attach. */
-function UploadBridge({ value, set }: { value: Upload; set: (value: Upload) => void }) {
+function StableEditorUploadBridge({ value, set }: { value: Upload; set: (value: Upload) => void }) {
   useEffect(() => set(value), [value, set])
   return null
 }
 
-/** Hands the provided placeholder to the editor beside it, before paint: a provider reloading never remounts the editor. */
-function PlaceholderBridge({
+function BeforePaintPlaceholderBridge({
   values,
   set,
 }: {
@@ -310,11 +296,11 @@ function ConversationComposer({ dock }: { dock?: boolean }) {
   return (
     <>
       <Provided input={null} point={FileUpload}>
-        {(value) => <UploadBridge set={setUpload} value={value} />}
+        {(value) => <StableEditorUploadBridge set={setUpload} value={value} />}
       </Provided>
       {id !== undefined && (
         <AllProvided input={{ conversation: id, busy }} point={ComposerPlaceholder}>
-          {(values) => <PlaceholderBridge set={setPlaceholder} values={values} />}
+          {(values) => <BeforePaintPlaceholderBridge set={setPlaceholder} values={values} />}
         </AllProvided>
       )}
       <ComposerEditor dock={dock} placeholder={placeholder} upload={upload} />
@@ -335,7 +321,6 @@ function ComposerEditor({
   const queued = inbox.filter((item) => item.mode !== 'write')
   const scoped = useContext(ConversationIdContext)
   const target = useContext(ComposerTargetContext)
-  // On a phone the shown conversation's status line folds into the status line: one row of chrome less.
   const statusTarget = useStatusTarget()
   const phone = useViewport() === 'phone'
   const foldStatus = phone && scoped === undefined && !dock ? statusTarget : null
@@ -355,8 +340,6 @@ function ComposerEditor({
     upload,
   })
   const uploading = files.some((file) => !file.path)
-  // The shown conversation's composer also takes images dropped anywhere else on the page, and lights up while a file is
-  // dragged over it.
   const [dragging, setDragging] = useState(false)
   const dropRef = useRef(drop)
   dropRef.current = drop
@@ -374,8 +357,9 @@ function ComposerEditor({
       depth = 0
       setDragging(false)
       const on = event.target instanceof Element ? event.target : null
-      // Every composer's editor takes its own drops, a side chat's too.
-      if (!carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')) return
+      const ignoreNonFileOrEditorOwnedDrop =
+        !carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')
+      if (ignoreNonFileOrEditorOwnedDrop) return
       void dropRef.current(event)
     }
     document.addEventListener('dragenter', enter)
@@ -399,8 +383,7 @@ function ComposerEditor({
     if (value) localStorage.setItem(key, value)
     else localStorage.removeItem(key)
   }
-  /** Put sent text back into the draft, such as a recalled steer: its attachment lines become file chips again. */
-  const restore = (value: string) => {
+  const restoreTextAndFileChips = (value: string) => {
     const { text: rest, files: back } = splitAttachments(value)
     update(rest)
     if (back.length)
@@ -431,14 +414,14 @@ function ComposerEditor({
     draft.set({ sending: true, error: undefined })
     const mode = busy ? (whenBusy ?? 'steer') : undefined
     let input = { text: withAttachments(text.trim(), files), images }
-    let previous: typeof input | undefined
+    let withdrawnSteerToRestoreOnFailure: typeof input | undefined
     try {
       if (target) await target.send(input.text)
       else {
-        // A steer queued behind another joins it as one: the run reads a single steer at its next boundary.
-        previous = mode === 'steer' ? await withdrawQueuedSteer(api, id, inbox) : undefined
-        if (previous) input = mergedSteer(previous, input)
-        // Sending means following the run from here, wherever the reader had scrolled to.
+        withdrawnSteerToRestoreOnFailure =
+          mode === 'steer' ? await withdrawQueuedSteer(api, id, inbox) : undefined
+        if (withdrawnSteerToRestoreOnFailure)
+          input = mergedSteer(withdrawnSteerToRestoreOnFailure, input)
         events.emit('ultimate:sent', { conversationId: id })
         await api.submit(
           input.text,
@@ -453,23 +436,24 @@ function ComposerEditor({
     } catch (failure) {
       if (key && draft.get().revision === submitted.revision)
         draft.set({ text: localStorage.getItem(key) ?? '' })
-      // A steer withdrawn for a merge that then failed to send would be lost: it comes back into the draft.
-      if (previous) {
-        restore(mergedSteer(previous, { text: draft.get().text, images: [] }).text)
-        setImages((current) => [...previous!.images, ...current])
+      if (withdrawnSteerToRestoreOnFailure) {
+        restoreTextAndFileChips(
+          mergedSteer(withdrawnSteerToRestoreOnFailure, { text: draft.get().text, images: [] })
+            .text,
+        )
+        setImages((current) => [...withdrawnSteerToRestoreOnFailure!.images, ...current])
       }
       setError(errorMessage(failure))
     } finally {
       draft.set({ sending: false })
     }
   }
-  /** ↑ on the first line brings every queued input back into the editor to edit and send again. */
   async function recall() {
     if (loading || draft.get().sending || id === undefined || queued.length === 0) return
     draft.set({ sending: true, error: undefined })
     try {
       const recalled = await recallQueued(api, id, queued)
-      restore(recalledText(draft.get().text, recalled))
+      restoreTextAndFileChips(recalledText(draft.get().text, recalled))
       setImages((current) => [...current, ...recalled.flatMap((input) => input.images)])
     } catch (failure) {
       setError(errorMessage(failure))
@@ -487,15 +471,13 @@ function ComposerEditor({
       return
     }
     if (event.key !== 'Enter' || event.shiftKey) return
-    // A touch keyboard's return key writes a new line; the send button, or a
-    // hardware keyboard's Cmd/Ctrl+Enter (iPad with Magic Keyboard), sends.
-    if (touchKeyboard() && !event.metaKey && !event.ctrlKey) return
+    const touchReturnInsertsNewline = touchKeyboard() && !event.metaKey && !event.ctrlKey
+    if (touchReturnInsertsNewline) return
     event.preventDefault()
     void send(event.altKey ? 'followUp' : 'steer')
   }
 
   return (
-    // Only the shown conversation's composer takes typing shortcuts (Escape, Shift+Tab): they act on that conversation.
     <div
       data-composer-target={scoped === undefined ? 'conversation' : 'scope'}
       data-ui="composer"
@@ -523,9 +505,7 @@ function ComposerEditor({
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
-          // Chrome on Android offers a keyboard's images (Gboard's screenshot chip, clipboard bar) only to a rich editor
-          // and delivers them as a paste with the file; a plain textarea gets nothing.
-          style={touchKeyboard() ? { WebkitUserModify: 'read-write' } : undefined}
+          style={touchKeyboard() ? androidImagePasteStyle : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}
@@ -538,7 +518,6 @@ function ComposerEditor({
           value={text}
         />
         <PromptInputFooter className="@container">
-          {/* The toolbar gives way first, so Send and the composer actions always stay in reach. */}
           <PromptInputTools className="overflow-hidden">
             <Slot name="composer.toolbar" variant="inline" />
           </PromptInputTools>

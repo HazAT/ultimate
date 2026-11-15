@@ -11,7 +11,6 @@ import { compareUrl } from '../../lib/compare.ts'
 import { NoteEntry } from '../entries/ui.tsx'
 import type { NoteData } from '../entries/refs.ts'
 
-/** The lander's note in the root: the landing's card, from the note's own data, with the state it froze. */
 function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { source: 'lander' }> }) {
   const {
     from,
@@ -30,17 +29,18 @@ function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { sour
     abstract,
   } = data
   const github = useGithubRepo()
-  // A note from before landings recorded their base: the landing before it, where the lander's serial queue left the
-  // target.
   const transcript = useTranscript()
-  const previous = base
+  const previousLandingForLegacyBase = base
     ? undefined
     : transcript.findLast(
         (other) => NoteEntry.is(other) && other.id < id && other.data.source === 'lander',
       )
   const rangeBase =
     base ??
-    (NoteEntry.is(previous) && previous.data.source === 'lander' ? previous.data.sha : undefined)
+    (NoteEntry.is(previousLandingForLegacyBase) &&
+    previousLandingForLegacyBase.data.source === 'lander'
+      ? previousLandingForLegacyBase.data.sha
+      : undefined)
   return (
     <div data-lineage-note="lander">
       <LandingCard
@@ -92,7 +92,6 @@ function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { sour
   )
 }
 
-/** The lander's conversation is its log: in place of a composer, a line saying what it is. */
 function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const landers = Object.values(useWorkspaceIndex().landerConversations)

@@ -22,16 +22,13 @@ import {
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 
-/** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
   return children(waitingOnUser(useDocOf(ROOT, MessagesDoc) ?? emptyMessages))
 }
 
-/** A busy standing agent's word: its classified phase, lower case like its idle line, else "working". */
 const workingWord = (phase: { word: string; waiting: boolean } | undefined) =>
   phase && !phase.waiting ? phase.word : 'working'
 
-/** A busy standing agent's line in the sidebar: its working word in the brand colour. */
 export function StandingPhase({ id }: { id: number }) {
   return (
     <Provided input={id} point={ConversationPhase}>
@@ -40,16 +37,11 @@ export function StandingPhase({ id }: { id: number }) {
   )
 }
 
-/** The title bar's wordmark beyond a phone opens @ultimate, as its sidebar row does. */
 export function UltimateWordmark() {
   const actions = useUltimate()
   return <Wordmark label="Talk to @ultimate" onClick={() => void talkToUltimate(actions)} />
 }
 
-/**
- * The title bar's way to @ultimate on phones, where the sidebar with its row is hidden: its state as its sidebar row
- * says it (`conversationState`), the mark pulsing while it works and amber while questions wait on you.
- */
 export function UltimateButton() {
   return (
     <span className="contents md:hidden">
@@ -112,7 +104,6 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
                 {state === 'working' && word !== 'working' && (
                   <span className="text-brand">{word}</span>
                 )}
-                {/* The bare count: the phone bar has no room for its words, which the label carries. */}
                 {(state === 'paused' || state === 'waits') && (
                   <span className={stateTone[state]}>{state === 'waits' ? waiting : 'paused'}</span>
                 )}

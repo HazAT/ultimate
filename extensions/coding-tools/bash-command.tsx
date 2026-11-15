@@ -3,27 +3,20 @@ import type { AndOr, Command, PipelineNode, Statement, Word } from 'unbash'
 
 export interface Heredoc {
   body: string
-  /** The closing delimiter line as written. */
   closing: string
-  /** A file name whose extension picks the highlighting: the redirect target or the interpreter. */
   file?: string
 }
 
 export interface BashStep {
-  /** How this step joins the previous one; the first step has none. */
   operator?: '&&' | '||' | ';'
-  /** The step's source, without heredoc bodies. */
   text: string
-  /** The programs of its pipeline, in order: `['rg', 'head']`. */
   programs: string[]
   heredocs: Heredoc[]
 }
 
 export interface BashCommand {
-  /** A literal directory from a leading `cd <dir> &&`. */
   directory?: string
   steps: BashStep[]
-  /** The programs that run, joined by the command's own operators: `git add && git commit; rg | head`. */
   summary: string
 }
 
@@ -45,8 +38,7 @@ const subcommands = new Set(['git', 'pnpm', 'npm', 'yarn', 'bun', 'gh', 'docker'
 const runners = new Set(['exec', 'dlx', 'run', 'x'])
 const compounds: Record<string, string> = { Subshell: '( )', BraceGroup: '{ }' }
 
-/** The program a command runs, looking through wrappers such as `timeout 60` and `env A=1`, with its arguments. */
-function program(command: Command): string[] {
+function unwrappedProgram(command: Command): string[] {
   const words = [command.name, ...command.args].map((word) =>
     word?.type === 'Word' ? word.value : (word?.text ?? ''),
   )
@@ -59,7 +51,7 @@ function program(command: Command): string[] {
 }
 
 function label(command: Command) {
-  const [name = '', ...args] = program(command)
+  const [name = '', ...args] = unwrappedProgram(command)
   if (!subcommands.has(name)) return name
   const rest = args.filter((arg, index) => !arg.startsWith('-') && args[index - 1] !== '-C')
   const sub = rest[0]
@@ -89,7 +81,7 @@ function heredocs(source: string, node: PipelineNode): Heredoc[] {
     for (const redirect of redirects)
       if (redirect.type === 'Redirect' && redirect.operator.startsWith('>'))
         target ??= redirect.target?.value
-    const file = target ?? (command && interpreters[program(command)[0] ?? ''])
+    const file = target ?? (command && interpreters[unwrappedProgram(command)[0] ?? ''])
     return redirects.flatMap((redirect) =>
       redirect.type === 'HereDoc' && redirect.closing
         ? [
@@ -104,20 +96,18 @@ function heredocs(source: string, node: PipelineNode): Heredoc[] {
   })
 }
 
-/** A plain path that `cd` would enter as written: no expansion, glob, home, or option. */
 function literalDirectory(word: Word | undefined) {
   if (!word || /[$`*?[\]]/.test(word.text) || /^[-~]/.test(word.value)) return undefined
   return word.value
 }
 
-/** Display only: the command's steps and programs from a real Bash parse; unparsable input stays one raw step. */
 export function formatBashCommand(command: string): BashCommand {
-  const raw: BashCommand = {
+  const rawDisplayCommand: BashCommand = {
     steps: [{ text: command, programs: [], heredocs: [] }],
     summary: command.split('\n')[0],
   }
   const script = parse(command)
-  if (script.errors?.length || script.source !== undefined) return raw
+  if (script.errors?.length || script.source !== undefined) return rawDisplayCommand
   const steps: BashStep[] = []
   const summary: string[] = []
   const push = (
@@ -151,7 +141,7 @@ export function formatBashCommand(command: string): BashCommand {
       ),
     )
   }
-  if (!steps.length) return raw
+  if (!steps.length) return rawDisplayCommand
   const first = script.commands[0].command
   const cd = first.type === 'AndOr' ? first.commands[0] : undefined
   const directory =

@@ -38,13 +38,12 @@ const subscribe = (listener: () => void) => {
   document.addEventListener('visibilitychange', listener)
   return () => document.removeEventListener('visibilitychange', listener)
 }
-/** Whether the System surface is on screen in a visible tab: polling runs only then. */
+
 function useLive() {
   const visible = useSyncExternalStore(subscribe, () => document.visibilityState === 'visible')
   return useUltimate().surface === 'system' && visible
 }
 
-/** Each lane's conversation state, the same the sidebar shows: only the primary agent can wait on you. */
 function useStates(parked: ReadonlySet<number>) {
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
@@ -70,29 +69,23 @@ function useStates(parked: ReadonlySet<number>) {
   }
 }
 
-/**
- * The lanes of the last `range` milliseconds, fetched again every 2 s while `live`; the previous result stays on
- * screen until the next arrives, so the timeline never blinks.
- */
 function useLanes(range: number, live: boolean) {
   const [state, setState] = useState<{ range: number; data?: LanesResult; error?: unknown }>({
     range,
   })
   useEffect(() => {
     const controller = new AbortController()
-    const load = () =>
-      api
-        .action(
-          LanesAction,
-          // Whole minutes, so repeated polls carry the same args and the trace counts them instead of writing each.
-          { since: new Date(Math.floor((Date.now() - range) / 60_000) * 60_000).toISOString() },
-          { signal: controller.signal },
-        )
+    const load = () => {
+      const minuteRoundedSince = new Date(
+        Math.floor((Date.now() - range) / 60_000) * 60_000,
+      ).toISOString()
+      return api
+        .action(LanesAction, { since: minuteRoundedSince }, { signal: controller.signal })
         .then((data) => setState({ range, data }))
         .catch((error: unknown) => {
-          // Aborted when the window changes or the surface hides; the next fetch owns the state.
           if (!controller.signal.aborted) setState((previous) => ({ ...previous, error }))
         })
+    }
     void load()
     const stop = live ? every(2000, () => void load()) : undefined
     return () => {
@@ -107,7 +100,6 @@ type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: numbe
 
 const dot = 'inline-block size-1.5 rounded-full'
 
-/** Agents (lanes on top, the stream of everything below) and the tabs other extensions add, such as Wire. */
 function System() {
   const [tab, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
   return (
@@ -184,7 +176,7 @@ function Lanes({ parked, tabs }: { parked: ReadonlySet<number>; tabs: ReactNode 
   const stateOf = useStates(parked)
   const list = lanes.data?.lanes ?? []
   const states = new Map(list.map((lane) => [lane.conversation, stateOf(lane)]))
-  // A parent listed only to hold its children's place did not work in the window: it is no agent at work.
+
   const worked = list.filter((lane) => lane.runs.length > 0)
   const running = worked.filter((lane) => states.get(lane.conversation) === 'running').length
   const waits = list.some((lane) => states.get(lane.conversation) === 'waits')

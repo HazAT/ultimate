@@ -8,12 +8,6 @@ import { messageItems } from '../sdk/registry.ts'
 import { MessageReference } from '../sdk/types.ts'
 import { ExtensionBoundary, Provided } from './boundary.tsx'
 
-/**
- * Hover actions on a stored message, always shown on touch screens: extensions' details (`messageDetails`), its time,
- * and copies of its text or of a reference another conversation can follow, around extensions' `messageActions`.
- * `entry` is the message they act on, such as the one going back returns to. They show while the nearest
- * `group/message` is hovered, or `group/bubble` with `bubble`, for a card nested inside another message.
- */
 export function MessageActions({
   entry,
   text,

@@ -2,7 +2,7 @@ import type {
   ConversationId,
   TaskId,
   EntryId,
-  ConversationView,
+  ConversationView as PiWindowInEntryIdOrder,
   EntryRecord,
   JsonObject,
   ModelRef,
@@ -29,16 +29,19 @@ export interface ConfigureRequest {
   model?: ModelRef
   thinkingLevel?: ModelThinkingLevel
 }
-/**
- * A conversation's view as `/api/events` streams it: Pi's window over its newest entries in id order, head markers
- * where they were written, with `before` the entry just before the window (absent when the window starts the
- * transcript), so `/history` pages on from `before + 1`.
- */
-export type StreamedView = ConversationView
-/** Stored history, newest first; `before` is the exclusive cursor for the next page. */
+export type StreamedView = PiWindowInEntryIdOrder
+type NewestFirstEntries = EntryRecord[]
+type ExclusiveHistoryCursor = EntryId
+export function historyCursorFromStreamBefore(
+  entryImmediatelyBeforeWindow: StreamedView['before'],
+): ExclusiveHistoryCursor | undefined {
+  return entryImmediatelyBeforeWindow === undefined
+    ? undefined
+    : ((entryImmediatelyBeforeWindow + 1) as EntryId)
+}
 export interface HistoryResponse {
-  entries: EntryRecord[]
-  before?: EntryId
+  entries: NewestFirstEntries
+  before?: ExclusiveHistoryCursor
 }
 export interface CompactResponse {
   taskId: TaskId
@@ -46,22 +49,18 @@ export interface CompactResponse {
 export interface EmptyResponse {
   ok: true
 }
+type UnixTimestampMs = number
 export interface ConversationSummary {
   id: ConversationId
-  /** The conversation that owns this subagent or lander. */
   parentConversationId?: ConversationId
-  /** The source and history entry of an ownerless branch. */
   branchOf?: { conversationId: ConversationId; at: EntryId }
   ownerTaskId?: TaskId
-  /** A short name its creator gave it, shown before its title. */
   label?: string
   title?: string
   cwd?: string
   busy: boolean
-  /** Timestamp (ms) of its latest user message; absent when it has none. */
-  inputAt?: number
-  /** Timestamp (ms) of its latest assistant message; absent when it has none. */
-  answerAt?: number
+  inputAt?: UnixTimestampMs
+  answerAt?: UnixTimestampMs
 }
 export interface CreateConversationRequest {
   cwd?: string
@@ -77,28 +76,25 @@ export interface ExtensionActionRequest {
 export interface ExtensionActionResponse {
   result: JsonValue
 }
+type AlwaysEnabledCore = true
 export interface ExtensionInfo {
   name: string
   enabled: boolean
-  /** Core tier (`export const tier = 'core'` in its api.ts): always on; settings cannot disable it. */
-  core?: true
+  core?: AlwaysEnabledCore
   source: 'builtin' | 'user' | 'project'
   replaces?: 'builtin'
   layer: 'default' | 'user' | 'project' | 'folder'
   path: string
   actions: string[]
-  /** The durable events its api.ts and refs.ts define with `defineEvent`. */
   events: string[]
   readme?: string
   facets: { server: boolean; web: boolean }
   server?: {
     loadedAt?: string
-    /** Each tool's name and the first line of its description. */
     tools: { name: string; description: string }[]
     sections: string[]
     hooks: number
     docs: string[]
-    /** `provider`: a model provider whose configured auth stands in for the secret. */
     secrets?: { name: string; description: string; url?: string; provider?: string }[]
     error?: string
   }
@@ -150,11 +146,6 @@ export interface SystemInfo {
     settingsError?: string
   }
   code: { ultimateRoot: string; branch: string; sha: string; dirty: boolean; coreStale?: boolean }
-  /**
-   * The web bundle served now; a page on another id reloads onto it. `changed` lists the sources that changed since the
-   * previous bundle, relative to the Ultimate root when inside it. `building` is set while a rebuild runs; the last
-   * build's `left` names facets left out with their errors, `error` a build that failed as a whole and kept `id`.
-   */
   web: {
     id: string
     changed: string[]
@@ -164,10 +155,6 @@ export interface SystemInfo {
   }
   extensionDiagnostics: string[]
   extensions: ExtensionInfo[]
-  /**
-   * Loaded skills: `scope` is where the winner came from, `overrides` the paths of same-named skills in earlier scopes,
-   * `manual` a skill with `disable-model-invocation` that the model is never shown.
-   */
   skills: {
     name: string
     description: string
@@ -176,7 +163,6 @@ export interface SystemInfo {
     overrides: string[]
     manual?: true
   }[]
-  /** Pi's warnings and errors from loading skills: malformed files, missing descriptions, invalid names. */
   skillDiagnostics: { type: 'warning' | 'error' | 'collision'; message: string; path?: string }[]
   contextFiles: string[]
 }
@@ -204,25 +190,19 @@ export interface ModelsResponse {
     available: boolean
   }[]
 }
-/** `POST /api/ui`: set and delete keys of the root conversation's `ultimate.ui` document. */
 export interface UiUpdateRequest {
   set?: Record<string, JsonValue>
   delete?: string[]
 }
-/** The document key counting UI commits; each `POST /api/ui` increments it in its own commit. */
 export const UI_REVISION = 'ui.rev'
-/** The revision the update committed as: the stream shows it once its `ui.rev` reaches this. */
+type CommittedUiRevision = number
 export interface UiUpdateResponse {
   ok: true
-  rev: number
+  rev: CommittedUiRevision
 }
-/**
- * Events of `GET /api/events`, one stream per browser tab. `stream` comes first with the id that
- * `POST /api/events/<stream>/<sub>` (`{ conversation?, docs?, view? }`) and `DELETE` use to open and close a subscription
- * of a conversation; `view`, `ops`, `doc` and `docOps` belong to one, whose id is their first data line.
- */
+type StreamHandshakeBeforeSubscriptions = { id: string }
 export interface ServerEvents {
-  stream: { id: string }
+  stream: StreamHandshakeBeforeSubscriptions
   system: SystemInfo
   conversations: ConversationSummary[]
   view: StreamedView

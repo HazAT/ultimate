@@ -4,19 +4,13 @@ import { useDialog, useUltimate } from '@/sdk'
 import { AwakeSection, nextDialog, useAwake, useDreamStage } from './awake.tsx'
 import { NextChapter } from './sleep.tsx'
 
-/** The dialog the pinned line opens after a dream, before a chapter is prepared: the sidebar's cue. */
 const awakeDialog = 'dream.awake'
 
-/** The prepared next chapter while it waits for Fall asleep, or a sleep that failed or runs. */
 function usePinned() {
   const { doc, stage } = useDreamStage() ?? {}
   return stage === 'prepared' || stage === 'sleeping' || stage === 'failed' ? doc : undefined
 }
 
-/**
- * In the status line, on every surface and on phones: a finished dream waiting for Fall asleep, then the fresh chapter
- * prepared and not yet slept into.
- */
 export function DreamStatus() {
   const { doc, stage } = useDreamStage() ?? {}
   const actions = useUltimate()

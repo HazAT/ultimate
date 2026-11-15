@@ -43,7 +43,6 @@ import {
   SummaryModelAction,
 } from './refs.ts'
 
-/** Set on a standing agent's conversation (@ultimate, the lander, other residents) by the extension that keeps it. */
 const Fixed = defineDoc<{ fixed?: true }>({
   kind: 'conversations.fixed',
   checkpointWhen: () => false,
@@ -56,8 +55,7 @@ const Fixed = defineDoc<{ fixed?: true }>({
 
 export const docs = [Summaries, Overview, Fixed, ContextUsageDoc, Marks]
 
-/** A fork needs its own identity; a new context head (compaction or reset) needs it again. */
-const SeenIdentity = defineDoc<{ head?: number }>({
+const IdentityAtContextHead = defineDoc<{ head?: number }>({
   kind: 'conversations.identity',
   checkpointWhen: () => false,
   version: 1,
@@ -67,9 +65,9 @@ const SeenIdentity = defineDoc<{ head?: number }>({
   initial: () => ({}),
 })
 
-async function identityNote(tx: Tx, id: ConversationId) {
+async function identityNoteOncePerContextHead(tx: Tx, id: ConversationId) {
   const head = (await tx.latestHeadMarker(id))?.id ?? 0
-  const seen = await tx.doc(SeenIdentity, id)
+  const seen = await tx.doc(IdentityAtContextHead, id)
   if (seen.head === head) return undefined
   seen.head = head
   return {
@@ -87,7 +85,6 @@ async function identityNote(tx: Tx, id: ConversationId) {
 const record = (host: Pick<ExtensionHost, 'harness'>, id: ConversationId, caller: Context) =>
   host.harness().commit((tx) => tx.conversation(id), caller)
 
-/** The id of a top-level conversation: not owned by another conversation. */
 async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>) {
   const value = args && typeof args === 'object' && !Array.isArray(args) ? args.id : undefined
   if (typeof value !== 'number' || !Number.isInteger(value))
@@ -99,10 +96,6 @@ async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>
   return id
 }
 
-/**
- * Roots and standing agents (@ultimate, the lander, other residents) are fixed parts of the project: refuse `verb`
- * on them. Reads roots by kind, so it holds without lineage too; standing agents carry the `Fixed` flag.
- */
 async function refuseFixed(
   host: Pick<ExtensionHost, 'doc'>,
   tx: Tx,
@@ -116,7 +109,6 @@ async function refuseFixed(
     throw new Error(`#${id} is a standing agent; standing agents cannot be ${verb}`)
 }
 
-/** Mark conversation `id` a standing agent inside `tx`, or (`false`) an ordinary conversation again. */
 export async function setStanding(tx: Tx, id: ConversationId, standing: boolean) {
   const state = await tx.doc(Fixed, id)
   if (standing) state.fixed = true
@@ -130,21 +122,17 @@ async function effectiveSummaryModel(host: ExtensionHost) {
   return setting.source === 'project' ? { ...setting, path: projectFile(host) } : setting
 }
 
-// Render last: Durable appends a section that appears, and re-sends the whole prompt when that breaks the order.
 export const order = 100
 
-/** Called by the sidebar; each acts on a top-level conversation by id. */
 export const actions = {
-  // An agent's call names its conversation; the browser's names only the one it shows, never the caller.
   conclude: implementAction(ConcludeAction, async (args, { host, conversationId, device }) =>
-    conclude(host, conversationIds(args), device ? undefined : conversationId),
+    concludeAndStopOtherTrees(host, conversationIds(args), device ? undefined : conversationId),
   ),
   resume: implementAction(ResumeAction, async (args, { host }) => {
     const ids = conversationIds(args)
     const resumed = await resume(host, ids)
     return { resumed }
   }),
-  /** `{id, title}`: a blank title removes it, so the first message names the conversation again. */
   rename: implementAction(RenameAction, async (args, { host }) => {
     const id = await topLevelId(host, args)
     const title = (args as { title?: JsonValue }).title
@@ -163,17 +151,9 @@ export const actions = {
     const id = await topLevelId(host, args)
     return host.harness().commit((tx) => summaryHistory(tx, id), context)
   }),
-  /**
-   * The effective `summaryModel` setting: `{ value, source: 'default' | 'user' | 'project', default, path? }`, with the
-   * project file's `path` when the project's settings decide it.
-   */
   summaryModel: implementAction(SummaryModelAction, async (_args, { host }) => {
     return effectiveSummaryModel(host)
   }),
-  /**
-   * `{value}`: sets `summaryModel` in the user's settings; `null` removes it, back to the default. The project's
-   * tracked settings file is never written: while it sets the model, this refuses.
-   */
   setSummaryModel: implementAction(SetSummaryModelAction, async (args, { host }) => {
     const value = args && typeof args === 'object' && !Array.isArray(args) ? args.value : undefined
     if (value !== null && (typeof value !== 'string' || !parseSummaryModel(value)))
@@ -190,35 +170,35 @@ export const actions = {
   }),
 }
 
-/**
- * Conclude top-level conversations `ids` in one transaction, stop what they and their subagents run, then free what
- * they hold. Only this explicit conclude stops work; automatic ones (a landed branch) wait until it is idle. An agent
- * concluding its own tree (`from`) is not stopped, since it would wait for itself; its worktree is then kept as busy.
- */
-async function conclude(host: ExtensionHost, ids: ConversationId[], from?: ConversationId) {
+async function concludeAndStopOtherTrees(
+  host: ExtensionHost,
+  ids: ConversationId[],
+  from?: ConversationId,
+) {
   const harness = host.harness()
-  const { tree, inside } = await harness.commit(async (tx) => {
+  const { tree, callerWouldWaitForItself } = await harness.commit(async (tx) => {
     await concludeIn(host, tx, ids)
     const owned = await ownedTree(tx, ids)
-    return { tree: owned, inside: from !== undefined && owned.has(from) }
+    return { tree: owned, callerWouldWaitForItself: from !== undefined && owned.has(from) }
   }, context)
   const stopped: ConversationId[] = []
-  if (!inside) {
+  if (!callerWouldWaitForItself) {
     const busy = new Set(
       (await harness.inspect(context)).tasks.flatMap(({ record: task }) =>
         task.conversationId !== undefined && !task.background ? [task.conversationId] : [],
       ),
     )
     stopped.push(...[...tree].filter((id) => busy.has(id)).toSorted((a, b) => a - b))
-    // Background too: a subagent hangs off a background anchor, and its reporter is background work.
+    const includeBackgroundTasks = true
     for (const id of ids)
-      await (await harness.conversation(id, context))?.abort(context, { background: true })
+      await (
+        await harness.conversation(id, context)
+      )?.abort(context, { background: includeBackgroundTasks })
   }
   const previews = (await host.want(Previews)?.stop([...tree], context)) ?? []
   const kept = (await host.want(Release)?.release(ids, context)) ?? []
   return { concluded: ids, stopped, previews, kept }
 }
-/** `ids` and every conversation they own, transitively (subagents and theirs). */
 async function ownedTree(tx: Tx, ids: ConversationId[]) {
   const tree = new Set(ids)
   const owners = new Map<ConversationId, ConversationId>()
@@ -240,7 +220,6 @@ async function ownedTree(tx: Tx, ids: ConversationId[]) {
   }
   return tree
 }
-/** Add top-level conversations `ids` to the concluded list inside `tx`; throws for unknown, owned or fixed ones. */
 export async function concludeIn(host: Pick<ExtensionHost, 'doc'>, tx: Tx, ids: ConversationId[]) {
   for (const id of ids) {
     const found = await tx.conversation(id)
@@ -253,11 +232,14 @@ export async function concludeIn(host: Pick<ExtensionHost, 'doc'>, tx: Tx, ids: 
   ui['ext.conversations.concluded'] = [
     ...new Set([...(Array.isArray(previous) ? previous : []), ...ids]),
   ]
-  // When each was last concluded, kept on resume: a report from before it stays settled (messages' open.tsx).
-  const at = ui['ext.conversations.concludedAt']
+  const lastConcludedAtRetainedOnResume = ui['ext.conversations.concludedAt']
   const now = Date.now()
   ui['ext.conversations.concludedAt'] = {
-    ...(at && typeof at === 'object' && !Array.isArray(at) ? at : {}),
+    ...(lastConcludedAtRetainedOnResume &&
+    typeof lastConcludedAtRetainedOnResume === 'object' &&
+    !Array.isArray(lastConcludedAtRetainedOnResume)
+      ? lastConcludedAtRetainedOnResume
+      : {}),
     ...Object.fromEntries(ids.map((id) => [id, now])),
   }
 }
@@ -273,11 +255,10 @@ function conversationIds(args: ActionInput<{ ids: number[] }>): ConversationId[]
 }
 
 function resume(host: ExtensionHost, ids: ConversationId[]) {
-  return host.harness().commit((tx) => resumeIn(tx, ids), context)
+  return host.harness().commit((tx) => resumeWithAncestorsIn(tx, ids), context)
 }
 
-/** Removes `ids` and their ancestors from the concluded list inside `tx`; returns the ids it removed. */
-async function resumeIn(tx: Tx, ids: ConversationId[]) {
+async function resumeWithAncestorsIn(tx: Tx, ids: ConversationId[]) {
   const ancestors = new Set<ConversationId>()
   for (const id of ids) {
     let current: ConversationId | undefined = id
@@ -318,15 +299,12 @@ export async function subject(
   }
 }
 
-/** Read the concluded set without leaving the caller's transaction. */
 export async function concludedIn(tx: Tx): Promise<Set<ConversationId>> {
   const ids = (await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded']
   return new Set(Array.isArray(ids) ? (ids as ConversationId[]) : [])
 }
 
-/** Tells each top-level conversation which other conversations work in this project. */
 export default (host: ExtensionHost) => {
-  // Extension points this extension declares, resolved where they are called; declared here for the catalogue.
   host.want(Trees)
   host.want(Release)
   host.want(Previews)
@@ -345,19 +323,18 @@ export default (host: ExtensionHost) => {
       const ids = (await host.uiState(caller))['ext.conversations.concluded']
       return new Set(Array.isArray(ids) ? (ids as ConversationId[]) : [])
     },
-    // A rename or summary since the conversation was named chose the title; it stays.
     generatedTitle: async (tx, id, title) => {
       const state = await tx.doc(Summaries, id)
-      if (state.generatedTitle === undefined && (await tx.doc(host.metadata, id)).title === title)
-        state.generatedTitle = title
+      const titleUnchangedSinceNaming =
+        state.generatedTitle === undefined && (await tx.doc(host.metadata, id)).title === title
+      if (titleUnchangedSinceNaming) state.generatedTitle = title
     },
   })
   activityBehavior(host)
   overviewBehavior(host)
   compactionEvents(host)
   contextBehavior(host)
-  /** Whether each conversation is top-level, read once: `owner` and `parent` never change after creation. */
-  const topLevel = new Map<ConversationId, boolean>()
+  const immutableOwnershipIsTopLevel = new Map<ConversationId, boolean>()
   const summaries = summaryBehavior(host)
   return defineExtension({
     name: 'conversations',
@@ -365,26 +342,23 @@ export default (host: ExtensionHost) => {
     hooks: [
       ...summaries.hooks,
       // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
-      // Any input that starts a run (typed, message or reply, report, automation) brings the conversation and its
-      // concluded ancestors back, in the commit that places it. Writes (notes) start no run and never get here.
       hook(GenerationTask, {
         beforeInput: async (_input, api) => {
-          await resumeIn(api.tx, [api.conversationId])
-          // Also identify owned conversations; this note never changes the cached system prompt.
-          return identityNote(api.tx, api.conversationId)
+          await resumeWithAncestorsIn(api.tx, [api.conversationId])
+          return identityNoteOncePerContextHead(api.tx, api.conversationId)
         },
         beforeRequest: (request, api) => {
-          // beforeInput sees the old head when queued writes land, and automatic compaction can resume
-          // without an input. Guard the actual request, including retries, without changing the system prefix.
-          // First, not last: a fixed position keeps the cached conversation prefix valid from one request to the next.
-          const content = `You are conversation #${api.conversationId}.`
+          const cacheStableIdentityPrefix = `You are conversation #${api.conversationId}.`
           if (
             !request.messages.some(
-              (message) => message.role === 'user' && message.content === content,
+              (message) => message.role === 'user' && message.content === cacheStableIdentityPrefix,
             )
           )
             return {
-              messages: [{ role: 'user', content, timestamp: 0 }, ...request.messages],
+              messages: [
+                { role: 'user', content: cacheStableIdentityPrefix, timestamp: 0 },
+                ...request.messages,
+              ],
             }
           return undefined
         },
@@ -392,18 +366,17 @@ export default (host: ExtensionHost) => {
     ],
     sections: [
       section('conversations', async (input, caller) => {
-        // Summaries can lag behind a new conversation, so its record decides; owned conversations get nothing.
-        if (!topLevel.has(input.conversationId)) {
+        if (!immutableOwnershipIsTopLevel.has(input.conversationId)) {
           const own = await record(host, input.conversationId, caller)
           if (!own) return undefined
-          topLevel.set(input.conversationId, !own.owner)
+          immutableOwnershipIsTopLevel.set(input.conversationId, !own.owner)
         }
-        if (!topLevel.get(input.conversationId)) return undefined
-        // Fixed text: a changed system prompt costs the prompt cache, and the list of others changed nearly every turn.
-        return [
+        if (!immutableOwnershipIsTopLevel.get(input.conversationId)) return undefined
+        const cacheStableConversationGuidance = [
           'Other conversations in this project are separate agents with their own context, and some may work in your checkout: check `git status` before broad changes, never revert or reformat changes you did not make, and coordinate through the user.',
           'In codemode, `ultimate.conversations()` lists them with title, cwd and whether they are busy or concluded; `ultimate.entries(id)` shows what one did; `ultimate.projects()` lists other projects.',
         ].join('\n')
+        return cacheStableConversationGuidance
       }),
     ],
   })

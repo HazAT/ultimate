@@ -5,7 +5,6 @@ import { cn } from '@/sdk'
 import { limits, location } from './comments.ts'
 import type { CommentLines } from './lines.ts'
 
-/** The lines a comment covers, as a quiet mono label: `src/a.ts:3-5 · new`. */
 export function Lines({ comment, className }: { comment: CommentLines; className?: string }) {
   return (
     <span className={cn('font-mono text-[11px] text-muted-foreground', className)}>
@@ -15,10 +14,6 @@ export function Lines({ comment, className }: { comment: CommentLines; className
   )
 }
 
-/**
- * The inline composer under the selected lines: a comment's text, Cancel and Add to review (⌘↵). `onSubmit` returns
- * false when the draft could not be kept; the composer then stays open with the text and says why.
- */
 export function Composer({
   comment,
   initial = '',
@@ -94,7 +89,6 @@ export function Composer({
   )
 }
 
-/** A saved draft under its lines: quiet, with edit and delete on hover (always on touch screens). */
 export function DraftCard({
   comment,
   onEdit,

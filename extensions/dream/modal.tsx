@@ -9,7 +9,6 @@ import { passLabels } from './moon.tsx'
 import { PASSES } from './types.ts'
 import type { PassName } from './types.ts'
 
-/** The dialog id the "Dream…" command, the Memory surface's button and the status-line hint open. */
 export const dreamDialog = 'dream.start'
 
 const passWhat: Record<PassName, string> = {
@@ -21,16 +20,13 @@ const passWhat: Record<PassName, string> = {
   project: 'what I keep doing by hand here, and what to build for it',
 }
 
-/** What pressing Dream does, and the button that starts it. */
+const SHRINKABLE_DIALOG_COLUMN =
+  'max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-y-auto p-0 sm:max-w-[30rem]'
 export function DreamDialog() {
   const [open, setOpen] = useDialog(dreamDialog)
   return (
     <Dialog onOpenChange={setOpen} open={open}>
-      {/* One column that may shrink: an implicit `auto` grid column would grow to a long blocker title's width. */}
-      <DialogContent
-        className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-y-auto p-0 sm:max-w-[30rem]"
-        data-dream-dialog
-      >
+      <DialogContent className={SHRINKABLE_DIALOG_COLUMN} data-dream-dialog>
         {open && <Body onClose={() => setOpen(false)} />}
       </DialogContent>
     </Dialog>

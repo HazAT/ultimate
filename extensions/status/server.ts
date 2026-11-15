@@ -1,4 +1,3 @@
-/** Status: one compact read-only summary of this Ultimate, each field from the extension that owns it. */
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
@@ -78,7 +77,6 @@ export async function status(host: ExtensionHost, since: number, now: number): P
 }
 
 export default function statusExtension(host: ExtensionHost) {
-  // Resolved where they are called; declared here so the catalogue lists them.
   host.need(MessagesApi)
   host.want(UpdateApi)
   host.want(WatchdogApi)
@@ -86,7 +84,6 @@ export default function statusExtension(host: ExtensionHost) {
   return defineExtension({ name: 'status' })
 }
 
-/** Dashboards poll it: the trace counts its repeats instead of writing each. */
 export const pollActions = ['status']
 
 export const actions = {

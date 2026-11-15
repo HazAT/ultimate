@@ -1,9 +1,3 @@
-/**
- * The Agents panel: one overview of what runs on which model. Each model family heads a group (its model and thinking;
- * a click edits them in place), and every agent definition and feature on it sits under it. An agent row opens
- * its definition; its dot moves it to another family, which writes the definition (an overlay for a built-in). A
- * feature's dot moves it in the project's families. Agents and features that pin a model of their own come last.
- */
 import { BotIcon, CheckIcon, PinIcon, PlusIcon, SparklesIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -38,13 +32,11 @@ export function AgentsOverview() {
   const families = useFamilies()
   const [editing] = useDialog(definitionDialog)
   const system = useSystem()
-  // A landing or a settings change broadcasts new system info: definitions may have changed with it.
   const { data, refetch } = useAction(DefinitionsAction, null, {
     on: [editing, system?.code.sha, system?.project.settings],
     focus: true,
   })
   const show = useOpenDefinition()
-  // What the last move wrote, until the next one.
   const [wrote, setWrote] = useState<string>()
   if (!data || !families) return null
   const { definitions, errors } = data
@@ -216,7 +208,6 @@ export function AgentsOverview() {
   )
 }
 
-/** A family's line, which edits it, and who runs on it below, on a thin rule of its color. */
 function FamilyGroup({
   family,
   view,
@@ -274,7 +265,6 @@ function AgentRow({
 }: {
   definition: Definition
   discovery: Discovery
-  /** The family it runs on; undefined while it pins a model. */
   family?: FamilyView
   view: FamiliesView
   onOpen: () => void
@@ -312,7 +302,6 @@ function AgentRow({
   )
 }
 
-/** One agent or feature: name, tags and the thinking or model it adds, its description, and a family dot to move it. */
 function Row({
   icon: Icon,
   label,
@@ -364,7 +353,6 @@ function Row({
   )
 }
 
-/** "Run on": the families as a menu, the current one ticked. */
 function MoveMenu({
   current,
   view,

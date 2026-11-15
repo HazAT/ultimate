@@ -27,13 +27,7 @@ import type { Notice } from '../shared/protocol.ts'
 
 const send = (message: ChildMessage) => process.send?.(message)
 
-/**
- * Clickjacking: a foreign page must not load the UI in a hidden frame and steer clicks into it (PR #74, #517728).
- * Loopback parents stay allowed: a preview frames another instance on its own port (`extensions/instance/web.tsx`),
- * and the supervisor's app window is `ultimate.localhost`. No `[::1]` entry: CSP rejects a port range on an IPv6
- * literal, and one bad source makes browsers drop the whole directive.
- */
-const frameAncestors =
+const loopbackPreviewFrameAncestors =
   "frame-ancestors 'self' http://127.0.0.1:* http://localhost:* http://*.localhost:*"
 
 export interface ServerOptions extends HostOptions {
@@ -63,16 +57,14 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     report: notice,
   })
   let system: Awaited<ReturnType<typeof createSystem>> | undefined
-  // Remote origins (Tailscale's HTTPS URL) usually register after startup and can go away: say each change once.
-  let remote: string[] = []
+  let reportedRemoteOrigins: string[] = []
   const access = createAccess(() => {
     const origins = access.origins()
     for (const origin of origins)
-      if (!remote.includes(origin)) console.log(`Ultimate: ${origin} (remote)`)
-    for (const origin of remote)
+      if (!reportedRemoteOrigins.includes(origin)) console.log(`Ultimate: ${origin} (remote)`)
+    for (const origin of reportedRemoteOrigins)
       if (!origins.includes(origin)) console.log(`Ultimate: ${origin} (remote) is no longer served`)
-    remote = origins
-    // The supervisor's dashboard keeps the current ones on screen; the log lines above are the history.
+    reportedRemoteOrigins = origins
     reportCore({ type: 'access', origins })
     void system
       ?.changed()
@@ -97,7 +89,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         response.end('Preparing')
         return
       }
-      response.setHeader('Content-Security-Policy', frameAncestors)
+      response.setHeader('Content-Security-Policy', loopbackPreviewFrameAncestors)
       if (await api.handle(request, response)) return
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         response.writeHead(405)
@@ -110,11 +102,8 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       response.end('Internal server error')
     })
   })
-  // A vite.config.ts change restarts Vite with a new watcher; listeners move to each new one.
   const restarted = new Set<(watcher: ViteDevServer['watcher']) => void>()
   reportCore({ type: 'web', state: 'preparing' })
-  // Vite only loads the server facets (`ssrLoadModule`) and watches the sources: the browser gets a production bundle
-  // (web.ts). It serves no page, holds no client socket and optimizes no browser dependencies.
   const vite = await createViteServer({
     customLogger: viteLogger(),
     clearScreen: false,
@@ -126,7 +115,6 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     cacheDir: resolvePath(host.home, 'vite'),
     resolve: { alias: { '@': resolvePath(ultimateRoot, 'web/src') } },
     plugins: [
-      // Server facets outside the Ultimate root resolve its packages through it.
       extensionModules(ultimateRoot, projectRoot, host.userHome),
       {
         name: 'ultimate:watchers',
@@ -136,8 +124,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       },
     ],
   })
-  // Without HMR Vite does not restart itself for a config change: a new config means a new module graph and watcher.
-  const onConfig = (file: string) => {
+  const restartViteOnConfigChangeWithoutHmr = (file: string) => {
     if (file === vite.config.configFile)
       vite.restart().catch((error: unknown) => console.error('Restarting Vite failed:', error))
   }
@@ -154,17 +141,15 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     }
   }
   watch((watcher) => {
-    watcher.on('change', onConfig)
-    return () => watcher.off('change', onConfig)
+    watcher.on('change', restartViteOnConfigChangeWithoutHmr)
+    return () => watcher.off('change', restartViteOnConfigChangeWithoutHmr)
   })
   let opened: OpenHost | undefined
   const processInfo: { activationError?: string } = {}
-  // go and release each finish before the next starts.
-  let switching = Promise.resolve()
+  let settledGoOrRelease = Promise.resolve()
   const serial = <T>(task: () => Promise<T>) => {
-    const next = switching.then(task)
-    // The caller gets the failure; the queue only waits for the task to settle.
-    switching = next.then(
+    const next = settledGoOrRelease.then(task)
+    settledGoOrRelease = next.then(
       () => undefined,
       () => undefined,
     )
@@ -196,7 +181,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     userHome: host.userHome,
     home: host.home,
     watch,
-    before: () => extensions.preparedToLoad(),
+    before: () => extensions.prepareLoadBestEffort(),
     pages: () => api?.pages() ?? 0,
     changed: () => void system?.changed(),
     notice: (message) => notice({ level: 'error', message }),
@@ -222,8 +207,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     access.origins,
     () => web.info(),
   )
-  /** Serve the opened harness: the `onOpen` callbacks, then the API. */
-  const serve = async (harness: OpenHost) => {
+  const openExtensionsThenServeApi = async (harness: OpenHost) => {
     opened = harness
     await harness.harness.commit(
       (tx) =>
@@ -258,12 +242,11 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         opened = undefined
         reportCore({ type: 'web', state: 'stopped' })
       }),
-    /** Open storage and serve. */
     go: (activationError?: string) =>
       serial(async () => {
         processInfo.activationError = activationError
         await writeProject(host.home, host.projectRoot)
-        const served = await serve(await host.open(false))
+        const served = await openExtensionsThenServeApi(await host.open(false))
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
@@ -302,10 +285,8 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
     )
   }
   let server: Awaited<ReturnType<typeof prepareServer>> | undefined
-  let closing: Promise<void> | undefined
-  // Every caller waits for the one close: under systemd the child gets SIGTERM and then the supervisor's `exit`, and
-  // exiting on the second while the first still tears down (the Tailscale mapping) would cut it short.
-  const close = () => (closing ??= Promise.resolve(server?.close()))
+  let sharedTeardown: Promise<void> | undefined
+  const close = () => (sharedTeardown ??= Promise.resolve(server?.close()))
   const shutdown = () => {
     void close().then(
       () => process.exit(0),

@@ -1,4 +1,3 @@
-/** Local Git diffs for review: a spec's two sides, its patch split per file with counts and status, capped in size. */
 import { lstat, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exec } from '../../lib/exec.ts'
@@ -6,29 +5,34 @@ import { git } from '../../lib/git.ts'
 import { errnoCode, meansNone } from '../../lib/errors.ts'
 import type { ReviewDiff, ReviewFile, ReviewKind } from './refs.ts'
 
-/** Patches over this many bytes per file are listed without their hunks. */
-export const FILE_CAP = 400 * 1024
-/** Past this many patch bytes in total, the remaining files are listed without their hunks. */
-export const TOTAL_CAP = 8 * 1024 * 1024
-/** Git's output may be this big before a diff is given up as too large. */
-const BUFFER = 16 * 1024 * 1024
-// Fixed `a/` and `b/` prefixes: work-tree and `--no-index` diffs would use mnemonic ones (`w/`, `1/`) the parser rejects.
-const DIFF = ['--no-color', '--no-ext-diff', '-M', '--src-prefix=a/', '--dst-prefix=b/']
+type FilePatchByteCap = number
+type TotalPatchByteCap = number
+
+export const FILE_CAP: FilePatchByteCap = 400 * 1024
+
+export const TOTAL_CAP: TotalPatchByteCap = 8 * 1024 * 1024
+
+const GIT_OUTPUT_BUFFER_BYTES = 16 * 1024 * 1024
+
+const DIFF_WITH_FIXED_PARSER_PREFIXES = [
+  '--no-color',
+  '--no-ext-diff',
+  '-M',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+]
 
 type Sides = { kind: ReviewKind; title: string; base: string; head?: string }
 type Options = {
-  /** The branch `branch:<name>` is compared against: where it lands. */
   target: (branch: string) => Promise<string>
   signal?: AbortSignal
 }
 
-/** Throw unless `part` is something Git could read as a ref, never as an option. */
 function plain(part: string, spec: string) {
   if (!part || part.startsWith('-') || /[\s\0]/.test(part)) throw new Error(`Invalid spec: ${spec}`)
   return part
 }
 
-/** The full sha of the commit `ref` names; throws when it names none. */
 async function commit(cwd: string, ref: string, signal?: AbortSignal) {
   const sha = await git(
     { cwd, signal },
@@ -37,15 +41,11 @@ async function commit(cwd: string, ref: string, signal?: AbortSignal) {
     '--quiet',
     '--end-of-options',
     `${ref}^{commit}`,
-  ).catch(
-    // `--quiet` exits 1 without a message for an unknown ref: say which one.
-    () => '',
-  )
+  ).catch(() => '')
   if (!sha) throw new Error(`Not a commit: ${ref}`)
   return sha
 }
 
-/** The empty tree's id in this repository's hash, the base of a root commit. */
 const emptyTree = (cwd: string) => git(cwd, 'hash-object', '-t', 'tree', '/dev/null')
 
 async function sides(cwd: string, spec: string, options: Options): Promise<Sides> {
@@ -79,7 +79,6 @@ async function sides(cwd: string, spec: string, options: Options): Promise<Sides
   return { kind: 'commit', title, base: parent ?? (await emptyTree(cwd)), head }
 }
 
-/** NUL-separated `--name-status` and `--numstat` output of one diff, as files in Git's order. */
 function listFiles(names: string, numbers: string): ReviewFile[] {
   const files: ReviewFile[] = []
   const fields = names.split('\0')
@@ -107,15 +106,17 @@ function listFiles(names: string, numbers: string): ReviewFile[] {
       })
     }
   }
-  // `<add>\t<del>\t<path>\0`, or `<add>\t<del>\t\0<old>\0<new>\0` for a rename; `-` counts for a binary file.
+
   const counts = numbers.split('\0')
   let file = 0
   for (let index = 0; index < counts.length - 1; file++) {
     const [add, del, path] = counts[index++].split('\t')
-    if (path === '') index += 2
+    const renameHasTwoPaths = path === ''
+    if (renameHasTwoPaths) index += 2
     const entry = files[file]
     if (!entry) break
-    if (add === '-') entry.binary = true
+    const binaryHasNoNumericLineCounts = add === '-'
+    if (binaryHasNoNumericLineCounts) entry.binary = true
     else {
       entry.additions = Number(add)
       entry.deletions = Number(del)
@@ -124,11 +125,7 @@ function listFiles(names: string, numbers: string): ReviewFile[] {
   return files
 }
 
-/**
- * A patch split at each file's `diff --git` header (hunk lines never start with it), one chunk per file: a type change
- * (a file replaced by a symlink, or back) is one name-status entry but two sections with the same header, joined.
- */
-function chunks(patch: string) {
+function chunksJoiningRepeatedFileHeaders(patch: string) {
   if (!patch) return []
   const joined: string[] = []
   let header: string | undefined
@@ -141,64 +138,62 @@ function chunks(patch: string) {
   return joined
 }
 
-/** The diff's files with their patches (undefined: known to be over the file cap), past the caps without hunks. */
-function fit(files: ReviewFile[], patches: (string | undefined)[]) {
-  let total = 0
+function omitHunksOverByteCaps(files: ReviewFile[], patches: (string | undefined)[]) {
+  let retainedPatchBytes = 0
   let truncated = false
   const kept: string[] = []
   files.forEach((file, index) => {
     const patch = patches[index]
-    // A type change is a deleted and a new file under one name, which one diff view cannot show: listed, no hunks.
-    if (file.typeChanged || file.symlink) return
+
+    const cannotRenderAsSingleFileDiff = file.typeChanged || file.symlink
+    if (cannotRenderAsSingleFileDiff) return
     const bytes = patch === undefined ? 0 : Buffer.byteLength(patch)
     if (patch === undefined || bytes > FILE_CAP) {
       file.tooLarge = true
       return
     }
-    if (total + bytes > TOTAL_CAP) {
+    if (retainedPatchBytes + bytes > TOTAL_CAP) {
       file.tooLarge = true
       truncated = true
       return
     }
-    total += bytes
+    retainedPatchBytes += bytes
     kept.push(patch)
   })
   return { patch: kept.join(''), truncated }
 }
 
-const tooBig = (error: unknown) => errnoCode(error) === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+const exceededGitOutputBuffer = (error: unknown) =>
+  errnoCode(error) === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 
-/** The tracked changes between `base` and `head` (the work tree without `head`). */
 async function tracked(cwd: string, base: string, head: string | undefined, signal?: AbortSignal) {
   const range = head ? [base, head] : [base]
   const run = (...args: string[]) =>
-    exec('git', ['diff', ...DIFF, ...args, ...range, '--'], {
+    exec('git', ['diff', ...DIFF_WITH_FIXED_PARSER_PREFIXES, ...args, ...range, '--'], {
       cwd,
       signal,
       timeout: 30000,
-      maxBuffer: BUFFER,
+      maxBuffer: GIT_OUTPUT_BUFFER_BYTES,
     }).then(({ stdout }) => stdout)
   const [names, numbers] = await Promise.all([run('--name-status', '-z'), run('--numstat', '-z')])
   const files = listFiles(names, numbers)
   const patch = await run().catch((error: unknown) => {
-    // Too big to read at all: list every file without its hunks.
-    if (tooBig(error)) return undefined
+    if (exceededGitOutputBuffer(error)) return undefined
     throw error
   })
   if (patch === undefined)
     return { files, patches: files.map((): string | undefined => undefined), truncated: true }
-  const patches: (string | undefined)[] = chunks(patch)
+  const patches: (string | undefined)[] = chunksJoiningRepeatedFileHeaders(patch)
   if (patches.length !== files.length)
     throw new Error(`git diff listed ${files.length} files but printed ${patches.length}`)
   return { files, patches, truncated: false }
 }
 
-/** `git diff --no-index` of a new file, which exits 1 because there is a difference. */
 async function untrackedDiff(top: string, path: string, args: string[], signal?: AbortSignal) {
   const result = await exec(
     'git',
-    ['diff', '--no-index', ...DIFF, ...args, '--', '/dev/null', path],
-    { cwd: top, signal, timeout: 30000, maxBuffer: BUFFER },
+    ['diff', '--no-index', ...DIFF_WITH_FIXED_PARSER_PREFIXES, ...args, '--', '/dev/null', path],
+    { cwd: top, signal, timeout: 30000, maxBuffer: GIT_OUTPUT_BUFFER_BYTES },
   ).catch((error: { code?: unknown; stdout?: string }) => {
     if (error.code === 1 && typeof error.stdout === 'string') return { stdout: error.stdout }
     throw error
@@ -206,30 +201,24 @@ async function untrackedDiff(top: string, path: string, args: string[], signal?:
   return result.stdout
 }
 
-/**
- * Git's patch of a new symlink: its target as the one line, as `git diff` prints it. Built here because
- * `--no-index` follows a link to a directory and fails on it.
- */
-const linkPatch = (path: string, target: string) =>
-  // A path git would quote, or a target that is not one line, would break the patch: those are listed without one.
+const symlinkTargetPatch = (path: string, target: string) =>
   !/^[\x20-\x7e]+$/.test(path) || /["\\]/.test(path) || /\p{Cc}/u.test(target)
     ? undefined
     : `diff --git a/${path} b/${path}\nnew file mode 120000\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+${target}\n\\ No newline at end of file\n`
 
-/** Files Git does not track and does not ignore, each as an added file with its patch; a symlink as its target. */
 async function untracked(top: string, signal?: AbortSignal) {
   const list = await exec('git', ['ls-files', '--others', '--exclude-standard', '-z'], {
     cwd: top,
     signal,
     timeout: 30000,
-    maxBuffer: BUFFER,
+    maxBuffer: GIT_OUTPUT_BUFFER_BYTES,
   })
   const files: ReviewFile[] = []
   const patches: (string | undefined)[] = []
   for (const path of list.stdout.split('\0').filter(Boolean)) {
     const info = await lstat(join(top, path))
     if (info.isSymbolicLink()) {
-      const patch = linkPatch(path, await readlink(join(top, path)))
+      const patch = symlinkTargetPatch(path, await readlink(join(top, path)))
       files.push({
         path,
         status: 'added',
@@ -246,17 +235,15 @@ async function untracked(top: string, signal?: AbortSignal) {
     if (added === '-') file.binary = true
     else file.additions = Number(added)
     files.push(file)
-    // An oversized file is not read into a patch at all.
+
     patches.push(size > FILE_CAP ? undefined : await untrackedDiff(top, path, [], signal))
   }
   return { files, patches }
 }
 
-/** The diff `spec` names in the repository holding `cwd`; see `ReviewKind` for the specs. */
 export async function reviewDiff(cwd: string, spec: string, options: Options): Promise<ReviewDiff> {
   if (typeof spec !== 'string' || !spec.trim()) throw new Error('Expected a spec')
   const top = await git({ cwd, signal: options.signal }, 'rev-parse', '--show-toplevel').catch(
-    // A project root that is no repository of its own: name the checkout that was read, not Git's stderr.
     () => {
       throw new Error(`No Git repository in ${cwd}`)
     },
@@ -268,7 +255,7 @@ export async function reviewDiff(cwd: string, spec: string, options: Options): P
     changes.files.push(...extra.files)
     changes.patches.push(...extra.patches)
   }
-  const { patch, truncated } = fit(changes.files, changes.patches)
+  const { patch, truncated } = omitHunksOverByteCaps(changes.files, changes.patches)
   return {
     spec,
     kind: side.kind,

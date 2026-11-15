@@ -133,6 +133,7 @@ table once its mistake can no longer happen.
 | Contract files hold only documented contracts, named for their owner     | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
 | Extension UI reaches the server only through the SDK                     | `ultimate/no-raw-stream`                                            |
 | No swallowed errors                                                      | `ultimate/no-silent-catch`                                          |
+| Product code explains itself; comments only document contracts           | `ultimate/no-comments`                                              |
 | A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
 | Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
 | One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |

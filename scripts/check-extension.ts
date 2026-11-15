@@ -1,9 +1,3 @@
-// Type-checks extensions that live outside the clone (a project's `.ultimate/extensions/<name>/`, a linked user
-// extension) against the clone's types, packages and TypeScript, as the host resolves them at runtime
-// (`server/vite-extensions.ts`). Writes nothing into the clone or the project: the check runs in a temporary folder that
-// links the clone's `node_modules` and each extension. Types only; the clone's lint rules are about the clone.
-// Usage, from the project: node <clone>/scripts/check-extension.ts [extension folder…]
-// (default: every folder in ./.ultimate/extensions).
 import { spawnSync } from 'node:child_process'
 import {
   existsSync,
@@ -40,14 +34,12 @@ for (const folder of folders)
     process.exit(2)
   }
 
-// Without a handler Ctrl-C ends Node at once and `finally` never removes the folder; tsc gets the signal itself.
-process.on('SIGINT', () => {})
-process.on('SIGTERM', () => {})
+const letTscExitBeforeRemovingTemp = () => {}
+process.on('SIGINT', letTscExitBeforeRemovingTemp)
+process.on('SIGTERM', letTscExitBeforeRemovingTemp)
 const temp = mkdtempSync(join(tmpdir(), 'ultimate-check-extension-'))
 let status = 1
 try {
-  // Bare imports resolve upward from the importing file, and tsc keeps a link's path (no `preserveSymlinks`, which
-  // breaks pnpm's links inside the clone), so linked extensions find the clone's packages here.
   symlinkSync(join(clone, 'node_modules'), join(temp, 'node_modules'))
   mkdirSync(join(temp, 'ext'))
   const links = folders.map((folder, index) => {
@@ -55,20 +47,18 @@ try {
     symlinkSync(folder, join(temp, link))
     return { link, folder }
   })
-  // The web project's options, so the check follows the clone's config; Bundler resolution also suits server facets,
-  // which Vite loads (NodeNext would want a `"type": "module"` package.json above them).
   const web = JSON.parse(readFileSync(join(clone, 'tsconfig.web.json'), 'utf8'))
-  const options = web.compilerOptions
+  const cloneWebAndBundlerOptions = web.compilerOptions
   writeFileSync(
     join(temp, 'tsconfig.json'),
     JSON.stringify({
       compilerOptions: {
-        ...options,
+        ...cloneWebAndBundlerOptions,
         composite: false,
         emitDeclarationOnly: false,
         outDir: undefined,
         noEmit: true,
-        types: [...options.types, 'node'],
+        types: [...cloneWebAndBundlerOptions.types, 'node'],
         paths: { '@/*': [join(clone, 'web/src/*')] },
       },
       include: ['ext/*/web.tsx', 'ext/*/server.ts'],

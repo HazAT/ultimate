@@ -9,7 +9,6 @@ export interface DiffRow {
   new?: number
 }
 
-/** Rows of a unified patch (`details.patch` of the edit tool), with old and new line numbers. */
 export function parsePatch(patch: string): DiffRow[] {
   const rows: DiffRow[] = []
   let oldLine = 0
@@ -29,7 +28,6 @@ export function parsePatch(patch: string): DiffRow[] {
   return rows
 }
 
-/** Rows of Pi's display diff (`details.diff`): `+12 text`, `-12 text`, ` 12 text`, and ` … ...` gaps. */
 export function parseDisplayDiff(diff: string): DiffRow[] {
   return diff.split('\n').map((line) => {
     const match = /^([+\- ])\s*(\d*) (.*)$/.exec(line)
@@ -43,7 +41,6 @@ export function parseDisplayDiff(diff: string): DiffRow[] {
   })
 }
 
-/** Rows from the call's `edits` before there is a result: only text that has arrived, never an empty placeholder row. */
 export function editRows(edits: readonly { oldText?: string; newText?: string }[]): DiffRow[] {
   const lines = (text: string | undefined, type: 'add' | 'del') =>
     text ? text.split('\n').map((line) => ({ type, text: line })) : []
@@ -69,7 +66,6 @@ const tone = {
 } as const
 const sign = { add: '+', del: '−', context: ' ', hunk: '', gap: '' } as const
 
-/** The soft block cursor at the end of text that is still arriving. */
 export const Caret = () => (
   <span className="ml-px inline-block h-3.5 w-1.5 animate-pulse-dot bg-brand align-middle" />
 )
@@ -82,7 +78,6 @@ export function Diff({
 }: {
   rows: readonly DiffRow[]
   className?: string
-  /** Text is still arriving: a cursor ends the last row. */
   caret?: boolean
   ref?: Ref<HTMLDivElement>
 }) {

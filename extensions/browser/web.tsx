@@ -13,7 +13,6 @@ import type { ToolCallView } from '@/sdk'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
-/** The result text: `Title: …`, `PNG: …`, then outcomes (`Step n: OK …`, `Console error: …`, `Page error: …`). */
 function parse(output: string) {
   const lines = output.split('\n').filter(Boolean)
   const value = (prefix: string) =>
@@ -133,7 +132,6 @@ function describe(step: Step) {
     : typeof value === 'string'
       ? value
       : JSON.stringify(value)
-  // `send` and `until` name the conversation they act on when it is not the page's own.
   const conversation = typeof step.conversation === 'number' ? ` · #${step.conversation}` : ''
   return { action, shown: shown + conversation }
 }
@@ -143,7 +141,6 @@ function Browser({ call }: { call: ToolCallView }) {
   const parsed = parse(call.output)
   const steps = (Array.isArray(call.args.steps) ? call.args.steps : []) as Step[]
   const failed = call.status === 'error'
-  // While running, the output names the step being run: `Step n: {…}`; when done, every step has an outcome.
   const reached = Math.max(0, ...parsed.steps.keys())
   return (
     <Tool defaultOpen>

@@ -25,7 +25,6 @@ export type ActionOptions = {
   keepalive?: boolean
 }
 
-/** How a call passes an action's arguments: optional when the action takes `null`, required otherwise. */
 export type ActionArgs<Args, Options> = null extends Args
   ? [args?: Args, options?: Options]
   : [args: Args, options?: Options]
@@ -48,7 +47,6 @@ export class ActionError extends Error {
   }
 }
 
-/** `extension/action: message`, as a notice shows it. */
 export const actionMessage = (error: ActionError) =>
   `${error.extension}/${error.action}: ${error.message}`
 
@@ -60,7 +58,6 @@ export class HttpError extends Error {
   }
 }
 
-/** Commands as `fetch` POSTs. Conversation commands default to the shown conversation. */
 export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) {
   const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
   async function post<T>(
@@ -72,7 +69,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      // Lets a small request outlive the page, such as an action cancelling work when the tab closes.
+
       keepalive,
       signal,
     })
@@ -105,7 +102,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
         whenBusy,
         images,
       } satisfies SubmitRequest),
-    /** Stored entries of `id` below `before`, newest first; with `after`, only those from `after` on, in larger pages. */
+
     history: async (
       id: ConversationId,
       before: EntryId,
@@ -129,12 +126,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
     createConversation: (create: CreateConversationRequest = {}) =>
       post<CreateConversationResponse>('/api/conversations', create),
     restart: () => post<unknown>('/api/restart'),
-    /**
-     * Call the action `ref` names (`export const actions` in its extension's `server.ts`, typed in its `refs.ts`)
-     * with JSON `args`, on behalf of the shown conversation, and resolve with its result. Rejects
-     * with `ActionError`; an uncaught rejection shows as a notice. Aborting `signal` aborts the action's processes too; `keepalive` lets the call outlive the page, such as
-     * one sent on `pagehide`.
-     */
+
     action: async <Args, Result>(
       ref: ActionRef<Args, Result>,
       ...[args, call = {}]: ActionArgs<Args, ActionOptions>
@@ -159,7 +151,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
         )
       }
     },
-    /** Write durable UI state; prefer `useUiState`, which batches and applies writes at once. */
+
     updateUi: (change: UiUpdateRequest) => post<UiUpdateResponse>('/api/ui', change),
   }
 }

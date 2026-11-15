@@ -1,4 +1,3 @@
-/** The pieces of the context breakdown: its header card, its rows and the diff of a prompt change. */
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai'
 import { createPatch } from 'diff'
 import { ChevronRightIcon } from 'lucide-react'
@@ -26,20 +25,17 @@ export const signed = (delta: number) =>
 const percent = (part: number, total: number) =>
   total > 0 ? `${Math.max(part > 0 ? 1 : 0, Math.round((part / total) * 100))}%` : ''
 
-/** The parts of the budget, in request order, with their tint in the bar and legend. */
 const tones = {
   prompt: 'bg-brand/70',
   tools: 'bg-brand/35',
   injected: 'bg-muted-foreground/45',
 } as const
 
-/** Who the shown conversation is: a standing agent's @name, or its label (the definition it runs, or `branch`). */
 function useIdentity() {
   const id = useConversation((conversation) => conversation.id)
   const summary = useConversationSummary(id)
   const standing = summary?.title?.startsWith('@') ? summary.title.slice(1) : undefined
   const label = summary?.label
-  // A standing agent runs the definition of its name; a branch the coordinator's.
   const definition = standing ?? (label && label !== 'agent' ? label : undefined)
   return {
     name: standing ? `@${standing}` : (label ?? 'agent'),
@@ -48,7 +44,6 @@ function useIdentity() {
   }
 }
 
-/** A thin bar of the budget's parts, each as wide as its share. */
 function BudgetBar({ breakdown, className }: { breakdown: Breakdown; className?: string }) {
   const { tokens } = breakdown
   return (
@@ -70,7 +65,6 @@ function BudgetBar({ breakdown, className }: { breakdown: Breakdown; className?:
   )
 }
 
-/** One part's heading inside the expanded breakdown: its swatch, name, count, tokens and share of the total. */
 function PartHeading({
   tone,
   title,
@@ -97,7 +91,6 @@ function PartHeading({
   )
 }
 
-/** A row that opens to its full text: a section, a tool, an injected message. */
 function Row({
   name,
   hint,
@@ -110,9 +103,7 @@ function Row({
   name: ReactNode
   hint?: string
   tokens: number
-  /** Scales the row's bar; none without it. */
   total?: number
-  /** Shown instead of the tokens, such as a diff's delta. */
   sign?: ReactNode
   tone?: string
   children: ReactNode
@@ -163,15 +154,13 @@ function ToolBody({ tool }: { tool: Tool }) {
   )
 }
 
-/** A section's text without the `<key>` tags Pi Durable wraps it in, which its name already says. */
-const unwrap = (section: { key: string; text: string }) => {
+const unwrapSectionTags = (section: { key: string; text: string }) => {
   const open = `<${section.key}>\n`
   const close = `\n</${section.key}>`
   return section.text.startsWith(open) && section.text.endsWith(close)
     ? section.text.slice(open.length, -close.length)
     : section.text
 }
-/** A section's first line of prose, as the row's hint. */
 const firstLine = (text: string) =>
   text
     .split('\n')
@@ -193,7 +182,6 @@ function Injected({ content }: { content: string | readonly (TextContent | Image
   )
 }
 
-/** The agent, its definition and the model the context ran on. */
 function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const identity = useIdentity()
   const agent = useConversation((conversation) => conversation.agent)
@@ -246,11 +234,6 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   )
 }
 
-/**
- * What the model saw before the first input of a context: one quiet line with the agent, its model and the budget,
- * opening to the agent, the system prompt by section, the tools and the injected context, each with its tokens. The
- * pinned prompt adds a `notice` to its line, `changes` above its parts, and its own look through `className`s.
- */
 export function Header({
   breakdown,
   notice,
@@ -318,14 +301,14 @@ export function Header({
             />
             {sections.map((section: Section) => (
               <Row
-                hint={firstLine(unwrap(section))}
+                hint={firstLine(unwrapSectionTags(section))}
                 key={section.key}
                 name={section.key}
                 tokens={section.tokens}
                 tone={tones.prompt}
                 total={largest}
               >
-                <Text text={unwrap(section)} />
+                <Text text={unwrapSectionTags(section)} />
               </Row>
             ))}
             <PartHeading
@@ -376,7 +359,6 @@ export function Header({
   )
 }
 
-/** A changed section's text as a line diff, three lines of context around each change. */
 function SectionDiff({ before, after }: { before: string; after: string }) {
   const rows = useMemo(
     () => parsePatch(createPatch('section', before, after, '', '', { context: 3 })),
@@ -385,10 +367,6 @@ function SectionDiff({ before, after }: { before: string; after: string }) {
   return <Diff className="max-h-96 rounded-sm text-[11.5px]" rows={rows} />
 }
 
-/**
- * The section and tool changes of a prompt patch, or since the prompt last acknowledged: each opens to its line diff,
- * or its new (or removed) text.
- */
 export function DiffBody({ diff }: { diff: PromptDiff }) {
   const marks = { added: '+', changed: '~', removed: '−' } as const
   const tone = { added: 'text-success', changed: 'text-brand', removed: 'text-error' } as const
@@ -409,11 +387,11 @@ export function DiffBody({ diff }: { diff: PromptDiff }) {
           tokens={section.delta}
         >
           {section.before === undefined ? (
-            <Text text={unwrap(section)} />
+            <Text text={unwrapSectionTags(section)} />
           ) : (
             <SectionDiff
-              after={unwrap(section)}
-              before={unwrap({ key: section.key, text: section.before })}
+              after={unwrapSectionTags(section)}
+              before={unwrapSectionTags({ key: section.key, text: section.before })}
             />
           )}
         </Row>
