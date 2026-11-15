@@ -79,15 +79,16 @@ export function describeTrigger(a: Automation): string {
   return a.script!.state
 }
 
-/** A pause as people say it: `8h`, `90m`, `1.5h`. */
 export const hours = (ms: number) =>
   ms % 3600_000 === 0 || ms >= 10 * 3600_000
     ? `${Math.round((ms / 3600_000) * 10) / 10}h`
     : `${Math.round(ms / 60_000)}m`
 
-/** How often idle conditions are looked at: a pause is crossed by time passing, not by a measurement. */
 export const IDLE_TICK = 60_000
 
+function crossingCooldownElapsed(condition: NonNullable<Automation['condition']>, now: number) {
+  return condition.firedAt === undefined || now - condition.firedAt >= condition.cooldownMs
+}
 function summary(event: EventRecord): string {
   const data = event.data as Record<string, unknown>
   if (event.name === 'workspaces.landed')
@@ -106,33 +107,28 @@ export function triggers(
   host: ExtensionHost,
   Automations: typeof Ledger,
   fire: (tx: Tx, a: Automation, at: number, text?: string) => Promise<unknown>,
-  prepareFires: (tx: Tx) => Promise<unknown>,
+  scanRunsBeforeWrites: (tx: Tx) => Promise<unknown>,
 ) {
   async function resolve(of: string): Promise<ConversationId | undefined> {
     if (STANDING.test(of)) return host.need(SubagentsApi).standing(of.slice(1), BACKGROUND_CONTEXT)
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
-  /**
-   * Evaluate `a`'s condition on `usage`, the measurement a commit published, else the conversation's current one. A
-   * crossing fires once and disarms until the value drops below `above - 10`, so a threshold of 10% or less never
-   * re-arms. Creation, resume and open evaluate the current measurement, catching a crossing missed meanwhile.
-   */
   async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
     const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
     if (usage.percent === undefined) return
     const condition = a.condition
     condition.value = usage.percent
-    if (usage.percent < condition.above - 10) condition.armed = true
+    const rearmBelowPercent = condition.above - 10
+    if (usage.percent < rearmBelowPercent) condition.armed = true
     const now = Date.now()
     const paused = condition.idleFor ? now - (condition.inputAt ?? a.createdAt) : undefined
     if (
       usage.percent >= condition.above &&
       condition.armed &&
       (paused === undefined || paused >= condition.idleFor!) &&
-      // A manual run is not a crossing: the cooldown counts from the condition's own fire.
-      (condition.firedAt === undefined || now - condition.firedAt >= condition.cooldownMs)
+      crossingCooldownElapsed(condition, now)
     ) {
       const count = (n: number) =>
         Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
@@ -147,14 +143,8 @@ export function triggers(
     }
   }
   let stop: (() => void) | undefined
-  let queue = Promise.resolve()
+  let measurementsInCommitOrder = Promise.resolve()
   let closed = false
-  /**
-   * Evaluate every enabled context condition: on the measurements one commit published (`changed`, by conversation),
-   * or on each conversation's current one; with `idle`, only those that wait for a pause. Each commit's measurements
-   * are evaluated in commit order, so a drop below the re-arm line followed by a crossing is seen as both, however far
-   * evaluation lags.
-   */
   async function check(changed?: Map<ConversationId, ContextUsage>, idle = false) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
     for (const a of Object.values(state?.automations ?? {})) {
@@ -168,13 +158,7 @@ export function triggers(
       }, BACKGROUND_CONTEXT)
     }
   }
-  /**
-   * Whether `event` came from one of `a`'s own prompt runs: its trace's conversation, or the conversation it is about
-   * (`conversation`, `conversationId` in its data), is a run conversation owned by one of `a`'s run tasks. Read from
-   * the conversation's owner, not the bounded run history, so an old or long run still counts.
-   */
   async function fromOwnRun(tx: Tx, a: Automation, event: EventRecord) {
-    // No shortcut on `a.prompt`: a run started before the prompt was removed can still emit.
     const data = event.data as Record<string, unknown>
     const ids = new Set(
       [event.context?.conversationId, data.conversation, data.conversationId].filter(
@@ -183,9 +167,9 @@ export function triggers(
     )
     for (const value of ids) {
       const id = parseConversationId(value)
-      const creator = (await tx.conversation(id))?.owner
-      if (!creator) continue
-      const owner = await tx.task(creator.taskId)
+      const runOwnerBeyondHistory = (await tx.conversation(id))?.owner
+      if (!runOwnerBeyondHistory) continue
+      const owner = await tx.task(runOwnerBeyondHistory.taskId)
       if (
         owner?.kind === RUN_TASK &&
         (owner.input as { automation?: { id?: string } }).automation?.id === a.id
@@ -194,17 +178,15 @@ export function triggers(
     }
     return false
   }
-  /** One minute's look at the conditions that wait for a pause: time alone may have crossed it. */
   const idleTick = () => {
-    queue = queue
+    measurementsInCommitOrder = measurementsInCommitOrder
       .then(() => check(undefined, true))
       .catch((error: unknown) => {
         host.notice(`Automation idle trigger: ${String(error)}`)
       })
-    return queue
+    return measurementsInCommitOrder
   }
   function install() {
-    // A pause counts from the user's latest input to the conversation a condition watches.
     host.react(
       'user-input',
       [UserInputEvent],
@@ -221,33 +203,31 @@ export function triggers(
       },
       { from: 'now' },
     )
-    // Tokens name public events without loading other extensions' runtime refs.
     host.react(
       'events',
       TRIGGER_EVENTS.map(({ name }) => defineEvent(name)),
       async (tx, event) => {
         const state = await tx.doc(Automations)
         const matching: Automation[] = []
-        // `@name` matches the standing agent's conversation when the event comes: it changes with each chapter.
         const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-        const expected = (value: string | number | boolean) =>
+        const expectedInCurrentChapter = (value: string | number | boolean) =>
           typeof value === 'string' && STANDING.test(value)
             ? Object.hasOwn(standing, value.slice(1))
               ? standing[value.slice(1)]
               : null
             : value
-        // Every read before the first fire: a transaction may not scan tasks after it wrote.
         for (const a of Object.values(state.automations)) {
           if (!a.enabled || a.event?.name !== event.name || event.id <= a.event.sinceEvent) continue
           if (
             !Object.entries(a.event.where ?? {}).every(
-              ([key, value]) => (event.data as Record<string, unknown>)[key] === expected(value),
+              ([key, value]) =>
+                (event.data as Record<string, unknown>)[key] === expectedInCurrentChapter(value),
             )
           )
             continue
           if (!(await fromOwnRun(tx, a, event))) matching.push(a)
         }
-        if (matching.some((a) => a.prompt)) await prepareFires(tx)
+        if (matching.some((a) => a.prompt)) await scanRunsBeforeWrites(tx)
         for (const a of matching) await fire(tx, a, Date.now(), summary(event))
       },
       { from: 'now' },
@@ -256,7 +236,6 @@ export function triggers(
   async function open() {
     closed = false
     stop?.()
-    // Not a reactor: context usage is a document, not a domain event.
     stop = onCommit(host.harness(), (publication) => {
       const changed = new Map<ConversationId, ContextUsage>()
       for (const change of publication.changes)
@@ -268,15 +247,15 @@ export function triggers(
         )
           changed.set(change.conversationId, structuredClone(change.value as ContextUsage))
       if (changed.size)
-        queue = queue
+        measurementsInCommitOrder = measurementsInCommitOrder
           .then(() => check(changed))
           .catch((error: unknown) => {
             host.notice(`Automation context trigger: ${String(error)}`)
           })
     })
     await check()
-    // A close while the first check ran ends here: no timer outlives it.
-    if (closed) return
+    const closedDuringInitialCheck = closed
+    if (closedDuringInitialCheck) return
     stopPolling?.()
     stopPolling = every(IDLE_TICK, idleTick)
   }
@@ -287,7 +266,7 @@ export function triggers(
     stop = undefined
     stopPolling?.()
     stopPolling = undefined
-    await queue
+    await measurementsInCommitOrder
   }
   return { resolve, evaluate, install, open, close, idleTick }
 }
