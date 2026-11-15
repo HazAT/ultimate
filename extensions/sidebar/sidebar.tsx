@@ -287,21 +287,14 @@ function Tree({
         : (Object.entries(standingIds ?? {}).find(([, id]) => id === conversation.id)?.[0] ??
           conversation.title?.replace(/^@/, '') ??
           `#${conversation.id}`)
-    const state = conversation
-      ? conversationState(
-          {
-            id: conversation.id,
-            kind: isUltimate ? 'primary' : 'other',
-            runState: overview[conversation.id]?.runState,
-            busy,
-            parked: parked.has(conversation.id),
-          },
-          log,
-          timers,
-        )
-      : waiting > 0
-        ? 'waits'
-        : 'idle'
+    const facts = conversation && {
+      id: conversation.id,
+      kind: isUltimate ? ('primary' as const) : ('other' as const),
+      runState: overview[conversation.id]?.runState,
+      busy: busy || underway(conversation.id),
+      parked: parked.has(conversation.id),
+    }
+    const state = facts ? conversationState(facts, log, timers) : waiting > 0 ? 'waits' : 'idle'
     const markKeepsPulsingWhileUserWaits =
       state === 'working' || landing || (busy && state === 'waits')
     return (
@@ -334,17 +327,9 @@ function Tree({
             ) : (
               <span
                 className={cn('min-w-0 truncate', stateTone[state])}
-                title={
-                  conversation &&
-                  labelOf({ id: conversation.id, kind: isUltimate ? 'primary' : 'other' })
-                }
+                title={facts && labelOf(facts)}
               >
-                {stateWord(
-                  state,
-                  0,
-                  conversation &&
-                    labelOf({ id: conversation.id, kind: isUltimate ? 'primary' : 'other' }),
-                )}
+                {stateWord(state, 0, facts && labelOf(facts))}
               </span>
             )}
             {latest > 0 && (
@@ -371,25 +356,17 @@ function Tree({
         />
       )
     const recorded = seen[conversation.id]
-    const derived = conversationState(
-      {
-        id: conversation.id,
-        kind: 'other',
-        runState: overview[conversation.id]?.runState,
-        busy: underway(conversation.id),
-        parked: parked.has(conversation.id),
-        starter: starterOf(conversation.id),
-        concludedSince: concludedSince(conversation.id),
-      },
-      log,
-      timers,
-    )
-    const wait = labelOf({
+    const facts = {
       id: conversation.id,
-      kind: 'other',
+      kind: 'other' as const,
+      runState: overview[conversation.id]?.runState,
+      busy: underway(conversation.id),
+      parked: parked.has(conversation.id),
       starter: starterOf(conversation.id),
       concludedSince: concludedSince(conversation.id),
-    })
+    }
+    const derived = conversationState(facts, log, timers)
+    const wait = labelOf(facts)
     const workingUnlessQuestionWaitsOnUser =
       derived === 'waits'
         ? undefined

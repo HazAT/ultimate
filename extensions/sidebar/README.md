@@ -98,7 +98,8 @@ Every row reads one state from messages’ `conversationState`, the same the Sys
 **waits on <target>** (brand-colored, never on a subagent: an open agent or remote request, an enabled timer with
 its next fire time, or an unconcluded branch's starter). The primary is named `@ultimate`, other conversations `#N`;
 when @ultimate itself waits on a remote, its waiting branch shows `waits on @ultimate → <project>` (one hop).
-In flight uses @ultimate as starter; other rows read the recorded `board.started` starter. Labels truncate with
+Every row reads the recorded `board.started` starter, and counts busy subagents and a queued landing as working
+(`useUnderway`), so a working tree never reads as waiting. Labels truncate with
 the full text on hover. Truly idle conversations still say `idle`; **done** (green check, subagents only: it answered, and its answer went to its parent);
 **failed** (red cross: its latest input ended unanswered); else idle. Working includes queued input. Standing rows,
 the In flight list (after the lander's submitted/landing) and the System lanes show the same state. Nothing

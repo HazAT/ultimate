@@ -75,20 +75,16 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
       Object.values(tasks?.tasks ?? {}).some(
         (task) => !task.background && task.conversationId === id,
       ))
-  const state = conversationState(
-    { id: id ?? -1, kind: 'primary', runState, busy: working, parked: paused },
-    log,
-    timers,
-  )
   const underway = useUnderway()
-  const wait = waitLabel(
-    conversationWait(
-      { id: id ?? -1, kind: 'primary', runState, busy: working || underway(id ?? -1) },
-      log,
-      timers,
-    ),
-    id,
-  )
+  const facts = {
+    id: id ?? -1,
+    kind: 'primary' as const,
+    runState,
+    busy: working || (!paused && underway(id ?? -1)),
+    parked: paused,
+  }
+  const state = conversationState(facts, log, timers)
+  const wait = waitLabel(conversationWait(facts, log, timers), id)
   const waiting = waitingOnUser(log)
   const active = id !== undefined && shown === id && actions.surface === 'agent'
   return (
