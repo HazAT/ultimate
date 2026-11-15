@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
   cn,
+  column,
   defineWebExtension,
   events,
   formatAgo,
@@ -298,7 +299,7 @@ function Reading({
     )
   return (
     <div className={positionedReadingScroller} data-inbox-item={id}>
-      <div className="mx-auto w-full max-w-[44rem] px-8 pt-8 pb-12">
+      <div className={cn(column(), 'pt-8 pb-12')}>
         {top}
         <div className="mt-6">{answer}</div>
       </div>
