@@ -621,7 +621,8 @@ function Tree({
             )}
           </section>
         )}
-      <div className="mt-auto pt-3">
+      {/* While filtering, matches follow the field instead of sitting at the bottom. */}
+      <div className={cn('pt-3', !matches && 'mt-auto')}>
         {earlier.length > 0 && (
           <Collapsible
             className="pt-1"
