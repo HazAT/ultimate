@@ -1788,6 +1788,11 @@ it("routes the answer of a run an automation woke to the branches whose report t
   // A fire that carries no branches answers only where it was asked.
   await fired()
   expect(await routed()).toHaveLength(before + 1)
+  // Once @ultimate has the last word with the branch, the branch no longer waits on it: a fire routes nothing.
+  await f.send(`#${b.id}`, 'NOANSWER Here is the result already.', { reply: false })
+  await b.settled()
+  await fired(created.branches)
+  expect(await routed()).toHaveLength(before + 1)
 })
 it("routes @ultimate's answer to a branch whose reply it read even when it messaged the user first", async () => {
   // omarchy-config #69721: @ultimate read #70136's assessment and only messaged the user; the run ended there, no

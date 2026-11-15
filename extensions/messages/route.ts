@@ -127,12 +127,14 @@ export async function reported(
           key: requestKeyWithinRemoteLimit(serves.message),
           serves: { ...serves, ...(serves.remote ? { remote: { ...serves.remote } } : {}) },
         })
-      const firedAfter = log.messages.findLast((m) => m.at < firedAt)?.id ?? 0
-      for (const branch of data.branches ?? [])
+      for (const branch of data.branches ?? []) {
+        const branchSpokeLast =
+          log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
         newestAnsweredBranchMessage.set(
           branch,
-          Math.max(newestAnsweredBranchMessage.get(branch) ?? 0, firedAfter),
+          Math.max(newestAnsweredBranchMessage.get(branch) ?? 0, branchSpokeLast),
         )
+      }
       continue
     }
     if (LanderReportEntry.is(entry)) {
