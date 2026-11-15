@@ -519,7 +519,7 @@ export default function browserExtension(host: ExtensionHost) {
     } catch (error) {
       return {
         isError: true,
-        output: [{ type: 'text' as const, text: [...outcomes, String(error)].join('\n') }],
+        output: [{ type: 'text' as const, text: [String(error), ...outcomes].join('\n') }],
       }
     } finally {
       context.abortSignal?.removeEventListener('abort', abort)
