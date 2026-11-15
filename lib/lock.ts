@@ -115,8 +115,8 @@ export async function acquireLock(
       update,
       async close() {
         try {
-          // Remove our sidecar before releasing the transaction, never a successor's.
-          if ((await readOwner(path))?.pid === value.pid) await unlink(path)
+          const sidecarStillOursBeforeUnlock = (await readOwner(path))?.pid === value.pid
+          if (sidecarStillOursBeforeUnlock) await unlink(path)
         } finally {
           database.exec('ROLLBACK')
           database.close()

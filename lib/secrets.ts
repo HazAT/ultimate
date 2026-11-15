@@ -1,4 +1,3 @@
-// Read-only access to the user's secret store, `~/.ultimate/secrets.json`; the secrets extension owns writes.
 import { open } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
