@@ -40,7 +40,6 @@ const isOutcome = (data: LanderEntry): data is LanderEntry & LanderOutcome =>
 const short = (sha: string) => sha.slice(0, 7)
 const time = (at: number) => formatTime(at, true)
 
-/** "Landed 115f168 on main · pushed to origin/main", or "Not landed: <reason>". */
 function headline(outcome: LanderOutcome, target?: string) {
   if (outcome.outcome === 'failed') return `Not landed: ${outcome.reason ?? 'failed'}`
   const on = target ? ` on ${target}` : ''
@@ -51,7 +50,6 @@ function headline(outcome: LanderOutcome, target?: string) {
   return outcome.reason ? `${landed} · ${outcome.reason}` : `${landed} · not pushed`
 }
 
-/** "+106 −75 lines · +420 tokens": what a landing weighs, estimated (`lib/token-weight.ts`). */
 function Weight({ weight }: { weight: NonNullable<LanderOutcome['weight']> }) {
   const { added, removed, tokens } = weight
   return (
@@ -67,7 +65,6 @@ function Weight({ weight }: { weight: NonNullable<LanderOutcome['weight']> }) {
   )
 }
 
-/** What the outcome holds beyond its headline: weight, commits, flaky checks, the output tail. */
 function OutcomeBody({ outcome }: { outcome: LanderOutcome }) {
   return (
     <>
@@ -94,7 +91,6 @@ function OutcomeBody({ outcome }: { outcome: LanderOutcome }) {
   )
 }
 
-/** A failure's output tail, collapsed. */
 function OutputTail({ output }: { output: string }) {
   return (
     <Collapsible className="group/tail">
@@ -112,13 +108,11 @@ function OutputTail({ output }: { output: string }) {
 const toneOf = (outcome: LanderOutcome): LandingTone =>
   outcome.outcome === 'failed' ? 'failed' : outcome.reason ? 'pushFailed' : 'landed'
 
-/** The lander's stored report in the submitter's transcript. */
 export function LanderReport({ entry }: { entry: EntryRecord }) {
-  // Reports from before the record named its conversation are in their submitter's transcript.
-  const shown = useConversation((conversation) => conversation.id)
+  const legacyReportSubmitter = useConversation((conversation) => conversation.id)
   if (!LanderReportEntry.is(entry)) return null
   const { outcome } = entry.data
-  const from = outcome.conversationId ?? shown
+  const from = outcome.conversationId ?? legacyReportSubmitter
   if (from === undefined) return null
   return (
     <div data-lander-report={toneOf(outcome)}>
@@ -175,15 +169,10 @@ function Line({
   )
 }
 
-/** How long the running step has taken so far, ticking every second. */
 function Elapsed({ since }: { since: number }) {
   return formatDuration(Math.max(0, useNow(1000) - since))
 }
 
-/**
- * A step or a check result, as one quiet line. `took` is how long it ran (until the next step); the running step
- * spins and counts up instead.
- */
 function StepLine({
   row,
   took,
@@ -194,9 +183,7 @@ function StepLine({
   row: LanderStep
   took?: number
   active?: boolean
-  /** A later step followed this one; false for a step still open, such as queued. */
   done?: boolean
-  /** The submission failed here. */
   failed?: boolean
 }) {
   if (active)
@@ -252,10 +239,6 @@ function StepLine({
   )
 }
 
-/**
- * A submission's steps behind an "N steps" toggle, ending in a quiet link to the lander conversation's full log.
- * `open` and `onOpenChange` control it; without them it starts collapsed.
- */
 function Steps({
   steps,
   lander,
@@ -268,9 +251,7 @@ function Steps({
   lander: ConversationId
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  /** The submission is landing: its last step is the one in progress. */
   running?: boolean
-  /** The submission ended and how: its last step is done when it landed, where it stopped when it failed. */
   ended?: 'landed' | 'failed'
 }) {
   const { switchConversation } = useUltimate()
@@ -304,14 +285,12 @@ function Steps({
   )
 }
 
-/** One `ultimate.lander` entry: a submission header, a step, a check result, or the outcome card. */
 export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const entries = useTranscript()
   const workspace = useWorkspaceIndex()
   if (!LanderLog.is(entry)) return null
   const data = entry.data
-  // The lander is a task, not a model run, so the conversation is never busy: its queue says whether it lands.
-  const running = workspace.queue.some(
+  const queueReportsLanding = workspace.queue.some(
     (item) => item.id === data.submission && item.state === 'landing',
   )
   const own = entries
@@ -320,13 +299,10 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const after = own.filter((other) => other.id > entry.id)
   const afterSteps = after.map((other) => other.data).filter(isStep)
   if (isStep(data) && superseded(data, afterSteps)) return null
-  // A step is done once its submission logged another step; the last one spins while the lander works, and the step
-  // right before a failed outcome is where it stopped.
   const next = after[0]?.data
   const failed = next?.outcome === 'failed'
   const done = next !== undefined && !failed
-  const landing = running && isStep(data) && inProgress(data, afterSteps)
-  // How long this step took, as the submitter's card shows it.
+  const landing = queueReportsLanding && isStep(data) && inProgress(data, afterSteps)
   const steps = own.map((other) => other.data).filter(isStep)
   const rows = steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
   const took = (row: LanderStep) => {
@@ -356,8 +332,8 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
     )
   }
   if (!isStep(data)) return null
-  // A later submission is queued while an earlier one lands: its group starts when it starts, with its queued line.
-  if (data.step === 'queued') return null
+  const queuedLineWaitsForStartedGroup = data.step === 'queued'
+  if (queuedLineWaitsForStartedGroup) return null
   if (data.step === 'started') {
     const queued = steps.find((other) => other.step === 'queued')
     return (
@@ -395,14 +371,11 @@ type Submission = {
   tip: string
   target: string
   steps: readonly LanderStep[]
-  /** Place in its source's queue while waiting. */
   position?: number
-  /** The current step while landing. */
   step?: string
   landing?: boolean
   outcome?: LanderOutcome
 }
-/** The submission now: queued with its place, landing with its current step, or how it ended. */
 function useSubmission(id: string | undefined): Submission | undefined {
   const index = useWorkspaceIndex()
   if (!id) return undefined
@@ -425,7 +398,6 @@ const parse = (output: string) => {
   }
 }
 
-/** The submission's state as a short chip: queued, the current step, or how it ended. */
 function StatusChip({ state }: { state: Submission }) {
   const chip = 'flex min-w-0 items-center gap-1 truncate'
   if (!state.outcome) {
@@ -457,15 +429,13 @@ function StatusChip({ state }: { state: Submission }) {
   )
 }
 
-/** `workspace` calls; a submit follows its submission inline: status chip, live steps, outcome. */
 export function WorkspaceCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const action = typeof call.args.action === 'string' ? call.args.action : ''
   const result = call.status === 'done' ? parse(call.output) : undefined
   const submitted = action === 'submit' ? (result as SubmitResult | undefined) : undefined
   const state = useSubmission(submitted?.id)
-  // Open while it is queued or lands, closed once it ends, unless toggled.
-  const [open, setOpen] = useState<boolean>()
+  const [userOverrideOpen, setUserOverrideOpen] = useState<boolean>()
   return (
     <Tool defaultOpen={call.status === 'error'}>
       <ToolHeader
@@ -494,8 +464,8 @@ export function WorkspaceCall({ call }: { call: ToolCallView }) {
           )}
           <Steps
             lander={submitted.lander}
-            onOpenChange={setOpen}
-            open={open ?? !state.outcome}
+            onOpenChange={setUserOverrideOpen}
+            open={userOverrideOpen ?? !state.outcome}
             ended={state.outcome?.outcome}
             running={state.landing}
             steps={state.steps}

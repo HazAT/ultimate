@@ -11,92 +11,83 @@ export type Workspace = {
   error?: string
   landed?: string
 }
-/** One `workspace submit`, waiting for or being processed by its source's lander. */
+type SubmitTimeEntryId = EntryId
+type SubmitTimeSubject = ConversationSubject
+type CheckCommand = string
+type LastOutputLine = string
+type TargetTipBeforeLanding = string
+type PushedRemoteBranch = string
+type OutputTail = string
+type UnixMilliseconds = number
+
 export type QueueEntry = {
   id: string
   conversationId: ConversationId
   source: string
   target: string
   tip: string
-  /** Latest submitting conversation entry when submit was called. */
-  at: EntryId
+  at: SubmitTimeEntryId
   divergence: string
   state: 'queued' | 'landing'
-  subject?: ConversationSubject
+  subject?: SubmitTimeSubject
   step?: string
-  /** What the lander did so far, as its conversation logs it. */
   steps: LanderStep[]
-  /** What its fast-forward landed: recorded with it, so any later lander task pushes and reports that. */
   landed?: Landed
 }
-/** A submission's landing: the target moved from `base` to `sha`, which brought `commits` and `paths`. */
 export type Landed = {
   sha: string
-  base: string
+  base: TargetTipBeforeLanding
   commits: string[]
   paths: string[]
   flaky: string[]
   weight?: Weight
 }
-/** Lines and estimated tokens a landing added and removed over the files `lib/token-weight.ts` counts. */
 export type Weight = { added: number; removed: number; tokens: number }
-/** A check's result; a passed or flaky one carries its last output line as `summary`. */
 export type LanderCheck = {
-  command: string
+  command: CheckCommand
   result: 'passed' | 'failed' | 'flaky'
-  summary?: string
+  summary?: LastOutputLine
 }
-/** One row of a submission's progress: a step, or a check with its result. */
 export type LanderStep = {
   step: string
-  at: number
-  /** The check command this step starts running; its `check` result row ends it. */
-  runs?: string
+  at: UnixMilliseconds
+  runs?: CheckCommand
   check?: LanderCheck
 }
-/** How a submission ended. A push that failed after landing locally is `landed` with a `reason`. */
 export type LanderOutcome = {
   outcome: 'landed' | 'failed'
   divergence?: string
   sha?: string
-  /** The target's tip the landing moved from: `base..sha` is what it brought. */
-  base?: string
+  base?: TargetTipBeforeLanding
   commits?: string[]
   paths?: string[]
   flaky?: string[]
   weight?: Weight
-  /** `<remote>/<target>` it was pushed to. */
-  pushed?: string
+  pushed?: PushedRemoteBranch
   needsRestart?: boolean
   reason?: string
-  /** Output tail behind the reason: conflicting paths, a check's output, git's error. */
-  output?: string
-  /** What the submitter does next, for a failure. */
+  output?: OutputTail
   hint?: string
 }
-/** One line of a lander conversation's log (entry kind `ultimate.lander`): a step, a check result, or the outcome. */
 export type LanderEntry = {
   submission: string
   conversationId: ConversationId
   tip: string
   target: string
-  at: number
-  /** Submitting conversation breadcrumb, not the log timestamp. */
-  sourceEntry?: EntryId
+  at: UnixMilliseconds
+  sourceEntry?: SubmitTimeEntryId
   step?: string
   runs?: string
   check?: LanderCheck
-  /** On the submission's first line and its outcome. */
-  subject?: ConversationSubject
+  subject?: SubmitTimeSubject
 } & Partial<LanderOutcome>
+type SourceCheckout = string
+
 export type WorkspaceIndex = {
   items: Record<string, Workspace>
   queue: QueueEntry[]
-  /** Live lander task per source checkout. */
-  landers: Record<string, TaskId>
-  /** The lander conversation per source checkout, where its task runs and logs. */
-  landerConversations: Record<string, ConversationId>
-  /** Outcomes of the latest submissions by id, with their target and lander conversation, for the submitter's cards. */
+  landers: Record<SourceCheckout, TaskId>
+  landerConversations: Record<SourceCheckout, ConversationId>
   results: Record<
     string,
     LanderOutcome & {
@@ -105,8 +96,8 @@ export type WorkspaceIndex = {
       lander: ConversationId
       steps: LanderStep[]
       conversationId?: ConversationId
-      subject?: ConversationSubject
-      at: EntryId
+      subject?: SubmitTimeSubject
+      at: SubmitTimeEntryId
       divergence: string
     }
   >
@@ -118,7 +109,6 @@ export type WorkspaceInfo = Workspace & {
   currentBranch: string | null
   sourceBranch: string | null
 }
-/** Checkouts by record state; ready ones by their commits (fresh: none of their own) and uncommitted changes. */
 export type WorkspaceStats = Record<Workspace['state'], number> & {
   total: number
   landed: number
@@ -126,8 +116,13 @@ export type WorkspaceStats = Record<Workspace['state'], number> & {
   fresh: number
   dirty: number
 }
-/** Disk the worktrees directory takes: every checkout's blocks, and on btrfs the blocks they share counted once. */
-export type WorkspaceDisk = { bytes: number | null; real: number | null; at: number }
+type AllocatedBytes = number
+type BtrfsBytesCountingSharedOnce = number
+export type WorkspaceDisk = {
+  bytes: AllocatedBytes | null
+  real: BtrfsBytesCountingSharedOnce | null
+  at: UnixMilliseconds
+}
 export type LandResult = {
   text: string
   landed?: string
@@ -138,13 +133,11 @@ export type LandResult = {
 }
 export type SubmitResult = { text: string; id: string; position: number; lander: ConversationId }
 
-/** A project's GitHub repository as the sidebar and the project rail name it. */
+type LowercasedGithubRepositoryKey = string
+type GithubSpellingOrKeyFallback = string
 export type GithubRepo = {
-  /** `github.com/<owner>/<repo>`, lowercased. */
-  key: string
-  /** `<owner>/<repo>` as GitHub spells it, or the key's when `gh` could not say. */
-  name: string
+  key: LowercasedGithubRepositoryKey
+  name: GithubSpellingOrKeyFallback
   url: string
-  /** Missing when `gh` is not installed, not signed in or cannot see the repository. */
   visibility?: 'public' | 'private' | 'internal'
 }

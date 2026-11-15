@@ -50,7 +50,6 @@ function Section({
   )
 }
 
-/** The composer's chip for the shown conversation's open messages; a click lists them, and each opens its conversation. */
 export function OpenMessages() {
   const id = useConversation((conversation) => conversation.id)
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
