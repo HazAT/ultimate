@@ -25,7 +25,9 @@ A coordinator sends @ultimate the two shas, a few lines on what changed, and wha
 const text = `Request from Ultimate's @ultimate (A/B before a core change lands). A/B on ~/Projects/ultimate:
 - Under test: <full sha> (<one line on the change>).
 - Baseline: <full sha> (main).
-- recipe-v2, default setup, --repeat 2 each.
+- recipe-v2, default setup, --repeat 2 each. For a change to automations or message routing, add (or use instead)
+  `--scenario recipe-reminder`: it creates a reminder automation, checks it fires and reaches the user, and scores
+  unanswered and duplicate board messages (about 3 min and $0.50 a run).
 Watch most closely: <paths the change touches>. I'll read runs/ myself; no reply needed when you start.`
 await ultimate.tell({ project: 'ultimate-eval', text, reply: false })
 await tools.automation({
