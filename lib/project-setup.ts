@@ -28,23 +28,19 @@ export async function projectSettings(
   }
 }
 
-/**
- * Where a folder's decision is kept: a linked git worktree shares its main checkout's, so a new worktree of a chosen
- * project needs no choice of its own.
- */
 export function decisionRoot(projectRoot: string) {
   const root = realpathSync(resolve(projectRoot))
   let link: string
   try {
     link = readFileSync(join(root, '.git'), 'utf8')
   } catch (error) {
-    // No `.git` file: a main checkout (a `.git` directory) or a folder outside git keeps its own decision.
-    if (isMissing(error) || errnoCode(error) === 'EISDIR') return root
+    const folderOwnsDecision = isMissing(error) || errnoCode(error) === 'EISDIR'
+    if (folderOwnsDecision) return root
     throw error
   }
   const gitdir = resolve(root, link.match(/^gitdir: (.+)$/m)![1])
-  // A submodule's `.git` file has no `commondir`; it keeps its own decision too.
-  if (!existsSync(join(gitdir, 'commondir'))) return root
+  const submoduleOwnsDecision = !existsSync(join(gitdir, 'commondir'))
+  if (submoduleOwnsDecision) return root
   const common = resolve(gitdir, readFileSync(join(gitdir, 'commondir'), 'utf8').trim())
   return basename(common) === '.git' ? realpathSync(dirname(common)) : root
 }

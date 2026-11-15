@@ -1,4 +1,3 @@
-import { offsetEntryId } from '../../../lib/ids.ts'
 import type {
   AgentState,
   EntryRecord,
@@ -27,6 +26,7 @@ import { actions, allCommands, ownDefault, regionKeys, shellKeys, shownSurface }
 import type { Region } from './actions.ts'
 import { ROOT } from './api.ts'
 import { EVENT_FEED } from '../../../shared/events.ts'
+import { historyCursorFromStreamBefore } from '../../../shared/protocol.ts'
 import type { StreamedView } from '../../../shared/protocol.ts'
 import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
 import type { ActionArgs, ActionError } from './api.ts'
@@ -109,7 +109,7 @@ function derive(view: StreamedView | undefined): ConversationState {
       id: view.conversation.id,
       loading: false,
       entries: view.entries,
-      older: view.before === undefined ? undefined : offsetEntryId(view.before, 1),
+      older: historyCursorFromStreamBefore(view.before),
       agent: docs['pi.agent'] ?? {},
       usage: (docs['pi.usage'] ?? empty.usage) as UsageState,
       live,

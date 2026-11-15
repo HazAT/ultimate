@@ -1,5 +1,5 @@
 import { api, defineWebExtension, FileUpload, provide } from '@/sdk'
-import { KEPT_MS, MAX_FILE_BYTES } from './limits.ts'
+import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.ts'
 import { UploadAction } from './refs.ts'
 
 async function base64(blob: Blob) {
@@ -15,8 +15,7 @@ async function upload(file: File) {
   return path
 }
 
-/** One value for every composer, so they re-render only when this module reloads. */
-const uploads = { upload, maxBytes: MAX_FILE_BYTES, keptMs: KEPT_MS }
-const useUpload = () => uploads
+const stableComposerUploads = { upload, maxBytes: MAX_FILE_BYTES_FOR_12_MB_ACTION, keptMs: KEPT_MS }
+const useUpload = () => stableComposerUploads
 
 export default defineWebExtension({ provides: [provide(FileUpload, useUpload)] })

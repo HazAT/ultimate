@@ -6,9 +6,10 @@ export type Phase =
   | 'fixing'
   | 'delegating'
   | 'wrapping_up'
+type FirstRunInputSubmissionId = number
+
 export type PhaseRow = {
-  /** The run's first input submission. */
-  run?: number
+  run?: FirstRunInputSubmissionId
   phase?: Phase
   confidence?: number
   at?: number

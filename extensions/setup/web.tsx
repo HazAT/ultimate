@@ -21,7 +21,6 @@ import type { SetupIssue } from './refs.ts'
 const mark = { warn: '⚠', info: '·', ok: '✓' } as const
 const tone = { warn: 'text-warning', info: 'text-muted-foreground', ok: 'text-success' } as const
 
-/** The fix button of a row: runs its command, or opens the Secrets panel at its secret. */
 function Fix({ fix }: { fix: NonNullable<SetupIssue['fix']> }) {
   const ui = useUltimate()
   const commands = useCommands()
@@ -65,10 +64,6 @@ function Row({ issue }: { issue: SetupIssue }) {
   )
 }
 
-/**
- * "⚠ N setup issues" while something on this machine isn't set up; nothing otherwise. Read on mount, every minute,
- * after a secret, login or provider health changes and when an extension is enabled, disabled or fails to load.
- */
 function Setup() {
   const system = useSystem()
   const signature = system?.extensions.map((extension) => [
@@ -76,7 +71,6 @@ function Setup() {
     extension.enabled,
     extension.server?.error,
   ])
-  // A login or provider health change re-checks at once; the minute poll covers the file-backed areas.
   const latest = useEvents({ events: [LoginChanged, HealthChanged], limit: 1 })?.[0]?.id
   const { data, refetch } = useAction(CheckAction, null, {
     onError: keepLast,
@@ -117,9 +111,9 @@ function Setup() {
   )
 }
 
+const ModelOnlySetupChangeNote = () => null
+
 export default defineWebExtension({
-  // Shown only while something needs setting up, so it stays on a phone's line too.
   slots: { 'statusline.right': [{ component: Setup, phone: true }] },
-  // The agent's note about setup changes; the user sees setup in the status line.
-  entries: { 'setup.note': () => null },
+  entries: { 'setup.note': ModelOnlySetupChangeNote },
 })

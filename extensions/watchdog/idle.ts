@@ -28,7 +28,6 @@ export async function idleNote(
   const queue = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).queue
   const excluded = new Set([...concluded, ...queue.map((item) => item.conversationId)])
   const messages = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
-  // A branch waiting on a reply gets 2 h; one that ended its run with nothing to wait on may have stalled: 30 min.
   const waiting = new Set<number>()
   for (const message of messages)
     if (typeof message.from === 'number' && isOpen(message))
@@ -40,7 +39,6 @@ export async function idleNote(
     conversations.push(...page.items)
     cursor = page.next
   } while (cursor)
-  // Owned descendants keep their branch working even when its coordinator is between turns.
   const children = new Map<ConversationId, ConversationId[]>()
   for (const conversation of conversations) {
     if (!conversation.owner) continue
@@ -49,13 +47,13 @@ export async function idleNote(
     siblings.push(conversation.id)
     children.set(owner, siblings)
   }
-  const working = async (id: ConversationId): Promise<boolean> => {
+  const branchOrOwnedDescendantWorking = async (id: ConversationId): Promise<boolean> => {
     if ((await tx.doc(LiveDoc, id)).run) return true
-    for (const child of children.get(id) ?? []) if (await working(child)) return true
+    for (const child of children.get(id) ?? [])
+      if (await branchOrOwnedDescendantWorking(child)) return true
     return false
   }
   const idle = []
-  // Branches are ownerless, so subagents are skipped before any document read: this runs before every @ultimate input.
   for (const conversation of conversations) {
     if (conversation.owner || excluded.has(conversation.id)) continue
     if (!(await tx.doc(Branch, conversation.id)).branch) continue
@@ -66,8 +64,10 @@ export async function idleNote(
         metadata.inputAt ?? metadata.answerAt ?? now,
         metadata.answerAt ?? metadata.inputAt ?? now,
       )
-    const limit = waiting.has(conversation.id) ? 2 * 3_600_000 : 30 * 60_000
-    if (age <= limit || (await working(conversation.id))) continue
+    const awaitingReplyIdleMs = 2 * 3_600_000
+    const stalledBranchIdleMs = 30 * 60_000
+    const limit = waiting.has(conversation.id) ? awaitingReplyIdleMs : stalledBranchIdleMs
+    if (age <= limit || (await branchOrOwnedDescendantWorking(conversation.id))) continue
     idle.push({
       id: conversation.id,
       title: metadata.title ?? 'Untitled',

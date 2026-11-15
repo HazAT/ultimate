@@ -6,10 +6,8 @@ import type { BuildNote, Landing } from './refs.ts'
 
 const short = (id: string) => id.slice(0, 7)
 
-/** How many landings the divider names before "+N more". */
 const named = 2
 
-/** A landing in the divider: its branch, a link to it; a commit made outside Ultimate by its subject. */
 function Landed({ row }: { row: Landing }) {
   const { switchConversation } = useUltimate()
   if (!row.conversation)
@@ -31,10 +29,6 @@ function Landed({ row }: { row: Landing }) {
   )
 }
 
-/**
- * The note on an input saying the build or the agent's instructions changed: one quiet divider naming what landed,
- * else what changed, its full text on hover.
- */
 export function Note({ entry }: { entry: EntryRecord }) {
   const note = (entry.data ?? {}) as BuildNote
   const content = entry.model?.[0]?.content
