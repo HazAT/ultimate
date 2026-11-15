@@ -111,8 +111,8 @@ function killDisconnectedBrowserGroup(owner: { pid: number; start: string } | un
   }
 }
 
-async function waitForCompositorSurface(page: Page) {
-  await page.evaluate(
+function waitForCompositorSurface(page: Page) {
+  return page.evaluate(
     () =>
       new Promise<void>((painted) =>
         requestAnimationFrame(() => requestAnimationFrame(() => painted())),
@@ -399,11 +399,12 @@ export default function browserExtension(host: ExtensionHost) {
       if (!state.launched) {
         const launched: Promise<Browser> = browserBinary()
           .then(async (executablePath) => {
+            const shortSingletonSocketEnvironment = { ...process.env, TMPDIR: undefined }
             const browser = await chromium.launch({
               executablePath,
               headless: true,
               chromiumSandbox: process.env.ULTIMATE_CHROMIUM_SANDBOX !== '0',
-              env: { ...process.env, TMPDIR: undefined },
+              env: shortSingletonSocketEnvironment,
             })
             if (state.launched === launched) state.browser = browser
             const owner = browserProcess(browser).catch(meansNone)

@@ -78,7 +78,7 @@ export default function statusLine(host: Host) {
       documents.set(id, before)
     }
     try {
-      await harness.commit(async function seedAndSubscribeAtOneCommitBoundary(tx) {
+      await harness.commit(async (tx) => {
         let cursor: Cursor | undefined
         do {
           const page = await tx.scanConversations({}, 256, cursor)
@@ -92,7 +92,7 @@ export default function statusLine(host: Host) {
         } while (cursor !== undefined)
         if (opened !== epoch) return
         sample(performance.now(), total)
-        unsubscribe = onCommit(harness, function adoptWholePublicationBeforeSampling(publication) {
+        unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
             if (change.record.kind === UsageDoc.definition.kind) {

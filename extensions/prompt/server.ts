@@ -196,7 +196,7 @@ export default function prompt(host: ExtensionHost) {
     hooks: [
       // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
       hook(GenerationTask, {
-        beforeInput: async (_input, { tx, conversationId }) => {
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const build = host.build()
           const seen = await tx.doc(LastRunBuildAndInstructionHashes, conversationId)
           const changes = await instructionChanges(host, tx, conversationId, seen)

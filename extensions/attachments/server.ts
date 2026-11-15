@@ -3,7 +3,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { KEPT_MS, MAX_FILE_BYTES } from './limits.ts'
+import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.ts'
 import { UploadAction } from './refs.ts'
 
 const uploadsOutsideCheckout = (home: string) => join(home, 'attachments')
@@ -44,8 +44,8 @@ export const actions = {
     if (typeof name !== 'string' || typeof data !== 'string')
       throw new Error('Expected { name, data: base64 }')
     const bytes = Buffer.from(data, 'base64')
-    if (bytes.byteLength > MAX_FILE_BYTES)
-      throw new Error(`Files up to ${MAX_FILE_BYTES / 1024 / 1024} MB attach`)
+    if (bytes.byteLength > MAX_FILE_BYTES_FOR_12_MB_ACTION)
+      throw new Error(`Files up to ${MAX_FILE_BYTES_FOR_12_MB_ACTION / 1024 / 1024} MB attach`)
     const dir = join(uploadsOutsideCheckout(host.home), `${Date.now()}-${randomUUID().slice(0, 8)}`)
     await mkdir(dir, { recursive: true })
     const path = join(dir, safeName(name))

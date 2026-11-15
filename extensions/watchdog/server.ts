@@ -66,7 +66,7 @@ const failedInput = (input: SubmissionRecord) =>
   ['model_error', 'no_model'].includes(input.reason)
 
 async function lastAssistantErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Generation) {
-  let upper = parseEntryId(Number(task.id))
+  let upper = sharedOrderTaskEntryBoundary(task.id)
   let assistant: AssistantMessage | undefined
   if (
     task.state.status === 'terminal' &&
@@ -78,8 +78,8 @@ async function lastAssistantErrorBeforeNextGeneration(tx: Tx, task: Generation, 
       const page = await tx.scanEntries(
         {
           conversationId: task.conversationId,
-          minEntryId: parseEntryId(Number(task.id)),
-          ...(next ? { maxEntryId: offsetEntryId(parseEntryId(Number(next.id)), -1) } : {}),
+          minEntryId: sharedOrderTaskEntryBoundary(task.id),
+          ...(next ? { maxEntryId: offsetEntryId(sharedOrderTaskEntryBoundary(next.id), -1) } : {}),
           order: 'descending',
         },
         100,
@@ -130,6 +130,18 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
 }
 
 type Generation = TaskRecord<JsonValue, JsonValue, JsonValue>
+const sharedOrderTaskEntryBoundary = (id: Generation['id']) => parseEntryId(Number(id))
+
+function advanceWatermarkThroughCompletedPrefix(
+  receipts: { highWater?: number },
+  tasks: Generation[],
+) {
+  for (const task of tasks) {
+    if (task.state.status !== 'terminal') break
+    receipts.highWater = task.id
+  }
+}
+
 async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Generation) {
   const generations: Generation[] = []
   let cursor: Cursor | undefined
@@ -408,10 +420,7 @@ export default function watchdog(host: ExtensionHost) {
     for (const task of tasks) await detect(task)
     await host.harness().commit(async (tx) => {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
-      for (const task of tasks) {
-        if (task.state.status !== 'terminal') break
-        receipts.highWater = task.id
-      }
+      advanceWatermarkThroughCompletedPrefix(receipts, tasks)
     }, context)
   })
   return defineExtension({

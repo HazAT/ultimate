@@ -26,8 +26,7 @@ import type { Recalled } from './types.ts'
 export const FROM_PERCENT = 20
 const memoryStillFreshInPrompt = (percent: number) => percent < FROM_PERCENT
 const RECALLED_MEMORY_FRESH_WINDOW_SHARE = 0.3
-const calibratedRecallProbability = 0.25
-export const THRESHOLD = calibratedRecallProbability
+export const CALIBRATED_RECALL_PROBABILITY = 0.25
 const TOP = 3
 
 export const Recall = defineDoc<RecallState>({
@@ -156,10 +155,11 @@ export default function recall(host: ExtensionHost) {
             const answer = result.answers.memory
             if (answer.type === 'choice') probabilities = answer.probabilities
           } catch (error) {
-            if (ctx.abortSignal?.aborted) {
-              await host.harness().commit(async function clearStoppedCheckBeforeRethrowing(tx) {
-                const doc = await tx.doc(Recall, id)
-                if (doc.pending === message.id) delete doc.pending
+            const advisoryFailureWithoutCancellation = !ctx.abortSignal?.aborted
+            if (!advisoryFailureWithoutCancellation) {
+              await host.harness().commit(async (tx) => {
+                const cancelledRecall = await tx.doc(Recall, id)
+                if (cancelledRecall.pending === message.id) delete cancelledRecall.pending
               }, BACKGROUND_CONTEXT)
               throw error
             }
@@ -171,7 +171,10 @@ export default function recall(host: ExtensionHost) {
           )
           const picked = Object.entries(probabilities)
             .filter(
-              ([slug, p]) => Object.hasOwn(memories, slug) && p >= THRESHOLD && !recent.has(slug),
+              ([slug, p]) =>
+                Object.hasOwn(memories, slug) &&
+                p >= CALIBRATED_RECALL_PROBABILITY &&
+                !recent.has(slug),
             )
             .toSorted((a, b) => b[1] - a[1])
             .slice(0, TOP)

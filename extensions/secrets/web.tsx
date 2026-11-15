@@ -41,11 +41,14 @@ const subscribe = (listener: () => void) => {
 
 function useSecrets() {
   const system = useSystem()
+  const secretDeclarationDependencies = system?.extensions.map((extension) => [
+    extension.name,
+    extension.enabled,
+    extension.server?.secrets,
+  ])
   const secrets = useAction(ListAction, null, {
     onError: keepLast,
-    on: system?.extensions.map(function listChangesExcludingFacetReloadTime(extension) {
-      return [extension.name, extension.enabled, extension.server?.secrets]
-    }),
+    on: secretDeclarationDependencies,
   })
   useEvent('secrets:changed', () => void secrets.refetch())
   return secrets

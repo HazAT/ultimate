@@ -358,6 +358,26 @@ async function memoryArea(
   }
 }
 
+type SetupAreaResult = SetupIssue | SetupIssue[] | undefined
+type SetupAreaCheck = (
+  host: CheckHost,
+  read: ReadDocFromCurrentTransactionOrSnapshot,
+) => SetupAreaResult | Promise<SetupAreaResult>
+
+function checkAreaWithDeferredThrowHandling(
+  area: SetupAreaCheck,
+  host: CheckHost,
+  read: ReadDocFromCurrentTransactionOrSnapshot,
+) {
+  return Promise.resolve()
+    .then(() => area(host, read))
+    .catch((error: unknown): SetupIssue => ({
+      area: 'Setup check',
+      status: 'info',
+      summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
+    }))
+}
+
 export async function check(
   host: CheckHost,
   read: ReadDocFromCurrentTransactionOrSnapshot = snapshots(host),
@@ -376,19 +396,8 @@ export async function check(
         landerArea,
         worktreeArea,
         memoryArea,
-      ] as ((
-        host: CheckHost,
-        read: ReadDocFromCurrentTransactionOrSnapshot,
-      ) => SetupIssue | SetupIssue[] | undefined | Promise<SetupIssue | SetupIssue[] | undefined>)[]
-    ).map((area) =>
-      Promise.resolve()
-        .then(() => area(host, read))
-        .catch((error: unknown): SetupIssue => ({
-          area: 'Setup check',
-          status: 'info',
-          summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
-        })),
-    ),
+      ] as SetupAreaCheck[]
+    ).map((area) => checkAreaWithDeferredThrowHandling(area, host, read)),
   )
   const warningsBeforeInformationBeforeOk = { warn: 0, info: 1, ok: 2 }
   return areas
@@ -452,7 +461,7 @@ export default function setup(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-        beforeInput: async (_input, { tx, conversationId }) => {
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
           return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())

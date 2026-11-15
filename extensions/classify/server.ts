@@ -17,8 +17,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const billingAndAuthRetryCooldownMs = 15 * 60_000
-export const cooldownMs = billingAndAuthRetryCooldownMs
+export const cooldownMs = 15 * 60_000
 const rejected: Record<number, string> = {
   401: 'TypeSafe: API key rejected',
   402: 'TypeSafe: out of credits',
@@ -26,19 +25,22 @@ const rejected: Record<number, string> = {
 }
 
 export default function classify(host: ExtensionHost) {
-  let paused: { key: string; until: number; error: string } | undefined
+  let billingOrAuthPause: { key: string; until: number; error: string } | undefined
   const service: ClassifyService = {
     async ask(request, signal) {
+      const failClosedProviderAuth = await host.modelRuntime.getAuth('typesafe')
       const providerKeyOrStoredSecret =
-        (await host.modelRuntime.getAuth('typesafe'))?.auth.apiKey ??
-        (await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
+        failClosedProviderAuth?.auth.apiKey ?? (await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
       if (!providerKeyOrStoredSecret) {
         throw new Error(
           'Missing TYPESAFE_API_KEY. Enable secrets and add TYPESAFE_API_KEY in the Secrets panel (⌘K → Secrets).',
         )
       }
-      if (paused?.key === providerKeyOrStoredSecret && Date.now() < paused.until)
-        throw new Error(paused.error)
+      if (
+        billingOrAuthPause?.key === providerKeyOrStoredSecret &&
+        Date.now() < billingOrAuthPause.until
+      )
+        throw new Error(billingOrAuthPause.error)
       const base =
         host.modelRuntime.getProvider('typesafe')?.baseUrl ?? 'https://api.typesafe.ai/v1'
       const response = await fetch(`${base.replace(/\/+$/, '')}/systemone`, {
@@ -54,7 +56,11 @@ export default function classify(host: ExtensionHost) {
         const error = `TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`
         const status = rejected[response.status]
         if (status) {
-          paused = { key: providerKeyOrStoredSecret, until: Date.now() + cooldownMs, error }
+          billingOrAuthPause = {
+            key: providerKeyOrStoredSecret,
+            until: Date.now() + cooldownMs,
+            error,
+          }
           host.notice(`${status}; classification paused for ${cooldownMs / 60_000} minutes`)
         }
         throw new Error(error)

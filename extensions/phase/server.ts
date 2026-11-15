@@ -111,7 +111,8 @@ export default function phase(
             answer = await runtime.memo('answer', result.answers.phase, context)
           }
         } catch (error) {
-          if (runtime.signal.aborted) throw error
+          const advisoryFailureWithoutCancellation = !runtime.signal.aborted
+          if (!advisoryFailureWithoutCancellation) throw error
         }
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)

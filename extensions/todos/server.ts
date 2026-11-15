@@ -179,10 +179,11 @@ export default function todosExtension(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-        beforeInput: async (_input, { tx, conversationId }) =>
-          (await callerIsUltimate(tx, conversationId))
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
+          return (await callerIsUltimate(tx, conversationId))
             ? noteFor(tx, conversationId, Date.now())
-            : undefined,
+            : undefined
+        },
       }),
     ],
     tools: [
@@ -197,7 +198,7 @@ export default function todosExtension(host: ExtensionHost) {
           owner: opt(strEnum(['user', 'ultimate'])),
           id: opt(int({ minimum: 1 })),
         }),
-        async execute(args, api, ctx) {
+        execute: async function executeOnceWithoutReplay(args, api, ctx) {
           const callerIncludingSideChatOwner = await actingAs(host, api.conversationId, ctx)
           const text = await api.commit(async (tx) => {
             if (!(await callerIsUltimate(tx, callerIncludingSideChatOwner)))
