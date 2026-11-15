@@ -210,7 +210,8 @@ interface Route {
  * answer to a reply-enabled message, the starter's or another conversation's. A branch that stops with nothing under way reports: its answer wakes
  * the starter. One that still waits on work (subagents, the lander, a reply) leaves it as a note. With `down`, after a
  * run of the starter, its final answer goes to each branch whose report or reply the run read and wakes it (`reported`).
- * Each routed message is one-way, and an answer to a routed answer is an echo that routes no further: no ping-pong.
+ * Each routed message is one-way, and an answer to a routed answer is an echo: a note that wakes no one, so no
+ * ping-pong.
  */
 export function route(host: ExtensionHost) {
   return defineTask<
@@ -296,7 +297,8 @@ export function route(host: ExtensionHost) {
             if (!asked) elsewhere = false
             if (data?.routed !== true) echo = false
           }
-          const report = !(await underway(host, tx, id))
+          // An echo is a note: the starter's answer to it would stay local, so waking it only starts another round.
+          const report = !echo && !(await underway(host, tx, id))
           const up = (body: string, options: Route['options']) => [
             {
               to: by,

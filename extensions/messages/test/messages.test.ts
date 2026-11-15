@@ -1566,11 +1566,33 @@ it("routes @ultimate's final answer to a branch's reply back to the branch, once
     [false, expect.any(Number)],
   ])
   expect(toBranch[1].text).toContain('Reply from')
-  // The branch woke, and its answer to the routed weigh-in is an echo: @ultimate's answer to it stays local.
+  // The branch woke, and its answer to the routed weigh-in is an echo: a note to @ultimate.
   expect((await b.from()).map((m) => [m.re, m.report, m.echo])).toEqual([
     [1, undefined, undefined],
-    [undefined, true, true],
+    [undefined, undefined, true],
   ])
+})
+it("leaves a branch's answer to @ultimate's routed answer as a note that does not wake @ultimate", async () => {
+  // #590943/599476 "OK, holding quietly." woke @ultimate (#574726/599490), whose answer went down; the branch's
+  // "Holding." (#590943/599498) woke @ultimate again (#574726/599502). It happened four times.
+  const f = await fixture()
+  const b = await branched(f)
+  await b.later('OK, holding quietly. WEIGH')
+  await f.opened.root.waitForIdle(context)
+  await b.settled()
+  await b.branch.waitForIdle(context)
+  await b.settled()
+  const [, report, echo] = await b.from()
+  expect([report.report, echo?.echo, echo?.report]).toEqual([true, true, undefined])
+  const view = await f.opened.root.context(context)
+  const note = view.entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === echo.id,
+  )!
+  expect([note.data, note.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
+  expect(view.entries.filter((e) => e.id > note.id && e.kind === 'pi.assistant')).toHaveLength(0)
 })
 it("sends @ultimate's answer to a branch it concluded to the agent whose request the branch worked on", async () => {
   // danielgriesser.com: @writer asked @ultimate for a briefing, got "I've started branch #14919", and the briefing,

@@ -44,9 +44,10 @@ report.**
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
-Routing cannot loop: an answer to a routed answer is an `echo` and routes no further. A branch whose latest report or
-reply came after @ultimate's latest message to it shows as `awaiting @ultimate`, as does one with a reply-enabled
-message to @ultimate open; @ultimate messaging or concluding it clears that.
+Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
+further. A branch whose latest report or reply came after @ultimate's latest message to it shows as `awaiting
+@ultimate`, as does one with a reply-enabled message to @ultimate open; @ultimate messaging or concluding it clears
+that.
 
 ### Messages to the user
 
