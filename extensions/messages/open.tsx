@@ -15,10 +15,9 @@ import {
 import type { WaitFacts } from '../../lib/waits.ts'
 import { parseConversationId } from '../../lib/ids.ts'
 import { WaitTimers } from './points.tsx'
-import { useStarters } from './started.tsx'
+import { useStarters, useUnderway } from './started.tsx'
 import { Address } from './cards.tsx'
-import { useConcludedSince, useOverview } from '../conversations/ui.tsx'
-import { useWorkspaceIndex } from '../workspaces/ui.tsx'
+import { useConcludedSince } from '../conversations/ui.tsx'
 import { emptyMessages, openMessages } from './data.tsx'
 import { MessagesDoc } from './refs.ts'
 import type { Message } from './refs.ts'
@@ -76,32 +75,15 @@ function Open({ timers }: { timers: WaitFacts['automations'] }) {
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const concludedSince = useConcludedSince()
   const starters = useStarters()
-  const overview = useOverview()
   const conversations = useConversations()
-  const topOf = (c: (typeof conversations)[number]) => {
-    let top: (typeof conversations)[number] | undefined = c
-    let topId = c.id
-    while (top) {
-      topId = top.id
-      const parent: number | undefined =
-        top.ownerTaskId === undefined ? undefined : top.parentConversationId
-      top = parent === undefined ? undefined : conversations.find((p) => p.id === parent)
-    }
-    return topId
-  }
-  const busyTops = new Set(conversations.filter((c) => c.busy).map(topOf))
-  const landing = new Set(useWorkspaceIndex().queue.map((item) => item.conversationId))
+  const underway = useUnderway()
   const branches = conversations
     .filter((c) => c.branchOf)
     .map((c) => ({
       id: c.id,
       title: c.title,
       starter: starters(c.id),
-      working:
-        busyTops.has(c.id) ||
-        landing.has(c.id) ||
-        overview[c.id]?.runState === 'working' ||
-        overview[c.id]?.runState === 'queued',
+      working: underway(c.id),
       concluded: concludedSince(c.id) === Infinity,
     }))
   const now = useNow(30_000)

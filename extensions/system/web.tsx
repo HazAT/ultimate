@@ -26,6 +26,7 @@ import {
   conversationWait,
   waitLabel,
   useStarters,
+  useUnderway,
   emptyMessages,
 } from '../messages/ui.tsx'
 import { useAutomations, timerWaits } from '../automations/ui.tsx'
@@ -60,6 +61,7 @@ function useStates(parked: ReadonlySet<number>) {
   const primary = standing?.ultimate
   const timers = timerWaits(useAutomations(5000).data, standing)
   const starterOf = useStarters()
+  const underway = useUnderway()
   const primaryWait =
     primary === undefined
       ? undefined
@@ -86,7 +88,7 @@ function useStates(parked: ReadonlySet<number>) {
             ? ('subagent' as const)
             : ('other' as const),
       runState: overview[id]?.runState,
-      busy: own?.busy,
+      busy: own?.busy || (own?.branchOf !== undefined && underway(id)),
       parked: parked.has(id),
       starter: starterOf(id),
       concludedSince: concludedSince(id),

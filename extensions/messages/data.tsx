@@ -73,8 +73,8 @@ export function conversationState(
   if (userActionTakesPriority) return 'waits'
   const wait = conversationWait(conversation, log, automations)
   if (wait?.on === 'work') return 'working'
-  if (kind !== 'subagent' && wait && wait.on !== 'user') return 'awaiting'
   if (runState === 'error') return 'failed'
+  if (kind !== 'subagent' && wait && wait.on !== 'user') return 'awaiting'
   if (kind === 'subagent' && runState === 'answered') return 'done'
   return 'idle'
 }

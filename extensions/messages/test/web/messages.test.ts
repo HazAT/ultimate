@@ -590,6 +590,7 @@ describe('conversation state', () => {
     expect(conversationState({ ...branch, concludedSince: Infinity }, log)).toBe('idle')
     expect(conversationState({ ...branch, concludedSince: 200 }, log)).toBe('awaiting')
     expect(conversationState({ id: 5, kind: 'other' }, log)).toBe('idle')
+    expect(conversationState({ ...branch, runState: 'error' }, log)).toBe('failed')
   })
 
   it('owes branches it started only when they wait on it, without duplicating their messages', () => {
