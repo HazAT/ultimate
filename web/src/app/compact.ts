@@ -87,17 +87,17 @@ export function setAsideIds(entries: readonly EntryRecord[]): Set<number> {
   const aside = new Set<number>()
   if (!backs.length) return aside
   for (const entry of entries) {
-    let latestApplicableGoBackId = Number.POSITIVE_INFINITY
+    let goBackCeiling = Number.POSITIVE_INFINITY
     for (;;) {
       const back = backs.findLast(
-        (candidate) => candidate.id > entry.id && candidate.id <= latestApplicableGoBackId,
+        (candidate) => candidate.id > entry.id && candidate.id <= goBackCeiling,
       )
       if (!back) break
       if (entry.id > back.at) {
         aside.add(entry.id)
         break
       }
-      latestApplicableGoBackId = back.at
+      goBackCeiling = back.at
     }
   }
   return aside
@@ -123,10 +123,12 @@ export function openIn(keys: ReadonlySet<string>, row: WorkRun, value: boolean) 
 }
 
 export function anchorSelector(anchor: { entryId: EntryId; last?: number; inner?: boolean }) {
-  const stableRunLastEntry = anchor.last
-  if (stableRunLastEntry !== undefined) return `:scope > [data-run-last="${stableRunLastEntry}"]`
-  const rowInsideRunExcludingRunItself = `[data-run-last] [data-entry-id="${anchor.entryId}"]:not([data-run-last])`
-  return anchor.inner ? rowInsideRunExcludingRunItself : `[data-entry-id="${anchor.entryId}"]`
+  const stableRunLastEntry = () => anchor.last
+  if (stableRunLastEntry() !== undefined)
+    return `:scope > [data-run-last="${stableRunLastEntry()}"]`
+  const rowInsideRunExcludingRunItself = () =>
+    `[data-run-last] [data-entry-id="${anchor.entryId}"]:not([data-run-last])`
+  return anchor.inner ? rowInsideRunExcludingRunItself() : `[data-entry-id="${anchor.entryId}"]`
 }
 
 export const partsOf = (row: CompactPart | WorkRun): readonly CompactPart[] =>

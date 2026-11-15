@@ -19,6 +19,10 @@ export function storeFiles(key: string, files: DraftFile[]) {
   else localStorage.removeItem(`${key}.files`)
 }
 
+function retainImagesOnlyUntilReload(storageKey: string) {
+  localStorage.removeItem(storageKey)
+}
+
 export function storeImages(key: string, images: PastedImage[]) {
   const name = `${key}.images`
   const base64Chars = images.reduce((total, image) => total + image.data.length, 0)
@@ -29,6 +33,6 @@ export function storeImages(key: string, images: PastedImage[]) {
   try {
     localStorage.setItem(name, JSON.stringify(images))
   } catch {
-    localStorage.removeItem(name)
+    retainImagesOnlyUntilReload(name)
   }
 }

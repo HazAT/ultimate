@@ -40,8 +40,8 @@ export function resultText(result: ToolResult): string {
 }
 
 export function callsStart(message: AssistantMessage): number {
-  const responseDurationMsOrZero = message.durationMs ?? 0
-  return message.timestamp + responseDurationMsOrZero
+  const responseDurationMsOrZero = () => message.durationMs ?? 0
+  return message.timestamp + responseDurationMsOrZero()
 }
 
 export function toolCallView(

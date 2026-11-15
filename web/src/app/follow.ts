@@ -13,6 +13,6 @@ export function readerLeft({
 }: ScrollPlace): boolean {
   const highestTopBeforeCoalescedScroll = Math.max(topAtLastScrollEventPx, libraryPlacedTopPx ?? 0)
   const readerMovedUp = currentTopPx < highestTopBeforeCoalescedScroll - 1
-  const awayFromBottom = distanceFromBottomPx > 1
-  return readerMovedUp && awayFromBottom
+  const awayFromBottom = () => distanceFromBottomPx > 1
+  return readerMovedUp && awayFromBottom()
 }

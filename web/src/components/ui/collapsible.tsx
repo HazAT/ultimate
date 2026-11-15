@@ -78,7 +78,7 @@ function CollapsibleTrigger({ onClick, ...props }: ComponentProps<'button'>) {
   )
 }
 
-function CollapsibleContent(props: ComponentProps<'div'>) {
+function UnmeasuredUnanimatedOpenContent(props: ComponentProps<'div'>) {
   const { open, disabled, contentId } = useCollapsible('CollapsibleContent')
   if (!open) return null
   return (
@@ -92,4 +92,4 @@ function CollapsibleContent(props: ComponentProps<'div'>) {
   )
 }
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent }
+export { Collapsible, CollapsibleTrigger, UnmeasuredUnanimatedOpenContent as CollapsibleContent }

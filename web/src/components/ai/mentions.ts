@@ -30,8 +30,8 @@ type Node = { type: string; value?: string; children?: Node[]; url?: string }
 
 export function remarkMentions() {
   const visit = (node: Node) => {
-    const preservesExistingLink = node.type === 'link' || node.type === 'linkReference'
-    if (!node.children || preservesExistingLink) return
+    const preservesExistingLink = () => node.type === 'link' || node.type === 'linkReference'
+    if (!node.children || preservesExistingLink()) return
     node.children = node.children.flatMap((child) => {
       if (child.type !== 'text' || !child.value?.includes('#')) {
         visit(child)

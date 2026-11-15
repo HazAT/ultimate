@@ -118,7 +118,7 @@ export function Transcript({ dock }: { dock?: boolean }) {
     })
     fade.finished.then(
       () => setPlaceholderThroughFadeOut(false),
-      function keepPlaceholderForNextConversation() {},
+      () => {},
     )
     return () => fade.cancel()
   }, [loading, placeholderThroughFadeOut])
@@ -146,7 +146,7 @@ export function Transcript({ dock }: { dock?: boolean }) {
     if (!scroll || !content) return undefined
     scroll.scrollTop = scroll.scrollHeight
     if (id !== undefined) revealRowsWithOpacityOnly(scroll, content)
-    const resize = new ResizeObserver(function pinFollowingBeforePaint() {
+    const resize = new ResizeObserver(() => {
       const state = stick.current?.state
       if (state?.isAtBottom) state.scrollTop = state.targetScrollTop
     })
@@ -175,6 +175,15 @@ const rowGap = (content: Element | null) =>
   content ? Number.parseFloat(getComputedStyle(content).rowGap) || 0 : 0
 const preloadOneViewportBeforeTop = '100% 0px 0px 0px'
 
+function useAnchoringAfterAncestorRefs(
+  scrollRef: StickToBottomContext['scrollRef'],
+  following: boolean,
+) {
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.style.overflowAnchor = following ? 'none' : ''
+  }, [following, scrollRef])
+}
+
 function TranscriptEntries() {
   const { id, entries: active, older, live, busy, loading } = useConversation()
   const { entries, history, cursor, pending, error, filling, retry, loadEarlier, loadDown } =
@@ -192,12 +201,7 @@ function TranscriptEntries() {
   const { contentRef, scrollRef, stopScroll, state, isAtBottom, escapedFromLock } =
     useStickToBottomContext()
   const following = isAtBottom && !escapedFromLock
-  useEffect(
-    function disableBrowserAnchoringWhileFollowing() {
-      if (scrollRef.current) scrollRef.current.style.overflowAnchor = following ? 'none' : ''
-    },
-    [following, scrollRef],
-  )
+  useAnchoringAfterAncestorRefs(scrollRef, following)
   const topAtLastCapturedScroll = useRef(0)
   const left = useEffectEvent(() => {
     const scroll = scrollRef.current
@@ -247,8 +251,8 @@ function TranscriptEntries() {
       const gap = rowGap(contentRef.current)
       const bottom = scroll.scrollHeight - scroll.clientHeight
       const removingTailCannotClampReader = scroll.scrollTop <= bottom - tailSpace - gap
-      const readerReturnedToBottom = scroll.scrollTop >= bottom - 1
-      if (removingTailCannotClampReader || readerReturnedToBottom) setTailSpace(0)
+      const readerReturnedToBottom = () => scroll.scrollTop >= bottom - 1
+      if (removingTailCannotClampReader || readerReturnedToBottom()) setTailSpace(0)
     }
     scroll.addEventListener('scroll', releaseTail)
     releaseTail()
@@ -309,7 +313,8 @@ function TranscriptEntries() {
             top: candidates[0].getBoundingClientRect().top,
           }
       }
-      if (!state.isAtBottom || left()) stopScroll()
+      const readerLeftBeforeScrollEvent = !state.isAtBottom || left()
+      if (readerLeftBeforeScrollEvent) stopScroll()
       setTailSpace((space) => {
         const emptyTailToKeepScrollable =
           (scrollRef.current?.clientHeight ?? 0) - (contentRef.current?.clientHeight ?? 0)
@@ -363,6 +368,9 @@ function TranscriptEntries() {
     setOpenedPartKeys((keys) => openIn(keys, run, value))
   const revealedRowHeldBelowPinnedStrip = useRef<Element>(null)
   const maxPinnedCoverDuringHold = useRef(0)
+  const adjustScrollWithoutReaderInput = (delta: number) => {
+    state.scrollTop += delta
+  }
   const hold = useEffectEvent(() => {
     const element = revealedRowHeldBelowPinnedStrip.current
     const scroll = scrollRef.current
@@ -382,7 +390,7 @@ function TranscriptEntries() {
     const scrollRoomBelow = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
     if (move > scrollRoomBelow)
       setTailSpace(tailSpace + move - scrollRoomBelow + rowGap(contentRef.current))
-    state.scrollTop += move
+    adjustScrollWithoutReaderInput(move)
   })
   useEffect(() => {
     const scroll = scrollRef.current

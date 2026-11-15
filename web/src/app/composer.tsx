@@ -60,6 +60,7 @@ import {
 } from './queued.ts'
 
 const alt = isMac ? '⌥' : 'Alt'
+const chromeAndroidKeyboardImagePasteStyle = { WebkitUserModify: 'read-write' } as const
 
 function blockedBy(agent: AgentState, models: ModelsResponse | undefined): string | undefined {
   const model = agent.model
@@ -260,9 +261,7 @@ export function insertIntoComposer(id: number, text: string) {
   const { text: next, cursor } = spliced(current, start, end, text)
   draft.set({ text: next, revision: draft.get().revision + 1 })
   if (draft.key) localStorage.setItem(draft.key, next)
-  requestAnimationFrame(function placeCursorAfterReactCommit() {
-    editor?.setSelectionRange(cursor, cursor)
-  })
+  requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
 }
 
 function clearDraft(
@@ -512,7 +511,7 @@ function ComposerEditor({
           readOnly={loading || sending}
           onPaste={(event) => void paste(event)}
           onDrop={(event) => void drop(event)}
-          style={touchKeyboard() ? { WebkitUserModify: 'read-write' } : undefined}
+          style={touchKeyboard() ? chromeAndroidKeyboardImagePasteStyle : undefined}
           id={scoped === undefined ? 'composer-input' : `composer-input-${scoped}`}
           data-conversation={id}
           onChange={(event) => update(event.target.value)}

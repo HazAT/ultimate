@@ -140,15 +140,17 @@ export function ErrorCard({
   )
 }
 
+type ExtensionAndContributionKeyedBoundaryProps = {
+  extension: string
+  version: number
+  variant?: 'inline' | 'block'
+  fallback?: ReactNode
+  errors?: HTMLElement | null
+  children: ReactNode
+}
+
 export class ExtensionBoundary extends Component<
-  {
-    extension: string
-    version: number
-    variant?: 'inline' | 'block'
-    fallback?: ReactNode
-    errors?: HTMLElement | null
-    children: ReactNode
-  },
+  ExtensionAndContributionKeyedBoundaryProps,
   { error?: string; stack?: string; version: number }
 > {
   state: { error?: string; stack?: string; version: number } = { version: this.props.version }
@@ -222,7 +224,7 @@ export function Provided<Input, Value>({
   const provision = provisionOf(useExtensions(), point.point)
   if (!provision) return renderInCallerScope(undefined)
   const use = provision.use as (input: Input) => Value
-  const remountOnHookVersion = provision.version
+  const remountOnHookVersion = () => provision.version
   return (
     <ExtensionBoundary
       extension={provision.extension}
@@ -231,7 +233,7 @@ export function Provided<Input, Value>({
       variant="inline"
       version={provision.version}
     >
-      <Provide input={input} key={remountOnHookVersion} render={renderInCallerScope} use={use} />
+      <Provide input={input} key={remountOnHookVersion()} render={renderInCallerScope} use={use} />
     </ExtensionBoundary>
   )
 }
