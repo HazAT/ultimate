@@ -1,4 +1,3 @@
-import { offsetEntryId } from '../lib/ids.ts'
 import type {
   ConversationId,
   TaskId,
@@ -38,7 +37,7 @@ export function historyCursorFromStreamBefore(
 ): ExclusiveHistoryCursor | undefined {
   return entryImmediatelyBeforeWindow === undefined
     ? undefined
-    : offsetEntryId(entryImmediatelyBeforeWindow, 1)
+    : ((entryImmediatelyBeforeWindow + 1) as EntryId)
 }
 export interface HistoryResponse {
   entries: NewestFirstEntries
