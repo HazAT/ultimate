@@ -37,7 +37,6 @@ import type { OnboardingStatus as Status } from './refs.ts'
 import { extensionOptions, offered } from './choices.tsx'
 import { Line, useDescribed } from './parts.tsx'
 
-/** Only the prerequisites remain modal. Setup choices belong in the conversation. */
 export function FirstRun({
   open,
   onDone,
@@ -55,22 +54,19 @@ export function FirstRun({
   const named = (name: string | undefined) =>
     models?.models.find((m) => `${m.provider}/${m.id}` === name)
   const own = agent.model && `${agent.model.provider}/${agent.model.modelId}`
-  // The picker's picks as the dialog opened: one since is the user's choice here.
   const picks = usePicks()
-  const [opened, setOpened] = useState<number>()
-  if (open && opened === undefined) setOpened(picks)
-  if (!open && opened !== undefined) setOpened(undefined)
-  const picked = opened !== undefined && opened !== picks
+  const [openingPickCount, setOpeningPickCount] = useState<number>()
+  if (open && openingPickCount === undefined) setOpeningPickCount(picks)
+  if (!open && openingPickCount !== undefined) setOpeningPickCount(undefined)
+  const pickedInDialog = openingPickCount !== undefined && openingPickCount !== picks
   const fallback = families?.families.find((family) => family.name === DEFAULT_FAMILY)
-  // While no default model is configured, the recommended one with a login here, else the first with one.
-  const suggested =
+  const unconfiguredModelSuggestion =
     fallback && !runsOn(fallback)
       ? (RECOMMENDED_MODELS.map(named).find((m) => m?.available) ??
         models?.models.find((m) => m.available))
       : undefined
-  /** What Continue saves as the default: the user's pick here, else the suggestion; nothing over a configured one. */
-  const chosen = picked ? named(own) : suggested
-  const model = chosen ?? named(own)
+  const defaultToSave = pickedInDialog ? named(own) : unconfiguredModelSuggestion
+  const model = defaultToSave ?? named(own)
   const connected = models?.providers.some((p) => p.status.configured)
   const opus = models?.models.find(
     (m) => m.provider === 'claude-code' && m.id === 'claude-opus-5-5',
@@ -95,10 +91,10 @@ export function FirstRun({
     if (busy) return
     setBusy(true)
     try {
-      if (!skipped && chosen) {
+      if (!skipped && defaultToSave) {
         await api.action(
           SetDefaultAction,
-          { model: `${chosen.provider}/${chosen.id}` },
+          { model: `${defaultToSave.provider}/${defaultToSave.id}` },
           { conversationId },
         )
         await refreshFamilies()
@@ -171,7 +167,7 @@ export function FirstRun({
                   ? `${Math.round(model.contextWindow / 1000)}k context. @ultimate works best with 1M+.`
                   : '1M+ context recommended for @ultimate.'}
               </span>
-              {chosen && (
+              {defaultToSave && (
                 <span className="mt-1 block text-xs text-muted-foreground">
                   @ultimate, new conversations and branches start on it, thinking high.
                 </span>
@@ -202,7 +198,6 @@ export function FirstRun({
           <Button
             size="sm"
             ref={next === 'continue' ? primary : undefined}
-            // What Continue saves depends on the configured default: it waits for the families.
             disabled={busy || !connected || !model?.available || !families}
             onClick={() => void finish(false)}
           >
@@ -243,8 +238,7 @@ export function Recommended({
   const [error, setError] = useState<string>()
   const { line } = useDescribed()
   const options = extensionOptions(status?.user ?? { enable: [], disable: [] }, changed)
-  // Everything else that runs already: one quiet line, read-only; the Extensions panel changes them.
-  const on = (useSystem()?.extensions ?? [])
+  const runningExtensions = (useSystem()?.extensions ?? [])
     .filter((info) => info.enabled && !offered.some((entry) => entry.name === info.name))
     .toSorted((a, b) => a.name.localeCompare(b.name))
   const checked = Object.fromEntries(options.map(({ name, checked: value }) => [name, value]))
@@ -296,15 +290,15 @@ export function Recommended({
           </li>
         ))}
       </ul>
-      {on.length > 0 && (
+      {runningExtensions.length > 0 && (
         <Collapsible>
           <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1.5 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
-            {on.length} more are on already
+            {runningExtensions.length} more are on already
           </CollapsibleTrigger>
           <CollapsibleContent>
             <ul className="mt-2 space-y-1 pl-5">
-              {on.map((info) => (
+              {runningExtensions.map((info) => (
                 <li className="flex min-w-0 items-baseline gap-3 text-xs" key={info.name}>
                   <span className="w-24 shrink-0 truncate font-mono text-muted-foreground">
                     {info.name}
@@ -436,17 +430,17 @@ export function GitCard({
   isolation?: Isolation
   onDone: (choice: { initialize: boolean }) => Promise<void>
 }) {
-  const [initializing, setInitializing] = useState<boolean>()
-  // A reload after initialization must retry the same notification, not hand Git back to the agent.
+  const [retryInitialization, setRetryInitialization] = useState<boolean>()
   const initialize =
-    initializing ?? (isolation?.empty === true || (isolation !== undefined && !isolation.reason))
+    retryInitialization ??
+    (isolation?.empty === true || (isolation !== undefined && !isolation.reason))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const apply = async () => {
     if (busy) return
     setBusy(true)
     try {
-      setInitializing(initialize)
+      setRetryInitialization(initialize)
       await onDone({ initialize })
       events.emit('onboarding:git', null)
     } catch (failure) {
@@ -471,7 +465,7 @@ export function GitCard({
       {error && <p className="text-xs text-error">{error}</p>}
       <div className="flex justify-end">
         <Button
-          disabled={busy || (!isolation && initializing === undefined)}
+          disabled={busy || (!isolation && retryInitialization === undefined)}
           size="sm"
           onClick={() => void apply()}
         >
