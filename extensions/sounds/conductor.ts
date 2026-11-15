@@ -52,8 +52,8 @@ export async function conduct(variant: Variant | undefined) {
   set({ variant })
   const tone = await engine()
 
-  const variantChangedWhileEngineLoaded = stage.variant !== variant
-  if (variantChangedWhileEngineLoaded) return
+  const variantSuperseded = stage.variant !== variant
+  if (variantSuperseded) return
 
   const browserNeedsAudioGesture = !navigator.userActivation.hasBeenActive
   if (browserNeedsAudioGesture) {
@@ -64,8 +64,8 @@ export async function conduct(variant: Variant | undefined) {
 }
 
 export const hit = (happening: Happening) => {
-  const tabMayPlayWithoutCatchUp = !document.hidden
-  if (tabMayPlayWithoutCatchUp) band?.hit(happening)
+  const tabVisible = !document.hidden
+  if (tabVisible) band?.hit(happening)
 }
 
 export function startDemo() {

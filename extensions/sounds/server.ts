@@ -48,7 +48,7 @@ export function speak(key: string, text: string, signal: AbortSignal) {
       { once: true },
     )
 
-    let undiciHandshakeOrNetworkDetail = ''
+    let socketFailureDetail = ''
     const realtime = (request?: { origin?: unknown; path?: string }) =>
       String(request?.origin).includes('api.openai.com') &&
       request?.path?.startsWith('/v1/realtime')
@@ -57,19 +57,16 @@ export function speak(key: string, text: string, signal: AbortSignal) {
         'undici:request:headers',
         ({ request, response }) => {
           if (realtime(request) && response.statusCode !== 101)
-            undiciHandshakeOrNetworkDetail = `HTTP ${response.statusCode}`
+            socketFailureDetail = `HTTP ${response.statusCode}`
         },
       ],
       [
         'undici:request:error',
         ({ request, error }) => {
-          if (realtime(request)) undiciHandshakeOrNetworkDetail = error.message
+          if (realtime(request)) socketFailureDetail = error.message
         },
       ],
-      [
-        'undici:websocket:socket_error',
-        (error) => (undiciHandshakeOrNetworkDetail = error.message),
-      ],
+      ['undici:websocket:socket_error', (error) => (socketFailureDetail = error.message)],
     ]
     for (const [name, listener] of listeners) diagnostics.subscribe(name, listener)
     socket.addEventListener('close', () => {
@@ -78,7 +75,7 @@ export function speak(key: string, text: string, signal: AbortSignal) {
     socket.addEventListener('error', () =>
       rejectBeforeClosingSocket(
         new Error(
-          `Could not reach OpenAI realtime${undiciHandshakeOrNetworkDetail ? `: ${undiciHandshakeOrNetworkDetail}` : ''}`,
+          `Could not reach OpenAI realtime${socketFailureDetail ? `: ${socketFailureDetail}` : ''}`,
         ),
       ),
     )
@@ -116,7 +113,7 @@ export function speak(key: string, text: string, signal: AbortSignal) {
   })
 }
 
-const audioByPreviouslySpokenText = new Map<string, string>()
+const spokenAudio = new Map<string, string>()
 
 export default defineExtension({ name: 'sounds' })
 
@@ -125,16 +122,15 @@ export const actions = {
     const text = args && typeof args === 'object' && !Array.isArray(args) ? args.text : undefined
     if (typeof text !== 'string' || !text.trim() || text.length > 300)
       throw new Error('Expected { text } of at most 300 characters')
-    const cached = audioByPreviouslySpokenText.get(text)
+    const cached = spokenAudio.get(text)
     if (cached) return { audio: cached }
     const key = await openaiSecretOrNonOAuthKey(host, signal)
     if (!key) return { audio: null }
     const audio = (
       await speak(key, text, AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]))
     ).toString('base64')
-    audioByPreviouslySpokenText.set(text, audio)
-    if (audioByPreviouslySpokenText.size > 50)
-      audioByPreviouslySpokenText.delete(audioByPreviouslySpokenText.keys().next().value!)
+    spokenAudio.set(text, audio)
+    if (spokenAudio.size > 50) spokenAudio.delete(spokenAudio.keys().next().value!)
     return { audio }
   }),
 }

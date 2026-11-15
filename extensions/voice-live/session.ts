@@ -23,7 +23,11 @@ export type LiveSession = {
   close: () => Promise<void>
 }
 
-export async function startLive(options: LiveOptions): Promise<LiveSession> {
+function openPreOfferChannel(peer: RTCPeerConnection) {
+  return peer.createDataChannel('oai-events')
+}
+
+export async function startMicInGesture(options: LiveOptions): Promise<LiveSession> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   const pc = new RTCPeerConnection()
   const audio = new Audio()
@@ -81,7 +85,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   })
   stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
-  const channel = pc.createDataChannel('oai-events')
+  const channel = openPreOfferChannel(pc)
   channel.addEventListener('message', (message) => {
     try {
       const event = JSON.parse(String(message.data)) as LiveEvent

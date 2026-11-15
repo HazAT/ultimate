@@ -3,19 +3,19 @@ import type { Note } from './engine.ts'
 
 export type { Note } from './engine.ts'
 
-let volume = 1
-let engineLoadingOnFirstSound: Promise<typeof import('./engine.ts')> | undefined
+let volumeGain01 = 1
+let lazyEngine: Promise<typeof import('./engine.ts')> | undefined
 
 export const engine = () =>
-  (engineLoadingOnFirstSound ??= import('./engine.ts').then((tone) => {
-    tone.setVolume(volume)
+  (lazyEngine ??= import('./engine.ts').then((tone) => {
+    tone.setVolume(volumeGain01)
     return tone
   }))
 
-export function setVolume(value: number) {
-  volume = value
-  engineLoadingOnFirstSound
-    ?.then((tone) => tone.setVolume(value))
+export function setVolume(nextGain01: number) {
+  volumeGain01 = nextGain01
+  lazyEngine
+    ?.then((tone) => tone.setVolume(nextGain01))
     .catch((error: unknown) => console.warn('Volume failed', error))
 }
 
@@ -24,5 +24,5 @@ export const play = async (sound: Sound) => (await engine()).play(sound)
 export const say = async (sound: Sound, text: string, pcm?: ArrayBuffer) =>
   (await engine()).say(sound, text, pcm)
 
-export const playNotes = async (notes: readonly Note[], level = 0.18) =>
-  (await engine()).playNotes(notes, level)
+export const playNotes = async (notes: readonly Note[], gain01 = 0.18) =>
+  (await engine()).playNotes(notes, gain01)

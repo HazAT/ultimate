@@ -130,7 +130,7 @@ const sampleField = (shape: Shape, x: number, y: number) => {
   return top + (bottom - top) * ty + Math.hypot(x - cx, y - cy)
 }
 
-const traceAlphaToDistanceEdgesAndGlow = (image: HTMLImageElement): Shape | undefined => {
+const traceAlphaShape = (image: HTMLImageElement): Shape | undefined => {
   const iw = image.naturalWidth
   const ih = image.naturalHeight
   if (!iw || !ih) return undefined
@@ -263,7 +263,7 @@ const traceAlphaToDistanceEdgesAndGlow = (image: HTMLImageElement): Shape | unde
   }
 }
 
-const outwardEdgeArcInShapeUnits = (
+const outwardShapeArc = (
   shape: Shape,
   time: number,
   focus?: { x: number; y: number; radius: number },
@@ -685,7 +685,7 @@ export function Electric(props: ElectricProps) {
     const image = new Image()
     image.decoding = 'async'
     const traced = () => {
-      shape = traceAlphaToDistanceEdgesAndGlow(image)
+      shape = traceAlphaShape(image)
       if (!shape) return
       signedDistanceField.image = shape.signedDistanceField
       signedDistanceField.width = shape.width
@@ -734,7 +734,7 @@ export function Electric(props: ElectricProps) {
           sparks.length = 0
           const centre = { x: shape.pad + shape.logoWidth / 2, y: shape.pad + shape.logoHeight / 2 }
           for (let i = 0; i < ARCS * 3 && sparks.length < ARCS; i++) {
-            const spark = outwardEdgeArcInShapeUnits(shape, time, {
+            const spark = outwardShapeArc(shape, time, {
               ...centre,
               radius: shape.logoWidth * 0.3,
             })
@@ -753,7 +753,7 @@ export function Electric(props: ElectricProps) {
           sparks.length < ARCS &&
           Math.random() < dt * speed * arcs * 2.2
         ) {
-          const spark = outwardEdgeArcInShapeUnits(shape, time)
+          const spark = outwardShapeArc(shape, time)
           if (spark) sparks.push(spark)
         }
         for (let i = 0; i < ARCS; i++) {

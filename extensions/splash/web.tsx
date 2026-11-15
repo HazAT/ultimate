@@ -20,7 +20,7 @@ type WordmarkContours = readonly [
   E: GlyphContours,
 ]
 
-const interSemiboldDisplayContours: WordmarkContours = [
+const interSemiboldContours: WordmarkContours = [
   [
     'M721 1514Q539 1514 403.5 1445Q268 1376 193 1254.5Q118 1133 118 975L118 0L379 0L379 954Q379 1049 421 1122.5Q463 1196 539.5 1238Q616 1280 721 1280Q826 1280 902.5 1238Q979 1196 1020.5 1122.5Q1062 1049 1062 954L1062 0L1323 0L1323 975Q1323 1134 1248.5 1255.5Q1174 1377 1038.5 1445.5Q903 1514 721 1514Z',
   ],
@@ -42,7 +42,7 @@ const interSemiboldDisplayContours: WordmarkContours = [
 const fontUnitsYDownBounds = { x: 118, width: 13533, height: 1514 }
 
 const wordmarkAlphaImage = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fontUnitsYDownBounds.x} 0 ${fontUnitsYDownBounds.width} ${fontUnitsYDownBounds.height}" width="${fontUnitsYDownBounds.width / 10}" height="${fontUnitsYDownBounds.height / 10}"><path d="${interSemiboldDisplayContours.flat().join('')}" fill="#fff"/></svg>`,
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fontUnitsYDownBounds.x} 0 ${fontUnitsYDownBounds.width} ${fontUnitsYDownBounds.height}" width="${fontUnitsYDownBounds.width / 10}" height="${fontUnitsYDownBounds.height / 10}"><path d="${interSemiboldContours.flat().join('')}" fill="#fff"/></svg>`,
 )}`
 
 function Lightning({ level }: { level: () => Level }) {
@@ -78,7 +78,7 @@ function Wordmark({ still, level }: { still: boolean; level: () => Level }) {
         className="block w-full overflow-visible"
         viewBox={`${fontUnitsYDownBounds.x} 0 ${fontUnitsYDownBounds.width} ${fontUnitsYDownBounds.height}`}
       >
-        {still && <path className="fill-brand" d={interSemiboldDisplayContours.flat().join('')} />}
+        {still && <path className="fill-brand" d={interSemiboldContours.flat().join('')} />}
       </svg>
       {!still && <Lightning level={level} />}
       <div data-sweep="" hidden />
@@ -93,9 +93,9 @@ function canTraceWithWebGL2() {
 }
 
 const minVisibleMsByMotion = { motion: 700, still: 400 }
-const readyFinishDrawingMs = 240
+const readyDrawMs = 240
 const lightningSweepMs = 900
-const settledLightningStrength = 0.75
+const settledStrength = 0.75
 const firstRunPlaybackRate = 0.8
 
 const out = 'cubic-bezier(0.22, 1, 0.36, 1)'
@@ -121,8 +121,8 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
   const started = performance.now()
   const find = (selector: string) => overlay.querySelector(selector)!
 
-  const introAwaitedBeforeReveal: Animation[] = []
-  const loadingRuleNotAwaited: Animation[] = []
+  const awaitedIntro: Animation[] = []
+  const unawaitedRule: Animation[] = []
   const exit: Animation[] = []
   let cancelled = false
   let signature = false
@@ -136,9 +136,9 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
       duration: lightningSweepMs * 2,
       fill: 'both',
     })
-    introAwaitedBeforeReveal.push(invisibleSweepClock)
+    awaitedIntro.push(invisibleSweepClock)
 
-    void finished([...introAwaitedBeforeReveal, ...loadingRuleNotAwaited]).then(() => {
+    void finished([...awaitedIntro, ...unawaitedRule]).then(() => {
       if (!revealCommitted) drawStillLoadingRule()
     })
   }
@@ -146,7 +146,7 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
   function drawStillLoadingRule() {
     if (ruled || cancelled) return
     ruled = true
-    loadingRuleNotAwaited.push(
+    unawaitedRule.push(
       find('[data-rule]').animate(
         [
           { opacity: 0, transform: 'scaleX(0)' },
@@ -157,23 +157,22 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
     )
   }
 
-  function finishDrawingWithinReadyDeadline() {
+  function rushDrawing() {
     const remaining = Math.max(
       0,
-      ...introAwaitedBeforeReveal.map((animation) => {
+      ...awaitedIntro.map((animation) => {
         const end = Number(animation.effect?.getComputedTiming().endTime ?? 0)
         return (end - Number(animation.currentTime ?? 0)) / animation.playbackRate
       }),
     )
-    if (remaining > readyFinishDrawingMs)
-      for (const animation of introAwaitedBeforeReveal)
-        animation.updatePlaybackRate((animation.playbackRate * remaining) / readyFinishDrawingMs)
+    if (remaining > readyDrawMs)
+      for (const animation of awaitedIntro)
+        animation.updatePlaybackRate((animation.playbackRate * remaining) / readyDrawMs)
   }
 
   function cancel() {
     cancelled = true
-    for (const animation of [...introAwaitedBeforeReveal, ...loadingRuleNotAwaited, ...exit])
-      animation.cancel()
+    for (const animation of [...awaitedIntro, ...unawaitedRule, ...exit]) animation.cancel()
   }
 
   return {
@@ -182,40 +181,40 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
       const settle = Math.max(0, progress * 2 - 1)
       return {
         reveal: Math.min(1, progress * 2),
-        presence: settledLightningStrength + (1 - settledLightningStrength) * (1 - settle),
+        presence: settledStrength + (1 - settledStrength) * (1 - settle),
         bursts: progress >= 0.5 ? 1 : 0,
       }
     },
     signature() {
       if (signature || revealCommitted || still) return
       signature = true
-      for (const animation of [...introAwaitedBeforeReveal, ...loadingRuleNotAwaited])
+      for (const animation of [...awaitedIntro, ...unawaitedRule])
         animation.updatePlaybackRate(firstRunPlaybackRate)
-      void finished(introAwaitedBeforeReveal).then(() => drawStillLoadingRule())
+      void finished(awaitedIntro).then(() => drawStillLoadingRule())
     },
     reveal() {
       revealing ??= (async () => {
-        const visibleMinimumRemainingMs = () =>
+        const minimumRemainingMs = () =>
           (still ? minVisibleMsByMotion.still : minVisibleMsByMotion.motion) -
           (performance.now() - started)
-        while (visibleMinimumRemainingMs() > 0) await pace(visibleMinimumRemainingMs())
+        while (minimumRemainingMs() > 0) await pace(minimumRemainingMs())
         if (cancelled) return false
         revealCommitted = true
 
-        const releaseInputAsAppReveals = () => {
+        const releaseAppInput = () => {
           overlay.dataset.revealing = ''
           release()
         }
 
         if (document.hidden) {
-          releaseInputAsAppReveals()
+          releaseAppInput()
           return true
         }
-        if (signature) await finished(introAwaitedBeforeReveal)
-        else finishDrawingWithinReadyDeadline()
-        await finished(introAwaitedBeforeReveal)
+        if (signature) await finished(awaitedIntro)
+        else rushDrawing()
+        await finished(awaitedIntro)
         if (cancelled) return false
-        releaseInputAsAppReveals()
+        releaseAppInput()
         const mark = find('[data-mark]')
         const fade = [{ opacity: 1 }, { opacity: 0 }]
         if (still) exit.push(overlay.animate(fade, { duration: 180, fill: 'both' }))
@@ -250,15 +249,15 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
   }
 }
 
-const reloads = (event: KeyboardEvent) =>
+const isBrowserReload = (event: KeyboardEvent) =>
   event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')
 
-function stopAppKeysExceptBrowserReload(event: KeyboardEvent) {
+function blockAppKeys(event: KeyboardEvent) {
   event.stopImmediatePropagation()
-  if (!reloads(event)) event.preventDefault()
+  if (!isBrowserReload(event)) event.preventDefault()
 }
 
-function holdInputAndRestoreRequestedFocus(overlay: HTMLElement) {
+function guardAppInput(overlay: HTMLElement) {
   let requestedAppFocus =
     document.activeElement === document.body ? undefined : document.activeElement
   let redirectingFocus = false
@@ -271,16 +270,16 @@ function holdInputAndRestoreRequestedFocus(overlay: HTMLElement) {
     redirectingFocus = false
   }
   document.addEventListener('focusin', hold, true)
-  window.addEventListener('keydown', stopAppKeysExceptBrowserReload, true)
-  window.addEventListener('keyup', stopAppKeysExceptBrowserReload, true)
+  window.addEventListener('keydown', blockAppKeys, true)
+  window.addEventListener('keyup', blockAppKeys, true)
   overlay.focus({ preventScroll: true })
   let released = false
   return () => {
     if (released) return
     released = true
     document.removeEventListener('focusin', hold, true)
-    window.removeEventListener('keydown', stopAppKeysExceptBrowserReload, true)
-    window.removeEventListener('keyup', stopAppKeysExceptBrowserReload, true)
+    window.removeEventListener('keydown', blockAppKeys, true)
+    window.removeEventListener('keyup', blockAppKeys, true)
     if (requestedAppFocus instanceof HTMLElement && requestedAppFocus.isConnected)
       requestedAppFocus.focus({ preventScroll: true })
   }
@@ -311,17 +310,17 @@ function Splash({ replay }: { replay?: () => void }) {
 
   useLayoutEffect(() => {
     if (!overlay.current) return undefined
-    const release = holdInputAndRestoreRequestedFocus(overlay.current)
+    const release = guardAppInput(overlay.current)
     const current = play(overlay.current, still, release)
     show.current = current
 
     let active = true
-    api.action(StatusAction).then(
+    const optionalOnboarding = api.action(StatusAction)
+    optionalOnboarding.then(
       (status) => {
         if (active && (status.firstRun || splashReplayMode === 'first')) current.signature()
       },
-
-      function withoutOnboardingNoSignature() {},
+      () => {},
     )
     return () => {
       active = false

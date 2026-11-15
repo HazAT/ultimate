@@ -81,6 +81,7 @@ function useIds() {
 }
 
 const start = live.start
+const keepEditorFocus = (event: React.PointerEvent) => event.preventDefault()
 
 function toggleFront(actions: Pick<UltimateActions, 'switchConversation' | 'showSurface'>) {
   const front = !live.voiceMode().front
@@ -181,9 +182,7 @@ function StartButton() {
             void start()
           }}
 
-          onPointerDown={function preserveEditorFocusAndPhoneKeyboard(event) {
-            event.preventDefault()
-          }}
+          onPointerDown={keepEditorFocus}
           type="button"
         >
           {mode.phase === 'starting' ? (
@@ -209,9 +208,9 @@ function LiveIndicator() {
   const { main } = useIds()
   if (mode.phase === 'off' && !mode.problem) return null
 
-  const voiceCardAlreadyShowsIndicator =
+  const voiceCardVisible =
     mode.phase !== 'off' && actions.surface === 'agent' && actions.conversationId === main
-  if (voiceCardAlreadyShowsIndicator) return null
+  if (voiceCardVisible) return null
   if (mode.phase === 'off')
     return (
       <span
@@ -273,9 +272,9 @@ function LiveIndicator() {
         >
           {phone && asleep && !mode.waiting ? 'Paused' : label}
         </span>
-        {mode.phase === 'live' && mode.sessionBilledSinceMs !== undefined && (
+        {mode.phase === 'live' && mode.billedSince !== undefined && (
           <span className="text-muted-foreground tabular-nums">
-            {clock(now - mode.sessionBilledSinceMs)}
+            {clock(now - mode.billedSince)}
           </span>
         )}
         {mode.phase === 'live' && <Level bar="bg-error" className="h-3" />}
@@ -341,7 +340,7 @@ const questionAnnouncementQuietMs = 2000
 function Announce() {
   const log = useDocOf(ROOT, MessagesDoc)
   const mode = useMode()
-  const seenBeforeOrDuringSession = useRef<Set<number>>(undefined)
+  const seenThisSession = useRef<Set<number>>(undefined)
   const [due, setDue] = useState<number[]>([])
   const [quietSince, setQuietSince] = useState(Date.now())
   const busy = mode.floor !== undefined || mode.speaking !== undefined || mode.phase !== 'live'
@@ -352,12 +351,12 @@ function Announce() {
   useEffect(() => {
     if (!log) return
     const open = log.messages.filter(openQuestion).map((m) => m.id)
-    if (seenBeforeOrDuringSession.current === undefined) {
-      seenBeforeOrDuringSession.current = new Set(open)
+    if (seenThisSession.current === undefined) {
+      seenThisSession.current = new Set(open)
       return
     }
-    const fresh = open.filter((id) => !seenBeforeOrDuringSession.current!.has(id))
-    for (const id of fresh) seenBeforeOrDuringSession.current.add(id)
+    const fresh = open.filter((id) => !seenThisSession.current!.has(id))
+    for (const id of fresh) seenThisSession.current.add(id)
     if (fresh.length) setDue((current) => [...current, ...fresh])
   }, [log])
   useEffect(() => {
@@ -399,7 +398,7 @@ function SpeakNew({ voice }: { voice: number }) {
   const commands = useCommands()
   const navigation = useRef({ actions, commands })
   navigation.current = { actions, commands }
-  const seenBeforeOrDuringSession = useRef<number>(undefined)
+  const seenThisSession = useRef<number>(undefined)
   useEffect(() => {
     if (loading) return
     const last = entries.at(-1)?.id ?? 0
@@ -410,22 +409,22 @@ function SpeakNew({ voice }: { voice: number }) {
         return line.forwarded && !lines.some((reply) => reply.data.re === entry.id)
       }),
     )
-    if (seenBeforeOrDuringSession.current === undefined) {
-      seenBeforeOrDuringSession.current = last
+    if (seenThisSession.current === undefined) {
+      seenThisSession.current = last
       return
     }
     for (const entry of entries) {
-      if (entry.id <= seenBeforeOrDuringSession.current || !VoiceLineEntry.is(entry)) continue
+      if (entry.id <= seenThisSession.current || !VoiceLineEntry.is(entry)) continue
       const line = entry.data
       if (line.role === 'ultimate' && line.speech) live.hear(line.text, entry.id)
       else if (line.role === 'note') live.note(line.text)
       else if (line.role === 'action' && line.go)
         navigate(line.go, navigation.current.actions, navigation.current.commands)
     }
-    seenBeforeOrDuringSession.current = Math.max(seenBeforeOrDuringSession.current, last)
+    seenThisSession.current = Math.max(seenThisSession.current, last)
   }, [entries, loading])
 
-  useEffect(() => () => (seenBeforeOrDuringSession.current = undefined), [voice])
+  useEffect(() => () => (seenThisSession.current = undefined), [voice])
   return null
 }
 
@@ -447,14 +446,12 @@ function Stage() {
   const inFront = isMain && voice !== undefined && mode.phase !== 'off' && mode.front && !sideOpen
 
   const was = useRef({ front: mode.front, side: sideOpen })
-  useEffect(
-    function parkOtherSheetWhenOneComesForward() {
-      if (mode.front && !was.current.front && sideOpen) setSideFront(null)
-      else if (sideOpen && !was.current.side && mode.front) live.setFront(false)
-      was.current = { front: mode.front, side: sideOpen }
-    },
-    [mode.front, sideOpen, setSideFront],
-  )
+  useEffect(() => {
+    const voiceDisplacesSideChat = mode.front && !was.current.front && sideOpen
+    if (voiceDisplacesSideChat) setSideFront(null)
+    else if (sideOpen && !was.current.side && mode.front) live.setFront(false)
+    was.current = { front: mode.front, side: sideOpen }
+  }, [mode.front, sideOpen, setSideFront])
 
   const [shown, setShown] = useState(false)
   if (inFront && !shown) setShown(true)
@@ -482,11 +479,9 @@ function Stage() {
     const reading = layers
       .map((layer) => layer.querySelector<HTMLElement>('[data-ui="transcript"]'))
       .find(Boolean)
-    const laidOutReadingColumnWidth = reading?.offsetWidth ?? width
+    const readingColumnWidth = reading?.offsetWidth ?? width
     const scale = phone ? 0.92 : 0.88
-    const shift = phone
-      ? 0
-      : Math.min(0, 24 - (width / 2 - (laidOutReadingColumnWidth / 2) * scale))
+    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (readingColumnWidth / 2) * scale))
     for (const layer of layers) {
       layer.style.transition = still
         ? `opacity ${duration}ms ease`
@@ -648,7 +643,7 @@ function Collapsed({ phone }: { phone: boolean }) {
 }
 
 function StepLine({ step, mode }: { step: Step; mode: VoiceMode }) {
-  const truncateOldestWordsFirst =
+  const newestWordsClass =
     'mt-0.5 block truncate font-mono text-[11px] text-muted-foreground [direction:rtl]'
   const title =
     step.step === 'hearing'
@@ -682,7 +677,7 @@ function StepLine({ step, mode }: { step: Step; mode: VoiceMode }) {
     <>
       <span className="block truncate text-[13px] leading-tight font-semibold">{title}</span>
 
-      <span className={truncateOldestWordsFirst} title={detail}>
+      <span className={newestWordsClass} title={detail}>
         <bdi>{detail}</bdi>
       </span>
     </>
@@ -759,8 +754,8 @@ function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
   const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, step.step === 'working' || mode.phase === 'live')
   const session =
-    mode.phase === 'live' && mode.sessionBilledSinceMs !== undefined
-      ? clock(now - mode.sessionBilledSinceMs)
+    mode.phase === 'live' && mode.billedSince !== undefined
+      ? clock(now - mode.billedSince)
       : undefined
   const [title, detail]: [ReactNode, ReactNode] =
     step.step === 'off'
@@ -1075,13 +1070,12 @@ function LineRow({ entry }: { entry: EntryRecord }) {
           <button
             className="mt-1 flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => {
-              const answerAlreadyBehindVoice =
-                mode.front && actions.conversationId === source.conversation
+              const answerBehindVoice = mode.front && actions.conversationId === source.conversation
               live.setFront(false)
               openAgentSource(
                 actions.switchConversation,
                 source,
-                answerAlreadyBehindVoice
+                answerBehindVoice
                   ? source
                   : { conversation: entry.conversationId, entry: entry.id },
               )
@@ -1217,13 +1211,13 @@ function Answer({
             <button
               className="ml-auto flex cursor-pointer items-center gap-1 hover:text-foreground"
               onClick={() => {
-                const answerAlreadyBehindVoice =
+                const answerBehindVoice =
                   mode.front && actions.conversationId === source.conversation
                 live.setFront(false)
                 openAgentSource(
                   actions.switchConversation,
                   source,
-                  answerAlreadyBehindVoice
+                  answerBehindVoice
                     ? source
                     : { conversation: entry.conversationId, entry: entry.id },
                 )
@@ -1430,7 +1424,7 @@ function QuestionRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-const QuietAgentBookkeeping: EntryRenderer = ({ core }) => {
+const QuietAgentRow: EntryRenderer = ({ core }) => {
   const id = useConversation((conversation) => conversation.id)
   const { voice } = useIds()
   return id === voice ? (
@@ -1462,7 +1456,7 @@ export default defineWebExtension({
     'voice.line': LineRow,
     'voice.heard': HeardRow,
     'voice.answer': () => null,
-    'pi.assistant': QuietAgentBookkeeping,
+    'pi.assistant': QuietAgentRow,
     'voice.session': SessionRow,
     'voice.context': ContextRow,
     'voice.utterance': UtteranceRow,

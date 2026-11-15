@@ -5,13 +5,13 @@ import type { Happening, Role, Tool, Variant } from './agents.tsx'
 
 export type Note = readonly [startSeconds: number, frequencyHz: number, lengthSeconds: number]
 
-const masterVolumeLimiterBus = new Tone.Volume(-6)
-masterVolumeLimiterBus.chain(new Tone.Limiter(-3), Tone.getDestination())
-const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.28 }).connect(masterVolumeLimiterBus)
+const limitedMaster = new Tone.Volume(-6)
+limitedMaster.chain(new Tone.Limiter(-3), Tone.getDestination())
+const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.28 }).connect(limitedMaster)
 
-export function setVolume(volume: number) {
-  masterVolumeLimiterBus.mute = volume <= 0
-  masterVolumeLimiterBus.volume.rampTo(Tone.gainToDb(volume) - 6, 0.05)
+export function setVolume(gain01: number) {
+  limitedMaster.mute = gain01 <= 0
+  limitedMaster.volume.rampTo(Tone.gainToDb(gain01) - 6, 0.05)
 }
 
 export const unlock = () => Tone.start()
@@ -35,9 +35,7 @@ type Strike = readonly [
   velocity: number,
 ]
 
-const shortNotificationRoom = new Tone.Reverb({ decay: 0.7, wet: 0.14 }).connect(
-  masterVolumeLimiterBus,
-)
+const shortCueRoom = new Tone.Reverb({ decay: 0.7, wet: 0.14 }).connect(limitedMaster)
 
 const kalimba = new Tone.PolySynth(Tone.FMSynth, {
   harmonicity: 7.02,
@@ -46,10 +44,10 @@ const kalimba = new Tone.PolySynth(Tone.FMSynth, {
   envelope: { attack: 0.001, decay: 0.42, sustain: 0, release: 0.25 },
   modulation: { type: 'sine' },
   modulationEnvelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
-}).connect(shortNotificationRoom)
+}).connect(shortCueRoom)
 kalimba.volume.value = -4
 
-const gMajorNotificationMotifs: Record<Sound, Strike[]> = {
+const gMajorCues: Record<Sound, Strike[]> = {
   input: [
     [0, [74], 0.6],
     [0.11, [79], 0.7],
@@ -75,7 +73,7 @@ const gMajorNotificationMotifs: Record<Sound, Strike[]> = {
 }
 
 function strike(tune: Sound, time: number) {
-  for (const [start, notes, velocity] of gMajorNotificationMotifs[tune])
+  for (const [start, notes, velocity] of gMajorCues[tune])
     kalimba.triggerAttackRelease(notes.map(hz), 0.12, time + start, velocity)
 }
 
@@ -104,17 +102,17 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   const buffer = Tone.getContext().createBuffer(1, samples.length, 24000)
   const wave = buffer.getChannelData(0)
   for (let i = 0; i < samples.length; i++) wave[i] = samples[i] / 32768
-  const voice = new Tone.Player(buffer).connect(masterVolumeLimiterBus)
+  const voice = new Tone.Player(buffer).connect(limitedMaster)
   voice.onstop = () => voice.dispose()
   voice.start(now + voiceLeadInSeconds)
   await pace((voiceLeadInSeconds + buffer.duration) * 1000)
 }
 
-export async function playNotes(notes: readonly Note[], volume = 0.18) {
+export async function playNotes(notes: readonly Note[], gain01 = 0.18) {
   await Tone.start()
   const now = Tone.now() + 0.03
   for (const [start, frequency, length] of notes)
-    bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, volume * 3))
+    bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, gain01 * 3))
 }
 
 const dMajorIviIVV = [
@@ -125,13 +123,13 @@ const dMajorIviIVV = [
 ]
 const pentatonic = [0, 2, 4, 7, 9]
 
-const dMajorPentatonicNote = (degree: number, base = 62) =>
+const pentatonicD = (degree: number, base = 62) =>
   base + Math.floor(degree / 5) * 12 + pentatonic[((degree % 5) + 5) % 5]
 
-const chordToneAcrossOctaves = (chord: readonly number[], index: number) =>
+const octaveChordTone = (chord: readonly number[], index: number) =>
   chord[((index % 3) + 3) % 3] + 12 * Math.floor(index / 3)
 
-const roleChordToneContours: Record<Role, readonly number[]> = {
+const roleContours: Record<Role, readonly number[]> = {
   ultimate: [0, 2, 1, 2],
   coordinator: [0, 1, 2, 1],
   worker: [0, 1, 2, 3, 2, 1],
@@ -145,20 +143,20 @@ function walkRoleContour() {
   return (role: Role) => {
     const index = at[role] ?? 0
     at[role] = index + 1
-    return roleChordToneContours[role][index % roleChordToneContours[role].length]
+    return roleContours[role][index % roleContours[role].length]
   }
 }
 
-function afterPreviousVoiceStart() {
+function laterVoiceStart() {
   let last = 0
   return (time: number) => (last = Math.max(time, last + 0.012))
 }
 
 type Part = {
   fixedBpm: number
-  happeningsPerSixteenth: number
+  hitsPerSixteenth: number
   play: (happening: Happening, time: number, bar: number) => void
-  tick?: (time: number) => void
+  decayEffects?: (time: number) => void
   nodes: Tone.ToneAudioNode[]
 }
 
@@ -177,17 +175,13 @@ export function band(variant: Variant): Band {
   const loop = new Tone.Loop((time) => {
     const bar = Math.floor(step / 16)
 
-    const throttledTickAlreadyPast = time < Tone.now() - 0.1
-    if (throttledTickAlreadyPast) queue.length = 0
-    for (const happening of queue.splice(0, part.happeningsPerSixteenth))
-      part.play(happening, time, bar)
+    const staleTick = time < Tone.now() - 0.1
+    if (staleTick) queue.length = 0
+    for (const happening of queue.splice(0, part.hitsPerSixteenth)) part.play(happening, time, bar)
 
-    const newestQueuedSixteenths = 8
-    queue.splice(
-      0,
-      Math.max(0, queue.length - part.happeningsPerSixteenth * newestQueuedSixteenths),
-    )
-    part.tick?.(time)
+    const queuedStepLimit = 8
+    queue.splice(0, Math.max(0, queue.length - part.hitsPerSixteenth * queuedStepLimit))
+    part.decayEffects?.(time)
     step++
   }, '16n').start(0)
   transport.start('+0.05')
@@ -198,8 +192,8 @@ export function band(variant: Variant): Band {
       transport.stop()
       transport.cancel()
 
-      const synthReleaseAndReverbTailMs = 12_000
-      deadline(synthReleaseAndReverbTailMs, () => {
+      const releaseTailMs = 12_000
+      deadline(releaseTailMs, () => {
         for (const node of part.nodes) node.dispose()
       })
     },
@@ -219,37 +213,37 @@ type Phrase = readonly (readonly [
   velocity?: number,
 ])[]
 
-function bookMonophonicChannel(
+function monoChannel(
   sound: (midi: number, seconds: number, time: number, velocity: number) => void,
 ) {
-  let channelFreeAtSeconds = 0
-  return (phrase: Phrase, time: number, mustPlayDespiteBacklog = false) => {
+  let freeAtSeconds = 0
+  return (phrase: Phrase, time: number, mustPlay = false) => {
     const sixteenth = Tone.Time('16n').toSeconds()
-    const start = Math.max(time, channelFreeAtSeconds)
-    const moreThanOneBeatBehind = start > time + sixteenth * 4
-    if (!mustPlayDespiteBacklog && moreThanOneBeatBehind) return
+    const start = Math.max(time, freeAtSeconds)
+    const dropLatePhrase = !mustPlay && start > time + sixteenth * 4
+    if (dropLatePhrase) return
     let end = start
     for (const [at, midi, steps, velocity = 0.7] of phrase) {
       sound(midi, steps * sixteenth * 0.85, start + at * sixteenth, velocity)
       end = Math.max(end, start + (at + steps) * sixteenth)
     }
-    channelFreeAtSeconds = end
+    freeAtSeconds = end
   }
 }
 
 function chiptune(): Part {
   const bus = new Tone.Volume(-10)
-  bus.chain(new Tone.Filter(7000, 'lowpass'), masterVolumeLimiterBus)
+  bus.chain(new Tone.Filter(7000, 'lowpass'), limitedMaster)
   const pulse = (width: number) =>
     new Tone.Synth({
       oscillator: { type: 'pulse', width },
       envelope: { attack: 0.002, decay: 0.12, sustain: 0.45, release: 0.05 },
     }).connect(bus)
 
-  const quarterDutyPulseWidth = 0.5
-  const squarePulseWidth = 0
-  const lead = pulse(quarterDutyPulseWidth)
-  const second = pulse(squarePulseWidth)
+  const quarterDutyWidth = 0.5
+  const squareWidth = 0
+  const lead = pulse(quarterDutyWidth)
+  const second = pulse(squareWidth)
   second.volume.value = -4
   const triangle = new Tone.Synth({
     oscillator: { type: 'triangle' },
@@ -265,11 +259,11 @@ function chiptune(): Part {
     (synth: Tone.Synth) => (midi: number, seconds: number, time: number, velocity: number) =>
       synth.triggerAttackRelease(hz(midi), seconds, time, velocity)
   const ch = {
-    lead: bookMonophonicChannel(note(lead)),
-    second: bookMonophonicChannel(note(second)),
-    triangle: bookMonophonicChannel(note(triangle)),
+    lead: monoChannel(note(lead)),
+    second: monoChannel(note(second)),
+    triangle: monoChannel(note(triangle)),
 
-    noise: bookMonophonicChannel((thudOrTickMidi, seconds, time, velocity) =>
+    noise: monoChannel((thudOrTickMidi, seconds, time, velocity) =>
       noise.triggerAttackRelease(
         Math.min(seconds, thudOrTickMidi > 60 ? 0.03 : 0.12),
         time,
@@ -290,19 +284,19 @@ function chiptune(): Part {
   const step = walkRoleContour()
   return {
     fixedBpm: 150,
-    happeningsPerSixteenth: 2,
+    hitsPerSixteenth: 2,
     nodes: [lead, second, triangle, noise, bus],
     play: (h, time, bar) => {
       const chord = dMajorIviIVV[bar % 4]
       if (h.kind === 'tool') {
         const at = step(h.role)
-        const n = chordToneAcrossOctaves(chord, at) + octave[h.role] + 12
+        const n = octaveChordTone(chord, at) + octave[h.role] + 12
 
         if (h.tool === 'edit' || h.tool === 'other')
           ch.lead(
             [
               [0, n, 0.5, 0.35],
-              [0.5, chordToneAcrossOctaves(chord, at + 1) + octave[h.role] + 12, 1, 0.35],
+              [0.5, octaveChordTone(chord, at + 1) + octave[h.role] + 12, 1, 0.35],
             ],
             time,
           )
@@ -313,13 +307,7 @@ function chiptune(): Part {
         else
           ch.second(
             [0, 1, 2].map(
-              (i) =>
-                [
-                  i * 0.5,
-                  chordToneAcrossOctaves(chord, i) + octave[h.role] + 12,
-                  0.5,
-                  0.3,
-                ] as const,
+              (i) => [i * 0.5, octaveChordTone(chord, i) + octave[h.role] + 12, 0.5, 0.3] as const,
             ),
             time,
           )
@@ -329,7 +317,7 @@ function chiptune(): Part {
         const base = octave[h.role] + 12
         ch.second(
           [0, 1, 2, 1, 3, 4].map(
-            (i, at) => [at, chordToneAcrossOctaves(chord, i) + base, 1, 0.4] as const,
+            (i, at) => [at, octaveChordTone(chord, i) + base, 1, 0.4] as const,
           ),
           time,
         )
@@ -377,7 +365,7 @@ function chiptune(): Part {
 }
 
 function orchestra(): Part {
-  const hall = new Tone.Reverb({ decay: 4, wet: 0.35 }).connect(masterVolumeLimiterBus)
+  const hall = new Tone.Reverb({ decay: 4, wet: 0.35 }).connect(limitedMaster)
 
   const strings = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'fatsawtooth', count: 3, spread: 20 },
@@ -423,7 +411,7 @@ function orchestra(): Part {
   brass.volume.value = -14
   const timpani = new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 3 }).connect(hall)
   timpani.volume.value = -12
-  const t = { cello: afterPreviousVoiceStart(), timpani: afterPreviousVoiceStart() }
+  const t = { cello: laterVoiceStart(), timpani: laterVoiceStart() }
   const voice: Record<Role, { synth: Tone.PolySynth | Tone.MonoSynth; octave: number }> = {
     ultimate: { synth: strings, octave: 12 },
     coordinator: { synth: cello, octave: -12 },
@@ -449,7 +437,7 @@ function orchestra(): Part {
   }
   return {
     fixedBpm: 96,
-    happeningsPerSixteenth: 3,
+    hitsPerSixteenth: 3,
     nodes: [strings, cello, pluck, flute, marimba, brass, timpani, hall],
     play: (h, time, bar) => {
       const chord = dMajorIviIVV[bar % 4]
@@ -463,7 +451,7 @@ function orchestra(): Part {
         figure.notes.forEach((offset, index) =>
           sound(
             h.role,
-            chordToneAcrossOctaves(chord, from + offset) + octave + low,
+            octaveChordTone(chord, from + offset) + octave + low,
             figure.length,
             time + index * sixteenth,
             figure.velocity,
@@ -543,44 +531,35 @@ function crazy(): Part {
   riser.chain(sweep, bus)
   riser.volume.value = -18
   const t = {
-    snare: afterPreviousVoiceStart(),
-    hat: afterPreviousVoiceStart(),
-    crash: afterPreviousVoiceStart(),
-    acid: afterPreviousVoiceStart(),
-    zap: afterPreviousVoiceStart(),
-    riser: afterPreviousVoiceStart(),
+    snare: laterVoiceStart(),
+    hat: laterVoiceStart(),
+    crash: laterVoiceStart(),
+    acid: laterVoiceStart(),
+    zap: laterVoiceStart(),
+    riser: laterVoiceStart(),
   }
   let glitch = 0
 
-  const rootOctaveFifthRootSeventhRiff = [0, 12, 7, 0, 10, 12]
+  const rootRiffOffsets = [0, 12, 7, 0, 10, 12]
   let edits = 0
   const step = walkRoleContour()
   return {
     fixedBpm: 128,
-    happeningsPerSixteenth: 4,
+    hitsPerSixteenth: 4,
     nodes: [snare, hat, crash, acid, zap, stab, riser, sweep, crush, echo, bus],
     play: (h, time, bar) => {
       if (h.kind === 'tool') {
         if (h.tool === 'bash') snare.triggerAttackRelease('16n', t.snare(time), 0.6)
         else if (h.tool === 'edit')
           acid.triggerAttackRelease(
-            hz(
-              dMajorIviIVV[bar % 4][0] -
-                12 +
-                rootOctaveFifthRootSeventhRiff[edits++ % rootOctaveFifthRootSeventhRiff.length],
-            ),
+            hz(dMajorIviIVV[bar % 4][0] - 12 + rootRiffOffsets[edits++ % rootRiffOffsets.length]),
             '16n',
             t.acid(time),
             0.9,
           )
         else if (h.tool === 'read') hat.triggerAttackRelease(hz(400), '32n', t.hat(time), 0.9)
         else
-          zap.triggerAttackRelease(
-            hz(dMajorPentatonicNote(step(h.role) + 2, 74)),
-            '32n',
-            t.zap(time),
-            0.9,
-          )
+          zap.triggerAttackRelease(hz(pentatonicD(step(h.role) + 2, 74)), '32n', t.zap(time), 0.9)
 
         glitch = Math.min(1, glitch + 0.08)
       } else if (h.kind === 'start') {
@@ -600,7 +579,7 @@ function crazy(): Part {
       }
     },
 
-    tick: (time) => {
+    decayEffects: (time) => {
       glitch *= 0.97
       crush.wet.setValueAtTime(0.25 + glitch * 0.6, time)
     },

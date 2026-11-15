@@ -17,9 +17,9 @@ import {
 import { meansNone } from '../../lib/errors.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
-const recordingLimitBelowUploadCapMs = 5 * 60_000
+const uploadSafeRecordingMs = 5 * 60_000
 
-const preferredRecordingMimeTypes = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
 
 type Recording = {
   recorder: MediaRecorder
@@ -98,19 +98,12 @@ function VoiceButton() {
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState<string>()
   const now = useNow(250, recording !== undefined)
-  const current = useRef<Recording>(undefined)
-  current.current = recording
+  const composerRecording = useRef<Recording>(undefined)
+  composerRecording.current = recording
 
-  useEffect(
-    () =>
-      function cancelRecordingWhenComposerLeaves() {
-        finish(current.current, true)
-      },
-    [id],
-  )
+  useEffect(() => () => finish(composerRecording.current, true), [id])
   useEffect(() => {
-    if (recording && now - recording.started >= recordingLimitBelowUploadCapMs)
-      finish(recording, false)
+    if (recording && now - recording.started >= uploadSafeRecordingMs) finish(recording, false)
   }, [now, recording])
   useEffect(() => {
     if (!error) return undefined
@@ -159,9 +152,7 @@ function VoiceButton() {
       )
       return
     }
-    const type = preferredRecordingMimeTypes.find((candidate) =>
-      MediaRecorder.isTypeSupported(candidate),
-    )
+    const type = recordingMimeOrder.find((candidate) => MediaRecorder.isTypeSupported(candidate))
     const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
     const audio = typeof AudioContext === 'undefined' ? undefined : new AudioContext()
     const active: Recording = {
@@ -190,7 +181,7 @@ function VoiceButton() {
     unsupported() ?? (status.data?.available === false ? status.data.reason : undefined)
   const missingKey = !unsupported() && status.data?.available === false
 
-  const preserveEditorFocusAndPhoneKeyboard = (event: React.PointerEvent) => event.preventDefault()
+  const keepEditorFocus = (event: React.PointerEvent) => event.preventDefault()
 
   if (recording)
     return (
@@ -199,7 +190,7 @@ function VoiceButton() {
           aria-label="Cancel recording"
           className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:size-9"
           onClick={() => finish(recording, true)}
-          onPointerDown={preserveEditorFocusAndPhoneKeyboard}
+          onPointerDown={keepEditorFocus}
           title="Cancel"
           type="button"
         >
@@ -214,7 +205,7 @@ function VoiceButton() {
           aria-label="Stop and transcribe"
           className="flex size-7 items-center justify-center rounded-lg bg-error text-white hover:bg-error/90 pointer-coarse:size-9"
           onClick={() => finish(recording, false)}
-          onPointerDown={preserveEditorFocusAndPhoneKeyboard}
+          onPointerDown={keepEditorFocus}
           title="Stop and transcribe"
           type="button"
         >
@@ -255,7 +246,7 @@ function VoiceButton() {
               else if (blocked) setError(blocked)
               else void start()
             }}
-            onPointerDown={preserveEditorFocusAndPhoneKeyboard}
+            onPointerDown={keepEditorFocus}
             type="button"
           >
             {transcribing ? (

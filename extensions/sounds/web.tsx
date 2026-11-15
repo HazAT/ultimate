@@ -37,7 +37,7 @@ import { speaker } from './speaker.ts'
 import { SayAction } from './refs.ts'
 import { questionsSpoken } from './ui.tsx'
 
-const playedEventClaimKey = 'ultimate.sounds.played'
+const eventClaimKey = 'ultimate.sounds.played'
 
 function useSettings() {
   const [muted, setMuted] = useExtensionUiState('muted', false)
@@ -69,14 +69,14 @@ function useSettings() {
   }
 }
 
-async function claimPlayableCuesAcrossTabs(cues: readonly Cue[]) {
+async function claimPlayableCues(cues: readonly Cue[]) {
   const tabCannotPlayWithoutGesture = !navigator.userActivation.hasBeenActive
   if (tabCannotPlayWithoutGesture) return []
-  return navigator.locks.request(playedEventClaimKey, () => {
-    const played: string[] = JSON.parse(localStorage.getItem(playedEventClaimKey) ?? '[]')
+  return navigator.locks.request(eventClaimKey, () => {
+    const played: string[] = JSON.parse(localStorage.getItem(eventClaimKey) ?? '[]')
     const fresh = cues.filter((cue) => !played.includes(cue.key))
     localStorage.setItem(
-      playedEventClaimKey,
+      eventClaimKey,
       JSON.stringify([...played, ...fresh.map((cue) => cue.key)].slice(-100)),
     )
     return fresh
@@ -93,7 +93,7 @@ async function sayLine(line: Line) {
   await tones.say(line.sound, line.text, pcm)
 }
 
-function resumeNarratorAfterBundleSwitch() {
+function resumeSwitchedNarrator() {
   const narrate = speaker(sayLine, sessionStorage)
   narrate.resume(Boolean(switched))
   return narrate.add
@@ -108,7 +108,7 @@ function Player() {
   const conversations = useConversations()
   const { muted, off, volume, agents, narrator: narrating, branches } = useSettings()
   const [hear] = useState(listener)
-  const [narrate] = useState(resumeNarratorAfterBundleSwitch)
+  const [narrate] = useState(resumeSwitchedNarrator)
 
   const catchingUp = useCatchingUp(narrating)
   const titles = useRef(conversations)
@@ -120,9 +120,8 @@ function Player() {
       .catch((error: unknown) => console.warn('Sound of agents failed', error))
   }, [muted, agents])
   useEffect(() => {
-    const missingInitialNotificationHistory =
-      !overview || agent === undefined || !landings || !branched
-    if (missingInitialNotificationHistory) return
+    const missingCueHistory = !overview || agent === undefined || !landings || !branched
+    if (missingCueHistory) return
     const due = hear(
       {
         agent,
@@ -138,7 +137,7 @@ function Player() {
         !muted && !off.includes(cue.sound) && (cue.sound !== 'started' || (narrating && branches)),
     )
     if (!due.length) return
-    claimPlayableCuesAcrossTabs(due)
+    claimPlayableCues(due)
       .then(async (mine) => {
         if (narrating) return narrate(mine)
         for (const cue of mine) await tones.play(cue.sound)
@@ -159,9 +158,7 @@ function Player() {
     narrate,
   ])
 
-  return agents !== 'off' && !muted ? (
-    <Listener playLandingsWithoutNotification={off.includes('landed')} />
-  ) : null
+  return agents !== 'off' && !muted ? <Listener bandOwnsLanding={off.includes('landed')} /> : null
 }
 
 const watched = [SubmissionLanded, Committed, CheckRan] as const
@@ -197,11 +194,7 @@ function useCatchingUp(narrateWhileHidden = false) {
   }, [])
 }
 
-function Listener({
-  playLandingsWithoutNotification,
-}: {
-  playLandingsWithoutNotification: boolean
-}) {
+function Listener({ bandOwnsLanding }: { bandOwnsLanding: boolean }) {
   const conversations = useConversations()
   const overview = useDocOf(ROOT, OverviewDoc)
   const standing = useDocOf(ROOT, StandingDoc)
@@ -212,8 +205,8 @@ function Listener({
   const [rounds, setRounds] = useState<Record<number, Round>>({})
   const busy = conversations.filter((conversation) => conversation.busy).map(({ id }) => id)
   useEffect(() => {
-    const missingInitialProjectHistory = !overview || !standing || !events
-    if (missingInitialProjectHistory) return
+    const missingBandHistory = !overview || !standing || !events
+    if (missingBandHistory) return
     const live = conversations
       .filter((conversation) => conversation.busy)
       .map(({ id }) => rounds[id])
@@ -229,21 +222,12 @@ function Listener({
       catchingUp(),
     )
     for (const happening of happenings)
-      if (playLandingsWithoutNotification || happening.kind !== 'landed') conductor.hit(happening)
-  }, [
-    follow,
-    conversations,
-    standing,
-    rounds,
-    overview,
-    events,
-    playLandingsWithoutNotification,
-    catchingUp,
-  ])
+      if (bandOwnsLanding || happening.kind !== 'landed') conductor.hit(happening)
+  }, [follow, conversations, standing, rounds, overview, events, bandOwnsLanding, catchingUp])
   return busy.map((id) => <RoundOf id={id} key={id} report={setRounds} />)
 }
 
-const LiveRoundWithoutTranscriptDoc = docRef<LiveState>('pi.live')
+const LiveToolsDoc = docRef<LiveState>('pi.live')
 
 type Round = { tools: [string, { name: string; conversationId: ConversationId }][] }
 
@@ -254,7 +238,7 @@ function RoundOf({
   id: ConversationId
   report: (update: (previous: Record<number, Round>) => Record<number, Round>) => void
 }) {
-  const live = useDocOf(id, LiveRoundWithoutTranscriptDoc)
+  const live = useDocOf(id, LiveToolsDoc)
   useEffect(() => {
     const round: Round = {
       tools: [...(live?.tools ?? []), ...(live?.nestedTools ?? [])].map((slot) => [

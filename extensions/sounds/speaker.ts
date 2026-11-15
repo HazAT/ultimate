@@ -18,7 +18,7 @@ export function speaker(
     unsaid = cues
     storage.setItem(unsaidSessionKey, JSON.stringify(cues))
   }
-  const speakBatchesSequentially = async () => {
+  const speakSerialBatches = async () => {
     busy = true
     try {
       while (waiting.length) {
@@ -42,7 +42,7 @@ export function speaker(
     waiting.push(...fresh)
     persistUntilSpoken([...unsaid.filter((cue) => !fresh.some((f) => f.key === cue.key)), ...fresh])
     if (!busy)
-      speakBatchesSequentially().catch((error: unknown) => console.warn('Narrator failed', error))
+      speakSerialBatches().catch((error: unknown) => console.warn('Narrator failed', error))
   }
   return {
     add,

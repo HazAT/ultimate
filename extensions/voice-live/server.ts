@@ -92,7 +92,7 @@ Delegation policy
 Do not generate <|SpawnThinking|>: always. Do not delegate. The Voice agent receives every finished line and handles requests. Thinking notes are quiet context, not words to read aloud.`
 }
 
-const Forwarded = defineDoc<{ scheduled: boolean }>({
+const ForwardReceipt = defineDoc<{ scheduled: boolean }>({
   kind: 'voice-live.forwarded',
   checkpointWhen: () => false,
   version: 1,
@@ -125,7 +125,7 @@ async function lines(tx: Tx, id: ConversationId, limit: number) {
   return result.toReversed()
 }
 
-const pendingSessionBriefs = (host: ExtensionHost) =>
+const pendingBriefs = (host: ExtensionHost) =>
   host.resource('voice-live.briefs', () => new Map<ConversationId, Promise<unknown>>())
 
 const briefMessage = (text: string) => ({
@@ -145,13 +145,13 @@ async function newestBrief(tx: Tx, id: ConversationId) {
   return undefined
 }
 
-async function admitBriefOmittingPrevious(
+async function queueLatestBrief(
   host: ExtensionHost,
   id: ConversationId,
   session: string,
   brief: VoiceContext,
 ) {
-  const previous = await host.harness().commit((tx) => newestBrief(tx, id), context)
+  const supersededBrief = await host.harness().commit((tx) => newestBrief(tx, id), context)
   const conversation = (await host.harness().conversation(id, context))!
 
   await conversation.submit(
@@ -162,7 +162,9 @@ async function admitBriefOmittingPrevious(
         kind: VoiceContextEntry.kind,
         data: { ...brief, transient: true },
         ...(brief.error ? {} : { model: [briefMessage(brief.text)] }),
-        ...(previous ? { edits: [{ target: previous.id, action: 'omit' as const }] } : {}),
+        ...(supersededBrief
+          ? { edits: [{ target: supersededBrief.id, action: 'omit' as const }] }
+          : {}),
       },
     },
     context,
@@ -251,7 +253,7 @@ const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: Ta
     `voice:say:${taskId}`,
   )
 
-const forwardedLineRequestId = (request: string) => `voice:line:${request}`
+const forwardedLineKey = (request: string) => `voice:line:${request}`
 
 const forwardedUserLine = (input: { text: string }): VoiceLine => ({
   role: 'user',
@@ -307,7 +309,7 @@ export function answerTask(host: ExtensionHost) {
           input.voice,
           'voice.line',
           forwardedUserLine(input),
-          forwardedLineRequestId(input.request),
+          forwardedLineKey(input.request),
         )
 
         const explicitlyNamedQuestion = input.message ?? false
@@ -487,7 +489,7 @@ export const actions = {
 
     const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
     const started = performance.now()
-    const brief = (
+    const advisoryBrief = (
       main
         ? voiceBrief(host, main, context)
         : Promise.reject(new Error('@ultimate is not available'))
@@ -550,9 +552,9 @@ export const actions = {
       { phase: 'started', at: Date.now() },
       `voice:start:${answer.session.id}`,
     )
-    const briefs = pendingSessionBriefs(host)
-    const placing = brief
-      .then((made) => admitBriefOmittingPrevious(host, id, answer.session!.id!, made))
+    const briefs = pendingBriefs(host)
+    const placing = advisoryBrief
+      .then((made) => queueLatestBrief(host, id, answer.session!.id!, made))
       .catch((error: unknown) => console.error('Voice brief:', error))
       .finally(() => {
         if (briefs.get(id) === placing) briefs.delete(id)
@@ -565,7 +567,7 @@ export const actions = {
     if (typeof text !== 'string' || !text.trim()) throw new Error('Expected text')
     const id = await voiceId(host)
 
-    await pendingSessionBriefs(host).get(id)
+    await pendingBriefs(host).get(id)
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
@@ -596,11 +598,11 @@ export const actions = {
       gist: question.text,
     }
     const conversation = (await host.harness().conversation(voice, context))!
-
+    const oncePerQuestionKey = `voice:asked:${id}`
     await conversation.submit(
       {
         type: 'input',
-        requestId: `voice:asked:${id}`,
+        requestId: oncePerQuestionKey,
         whenBusy: 'steer',
         entry: { kind: VoiceQuestionEntry.kind, data },
         content: `A new question for the user arrived: message ${id} from ${data.title}: ${data.gist}`,
@@ -646,7 +648,7 @@ export const actions = {
 }
 
 export default (host: ExtensionHost) => {
-  async function scheduleForwardOnce(
+  async function commitForwardOnce(
     api: ToolExecutionApi,
     ctx: Context,
     text: string,
@@ -662,9 +664,9 @@ export default (host: ExtensionHost) => {
       ...(message !== undefined ? { message } : {}),
     }
 
-    await api.commit(async function scheduleAndReceiptAtomically(tx) {
+    await api.commit(async (tx) => {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-      const receipt = await tx.doc(Forwarded, api.taskId)
+      const receipt = await tx.doc(ForwardReceipt, api.taskId)
       if (receipt.scheduled) return
       await tx.createTask(
         answerTask(host),
@@ -683,7 +685,7 @@ export default (host: ExtensionHost) => {
       api.conversationId,
       'voice.line',
       forwardedUserLine(input),
-      forwardedLineRequestId(input.request),
+      forwardedLineKey(input.request),
     )
   }
   host.need(MessagesApi)
@@ -703,22 +705,20 @@ export default (host: ExtensionHost) => {
           const id = api.conversationId
           const view = await (await host.harness().conversation(id, ctx))!.context(ctx)
           if (!view.head) return undefined
-          const message = await host
-            .harness()
-            .commit(async function restoreCompactedBriefAfterCutoff(tx) {
-              const newest = await newestBrief(tx, id)
-              const data = newest?.data
-              if (!newest || !data || data.error || view.entries.some((e) => e.id === newest.id))
-                return undefined
-              const again = briefMessage(data.text)
-              await tx.appendEntry(id, {
-                kind: VoiceContextEntry.kind,
-                data: { ...data, again: true, transient: true },
-                model: [again],
-              })
-              return again
-            }, ctx)
-          return message ? { messages: [...request.messages, message] } : undefined
+          const postCutoffBrief = await host.harness().commit(async (tx) => {
+            const newest = await newestBrief(tx, id)
+            const data = newest?.data
+            if (!newest || !data || data.error || view.entries.some((e) => e.id === newest.id))
+              return undefined
+            const again = briefMessage(data.text)
+            await tx.appendEntry(id, {
+              kind: VoiceContextEntry.kind,
+              data: { ...data, again: true, transient: true },
+              model: [again],
+            })
+            return again
+          }, ctx)
+          return postCutoffBrief ? { messages: [...request.messages, postCutoffBrief] } : undefined
         },
       }),
     ],
@@ -736,18 +736,18 @@ export default (host: ExtensionHost) => {
           if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice speaks')
 
           const task = await api.getTask(api.taskId, ctx)
-          const input = task?.input as ToolTaskInput
-          const re =
+          const roundInput = task?.input as ToolTaskInput
+          const roundReplyTo =
             (await api.memo('re', ctx)) ??
             (await api.memo(
               're',
-              await api.commit(async function answerLineSeenByToolRound(tx) {
+              await api.commit(async (tx) => {
                 let cursor: Cursor | undefined
                 do {
                   const page = await tx.scanEntries(
                     {
                       conversationId: api.conversationId,
-                      ...(input.kind === 'model' ? { maxEntryId: input.assistant } : {}),
+                      ...(roundInput.kind === 'model' ? { maxEntryId: roundInput.assistant } : {}),
                       order: 'descending',
                     },
                     100,
@@ -771,7 +771,7 @@ export default (host: ExtensionHost) => {
               role: 'ultimate',
               text,
               speech: true,
-              ...(typeof re === 'number' ? { re } : {}),
+              ...(typeof roundReplyTo === 'number' ? { re: roundReplyTo } : {}),
             },
             `voice:say:${api.taskId}`,
           )
@@ -793,7 +793,7 @@ export default (host: ExtensionHost) => {
         async execute({ request }, api, ctx) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice forwards requests')
-          await scheduleForwardOnce(api, ctx, request)
+          await commitForwardOnce(api, ctx, request)
           return {
             output: [
               {
@@ -923,7 +923,7 @@ export default (host: ExtensionHost) => {
               if (!openQuestion(found!))
                 throw new Error(`Message ${message} is not an open question to the user`)
 
-              await scheduleForwardOnce(api, ctx, text!, message)
+              await commitForwardOnce(api, ctx, text!, message)
               await api.memo('settled', true, ctx)
             }
           } else if (dismiss) await host.need(MessagesApi).dismiss(message, ctx, undefined, call)

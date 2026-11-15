@@ -8,13 +8,13 @@ import { StatusAction } from './refs.ts'
 import type { VoiceStatus } from './refs.ts'
 import { IDLE_MS } from './relay.ts'
 import type { LiveEvent } from './relay.ts'
-import { startLive } from './session.ts'
+import { startMicInGesture } from './session.ts'
 import type { LiveSession } from './session.ts'
 
 export type Phase = 'off' | 'starting' | 'live' | 'paused' | 'ending'
 export type VoiceMode = {
   phase: Phase
-  sessionBilledSinceMs?: number
+  billedSince?: number
   muted: boolean
   problem?: string
   waiting?: string
@@ -25,16 +25,16 @@ export type VoiceMode = {
   speaking?: { entry: number; words: number; at: number }
 }
 
-let pageModeAcrossSessions: VoiceMode = { phase: 'off', muted: false, front: false }
+let pageMode: VoiceMode = { phase: 'off', muted: false, front: false }
 let session: LiveSession | undefined
 
-let answersAfterStartup: { text: string; entry?: number }[] = []
+let startupSpeech: { text: string; entry?: number }[] = []
 let cancelled = false
-let closing: Promise<void> | undefined
+let closeInFlight: Promise<void> | undefined
 let stopTicking: Cancel | undefined
 const listeners = new Set<() => void>()
 
-const unmutedByNotificationSwitchCues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
+const alwaysOnCues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
   ready: [
     [0, 783.99, 0.25],
     [0.1, 1046.5, 0.45],
@@ -56,9 +56,9 @@ const unmutedByNotificationSwitchCues: Record<'ready' | 'paused' | 'ended' | 'fa
 
 function cueOf(from: Phase, to: Phase) {
   if (from === to) return undefined
-  if (to === 'live') return unmutedByNotificationSwitchCues.ready
-  if (to === 'paused' && from === 'live') return unmutedByNotificationSwitchCues.paused
-  if (to === 'off' && from !== 'starting') return unmutedByNotificationSwitchCues.ended
+  if (to === 'live') return alwaysOnCues.ready
+  if (to === 'paused' && from === 'live') return alwaysOnCues.paused
+  if (to === 'off' && from !== 'starting') return alwaysOnCues.ended
   return undefined
 }
 
@@ -114,16 +114,14 @@ function stopConnectingHum() {
   })
 }
 
-function publishModeAndCue(next: Partial<VoiceMode>, failed = false) {
-  const cue = failed
-    ? unmutedByNotificationSwitchCues.failed
-    : next.phase && cueOf(pageModeAcrossSessions.phase, next.phase)
+function publishMode(next: Partial<VoiceMode>, failed = false) {
+  const cue = failed ? alwaysOnCues.failed : next.phase && cueOf(pageMode.phase, next.phase)
 
-  if (next.phase === 'starting' && pageModeAcrossSessions.phase !== 'starting') startConnectingHum()
+  if (next.phase === 'starting' && pageMode.phase !== 'starting') startConnectingHum()
   else if (next.phase && next.phase !== 'starting') stopConnectingHum()
-  pageModeAcrossSessions = { ...pageModeAcrossSessions, ...next }
+  pageMode = { ...pageMode, ...next }
 
-  voiceQuestions(pageModeAcrossSessions.phase !== 'off')
+  voiceQuestions(pageMode.phase !== 'off')
 
   if (cue) playNotes(cue, 0.08).catch((error: unknown) => console.warn('Voice cue failed', error))
   for (const listener of listeners) listener()
@@ -133,17 +131,16 @@ export const subscribe = (listener: () => void) => {
   listeners.add(listener)
   return () => void listeners.delete(listener)
 }
-export const voiceMode = () => pageModeAcrossSessions
-export const setFront = (front: boolean) => publishModeAndCue({ front })
-export const clearProblem = () => publishModeAndCue({ problem: undefined })
+export const voiceMode = () => pageMode
+export const setFront = (front: boolean) => publishMode({ front })
+export const clearProblem = () => publishMode({ problem: undefined })
 
-let cachedKeyStatusForGesture: VoiceStatus | undefined
-export const rememberStatus = (next: VoiceStatus) => (cachedKeyStatusForGesture = next)
+let gestureKeyStatus: VoiceStatus | undefined
+export const rememberStatus = (next: VoiceStatus) => (gestureKeyStatus = next)
 
 export async function start() {
-  cachedKeyStatusForGesture ??= await api.action(StatusAction)
-  if (!cachedKeyStatusForGesture.available)
-    return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+  gestureKeyStatus ??= await api.action(StatusAction)
+  if (!gestureKeyStatus.available) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
   await open()
 }
 
@@ -160,76 +157,73 @@ function release(next: VoiceMode['phase'], problem?: string) {
   const current = session
   session = undefined
   stopTicking?.()
-  publishModeAndCue({
+  publishMode({
     phase: next,
-    sessionBilledSinceMs: undefined,
+    billedSince: undefined,
     floor: undefined,
     partial: undefined,
     speaking: undefined,
     ...(problem ? { problem } : {}),
   })
   if (!current) return
-  closing = current
+  closeInFlight = current
     .close()
-    .catch((error: unknown) => publishModeAndCue({ problem: describe(error) }))
-    .finally(() => (closing = undefined))
+    .catch((error: unknown) => publishMode({ problem: describe(error) }))
+    .finally(() => (closeInFlight = undefined))
 }
 
 function tick() {
   if (!session) return
-  const sessionAlreadyReleasedAndEnded = session.analyser.context.state === 'closed'
-  if (sessionAlreadyReleasedAndEnded) {
+  const sessionEnded = session.analyser.context.state === 'closed'
+  if (sessionEnded) {
     session = undefined
     stopTicking?.()
-    publishModeAndCue({
+    publishMode({
       phase: 'paused',
-      sessionBilledSinceMs: undefined,
+      billedSince: undefined,
       floor: undefined,
       partial: undefined,
       speaking: undefined,
-      problem: pageModeAcrossSessions.problem ?? 'The session closed',
+      problem: pageMode.problem ?? 'The session closed',
     })
     return
   }
   const now = Date.now()
   const floor = session.relay.hearing() ? 'user' : session.relay.talking() ? 'voice' : undefined
   const partial = session.relay.partial() || undefined
-  if (floor !== pageModeAcrossSessions.floor || partial !== pageModeAcrossSessions.partial)
-    publishModeAndCue({
+  if (floor !== pageMode.floor || partial !== pageMode.partial)
+    publishMode({
       floor,
       partial,
       sending: partial
         ? undefined
-        : pageModeAcrossSessions.partial
-          ? { text: pageModeAcrossSessions.partial, at: now }
-          : pageModeAcrossSessions.sending,
+        : pageMode.partial
+          ? { text: pageMode.partial, at: now }
+          : pageMode.sending,
     })
-  else if (pageModeAcrossSessions.sending && now - pageModeAcrossSessions.sending.at > 6000)
-    publishModeAndCue({ sending: undefined })
+  else if (pageMode.sending && now - pageMode.sending.at > 6000) publishMode({ sending: undefined })
 
-  if (pageModeAcrossSessions.speaking) {
+  if (pageMode.speaking) {
     const words = session.relay.spokenWords()
 
-    const unreadSpeechTimeoutMs = 8000
-    const unreadSpeechTimedOut =
-      words === 0 && now - pageModeAcrossSessions.speaking.at > unreadSpeechTimeoutMs
-    if ((words > 0 && !session.relay.talking()) || unreadSpeechTimedOut)
-      publishModeAndCue({ speaking: undefined })
-    else if (words !== pageModeAcrossSessions.speaking.words)
-      publishModeAndCue({ speaking: { ...pageModeAcrossSessions.speaking, words } })
+    const unreadSpeechMs = 8000
+    const speechTimedOut = words === 0 && now - pageMode.speaking.at > unreadSpeechMs
+    if ((words > 0 && !session.relay.talking()) || speechTimedOut)
+      publishMode({ speaking: undefined })
+    else if (words !== pageMode.speaking.words)
+      publishMode({ speaking: { ...pageMode.speaking, words } })
   }
 
-  const pendingRequestNudgeMs = hasNudgedPendingRequest ? 45_000 : 20_000
-  if (
-    pendingRequestOrNudgeAtMs !== undefined &&
-    now - pendingRequestOrNudgeAtMs >= pendingRequestNudgeMs
-  ) {
-    pendingRequestOrNudgeAtMs = now
-    hasNudgedPendingRequest = true
+  const nudgeDue =
+    requestOrNudgeAtMs !== undefined &&
+    now - requestOrNudgeAtMs >= (nudgedRequest ? 45_000 : 20_000)
+  if (nudgeDue) {
+    requestOrNudgeAtMs = now
+    nudgedRequest = true
     try {
       session.speak('Still on it.')
     } catch (error) {
-      publishModeAndCue({ problem: describe(error) })
+      publishMode({ problem: describe(error) })
     }
   }
   if (session.relay.idleFor(now) >= IDLE_MS) release('paused')
@@ -237,49 +231,47 @@ function tick() {
 
 const transcriptFollowMs = 150
 
-let pendingRequestOrNudgeAtMs: number | undefined
-let hasNudgedPendingRequest = false
+let requestOrNudgeAtMs: number | undefined
+let nudgedRequest = false
 
 function onEvent(event: LiveEvent) {
-  if (event.type === 'session.closed' && session && pageModeAcrossSessions.phase === 'live')
-    publishModeAndCue({
+  if (event.type === 'session.closed' && session && pageMode.phase === 'live')
+    publishMode({
       problem: event.reason ? `Session closed: ${event.reason}` : 'The session closed',
     })
 }
 
-const callTypedActionWithRestArgs = <A, R>(ref: ActionRef<A, R>, args: A) =>
+const callTypedAction = <A, R>(ref: ActionRef<A, R>, args: A) =>
   api.action(ref as ActionRef<null, R>, args as null)
 
 export async function open(speech?: string, entry?: number): Promise<void> {
-  if (speech) answersAfterStartup.push({ text: speech, entry })
-  const sessionAlreadyActiveOrTransitioning =
-    pageModeAcrossSessions.phase === 'starting' ||
-    pageModeAcrossSessions.phase === 'live' ||
-    pageModeAcrossSessions.phase === 'ending'
-  if (sessionAlreadyActiveOrTransitioning) return
-  const from = pageModeAcrossSessions.phase
+  if (speech) startupSpeech.push({ text: speech, entry })
+  const sessionOccupied =
+    pageMode.phase === 'starting' || pageMode.phase === 'live' || pageMode.phase === 'ending'
+  if (sessionOccupied) return
+  const from = pageMode.phase
   cancelled = false
-  publishModeAndCue({
+  publishMode({
     phase: 'starting',
     problem: undefined,
     waiting: undefined,
     ...(from === 'off' ? { front: true } : {}),
   })
 
-  if (closing) await closing
+  if (closeInFlight) await closeInFlight
   let started: LiveSession
   try {
-    started = await startLive({
-      action: callTypedActionWithRestArgs,
+    started = await startMicInGesture({
+      action: callTypedAction,
       onEvent,
-      onError: (error) => publishModeAndCue({ problem: describe(error) }),
+      onError: (error) => publishMode({ problem: describe(error) }),
     })
   } catch (error) {
-    const waiting = answersAfterStartup.at(-1)?.text
-    answersAfterStartup = []
-    if (cancelled) return publishModeAndCue({ phase: 'off', problem: undefined, front: false })
+    const waiting = startupSpeech.at(-1)?.text
+    startupSpeech = []
+    if (cancelled) return publishMode({ phase: 'off', problem: undefined, front: false })
 
-    return publishModeAndCue(
+    return publishMode(
       {
         phase: from === 'paused' ? 'paused' : 'off',
         problem: describe(error),
@@ -291,21 +283,21 @@ export async function open(speech?: string, entry?: number): Promise<void> {
   session = started
   if (cancelled) return release('off')
   stopTicking = every(transcriptFollowMs, tick)
-  publishModeAndCue({ phase: 'live', sessionBilledSinceMs: Date.now() })
+  publishMode({ phase: 'live', billedSince: Date.now() })
   try {
-    if (pageModeAcrossSessions.muted) started.mute()
-    for (const item of answersAfterStartup) say(started, item.text, item.entry)
+    if (pageMode.muted) started.mute()
+    for (const item of startupSpeech) say(started, item.text, item.entry)
   } catch (error) {
-    publishModeAndCue({ problem: describe(error) })
+    publishMode({ problem: describe(error) })
   }
-  answersAfterStartup = []
+  startupSpeech = []
 }
 
 export function working(forwardedRequestPending: boolean) {
-  if (forwardedRequestPending && pendingRequestOrNudgeAtMs === undefined) {
-    pendingRequestOrNudgeAtMs = Date.now()
-    hasNudgedPendingRequest = false
-  } else if (!forwardedRequestPending) pendingRequestOrNudgeAtMs = undefined
+  if (forwardedRequestPending && requestOrNudgeAtMs === undefined) {
+    requestOrNudgeAtMs = Date.now()
+    nudgedRequest = false
+  } else if (!forwardedRequestPending) requestOrNudgeAtMs = undefined
 }
 
 export function note(text: string) {
@@ -317,29 +309,28 @@ export function note(text: string) {
       content: text,
     })
   } catch (error) {
-    publishModeAndCue({ problem: describe(error) })
+    publishMode({ problem: describe(error) })
   }
 }
 
 function say(live: LiveSession, text: string, entry?: number) {
   live.speak(text)
-  publishModeAndCue({
+  publishMode({
     speaking: entry === undefined ? undefined : { entry, words: 0, at: Date.now() },
   })
 }
 
 export function hear(text: string, entry?: number) {
-  if (pageModeAcrossSessions.phase === 'live' && session) {
+  if (pageMode.phase === 'live' && session) {
     try {
       say(session, text, entry)
     } catch (error) {
-      publishModeAndCue({ problem: describe(error) })
+      publishMode({ problem: describe(error) })
     }
-  } else if (pageModeAcrossSessions.phase === 'starting') answersAfterStartup.push({ text, entry })
-  else if (pageModeAcrossSessions.phase === 'paused') {
-    const browserNeedsWakeGesture =
-      navigator.userActivation && !navigator.userActivation.hasBeenActive
-    if (browserNeedsWakeGesture) publishModeAndCue({ waiting: text })
+  } else if (pageMode.phase === 'starting') startupSpeech.push({ text, entry })
+  else if (pageMode.phase === 'paused') {
+    const needsWakeGesture = navigator.userActivation && !navigator.userActivation.hasBeenActive
+    if (needsWakeGesture) publishMode({ waiting: text })
     else void open(text, entry)
   }
 }
@@ -350,21 +341,21 @@ export function setMuted(muted: boolean) {
       if (muted) session.mute()
       else session.unmute()
     }
-    publishModeAndCue({ muted })
+    publishMode({ muted })
   } catch (error) {
-    publishModeAndCue({ problem: describe(error) })
+    publishMode({ problem: describe(error) })
   }
 }
 
 export function end() {
-  if (pageModeAcrossSessions.phase === 'off') return
-  answersAfterStartup = []
-  if (pageModeAcrossSessions.phase === 'starting') {
+  if (pageMode.phase === 'off') return
+  startupSpeech = []
+  if (pageMode.phase === 'starting') {
     cancelled = true
-    return publishModeAndCue({ phase: 'ending' })
+    return publishMode({ phase: 'ending' })
   }
   release('off')
-  publishModeAndCue({ problem: undefined, waiting: undefined, muted: false, front: false })
+  publishMode({ problem: undefined, waiting: undefined, muted: false, front: false })
 }
 
 addEventListener('pagehide', () => {

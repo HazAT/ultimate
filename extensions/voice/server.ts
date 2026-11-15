@@ -9,8 +9,8 @@ const SECRET = 'OPENAI_API_KEY'
 const NO_KEY = `Voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
 const TIMEOUT_MS = 65_000
 
-const rawAudioBytesBelow12MbActionLimit = 8 * 1024 * 1024
-export const MAX_AUDIO_BYTES = rawAudioBytesBelow12MbActionLimit
+const action12MbAudioLimit = 8 * 1024 * 1024
+export { action12MbAudioLimit as MAX_AUDIO_BYTES }
 
 export const secrets = [
   {
@@ -88,7 +88,8 @@ export const actions = {
     if (typeof audio !== 'string' || !audio || typeof mimeType !== 'string' || !mimeType)
       throw new Error('Expected { audio: base64, mimeType }')
     const bytes = Buffer.from(audio, 'base64')
-    if (bytes.byteLength > MAX_AUDIO_BYTES) throw new Error(failure(413, undefined))
+    const audioOverActionLimit = bytes.byteLength > action12MbAudioLimit
+    if (audioOverActionLimit) throw new Error(failure(413, undefined))
     const key = await openaiSecretOrNonOAuthKey(host, signal)
     if (!key) throw new Error(NO_KEY)
     const answer = await openaiTranscribe(
