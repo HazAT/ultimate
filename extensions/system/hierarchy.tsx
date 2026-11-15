@@ -70,6 +70,7 @@ export function LaneTree({
   lanes,
   links: messages,
   states,
+  labels,
   window,
   since,
   now,
@@ -78,6 +79,7 @@ export function LaneTree({
   lanes: Lane[]
   links: LaneLink[]
   states: Map<number, LaneState>
+  labels?: Map<number, string | undefined>
   window: WindowName
   since: number
   now: number
@@ -136,6 +138,7 @@ export function LaneTree({
             row={row}
             since={since}
             state={states.get(row.lane.conversation) ?? 'idle'}
+            waitLabel={labels?.get(row.lane.conversation)}
             window={window}
           />
         ) : (

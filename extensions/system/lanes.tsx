@@ -210,12 +210,14 @@ export function Guide({
   )
 }
 
-const laneWord = (state: LaneState) => (state === 'running' ? 'running' : stateWord(state))
+const laneWord = (state: LaneState, waitLabel?: string) =>
+  state === 'running' ? 'running' : stateWord(state, 0, waitLabel)
 const laneTone = (state: LaneState) => stateTone[state === 'running' ? 'working' : state]
 
 export function LaneRow({
   row,
   state,
+  waitLabel,
   window,
   since,
   now,
@@ -226,6 +228,7 @@ export function LaneRow({
 }: {
   row: Extract<TreeRow, { kind: 'lane' }>
   state: LaneState
+  waitLabel?: string
   window: WindowName
   since: number
   now: number
@@ -269,7 +272,15 @@ export function LaneRow({
           >
             <AgentMark
               name={standing ?? lane.agent ?? 'agent'}
-              presence={state === 'running' ? 'working' : state === 'waits' ? 'waiting' : 'idle'}
+              presence={
+                state === 'running'
+                  ? 'working'
+                  : state === 'waits'
+                    ? 'waiting'
+                    : state === 'awaiting'
+                      ? 'awaiting'
+                      : 'idle'
+              }
             />
             <span className="flex min-w-0 flex-1 flex-col">
               {standing ? (
@@ -286,9 +297,14 @@ export function LaneRow({
                 />
               )}
               <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
-                <span className={cn('shrink-0', laneTone(state))}>{laneWord(state)}</span>
+                <span
+                  className={cn('min-w-0 max-w-full shrink-0 truncate', laneTone(state))}
+                  title={waitLabel}
+                >
+                  {laneWord(state, waitLabel)}
+                </span>
                 {lane.agent && !standing && (
-                  <span className="shrink-0">
+                  <span className="min-w-0 truncate">
                     · {lane.kind === 'branch' ? 'branch · coordinator' : lane.agent}
                   </span>
                 )}

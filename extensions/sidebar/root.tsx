@@ -14,7 +14,14 @@ import {
 } from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  conversationWait,
+  waitLabel,
+  emptyMessages,
+} from '../messages/ui.tsx'
+import { useAutomations, timerWaits } from '../automations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { CommitCount, ProgressAction, Review, useWorkspaceIndex } from '../workspaces/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
@@ -59,24 +66,41 @@ function useBranchState(
 ) {
   const index = useWorkspaceIndex()
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
-  const runState = useOverview()[conversation.id]?.runState
-  const primary = useDocOf(ROOT, StandingDoc)?.ultimate
+  const overview = useOverview()
+  const runState = overview[conversation.id]?.runState
+  const standing = useDocOf(ROOT, StandingDoc)
+  const primary = standing?.ultimate
+  const timers = timerWaits(useAutomations(5000).data, standing)
   const concludedSince = useConcludedSince()(conversation.id)
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
   if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
   if (queued) return { label: 'submitted', tone: 'success' } as const
   if (parked) return { label: 'paused', tone: 'paused' } as const
-  const state = conversationState(
-    { id: conversation.id, kind: 'other', runState, busy: working, primary, concludedSince },
-    log,
-  )
+  const facts = {
+    id: conversation.id,
+    kind: 'other' as const,
+    runState,
+    busy: working,
+    starter: primary,
+    concludedSince,
+  }
+  const state = conversationState(facts, log, timers)
+  const primaryWait =
+    primary === undefined
+      ? undefined
+      : conversationWait(
+          { id: primary, kind: 'primary', runState: overview[primary]?.runState },
+          log,
+          timers,
+        )
+  const label = waitLabel(conversationWait(facts, log, timers), primary, primaryWait)
   if (state === 'working')
     return {
       label: phase && !phase.waiting ? phase.word : 'working',
       tone: 'brand',
     } as const
   if (state === 'waits') return { label: 'waits on you', tone: 'waiting' } as const
-  if (state === 'awaiting') return { label: 'awaiting @ultimate', tone: 'awaiting' } as const
+  if (state === 'awaiting') return { label: label!, tone: 'awaiting' } as const
   if (state === 'failed') return { label: 'failed', tone: 'failed' } as const
   return { label: 'idle', tone: 'quiet' } as const
 }
@@ -224,7 +248,9 @@ function PhasedFlightRow({
             </span>
             <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
               {feature && <FeatureTag feature={feature} />}
-              <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
+              <span className={cn('min-w-0 truncate', tones[state.tone])} title={state.label}>
+                {state.label}
+              </span>
               {latest > 0 && (
                 <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
                   {formatAgo(latest, now)}

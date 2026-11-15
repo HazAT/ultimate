@@ -3,18 +3,12 @@ import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { isOpen } from '../../lib/message-state.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
-import { Started } from './addresses.ts'
 
 export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
 
-  const branchReplyAwaitsStarter =
-    input.re !== undefined &&
-    typeof input.from === 'number' &&
-    (await tx.doc(Started, input.from)).by === input.to
   const message = {
     ...input,
-    ...(branchReplyAwaitsStarter ? { awaits: true as const } : {}),
     id: log.next++,
     at: Date.now(),
   }

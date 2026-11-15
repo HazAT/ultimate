@@ -10,7 +10,17 @@ import {
   ToolSection,
 } from '@/components/ai/tool'
 import { Button } from '@/components/ui/button'
-import { cn, defineWebExtension, renderEntry, Fold, useToolDuration, useUltimate } from '@/sdk'
+import {
+  cn,
+  defineWebExtension,
+  renderEntry,
+  Fold,
+  useToolDuration,
+  useUltimate,
+  ROOT,
+  useDocOf,
+  provide,
+} from '@/sdk'
 import type { TypedEntry } from '@earendil-works/pi-durable'
 import type { AutomationInput } from './refs.ts'
 import { FiredEntry } from '../entries/ui.tsx'
@@ -21,6 +31,13 @@ import { AutomationsPanel } from './panel.tsx'
 import { Dot, looks, openAutomationsPanel, useOpenAutomation } from './parts.tsx'
 import type { Look } from './parts.tsx'
 import { AutomationsSection } from './sidebar.tsx'
+import { StandingDoc } from '../subagents/ui.tsx'
+import { WaitTimers } from '../messages/ui.tsx'
+import { useAutomations, timerWaits } from './ui.tsx'
+
+function useWaitTimers() {
+  return timerWaits(useAutomations(5000).data, useDocOf(ROOT, StandingDoc))
+}
 
 type Kind = 'fired' | 'failed' | 'escalated' | 'writing'
 const kinds: Record<Kind, { look: Look; word: string; border: string }> = {
@@ -189,6 +206,7 @@ export function AutomationCall({ call }: { call: ToolCallView }) {
 }
 
 export default defineWebExtension({
+  provides: [provide(WaitTimers, useWaitTimers)],
   tools: { automation: AutomationCall },
   slots: {
     'statusline.right': [{ component: Chip, order: -2 }],

@@ -1,4 +1,7 @@
 import { parseConversationId } from '../../lib/ids.ts'
+import { formatTime } from '@/sdk'
+import { waitsOn } from '../../lib/waits.ts'
+import type { Wait, WaitFacts } from '../../lib/waits.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
@@ -29,17 +32,37 @@ export type ConversationState =
   | 'failed'
   | 'idle'
 
-export function conversationState(
-  conversation: {
-    id: number
-    kind: 'primary' | 'subagent' | 'other'
-    runState?: 'working' | 'queued' | 'idle' | 'answered' | 'error'
-    busy?: boolean
-    parked?: boolean
-    primary?: number
-    concludedSince?: number
-  },
+type Conversation = {
+  id: number
+  kind: 'primary' | 'subagent' | 'other'
+  runState?: 'working' | 'queued' | 'idle' | 'answered' | 'error'
+  busy?: boolean
+  parked?: boolean
+  concludedSince?: number
+  starter?: number
+}
+
+export function conversationWait(
+  conversation: Conversation,
   log: MessagesData,
+  automations?: WaitFacts['automations'],
+) {
+  return waitsOn(conversation.id, {
+    working:
+      conversation.busy ||
+      conversation.runState === 'working' ||
+      conversation.runState === 'queued',
+    messages: log.messages,
+    automations,
+    starter: conversation.starter,
+    concluded: conversation.concludedSince === Infinity,
+  })
+}
+
+export function conversationState(
+  conversation: Conversation,
+  log: MessagesData,
+  automations?: WaitFacts['automations'],
 ): ConversationState {
   const { id, kind, runState } = conversation
   if (conversation.parked) return 'paused'
@@ -48,47 +71,37 @@ export function conversationState(
       ? waitingOnUser(log) > 0
       : kind === 'other' && log.messages.some((m) => m.from === id && openQuestion(m))
   if (userActionTakesPriority) return 'waits'
-  if (conversation.busy || runState === 'working' || runState === 'queued') return 'working'
-  if (
-    kind !== 'subagent' &&
-    awaitsPrimary(id, conversation.primary, log, () => conversation.concludedSince)
-  )
-    return 'awaiting'
+  const wait = conversationWait(conversation, log, automations)
+  if (wait?.on === 'work') return 'working'
+  if (kind !== 'subagent' && wait && wait.on !== 'user') return 'awaiting'
   if (runState === 'error') return 'failed'
   if (kind === 'subagent' && runState === 'answered') return 'done'
   return 'idle'
 }
 
-function awaitsPrimary(
-  id: number,
-  primary: number | undefined,
-  log: MessagesData,
-  concludedSince: (id: ConversationId) => number | undefined,
-) {
-  if (primary === undefined) return false
-  return (
-    log.messages.some((m) => m.from === id && m.to === primary && isOpen(m)) ||
-    pendingReport(log.messages, id, primary, concludedSince) !== undefined
-  )
+export function waitLabel(wait: Wait | undefined, primary?: number, primaryWait?: Wait) {
+  if (!wait) return undefined
+  switch (wait.on) {
+    case 'work':
+      return 'working'
+    case 'user':
+      return 'waits on you'
+    case 'agent':
+    case 'starter':
+      return wait.to === primary
+        ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}` : ''}`
+        : `waits on #${wait.to}`
+    case 'remote':
+      return `waits on ${wait.project}`
+    case 'timer':
+      return `waits on ${wait.name} · ${formatTime(wait.at)}`
+  }
+  return undefined
 }
 
-export function pendingReport(
-  messages: readonly Message[],
-  from: number | 'user' | 'remote',
-  to: number | 'user' | 'remote',
-  concludedSince: (id: ConversationId) => number | undefined,
-) {
-  let pending: Message | undefined
-  for (const m of messages)
-    if (m.from === from && m.to === to) {
-      if ((m.report || m.awaits) && !settled(m, concludedSince)) pending = m
-    } else if (m.from === to && m.to === from) pending = undefined
-  return pending
-}
-
-export function stateWord(state: ConversationState, waiting = 0) {
+export function stateWord(state: ConversationState, waiting = 0, label?: string) {
   if (state === 'waits') return waiting > 0 ? `${waiting} waiting on you` : 'waits on you'
-  return state === 'awaiting' ? 'awaiting @ultimate' : state
+  return state === 'awaiting' ? (label ?? 'waiting') : state
 }
 
 export const stateTone: Partial<Record<ConversationState, string>> = {
@@ -266,27 +279,32 @@ export const answerTo = (messages: readonly Message[], question: Message) =>
 export function openMessages(
   messages: readonly Message[],
   id: number,
-  concludedSince: (id: ConversationId) => number | undefined,
+  branches: readonly {
+    id: number
+    starter?: number
+    working?: boolean
+    concluded?: boolean
+  }[] = [],
+  automations?: WaitFacts['automations'],
 ) {
-  const reporters = new Set(
-    messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
-  )
-  const reports = [...reporters].flatMap(
-    (from) => pendingReport(messages, from, id, concludedSince) ?? [],
-  )
+  const owedBranches = branches.filter((branch) => {
+    const wait = waitsOn(branch.id, { ...branch, messages, automations })
+    return (
+      !branch.concluded &&
+      branch.starter === id &&
+      (wait?.on === 'starter' || wait?.on === 'agent') &&
+      wait.to === id
+    )
+  })
   return {
     waiting: messages.filter((m) => m.from === id && isOwed(m)),
-    owed: [...messages.filter((m) => m.to === id && isOwed(m)), ...reports].toSorted(
-      (a, b) => a.id - b.id,
+    requests: messages.filter(
+      (m) => m.to === id && isOwed(m) && !branches.some((b) => b.starter === id && b.id === m.from),
     ),
+    owed: owedBranches,
     delivering: messages.filter((m) => m.from === id && m.state === 'sent'),
   }
 }
-
-export const settled = (
-  message: Message,
-  concludedSince: (id: ConversationId) => number | undefined,
-) => typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
 
 export function messageStatus(message: Message) {
   if (message.state === 'failed') return 'failed'

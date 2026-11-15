@@ -1,0 +1,37 @@
+import { isOpen, openQuestion } from './message-state.ts'
+
+export type Wait =
+  | { on: 'work' }
+  | { on: 'user' }
+  | { on: 'agent'; to: number }
+  | { on: 'remote'; project: string }
+  | { on: 'timer'; name: string; at: number }
+  | { on: 'starter'; to: number }
+
+export type WaitFacts = {
+  working?: boolean
+  messages: readonly {
+    from: number | 'user' | 'remote'
+    to: number | 'user' | 'remote'
+    reply: boolean
+    state: string
+    remote?: { project: string }
+  }[]
+  automations?: readonly { name: string; nextAt?: number; subscribers: readonly number[] }[]
+  starter?: number
+  concluded?: boolean
+}
+
+export function waitsOn(id: number, facts: WaitFacts): Wait | undefined {
+  if (facts.working) return { on: 'work' }
+  const sent = facts.messages.filter((m) => m.from === id)
+  if (sent.some(openQuestion)) return { on: 'user' }
+  const agent = sent.find((m) => typeof m.to === 'number' && isOpen(m))
+  if (agent && typeof agent.to === 'number') return { on: 'agent', to: agent.to }
+  const remote = sent.find((m) => m.to === 'remote' && isOpen(m))
+  if (remote?.remote) return { on: 'remote', project: remote.remote.project }
+  const timer = facts.automations?.find((a) => a.nextAt !== undefined && a.subscribers.includes(id))
+  if (timer?.nextAt !== undefined) return { on: 'timer', name: timer.name, at: timer.nextAt }
+  if (facts.starter !== undefined && !facts.concluded) return { on: 'starter', to: facts.starter }
+  return undefined
+}

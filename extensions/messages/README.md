@@ -45,9 +45,11 @@ report.**
   branch.
 
 Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
-further. A branch whose latest report or reply came after @ultimate's latest message to it shows as `awaiting
-@ultimate`, as does one with a reply-enabled message to @ultimate open; @ultimate messaging or concluding it clears
-that.
+further. Conversation waits are derived from existing records: work, an open user question, an open agent or remote
+request, a subscribed timer, then an unconcluded branch's starter. Rows name the wait (`waits on @ultimate`,
+`waits on #N`, `waits on ultimate-eval`, or `waits on <timer> · <time>`); a branch waiting on @ultimate also shows
+its remote dependency, one hop only. The Open messages popover counts branches the conversation started that
+currently wait on it, rather than inferring a debt from past reports. The browser reads `board.started` read-only.
 
 ### Messages to the user
 

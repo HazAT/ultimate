@@ -82,7 +82,7 @@ function definedTile(style: AgentMarkStyle | undefined) {
   }
 }
 
-export type Presence = 'working' | 'waiting' | 'idle'
+export type Presence = 'working' | 'waiting' | 'awaiting' | 'idle'
 
 export function AgentMark({
   name,
@@ -127,7 +127,9 @@ export function AgentMark({
               ? 'animate-pulse-dot bg-brand'
               : presence === 'waiting'
                 ? 'bg-amber-400'
-                : 'bg-muted-foreground/60',
+                : presence === 'awaiting'
+                  ? 'bg-brand'
+                  : 'bg-muted-foreground/60',
           )}
           data-presence={presence}
         />

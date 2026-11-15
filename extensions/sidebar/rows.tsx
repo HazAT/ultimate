@@ -47,8 +47,8 @@ const settled = {
     tone: 'text-amber-700 dark:text-amber-300',
   },
   awaiting: {
-    label: 'Awaiting @ultimate',
-    word: 'Awaiting @ultimate',
+    label: 'Waiting',
+    word: 'Waiting',
     tone: 'text-brand',
   },
   done: { label: 'Done: its answer went to its parent', word: 'Done', tone: 'text-success' },
@@ -60,10 +60,12 @@ function Mark({
   working,
   unseen,
   state,
+  waitLabel,
 }: {
   working?: 'self' | 'subagents'
   unseen: boolean
   state?: ConversationState
+  waitLabel?: string
 }) {
   const shown = !working && state && state in settled ? (state as keyof typeof settled) : undefined
   const label = working
@@ -71,7 +73,7 @@ function Mark({
       ? 'Working'
       : 'Subagents working'
     : shown
-      ? settled[shown].label
+      ? ((shown === 'awaiting' ? waitLabel : undefined) ?? settled[shown].label)
       : 'New answer'
   return (
     <span className="flex size-3 shrink-0 items-center justify-center">
@@ -119,6 +121,7 @@ type RowProps = {
   now: number
   onConclude: (conclude: boolean) => void
   state?: ConversationState
+  waitLabel?: string
   activity?: string
   feature?: string
 }
@@ -142,6 +145,7 @@ function PhasedRow({
   onConclude,
   feature,
   state,
+  waitLabel,
   activity,
   displayPhase,
 }: RowProps & { displayPhase?: { label: ReactNode } }) {
@@ -159,7 +163,7 @@ function PhasedRow({
         ? 'Untitled conversation'
         : `#${conversation.id}`)
   const latest = Math.max(conversation.inputAt ?? 0, conversation.answerAt ?? 0)
-  const hasMetadata = feature || conversation.workspace || latest > 0
+  const hasMetadata = feature || conversation.workspace || latest > 0 || waitLabel
   const rename = () => {
     cancelled.current = false
     setEditing(true)
@@ -196,7 +200,12 @@ function PhasedRow({
     >
       {editing ? (
         <div className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-1.5">
-          <Mark state={state} unseen={unseen} working={leadingMarkWorkingWithoutPhaseDot} />
+          <Mark
+            state={state}
+            waitLabel={waitLabel}
+            unseen={unseen}
+            working={leadingMarkWorkingWithoutPhaseDot}
+          />
           <input
             aria-label="Conversation title"
             autoFocus
@@ -233,12 +242,22 @@ function PhasedRow({
             type="button"
           >
             <span className="flex w-full min-w-0 items-center gap-1.5">
-              <Mark state={state} unseen={unseen} working={leadingMarkWorkingWithoutPhaseDot} />
+              <Mark
+                state={state}
+                waitLabel={waitLabel}
+                unseen={unseen}
+                working={leadingMarkWorkingWithoutPhaseDot}
+              />
               {title}
             </span>
             {hasMetadata && (
               <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
                 {feature && <FeatureTag feature={feature} />}
+                {waitLabel && (
+                  <span className="min-w-0 truncate text-brand" title={waitLabel}>
+                    {waitLabel}
+                  </span>
+                )}
                 {conversation.workspace && (
                   <span className="shrink-0" title="Isolated checkout">
                     #{conversation.id}
@@ -449,7 +468,6 @@ type ChildRowProps = {
   conversation: ConversationSummary
   row?: OverviewRow
   shown: boolean
-  primary?: number
   parked?: boolean
 }
 
@@ -465,7 +483,6 @@ function TaskedSubagentLine({
   conversation,
   row,
   shown,
-  primary,
   parked,
   depth,
   task,
@@ -479,7 +496,6 @@ function TaskedSubagentLine({
       runState: row?.runState,
       busy: conversation.busy,
       parked,
-      primary,
     },
     log,
   )
@@ -584,7 +600,6 @@ function TaskedChildRow({
   conversation,
   row,
   shown,
-  primary,
   parked,
   task,
 }: ChildRowProps & { task?: { chip: ReactNode; title: string } }) {
@@ -597,7 +612,6 @@ function TaskedChildRow({
       runState: row?.runState,
       busy: conversation.busy,
       parked,
-      primary,
     },
     log,
   )

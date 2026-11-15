@@ -42,7 +42,7 @@ import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote
 import { branchTool } from './branch.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
-export const docs = [Messages]
+export const docs = [Messages, Started]
 
 async function openMessage(host: ExtensionHost, messageId: number, ctx: Context) {
   const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
