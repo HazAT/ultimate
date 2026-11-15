@@ -48,8 +48,7 @@ function serve() {
         { ...options, encoding: 'utf8', signal: abort.signal },
         done,
       )
-      const giveExecImmediateEof = () => child.stdin?.end()
-      giveExecImmediateEof()
+      child.stdin?.end()
     } catch (error) {
       done(error as Error)
     }

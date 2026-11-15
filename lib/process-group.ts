@@ -105,17 +105,18 @@ function within<T>(promise: Promise<T>, ms: number) {
   )
 }
 
-async function gone(pid: number, ms: number) {
+const freshOwnershipPollMs = 20
+async function pollGoneKeepingOwnershipFresh(pid: number, ms: number) {
   const deadline = Date.now() + ms
-  while (groupAlive(pid) && Date.now() < deadline) await pace(20)
+  while (groupAlive(pid) && Date.now() < deadline) await pace(freshOwnershipPollMs)
   return !groupAlive(pid)
 }
 
-async function drainVerifiedGroup(pid: number, graceMs: number) {
+async function drainFreshlyVerifiedGroup(pid: number, graceMs: number) {
   send(pid, 'SIGTERM')
-  if (await gone(pid, graceMs)) return true
+  if (await pollGoneKeepingOwnershipFresh(pid, graceMs)) return true
   send(pid, 'SIGKILL')
-  return gone(pid, 3000)
+  return pollGoneKeepingOwnershipFresh(pid, 3000)
 }
 
 export function spawnGroup(
@@ -142,7 +143,7 @@ export function spawnGroup(
   })
   const survivorOrUnsignalableGroup = () => false
   const ended = groupAliveAtLeaderReaping
-    .then((remains) => !remains || drainVerifiedGroup(child.pid!, grace))
+    .then((remains) => !remains || drainFreshlyVerifiedGroup(child.pid!, grace))
     .catch(survivorOrUnsignalableGroup)
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()))
   if (child.pid === undefined) return { child, ended, closed }
@@ -155,8 +156,7 @@ export function spawnGroup(
     child.stdin.end()
     throw error
   }
-  const releaseOnlyAfterPidRecorded = () => child.stdin.end('\n')
-  releaseOnlyAfterPidRecorded()
+  child.stdin.end('\n')
   return { child, ended, closed }
 }
 
@@ -203,7 +203,7 @@ export async function stopGroup(
       (start === undefined
         ? identify(pid) !== undefined && groupAlive(pid)
         : identify(pid) === start)
-    if (pidFileStillProvesOwnership && !(await drainVerifiedGroup(pid, grace)))
+    if (pidFileStillProvesOwnership && !(await drainFreshlyVerifiedGroup(pid, grace)))
       throw new Error(`Process group ${pid} did not exit`)
   }
   if (pidFile && (await readPidFile(pidFile)) === pid) {

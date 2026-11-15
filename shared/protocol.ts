@@ -1,3 +1,4 @@
+import { offsetEntryId } from '../lib/ids.ts'
 import type {
   ConversationId,
   TaskId,
@@ -32,6 +33,13 @@ export interface ConfigureRequest {
 export type StreamedView = PiWindowInEntryIdOrder
 type NewestFirstEntries = EntryRecord[]
 type ExclusiveHistoryCursor = EntryId
+export function historyCursorFromStreamBefore(
+  entryImmediatelyBeforeWindow: StreamedView['before'],
+): ExclusiveHistoryCursor | undefined {
+  return entryImmediatelyBeforeWindow === undefined
+    ? undefined
+    : offsetEntryId(entryImmediatelyBeforeWindow, 1)
+}
 export interface HistoryResponse {
   entries: NewestFirstEntries
   before?: ExclusiveHistoryCursor

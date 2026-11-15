@@ -7,6 +7,17 @@ import type { ErrorData, Reply, Request } from './spawn-helper.ts'
 
 type Handler = (reply: Reply) => void
 
+type ChildWithPidOnlyAfterSpawnEvent = EventEmitter & {
+  pid?: number
+  exitCode: number | null
+  signalCode: NodeJS.Signals | null
+  killed: boolean
+  stdin: Writable | null
+  stdout: Readable | null
+  stderr: Readable | null
+  kill(signal?: NodeJS.Signals | number): boolean
+}
+
 interface ProcessWideFixedProtocolHelper {
   process?: ChildProcess
   next: number
@@ -124,16 +135,7 @@ export const spawn = ((
 ): ChildProcess => {
   const [stdin, stdout, stderr] = pipes(options.stdio)
   const { signal, ...rest } = options
-  const child = new EventEmitter() as EventEmitter & {
-    pid?: number
-    exitCode: number | null
-    signalCode: NodeJS.Signals | null
-    killed: boolean
-    stdin: Writable | null
-    stdout: Readable | null
-    stderr: Readable | null
-    kill(signal?: NodeJS.Signals | number): boolean
-  }
+  const child = new EventEmitter() as ChildWithPidOnlyAfterSpawnEvent
   const pausedForReaderBackpressure = { stdout: false, stderr: false }
   const ended = { stdout: false, stderr: false }
   const endOutputOnce = (stream: 'stdout' | 'stderr') => {

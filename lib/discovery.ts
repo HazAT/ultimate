@@ -1,4 +1,9 @@
-import { readdir, readFile, realpath, stat } from 'node:fs/promises'
+import {
+  readdir,
+  readFile,
+  realpath as resolveLinkTargetOnEveryDiscovery,
+  stat,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { discoveryRoots } from './project-paths.ts'
 import type { Source } from './project-paths.ts'
@@ -64,7 +69,7 @@ export async function discoverExtensions(
         winners.set(entry.name, {
           name: entry.name,
           path,
-          target: await realpath(path),
+          target: await resolveLinkTargetOnEveryDiscovery(path),
           source: root.source,
           files,
           ...(core ? { core } : {}),
