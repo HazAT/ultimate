@@ -27,9 +27,6 @@ import * as undici from 'undici'
 export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000
 const DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 2_000
 
-const originalGlobalFetch = globalThis.fetch
-let installedGlobalFetch: typeof globalThis.fetch | undefined
-
 export function parseHttpIdleTimeoutMs(value: unknown): number | undefined {
   if (typeof value === 'string') {
     const trimmed = value.trim()
@@ -101,12 +98,4 @@ export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TI
   )
   setDefaultAutoSelectFamilyAttemptTimeout(DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS)
   undici.setGlobalDispatcher(dispatcher)
-  const fetchStillOwnedByDispatcher =
-    installedGlobalFetch === undefined
-      ? globalThis.fetch === originalGlobalFetch
-      : globalThis.fetch === installedGlobalFetch
-  if (fetchStillOwnedByDispatcher) {
-    undici.install?.()
-    installedGlobalFetch = globalThis.fetch
-  }
 }
