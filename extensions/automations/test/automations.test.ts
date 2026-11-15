@@ -90,7 +90,7 @@ async function fixture() {
   provided.set('subagents', {
     createChild: (tx, options) => createChild(host, tx, options),
   } satisfies Partial<SubagentsService>)
-  provided.set('messages', { owed: async () => undefined })
+  provided.set('messages', { owed: async () => ({}) })
   const extension = automations(host as unknown as Parameters<typeof automations>[0])
   prepared.registry.install(extension)
   const route: FauxResponseFactory = (transcript) => {

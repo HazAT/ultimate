@@ -31,7 +31,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import { owedRequest, parentOf, Started, starterOf } from './addresses.ts'
+import { owed, parentOf, Started, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
@@ -227,7 +227,7 @@ export default function messages(host: ExtensionHost) {
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
-    owed: owedRequest,
+    owed,
   })
   return defineExtension({
     name: 'messages',

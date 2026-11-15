@@ -183,6 +183,7 @@ export function scheduler(
   const activeRuns = new WeakMap<Tx, Set<string>>()
   function consumeFirstFireRequest(a: Automation) {
     delete a.serves
+    delete a.branches
   }
   async function scanRunsBeforeWrites(tx: Tx): Promise<Set<string>> {
     const cached = activeRuns.get(tx)

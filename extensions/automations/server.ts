@@ -293,8 +293,11 @@ function backend(host: ExtensionHost) {
   async function owedAtCreation(tx: Tx, caller?: ConversationId) {
     if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
       return {}
-    const serves = await host.need(MessagesApi).owed(tx, caller)
-    return serves ? { serves: { ...serves, by: caller } } : {}
+    const { serves, branches } = await host.need(MessagesApi).owed(tx, caller)
+    return {
+      ...(serves ? { serves: { ...serves, by: caller } } : {}),
+      ...(branches ? { branches: { ids: branches, by: caller } } : {}),
+    }
   }
   async function changeScript(
     tx: Tx,

@@ -16,7 +16,6 @@ import {
   defineExtension,
   defineTask,
   GenerationTask,
-  hook,
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
@@ -24,7 +23,6 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
 import { Standing, Subagents } from '../subagents/api.ts'
-import { idleNote } from './idle.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
@@ -414,13 +412,5 @@ export default function watchdog(host: ExtensionHost) {
   return defineExtension({
     name: 'watchdog',
     tasks: [Watchdog],
-    hooks: [
-      hook(GenerationTask, {
-        beforeInput: async (_input, { tx, conversationId }) =>
-          (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
-            ? idleNote(tx, host, conversationId, Date.now())
-            : undefined,
-      }),
-    ],
   })
 }

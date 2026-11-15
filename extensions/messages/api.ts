@@ -101,10 +101,11 @@ export type MessagesService = {
     signal?: AbortSignal,
   ): Promise<{ message: number; delivered: number }>
   /**
-   * Inside `tx`, the newest agent's request conversation `to` still owes an answer: work it starts now serves it. An
-   * `automations.fired` input whose data carries it routes the woken run's final answer to that agent (route.ts).
+   * Inside `tx`, what work conversation `to` starts now answers: `serves`, the newest agent's request it still owes,
+   * and `branches`, those whose reply or report its current run read and it has not messaged since. An
+   * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts).
    */
-  owed(tx: Tx, to: ConversationId): Promise<Serves | undefined>
+  owed(tx: Tx, to: ConversationId): Promise<{ serves?: Serves; branches?: ConversationId[] }>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

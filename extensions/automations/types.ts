@@ -67,6 +67,7 @@ export type Automation = {
   thinking?: ModelThinkingLevel
   subscribers: Subscriber[]
   serves?: FirstFireRequest
+  branches?: { ids: ConversationId[]; by: ConversationId }
   nextAt?: number
   scheduler?: TaskId
   runs: Run[]

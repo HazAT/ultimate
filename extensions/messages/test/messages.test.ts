@@ -1735,6 +1735,60 @@ it("sends @ultimate's answer to a run its automation woke to the agent whose req
     }),
   ])
 })
+it("routes the answer of a run an automation woke to the branches whose report the automation's creating run read", async () => {
+  // #626775: @ultimate read the branch's reply, made check-back A3 and told it to hold; the branch held (an echo). A3's
+  // run answered with the A/B result in prose, which reached no one, and the branch waited 44 minutes.
+  const f = await fixture()
+  const started = branched(f, 'Fixed it, STALL')
+  await until(f.holding)
+  const id = (await f.log())!.messages.findLast((m) => m.from === 1 && m.to !== 'user')!.to
+  const created = await f.opened.harness.commit(
+    (tx) => f.service().owed(tx, 1 as ConversationId),
+    context,
+  )
+  expect(created).toEqual({ branches: [id] })
+  f.hold.release()
+  const b = await started
+  await f.opened.root.waitForIdle(context)
+  await b.settled()
+  const fired = async (branches?: ConversationId[]) => {
+    await (
+      await f.opened.root.submit(
+        {
+          type: 'input',
+          content: 'Automation A3 "check-back" fired: AB-DONE',
+          entry: {
+            kind: 'automations.fired',
+            data: {
+              id: 'A3',
+              name: 'check-back',
+              text: 'AB-DONE',
+              ...(branches ? { branches, at: Date.now() } : {}),
+            },
+          },
+        },
+        context,
+      )
+    ).wait(context)
+    await f.opened.root.waitForIdle(context)
+    await b.settled()
+  }
+  const routed = async () =>
+    (await f.log())!.messages.filter((m) => m.from === 1 && m.to === b.id && m.routed)
+  const before = (await routed()).length
+  await fired(created.branches)
+  expect((await routed()).slice(before).map((m) => m.text)).toEqual([
+    'Answer: Automation A3 "check-back" fired: AB-DONE',
+  ])
+  // The branch's answer to it is an echo: it wakes no one, so nothing loops.
+  await b.branch.waitForIdle(context)
+  await b.settled()
+  expect((await b.from()).at(-1)).toMatchObject({ echo: true })
+  expect(await routed()).toHaveLength(before + 1)
+  // A fire that carries no branches answers only where it was asked.
+  await fired()
+  expect(await routed()).toHaveLength(before + 1)
+})
 it("routes @ultimate's answer to a branch whose reply it read even when it messaged the user first", async () => {
   // omarchy-config #69721: @ultimate read #70136's assessment and only messaged the user; the run ended there, no
   // answer went down, and #70136 waited 35 minutes.

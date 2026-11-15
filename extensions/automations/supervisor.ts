@@ -379,6 +379,9 @@ export function supervisor(
                         at: sub.lastFireAt ?? 0,
                       }
                     : {}),
+                  ...(kind === 'fired' && sub.branches?.by === id
+                    ? { branches: sub.branches.ids, at: sub.lastFireAt ?? 0 }
+                    : {}),
                 },
               },
             },

@@ -1,7 +1,9 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx, TaskId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { MessageEntry, ReplyEntry } from '../entries/api.ts'
+import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
@@ -20,6 +22,30 @@ export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | 
     from: newestOwedRequestProxy.from,
     ...(newestOwedRequestProxy.remote ? { remote: { ...newestOwedRequestProxy.remote } } : {}),
   }
+}
+
+export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
+  const log = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
+  const read = new Set<ConversationId>()
+  for (const submission of (await tx.doc(LiveDoc, to)).run?.inputs ?? []) {
+    const record = await tx.submission(submission)
+    if (record?.type !== 'input' || record.entry === undefined) continue
+    const entry = await tx.entry(record.entry)
+    const data: Partial<DeliveredMessage> | undefined =
+      MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+    if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && data?.reply === false)) continue
+    if (typeof data?.from !== 'number' || data.echo === true) continue
+    if ((await tx.doc(Started, data.from)).by !== to) continue
+    const since = data.id ?? 0
+    if (!log.some((m) => m.from === to && m.to === data.from && m.id > since)) read.add(data.from)
+  }
+  return [...read]
+}
+
+export async function owed(tx: Tx, to: ConversationId) {
+  const serves = await owedRequest(tx, to)
+  const branches = await branchesReadThisRun(tx, to)
+  return { ...(serves ? { serves } : {}), ...(branches.length ? { branches } : {}) }
 }
 
 export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves?: Serves }>({
