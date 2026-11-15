@@ -74,7 +74,6 @@ function StateTag({ isolate }: { isolate: Isolate }) {
   )
 }
 
-/** The call card's compact workspace: branch and state from the child's summary. */
 function IsolateBadge({ childId }: { childId: number }) {
   const isolate = useWorkspaces()[String(childId)]
   if (!isolate) return null
@@ -89,7 +88,6 @@ function IsolateBadge({ childId }: { childId: number }) {
   )
 }
 
-/** One `subagent` call: who got which task, how the child is doing, its answer, and a way into it. */
 function SubagentCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const { switchConversation } = useUltimate()
@@ -212,7 +210,6 @@ function SubagentCall({ call }: { call: ToolCallView }) {
   )
 }
 
-/** The `land` and `discard` actions' JSON result: what landed, at which tip, touching which paths. */
 function Landed({ output }: { output: string }) {
   let result: LandResult
   try {
@@ -295,7 +292,6 @@ function Landed({ output }: { output: string }) {
   )
 }
 
-/** The `list` action's JSON rows. */
 function ChildList({ output }: { output: string }) {
   const { switchConversation } = useUltimate()
   let rows: { conversationId: ConversationId; agent: string; background: boolean; busy: boolean }[]
@@ -325,7 +321,6 @@ function ChildList({ output }: { output: string }) {
   )
 }
 
-/** An error card's report goes into @ultimate's draft, unsent, beside whatever the user had typed there. */
 function useErrorReport() {
   const { switchConversation, showSurface, focusComposer } = useUltimate()
   return {
@@ -343,7 +338,6 @@ function useErrorReport() {
   }
 }
 
-/** With no conversation chosen, show @ultimate's (see `landing`). */
 function LandOnUltimate() {
   const loaded = useStore((state) => state.shared !== undefined)
   const [chosen] = useUiState<number | null>('shell.conversation', null)
@@ -353,7 +347,6 @@ function LandOnUltimate() {
   useEffect(() => {
     if (target === undefined) return
     if (target !== 'create') return switchConversation(target, { replace: true })
-    // A fresh home (a preview) has no @ultimate yet: start it, as its sidebar row does.
     api
       .action(StandingAction, { name: 'ultimate' })
       .then((id) => switchConversation(id, { replace: true }))

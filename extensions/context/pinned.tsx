@@ -14,39 +14,27 @@ import { DiffBody, Header, signed } from './parts.tsx'
 import { CurrentPromptAction } from './refs.ts'
 import type { Breakdown } from './types.ts'
 
-/** Whether the conversation's start card is in the transcript's view. */
 function useStartInView() {
   const { scrollRef, contentRef } = useTranscriptScroll()
   const [inView, setInView] = useState(false)
-  const entries = useTranscript()
+  const entriesLoadingStartCard = useTranscript()
   useEffect(() => {
-    // The pin's own header carries the same mark: observing it would hide the pin, then show it again once detached.
-    const start = contentRef.current?.querySelector(
+    const unpinnedStartCard = contentRef.current?.querySelector(
       '[data-context-header="start"]:not([data-ui="pinned-prompt"] *)',
     )
-    if (!start) return setInView(false)
+    if (!unpinnedStartCard) return setInView(false)
     const observer = new IntersectionObserver(([seen]) => setInView(seen.isIntersecting), {
       root: scrollRef.current,
     })
-    observer.observe(start)
+    observer.observe(unpinnedStartCard)
     return () => observer.disconnect()
-    // The start card mounts once the whole history is loaded, after new entries.
-  }, [scrollRef, contentRef, entries])
+  }, [scrollRef, contentRef, entriesLoadingStartCard])
   return inView
 }
 
-/**
- * At the top of a top-level conversation as it scrolls: the prompt it runs with now, as the start card shows the one it
- * started with. A change since the prompt the user last acknowledged lights it up and opens to its diff above the
- * parts; Dismiss makes the current prompt the new normal. The first prompt it sees is acknowledged as it is, so it starts
- * quiet. Acknowledged prompts are durable UI state, shared by every tab and device. While the start card is on screen
- * it says the same, so the pin waits for it to scroll away, unless there is a change to show.
- */
 export function PinnedPrompt() {
   const id = useConversation((conversation) => conversation.id)
   const owned = useConversationSummary(id)?.parentConversationId
-  // Nothing while a conversation loads: its id is unknown, and the action would answer for whichever one is requested.
-  // Keyed, so a conversation never starts from another's baseline or answer.
   return id === undefined || owned !== undefined ? null : <Pinned id={id} key={id} />
 }
 
@@ -54,12 +42,11 @@ function Pinned({ id }: { id: number }) {
   const agent = useConversation((conversation) => conversation.agent)
   const entries = useTranscript()
   const startInView = useStartInView()
-  // A new `pi.system` entry in the stream means the prompt changed: ask for it again.
-  const latest = entries.findLast((entry) => entry.kind === 'pi.system')?.id
+  const refetchOnSystemEntry = entries.findLast((entry) => entry.kind === 'pi.system')?.id
   const [seen, setSeen] = useUiState<number | null>(`context.seen.${id}`, null)
   const shown = useAction(CurrentPromptAction, seen === null ? {} : { since: seen }, {
     onError: keepLast,
-    on: latest,
+    on: refetchOnSystemEntry,
   })
   const current = shown.data
   useEffect(() => {

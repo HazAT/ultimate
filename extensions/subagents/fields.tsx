@@ -18,7 +18,6 @@ import type { ModelsResponse } from '@/sdk'
 type ModelInfo = ModelsResponse['models'][number]
 export type ModelRef = { provider: string; modelId: string }
 
-/** A labelled row of the config form; `hint` explains the field under it. */
 export function Field({
   label,
   hint,
@@ -89,7 +88,6 @@ export function SummariesField({
 export const inputClass =
   'w-full rounded-md border border-border/80 bg-background px-2 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground/50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 aria-invalid:border-error/70'
 
-/** Exclusive choices as one control; `value` null selects none. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -127,18 +125,15 @@ export function Segmented<T extends string>({
 }
 
 const LIMIT = 150
-// Pi's levels, for a model the catalogue does not know.
-const allLevels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const piLevelsForUncataloguedModel = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
-/** The levels a model supports, from the catalogue the models extension shows. */
 export function thinkingLevels(models: ModelsResponse | undefined, ref: ModelRef | undefined) {
   const model = ref
     ? models?.models.find((m) => m.provider === ref.provider && m.id === ref.modelId)
     : undefined
-  return model ? model.thinkingLevels : allLevels
+  return model ? model.thinkingLevels : piLevelsForUncataloguedModel
 }
 
-/** A model, or the main conversation's when `value` is null; searchable like the models extension's picker. */
 export function ModelField({
   value,
   inherited,
@@ -292,7 +287,6 @@ function ModelRow({
   )
 }
 
-/** The main conversation's tools as a checklist; `value` null inherits all except subagent. */
 export function ToolsField({
   value,
   tools,
@@ -374,7 +368,6 @@ export function ToolsField({
   )
 }
 
-/** The instructions: written as Markdown, previewed as the transcript renders it, and the file as saved. */
 export function InstructionsEditor({
   value,
   onChange,

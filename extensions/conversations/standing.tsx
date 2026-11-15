@@ -4,13 +4,11 @@ import { ConversationEmptyState } from '@/components/ai/conversation'
 import { useStandingName } from './feature.tsx'
 import { AgentMark, standingPlaceholder, useAgentTitle } from './marks.tsx'
 
-/** Conversation `id`'s standing agent as definitions and marks know it (without the `@`), and its display title. */
 function useStandingAgent(id: ConversationId | undefined) {
   const name = useStandingName(id)?.replace(/^@/, '')
   return { name, title: useAgentTitle(name ?? '').title }
 }
 
-/** What an idle standing agent's composer says: "Message <title>…"; the core's text everywhere else. */
 export function useStandingPlaceholder({
   conversation,
   busy,
@@ -22,10 +20,6 @@ export function useStandingPlaceholder({
   return standingPlaceholder(name, title, busy)
 }
 
-/**
- * A standing agent's transcript before its first message: its mark, title and `@name`, in the dock, the full view and
- * on a phone alike, rather than the core's card of repo, model and host. @ultimate and other conversations keep `core`.
- */
 export function useStandingEmpty({
   conversation,
   core,

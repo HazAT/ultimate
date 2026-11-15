@@ -4,30 +4,27 @@ import { CompactionEntry, CompactionTask } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Compacted } from './refs.ts'
 
-/**
- * Emit `conversations.compacted` for every compaction summary entry Pi places. Pi appends it inside its compaction task
- * with no hook in that commit, so this follows commits and emits in a commit of its own: a crash in between loses the
- * event, nothing repeats it. A failed compaction that its conversation owns (background or manual) raises a notice; a
- * blocking one's failure ends the run waiting on it, which reports itself.
- */
 export function compactionEvents(
   host: Pick<ExtensionHost, 'harness' | 'emit' | 'onOpen' | 'onClose' | 'notice' | 'resource'>,
 ) {
-  // Across reloads: the new facet subscribes before the old one stops, and both see the commits in between.
-  const emitted = host.resource('conversations.compactions', () => new Set<number>())
-  const failed = host.resource('conversations.compaction-failures', () => new Set<number>())
+  const emittedAcrossReloads = host.resource('conversations.compactions', () => new Set<number>())
+  const failuresNoticedAcrossReloads = host.resource(
+    'conversations.compaction-failures',
+    () => new Set<number>(),
+  )
   let stop: (() => void) | undefined
   host.onOpen(async () => {
     stop?.()
-    // Not a reactor: compaction entries are Pi's own records, not domain events.
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
           const task = change.value
-          if (task.kind !== CompactionTask.definition.name || task.owner !== undefined) continue
+          const notConversationOwnedCompaction =
+            task.kind !== CompactionTask.definition.name || task.owner !== undefined
+          if (notConversationOwnedCompaction) continue
           if (task.state.status !== 'terminal' || task.state.outcome.status !== 'failed') continue
-          if (failed.has(task.id)) continue
-          failed.add(task.id)
+          if (failuresNoticedAcrossReloads.has(task.id)) continue
+          failuresNoticedAcrossReloads.add(task.id)
           host.notice(
             `Compaction of #${task.conversationId} failed: ${task.state.outcome.error.message}`,
           )
@@ -35,8 +32,8 @@ export function compactionEvents(
         }
         if (change.type !== 'entry') continue
         const entry = change.value
-        if (!CompactionEntry.is(entry) || emitted.has(entry.id)) continue
-        emitted.add(entry.id)
+        if (!CompactionEntry.is(entry) || emittedAcrossReloads.has(entry.id)) continue
+        emittedAcrossReloads.add(entry.id)
         const data: { reason?: string } | undefined = entry.data
         const reason = data?.reason
         host
