@@ -7,12 +7,16 @@ import { ToolImage } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   cn,
+  fillComposer,
   formatTokens,
   keepLast,
+  plural,
   useAction,
   useConversation,
   useConversationSummary,
   useSystem,
+  useTranscript,
+  useUltimate,
 } from '@/sdk'
 import { Diff, parsePatch } from '../coding-tools/ui.tsx'
 import { AgentMark } from '../conversations/ui.tsx'
@@ -182,6 +186,104 @@ function Injected({ content }: { content: string | readonly (TextContent | Image
   )
 }
 
+const unescapeXml = (text: string) =>
+  text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+
+export function promptSkills(sections: readonly Section[]) {
+  const text = sections.find((section) => section.key === 'skills')?.text ?? ''
+  return [...text.matchAll(/<skill>([\s\S]*?)<\/skill>/g)].map(([, body]) => {
+    const field = (tag: string) =>
+      unescapeXml(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(body)?.[1] ?? '')
+    return { name: field('name'), description: field('description'), path: field('location') }
+  })
+}
+
+function useReadPaths() {
+  const entries = useTranscript()
+  return useMemo(
+    () =>
+      new Set(
+        entries.flatMap((entry) =>
+          (entry.model ?? []).flatMap((message) =>
+            message.role === 'assistant'
+              ? message.content.flatMap((block) =>
+                  block.type === 'toolCall' &&
+                  block.name === 'read' &&
+                  typeof block.arguments.path === 'string'
+                    ? [block.arguments.path]
+                    : [],
+                )
+              : [],
+          ),
+        ),
+      ),
+    [entries],
+  )
+}
+
+function SkillPills({
+  breakdown,
+  allowed,
+}: {
+  breakdown: Breakdown
+  allowed: readonly string[] | undefined
+}) {
+  const actions = useUltimate()
+  const read = useReadPaths()
+  const skills = promptSkills(breakdown.prompt?.sections ?? [])
+  const unknown = (allowed ?? []).filter((name) => !skills.some((skill) => skill.name === name))
+  if (!skills.length && !allowed) return null
+  return (
+    <>
+      <span className="text-muted-foreground/70">skills</span>
+      <span className="flex min-w-0 flex-col gap-1" data-ui="agent-skills">
+        <span className="flex flex-wrap gap-1">
+          {skills.map((skill) => (
+            <button
+              className={cn(
+                'cursor-pointer rounded-sm border px-1.5 text-[11px] leading-5 transition-colors hover:bg-accent/60',
+                read.has(skill.path)
+                  ? 'border-brand/40 bg-brand/10 text-brand'
+                  : 'border-border/80 text-foreground/80',
+              )}
+              key={skill.name}
+              onClick={() => {
+                if (actions.conversationId === undefined) return
+                fillComposer(actions.conversationId, `/skill:${skill.name} `)
+                actions.focusComposer()
+              }}
+              title={`${skill.description}\n${skill.path}\n\nClick to run /skill:${skill.name}`}
+              type="button"
+            >
+              {skill.name}
+            </button>
+          ))}
+          {unknown.map((name) => (
+            <span
+              className="rounded-sm border border-dashed border-error/50 px-1.5 text-[11px] leading-5 text-error/90 line-through decoration-error/50"
+              key={name}
+              title={`No skill named ${name}: the definition lists it, but no skill folder provides it`}
+            >
+              {name}
+            </span>
+          ))}
+        </span>
+        <span className="font-sans text-[11.5px] leading-snug text-muted-foreground/70">
+          {allowed
+            ? `Limited by its definition to ${plural(allowed.length, 'skill')}.`
+            : 'All project skills.'}{' '}
+          Highlighted ones were read here; click one to run it.
+        </span>
+      </span>
+    </>
+  )
+}
+
 function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const identity = useIdentity()
   const agent = useConversation((conversation) => conversation.agent)
@@ -230,6 +332,7 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
           </span>
         </>
       )}
+      <SkillPills allowed={definition?.skills} breakdown={breakdown} />
     </div>
   )
 }
@@ -252,6 +355,7 @@ export function Header({
   const { tokens, prompt } = breakdown
   const sections = prompt?.sections ?? []
   const tools = prompt?.tools ?? []
+  const skills = promptSkills(sections).length
   const largest = Math.max(1, ...sections.map((s) => s.tokens), ...tools.map((t) => t.tokens))
   const model = breakdown.model?.model
   return (
@@ -278,7 +382,7 @@ export function Header({
         <span className="ml-auto flex min-w-0 items-center gap-2.5 pl-2">
           {notice}
           <span className={cn('shrink-0 max-sm:hidden', notice && 'max-lg:hidden')}>
-            {sections.length} sections · {tools.length} tools
+            {sections.length} sections · {tools.length} tools · {plural(skills, 'skill')}
             {breakdown.injected && ` · ${breakdown.injected.label.split(' · ')[0]}`}
           </span>
           <BudgetBar breakdown={breakdown} className="w-20 min-w-6 shrink-[100] max-sm:w-12" />

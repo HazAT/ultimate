@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
+import { Profile } from '../extensions/subagents/api.ts'
 import { fauxServer, temp, removeTemp, until } from './helpers.ts'
 
 it('renders only enabled guidance, lists off building blocks, and adds self guidance live', async () => {
@@ -42,7 +43,8 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
               conversationId: server.root.id,
               agent: { ...agent, cwd },
               env: useEnv ? { cwd } : undefined,
-            } as Parameters<typeof section.render>[0],
+              read: server.harness,
+            } as unknown as Parameters<typeof section.render>[0],
             context,
           )
           if (value) sections[section.key] = value
@@ -66,7 +68,7 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
     const checkout = join(home, 'isolated-work')
     await mkdir(checkout)
     await writeFile(join(checkout, 'AGENTS.md'), 'Isolated project instructions.')
-    const skills = vi.spyOn(server.host, 'skills')
+    const skillsCall = vi.spyOn(server.host, 'skills')
     for (const useEnv of [true, false]) {
       const isolated = await render(checkout, useEnv)
       expect(isolated.cwd).toBe(checkout)
@@ -75,9 +77,32 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
       expect(isolated.project_context).not.toContain('Pi personal instructions.')
       expect(isolated.skills).toContain('ultimate-only')
       expect(isolated.skills).not.toContain('pi-only')
-      expect(skills).toHaveBeenLastCalledWith(checkout)
+      expect(skillsCall).toHaveBeenLastCalledWith(checkout)
     }
-    skills.mockRestore()
+    skillsCall.mockRestore()
+
+    const second = join(home, '.ultimate/skills/second')
+    await mkdir(second, { recursive: true })
+    await writeFile(join(second, 'SKILL.md'), '---\nname: second\ndescription: Second\n---\n')
+    await mkdir(join(home, '.ultimate/agents'), { recursive: true })
+    const agent = (name: string, skills: string) =>
+      writeFile(
+        join(home, `.ultimate/agents/${name}.md`),
+        `---\nname: ${name}\ndescription: d\nskills: ${skills}\n---\n\nBody.\n`,
+      )
+    await agent('limited', '[ultimate-only]')
+    await agent('none', '[]')
+    const labelled = async (label: string) => {
+      await server.harness.commit(async (tx) => {
+        ;(await tx.doc(Profile, server.root.id)).definition = label
+      }, context)
+      return (await render()).skills
+    }
+    expect(await labelled('worker')).toContain('second')
+    const limited = await labelled('limited')
+    expect(limited).toContain('ultimate-only')
+    expect(limited).not.toContain('second')
+    expect(await labelled('none')).toBeUndefined()
   } finally {
     await server.close()
     await removeTemp(home)
