@@ -70,7 +70,7 @@ function useStates(parked: ReadonlySet<number>) {
             id: primary,
             kind: 'primary',
             runState: overview[primary]?.runState,
-            busy: conversations.find((c) => c.id === primary)?.busy,
+            busy: underway(primary),
           },
           log,
           timers,
@@ -88,7 +88,7 @@ function useStates(parked: ReadonlySet<number>) {
             ? ('subagent' as const)
             : ('other' as const),
       runState: overview[id]?.runState,
-      busy: own?.busy || (own?.branchOf !== undefined && underway(id)),
+      busy: own?.ownerTaskId !== undefined ? own.busy : underway(id),
       parked: parked.has(id),
       starter: starterOf(id),
       concludedSince: concludedSince(id),

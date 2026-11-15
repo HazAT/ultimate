@@ -41,6 +41,7 @@ import {
   conversationWait,
   waitLabel,
   useStarters,
+  useUnderway,
   emptyMessages,
   stateTone,
   stateWord,
@@ -163,6 +164,7 @@ function Tree({
   const ultimateId = standingIds?.ultimate
   const timers = timerWaits(useAutomations(5000).data, standingIds)
   const starterOf = useStarters()
+  const underway = useUnderway()
   const primaryWait =
     ultimateId === undefined
       ? undefined
@@ -171,7 +173,7 @@ function Tree({
             id: ultimateId,
             kind: 'primary',
             runState: overview[ultimateId]?.runState,
-            busy: working.has(ultimateId),
+            busy: underway(ultimateId),
           },
           log,
           timers,
@@ -374,7 +376,7 @@ function Tree({
         id: conversation.id,
         kind: 'other',
         runState: overview[conversation.id]?.runState,
-        busy: conversation.busy,
+        busy: underway(conversation.id),
         parked: parked.has(conversation.id),
         starter: starterOf(conversation.id),
         concludedSince: concludedSince(conversation.id),

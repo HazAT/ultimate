@@ -20,6 +20,7 @@ import {
   stateTone,
   stateWord,
   waitingOnUser,
+  useUnderway,
 } from '../messages/ui.tsx'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
@@ -79,8 +80,13 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
     log,
     timers,
   )
+  const underway = useUnderway()
   const wait = waitLabel(
-    conversationWait({ id: id ?? -1, kind: 'primary', runState, busy: working }, log, timers),
+    conversationWait(
+      { id: id ?? -1, kind: 'primary', runState, busy: working || underway(id ?? -1) },
+      log,
+      timers,
+    ),
     id,
   )
   const waiting = waitingOnUser(log)

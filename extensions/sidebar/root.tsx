@@ -21,6 +21,7 @@ import {
   waitLabel,
   emptyMessages,
   useStarters,
+  useUnderway,
 } from '../messages/ui.tsx'
 import { useAutomations, timerWaits } from '../automations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
@@ -74,6 +75,7 @@ function useBranchState(
   const timers = timerWaits(useAutomations(5000).data, standing)
   const concludedSince = useConcludedSince()(conversation.id)
   const starter = useStarters()(conversation.id)
+  const underway = useUnderway()
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
   if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
   if (queued) return { label: 'submitted', tone: 'success' } as const
@@ -82,7 +84,7 @@ function useBranchState(
     id: conversation.id,
     kind: 'other' as const,
     runState,
-    busy: working,
+    busy: working || underway(conversation.id),
     starter,
     concludedSince,
   }
@@ -91,7 +93,12 @@ function useBranchState(
     primary === undefined
       ? undefined
       : conversationWait(
-          { id: primary, kind: 'primary', runState: overview[primary]?.runState },
+          {
+            id: primary,
+            kind: 'primary',
+            runState: overview[primary]?.runState,
+            busy: underway(primary),
+          },
           log,
           timers,
         )
