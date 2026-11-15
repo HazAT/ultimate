@@ -1,10 +1,6 @@
 import { cn } from 'cn'
 import type { ComponentProps } from 'react'
 
-/**
- * The transcript's card: a bordered section with the brand accent on its left edge; `className` adds to it. `attention`
- * marks a card that waits on the user, such as an `attention` renderer's while it is still open.
- */
 export function Card({
   className,
   attention,

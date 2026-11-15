@@ -1,5 +1,3 @@
-// shadcn/ui skeleton. Changes: instead of each pulsing, one band of light sweeps across every block on screen; its
-// background is fixed to the viewport, so no ancestor may carry a transform or filter.
 import { cn } from 'cn'
 
 function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {

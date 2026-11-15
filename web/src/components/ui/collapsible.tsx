@@ -1,8 +1,6 @@
 import { createContext, useContext, useId, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
 
-// Radix's Collapsible measures every content on mount (a forced style read and layout each) to animate its height,
-// which made opening a long transcript lock up. Nothing here animates the height, so content just mounts when open.
 const CollapsibleContext = createContext<{
   open: boolean
   disabled?: boolean
