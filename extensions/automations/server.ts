@@ -81,8 +81,8 @@ export const Automations = defineDoc<Ledger>({
       a.subscribers ??= []
       if (a.fires === undefined) {
         a.fires = a.runs.length
-        const lastLegacyRunAnchoringInterval = a.runs.at(-1)
-        if (lastLegacyRunAnchoringInterval) a.lastFireAt = lastLegacyRunAnchoringInterval.firedAt
+        const legacyIntervalAnchor = a.runs.at(-1)
+        if (legacyIntervalAnchor) a.lastFireAt = legacyIntervalAnchor.firedAt
       }
       if (a.scope === 'project' && !a.prompt && !a.subscribers.length) {
         a.subscribers = ['@ultimate']
@@ -131,12 +131,7 @@ const operations = [
 function backend(host: ExtensionHost) {
   const schedule = scheduler(host, Automations, (...args) => scripts.deliver(...args))
   const scripts = supervisor(host, Automations, schedule.fire)
-  const trigger = triggers(
-    host,
-    Automations,
-    schedule.fire,
-    schedule.scanActiveRunsBeforeFireWrites,
-  )
+  const trigger = triggers(host, Automations, schedule.fire, schedule.scanRunsBeforeWrites)
   const {
     trusted,
     agentFor,
@@ -221,28 +216,28 @@ function backend(host: ExtensionHost) {
         },
       )
       const taken = () => new Error(`Automation ${slug} already exists; pass another slug`)
-      const slugTakenByDifferentOrInvalidManifest =
+      const manifestConflict =
         existingOrInvalidManifest !== undefined &&
         JSON.stringify(existingOrInvalidManifest) !== JSON.stringify(committed)
-      if (slugTakenByDifferentOrInvalidManifest) throw taken()
+      if (manifestConflict) throw taken()
       if (existingOrInvalidManifest === undefined) {
         await mkdir(projectDir(slug), { recursive: true })
-        const completeManifestForExclusiveLink = `${path}.${process.pid}.${randomUUID()}`
+        const exclusiveManifestDraft = `${path}.${process.pid}.${randomUUID()}`
         await writeFile(
-          completeManifestForExclusiveLink,
+          exclusiveManifestDraft,
           `${JSON.stringify(committedManifest(committed), null, 2)}\n`,
           {
             flush: true,
           },
         )
         try {
-          await link(completeManifestForExclusiveLink, path)
+          await link(exclusiveManifestDraft, path)
         } catch (error) {
           if (errnoCode(error) !== 'EEXIST') throw error
           const found = manifest(JSON.parse(await readFile(path, 'utf8')))
           if (JSON.stringify(found) !== JSON.stringify(committed)) throw taken()
         } finally {
-          await rm(completeManifestForExclusiveLink, { force: true })
+          await rm(exclusiveManifestDraft, { force: true })
         }
       }
       await discover()
@@ -282,8 +277,8 @@ function backend(host: ExtensionHost) {
     if (args.action === 'escalate') required(args.reason, 'reason')
     if (args.action === 'subscribe' || args.action === 'unsubscribe') {
       if (args.to === undefined && !caller) throw new Error('Subscriber conversation is missing')
-      const removingStoredSubscriberWithoutResolvingConversation = args.action === 'unsubscribe'
-      if (removingStoredSubscriberWithoutResolvingConversation && args.to !== undefined) {
+      const unsubscribeStoredTarget = args.action === 'unsubscribe'
+      if (unsubscribeStoredTarget && args.to !== undefined) {
         if (!/^#[1-9]\d*$/.test(args.to) && !STANDING.test(args.to))
           throw new Error('to must be #id or @name')
         prepared.subscriber = args.to.startsWith('#')
@@ -295,7 +290,7 @@ function backend(host: ExtensionHost) {
     }
     return prepared
   }
-  async function requestOwedByUltimateAtCreation(tx: Tx, caller?: ConversationId) {
+  async function owedAtCreation(tx: Tx, caller?: ConversationId) {
     if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
       return {}
     const serves = await host.need(MessagesApi).owed(tx, caller)
@@ -350,7 +345,7 @@ function backend(host: ExtensionHost) {
             ]),
           ],
           ...(args.key ? { key: args.key } : {}),
-          ...(await requestOwedByUltimateAtCreation(tx, caller)),
+          ...(await owedAtCreation(tx, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -387,7 +382,7 @@ function backend(host: ExtensionHost) {
         updatedAt: now,
         runs: [],
         fires: 0,
-        ...(await requestOwedByUltimateAtCreation(tx, caller)),
+        ...(await owedAtCreation(tx, caller)),
       }
       state.automations[id] = sub
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -406,14 +401,14 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'resume' || args.action === 'run') {
       sub.enabled = true
       sub.script!.state = 'running'
-      const retainedPidForCrashSweep = sub.script!.pid
+      const crashSweepPid = () => sub.script!.pid
       delete sub.script!.error
       return {
         result: sub,
         effect: {
           id,
           action: 'resume',
-          ...(retainedPidForCrashSweep ? { previousPid: retainedPidForCrashSweep } : {}),
+          ...(crashSweepPid() ? { previousPid: crashSweepPid() } : {}),
         },
       }
     } else if (args.action === 'pause' || args.action === 'delete' || args.action === 'escalate') {
@@ -491,8 +486,8 @@ function backend(host: ExtensionHost) {
         throw new Error(`Unknown of: ${c.of}`)
     }
     if (args.name !== undefined) required(args.name, 'name')
-    const removingPromptRun = args.action !== 'create' && args.prompt === ''
-    if (args.prompt !== undefined && !removingPromptRun) required(args.prompt, 'prompt')
+    const removesPromptRun = () => args.action !== 'create' && args.prompt === ''
+    if (args.prompt !== undefined && !removesPromptRun()) required(args.prompt, 'prompt')
     if (args.once !== undefined && typeof args.once !== 'boolean')
       throw new Error('once must be boolean')
     if (
@@ -516,13 +511,13 @@ function backend(host: ExtensionHost) {
     }
   }
   async function prepare(args: Args, caller?: ConversationId): Promise<Prepared> {
-    const alreadyCreatedBeforeValidationOrManifestWrites =
+    const existingKeyedCreate =
       args.action === 'create' &&
       typeof args.key === 'string' &&
       Object.values(
         (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations ?? {},
       ).some((a) => a.key === args.key)
-    if (alreadyCreatedBeforeValidationOrManifestWrites) return { keyed: true }
+    if (existingKeyedCreate) return { keyed: true }
     await validate(args, caller)
     if (args.action === 'create') {
       const subscribers = args.subscribers?.length
@@ -584,7 +579,7 @@ function backend(host: ExtensionHost) {
           : args.prompt
             ? []
             : [caller!],
-        ...(await requestOwedByUltimateAtCreation(tx, caller)),
+        ...(await owedAtCreation(tx, caller)),
       }
     }
     const a = state.automations[id]
@@ -612,7 +607,7 @@ function backend(host: ExtensionHost) {
       throw new Error('This one-shot time has passed; update the time first')
     const abort = a.scheduler
     const oldSchedule = a.schedule && { ...a.schedule }
-    const askBeforeUpdateOrConcurrentDiscovery = prepared.previousAsk ?? a.script?.ask
+    const preDiscoveryAsk = prepared.previousAsk ?? a.script?.ask
     delete a.scheduler
     if (args.action !== 'update') delete a.nextAt
     if (args.action === 'delete') {
@@ -637,7 +632,7 @@ function backend(host: ExtensionHost) {
         delete a.condition
         a.event = {
           ...args.event,
-          sinceEvent: a.event?.sinceEvent ?? (await newestEventCommittedBeforeActivation(tx)),
+          sinceEvent: a.event?.sinceEvent ?? (await eventActivationCursor(tx)),
         }
       }
       if (args.condition !== undefined) {
@@ -667,7 +662,7 @@ function backend(host: ExtensionHost) {
       }
       if (args.model !== undefined) a.model = args.model
       if (args.thinking !== undefined) a.thinking = args.thinking
-      if (a.script && a.script.ask !== askBeforeUpdateOrConcurrentDiscovery) {
+      if (a.script && a.script.ask !== preDiscoveryAsk) {
         a.script.state = 'writing'
         delete a.script.error
         effect = {
@@ -679,8 +674,7 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'pause') a.enabled = false
     else if (args.action === 'resume') a.enabled = true
     else throw new Error(`Unknown action: ${args.action}`)
-    if (args.action === 'resume' && a.event)
-      a.event.sinceEvent = await newestEventCommittedBeforeActivation(tx)
+    if (args.action === 'resume' && a.event) a.event.sinceEvent = await eventActivationCursor(tx)
     if (args.action === 'create' || args.action === 'resume')
       await trigger.evaluate(tx, a, prepared.target)
     a.updatedAt = Date.now()
@@ -714,7 +708,7 @@ function backend(host: ExtensionHost) {
       return json(await scripts.status(required(args.id, 'id')))
     return receipt.result
   }
-  async function newestEventCommittedBeforeActivation(tx: Tx) {
+  async function eventActivationCursor(tx: Tx) {
     const feed = host.doc(EVENT_FEED)
     if (!feed) throw new Error('The event feed is not available')
     return (
@@ -839,8 +833,8 @@ export default function automations(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         onYield: async (answer, hookApi, ctx) => {
-          const ledgerThroughYieldingGeneration = await hookApi.snapshot(Automations, ctx)
-          const watched = Object.values(ledgerThroughYieldingGeneration?.automations ?? {}).some(
+          const yieldLedger = await hookApi.snapshot(Automations, ctx)
+          const watched = Object.values(yieldLedger?.automations ?? {}).some(
             (a) => a.script?.conversationId === hookApi.conversationId,
           )
           if (!watched) return undefined
@@ -858,10 +852,10 @@ export default function automations(host: ExtensionHost) {
           const lines = Object.values(state?.automations ?? {})
             .filter((a) => a.enabled)
             .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
-          const emptySectionPreservesPromptOrder = ''
+          const orderedEmptySection = ''
           return lines.length
             ? `<automations>\n${lines.join('\n')}\n</automations>`
-            : emptySectionPreservesPromptOrder
+            : orderedEmptySection
         },
         { tag: false },
       ),

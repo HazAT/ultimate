@@ -572,9 +572,9 @@ export function AutomationsPanel() {
   const { conversationId, openPanel, switchConversation } = ui
   const extensionsPanel = useCommands().some((command) => command.id === 'onboarding.extensions')
   const [expanded, setExpanded] = useExtensionUiState<string[]>('expanded', [])
-  const [form, setForm] = useState<{ open: boolean; key: number; automation?: Automation }>({
+  const [form, setForm] = useState<{ open: boolean; openingId: number; automation?: Automation }>({
     open: false,
-    key: 0,
+    openingId: 0,
   })
   const shownOrLoadingConversation = useStore((state) => state.requested) ?? conversationId
   const [listing, setListing] = useState<number>()
@@ -612,15 +612,14 @@ export function AutomationsPanel() {
   const automations = worstFirst(list, now)
   const create = (from: HTMLElement | null) => {
     opener.current = from
-    setForm((previous) => ({ open: true, key: previous.key + 1 }))
+    setForm((previous) => ({ open: true, openingId: previous.openingId + 1 }))
   }
   const failing = automations.filter((automation) => attention(lookOf(automation, now))).length
   const resting = automations.filter((automation) => looks[lookOf(automation, now)].rank > 3).length
-  const reopenPanelAfterMobileSwitch = () => openPanel('automations')
-  const openScript = (automation: AutomationListItem) => {
+  const openWatcherThenPanel = (automation: AutomationListItem) => {
     setListing(undefined)
     switchConversation(automation.script!.conversationId)
-    reopenPanelAfterMobileSwitch()
+    openPanel('automations')
   }
   return (
     <div className="pb-4">
@@ -703,7 +702,11 @@ export function AutomationsPanel() {
               }}
               onEdit={(from) => {
                 opener.current = from
-                setForm((previous) => ({ open: true, key: previous.key + 1, automation }))
+                setForm((previous) => ({
+                  open: true,
+                  openingId: previous.openingId + 1,
+                  automation,
+                }))
               }}
               onExpand={(open) =>
                 setExpanded((previous) =>
@@ -712,14 +715,14 @@ export function AutomationsPanel() {
                     : previous.filter((id) => id !== automation.id),
                 )
               }
-              onOpenScript={() => openScript(automation)}
+              onOpenScript={() => openWatcherThenPanel(automation)}
             />
           ))}
         </ul>
       )}
       <AutomationForm
         automation={form.automation}
-        key={form.key}
+        key={form.openingId}
         onClosed={() => {
           const target = opener.current?.isConnected ? opener.current : newButton.current
           target?.focus()

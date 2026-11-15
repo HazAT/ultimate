@@ -86,10 +86,7 @@ export const hours = (ms: number) =>
 
 export const IDLE_TICK = 60_000
 
-function conditionCrossingCooldownElapsed(
-  condition: NonNullable<Automation['condition']>,
-  now: number,
-) {
+function crossingCooldownElapsed(condition: NonNullable<Automation['condition']>, now: number) {
   return condition.firedAt === undefined || now - condition.firedAt >= condition.cooldownMs
 }
 function summary(event: EventRecord): string {
@@ -110,7 +107,7 @@ export function triggers(
   host: ExtensionHost,
   Automations: typeof Ledger,
   fire: (tx: Tx, a: Automation, at: number, text?: string) => Promise<unknown>,
-  scanActiveRunsBeforeFireWrites: (tx: Tx) => Promise<unknown>,
+  scanRunsBeforeWrites: (tx: Tx) => Promise<unknown>,
 ) {
   async function resolve(of: string): Promise<ConversationId | undefined> {
     if (STANDING.test(of)) return host.need(SubagentsApi).standing(of.slice(1), BACKGROUND_CONTEXT)
@@ -131,7 +128,7 @@ export function triggers(
       usage.percent >= condition.above &&
       condition.armed &&
       (paused === undefined || paused >= condition.idleFor!) &&
-      conditionCrossingCooldownElapsed(condition, now)
+      crossingCooldownElapsed(condition, now)
     ) {
       const count = (n: number) =>
         Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
@@ -170,9 +167,9 @@ export function triggers(
     )
     for (const value of ids) {
       const id = parseConversationId(value)
-      const creatorBeyondBoundedRunHistory = (await tx.conversation(id))?.owner
-      if (!creatorBeyondBoundedRunHistory) continue
-      const owner = await tx.task(creatorBeyondBoundedRunHistory.taskId)
+      const runOwnerBeyondHistory = (await tx.conversation(id))?.owner
+      if (!runOwnerBeyondHistory) continue
+      const owner = await tx.task(runOwnerBeyondHistory.taskId)
       if (
         owner?.kind === RUN_TASK &&
         (owner.input as { automation?: { id?: string } }).automation?.id === a.id
@@ -230,7 +227,7 @@ export function triggers(
             continue
           if (!(await fromOwnRun(tx, a, event))) matching.push(a)
         }
-        if (matching.some((a) => a.prompt)) await scanActiveRunsBeforeFireWrites(tx)
+        if (matching.some((a) => a.prompt)) await scanRunsBeforeWrites(tx)
         for (const a of matching) await fire(tx, a, Date.now(), summary(event))
       },
       { from: 'now' },

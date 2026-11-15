@@ -58,7 +58,7 @@ export function scheduler(
           const a = task.input.automation
           if (!host.extensions().some((e) => e.name === 'subagents' && e.enabled))
             throw new Error('automations needs the subagents extension enabled')
-          const rootToolsWithCurrentDefaultModel = {
+          const rootToolsOnDefaultModel = {
             ...(await runtime.agent(context)),
             ...(await hostDefault(host)),
           }
@@ -67,7 +67,7 @@ export function scheduler(
             const child = await host.need(SubagentsApi).createChild(tx, {
               owner: { kind: 'task', taskId: task.id },
               definition: profile,
-              parentAgent: rootToolsWithCurrentDefaultModel,
+              parentAgent: rootToolsOnDefaultModel,
               modelRuntime: host.modelRuntime,
               metadata: host.metadata,
               label: RunLabel,
@@ -184,7 +184,7 @@ export function scheduler(
   function consumeFirstFireRequest(a: Automation) {
     delete a.serves
   }
-  async function scanActiveRunsBeforeFireWrites(tx: Tx): Promise<Set<string>> {
+  async function scanRunsBeforeWrites(tx: Tx): Promise<Set<string>> {
     const cached = activeRuns.get(tx)
     if (cached) return cached
     const ids = new Set<string>()
@@ -206,8 +206,7 @@ export function scheduler(
   }
   async function skipOverlappingRunOrStart(tx: Tx, a: Automation, firedAt: number, text: string) {
     const running =
-      a.runs.some((r) => r.status === 'running') ||
-      (await scanActiveRunsBeforeFireWrites(tx)).has(a.id)
+      a.runs.some((r) => r.status === 'running') || (await scanRunsBeforeWrites(tx)).has(a.id)
     if (running) {
       a.runs.push({ id: `skipped:${firedAt}`, firedAt, finishedAt: firedAt, status: 'skipped' })
     } else {
@@ -226,9 +225,12 @@ export function scheduler(
     a.runs = a.runs.slice(-RETAINED_RUNS)
     return a.runs.at(-1)!
   }
+  type PlanFromNow = { phase: 'plan' }
+  type FireOnceOnWake = { phase: 'fire'; until: number }
+  const retiredSchedulerOnly = terminal
   const Scheduler = defineTask<
     { id: string },
-    { phase: 'plan' } | { phase: 'sleep'; until: number } | { phase: 'fire'; until: number },
+    PlanFromNow | { phase: 'sleep'; until: number } | FireOnceOnWake,
     null
   >({
     name: 'ultimate.automation-scheduler',
@@ -238,14 +240,14 @@ export function scheduler(
       plan: (task, runtime, context) =>
         runtime.commit(async (tx) => {
           const a = (await tx.doc(Automations)).automations[task.input.id]
-          if (!a?.enabled || a.scheduler !== task.id) return terminal
-          const until =
-            a.nextAt ??
+          if (!a?.enabled || a.scheduler !== task.id) return retiredSchedulerOnly
+          const planFromNow = () =>
             nextAt(
               a.schedule!,
               Math.max(runtime.now(), a.lastFireAt ?? a.createdAt),
               a.lastFireAt ?? a.createdAt,
             )
+          const until = a.nextAt ?? planFromNow()
           a.nextAt = until
           return { status: 'running', checkpoint: { phase: 'sleep', until } }
         }, context),
@@ -256,15 +258,15 @@ export function scheduler(
           context,
         ),
       fire: (task, runtime, context) =>
-        runtime.commit(async (tx) => {
+        runtime.commit(async function atomicFireRunCheckpoint(tx) {
           const a = (await tx.doc(Automations)).automations[task.input.id]
-          if (!a?.enabled || a.scheduler !== task.id) return terminal
+          if (!a?.enabled || a.scheduler !== task.id) return retiredSchedulerOnly
           await fire(tx, a, runtime.now())
           delete a.nextAt
           if (!a.enabled || a.schedule!.kind === 'at') {
             a.enabled = false
             delete a.scheduler
-            return terminal
+            return retiredSchedulerOnly
           }
           return { status: 'running', checkpoint: { phase: 'plan' } }
         }, context),
@@ -273,7 +275,7 @@ export function scheduler(
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),
   })
 
-  return { RunTask, Scheduler, fire, scanActiveRunsBeforeFireWrites }
+  return { RunTask, Scheduler, fire, scanRunsBeforeWrites }
 }
 function finish(
   state: { automations: Record<string, Automation> },

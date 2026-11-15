@@ -26,10 +26,10 @@ export const SeedState = defineDoc<{ applied?: number; automations: string[] }>(
   initial: () => ({ automations: [] }),
 })
 
-const canRecreateWithoutChapterLocalConversation = (item: Seed['automations'][number]) =>
+const portableTrigger = (item: Seed['automations'][number]) =>
   (!!item.prompt || !!item.subscribers?.length) && !item.condition?.of.startsWith('#')
 
-async function exportedDocumentResolvedAtCallTime<T>(
+async function exportedDocument<T>(
   host: ExtensionHost,
   tx: Tx,
   kind: string,
@@ -40,17 +40,17 @@ async function exportedDocumentResolvedAtCallTime<T>(
   return (await tx.doc(token, id)) as unknown as T
 }
 
-const memoryIndexAllowingPrototypeSlugs = () => Object.create(null) as Record<string, MemoryItem>
+const prototypeFreeMemoryIndex = () => Object.create(null) as Record<string, MemoryItem>
 const detachTransactionOverlays = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promise<Seed> {
   const signal = new AbortController().signal
   const automations = (await host.invoke('automations', 'list', null, signal)) as Automation[]
   return host.harness().commit(async (tx) => {
     const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-    const memories = memoryIndexAllowingPrototypeSlugs()
+    const memories = prototypeFreeMemoryIndex()
     const about = new Set<string>()
     for (const root of roots) {
-      const source = await exportedDocumentResolvedAtCallTime<{
+      const source = await exportedDocument<{
         memories: Record<string, MemoryItem>
       }>(host, tx, 'lineage.memory', root)
       for (const [slug, memory] of Object.entries(source.memories)) {
@@ -68,9 +68,7 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
     }
     for (const slug of about)
       if (!memories[slug]) throw new Error(`Chapter seed lost user memory ${slug}`)
-    const todos = (
-      await exportedDocumentResolvedAtCallTime<{ items: Todo[] }>(host, tx, 'todos')
-    ).items
+    const todos = (await exportedDocument<{ items: Todo[] }>(host, tx, 'todos')).items
       .filter((item) => item.done === undefined)
       .map(({ text, owner }) => ({ text, owner }))
     const own = (await tx.doc(BuiltInDoc, ROOT_CONVERSATION_ID)).id
@@ -89,15 +87,13 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
       )
       .map((item) => {
         const { name, prompt, agent, model, thinking } = item
-        const standingSubscribersAcrossChapters = item.subscribers.filter(
+        const standingSubscribers = item.subscribers.filter(
           (s): s is string => typeof s === 'string',
         )
         return {
           name,
           prompt,
-          ...(standingSubscribersAcrossChapters.length
-            ? { subscribers: standingSubscribersAcrossChapters }
-            : {}),
+          ...(standingSubscribers.length ? { subscribers: standingSubscribers } : {}),
           ...(item.schedule ? { schedule: item.schedule } : {}),
           ...(item.event
             ? {
@@ -187,9 +183,8 @@ export async function applySeed(host: ExtensionHost) {
   if (!seed) return undefined
   const harness = host.harness()
   const state = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
-  const unappliedSeedFromOlderUltimate =
-    state?.applied === undefined && !Array.isArray(seed.learned)
-  if (unappliedSeedFromOlderUltimate) {
+  const obsoleteUnappliedSeed = state?.applied === undefined && !Array.isArray(seed.learned)
+  if (obsoleteUnappliedSeed) {
     host.notice(
       `Chapter ${host.chapter.name} has a seed from an older Ultimate and was not seeded: switch back to ${seed.from.name} with Chapters… and fall asleep again`,
     )
@@ -197,18 +192,14 @@ export async function applySeed(host: ExtensionHost) {
   }
   if (state?.applied === undefined) {
     const ultimate = await host.need(SubagentsApi).standing('ultimate', context)
-    await harness.commit(async (tx) => {
+    await harness.commit(async function seedDocumentsAndEntry(tx) {
       const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       if (receipt.applied !== undefined) return
-      const memory = await exportedDocumentResolvedAtCallTime<{
+      const memory = await exportedDocument<{
         memories: Record<string, MemoryItem>
       }>(host, tx, 'lineage.memory')
       Object.assign(memory.memories, seed.memories)
-      const todos = await exportedDocumentResolvedAtCallTime<{ next: number; items: Todo[] }>(
-        host,
-        tx,
-        'todos',
-      )
+      const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
       const carried: Seed['todos'] = [
         ...seed.todos,
         ...seed.questions.map(({ ref, text }) => ({
@@ -222,7 +213,7 @@ export async function applySeed(host: ExtensionHost) {
             text: `Recreate script ${id} (${name}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
           })),
         ...seed.automations
-          .filter((item) => !canRecreateWithoutChapterLocalConversation(item))
+          .filter((item) => !portableTrigger(item))
           .map(({ name, schedule, event, condition }) => ({
             owner: 'ultimate' as const,
             text: `Recreate ${schedule ? 'schedule' : event ? 'event' : 'context'} automation (${name}) with new ${condition?.of.startsWith('#') ? 'conversation target' : 'subscribers'}: ${JSON.stringify(schedule ?? event ?? condition)}`,
@@ -246,8 +237,9 @@ export async function applySeed(host: ExtensionHost) {
     }, context)
   }
   const signal = new AbortController().signal
-  for (const automation of seed.automations) {
-    if (!canRecreateWithoutChapterLocalConversation(automation)) continue
+  const schedulersAfterSeedCommit = seed.automations
+  for (const automation of schedulersAfterSeedCommit) {
+    if (!portableTrigger(automation)) continue
     const receipt = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
     const uniqueNameAlreadyRecreated = receipt?.automations.includes(automation.name)
     if (uniqueNameAlreadyRecreated) continue

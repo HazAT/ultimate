@@ -28,14 +28,14 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
       submit: async (task, runtime, ctx) => {
         const { to, type, requestId, kind, content } = task.input
         const data = task.input.data ?? {}
-        const hostTargetAdmittingPassiveWrites = (await host.harness().conversation(to, ctx))!
+        const hostConversation = (await host.harness().conversation(to, ctx))!
         if (type === 'input')
-          await hostTargetAdmittingPassiveWrites.submit(
+          await hostConversation.submit(
             { type: 'input', requestId, content, entry: { kind, data }, whenBusy: 'followUp' },
             ctx,
           )
         else
-          await hostTargetAdmittingPassiveWrites.submit(
+          await hostConversation.submit(
             {
               type: 'write',
               requestId,

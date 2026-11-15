@@ -50,10 +50,10 @@ type Pending = {
   failed?: RestartRolledBackToSameProcess
 }
 
-let pending: Pending | undefined
+let pendingUntilReload: Pending | undefined
 const listeners = new Set<() => void>()
 const setPending = (next: Pending | undefined) => {
-  pending = next
+  pendingUntilReload = next
   for (const listener of listeners) listener()
 }
 const usePending = () =>
@@ -62,7 +62,7 @@ const usePending = () =>
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    () => pending,
+    () => pendingUntilReload,
   )
 
 const OPEN_ULTIMATE_AFTER_WAKE_RELOAD = 'ultimate.dream.wake'
@@ -103,7 +103,7 @@ export function SwitchVeil() {
   const now = useNow(1000, ours !== undefined)
   const pid = system?.process.pid
   useEffect(() => {
-    if (sleep && !pending && current)
+    if (sleep && !pendingUntilReload && current)
       setPending({
         to: chapterLabel(current.chapters.length + 1, sleep.chapter),
         verb: 'asleep',
@@ -112,25 +112,37 @@ export function SwitchVeil() {
       })
   }, [sleep, current, pid])
   useEffect(() => {
-    const restartRefusedBeforeDisconnect =
-      pending?.verb === 'asleep' && pending.pid === pid && doc !== undefined && !sleep
-    if (restartRefusedBeforeDisconnect) setPending(undefined)
+    const restartRefused =
+      pendingUntilReload?.verb === 'asleep' &&
+      pendingUntilReload.pid === pid &&
+      doc !== undefined &&
+      !sleep
+    if (restartRefused) setPending(undefined)
   }, [doc, sleep, pid])
   useEffect(() => {
-    if (!pending || pid === undefined || pending.pid === undefined || pending.failed) return
+    if (
+      !pendingUntilReload ||
+      pid === undefined ||
+      pendingUntilReload.pid === undefined ||
+      pendingUntilReload.failed
+    )
+      return
     const error = system?.process.activationError
     if (connection.status !== 'open') {
-      if (!pending.dropped) setPending({ ...pending, dropped: { error } })
+      if (!pendingUntilReload.dropped) setPending({ ...pendingUntilReload, dropped: { error } })
       return
     }
-    if (pid === pending.pid) {
+    if (pid === pendingUntilReload.pid) {
       const rolledBackToSameProcess =
-        pending.dropped && error !== undefined && error !== pending.dropped.error
-      if (rolledBackToSameProcess) setPending({ ...pending, failed: true })
+        pendingUntilReload.dropped &&
+        error !== undefined &&
+        error !== pendingUntilReload.dropped.error
+      if (rolledBackToSameProcess) setPending({ ...pendingUntilReload, failed: true })
       return
     }
-    if (pending.verb === 'asleep') sessionStorage.setItem(OPEN_ULTIMATE_AFTER_WAKE_RELOAD, '1')
-    reloadWithoutOldChapterDocuments()
+    if (pendingUntilReload.verb === 'asleep')
+      sessionStorage.setItem(OPEN_ULTIMATE_AFTER_WAKE_RELOAD, '1')
+    reloadChapterPage()
   }, [pid, connection.status, system])
   useReloadOnChapterChange(pid)
   if (!ours) return null
@@ -193,7 +205,7 @@ export function SwitchVeil() {
   )
 }
 
-const reloadWithoutOldChapterDocuments = () => location.replace('/')
+const reloadChapterPage = () => location.replace('/')
 function useReloadOnChapterChange(pid: number | undefined) {
   const chapterAtPageLoad = useRef<string>(undefined)
   useEffect(() => {
@@ -203,7 +215,7 @@ function useReloadOnChapterChange(pid: number | undefined) {
       .action(ChaptersAction, null, { signal: controller.signal })
       .then((chapters) => {
         if (chapterAtPageLoad.current === undefined) chapterAtPageLoad.current = chapters.active
-        else if (chapterAtPageLoad.current !== chapters.active) reloadWithoutOldChapterDocuments()
+        else if (chapterAtPageLoad.current !== chapters.active) reloadChapterPage()
       })
       .catch(keepLast)
     return () => controller.abort()

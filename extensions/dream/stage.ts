@@ -17,8 +17,10 @@ export function dreamStage(
   const { dream, prepared, sleep } = doc
   const preparedAfterLatestDream = prepared && (!dream || prepared.at > dream.at)
   if (preparedAfterLatestDream) {
-    if (!sleep) return 'prepared'
-    if (sleep.phase === 'asleep' || sleep.phase === 'failed') return sleep.phase
+    const sleepForPreparation = sleep
+    if (!sleepForPreparation) return 'prepared'
+    if (sleepForPreparation.phase === 'asleep' || sleepForPreparation.phase === 'failed')
+      return sleepForPreparation.phase
     return 'sleeping'
   }
   const concludedNow = Infinity

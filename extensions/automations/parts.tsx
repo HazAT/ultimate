@@ -335,15 +335,14 @@ export function useOpenAutomation() {
   const { switchConversation, ...shell } = useUltimate()
   const watcher = (id: string) =>
     poll.state.data?.find((automation) => automation.id === id)?.script?.conversationId
-  const reopenPanelAfterMobileConversationSwitch = () => openAutomationsPanel(shell)
-  const show = (id: string) => {
+  const showWatcherThenPanel = (id: string) => {
     const to = watcher(id)
     if (to !== undefined) switchConversation(to)
-    reopenPanelAfterMobileConversationSwitch()
+    openAutomationsPanel(shell)
   }
   return (id: string) => {
-    if (poll.state.data?.some((automation) => automation.id === id)) return show(id)
-    void refreshAutomations().then(() => show(id))
+    if (poll.state.data?.some((automation) => automation.id === id)) return showWatcherThenPanel(id)
+    void refreshAutomations().then(() => showWatcherThenPanel(id))
   }
 }
 

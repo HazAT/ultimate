@@ -95,7 +95,7 @@ type Delivery = {
   targets: Subscriber[]
 }
 type AskBeforeConcurrentDiscovery = string
-type AlreadyCreatedWithoutNewPreparation = boolean
+type KeyedCreateRetry = boolean
 export type Prepared = {
   profile?: AgentDefinition
   parent?: Agent
@@ -105,7 +105,7 @@ export type Prepared = {
   subscribers?: Subscriber[]
   manifest?: Manifest
   previousAsk?: AskBeforeConcurrentDiscovery
-  keyed?: AlreadyCreatedWithoutNewPreparation
+  keyed?: KeyedCreateRetry
 }
 type Run = {
   child: GroupProcess
@@ -428,12 +428,12 @@ export function supervisor(
     })()
     if (!run) return work
     run.cleanup = work.catch((error: unknown) => {
-      allowCleanupRetryAfterFailedKill(run)
+      retryCleanup(run)
       throw error
     })
     return run.cleanup
   }
-  function allowCleanupRetryAfterFailedKill(run: Run) {
+  function retryCleanup(run: Run) {
     delete run.cleanup
   }
   async function escalate(tx: Tx, sub: Automation, reason: string) {
@@ -466,11 +466,11 @@ export function supervisor(
       const stopped = !!run?.stopped || reloadStableProcessState.closing
       if (!stopped && sub.script!.state !== 'running' && !done) return
       const said = run?.done
-      const recurringDoneWithSuccessfulExit =
+      const cleanRecurringExit =
         !sub.script!.once && !stopped && !done && said !== undefined && code === 0
       const now = Date.now()
-      const failed = !recurringDoneWithSuccessfulExit && !stopped && !done
-      if (recurringDoneWithSuccessfulExit) {
+      const failed = !cleanRecurringExit && !stopped && !done
+      if (cleanRecurringExit) {
         sub.script!.state = 'stopped'
         sub.enabled = false
       } else if (failed) {
@@ -487,8 +487,7 @@ export function supervisor(
         code,
         ...(signal ? { signal } : {}),
       })
-      if (recurringDoneWithSuccessfulExit)
-        await host.emit(tx, Done, { id, ...(said ? { text: said } : {}) })
+      if (cleanRecurringExit) await host.emit(tx, Done, { id, ...(said ? { text: said } : {}) })
       else if (sub.script!.state === 'done') sub.enabled = false
       else if (failed) {
         const reason = error ?? `Process exited with code ${code}${signal ? ` (${signal})` : ''}`
@@ -722,29 +721,32 @@ export function supervisor(
     const sub = await snapshot(id)
     return { ...json(sub), alive: groupAlive(sub.script?.pid) }
   }
-  const settlePendingLaunchesBeforeCleanup = () => Promise.allSettled(launches)
   const close = async () => {
     reloadStableProcessState.closing = true
-    await settlePendingLaunchesBeforeCleanup()
+    await Promise.allSettled(launches)
     for (const [id, run] of runs) await stopProcess(id, run.child.pid, 'shutdown')
   }
   const open = async () => {
     reloadStableProcessState.closing = false
-    let folders: Dirent[]
+    let runtimeFoldersBeyondLedger: Dirent[]
     try {
-      folders = await readdir(chapterIsolatedRuntimeRoot(), { withFileTypes: true })
+      runtimeFoldersBeyondLedger = await readdir(chapterIsolatedRuntimeRoot(), {
+        withFileTypes: true,
+      })
     } catch (error) {
       if (!isMissing(error)) throw error
-      folders = []
+      runtimeFoldersBeyondLedger = []
     }
-    for (const entry of folders) {
+    for (const entry of runtimeFoldersBeyondLedger) {
       if (!entry.isDirectory() || !isId(entry.name)) continue
       const pid = await readPid(entry.name)
       if (pid) await cleanup(entry.name, pid, runs.get(entry.name))
     }
     await discover()
-    const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
-    for (const sub of Object.values(state?.automations ?? {})) {
+    const restartStateAfterDiscovery = await host
+      .harness()
+      .snapshot(Automations, BACKGROUND_CONTEXT)
+    for (const sub of Object.values(restartStateAfterDiscovery?.automations ?? {})) {
       if (sub.script?.state !== 'running' || !sub.enabled) continue
       try {
         await launch(sub.id)

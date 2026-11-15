@@ -187,9 +187,9 @@ function scheduleOf(draft: Draft): string | undefined {
   const at = draft.at.trim()
   if (!at) return undefined
   if (/^in\s/.test(at)) return at.replace(/^in\s+/, 'in ')
-  const browserLocalTimeWithoutOffset =
+  const browserLocalTime =
     /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d)?$/.test(at) && new Date(at.replace(' ', 'T'))
-  return `at ${browserLocalTimeWithoutOffset && Number.isFinite(browserLocalTimeWithoutOffset.getTime()) ? browserLocalTimeWithoutOffset.toISOString() : at}`
+  return `at ${browserLocalTime && Number.isFinite(browserLocalTime.getTime()) ? browserLocalTime.toISOString() : at}`
 }
 
 const numberOrNaNForEmptyField = (text: string) => (text.trim() === '' ? Number.NaN : Number(text))
@@ -267,7 +267,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
   const error = settled === schedule ? described.error : undefined
   const perDay =
     data && data.next.length > 1 ? Math.round(86400000 / (data.next[1] - data.next[0])) : 0
-  const scheduleMeaningWithoutCountdown = error
+  const scheduleAnnouncement = error
     ? error.message
     : data
       ? words(data.schedule, data.description, now)
@@ -275,7 +275,7 @@ function Preview({ schedule }: { schedule: string | undefined }) {
   return (
     <div className="min-h-[5.25rem] rounded-md border border-border/70 bg-card/60 px-2.5 py-2">
       <span aria-live="polite" className="sr-only">
-        {scheduleMeaningWithoutCountdown}
+        {scheduleAnnouncement}
       </span>
       {error ? (
         <p className="flex items-start gap-1.5 font-mono text-[11.5px] leading-snug text-error">

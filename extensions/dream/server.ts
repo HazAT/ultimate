@@ -81,7 +81,7 @@ const LEARNED_LINES = 3
 const LINE_CHARS = 200
 export const HANDOFF_CHARS = 12_000
 
-const copyOutsideTransactionOverlay = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const detachOverlay = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const fields = (args: unknown) =>
   args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
 const text = (value: unknown, name: string, max: number) => {
@@ -154,10 +154,7 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
 const reloadStableChapterChangeLock = (host: ExtensionHost) =>
   host.resource('dream.switching', (): { busy: boolean; harness?: object } => ({ busy: false }))
 
-async function serializeChapterChangeIncludingBackup<T>(
-  host: ExtensionHost,
-  run: () => Promise<T>,
-) {
+async function withChapterChangeLock<T>(host: ExtensionHost, run: () => Promise<T>) {
   const state = reloadStableChapterChangeLock(host)
   if (state.busy) throw new Error('A chapter change is already running')
   state.busy = true
@@ -201,11 +198,11 @@ export async function firstBackup(host: ExtensionHost) {
 async function restartChapter(
   host: ExtensionHost,
   name: string,
-  backupAfterTargetValidatedBeforeRestart?: () => Promise<unknown>,
+  backupBeforeRestart?: () => Promise<unknown>,
 ): Promise<never> {
   await requestChapter(host.home, name, process.pid)
   try {
-    await backupAfterTargetValidatedBeforeRestart?.()
+    await backupBeforeRestart?.()
     throw new Error(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
@@ -256,13 +253,13 @@ async function fallAsleep(host: ExtensionHost, input: { name?: unknown }) {
     if (chapters.chapters.some((item) => item.name === chapter))
       throw new Error(`Chapter ${chapter} already exists; use switch instead`)
     doc.sleep = { chapter, phase: 'seeding', at: Date.now() }
-    return { prepared: copyOutsideTransactionOverlay(doc.prepared), name: chapter }
+    return { prepared: detachOverlay(doc.prepared), name: chapter }
   }, context)
   const progress = (change: Partial<Sleep>) =>
     host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
       doc.sleep = { ...doc.sleep!, ...change, at: Date.now() }
-      return copyOutsideTransactionOverlay(doc.sleep)
+      return detachOverlay(doc.sleep)
     }, context)
   try {
     const seed = await buildSeed(host, prepared)
@@ -283,6 +280,10 @@ const ultimateOf = async (tx: Tx) => {
   return ultimate
 }
 
+function resetPreparationSleep(doc: { sleep?: Sleep }) {
+  delete doc.sleep
+}
+
 export const actions = {
   chapters: implementAction(ChaptersAction, async (_args, { host }) => {
     const { active, chapters } = await readChapters(host.home)
@@ -294,7 +295,7 @@ export const actions = {
     }
   }),
   switch: implementAction(SwitchAction, async (args, { host }) =>
-    serializeChapterChangeIncludingBackup(host, async () => {
+    withChapterChangeLock(host, async () => {
       const name = chapterName(fields(args).chapter)
       const chapters = await readChapters(host.home)
       if (name === chapters.active) throw new Error(`Chapter ${name} is already active`)
@@ -305,7 +306,7 @@ export const actions = {
     }),
   ),
   asleep: implementAction(AsleepAction, async (args, { host }) =>
-    serializeChapterChangeIncludingBackup(host, () => fallAsleep(host, fields(args))),
+    withChapterChangeLock(host, () => fallAsleep(host, fields(args))),
   ),
   start: implementAction(StartAction, async (_args, { host }) => {
     await host.harness().commit(async (tx) => {
@@ -355,7 +356,7 @@ export const actions = {
       if (doc.sleep && !['asleep', 'failed'].includes(doc.sleep.phase))
         throw new Error(`Falling asleep is under way (${doc.sleep.phase})`)
       doc.prepared = prepare(args, Date.now())
-      delete doc.sleep
+      resetPreparationSleep(doc)
       await deliver(host, tx, await ultimateOf(tx), {
         type: 'write',
         requestId: `dream.prepared:${doc.prepared.at}`,
@@ -363,7 +364,7 @@ export const actions = {
         data: { at: doc.prepared.at },
         content: `You prepared Chapter ${doc.prepared.chapter}; the Fall asleep card above shows it to the user, who taps Fall asleep. Never call asleep yourself.`,
       })
-      return copyOutsideTransactionOverlay(doc.prepared)
+      return detachOverlay(doc.prepared)
     }, context)
     host.harness().resume()
     return prepared
@@ -380,26 +381,28 @@ export const actions = {
 }
 
 export default function dream(host: ExtensionHost) {
-  const reloadStableAutomationCreationQueue = host.resource('dream.after-compaction', () => ({
+  const reloadStableCreationQueue = host.resource('dream.after-compaction', () => ({
     last: Promise.resolve(),
   }))
-  const ensure = () => {
-    const run = reloadStableAutomationCreationQueue.last.then(() => ensureAutomation(host))
-    reloadStableAutomationCreationQueue.last = settled(run)
+  const initializeWithOwnCommit = () => {
+    const run = reloadStableCreationQueue.last.then(() => ensureAutomation(host))
+    reloadStableCreationQueue.last = settled(run)
     return run.catch((error: unknown) => host.notice(`Dream automations: ${String(error)}`))
+  }
+  const backupInBackground = () => {
+    firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`))
   }
   host.onOpen(async () => {
     await settleSleep(host)
-    if (await applySeed(host))
-      firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`))
-    await ensure()
+    if (await applySeed(host)) backupInBackground()
+    await initializeWithOwnCommit()
   })
   host.react(
     'ultimate-started',
     [StandingStarted],
     (_tx, { data }) => {
       if (data.kind === 'standing' && data.agent === 'ultimate')
-        ensure().catch((error: unknown) => host.notice(String(error)))
+        initializeWithOwnCommit().catch((error: unknown) => host.notice(String(error)))
     },
     { from: 'now' },
   )
