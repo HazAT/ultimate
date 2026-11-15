@@ -96,13 +96,6 @@ export default defineConfig({
         ],
         excludeFiles: [
           'extensions/*/test/**',
-          'extensions/models/**',
-          'extensions/cloud/**',
-          'extensions/wire/**',
-          'extensions/codemode/**',
-          'extensions/claude-code/**',
-          'extensions/keep-warm/**',
-          'extensions/fast/**',
           'extensions/pause/**',
           'extensions/onboarding/**',
           'extensions/coding-tools/**',
