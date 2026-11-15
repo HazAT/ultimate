@@ -29,10 +29,12 @@ import {
   IsolationAction,
   PendingAction,
   ProgressAction,
+  PullRequestAction,
   RepoAction,
   StatsAction,
 } from './refs.ts'
-import type { GithubRepo } from './refs.ts'
+import type { GithubRepo, PullRequest } from './refs.ts'
+import { exec } from '../../lib/exec.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import { sweepChecks } from './lander.ts'
 import { Workspaces, workspaces } from './workspaces.ts'
@@ -46,6 +48,65 @@ function readRepo(key: string) {
   let repo = repos.get(key)
   if (!repo) repos.set(key, (repo = readGithubRepo(key)))
   return repo
+}
+
+/**
+ * Each tip's pull request as GitHub last said, by `<repo> <sha>`. A merged or closed one stays; an open one or none is
+ * asked again after `recheck`, since a branch gets pushed, opened and merged long after its tip was made.
+ */
+const pulls = new Map<string, { at: number; pull: Promise<PullRequest | null> }>()
+const recheck = 5 * 60_000
+/**
+ * The pull request containing commit `sha` in GitHub repository `name`, newest first. Found by commit rather than by
+ * branch name: a worktree's branch is often pushed under another name.
+ */
+async function readPullRequest(name: string, sha: string): Promise<PullRequest | null> {
+  const { stdout } = await exec(
+    'gh',
+    [
+      'pr',
+      'list',
+      '--repo',
+      name,
+      '--state',
+      'all',
+      '--search',
+      sha,
+      '--json',
+      'number,url,state',
+      '--limit',
+      '1',
+    ],
+    { timeout: 15_000 },
+  )
+  const [found] = JSON.parse(stdout) as { number: number; url: string; state: string }[]
+  if (!found) return null
+  const state = found.state.toLowerCase()
+  return {
+    number: found.number,
+    url: found.url,
+    state: state === 'merged' || state === 'closed' ? state : 'open',
+  }
+}
+function pullRequestOf(name: string, sha: string) {
+  const key = `${name} ${sha}`
+  const cached = pulls.get(key)
+  if (cached && Date.now() - cached.at < recheck) return cached.pull
+  const entry = { at: Date.now(), pull: Promise.resolve<PullRequest | null>(null) }
+  entry.pull = readPullRequest(name, sha).then(
+    (value) => {
+      // A merged or closed pull request is final for this tip.
+      if (value && value.state !== 'open') entry.at = Infinity
+      return value
+    },
+    // gh missing, signed out or offline: no chip, and the next ask tries again.
+    () => {
+      pulls.delete(key)
+      return null
+    },
+  )
+  pulls.set(key, entry)
+  return entry.pull
 }
 
 const finish = (value: unknown) => ({
@@ -78,6 +139,17 @@ export const actions = {
   repo: implementAction(RepoAction, async (_args, { host }) => {
     const key = await githubRepo(host.projectRoot)
     return key ? readRepo(key) : null
+  }),
+  /** The pull request holding conversation `id`'s worktree tip, for the title bar's chip; null when there is none. */
+  pullRequest: implementAction(PullRequestAction, async (args, { host }) => {
+    const workspace = await workspaces(host).get(workspaceId(args), context)
+    if (!workspace || workspace.state !== 'ready') return null
+    const key = await githubRepo(host.projectRoot)
+    if (!key) return null
+    // Only a tip of its own: a fresh worktree's tip is its target's, which belongs to whatever PR landed last.
+    const tip = await git(workspace.path, 'rev-parse', 'HEAD').catch(() => workspace.base)
+    if (tip === workspace.base) return null
+    return pullRequestOf(key.slice('github.com/'.length), tip)
   }),
   progress: implementAction(ProgressAction, (args, { host }) => {
     const ids = args && typeof args === 'object' && !Array.isArray(args) ? args.ids : undefined

@@ -15,7 +15,7 @@ import {
   useRegionOpen,
 } from '../sdk/hooks.ts'
 import { panelItems, slotItems } from '../sdk/registry.ts'
-import { ConversationKind, ConversationTitle } from '../sdk/types.ts'
+import { ConversationKind, ConversationTitle, ConversationTitleAside } from '../sdk/types.ts'
 import { Provided, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
 import { useRegion } from './surface.ts'
@@ -122,6 +122,11 @@ function Trail() {
           </span>
           {id !== undefined && (
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">#{id}</span>
+          )}
+          {id !== undefined && (
+            <Provided input={id} point={ConversationTitleAside}>
+              {(aside) => aside}
+            </Provided>
           )}
         </>
       )}

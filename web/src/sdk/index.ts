@@ -7,6 +7,7 @@ export {
   ComposerPlaceholder,
   ConversationKind,
   ConversationTitle,
+  ConversationTitleAside,
   defineWebExtension,
   definePoint,
   EmptyTranscript,
