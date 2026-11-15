@@ -48,7 +48,9 @@ cd ~/Projects/ultimate-eval/runs && ls -d 2026* | tail -6
 for d in <run ids>; do echo "$d $(jq -c '{pass,status,min:.minutes,stuck:.failure.stuck,usd:.scorecard.usage.totalCostUsd,wd:.scorecard.watchdog,real:.scorecard.toolErrorDetail.real,landed:.allLanded,startup:.startupSec}' $d/result.json 2>/dev/null || echo running)"; done
 ```
 
-A run folder without `result.json` is still running: set another check-back. `pnpm eval report` in
+A run folder without `result.json` is still running only while its `live.json` names a live `pid`
+(`kill -0 $(jq .pid $d/live.json)`): then set another check-back. Without one it was abandoned: report it as
+incomplete, never wait on it. `pnpm eval report` in
 `~/Projects/ultimate-eval` prints the passes/N, median minutes and cost matrix per commit. For a failure, `failure`
 says where it stood and `transcripts/` holds every conversation. Delete the check-back automation once it is read.
 
