@@ -34,6 +34,28 @@ export const SeedState = defineDoc<{ applied?: number; automations: string[] }>(
 const carries = (item: Seed['automations'][number]) =>
   (!!item.prompt || !!item.subscribers?.length) && !item.condition?.of.startsWith('#')
 
+const conditionOf = ({
+  metric,
+  of,
+  above,
+  cooldownMs,
+  idleFor,
+}: NonNullable<Automation['condition']>) => ({
+  metric,
+  of,
+  above,
+  cooldownMs,
+  ...(idleFor ? { idleFor } : {}),
+})
+
+const builtInOf = (item: Automation | undefined) =>
+  item
+    ? {
+        enabled: item.enabled,
+        ...(item.condition ? { condition: conditionOf(item.condition) } : {}),
+      }
+    : null
+
 /** Exported conversation documents are resolved at call time, including after a facet reload. */
 async function document<T>(
   host: ExtensionHost,
@@ -115,17 +137,7 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
                 },
               }
             : {}),
-          ...(item.condition
-            ? {
-                condition: {
-                  metric: item.condition.metric,
-                  of: item.condition.of,
-                  above: item.condition.above,
-                  cooldownMs: item.condition.cooldownMs,
-                  ...(item.condition.idleFor ? { idleFor: item.condition.idleFor } : {}),
-                },
-              }
-            : {}),
+          ...(item.condition ? { condition: conditionOf(item.condition) } : {}),
           ...(agent ? { agent } : {}),
           ...(model ? { model } : {}),
           ...(thinking ? { thinking } : {}),
@@ -165,8 +177,8 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
           automations: triggers.length,
           scripts: watchers.length,
         },
-        builtIn: builtIn ? { enabled: builtIn.enabled } : null,
-        builtInPause: builtInPause ? { enabled: builtInPause.enabled } : null,
+        builtIn: builtInOf(builtIn),
+        builtInPause: builtInOf(builtInPause),
         continues: { conversation: ultimate, handoff: prepared.handoff },
       }),
     ) as Seed

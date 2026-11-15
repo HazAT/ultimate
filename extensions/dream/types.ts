@@ -43,15 +43,18 @@ export type Seed = {
     scripts: number
   }
   /**
-   * The built-in "Dream before compaction" automation, recreated in the new chapter as it was; `null` when the user
-   * deleted it. Absent in seeds from before it existed: the new chapter makes it.
+   * The built-in "Dream before compaction" automation, recreated in the new chapter as it was, paused or not and with
+   * its condition; `null` when the user deleted it. Absent in seeds from before it existed: the new chapter makes it.
+   * Without a condition (older seeds) it is made with the default one.
    */
-  builtIn?: { enabled: boolean } | null
+  builtIn?: BuiltInSeed | null
   /** The built-in "Dream after a pause" automation, likewise. */
-  builtInPause?: { enabled: boolean } | null
+  builtInPause?: BuiltInSeed | null
   /** @ultimate's handover, written in conversation `conversation` of the chapter it left: the new chapter wakes up from it. */
   continues: { conversation: ConversationId; handoff: string }
 }
+
+type BuiltInSeed = { enabled: boolean; condition?: CreateArgs['condition'] }
 
 /** The six passes a dream runs, in the order its journal lists them. */
 export const PASSES = ['memory', 'failures', 'tools', 'corrections', 'codify', 'project'] as const

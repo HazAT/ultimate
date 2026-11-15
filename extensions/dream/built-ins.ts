@@ -2,8 +2,8 @@
  * The two built-in dream triggers, ordinary context automations that wake @ultimate: "Dream before compaction" when its
  * context passes 70%, and "Dream after a pause" at 50% once the user has been away 8 hours. Dream makes each once per
  * chapter, so the user sees them in the Automations panel and can pause, delete or re-threshold them like any other;
- * a new chapter makes them again as the seed carried them. A fire leaves a `dream.requested` entry beside the
- * automation's own wake-up, which says what a dream is and where its workflow lives.
+ * a new chapter makes them again as the seed carried them, threshold included. A fire leaves a `dream.requested` entry
+ * beside the automation's own wake-up, which says what a dream is and where its workflow lives.
  */
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -90,7 +90,8 @@ export const DREAM_ASK =
 
 /**
  * Make sure this chapter has both built-in automations, unless the user deleted one. A new chapter makes each as its
- * seed carried it: paused stays paused, and one deleted before the switch is not made again.
+ * seed carried it: paused stays paused, an edited condition stays edited, and one deleted before the switch is not
+ * made again.
  */
 export async function ensureAutomation(host: ExtensionHost) {
   if (!host.extensions().some((item) => item.name === 'automations' && item.enabled)) return
@@ -125,7 +126,12 @@ async function ensureOne(host: ExtensionHost, builtIn: BuiltIn, seed: Seed | und
   const created = (await host.invoke(
     'automations',
     'create',
-    { name, condition, subscribers: ['@ultimate'], key: `dream:${doc.definition.kind}` },
+    {
+      name,
+      condition: carried?.condition ?? condition,
+      subscribers: ['@ultimate'],
+      key: `dream:${doc.definition.kind}`,
+    },
     signal,
   )) as Automation
   if (carried?.enabled === false && created.enabled)
