@@ -15,11 +15,12 @@ export const offered: readonly { name: string; needs?: string }[] = [
 ]
 
 /**
- * Where the Extensions panel's switches save: the user's settings unless they pick this project, which needs the
- * project's setup chosen. A project's settings file is usually committed, so a personal switch never lands there.
+ * Where the Extensions panel's switches save: this project's settings once its setup is chosen, which is what the panel
+ * and the action behind it act on, and the user's settings otherwise. A project's settings file is usually committed,
+ * so picking `everywhere` is how a personal switch stays out of it.
  */
 export function switchScope(local: boolean, chosen?: 'project' | 'user') {
-  return local && chosen === 'project' ? 'project' : 'user'
+  return local && chosen !== 'user' ? 'project' : 'user'
 }
 
 /**

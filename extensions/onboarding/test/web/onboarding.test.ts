@@ -1,11 +1,13 @@
 import { expect, it } from 'vitest'
 import { extensionOptions, switchScope } from '../../choices.tsx'
 
-it('saves extension switches to user settings unless the user picks this project', () => {
-  expect(switchScope(true)).toBe('user')
-  expect(switchScope(false)).toBe('user')
-  expect(switchScope(false, 'project')).toBe('user')
+it('saves extension switches where the project decides, and everywhere once the user picks it', () => {
+  expect(switchScope(true)).toBe('project')
   expect(switchScope(true, 'project')).toBe('project')
+  expect(switchScope(true, 'user')).toBe('user')
+  expect(switchScope(false)).toBe('user')
+  expect(switchScope(false, 'user')).toBe('user')
+  expect(switchScope(false, 'project')).toBe('user')
 })
 
 it('offers only the optional extensions, unchecked until the user enables them', () => {
