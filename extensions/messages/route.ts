@@ -265,11 +265,21 @@ export function route(host: ExtensionHost) {
           let everyInputReturnsToAnotherAsker = true
 
           let answersOnlyRoutedInputs = true
+          const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
           for (const entryId of inputsSettledByThisAnswer) {
             const entry = await tx.entry(entryId)
             const data: Partial<DeliveredMessage> | undefined =
               MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
-            const asked = MessageEntry.is(entry) && data?.reply === true && data.from !== 'user'
+            const repliedByMessageMidRun =
+              data?.id !== undefined &&
+              log.messages.some(
+                (m) => m.from === id && m.to === by && m.re === data.id && m.answer === undefined,
+              )
+            const asked =
+              MessageEntry.is(entry) &&
+              data?.reply === true &&
+              data.from !== 'user' &&
+              !repliedByMessageMidRun
             if (asked && data?.from === by) return []
             if (!asked) everyInputReturnsToAnotherAsker = false
             if (data?.routed !== true) answersOnlyRoutedInputs = false
@@ -291,7 +301,7 @@ export function route(host: ExtensionHost) {
               if (last?.from !== id || last.reply || last.report || last.re !== undefined) return []
               return routeToStarter(last.text, {})
             }
-            const last = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
+            const last = log.messages.findLast(
               (m) => (m.from === id && m.to === by) || (m.from === by && m.to === id),
             )
             return promoteLastNote(last)

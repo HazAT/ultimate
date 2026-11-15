@@ -271,6 +271,15 @@ async function fixture(
       })
     if (last.role === 'user' && (text === 'HOLD' || text.includes('\nHOLD')))
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
+    // A branch answers its starter's request by message and keeps working in the same round, as with a submit.
+    if (last.role === 'user' && text.startsWith('Message from') && text.includes('REPLYTHENWORK'))
+      return fauxAssistantMessage(
+        [
+          fauxToolCall('message', { to: '#1', text: 'Built; landing follows' }),
+          fauxToolCall('hold', {}),
+        ],
+        { stopReason: 'toolUse' },
+      )
     if (last.role === 'user' && text.startsWith('Message from') && text.includes('NOANSWER'))
       return fauxAssistantMessage([])
     // A branch's reply that keeps @ultimate busy, so another branch's reply steers into the same run.
@@ -1486,6 +1495,19 @@ it("routes a branch's later final answer to its starter once, waking it when the
   await f.open()
   await b.settled()
   expect(await b.from()).toHaveLength(2)
+})
+it("routes a branch's final answer as its report after it answered its starter's request mid-run", async () => {
+  // ultimate-eval 20261115t1854 #106 replied to @ultimate's task and submitted in one round, then stopped later; its
+  // landing card promised a report, and the final answer went nowhere, so @ultimate slept for 9 minutes.
+  const f = await fixture()
+  const started = branched(f, 'Build it, REPLYTHENWORK')
+  await until(f.holding)
+  f.hold.release()
+  const b = await started
+  expect((await b.from()).filter((m) => m.to === 1).map((m) => [m.text, m.re, m.report])).toEqual([
+    ['Built; landing follows', 1, undefined],
+    ['Done', undefined, true],
+  ])
 })
 it("leaves a branch's final answer as a note while its work is under way", async () => {
   const f = await fixture()
