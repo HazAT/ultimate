@@ -169,7 +169,7 @@ For a request such as "build a triage surface for this repo's GitHub issues":
    saying exactly what to do with which item.
 6. **Write `README.md`**, opening with one sentence; the Info panel shows it.
 7. **Look at it.** Switch to it, take a screenshot, and go through every state: loading, empty, error, setup, many
-   items, a long title; then the light theme (⌘K, "Toggle light and dark theme"). Fix what looks off.
+   items, a long title; then the light theme (⌘K, "Toggle theme" cycles System → Light → Dark). Fix what looks off.
 8. **Verify and commit**: `pnpm check` in the clone (it covers `.ultimate/extensions/`), then commit the folder with the
    project.
 
