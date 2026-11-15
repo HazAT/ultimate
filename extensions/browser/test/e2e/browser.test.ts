@@ -1,4 +1,5 @@
 import { access, readFile, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import type { ToolExecutionApi } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
@@ -83,6 +84,47 @@ it('times out a hung step, closes its page and keeps later calls working', async
   } finally {
     vi.unstubAllEnvs()
     for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
+
+// A store's quiz ran in a sandboxed iframe: every call reported the `ultimate.driven` write throwing in that frame as a
+// page error, also in calls that passed.
+it('marks the page as driven without a page error from a sandboxed frame', async () => {
+  const directory = await temp('ultimate-browser-sandboxed-')
+  const closers: (() => Promise<void>)[] = []
+  const page = createServer((_request, response) =>
+    response.end(
+      '<title>Shop</title><iframe sandbox="allow-scripts" srcdoc="<p>quiz</p>"></iframe>',
+    ),
+  )
+  await new Promise<void>((done) => page.listen(0, '127.0.0.1', done))
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  try {
+    const { port } = page.address() as { port: number }
+    const result = await browser.execute(
+      {
+        url: `http://127.0.0.1:${port}/`,
+        steps: [{ eval: "sessionStorage.getItem('ultimate.driven')" }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBeFalsy()
+    expect(JSON.stringify(result.output)).not.toContain('error')
+    expect(JSON.stringify(result.output)).toContain('Step 1: OK \\"1\\"')
+  } finally {
+    for (const close of closers) await close()
+    await new Promise((done) => page.close(done))
     await removeTemp(directory)
   }
 })
