@@ -1,4 +1,5 @@
 import { ROOT } from '@/sdk'
+import { parseConversationId } from '../../lib/ids.ts'
 import {
   GitBranchIcon,
   CircleCheckIcon,
@@ -537,6 +538,47 @@ function TaskedSubagentLine({
         {working ? 'working' : (known?.word.toLowerCase() ?? 'idle')}
       </span>
     </button>
+  )
+}
+
+const shownWaits = 3
+
+export function WaitLines({
+  waits,
+}: {
+  waits: readonly { id: number; title?: string; feature?: string }[]
+}) {
+  const actions = useShell()
+  const [all, setAll] = useState(false)
+  const hidden = waits.length - shownWaits
+  const shown = all || hidden <= 1 ? waits : waits.slice(0, shownWaits)
+  return (
+    <div data-ui="wait-lines">
+      {shown.map((wait) => (
+        <button
+          className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+          data-wait-line={wait.id}
+          key={wait.id}
+          onClick={() => actions.switchConversation(parseConversationId(wait.id))}
+          title={[`#${wait.id}`, wait.feature, wait.title].filter(Boolean).join(' · ')}
+          type="button"
+        >
+          <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+          <span className="shrink-0 text-brand">#{wait.id}</span>
+          {wait.feature && <FeatureTag className="max-w-[45%] shrink-0" feature={wait.feature} />}
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{wait.title ?? ''}</span>
+        </button>
+      ))}
+      {!all && hidden > 1 && (
+        <button
+          className="mx-2 flex h-6 w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 rounded-md pl-5 font-mono text-[10.5px] text-muted-foreground outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+          onClick={() => setAll(true)}
+          type="button"
+        >
+          <span className="w-2 shrink-0 text-muted-foreground/40">└</span>+{hidden} more
+        </button>
+      )}
+    </div>
   )
 }
 

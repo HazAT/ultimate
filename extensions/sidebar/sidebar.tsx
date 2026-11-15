@@ -34,7 +34,8 @@ import {
   useWorkspaceConversations as useConversations,
   useWorkspaceIndex,
 } from '../workspaces/ui.tsx'
-import { Row, ChildRow, EpicLine, StandingRow, SubagentLine } from './rows.tsx'
+import { Row, ChildRow, EpicLine, StandingRow, SubagentLine, WaitLines } from './rows.tsx'
+import { waitedOn } from '../../lib/waits.ts'
 import {
   MessagesDoc,
   conversationState,
@@ -297,7 +298,22 @@ function Tree({
     const state = facts ? conversationState(facts, log, timers) : waiting > 0 ? 'waits' : 'idle'
     const markKeepsPulsingWhileUserWaits =
       state === 'working' || landing || (busy && state === 'waits')
-    return (
+    const waits =
+      isUltimate &&
+      facts &&
+      state === 'awaiting' &&
+      conversationWait(facts, log, timers)?.on === 'agent'
+        ? waitedOn(facts.id, log.messages).map((id) => ({
+            id,
+            title: conversations.find((c) => c.id === id)?.title,
+            feature: overview[id]?.feature,
+          }))
+        : []
+    const label =
+      waits.length > 0
+        ? `waits on ${waits.length === 1 ? 'a branch' : `${waits.length} branches`}`
+        : facts && labelOf(facts)
+    const standing = (
       <StandingRow
         conversation={conversation}
         key={conversation?.id ?? 'ultimate'}
@@ -325,11 +341,8 @@ function Tree({
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
             ) : (
-              <span
-                className={cn('min-w-0 truncate', stateTone[state])}
-                title={facts && labelOf(facts)}
-              >
-                {stateWord(state, 0, facts && labelOf(facts))}
+              <span className={cn('min-w-0 truncate', stateTone[state])} title={label}>
+                {stateWord(state, 0, label)}
               </span>
             )}
             {latest > 0 && (
@@ -343,6 +356,14 @@ function Tree({
           </>
         )}
       </StandingRow>
+    )
+    return waits.length > 0 ? (
+      <div key={conversation?.id ?? 'ultimate'}>
+        {standing}
+        <WaitLines waits={waits} />
+      </div>
+    ) : (
+      standing
     )
   }
   const row = (conversation: ConversationSummary, shown = conversation.id === shownTop?.id) => {

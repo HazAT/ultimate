@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { waitsOn } from '../lib/waits.ts'
+import { waitedOn, waitsOn } from '../lib/waits.ts'
 import type { WaitFacts } from '../lib/waits.ts'
 
 it('derives the first wait from work, user, agent, remote, timer, starter, then idle', () => {
@@ -30,4 +30,16 @@ it('derives the first wait from work, user, agent, remote, timer, starter, then 
   expect(
     waitsOn(9, { messages: [{ ...message, to: 7 }], automations: facts.automations }),
   ).toBeUndefined()
+})
+
+it('lists every conversation waited on, once each, in the order asked', () => {
+  const message = { from: 5, reply: true, state: 'delivered' }
+  const messages = [
+    { ...message, to: 7 },
+    { ...message, to: 3 },
+    { ...message, to: 7 },
+    { ...message, to: 4, state: 'answered' },
+  ]
+  expect(waitedOn(5, messages)).toEqual([7, 3])
+  expect(waitsOn(5, { messages })).toEqual({ on: 'agent', to: 7 })
 })
