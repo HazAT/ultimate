@@ -156,6 +156,7 @@ const refs = `/**
  * Echo in the browser: the echo log and the action that echoes. Browser-safe.
  */
 import type { JsonValue } from '@earendil-works/chord/json'
+import { defineEntry } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ProviderHealth } from '../../shared/protocol.ts'
@@ -171,6 +172,8 @@ export const LogDoc = docRef<Texts>('echo.log')
 export const EchoAction = actionRef<{ text: string }, Echoed>('echo', 'echo')
 /** Something was echoed; react to it to count echoes. */
 export const Repeated = defineEvent<{ text: string }>('echo.repeated')
+/** One echo in the transcript; renderers in other extensions narrow with \`EchoEntry.is(entry)\`. */
+export const EchoEntry = defineEntry<Echoed>('echo.entry')
 `
 
 it('accepts a refs.ts of documented browser-safe refs and rejects server reach, runtime code and missing docs', () => {
@@ -191,14 +194,14 @@ export const limit = 3
 `
   expect(lint('api-file-shape', 'extensions/echo/refs.ts', bad)).toEqual([
     'refs.ts is a contract: it imports no node:* module.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "Document each ref: what it holds, or an action's arguments and result.",
-    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent(...)` and types.',
+    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.',
   ])
   expect(
     lint('api-naming', 'extensions/echo/refs.ts', "export const A = actionRef('messages', 'send')"),

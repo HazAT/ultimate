@@ -93,9 +93,15 @@ const membersOf = (declaration: Node): Node[] =>
   declaration.type === 'TSInterfaceDeclaration'
     ? (((declaration.body as Node | undefined)?.body as Node[] | undefined) ?? [])
     : literals(declaration.typeAnnotation)
+/** `import { defineEntry } from '@earendil-works/pi-durable'`: the one runtime import refs.ts takes from a package, so browser code can narrow another extension's entries. */
+const onlyDefineEntry = (node: Node) =>
+  node.source?.value === '@earendil-works/pi-durable' &&
+  node.specifiers?.length === 1 &&
+  node.specifiers[0].imported?.name === 'defineEntry'
+
 const definers: Record<'api.ts' | 'refs.ts', Set<string>> = {
   'api.ts': new Set(['defineApi', 'defineDoc', 'defineEntry']),
-  'refs.ts': new Set(['docRef', 'actionRef', 'defineEvent']),
+  'refs.ts': new Set(['docRef', 'actionRef', 'defineEvent', 'defineEntry']),
 }
 
 /** The declarator of `export const tier = …`, which declares an extension's tier, if `statement` is one. */
@@ -427,11 +433,11 @@ export default {
           if (file === 'refs.ts') {
             // The browser imports refs.ts (tsconfig.web.json), so it may not reach server code even for types.
             if (node.importKind !== 'type')
-              return target?.[0] === 'shared'
+              return target?.[0] === 'shared' || onlyDefineEntry(node)
                 ? undefined
                 : report(
                     node,
-                    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
+                    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
                   )
             if (
               target &&
@@ -514,7 +520,7 @@ export default {
                 report(
                   statement,
                   file === 'refs.ts'
-                    ? 'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent(...)` and types.'
+                    ? 'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.'
                     : "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types and `export const tier = 'core'`.",
                 )
             }
