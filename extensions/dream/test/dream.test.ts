@@ -243,7 +243,12 @@ it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and 
     learned: ['I learned one.', 'I keep two.', "I'd like three."],
     handoff: 'Open: the preview round.',
   }
-  await expect(actions.prepare({ ...ready, learned: ['one'] }, f.call)).rejects.toThrow('3 lines')
+  await expect(actions.prepare({ ...ready, learned: ['one'] }, f.call)).rejects.toThrow(
+    'learned must be an array of 3 strings',
+  )
+  await expect(
+    actions.prepare({ ...ready, learned: ready.learned.join('\n') }, f.call),
+  ).rejects.toThrow('learned must be an array of 3 strings')
   await expect(actions.prepare({ ...ready, chapter: '../escape' }, f.call)).rejects.toThrow(
     'chapter name',
   )

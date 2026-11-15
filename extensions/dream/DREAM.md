@@ -64,7 +64,7 @@ user asks.
 On `dream.ready`, call `prepare` once:
 
 - `chapter`: a 2–3 word lowercase, dash-separated name drawn from what the dream learned (at most 40 characters);
-- `learned`: exactly three short lines in your own voice ("I learned…", "I keep…", "I'd like…");
+- `learned`: an array of exactly three short strings in your own voice ("I learned…", "I keep…", "I'd like…");
 - `handoff`: a fresh handover, written now: what is open and how far each got, what landed from the dream, the
   decisions and the user's corrections, and what to do next (Markdown, at most 12,000 characters).
 
