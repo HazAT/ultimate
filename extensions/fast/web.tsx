@@ -3,7 +3,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { api, cn, defineWebExtension, events, useAction, useConversation, useEvent } from '@/sdk'
 import { SetAction, StatusAction } from './refs.ts'
 
-/** Fast mode for the composer's OpenAI model: on for every request to that model, wherever it runs. */
 function FastToggle() {
   const ref = useConversation().agent.model
   const status = useAction(StatusAction)
