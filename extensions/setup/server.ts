@@ -50,6 +50,7 @@ type CheckHost = Pick<
   | 'userHome'
   | 'modelRuntime'
   | 'projectSettings'
+  | 'projectSetup'
   | 'extensions'
   | 'need'
   | 'want'
@@ -68,7 +69,7 @@ const providerKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
 
-function loginArea(host: CheckHost): SetupIssue | undefined {
+function loginArea(host: AreaHost): SetupIssue | undefined {
   if (loggedIn(host)) return undefined
   return {
     area: 'Login',
@@ -79,7 +80,7 @@ function loginArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
   // Before any login the Login row says it all.
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
@@ -117,7 +118,7 @@ async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
  * Definitions that pin a model whose provider has no login here. They still load, since Pi resolves a definition's
  * model among every known model, and fail at their first model call.
  */
-async function agentsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function agentsArea(host: AreaHost): Promise<SetupIssue[]> {
   const { definitions, errors, replaced } = await discoverAgents(
     host.ultimateRoot,
     host.projectRoot,
@@ -167,7 +168,7 @@ const shortPath = (host: Pick<CheckHost, 'projectRoot' | 'userHome'>, path: stri
       ? `~${path.slice(host.userHome.length)}`
       : path
 
-async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function providersArea(host: AreaHost): Promise<SetupIssue | undefined> {
   const providers = await host.want(HealthApi)?.providers()
   if (!providers?.length) return undefined
   const failing = providers.filter((provider) => provider.state === 'failing')
@@ -198,7 +199,7 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
  * that is on by default only offers its key, since the rest of Ultimate works without it (voice without
  * `OPENAI_API_KEY`).
  */
-async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
   const set = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
   const chosen = new Map<string, string[]>()
   const optional = new Map<string, string[]>()
@@ -235,7 +236,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
   return issues
 }
 
-function extensionsArea(host: CheckHost): SetupIssue | undefined {
+function extensionsArea(host: AreaHost): SetupIssue | undefined {
   const broken = host
     .extensions()
     .filter((extension) => extension.enabled && extension.server?.error)
@@ -249,7 +250,7 @@ function extensionsArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function cloudArea(host: AreaHost): Promise<SetupIssue | undefined> {
   // Invalid user settings are reported where settings load; here they count as unset.
   const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
   const cloud = settings.cloud as { url?: unknown } | undefined
@@ -274,7 +275,7 @@ async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Cloud backup', status: 'ok', summary: 'joined' }
 }
 
-function tailscaleArea(host: CheckHost): SetupIssue | undefined {
+function tailscaleArea(host: AreaHost): SetupIssue | undefined {
   const service = host.want(TailscaleApi)
   if (!service) return undefined
   const { state } = service.status()
@@ -283,10 +284,27 @@ function tailscaleArea(host: CheckHost): SetupIssue | undefined {
     : { area: 'Tailscale', status: 'info', summary: `${state}: no direct links from other devices` }
 }
 
-async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function projectArea(
+  _host: AreaHost,
+  { settings }: AreaInputs,
+): Promise<SetupIssue | undefined> {
+  if (await settings) return undefined
+  return {
+    area: 'Project setup',
+    status: 'warn',
+    summary: "undecided: this project's .ultimate/ is not loaded",
+    impact:
+      'Its extensions, agents, skills and settings (worktree setup, lander checks) stay off until you choose to use it or keep global.',
+    fix: { label: 'Decide', command: 'onboarding.extensions' },
+  }
+}
+
+async function landerArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const lander = (await host.projectSettings()).lander as { checks?: unknown } | undefined
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const lander = settings.lander as { checks?: unknown } | undefined
   if (Array.isArray(lander?.checks) && lander.checks.length)
     return { area: 'Lander checks', status: 'ok', summary: `${lander.checks.length} configured` }
   return {
@@ -309,11 +327,12 @@ const MANIFESTS = [
   'mix.exs',
 ]
 
-async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function worktreeArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const commands = ((await host.projectSettings()).isolates as { worktree?: { setup?: unknown } })
-    ?.worktree?.setup
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const commands = (settings.isolates as { worktree?: { setup?: unknown } })?.worktree?.setup
   if (Array.isArray(commands) && commands.length)
     return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
@@ -339,12 +358,17 @@ const snapshots =
   (doc, id) =>
     host.harness().snapshot(doc, id, BACKGROUND_CONTEXT)
 
+type AreaHost = Omit<CheckHost, 'projectSettings' | 'projectSetup'>
+
+/** `settings`: the project's, undefined while its `.ultimate/` is undecided and they read as empty. */
+type AreaInputs = { read: ReadDoc; settings: Promise<JsonObject | undefined> }
+
 /**
  * Listed roots that have branched but have no memory: their branches start from the whole tally instead of a memory
  * brief. A root that never branched (a fresh project, where onboarding writes the first memories) has nothing to warn
  * about yet.
  */
-async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | undefined> {
+async function memoryArea(host: AreaHost, { read }: AreaInputs): Promise<SetupIssue | undefined> {
   const rootsDoc = host.doc('lineage.roots')
   const memoryDoc = host.doc('lineage.memory')
   const tallyDoc = host.doc('lineage.tally')
@@ -375,6 +399,11 @@ export async function check(
   host: CheckHost,
   read: ReadDoc = snapshots(host),
 ): Promise<SetupIssue[]> {
+  const settings = host
+    .projectSetup()
+    .then(({ config, decision }) =>
+      config && decision === null ? undefined : host.projectSettings(),
+    )
   const areas = await Promise.all(
     (
       [
@@ -384,19 +413,20 @@ export async function check(
         providersArea,
         secretsArea,
         extensionsArea,
+        projectArea,
         cloudArea,
         tailscaleArea,
         landerArea,
         worktreeArea,
         memoryArea,
       ] as ((
-        host: CheckHost,
-        read: ReadDoc,
+        host: AreaHost,
+        inputs: AreaInputs,
       ) => SetupIssue | SetupIssue[] | undefined | Promise<SetupIssue | SetupIssue[] | undefined>)[]
     ).map((area) =>
       // Started inside the promise, so an area that throws synchronously is caught like one that rejects.
       Promise.resolve()
-        .then(() => area(host, read))
+        .then(() => area(host, { read, settings }))
         .catch((error: unknown): SetupIssue => ({
           area: 'Setup check',
           status: 'info',
