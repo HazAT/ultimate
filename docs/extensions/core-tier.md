@@ -23,7 +23,8 @@ type, re-export, dynamic) and every `need`/`want` of another extension's token, 
 extension depending on an optional one. The core layers, lowest first, each depending only on layers below it:
 
 1. prompt, coding-tools, documents, notices, secrets, theme, entries: stand alone. entries holds the entry kinds that
-   extensions on both sides of a dependency read (`lineage.note`), so the reader imports neither writer.
+   extensions on both sides of a dependency read (`lineage.note`, `board.message`, `board.reply`,
+   `automations.fired`), so the reader imports neither writer.
 2. models.
 3. conversations: titles, summaries, overview, concluding; `ConversationRef`, `FeatureTag`, `AgentMark`.
 4. workspaces: worktrees and the lander.

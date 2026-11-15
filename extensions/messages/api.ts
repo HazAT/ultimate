@@ -108,7 +108,7 @@ export type MessagesService = {
    */
   owed(tx: Tx, to: ConversationId): Promise<Serves | undefined>
 }
-export { MessageSent, MessageEntry, ReplyEntry } from './refs.ts'
+export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')

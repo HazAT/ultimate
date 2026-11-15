@@ -45,3 +45,54 @@ export type NoteData =
 
 /** A note received from another conversation, the lander, or tally catch-up. Lineage writes it. */
 export const NoteEntry = defineEntry<NoteData>('lineage.note')
+
+/**
+ * Another project's Ultimate: its project and machine, and `id`, that instance's id of the same message (the sender's
+ * for an incoming one, the target's once an outgoing one is delivered).
+ */
+export type Remote = {
+  project: string
+  machine: string
+  id?: number
+  /** The sender's random key for the message: the target delivers it once, and only the target can reply to it. */
+  key: string
+}
+/**
+ * An agent's request that later work serves (a branch, an automation): the message the conversation that started it
+ * still owed an answer, so the work's result reaches that agent.
+ */
+export type Serves = { message: number; from: ConversationId | 'remote'; remote?: Remote }
+
+/** A message or reply delivered to a conversation. */
+export type DeliveredMessage = {
+  id: number
+  from: ConversationId | 'user' | 'remote'
+  text: string
+  reply?: boolean
+  re?: number
+  routed?: true
+  echo?: true
+  delivery?: 'note' | 'steer' | 'followUp'
+  images?: number
+  remote?: Remote
+  failed?: boolean
+  stopped?: boolean
+}
+
+/** Message delivered as a conversation input. */
+export const MessageEntry = defineEntry<DeliveredMessage>('board.message')
+
+/** Reply delivered as a conversation input. */
+export const ReplyEntry = defineEntry<DeliveredMessage>('board.reply')
+
+/** An automation input delivered to a subscriber or its watcher. */
+export type AutomationInput = {
+  id: string
+  name: string
+  text: string
+  serves?: Serves
+  at?: number
+}
+
+/** Fired trigger delivered to a subscriber. */
+export const FiredEntry = defineEntry<AutomationInput>('automations.fired')

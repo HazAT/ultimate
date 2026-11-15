@@ -1,6 +1,6 @@
 import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
-import type { Serves } from '../messages/refs.ts'
+import type { Serves } from '../entries/refs.ts'
 
 export type TriggerEvent = { name: string; description: string; fields: Record<string, string> }
 /** The labels automations gives the conversations it creates: a prompt run's, and a script's watcher. */

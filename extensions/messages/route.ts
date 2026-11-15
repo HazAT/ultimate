@@ -20,7 +20,7 @@ import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
 import type { DeliveredMessage, Remote } from './refs.ts'
-import { MessageEntry, ReplyEntry } from './refs.ts'
+import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
 import { tell } from './remote.ts'
@@ -131,8 +131,8 @@ export async function reported(
     )
   for (const entryId of answered) {
     const entry = await tx.entry(entryId as never)
-    if (entry?.kind === 'automations.fired') {
-      const data = entry.data as { id: string; name: string; serves?: Serves; at?: number }
+    if (FiredEntry.is(entry)) {
+      const { data } = entry
       // `at`: when it fired. Only what the starter sent since then is this run's own answer.
       const { serves, at = 0 } = data
       if (serves && !told(serves, (m) => m.at >= at))

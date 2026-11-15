@@ -21,7 +21,7 @@ import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
-import { MessageEntry, ReplyEntry } from './refs.ts'
+import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 export function delivery(host: ExtensionHost) {
   // A standing recipient is reconfigured from its current definition before each delivery, by name or by number.

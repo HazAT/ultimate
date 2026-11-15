@@ -9,7 +9,6 @@ import type { ComponentProps, ReactNode } from 'react'
 import { cn, definePoint, getState, useDocOf, useUiState, useUltimate } from '@/sdk'
 import { RootsDoc } from './refs.ts'
 export { FinishedEntry, AbstractEntry } from './refs.ts'
-export { NoteEntry } from '../entries/ui.tsx'
 
 export {
   Branched,

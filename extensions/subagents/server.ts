@@ -52,6 +52,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
+import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
@@ -785,11 +786,9 @@ export default function subagents(
       // which stays idle. A pending reporter whose input was answered in the same run delivers
       // that answer itself.
       const input = await tx.entry(submission.entry)
-      const message = input?.data as { from?: unknown; reply?: unknown } | undefined
       let messaged =
-        message?.from === parent &&
-        ((input?.kind === 'board.message' && message.reply === false) ||
-          input?.kind === 'board.reply')
+        (MessageEntry.is(input) && input.data.from === parent && input.data.reply === false) ||
+        (ReplyEntry.is(input) && input.data.from === parent)
       for (const action of childActions) {
         if (!messaged || action.status !== undefined) continue
         const sibling = await tx.submissionByRequest(

@@ -20,7 +20,7 @@ import { Standing } from '../subagents/api.ts'
 import { RecallDoc } from './refs.ts'
 import type { RecallState } from './refs.ts'
 import { RecalledEntry } from './types.ts'
-import { MessageEntry } from '../messages/api.ts'
+import { MessageEntry } from '../entries/api.ts'
 import type { Recalled } from './types.ts'
 
 /** Below this context fill a memory is still fresh in the prompt: nothing is recalled. */
