@@ -40,10 +40,12 @@ minimumReleaseAgeExclude:
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — killProcessTree() signals a process group only for an integer pid above 1 and otherwise ends the child alone: kill(-1) is every process of the user, and a test child with pid 1 ended a desktop session that way (#562356). Drop when upstream checks the pid before a group kill.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — the replay rewrite counts the user messages Claude Code puts first instead of assuming one: since 2.1.319 a prompt that mentions an existing path with "@" gets a "Called the Read tool" user message in front, and the second request then carried a system message between two user messages, which the API refuses with a 400 (#566809). Drop when upstream places system messages after every leading user message.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — turns run with CLAUDE_CODE_DISABLE_FILE_MENTIONS=1: prompts address agents as "@name", and Claude Code 2.1.319 and newer put the content of a file or the listing of a folder with that name into the request unasked (#566809). Drop when the pin reaches upstream 799943e, which sets it.
+# Pi upstream: @earendil-works/pi-ai@1.5.2 dist/api/openai-responses.js — supportsStrictMode defaults to true, as the azure-openai-responses and openai-codex-responses adapters' do, so a model without the flag sends `strict: false` instead of omitting it: the Responses API reads an omitted `strict` as "try strict", and gpt-6-astra behind CLIProxyAPI then filled every optional tool field, so review teams never started (#29144, earendil-works/pi#7250). Drop when upstream sends `strict: false` for these models.
 # Dependabot GHSA-587h-7wmj-h5pm and siblings: @tailwindcss/vite and @vitejs/plugin-react resolve vite 8.3.1 on their own. Drop when they peer on >= 8.3.3.
 overrides:
   vite: 8.3.5
 patchedDependencies:
   '@earendil-works/chord@1.5.2': patches/@earendil-works__chord@1.5.2.patch
+  '@earendil-works/pi-ai@1.5.2': patches/@earendil-works__pi-ai@1.5.2.patch
   '@earendil-works/pi-claude-code@0.1.0': patches/@earendil-works__pi-claude-code@0.1.0.patch
   '@earendil-works/pi-durable@1.5.2': patches/@earendil-works__pi-durable@1.5.2.patch
