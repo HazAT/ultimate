@@ -965,6 +965,38 @@ it('queues a busy recipient as follow-up, or steers its current run; @ultimate s
     expect(steer ? released === -1 : released < delivered).toBe(true)
   }
 })
+it('delivers one answer to several messages once, and closes each', async () => {
+  // #590386 answered messages 434, 435 and 436 in one run; its answer reached @ultimate three times
+  // (#574726/590616, /590626, /590637), and @ultimate answered each.
+  const f = await fixture()
+  await f.recipient.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  // Pi places one steer per tool round: the first two keep the run going, so one final answer settles all three.
+  for (const text of ['First\nHOLD', 'Second\nHOLD', 'Third'])
+    await f.send(String(f.recipient.id), text, { reply: true, steer: true })
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(InboxDoc, f.recipient.id, context))!.items.length === 3,
+  )
+  f.hold.release()
+  await until(async () =>
+    (await f.log())!.messages.every((m) => m.from !== 1 || m.state === 'answered'),
+  )
+  await f.opened.harness.waitForIdle(context)
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      (t) => t.record.kind !== 'board.delivery',
+    ),
+  )
+  const log = (await f.log())!.messages
+  expect(log.filter((m) => m.from === 1).map((m) => m.state)).toEqual([
+    'answered',
+    'answered',
+    'answered',
+  ])
+  expect(log.filter((m) => m.from === f.recipient.id)).toHaveLength(1)
+  expect(await replies(f)).toHaveLength(1)
+})
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)
@@ -1566,11 +1598,33 @@ it("routes @ultimate's final answer to a branch's reply back to the branch, once
     [false, expect.any(Number)],
   ])
   expect(toBranch[1].text).toContain('Reply from')
-  // The branch woke, and its answer to the routed weigh-in is an echo: @ultimate's answer to it stays local.
+  // The branch woke, and its answer to the routed weigh-in is an echo: a note to @ultimate.
   expect((await b.from()).map((m) => [m.re, m.report, m.echo])).toEqual([
     [1, undefined, undefined],
-    [undefined, true, true],
+    [undefined, undefined, true],
   ])
+})
+it("leaves a branch's answer to @ultimate's routed answer as a note that does not wake @ultimate", async () => {
+  // #590943/599476 "OK, holding quietly." woke @ultimate (#574726/599490), whose answer went down; the branch's
+  // "Holding." (#590943/599498) woke @ultimate again (#574726/599502). It happened four times.
+  const f = await fixture()
+  const b = await branched(f)
+  await b.later('OK, holding quietly. WEIGH')
+  await f.opened.root.waitForIdle(context)
+  await b.settled()
+  await b.branch.waitForIdle(context)
+  await b.settled()
+  const [, report, echo] = await b.from()
+  expect([report.report, echo?.echo, echo?.report]).toEqual([true, true, undefined])
+  const view = await f.opened.root.context(context)
+  const note = view.entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === echo.id,
+  )!
+  expect([note.data, note.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
+  expect(view.entries.filter((e) => e.id > note.id && e.kind === 'pi.assistant')).toHaveLength(0)
 })
 it("sends @ultimate's answer to a branch it concluded to the agent whose request the branch worked on", async () => {
   // danielgriesser.com: @writer asked @ultimate for a briefing, got "I've started branch #14919", and the briefing,

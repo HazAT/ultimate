@@ -209,6 +209,21 @@ export function delivery(host: ExtensionHost) {
               ? `ended its turn without an answer (${settled.status === 'unanswered' ? settled.reason : settled.status})`
               : undefined
           const state = stopped ? 'stopped' : failed ? 'failed' : undefined
+          // One answer to several of the sender's messages goes back once: the others it answers just close. Another
+          // Ultimate's requests each wait on their own key, so they each get it.
+          if (
+            !failed &&
+            !m.remote &&
+            (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
+              (r) => r.answer === answer && r.from === m.to && r.to === m.from,
+            )
+          ) {
+            if (original) {
+              original.state = 'answered'
+              original.answer = answer
+            }
+            return terminal
+          }
           if (original) {
             original.state = state ?? 'answered'
             if (answer !== undefined) original.answer = answer

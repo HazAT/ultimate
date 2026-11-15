@@ -15,9 +15,9 @@ conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
   `steer: true`, the default for @ultimate's messages and `false` for everyone else. A message to a concluded
   conversation resumes it.
 - **Answers.** With `reply` (the default) the recipient's final answer returns as a `board.reply`, steering the sender;
-  an unanswered input returns a `failed` reply, or `stopped` when a person pressed Stop. Answer directly instead of
-  messaging the sender: a reply-enabled message back to a sender whose message you have read and owe becomes that
-  answer and ends your run. A message still queued is unread and never owed. `reply: false` is one-way: it wakes the
+  one answer to several of the sender's messages returns once and closes them all. An unanswered input returns a
+  `failed` reply, or `stopped` when a person pressed Stop. Answer directly instead of messaging the sender: a
+  reply-enabled message back to a sender whose message you have read and owe becomes that answer and ends your run. A message still queued is unread and never owed. `reply: false` is one-way: it wakes the
   recipient and returns nothing.
 - **Images.** `images` forwards images from the sender's own conversation: `'latest'` takes the newest entry with
   images in the current turn (its input, or a tool result such as a screenshot since) and fails when there is none; an
@@ -44,9 +44,10 @@ report.**
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
-Routing cannot loop: an answer to a routed answer is an `echo` and routes no further. A branch whose latest report or
-reply came after @ultimate's latest message to it shows as `awaiting @ultimate`, as does one with a reply-enabled
-message to @ultimate open; @ultimate messaging or concluding it clears that.
+Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
+further. A branch whose latest report or reply came after @ultimate's latest message to it shows as `awaiting
+@ultimate`, as does one with a reply-enabled message to @ultimate open; @ultimate messaging or concluding it clears
+that.
 
 ### Messages to the user
 
