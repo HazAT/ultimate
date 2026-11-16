@@ -98,7 +98,12 @@ async function ensureOne(host: ExtensionHost, builtIn: BuiltIn, seed: Seed | und
   const createdOrRecoveredByKey = (await host.invoke(
     'automations',
     'create',
-    { name, condition, subscribers: ['@ultimate'], key: `dream:${doc.definition.kind}` },
+    {
+      name,
+      condition: carried?.condition ?? condition,
+      subscribers: ['@ultimate'],
+      key: `dream:${doc.definition.kind}`,
+    },
     signal,
   )) as Automation
   if (carried?.enabled === false && createdOrRecoveredByKey.enabled)

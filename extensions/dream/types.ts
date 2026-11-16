@@ -39,10 +39,12 @@ export type Seed = {
     automations: number
     scripts: number
   }
-  builtIn?: { enabled: boolean } | null
-  builtInPause?: { enabled: boolean } | null
+  builtIn?: BuiltInSeed | null
+  builtInPause?: BuiltInSeed | null
   continues: { conversation: ConversationId; handoff: string }
 }
+
+type BuiltInSeed = { enabled: boolean; condition?: CreateArgs['condition'] }
 
 export const PASSES = ['memory', 'failures', 'tools', 'corrections', 'codify', 'project'] as const
 export type PassName = (typeof PASSES)[number]

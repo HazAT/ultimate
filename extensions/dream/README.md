@@ -30,7 +30,8 @@ Dream ships two ordinary context automations that subscribe @ultimate (`built-in
 is made once per chapter when the harness opens or @ultimate first starts; their ids are kept in
 `dream.after-compaction` and `dream.after-pause` on conversation 1. They show in the Automations panel like any other:
 thresholds are edited there, pausing one stops its dreams, deleting one is remembered (dream does not make it again),
-and a new chapter makes them again as the seed carried them (`builtIn`, `builtInPause`; paused stays paused). A lost
+and a new chapter makes them again as the seed carried them (`builtIn`, `builtInPause`: paused stays paused, and an
+edited threshold, pause or cooldown stays edited; a seed without a condition gets the defaults above). A lost
 create's receipt is found by name and trigger target, never by threshold or subscribers, so none is made twice. As
 any condition, each fires once, re-arms 10 points below its threshold and waits an hour between fires.
 
