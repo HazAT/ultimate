@@ -1,114 +1,127 @@
 import { mkdir, readdir, readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import type { ConversationId, ToolExecutionApi } from '@earendil-works/pi-durable'
+import type { ToolExecutionApi } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import type { createBashTool } from '@earendil-works/pi-durable/tools'
 import codingTools from '../../server.ts'
-import { stopConcluded, sweepEarlierProcesses } from '../../background.ts'
+import { sweepEarlierProcesses } from '../../background.ts'
 import { context } from '../../../../server/harness.ts'
 import { groupAlive, groupTarget, spawnGroup, stopGroup } from '../../../../lib/process-group.ts'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
-import { removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
-let home: string
-const ids = [7, 8, 9] as ConversationId[]
-let concluded: Set<ConversationId>
+let directory: string
+let server: Awaited<ReturnType<typeof fauxServer>>
+const started: number[] = []
 
 beforeEach(async () => {
-  home = await temp('ultimate-background-')
-  concluded = new Set()
+  directory = await temp('ultimate-background-')
+  server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    home: join(directory, 'home'),
+    userHome: directory,
+  })
 })
 afterEach(async () => {
-  await stopConcluded(home, ids, Infinity)
-  await removeTemp(home)
+  await server.close()
+  await sweepEarlierProcesses(join(directory, 'home'), () => false)
+  await until(() => started.splice(0).every((pgid) => !groupAlive(pgid)))
+  await removeTemp(directory)
 })
 
-function tools() {
-  const extension = codingTools({
-    home,
-    need: (() => ({ concludedIn: async () => concluded })) as never,
-    notice: () => {},
-    emit: (async () => undefined) as unknown as ExtensionHost['emit'],
-    onOpen: () => {},
-    react: () => {},
-  })
-  const bash = extension.tools!.find((tool) => tool.name === 'bash') as ReturnType<
-    typeof createBashTool
-  >
-  return async (command: string, conversation = 7) => {
-    const api = {
-      conversationId: conversation as ConversationId,
-      env: new NodeExecutionEnv({ cwd: home }),
-      commit: (change: (tx: unknown) => unknown) =>
-        change({ conversation: async () => ({ ownership: { kind: 'ownerless' } }) }),
-    } as unknown as ToolExecutionApi
-    const result = await bash.execute({ command, background: true } as never, api, context)
-    const text = (result.output as { text: string }[])[0].text
-    return {
-      text,
-      pgid: Number(/process group (\d+)/.exec(text)![1]),
-      log: /Output: (.+)/.exec(text)![1],
-    }
-  }
+async function background(conversation: ConversationId, command: string) {
+  server.host.faux!.setResponses([
+    fauxAssistantMessage([fauxToolCall('bash', { command, background: true })], {
+      stopReason: 'toolUse',
+    }),
+    fauxAssistantMessage('Started'),
+  ])
+  const handle = (await server.harness.conversation(conversation, context))!
+  await (await handle.submit({ type: 'input', content: 'Start it' }, context)).wait(context)
+  const view = await handle.context(context)
+  const text = JSON.stringify(
+    view.entries.filter((entry: { kind: string }) => entry.kind === 'pi.tool-result').at(-1)?.model,
+  )
+  const pgid = Number(/process group (\d+)/.exec(text)![1])
+  started.push(pgid)
+  return { pgid, log: /Output: ([^\\]+)/.exec(text)![1] }
 }
 
-const files = async (id: number) => readdir(join(home, 'background', String(id)))
-
-it('stops a group whose start raced its conversation concluding', async () => {
-  const background = tools()
-  concluded.add(7 as ConversationId)
-  await expect(background('echo started > marker; exec sleep 300')).rejects.toThrow(
-    'This conversation is concluded',
-  )
-  expect(await files(7)).toEqual([expect.stringMatching(/\.log$/)])
-})
+const create = async () => (await post(server, '/api/conversations', {})).data.id as ConversationId
+const conversationAction = (name: string, ids: number[]) =>
+  post(server, `/api/extensions/conversations/actions/${name}`, { args: { ids } })
+const groupsOf = async (id: number) =>
+  readdir(join(server.host.home, 'background', String(id))).catch(() => [])
 
 it('starts a command in its own group, logs its output and stops by the returned group', async () => {
-  const background = tools()
-  const started = await background('echo ready; echo oops >&2; exec sleep 300')
-  expect(started.text).toContain(`kill -- -${started.pgid}`)
-  expect(started.log.startsWith(join(home, 'background', '7'))).toBe(true)
-  await until(async () => (await readFile(started.log, 'utf8')) === 'ready\noops\n')
-  expect(groupAlive(started.pgid)).toBe(true)
-  process.kill(groupTarget(started.pgid), 'SIGTERM')
-  await until(() => !groupAlive(started.pgid))
-  await until(async () => !(await files(7)).some((file) => file.endsWith('.pid')))
+  const id = await create()
+  const { pgid, log } = await background(id, 'echo ready; echo oops >&2; exec sleep 300')
+  expect(log.startsWith(join(server.host.home, 'background', String(id)))).toBe(true)
+  await until(async () => (await readFile(log, 'utf8')) === 'ready\noops\n')
+  expect(groupAlive(pgid)).toBe(true)
+  process.kill(groupTarget(pgid), 'SIGTERM')
+  await until(() => !groupAlive(pgid))
+  await until(async () => !(await groupsOf(id)).some((file) => file.endsWith('.pid')))
 })
 
-it('stops the groups of concluded conversations started before the conclusion, and no others', async () => {
-  const background = tools()
-  const [mine, child, other] = [
-    await background('exec sleep 300', 7),
-    await background('exec sleep 300', 8),
-    await background('exec sleep 300', 9),
-  ]
-  const concludedAt = Date.now()
-  await until(() => Date.now() > concludedAt)
-  const resumed = await background('exec sleep 300', 7)
-  await stopConcluded(home, [7, 8] as ConversationId[], concludedAt)
-  expect([mine, child].map(({ pgid }) => groupAlive(pgid))).toEqual([false, false])
-  expect([other, resumed].map(({ pgid }) => groupAlive(pgid))).toEqual([true, true])
-  const resumedName = basename(resumed.log, '.log')
-  expect((await files(7)).toSorted()).toEqual([
-    `${resumedName}.log`,
-    `${resumedName}.pid`,
-    `${resumedName}.pid.start`,
-  ])
-  expect(await files(8)).toEqual([])
+it('concluding stops the groups started before it, and a resumed conversation keeps its new ones', async () => {
+  const [concluded, other] = [await create(), await create()]
+  const before = await background(concluded, 'exec sleep 300')
+  const untouched = await background(other, 'exec sleep 300')
+  expect((await conversationAction('conclude', [concluded])).status).toBe(200)
+  await until(() => !groupAlive(before.pgid))
+  await until(async () => (await groupsOf(concluded)).length === 0)
+  expect((await conversationAction('resume', [concluded])).status).toBe(200)
+  const after = await background(concluded, 'exec sleep 300')
+  expect((await conversationAction('conclude', [other])).status).toBe(200)
+  await until(() => !groupAlive(untouched.pgid))
+  expect(groupAlive(after.pgid)).toBe(true)
+})
+
+it('stops the new group when the commit that records it fails', async () => {
+  const home = join(directory, 'direct')
+  const bash = codingTools({
+    home,
+    need: (() => ({ concludedIn: async () => new Set() })) as never,
+    notice: () => {},
+    emit: (async () => undefined) as never,
+    onOpen: () => {},
+    react: () => {},
+  }).tools!.find((tool) => tool.name === 'bash') as ReturnType<typeof createBashTool>
+  const spawned: number[] = []
+  const api = {
+    conversationId: 7,
+    env: new NodeExecutionEnv({ cwd: directory }),
+    commit: async () => {
+      const groups = join(home, 'background', '7')
+      const pidFile = (await readdir(groups)).find((file) => file.endsWith('.pid'))!
+      spawned.push(Number(await readFile(join(groups, pidFile), 'utf8')))
+      started.push(...spawned)
+      expect(groupAlive(spawned[0])).toBe(true)
+      throw new Error('aborted by the conclusion')
+    },
+  } as unknown as ToolExecutionApi
+  await expect(
+    bash.execute({ command: 'exec sleep 300', background: true } as never, api, context),
+  ).rejects.toThrow('aborted by the conclusion')
+  expect(spawned).toHaveLength(1)
+  expect(groupAlive(spawned[0])).toBe(false)
+  expect(
+    (await readdir(join(home, 'background', '7'))).every((file) => !file.endsWith('.pid')),
+  ).toBe(true)
 })
 
 it('stops on open what an earlier process recorded and keeps its own', async () => {
-  const background = tools()
-  const own = await background('exec sleep 300', 7)
-  const directory = join(home, 'background', '8')
-  await mkdir(directory)
-  const pidFile = join(directory, '1234567-1-earlier.pid')
-  const leftover = spawnGroup('sleep', ['300'], { pidFile })
+  const id = await create()
+  const own = await background(id, 'exec sleep 300')
+  const earlier = join(server.host.home, 'background', '999')
+  await mkdir(earlier, { recursive: true })
+  const leftover = spawnGroup('sleep', ['300'], { pidFile: join(earlier, '1234567-x.pid') })
   const leftoverPid = leftover.child.pid!
   try {
-    expect(groupAlive(leftoverPid)).toBe(true)
-    await sweepEarlierProcesses(home)
+    await sweepEarlierProcesses(server.host.home)
     expect(groupAlive(leftoverPid)).toBe(false)
     expect(groupAlive(own.pgid)).toBe(true)
   } finally {

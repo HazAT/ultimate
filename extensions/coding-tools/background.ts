@@ -1,22 +1,33 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { Tx } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMissing, inProcess } from '../../lib/errors.ts'
-import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
+import { readPidFile, spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
-type Host = Pick<ExtensionHost, 'home' | 'notice'>
+export type Started = { conversation: ConversationId; name: string }
+
+export const BackgroundGroups = defineDoc<{ started: Record<string, string[]> }>({
+  kind: 'coding-tools.background',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ started: {} }),
+})
 
 const groups = (home: string) => join(home, 'background')
 const conversationGroups = (home: string, id: string) => join(groups(home), id)
 const startedByThisProcess = (name: string) => name.startsWith(`${process.pid}-`)
-const startedAfter = (at: number) => (name: string) => Number(name.split('-')[1]) > at
 const quoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`
 
 export async function startBackground(
-  host: Host,
+  host: Pick<ExtensionHost, 'home' | 'notice'>,
   conversation: ConversationId,
   cwd: string,
   command: string,
@@ -25,7 +36,7 @@ export async function startBackground(
   const directory = conversationGroups(host.home, String(conversation))
   await mkdir(directory, { recursive: true })
   signal?.throwIfAborted()
-  const name = `${process.pid}-${Date.now()}-${randomUUID()}`
+  const name = `${process.pid}-${randomUUID()}`
   const pidFile = join(directory, `${name}.pid`)
   const log = join(directory, `${name}.log`)
   writeFileSync(log, '')
@@ -43,7 +54,36 @@ export async function startBackground(
       .then(() => stopGroup(pid, { pidFile, leader: group }))
       .catch((error: unknown) => host.notice(`Background group ${pid}: ${String(error)}`)),
   )
-  return { pgid: pid, log, stop: () => stopGroup(pid, { pidFile, leader: group }) }
+  return {
+    pgid: pid,
+    log,
+    started: { conversation, name },
+    stop: () => stopGroup(pid, { pidFile, leader: group }),
+  }
+}
+
+export async function recordStarted(tx: Tx, { conversation, name }: Started) {
+  const { started } = await tx.doc(BackgroundGroups, ROOT_CONVERSATION_ID)
+  started[conversation] = [...(started[conversation] ?? []), name]
+}
+
+export async function takeStarted(tx: Tx, conversations: ConversationId[]) {
+  const { started } = await tx.doc(BackgroundGroups, ROOT_CONVERSATION_ID)
+  const taken: Started[] = []
+  for (const conversation of conversations) {
+    for (const name of started[conversation] ?? []) taken.push({ conversation, name })
+    delete started[conversation]
+  }
+  return taken
+}
+
+export async function stopStarted(home: string, taken: Started[]) {
+  for (const { conversation, name } of taken) {
+    const pidFile = join(conversationGroups(home, String(conversation)), `${name}.pid`)
+    const pid = await readPidFile(pidFile)
+    if (pid) await stopGroup(pid, { pidFile })
+    await rm(join(conversationGroups(home, String(conversation)), `${name}.log`), { force: true })
+  }
 }
 
 async function filesIn(directory: string) {
@@ -55,17 +95,11 @@ async function filesIn(directory: string) {
   }
 }
 
-async function sweep(home: string, ids: string[], keep: (name: string) => boolean) {
-  for (const id of ids) {
+export async function sweepEarlierProcesses(home: string, keep = startedByThisProcess) {
+  for (const id of await filesIn(groups(home))) {
     const directory = conversationGroups(home, id)
     await sweepPidFiles(directory, keep)
     for (const file of await filesIn(directory))
       if (!keep(file)) await rm(join(directory, file), { force: true })
   }
 }
-
-export const stopConcluded = (home: string, ids: ConversationId[], concludedAt: number) =>
-  sweep(home, ids.map(String), startedAfter(concludedAt))
-
-export const sweepEarlierProcesses = async (home: string) =>
-  sweep(home, await filesIn(groups(home)), startedByThisProcess)

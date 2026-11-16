@@ -29,10 +29,18 @@ import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { watchSteer } from '../../lib/steer.ts'
-import { CancelAction, CancelledDoc, Committed } from './refs.ts'
+import { BackgroundStarted, CancelAction, CancelledDoc, Committed } from './refs.ts'
 import { Concluded, ConversationsApi } from '../conversations/api.ts'
 import { defineEffect } from '../../lib/effect.ts'
-import { startBackground, stopConcluded, sweepEarlierProcesses } from './background.ts'
+import {
+  BackgroundGroups,
+  recordStarted,
+  startBackground,
+  type Started,
+  stopStarted,
+  sweepEarlierProcesses,
+  takeStarted,
+} from './background.ts'
 
 const modelSizedImages = await createNodePhotonImages()
 
@@ -96,7 +104,7 @@ const DurableCancellations = defineDoc<{ calls: Record<string, number> }>({
   fork: 'initial',
   initial: () => ({ calls: {} }),
 })
-export const docs = [DurableCancellations]
+export const docs = [DurableCancellations, BackgroundGroups]
 
 function took(ms: number) {
   const seconds = Math.round(ms / 1000)
@@ -254,23 +262,27 @@ export default function codingTools(
       host.notice(`Stopping background processes an earlier Ultimate left: ${String(error)}`),
     ),
   )
-  const StopBackground = defineEffect<{ conversations: ConversationId[]; at: number }, null>(
+  const StopBackground = defineEffect<{ groups: Started[] }, null>(
     'coding-tools.stop-background',
-    async ({ conversations, at }) => {
-      await stopConcluded(host.home, conversations, at)
+    async ({ groups }) => {
+      await stopStarted(host.home, groups)
       return null
     },
-    async (_tx, { conversations }, outcome) => {
+    async (_tx, { groups }, outcome) => {
       if (!outcome.ok)
         host.notice(
-          `Stopping background processes of #${conversations.join(', #')} failed: ${outcome.error}`,
+          `Stopping background processes of #${[...new Set(groups.map((group) => group.conversation))].join(', #')} failed: ${outcome.error}`,
         )
     },
   )
-  host.react('stop-background', [Concluded], async (tx, event) => {
+  host.react('stop-background', [BackgroundStarted, Concluded], async (tx, event) => {
+    if (BackgroundStarted.is(event)) return recordStarted(tx, event.data)
+    if (!Concluded.is(event)) return
+    const groups = await takeStarted(tx, event.data.conversations)
+    if (!groups.length) return
     await tx.createTask(
       StopBackground,
-      { conversations: event.data.conversations, at: Date.parse(event.at) },
+      { groups },
       {
         conversationId: ROOT_CONVERSATION_ID,
         ownership: { kind: 'conversation' },
@@ -306,7 +318,7 @@ export default function codingTools(
     async execute({ interruptible, background, ...args }, api, context) {
       if (background) {
         if (!api.env) throw new Error('No execution environment is configured')
-        const { pgid, log, stop } = await startBackground(
+        const { pgid, log, started, stop } = await startBackground(
           host,
           api.conversationId,
           api.env.cwd,
@@ -314,14 +326,20 @@ export default function codingTools(
           context.abortSignal,
         )
         const conversations = host.need(ConversationsApi)
-        const concluded = await api.commit(async (tx) => {
-          const ended = await conversations.concludedIn(tx)
-          for (let id: ConversationId | undefined = api.conversationId; id !== undefined;) {
-            if (ended.has(id)) return true
-            id = (await tx.conversation(id))?.owner?.conversationId
-          }
-          return false
-        }, context)
+        const concluded = await api
+          .commit(async (tx) => {
+            const ended = await conversations.concludedIn(tx)
+            for (let id: ConversationId | undefined = api.conversationId; id !== undefined;) {
+              if (ended.has(id)) return true
+              id = (await tx.conversation(id))?.owner?.conversationId
+            }
+            await host.emit(tx, BackgroundStarted, started)
+            return false
+          }, context)
+          .catch(async (error: unknown) => {
+            await stop()
+            throw error
+          })
         if (concluded) {
           await stop()
           throw new Error('This conversation is concluded; its background processes are stopped')
