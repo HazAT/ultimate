@@ -294,7 +294,7 @@ function globals(
     {
       name: 'trace',
       description:
-        'Recorded calls (service, action, reactor, tool, model): the newest `limit` (default 100, at most 1000), oldest first; filter by trace id, conversation or ISO `since`.',
+        "Recorded calls (service, action, reactor, tool, model) within the trace's retention (about 7 days, or the newest 200,000 calls): the newest `limit` (default 100, at most 1000), oldest first; filter by trace id, conversation or ISO `since`. It returns the newest rows only, so on a busy project a query covers hours rather than the whole window; read conversation entries for older failures.",
       signature:
         '(query?: { trace?: string; conversation?: number; since?: string; limit?: number; project?: string; machine?: string }): Promise<{ id: string; parent?: string; trace: string; at: string; ms: number; caller: string; callee: string; kind: string; name: string; ok: boolean; error?: string; args?: string; result?: string; conversation?: number; task?: number; entry?: number }[]>',
       execute: read('trace', 0),
