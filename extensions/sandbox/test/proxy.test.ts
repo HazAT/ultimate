@@ -17,7 +17,7 @@ async function setup(allowPort: (port: number) => string[]) {
   await once(echo, 'listening')
   const port = (echo.address() as { port: number }).port
   cleanup.push(() => new Promise((resolve) => echo.close(resolve)))
-  const socketPath = join(await temp('sbx-'), 'p.sock')
+  const socketPath = join(await temp('sbx-', '/tmp'), 'p.sock')
   const proxy = await startProxy(socketPath, allowPort(port))
   cleanup.push(() => proxy.close())
   return { port, socketPath, proxy }
