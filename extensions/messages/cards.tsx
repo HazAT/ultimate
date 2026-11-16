@@ -361,25 +361,26 @@ export function StretchSummary({ rows, steps, working, entries }: CompactSummary
     ),
   ].filter((id) => id !== 'lander')
   const count = counted.length
+  const named = who.slice(0, who.length > 2 ? 1 : 2)
   const stepped = steps > 0 && `${steps} step${steps === 1 ? '' : 's'}`
   return (
     <span className="flex min-w-0 items-center gap-1.5" data-compact-stretch>
       <span className="shrink-0">
         {count > 0 ? `${count} update${count === 1 ? '' : 's'}` : stepped}
       </span>
-      {who.slice(0, 2).map((id) => (
-        <span className="flex min-w-0" key={id}>
+      {named.map((id) => (
+        <span className="flex min-w-0 overflow-hidden" key={id}>
           <Address id={id} />
         </span>
       ))}
-      {who.length > 2 && <span className="shrink-0">+{who.length - 2}</span>}
+      {who.length > named.length && <span className="shrink-0">+{who.length - named.length}</span>}
       {count > 0 && stepped && <span className="shrink-0 max-sm:hidden">· {stepped}</span>}
-      {shas.map((sha) => (
-        <span className="flex shrink-0 items-center gap-1" key={sha}>
+      {shas.length > 0 && (
+        <span className="flex shrink-0 items-center gap-1" title={shas.join(' ')}>
           · <CheckIcon className="size-3 text-success" />
-          landed {sha}
+          {shas.length === 1 ? `landed ${shas[0]}` : `${shas.length} landed`}
         </span>
-      ))}
+      )}
       {reloaded && <span className="shrink-0 max-sm:hidden">· reloaded</span>}
       {written > 0 && (
         <span className="shrink-0 text-warning/80" data-cache-rebuilt={written}>
