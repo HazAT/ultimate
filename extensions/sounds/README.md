@@ -45,10 +45,54 @@ several machines each speak. A tab keeps the lines it claimed in its session unt
 when the page reloads onto a new web bundle (a landing that changes the UI) is said after the switch; any other reload
 drops them.
 
-The `say` action (`server.ts`) speaks a line with OpenAI's `gpt-realtime-2.1-mini` over one realtime WebSocket
-response, with the `OPENAI_API_KEY` secret that voice input uses (or an API key Pi's `openai` provider holds), and keeps
-the last 50 lines in memory, so a repeat plays at once. The line's text, branch titles included, goes to OpenAI.
-Without a key the browser's own `speechSynthesis` says it. The voice plays through the same volume.
+The `say` action (`server.ts`) defaults to OpenAI's `gpt-realtime-2.1-mini` over one realtime WebSocket response,
+with the `OPENAI_API_KEY` secret that voice input uses (or an API key Pi's `openai` provider holds). The line's text,
+branch titles included, goes to OpenAI when that voice is used. Without a key, or if speaking fails, the browser's own
+`speechSynthesis` says it. Browser voices depend on the browser and OS and are not necessarily offline. Server audio
+plays through the same volume. Lines have a 300-character limit and a 20-second deadline; the last 50 successful
+lines are cached by source, command and text. Set `sounds.voice` to `off` to use browser speech only, without
+server audio or OpenAI access, even for a previously cached line.
+
+### Local command
+
+To use a local speech program without an API key, set `sounds.voice` to `local` and `sounds.command` to an executable
+and its arguments. User settings (`~/.ultimate/settings.json`) and trusted project settings (`.ultimate/settings.json`)
+merge by `sounds` member, project winning:
+
+```json
+{
+  "sounds": {
+    "voice": "local",
+    "command": ["/absolute/path/my-tts"]
+  }
+}
+```
+
+The command receives the line as UTF-8 on stdin, followed by EOF. It must write **signed PCM16 little-endian,
+mono, at 24 kHz** to stdout, either headerless or in a RIFF/WAVE container (PCM format 1). WAV format and data chunks
+are checked; unsupported formats and truncated chunks are refused. Diagnostics belong on stderr. The command must
+exit successfully. Arguments are literal, with no `~`, variable or pipe expansion unless you explicitly run a shell.
+Use absolute paths for scripts and model files. Ultimate does not install a runtime or model, resample audio, or
+manage a daemon. Voice, rate and model selection belong to the command.
+
+A missing command, non-zero exit, invalid audio, oversized output (a 60-second PCM byte budget) or the deadline
+leaves speech to the browser, **never to OpenAI**. Command failures are logged with bounded stderr. Headerless PCM
+has no sample-rate metadata; its producer must honor the format. Cancellation kills the command, not a separate
+service or its descendants; wrappers are responsible for their own child processes and temporary files.
+
+**macOS:** built-in `say` can write a matching WAV with
+`say --file-format=WAVE --data-format=LEI16@24000 --channels=1 -o <file>`, using an installed system voice. It cannot
+stream to stdout, so a command can write a temporary WAV and send the file to stdout. This two-line example was
+verified through the narrator action; use it as the final argument of `sounds.command: ["sh", "-c", "…"]`:
+
+```sh
+dir=$(mktemp -d) || exit; trap 'rm -rf "$dir"' EXIT
+/usr/bin/say --file-format=WAVE --data-format=LEI16@24000 --channels=1 -o "$dir/speech.wav" && cat "$dir/speech.wav"
+```
+
+**Kokoro:** use your own kokoro-onnx or MLX runner that reads stdin and emits 24 kHz mono PCM16 or a matching WAV on
+stdout. It may be a client of an already-running service. Kokoro is not a Sounds dependency; model setup, output
+conversion and service lifecycle stay with that command, outside Ultimate.
 
 ## Sound of agents
 
