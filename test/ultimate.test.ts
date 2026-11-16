@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterAll, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -21,14 +21,14 @@ import { fauxServer, seedTally, sourceCopy, temp, removeTemp, until, post } from
 type Server = Awaited<ReturnType<typeof fauxServer>>
 const servers: Server[] = []
 const homes: string[] = []
-// Close the servers once the file is done. Run its tests sequentially: five fixture boots on one worker delayed
-// each other by 7-22 s under bounded load; sequential boots took 2-7 s, without slowing the file overall.
-afterAll(async () => {
-  // Capture both lists before close can yield to another test's setup.
+// Run the file's tests sequentially: five fixture boots on one worker delayed each other by 7-22 s under bounded load;
+// sequential boots took 2-7 s. Close each test's servers and remove its home when it ends: one afterAll closing all ten
+// and removing ten source copies took over 5 s under load, as each synchronous SQLite close blocks the event loop.
+afterEach(async () => {
   const closing = servers.splice(0)
   const taken = homes.splice(0)
   await Promise.all(closing.map((server) => server.close()))
-  for (const home of taken) await removeTemp(home)
+  await Promise.all(taken.map(removeTemp))
 })
 function textOf(content: unknown): string {
   return typeof content === 'string'
