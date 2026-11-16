@@ -65,6 +65,8 @@ export interface SurfaceContribution {
   /** Position after Agent in the switcher, ⌘K, and `mod+1…9`; lower first (default 0), then by title. */
   order?: number
   component: ComponentType
+  /** A small component after the title in the title bar's tab, such as a count of what waits there; render nothing to show none. */
+  badge?: ComponentType
 }
 
 /** One tool call as the transcript sees it: the model's call, live progress, and the result. */
