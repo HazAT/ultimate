@@ -1,5 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import type { ConversationId, PromptInput, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
@@ -20,7 +21,7 @@ import { discoverAgents } from '../../lib/agents.ts'
 import { git } from '../../lib/git.ts'
 import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
-import { Standing } from '../subagents/api.ts'
+import { Profile, Standing } from '../subagents/api.ts'
 import type { BuildNote, Landing } from './refs.ts'
 
 export const order = -100
@@ -190,6 +191,26 @@ export function instructionNote(changes: { instructions: string[]; docs: string[
     .join('\n')
 }
 
+async function definitionSkills(
+  host: ExtensionHost,
+  input: PromptInput,
+  context: Context,
+): Promise<string[] | undefined> {
+  const profile = await input.read.snapshot(Profile, input.conversationId, context)
+  if (profile?.adhoc) return undefined
+  const name =
+    profile?.definition ??
+    (await input.read.snapshot(host.metadata, input.conversationId, context))?.label
+  if (!name) return undefined
+  const { definitions } = await discoverAgents(
+    host.ultimateRoot,
+    host.projectRoot,
+    host.userHome,
+    host.modelRuntime,
+  )
+  return definitions.find((definition) => definition.name === name)?.skills
+}
+
 export default function prompt(host: ExtensionHost) {
   return defineExtension({
     name: 'prompt',
@@ -304,11 +325,16 @@ export default function prompt(host: ExtensionHost) {
           )
           .join('\n\n'),
       ),
-      section('skills', (input) => {
-        const skills = host.skills(input.env?.cwd ?? input.agent.cwd ?? host.projectRoot)
+      section('skills', async (input, context) => {
         const names = new Set((input.agent.tools ?? []).map((tool) => tool.name))
         const reader = (['read', 'bash'] as const).find((name) => names.has(name))
-        const listed = reader ? formatSkillsForPrompt(skills, reader).trim() : ''
+        if (!reader) return undefined
+        const skills = host.skills(input.env?.cwd ?? input.agent.cwd ?? host.projectRoot)
+        const allowed = await definitionSkills(host, input, context)
+        const listed = formatSkillsForPrompt(
+          allowed ? skills.filter((skill) => allowed.includes(skill.name)) : skills,
+          reader,
+        ).trim()
         return listed
           ? `${listed}\nWhen a task matches a listed skill, read it before you start; it carries the steps the project expects.`
           : undefined

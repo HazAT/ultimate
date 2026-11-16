@@ -403,6 +403,9 @@ export const actions = {
           ...new Map([...main.tools, ...main.deferred].map((tool) => [tool.name, tool])).values(),
         ].map((tool) => ({ name: tool.name, description: tool.description })),
       },
+      skills: host
+        .skills(host.projectRoot)
+        .map((skill) => ({ name: skill.name, description: skill.description })),
       scopes: {
         user: join(host.userHome, '.ultimate/agents'),
         project: join(host.projectRoot, '.ultimate/agents'),
@@ -452,6 +455,7 @@ export const actions = {
       family,
       tools,
       denyTools,
+      skills,
       isolate,
       resident,
       fast,
@@ -473,6 +477,11 @@ export const actions = {
       (!Array.isArray(denyTools) || !denyTools.every((tool) => typeof tool === 'string'))
     )
       throw new Error('denyTools must be a list of tool names')
+    if (
+      skills !== undefined &&
+      (!Array.isArray(skills) || !skills.every((skill) => typeof skill === 'string'))
+    )
+      throw new Error('skills must be a list of skill names')
     if (isolate !== undefined && isolate !== 'none' && isolate !== 'worktree')
       throw new Error('isolate must be none or worktree')
     if (resident !== undefined && typeof resident !== 'boolean')
@@ -495,6 +504,7 @@ export const actions = {
       ...(family ? { family } : {}),
       ...(tools ? { tools } : {}),
       ...(denyTools?.length ? { denyTools } : {}),
+      ...(skills ? { skills } : {}),
       ...(isolate ? { isolate } : {}),
       ...(resident !== undefined ? { resident } : {}),
       ...(fast ? { fast } : {}),

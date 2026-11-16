@@ -368,6 +368,86 @@ export function ToolsField({
   )
 }
 
+export function SkillsField({
+  value,
+  skills,
+  onChange,
+}: {
+  value: string[] | null
+  skills: { name: string; description: string }[]
+  onChange: (value: string[] | null) => void
+}) {
+  const all = skills.map((skill) => skill.name)
+  const selected = value ?? all
+  const unknown = (value ?? []).filter((name) => !all.includes(name))
+  return (
+    <Field
+      aside={
+        <label className="flex items-center gap-1.5 font-sans text-[11.5px] text-muted-foreground">
+          all skills
+          <Switch
+            checked={value === null}
+            aria-label="All skills"
+            onCheckedChange={(every) => onChange(every ? null : all)}
+          />
+        </label>
+      }
+      hint={
+        value === null
+          ? `Every project skill (${all.length}), including ones added later.`
+          : `${value.length} of ${all.length} skills listed in its prompt. /skill:name still runs any skill.`
+      }
+      label="Skills"
+    >
+      <div
+        className={cn(
+          'grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-md border border-border/70 px-2 py-1.5 font-mono text-[11.5px]',
+          value === null && 'opacity-50',
+        )}
+      >
+        {skills.map((skill) => (
+          <label
+            className="flex min-w-0 items-center gap-1.5 py-0.5"
+            key={skill.name}
+            title={skill.description}
+          >
+            <input
+              checked={selected.includes(skill.name)}
+              className="size-3 shrink-0 accent-brand"
+              disabled={value === null}
+              onChange={(event) =>
+                value &&
+                onChange(
+                  event.target.checked
+                    ? all.filter((name) => name === skill.name || value.includes(name))
+                    : value.filter((name) => name !== skill.name),
+                )
+              }
+              type="checkbox"
+            />
+            <span className="truncate">{skill.name}</span>
+          </label>
+        ))}
+        {unknown.map((name) => (
+          <label
+            className="flex min-w-0 items-center gap-1.5 py-0.5 text-error"
+            key={name}
+            title="No skill of this name: the agent gets nothing for it"
+          >
+            <input
+              checked
+              className="size-3 shrink-0 accent-error"
+              onChange={() => value && onChange(value.filter((n) => n !== name))}
+              type="checkbox"
+            />
+            <span className="truncate">{name}</span>
+          </label>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
 export function InstructionsEditor({
   value,
   onChange,
