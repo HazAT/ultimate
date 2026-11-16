@@ -2190,3 +2190,93 @@ it('names the project when another Ultimate cannot be reached, and marks the mes
     stopped.service().tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Hi' }, context),
   ).rejects.toThrow('poe2-rust is not running on this machine')
 })
+it("keeps another Ultimate's request open through interim answers and closes it with the served result", async () => {
+  // ultimate-eval #53: "I've started the A/B" used up the reply, and the result 14 min later reached no one.
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  const request = await actions.remote(
+    { key: 'ab', text: 'Run the A/B\nHOLD', reply: true, from },
+    f.action(),
+  )
+  await until(f.holding)
+  const handOn = () =>
+    f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID), context)
+  const serves = (await handOn()).serves!
+  expect(serves).toMatchObject({ message: request, from: 'remote', remote: { key: 'ab' } })
+  f.hold.release()
+  const posted = (n: number) => until(() => other.posted.length === n)
+  await posted(1)
+  expect(other.posted[0].body).toMatchObject({
+    key: 'ab',
+    failed: false,
+    interim: expect.any(Number),
+  })
+  const fire = async (text: string) => {
+    const fired = await f.opened.root.submit(
+      {
+        type: 'input',
+        content: `Automation A8 "ab" fired: ${text}`,
+        entry: {
+          kind: 'automations.fired',
+          data: { id: 'A8', name: 'ab', text, serves, at: Date.now() },
+        },
+      },
+      context,
+    )
+    return fired
+  }
+  // A fire that finds the job still running hands the request on to a new check-back: still interim.
+  await fire('still running\nHOLD')
+  await until(() => f.holding())
+  await until(async () => (await handOn()).serves !== undefined)
+  f.hold.release()
+  await posted(2)
+  expect(other.posted[1].body).toMatchObject({ key: 'ab', interim: expect.any(Number) })
+  await fire('done')
+  await posted(3)
+  expect(other.posted[2].body).toMatchObject({ key: 'ab', failed: false })
+  expect(other.posted[2].body).not.toHaveProperty('interim')
+  expect((other.posted[2].body as { text: string }).text).toContain(
+    `Result of automation A8 "ab", which worked on your message ${request}`,
+  )
+  await f.opened.root.waitForIdle(context)
+  expect(other.posted).toHaveLength(3)
+})
+it('takes interim replies as notes and wakes the asker once, with the result', async () => {
+  const other = await otherUltimate(() => [200, { result: 9 }])
+  const f = await remoteFixture(other.url)
+  const told = await f
+    .service()
+    .tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Run the A/B' }, context)
+  const key = (other.posted[0].body as { key: string }).key
+  await actions.remoteReply({ key, text: 'Started', failed: false, interim: 5 }, f.action())
+  // A replayed interim delivers once.
+  await actions.remoteReply({ key, text: 'Started', failed: false, interim: 5 }, f.action())
+  await actions.remoteReply({ key, text: 'Still running', failed: false, interim: 6 }, f.action())
+  await until(async () => (await replies(f)).length === 2)
+  await f.opened.root.waitForIdle(context)
+  const view = await f.opened.root.context(context)
+  expect(view.entries.filter((e) => e.kind === 'pi.assistant')).toHaveLength(0)
+  expect((await f.log())!.messages.find((m) => m.id === told.message)!.state).toBe('delivered')
+  await actions.remoteReply({ key, text: 'A/B passed', failed: false }, f.action())
+  await until(async () => (await replies(f)).length === 3)
+  await f.opened.root.waitForIdle(context)
+  const after = await f.opened.root.context(context)
+  expect(after.entries.filter((e) => e.kind === 'pi.assistant')).toHaveLength(1)
+  expect((await f.log())!.messages.find((m) => m.id === told.message)!.state).toBe('answered')
+})
+it('wakes @ultimate with the cause when its answer cannot reach the other Ultimate', async () => {
+  const closed = await otherUltimate(() => [200, {}])
+  servers.pop()!.close()
+  const f = await remoteFixture(closed.url)
+  await actions.remote({ key: 'down', text: 'Status?', reply: true, from }, f.action())
+  await until(async () =>
+    (await f.log())!.messages.some((m) => m.to === 'remote' && m.state === 'failed'),
+  )
+  await until(async () =>
+    (await replies(f)).some((e) => (e.data as { failed?: boolean }).failed === true),
+  )
+  const loud = (await replies(f)).find((e) => (e.data as { failed?: boolean }).failed)!
+  expect(JSON.stringify(loud.model)).toContain('The reply did not reach @ultimate@poe2-rust')
+  expect(f.observed.some((text) => text.includes('The reply did not reach'))).toBe(true)
+})

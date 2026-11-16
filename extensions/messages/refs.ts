@@ -57,6 +57,8 @@ export type Message = {
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
+  /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
+  interim?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */

@@ -37,7 +37,7 @@ import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
-import { reported, route, working } from './route.ts'
+import { answerRemoteRequest, reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
@@ -231,6 +231,10 @@ export default function messages(host: ExtensionHost) {
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
     owed,
+    dropped: async (tx, by, serves, why) => {
+      if (serves.from === 'remote')
+        await answerRemoteRequest(host, tx, by, serves, why, undefined, undefined, true)
+    },
   })
   return defineExtension({
     name: 'messages',

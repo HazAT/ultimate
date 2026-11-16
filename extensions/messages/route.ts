@@ -13,14 +13,15 @@ import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Messages } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
-import { terminal } from './log.ts'
+import { append, terminal } from './log.ts'
 import type { Message } from './api.ts'
-import type { DeliveredMessage, Remote } from './refs.ts'
+import type { DeliveredMessage } from './refs.ts'
 import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
-import { tell } from './remote.ts'
-import { Started } from './addresses.ts'
+import { delivery } from './delivery.ts'
+import { branchesAwaitingRemoteReply } from './remote.ts'
+import { remoteLabel, Serving, Started } from './addresses.ts'
 import type { Serves } from './addresses.ts'
 
 const NONTERMINAL_TASK_STATUSES = [
@@ -102,7 +103,10 @@ export async function reported(
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   const requestKeyWithinRemoteLimit = (message: number) => `request:${message}`
   const newestAnsweredBranchMessage = new Map<ConversationId, number>()
-  const askers: { source: string; key: string; serves: Serves }[] = []
+  const askers: { source: string; key: string; serves: Serves; fired?: number }[] = []
+  const serving = (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
+  const stillServed = (serves: Serves) =>
+    serves.remote !== undefined && Object.hasOwn(serving, serves.remote.key)
   const messaged = (after: (m: Message) => boolean, to: (m: Message) => boolean) =>
     log.messages.some((m) => m.from === starter && after(m) && to(m))
 
@@ -121,11 +125,17 @@ export async function reported(
       const { data } = entry
 
       const { serves, at: firedAt = 0 } = data
-      if (serves && !askerMessagedBeyondEarlyAnswer(serves, (m) => m.at >= firedAt))
+      if (
+        serves &&
+        (serves.remote
+          ? stillServed(serves)
+          : !askerMessagedBeyondEarlyAnswer(serves, (m) => m.at >= firedAt))
+      )
         askers.push({
           source: `automation ${data.id} "${data.name}"`,
           key: requestKeyWithinRemoteLimit(serves.message),
           serves: { ...serves, ...(serves.remote ? { remote: { ...serves.remote } } : {}) },
+          fired: entryId,
         })
       for (const branch of data.branches ?? []) {
         const branchSpokeLast =
@@ -152,6 +162,17 @@ export async function reported(
     const data: Partial<DeliveredMessage> | undefined =
       MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
     if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && data?.reply === false)) continue
+    if (ReplyEntry.is(entry) && data?.from === 'remote' && data.remote && !data.interim) {
+      for (const branch of await branchesAwaitingRemoteReply(tx, data.remote.key))
+        newestAnsweredBranchMessage.set(
+          branch,
+          Math.max(
+            newestAnsweredBranchMessage.get(branch) ?? 0,
+            log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0,
+          ),
+        )
+      continue
+    }
     if (typeof data?.from !== 'number' || data.echo === true) continue
     const from = data.from
     if ((await tx.doc(Started, from)).by !== starter) continue
@@ -183,7 +204,9 @@ export async function reported(
 
     if (
       detachedServedRequest &&
-      !askerMessagedBeyondEarlyAnswer(detachedServedRequest, (m) => m.id > since)
+      (detachedServedRequest.remote
+        ? stillServed(detachedServedRequest)
+        : !askerMessagedBeyondEarlyAnswer(detachedServedRequest, (m) => m.id > since))
     )
       askers.push({ source: `#${branch}`, key: String(branch), serves: detachedServedRequest })
   }
@@ -194,9 +217,60 @@ export async function reported(
   return { branches, askers: oneResultPerRequest }
 }
 
+export async function answerRemoteRequest(
+  host: ExtensionHost,
+  tx: Tx,
+  from: ConversationId,
+  serves: Serves,
+  text: string,
+  answer: EntryId | undefined,
+  fired: number | undefined,
+  failed = false,
+) {
+  const serving = (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
+  const key = serves.remote!.key
+  if (!Object.hasOwn(serving, key)) return
+  const handedOnAgain = !failed && fired !== undefined && serving[key] === fired
+  if (!handedOnAgain) delete serving[key]
+  const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  const request = log.messages.find((m) => m.id === serves.message) ?? {
+    id: serves.message,
+    from: 'remote' as const,
+    to: from,
+    text: '',
+    at: 0,
+    reply: true,
+    state: 'answered' as const,
+    remote: serves.remote!,
+  }
+  const response = await append(tx, {
+    from,
+    to: 'remote',
+    text,
+    reply: false,
+    re: serves.message,
+    state: failed ? 'failed' : 'sent',
+    ...(answer !== undefined ? { answer, routed: answer } : {}),
+    ...(failed ? { error: text } : {}),
+    remote: serves.remote!,
+    ...(handedOnAgain ? { interim: true as const } : {}),
+  })
+  await tx.createTask(
+    delivery(host),
+    {
+      message: request,
+      steer: true,
+      note: false,
+      fromLabel: remoteLabel(serves.remote!),
+      toLabel: remoteLabel(serves.remote!),
+      reply: { message: response, failed },
+    },
+    { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' }, background: true },
+  )
+}
+
 interface Route {
-  to: ConversationId | 'remote'
-  remote?: Remote
+  to: ConversationId
   text: string
   requestId: string
   options: { note?: boolean; report?: boolean; echo?: boolean; routed?: EntryId }
@@ -260,13 +334,23 @@ export function route(host: ExtensionHost) {
                 requestId: `route:${answer}:${to}`,
                 options: { routed: answer },
               })),
-              ...askers.map(({ source, key, serves }) => ({
-                to: serves.from,
-                ...(serves.remote ? { remote: serves.remote } : {}),
-                text: `Result of ${source}, which worked on your message ${serves.message}:\n\n${text}`,
-                requestId: `route:${answer}:asker:${key}`,
-                options: { routed: answer },
-              })),
+              ...(await Promise.all(
+                askers.map(async ({ source, key, serves, fired }) => {
+                  const result = `Result of ${source}, which worked on your message ${serves.message}:\n\n${text}`
+                  if (serves.from === 'remote') {
+                    await answerRemoteRequest(host, tx, id, serves, result, answer, fired)
+                    return []
+                  }
+                  return [
+                    {
+                      to: serves.from,
+                      text: result,
+                      requestId: `route:${answer}:asker:${key}`,
+                      options: { routed: answer },
+                    },
+                  ]
+                }),
+              ).then((routes) => routes.flat())),
             ]
           }
 
@@ -316,21 +400,8 @@ export function route(host: ExtensionHost) {
           }
           return routeToStarter(text, { echo: answersOnlyRoutedInputs })
         }, ctx)
-        for (const { to, remote, text, requestId, options } of routed) {
+        for (const { to, text, requestId, options } of routed) {
           if (!text.trim()) continue
-          if (to === 'remote') {
-            await tell(
-              host,
-              id,
-              { project: remote!.project, machine: remote!.machine, text, reply: false },
-              ctx,
-              undefined,
-              { key: requestId, routed: options.routed! },
-            ).catch((remoteFailureAlreadyLogged: unknown) => {
-              void remoteFailureAlreadyLogged
-            })
-            continue
-          }
           await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
             requestId,
             ...options,

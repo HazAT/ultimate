@@ -299,6 +299,18 @@ function backend(host: ExtensionHost) {
       ...(branches ? { branches: { ids: branches, by: caller } } : {}),
     }
   }
+  async function dropServedRequest(tx: Tx, a: Automation) {
+    if (!a.serves) return
+    const { by, ...serves } = a.serves
+    await host
+      .need(MessagesApi)
+      .dropped(
+        tx,
+        by,
+        serves,
+        `Automation ${a.id} "${a.name}", which worked on your message ${serves.message}, was deleted before it fired; no result will come from it.`,
+      )
+  }
   async function changeScript(
     tx: Tx,
     args: Args,
@@ -422,7 +434,10 @@ function backend(host: ExtensionHost) {
         sub.enabled = false
         if (sub.script!.state !== 'done') sub.script!.state = 'stopped'
       }
-      if (args.action === 'delete') delete state.automations[id]
+      if (args.action === 'delete') {
+        await dropServedRequest(tx, sub)
+        delete state.automations[id]
+      }
       return {
         result: args.action === 'delete' ? { id } : sub,
         effect: { id, action: 'pause', ...(pid ? { previousPid: pid } : {}) },
@@ -614,6 +629,7 @@ function backend(host: ExtensionHost) {
     delete a.scheduler
     if (args.action !== 'update') delete a.nextAt
     if (args.action === 'delete') {
+      await dropServedRequest(tx, a)
       delete state.automations[id]
       return { result: { id }, ...(abort ? { abort } : {}) }
     }

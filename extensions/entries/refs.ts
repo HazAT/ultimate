@@ -77,6 +77,8 @@ export type DeliveredMessage = {
   remote?: Remote
   failed?: boolean
   stopped?: boolean
+  /** A remote reply sent while work serving the request goes on: the request stays open for the result. */
+  interim?: true
 }
 
 /** Message delivered as a conversation input. */

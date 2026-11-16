@@ -13,7 +13,7 @@ import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
-import { remoteLabel, servesLine } from './addresses.ts'
+import { remoteLabel, Serving, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
@@ -208,6 +208,9 @@ export function delivery(host: ExtensionHost) {
               ? `ended its turn without an answer (${settled.status === 'unanswered' ? settled.reason : settled.status})`
               : undefined
           const state = stopped ? 'stopped' : failed ? 'failed' : undefined
+          const serving = m.remote && (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
+          const interim = !failed && serving && Object.hasOwn(serving, m.remote!.key)
+          if (failed && serving) delete serving[m.remote!.key]
 
           const answerAlreadyReturnedToLocalSender =
             !failed &&
@@ -238,6 +241,7 @@ export function delivery(host: ExtensionHost) {
             ...(answer ? { answer } : {}),
             ...(error ? { error } : {}),
             ...(m.remote ? { remote: m.remote } : {}),
+            ...(interim ? { interim: true as const } : {}),
           })
           const line = await servesLine(tx, response.from, response.to)
           return {
@@ -268,6 +272,7 @@ export function delivery(host: ExtensionHost) {
                 text: m.text,
                 failed,
                 ...(stopped ? { stopped } : {}),
+                ...(m.interim ? { interim: m.id } : {}),
               },
               runtime.signal,
             )
@@ -275,6 +280,29 @@ export function delivery(host: ExtensionHost) {
             if (runtime.signal.aborted) throw cause
             error = `The reply did not reach ${remoteLabel(m.remote!)}: ${cause instanceof Error ? cause.message : String(cause)}`
           }
+          if (error && typeof m.from === 'number')
+            await (
+              await runtime.conversation(m.from, ctx)
+            )?.submit(
+              {
+                type: 'input',
+                requestId: `board-undelivered:${m.id}`,
+                whenBusy: 'followUp',
+                entry: {
+                  kind: ReplyEntry.kind,
+                  data: {
+                    id: m.id,
+                    re: m.re!,
+                    from: 'remote',
+                    text: error,
+                    failed: true,
+                    remote: m.remote!,
+                  },
+                },
+                content: `${error}\nIt answered its message ${m.re}${m.interim ? ' (your interim answer)' : ''}:\n${m.text}\n\nFind out why it is unreachable, then pass the answer on with ultimate.tell once it can take it, or tell the user if it needs them.`,
+              },
+              ctx,
+            )
           await runtime.commit(async (tx) => {
             const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
               (item) => item.id === m.id,
@@ -319,13 +347,29 @@ export function delivery(host: ExtensionHost) {
             : body
           const deduplicatedReplyRequestId = `board-reply:${m.id}`
           await sender?.submit(
-            {
-              type: 'input',
-              requestId: deduplicatedReplyRequestId,
-              whenBusy: 'steer',
-              entry,
-              content,
-            },
+            m.interim
+              ? {
+                  type: 'write',
+                  requestId: deduplicatedReplyRequestId,
+                  entry: {
+                    ...entry,
+                    data: { ...entry.data, interim: true, delivery: 'note' },
+                    model: [
+                      {
+                        role: 'user',
+                        content: `Interim answer from ${task.input.toLabel} to your message ${m.re} (a note: work for it goes on there, and its result will arrive as the reply):\n${m.text}`,
+                        timestamp: Date.now(),
+                      },
+                    ],
+                  },
+                }
+              : {
+                  type: 'input',
+                  requestId: deduplicatedReplyRequestId,
+                  whenBusy: 'steer',
+                  entry,
+                  content,
+                },
             ctx,
           )
         }

@@ -2,7 +2,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx, TaskId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
@@ -11,6 +11,17 @@ import { Messages } from './api.ts'
 import { isOwed } from '../../lib/message-state.ts'
 
 export type { Serves }
+
+export const Serving = defineDoc<{ keys: Record<string, number> }>({
+  kind: 'board.serving',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ keys: {} }),
+})
+const ANSWERING_RUN = 0
 
 export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
   const newestOwedRequestProxy = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
@@ -22,6 +33,24 @@ export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | 
     from: newestOwedRequestProxy.from,
     ...(newestOwedRequestProxy.remote ? { remote: { ...newestOwedRequestProxy.remote } } : {}),
   }
+}
+
+export async function serve(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
+  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  const request = await owedRequest(tx, to)
+  if (request) {
+    if (request.remote) serving.keys[request.remote.key] = ANSWERING_RUN
+    return request
+  }
+  for (const submission of ((await tx.doc(LiveDoc, to)).run?.inputs ?? []).toReversed()) {
+    const record = await tx.submission(submission)
+    if (record?.type !== 'input' || record.entry === undefined) continue
+    const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
+    if (!serves?.remote || !Object.hasOwn(serving.keys, serves.remote.key)) continue
+    serving.keys[serves.remote.key] = record.entry
+    return { message: serves.message, from: serves.from, remote: { ...serves.remote } }
+  }
+  return undefined
 }
 
 export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
@@ -43,7 +72,7 @@ export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
 }
 
 export async function owed(tx: Tx, to: ConversationId) {
-  const serves = await owedRequest(tx, to)
+  const serves = await serve(tx, to)
   const branches = await branchesReadThisRun(tx, to)
   return { ...(serves ? { serves } : {}), ...(branches.length ? { branches } : {}) }
 }

@@ -100,8 +100,18 @@ message is never the user's.
 - **Target:** `messages.remote { key, text, reply, from: { project, machine } }` delivers to its own primary agent only,
   which reads `Message from @ultimate@<project> on <machine> (another project's Ultimate, not the user)`. A repeated key
   delivers once.
-- **One hop back:** with `reply`, the answer posts to the sender's `messages.remoteReply { key, text, failed, stopped? }`
-  as a reply that expects none. Two Ultimates exchange at most a message and its answer per `tell`.
+- **One hop back:** with `reply`, the answer posts to the sender's
+  `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none.
+- **The reply is the wait.** When the run answering a remote request starts work for it (a branch, or an automation
+  that records `serves`), the request is _served_ (`board.serving`) and that run's answer goes back as an interim reply
+  (`interim`: the answering message's id, which dedupes it). The sender places it as a note that wakes no one, and the
+  request stays open (`waits on <project>`). The served work's result, routed as for local askers, closes the request
+  with the final `remoteReply`; a run woken by the serving automation's fire that starts another one (a check-back that
+  finds the job still running) hands the request on and answers interim again. The sender's @ultimate wakes once, with
+  the result, and its answer to it goes to the branches whose reply or report its `tell` run read.
+- **Failures are loud.** An answer that cannot be posted wakes the answering @ultimate with the cause and the
+  undelivered text. A serving automation deleted before it fires sends the asker a failed final reply.
+  Two Ultimates never loop: a reply expects no answer.
 - **Not durable on the sender:** `tell` runs inside codemode, which is not replayed. A crash between logging and posting
   leaves the message `sent`; telling again uses a new key.
 
@@ -116,7 +126,8 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
-- `board.reply` data: `{ id, re, from, text, failed, stopped?, images? }`; `stopped` also sets `failed`.
+- `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets
+  `failed`; an `interim` reply is placed as a note (`delivery: 'note'`).
 - Each post emits `board.sent` `{ message, from, to, reply, steer }` (`MessageSent`), never the text; replies emit
   nothing.
 

@@ -36,6 +36,8 @@ export type Message = {
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
+  /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
+  interim?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
@@ -106,6 +108,11 @@ export type MessagesService = {
    * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts).
    */
   owed(tx: Tx, to: ConversationId): Promise<{ serves?: Serves; branches?: ConversationId[] }>
+  /**
+   * Inside `tx`, the work `by` started to serve `serves` (an automation) ended before it answered: another Ultimate's
+   * request still open on it gets a failed reply saying `why`, so that Ultimate learns of it at once.
+   */
+  dropped(tx: Tx, by: ConversationId, serves: Serves, why: string): Promise<void>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

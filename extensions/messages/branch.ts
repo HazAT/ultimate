@@ -15,7 +15,7 @@ import { LineageApi, Roots } from '../lineage/api.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter } from './images.ts'
 import { send } from './send.ts'
-import { owedRequest, Started } from './addresses.ts'
+import { serve, Started } from './addresses.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export const branchTool = (host: ExtensionHost) =>
@@ -102,7 +102,7 @@ export const branchTool = (host: ExtensionHost) =>
           const started = await tx.doc(Started, branch.id)
           started.by = from
 
-          const servedRequest = await owedRequest(tx, from)
+          const servedRequest = await serve(tx, from)
           if (servedRequest) started.serves = servedRequest
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
