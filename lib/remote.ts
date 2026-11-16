@@ -123,28 +123,30 @@ export async function locate(host: ExtensionHost, project: string, machine?: str
   )
 }
 
-export async function postAction(
+type Answer = { result?: unknown; error?: string; generation?: unknown }
+
+async function post(
   target: { url: string; label: string },
-  extension: string,
-  action: string,
-  args: JsonValue,
-  signal?: AbortSignal,
-): Promise<unknown> {
+  path: string,
+  body: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<Answer> {
   const admittedOrigin = new URL(target.url).origin
-  const response = await fetch(`${target.url}/api/extensions/${extension}/actions/${action}`, {
+  const response = await fetch(`${target.url}${path}`, {
     method: 'POST',
     headers: { Origin: admittedOrigin, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ args }),
-    signal: AbortSignal.any([AbortSignal.timeout(30000), ...(signal ? [signal] : [])]),
+    body,
+    signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
   }).catch((error: unknown) => {
     throw new Error(`${target.label} did not answer at ${target.url}: ${String(error)}`)
   })
   const text = await response.text()
   if (Buffer.byteLength(text) > REMOTE_BYTES)
     throw new Error(`${target.label} answered more than 1 MiB; ask for a smaller limit`)
-  const body = (() => {
+  const answer = (() => {
     try {
-      return JSON.parse(text) as { result?: unknown; error?: string }
+      return JSON.parse(text) as Answer
     } catch {
       return { error: text.slice(0, 200) }
     }
@@ -153,6 +155,34 @@ export async function postAction(
     throw new Error(
       `${target.label} refused the call (403): your tailnet login is not in its tailscale.allow`,
     )
-  if (!response.ok) throw new Error(`${target.label}: ${body.error ?? response.status}`)
-  return body.result
+  if (!response.ok) throw new Error(`${target.label}: ${answer.error ?? response.status}`)
+  return answer
+}
+
+export async function postAction(
+  target: { url: string; label: string },
+  extension: string,
+  action: string,
+  args: JsonValue,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const answer = await post(
+    target,
+    `/api/extensions/${extension}/actions/${action}`,
+    JSON.stringify({ args }),
+    signal,
+    30000,
+  )
+  return answer.result
+}
+
+export async function postRestart(
+  target: { url: string; label: string },
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<number> {
+  const answer = await post(target, '/api/restart', '{}', signal, timeoutMs)
+  if (typeof answer.generation !== 'number')
+    throw new Error(`${target.label} answered the restart without a generation`)
+  return answer.generation
 }
