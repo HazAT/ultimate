@@ -13,7 +13,7 @@ import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
-import { remoteLabel, Serving, servesLine } from './addresses.ts'
+import { closeServed, remoteLabel, Serving, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
@@ -212,7 +212,7 @@ export function delivery(host: ExtensionHost) {
           const interim = !failed && serving && Object.hasOwn(serving.handed, m.remote!.key)
           if (serving) {
             delete serving.handed[m.remote!.key]
-            if (failed) delete serving.keys[m.remote!.key]
+            if (failed) closeServed(serving, m.remote!.key)
           }
 
           const answerAlreadyReturnedToLocalSender =

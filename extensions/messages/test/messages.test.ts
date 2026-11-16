@@ -2326,3 +2326,47 @@ it('serves nothing for work that never answers back, and fails a served request 
   expect(other.posted).toHaveLength(2)
   expect(other.posted[1].body).toMatchObject({ key: 'job', failed: true, text: 'Run stopped' })
 })
+it('keeps a request open when a late failure report names a fire whose run handed it on', async () => {
+  // Re-review of c0f0b4a5: A handed on to B, B to C; a late failure report for A's run failed the request C served.
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  await actions.remote({ key: 'chain', text: 'Job\nHOLD', reply: true, from }, f.action())
+  await until(f.holding)
+  const serves = (
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID), context)
+  ).serves!
+  f.hold.release()
+  await until(() => other.posted.length === 1)
+  const fireThatHandsOn = async () => {
+    const fired = await f.opened.root.submit(
+      {
+        type: 'input',
+        content: 'Automation A8 "job" fired: still running\nHOLD',
+        entry: {
+          kind: 'automations.fired',
+          data: { id: 'A8', name: 'job', text: 'running', serves, at: Date.now() },
+        },
+      },
+      context,
+    )
+    await until(f.holding)
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID), context)
+    const entry = (await fired.status(context)).entry!
+    f.hold.release()
+    await f.opened.root.waitForIdle(context)
+    return entry
+  }
+  const a = await fireThatHandsOn()
+  await fireThatHandsOn()
+  await until(() => other.posted.length === 3)
+  await f.opened.harness.commit(
+    (tx) => f.service().dropped(tx, ROOT_CONVERSATION_ID, serves, 'A stopped', a),
+    context,
+  )
+  // The request is still served, and no failed reply is queued for it.
+  expect(
+    (await f.log())!.messages.filter((m) => m.to === 'remote' && m.state === 'failed'),
+  ).toEqual([])
+  expect(other.posted).toHaveLength(3)
+  expect(other.posted.some((p) => (p.body as { failed: boolean }).failed)).toBe(false)
+})

@@ -21,7 +21,7 @@ import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
 import { delivery } from './delivery.ts'
 import { branchesAwaitingRemoteReply } from './remote.ts'
-import { remoteLabel, Serving, Started } from './addresses.ts'
+import { closeServed, remoteLabel, Serving, Started, stillServedAfter } from './addresses.ts'
 import type { Serves } from './addresses.ts'
 
 const NONTERMINAL_TASK_STATUSES = [
@@ -227,15 +227,16 @@ export async function answerRemoteRequest(
   fired: number | undefined,
   failed = false,
 ) {
-  const serving = (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
+  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
   const key = serves.remote!.key
-  if (!Object.hasOwn(serving, key)) return
-  const handedOnAgain = !failed && fired !== undefined && serving[key] === fired
+  if (!Object.hasOwn(serving.keys, key)) return
+  const handedOnAgain =
+    !failed && fired !== undefined && Object.hasOwn(serving.handedOnBy, String(fired))
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   const replayedInterim =
     answer !== undefined && log.messages.some((m) => m.to === 'remote' && m.routed === answer)
   if (replayedInterim) return
-  if (!handedOnAgain) delete serving[key]
+  if (!handedOnAgain) closeServed(serving, key)
   const request = log.messages.find((m) => m.id === serves.message) ?? {
     id: serves.message,
     from: 'remote' as const,
@@ -303,11 +304,10 @@ export function route(host: ExtensionHost) {
                 const record = await tx.submission(submission)
                 if (record?.type !== 'input' || record.entry === undefined) continue
                 const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
-                const handedOnToWorkThatGoesOn =
-                  serves?.remote &&
-                  (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys[serves.remote.key] ===
-                    record.entry
-                if (serves?.from === 'remote' && !handedOnToWorkThatGoesOn)
+                if (
+                  serves?.from === 'remote' &&
+                  !(await stillServedAfter(tx, serves, record.entry))
+                )
                   await answerRemoteRequest(
                     host,
                     tx,

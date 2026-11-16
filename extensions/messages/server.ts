@@ -31,7 +31,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
+import { owed, parentOf, Started, starterOf, stillServedAfter } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
@@ -232,11 +232,7 @@ export default function messages(host: ExtensionHost) {
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
     owed,
     dropped: async (tx, by, serves, why, fired) => {
-      const handedOnByThatRun =
-        fired !== undefined &&
-        serves.remote !== undefined &&
-        (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys[serves.remote.key] === fired
-      if (serves.from === 'remote' && !handedOnByThatRun)
+      if (serves.from === 'remote' && !(await stillServedAfter(tx, serves, fired)))
         await answerRemoteRequest(host, tx, by, serves, why, undefined, undefined, true)
     },
   })

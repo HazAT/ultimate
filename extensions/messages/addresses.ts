@@ -15,6 +15,7 @@ export type { Serves }
 export const Serving = defineDoc<{
   keys: Record<string, number>
   handed: Record<string, true>
+  handedOnBy: Record<string, string>
 }>({
   kind: 'board.serving',
   checkpointWhen: () => false,
@@ -22,9 +23,26 @@ export const Serving = defineDoc<{
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ keys: {}, handed: {} }),
+  initial: () => ({ keys: {}, handed: {}, handedOnBy: {} }),
 })
 const ANSWERING_RUN = 0
+
+export function closeServed(
+  serving: { keys: Record<string, number>; handedOnBy: Record<string, string> },
+  key: string,
+) {
+  delete serving.keys[key]
+  for (const [entry, handedKey] of Object.entries(serving.handedOnBy))
+    if (handedKey === key) delete serving.handedOnBy[entry]
+}
+
+export async function stillServedAfter(tx: Tx, serves: Serves, fired?: number) {
+  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  if (!serves.remote || !Object.hasOwn(serving.keys, serves.remote.key)) return false
+  const firedRunHandedItOn = fired !== undefined && Object.hasOwn(serving.handedOnBy, String(fired))
+  const laterStepServesIt = fired !== undefined && serving.keys[serves.remote.key] > fired
+  return firedRunHandedItOn || laterStepServesIt
+}
 
 export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
   const newestOwedRequestProxy = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
@@ -54,6 +72,7 @@ export async function serve(tx: Tx, to: ConversationId): Promise<Serves | undefi
     const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
     if (!serves?.remote || !Object.hasOwn(serving.keys, serves.remote.key)) continue
     serving.keys[serves.remote.key] = record.entry
+    serving.handedOnBy[String(record.entry)] = serves.remote.key
     return { message: serves.message, from: serves.from, remote: { ...serves.remote } }
   }
   return undefined
