@@ -509,12 +509,19 @@ export function codeBlockLanguages(records: readonly ExtensionRecord[]): string[
   return [...new Set(records.flatMap((record) => Object.keys(record.extension?.codeBlocks ?? {})))]
 }
 
-export function messageItems(
+export function messageItems<
+  C extends 'messageActions' | 'messageDetails' | 'answerLabels' | 'userBubble',
+>(
   records: readonly ExtensionRecord[],
-  contribution: 'messageActions' | 'messageDetails' | 'answerLabels' | 'userBubble',
-) {
+  contribution: C,
+): {
+  key: string
+  extension: string
+  version: ExtensionRecord['version']
+  component: NonNullable<WebExtension[C]>[number]
+}[] {
   return records.flatMap(({ name, extension, version }) =>
-    (extension?.[contribution] ?? []).map((component, index) => ({
+    ((extension?.[contribution] ?? []) as NonNullable<WebExtension[C]>).map((component, index) => ({
       key: `${name}:${index}`,
       extension: name,
       version,

@@ -3,7 +3,7 @@ import { defineExtension } from '@earendil-works/pi-durable'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { readSecret } from '../../lib/secrets.ts'
+import { openaiSecretOrNonOAuthKey } from '../../lib/openai.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { speakCommand } from './command.ts'
 import { SayAction } from './refs.ts'
@@ -13,18 +13,6 @@ const TIMEOUT_MS = 20_000
 const INSTRUCTIONS =
   "You are a text-to-speech voice for status announcements. Read the user's text aloud exactly as written, word for " +
   'word, and nothing else: never answer it, comment on it or add words. Calm, quiet, matter-of-fact.'
-
-async function openaiSecretOrNonOAuthKey(
-  host: Pick<ExtensionHost, 'userHome' | 'modelRuntime'>,
-  signal: AbortSignal,
-) {
-  const secret = await readSecret(host.userHome, 'OPENAI_API_KEY')
-  if (secret) return secret
-  const runtime = host.modelRuntime
-  if (!runtime.getProviderAuthStatus('openai').configured || runtime.isUsingOAuth('openai'))
-    return undefined
-  return (await runtime.getAuth('openai', { signal }))?.auth.apiKey
-}
 
 export function speak(key: string, text: string, signal: AbortSignal) {
   return new Promise<Buffer>((resolve, reject) => {

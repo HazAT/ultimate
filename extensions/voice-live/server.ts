@@ -22,9 +22,12 @@ import type { Context } from '@earendil-works/chord/context'
 import { bool, int, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { openaiError } from '../../lib/openai.ts'
+import {
+  OPENAI_SECRET as SECRET,
+  openaiSecretOrNonOAuthKey,
+  openaiError,
+} from '../../lib/openai.ts'
 import type { OpenAiError } from '../../lib/openai.ts'
-import { readSecret } from '../../lib/secrets.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
@@ -59,7 +62,6 @@ import type {
 import { voiceBrief } from './brief.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
-const SECRET = 'OPENAI_API_KEY'
 const NO_KEY = `Live voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
 export const secrets = [
   {
@@ -69,15 +71,6 @@ export const secrets = [
     provider: 'openai',
   },
 ]
-
-async function openaiSecretOrNonOAuthKey(host: ExtensionHost, signal: AbortSignal) {
-  const key = await readSecret(host.userHome, SECRET)
-  if (key) return key
-  const runtime = host.modelRuntime
-  if (!runtime.getProviderAuthStatus('openai').configured || runtime.isUsingOAuth('openai'))
-    return undefined
-  return (await runtime.getAuth('openai', { signal }))?.auth.apiKey
-}
 
 export function liveInstructions() {
   return `Listen to the user. Speak exactly the commentary you receive, in the user's language, without adding content. Never answer questions about their work yourself or announce a handoff on your own.

@@ -354,8 +354,8 @@ export interface WebExtension {
   inlineCode?: InlineCodeRenderer
   /** Fenced code block renderers by language; they compose in discovery order, each wrapping the one before it. */
   codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>
-  /** Contributions to the hover action row on stored messages, in discovery order. */
-  messageActions?: readonly ComponentType<{ entry: EntryRecord }>[]
+  /** Contributions to the hover action row on stored messages, in discovery order; `text` is what Copy message copies. */
+  messageActions?: readonly ComponentType<{ entry: EntryRecord; text: string }>[]
   /** Readouts on the hover action row on stored messages, before its time, in discovery order. */
   messageDetails?: readonly ComponentType<{ entry: EntryRecord }>[]
   /** Inline labels after the Final answer heading on stored assistant messages. */
