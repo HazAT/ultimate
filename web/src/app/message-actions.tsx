@@ -50,7 +50,7 @@ export function MessageActions({
       )}
       {contributions.map(({ key, extension, version, component: Action }) => (
         <ExtensionBoundary extension={extension} fallback={null} key={key} version={version}>
-          <Action entry={entry} />
+          <Action entry={entry} text={text} />
         </ExtensionBoundary>
       ))}
       <Provided input={{ conversation, id }} point={MessageReference}>
