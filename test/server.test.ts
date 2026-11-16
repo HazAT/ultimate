@@ -22,6 +22,7 @@ import type { ConversationSummary, ServerEvents } from '../shared/protocol.ts'
 import { Logins } from '../extensions/models/server.ts'
 import { fixture, orderedSource, servers } from './server-fixture.ts'
 import { eventHost } from './helpers.ts'
+import { writeSecret } from '../extensions/secrets/store.ts'
 import { UserInputEvent } from '../shared/events.ts'
 
 describe('server', () => {
@@ -248,11 +249,27 @@ export default host => {
     expect(() => previous('retired notice')).not.toThrow()
     const current = (await server.vite.ssrLoadModule(path)).raise as (message: string) => void
     current('current notice')
-    expect(server.extensions.info.diagnostics()).toContain('current notice')
-    expect(server.extensions.info.diagnostics()).not.toContain('retired notice')
+    expect(await server.extensions.info.diagnostics()).toContain('current notice')
+    expect(await server.extensions.info.diagnostics()).not.toContain('retired notice')
     servers.splice(servers.indexOf(server), 1)
     await server.close()
     expect(() => current('shutdown notice')).not.toThrow()
+  })
+
+  it('clears a missing-secret notice from the diagnostics once the secret is saved', async () => {
+    const { server, options } = await fixture(false, {
+      'needs-key': `import { defineExtension } from '@earendil-works/pi-durable'
+export default host => {
+  host.notice('Missing MY_KEY', { untilSecretSet: 'MY_KEY' })
+  return defineExtension({ name: 'needs-key' })
+}`,
+    })
+    await until(() => server.system.current().extensionDiagnostics.includes('Missing MY_KEY'))
+    expect(await server.extensions.info.diagnostics()).toContain('Missing MY_KEY')
+    await writeSecret(options.userHome, 'MY_KEY', 'value')
+    server.vite.watcher.emit('all', 'change', join(options.userHome, '.ultimate/secrets.json'))
+    await until(() => !server.system.current().extensionDiagnostics.includes('Missing MY_KEY'))
+    expect(await server.extensions.info.diagnostics()).not.toContain('Missing MY_KEY')
   })
 
   it('runs late facet openers immediately and continues after throwing cleanups', async () => {

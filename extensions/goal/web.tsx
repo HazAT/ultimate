@@ -7,7 +7,6 @@ import { ReportCard, StartedCard } from './cards.tsx'
 import { GoalDialog, goalDialog } from './dialog.tsx'
 import { GoalDoc } from './refs.ts'
 
-/** A quiet status-line mark while @ultimate works hands-off; it opens @ultimate, where the goal's card is. */
 function HandsOff() {
   const goal = useDocOf(ROOT, GoalDoc)?.goals.find((item) => !item.ended)
   const actions = useUltimate()
@@ -26,13 +25,16 @@ function HandsOff() {
   )
 }
 
+function ModelOnlyNote() {
+  return null
+}
+
 export default defineWebExtension({
   tools: { goal: GoalCall },
   entries: {
     'goal.started': StartedCard,
     'goal.report': ReportCard,
-    // @ultimate's per-run reminder of the goal is model context, not something to read in the transcript.
-    'goal.note': () => null,
+    'goal.note': ModelOnlyNote,
   },
   slots: { 'statusline.right': [HandsOff], overlay: [GoalDialog] },
   commands: [

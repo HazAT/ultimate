@@ -7,6 +7,8 @@ import {
   answeredMessages,
   backgroundRow,
   conversationState,
+  conversationWait,
+  waitLabel,
   counterparts,
   landed,
   landedSha,
@@ -560,13 +562,13 @@ describe('conversation state', () => {
         messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId, reply: false }),
       ),
     ).toBe('idle')
-    // A coordinator's question to its own worker waits on no one the user watches.
+    // Waiting on a worker is visible too.
     expect(
       conversationState(
         branch,
         messagesLog({ from: 5 as ConversationId, to: 9 as ConversationId }),
       ),
-    ).toBe('idle')
+    ).toBe('awaiting')
     // A subagent's question goes to its parent, which answers it in its own run: it never shows as awaiting.
     expect(
       conversationState(
@@ -576,87 +578,76 @@ describe('conversation state', () => {
     ).toBe('done')
   })
 
-  it('awaits the primary agent after reporting to it, until the primary agent messages it', () => {
-    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
-    const report = {
+  it('waits on its starter until concluded, but a resumed branch waits again', () => {
+    const branch = { id: 5, kind: 'other' as const, starter: 3 }
+    const log = messagesLog({
       from: 5 as ConversationId,
       to: 3 as ConversationId,
       reply: false,
-      report: true as const,
-    }
-    expect(conversationState(branch, messagesLog(report))).toBe('awaiting')
-    // A branch's reply awaits its answer; a standing agent's reply just answered (life's @google).
-    const reply = { from: 5 as ConversationId, to: 3 as ConversationId, reply: false, re: 1 }
-    expect(conversationState(branch, messagesLog({ ...reply, awaits: true }))).toBe('awaiting')
-    expect(conversationState(branch, messagesLog(reply))).toBe('idle')
-    // A note (no report) waits on nothing.
-    expect(
-      conversationState(
-        branch,
-        messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId, reply: false }),
-      ),
-    ).toBe('idle')
-    expect(
-      conversationState(
-        branch,
-        messagesLog(report, { from: 3 as ConversationId, to: 5 as ConversationId, reply: false }),
-      ),
-    ).toBe('idle')
+      report: true,
+    })
+    expect(conversationState(branch, log)).toBe('awaiting')
+    expect(conversationState({ ...branch, concludedSince: Infinity }, log)).toBe('idle')
+    expect(conversationState({ ...branch, concludedSince: 200 }, log)).toBe('awaiting')
+    expect(conversationState({ id: 5, kind: 'other' }, log)).toBe('idle')
+    expect(conversationState({ ...branch, runState: 'error' }, log)).toBe('failed')
   })
 
-  it('owes no report from a conversation concluded after it, until a newer report', () => {
-    // The bug: two landed branches, concluded by @ultimate, still showed as owed on its composer chip.
-    const report = {
-      from: 5 as ConversationId,
-      to: 3 as ConversationId,
-      reply: false,
-      report: true as const,
-      at: 100,
-    }
-    const owed = (since: number | undefined, ...more: Partial<Message>[]) =>
-      openMessages(messagesLog(report, ...more).messages, 3, (id) =>
-        id === 5 ? since : undefined,
-      ).owed.map((m) => m.id)
-    expect(owed(undefined)).toEqual([1])
-    expect(owed(Infinity)).toEqual([])
-    // Concluded at 200, then resumed: its earlier report stays settled, a newer one is owed.
-    expect(owed(200)).toEqual([])
-    expect(owed(200, { ...report, at: 300 })).toEqual([2])
-    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
-    expect(conversationState({ ...branch, concludedSince: 200 }, messagesLog(report))).toBe('idle')
+  it('owes branches it started only when they wait on it, without duplicating their messages', () => {
+    const messages = messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId }).messages
+    const branch = { id: 5, starter: 3 }
+    const open = (facts = branch, log = messages) => openMessages(log, 3, [facts])
+    expect(open().owed.map((b) => b.id)).toEqual([5])
+    expect(open().requests).toEqual([])
+    expect(open(branch, []).owed.map((b) => b.id)).toEqual([5])
+    expect(openMessages(messages, 3, [{ ...branch, concluded: true }]).owed).toEqual([])
+    expect(openMessages(messages, 3, [{ ...branch, working: true }]).owed).toEqual([])
+    expect(openMessages(messages, 3, [{ ...branch, working: true }]).requests).toHaveLength(1)
+    expect(
+      openMessages(messagesLog({ from: 5 as ConversationId, to: 'user' }).messages, 3, [branch])
+        .owed,
+    ).toEqual([])
   })
 
-  it('owes what the branch awaits: a reply that awaits its starter shows on both sides until answered', () => {
-    // Two report rules disagreed: a branch's reply showed it as awaiting @ultimate while @ultimate's chip owed nothing.
-    const reply = {
-      from: 5 as ConversationId,
-      to: 3 as ConversationId,
-      reply: false,
-      re: 1,
-      awaits: true as const,
-      at: 100,
-    }
-    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
-    const owed = (...more: Partial<Message>[]) =>
-      openMessages(messagesLog(reply, ...more).messages, 3, () => undefined).owed.map((m) => m.id)
-    expect(conversationState(branch, messagesLog(reply))).toBe('awaiting')
-    expect(owed()).toEqual([1])
-    const answer = { from: 3 as ConversationId, to: 5 as ConversationId, reply: false, at: 200 }
-    expect(conversationState(branch, messagesLog(reply, answer))).toBe('idle')
-    expect(owed(answer)).toEqual([])
+  it('awaits remote replies and timers, not just the primary', () => {
+    const remote = messagesLog({
+      from: 2 as ConversationId,
+      to: 'remote',
+      remote: { project: 'ultimate-eval', machine: 'local', key: 'test' },
+    })
+    expect(conversationState(primary, remote)).toBe('awaiting')
+    expect(
+      conversationState(primary, messagesLog(), [
+        { name: 'Check result', nextAt: 200, subscribers: [2] },
+      ]),
+    ).toBe('awaiting')
+  })
+
+  it('adds remote progress or reachability to direct and inherited remote wait labels', () => {
+    const remote = { on: 'remote', project: 'ultimate-eval' } as const
+    const branch = { on: 'starter', to: 3 } as const
+    const progress = { reachable: true, progress: { label: 'run', index: 2, total: 4 } }
+    expect(waitLabel(remote, 3, remote, progress)).toBe('waits on ultimate-eval · run 2/4')
+    expect(waitLabel(branch, 3, remote, progress)).toBe(
+      'waits on @ultimate → ultimate-eval · run 2/4',
+    )
+    expect(waitLabel(remote, 3, remote, { reachable: false })).toBe(
+      'waits on ultimate-eval · not running',
+    )
+    expect(waitLabel(branch, 3, remote, { reachable: false })).toBe(
+      'waits on @ultimate → ultimate-eval · not running',
+    )
+    expect(waitLabel(remote, 3, remote, { reachable: true })).toBe('waits on ultimate-eval')
+    expect(waitLabel(branch, 3, undefined, progress)).toBe('waits on @ultimate')
   })
 
   it('says every state in a word, so a standing row or lane never falls back to idle', () => {
     // A standing agent (not the primary) asking @ultimate shows it, rather than idle.
     const standing = { id: 7, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
+    const log = messagesLog({ from: 7 as ConversationId, to: 3 as ConversationId })
     expect(
-      stateWord(
-        conversationState(
-          standing,
-          messagesLog({ from: 7 as ConversationId, to: 3 as ConversationId }),
-        ),
-      ),
-    ).toBe('awaiting @ultimate')
+      stateWord(conversationState(standing, log), 0, waitLabel(conversationWait(standing, log), 3)),
+    ).toBe('waits on @ultimate')
     expect(stateWord('waits', 2)).toBe('2 waiting on you')
     expect(stateWord('failed')).toBe('failed')
     expect(stateWord('done')).toBe('done')

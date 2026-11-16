@@ -42,7 +42,6 @@ function result(output: string): unknown {
   }
 }
 
-/** One instance: its URL as a preview link, pid, home, and id. */
 function Card({ instance, status }: { instance: Instance; status: string }) {
   const system = useSystem()
   const target = usePreviewTarget(instance.url, true)
@@ -152,16 +151,10 @@ function InstanceCall({ call }: { call: ToolCallView }) {
   )
 }
 
-/** What the `list` action returns. */
 const isLoopback = (hostname: string) =>
   /^(127\.0\.0\.1|localhost|\[::1\])$|\.localhost$/.test(hostname)
-/** Previews bind to loopback, so a page opened from elsewhere, such as the tailnet, cannot frame them. */
-const loopback = isLoopback(location.hostname)
+const canFrameLoopbackPreviews = isLoopback(location.hostname)
 
-/**
- * In memory: the previews `list` returned last, which `Poll` asks for, and the preview shown below the title bar at
- * a URL of it. A reload returns to this project.
- */
 let previews: Preview[] | undefined
 let shown: { preview: Preview; url: string } | undefined
 let refetch = () => {}
@@ -180,7 +173,6 @@ function show(preview: Preview | undefined, url = preview?.url) {
 const useShown = () => useSyncExternalStore(subscribe, () => shown)
 const usePreviews = () => useSyncExternalStore(subscribe, () => previews)
 
-/** Asks for the previews every 5 s, for the switcher and preview links; showing one that stopped returns. */
 function Poll() {
   const { data, refetch: again } = useAction(ListAction, null, {
     onError: keepLast,
@@ -199,18 +191,11 @@ function Poll() {
   return null
 }
 
-/**
- * What a link to `href` does. `self`: this server, opened in place. `frame`: a running preview, shown below the title
- * bar. `tailnet`: a running preview opened from elsewhere, at its tailnet address in a new tab, since such a page has
- * no switcher to return from the frame. `off`: a preview that no longer runs, or one not reachable from here.
- * Undefined for other links, including loopback ports this server never ran a preview on, which stay as they are;
- * `own` says `href` is a preview's own URL, which is then `off` when unknown.
- */
 type Target =
   | { kind: 'self' | 'tailnet'; href: string; open?: undefined }
   | { kind: 'frame'; href: string; open: (event: MouseEvent) => void }
   | { kind: 'off'; reason: string; href?: undefined; open?: undefined }
-function usePreviewTarget(href: string, own = false): Target | undefined {
+function usePreviewTarget(href: string, isPreviewOwnUrl = false): Target | undefined {
   const list = usePreviews()
   const system = useSystem()
   const url = URL.parse(href)
@@ -220,8 +205,9 @@ function usePreviewTarget(href: string, own = false): Target | undefined {
     return { kind: 'self', href: at(location.origin, url) }
   const known = list?.filter((item) => new URL(item.url).port === url.port) ?? []
   const live = known.find((item) => item.running)
-  if (!live) return known.length || own ? { kind: 'off', reason: 'Not running' } : undefined
-  if (!loopback)
+  if (!live)
+    return known.length || isPreviewOwnUrl ? { kind: 'off', reason: 'Not running' } : undefined
+  if (!canFrameLoopbackPreviews)
     return live.tailnet
       ? { kind: 'tailnet', href: at(live.tailnet, url) }
       : { kind: 'off', reason: 'Only on this machine' }
@@ -236,7 +222,6 @@ function usePreviewTarget(href: string, own = false): Target | undefined {
   }
 }
 
-/** A link to a preview as a chip with a live dot; links to this server open in place, other links stay as they are. */
 function PreviewLink({
   href,
   children,
@@ -249,12 +234,12 @@ function PreviewLink({
   const target = usePreviewTarget(href)
   if (!target) return core
   if (target.kind === 'self') return <a href={target.href}>{children}</a>
-  const chip =
+  const buttonChipStyles =
     'inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted/60 px-1.5 align-baseline font-mono text-[11.5px] leading-5 wrap-anywhere'
   if (target.kind === 'off')
     return (
       <span
-        className={cn(chip, 'text-muted-foreground')}
+        className={cn(buttonChipStyles, 'text-muted-foreground')}
         data-preview-link="off"
         title={target.reason}
       >
@@ -262,10 +247,12 @@ function PreviewLink({
         {children}
       </span>
     )
-  // A button, not a link: the transcript's link styles would win over the chip's.
   return (
     <button
-      className={cn(chip, 'text-left text-foreground transition-colors hover:bg-accent')}
+      className={cn(
+        buttonChipStyles,
+        'text-left text-foreground transition-colors hover:bg-accent',
+      )}
       data-preview-link={target.kind}
       onClick={target.open ?? (() => window.open(target.href, '_blank', 'noreferrer'))}
       title={target.kind === 'tailnet' ? `Open ${target.href}` : 'Show preview'}
@@ -281,10 +268,6 @@ function PreviewLink({
 
 const port = (url: string) => `:${new URL(url).port}`
 
-/**
- * The previews `instance` runs, as a chip after the project chip while any runs: its menu lists "This project" and
- * each preview, and refreshes when it opens. It leaves the project chip itself to `titlebar.project`.
- */
 function Switcher() {
   const current = useShown()?.preview
   const data = usePreviews()?.filter((preview) => preview.running)
@@ -347,10 +330,6 @@ function Switcher() {
   )
 }
 
-/**
- * The shown preview's whole UI, below the title bar and above the surfaces. Showing another surface of this project
- * returns to it.
- */
 function Embedded() {
   const current = useShown()
   const surface = useStore((state) => state.ui.surface?.id)
@@ -373,5 +352,5 @@ function Embedded() {
 export default defineWebExtension({
   tools: { instance: InstanceCall },
   link: PreviewLink,
-  slots: { 'titlebar.left': loopback ? [Switcher] : [], overlay: [Poll, Embedded] },
+  slots: { 'titlebar.left': canFrameLoopbackPreviews ? [Switcher] : [], overlay: [Poll, Embedded] },
 })

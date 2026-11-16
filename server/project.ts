@@ -65,23 +65,23 @@ export async function projects(userHome: string, currentHome: string): Promise<P
   )
 }
 
-/** Debounced, serialized snapshots; busy/ownership fields never enter the public index. */
 export function conversationIndex(home: string) {
   let latest = '[]'
   let written: string | undefined
-  let writing = Promise.resolve()
-  const schedule = debounce(1000, () => {
+  let serializedSnapshots = Promise.resolve()
+  const publicIndexDebounceMs = 1000
+  const schedule = debounce(publicIndexDebounceMs, () => {
     void flush().catch((error: unknown) => console.error('Conversation index:', error))
   })
   const flush = () => {
     schedule.cancel()
-    writing = writing.then(async () => {
+    serializedSnapshots = serializedSnapshots.then(async () => {
       if (latest === written) return
       const value = latest
       await atomicJson(join(home, 'conversations.json'), value)
       written = value
     })
-    return writing
+    return serializedSnapshots
   }
   return {
     update(summaries: ConversationSummary[]) {

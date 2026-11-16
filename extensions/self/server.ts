@@ -8,7 +8,6 @@ import { WorkspacesApi } from '../workspaces/api.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export default function self(host: ExtensionHost) {
-  // Core, always on; the handle resolves the current provider at each call.
   const workspaces = host.need(WorkspacesApi)
   return defineExtension({
     name: 'self',

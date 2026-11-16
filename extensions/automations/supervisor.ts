@@ -1,4 +1,4 @@
-import type { ConversationId, Agent, Cursor, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Agent, Cursor, Submission, Tx } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
@@ -56,14 +56,13 @@ function validId(value: unknown): string {
   return id
 }
 const MANIFEST = 'automation.json'
-/** An hour of running before an exit means the script worked: its failure count starts again. */
-const HEALTHY_MS = 3600_000
+const FAILURE_RESET_AFTER_RUNNING_MS = 3600_000
+const MAX_UNTERMINATED_OUTPUT_BYTES = 256 * 1024
 const exists = (path: string) =>
   access(path).then(
     () => true,
     () => false,
   )
-/** A project automation's committed manifest, or undefined when the file is missing or malformed. */
 function manifest(value: unknown): Manifest | undefined {
   if (!value || typeof value !== 'object') return undefined
   const { name, ask, once, secrets, to } = value as Record<string, unknown>
@@ -81,11 +80,9 @@ function manifest(value: unknown): Manifest | undefined {
     ask: ask.trim(),
     once: once ?? true,
     ...(secrets?.length ? { secrets: secrets as string[] } : {}),
-    // A committed script wakes someone on every machine: a standing agent, @ultimate unless it names another.
     to: to ?? '@ultimate',
   }
 }
-/** The manifest as committed: `to` only when it is not the default. */
 const committedManifest = ({ to, ...rest }: Manifest) => ({
   ...rest,
   ...(to === '@ultimate' ? {} : { to }),
@@ -97,28 +94,24 @@ type Delivery = {
   text: string
   targets: Subscriber[]
 }
-/** What an action validated before its transaction: the agent to create, a project slug, a subscriber. */
+type AskBeforeConcurrentDiscovery = string
+type KeyedCreateRetry = boolean
 export type Prepared = {
   profile?: AgentDefinition
   parent?: Agent
   slug?: string
   target?: ConversationId
   subscriber?: Subscriber
-  /** A create's explicit subscribers, validated. */
   subscribers?: Subscriber[]
-  /** A project create's manifest: the record it takes must be the one discovery made from it. */
   manifest?: Manifest
-  /** A project update's ask before it rewrote the manifest, which a concurrent discovery may already apply. */
-  previousAsk?: string
-  /** A create whose key had already made an automation: nothing was prepared for a new one. */
-  keyed?: boolean
+  previousAsk?: AskBeforeConcurrentDiscovery
+  keyed?: KeyedCreateRetry
 }
 type Run = {
   child: GroupProcess
   group: Group
   active: boolean
   afterFire: boolean
-  /** The text of a `DONE` line; an exit 0 after it stops the automation cleanly. */
   done?: string
   queue: Promise<void>
   cleanup?: Promise<void>
@@ -132,21 +125,14 @@ export function supervisor(
   Automations: typeof Ledger,
   fireAutomation: (tx: Tx, a: Automation, firedAt: number, text?: string) => Promise<unknown>,
 ) {
-  // Only process state is reload-stable: running children and in-flight work. The functions below are rebuilt on each
-  // install, so they always use the current ledger token and fire callback.
-  // A new key: a process still holding the old `automations.supervisor` object (the whole supervisor) gets fresh
-  // state on the first reload; the old facet's close stops its scripts and this one's open relaunches them.
-  const shared = host.resource('automations.supervisor.state', () => ({
+  const reloadStableProcessState = host.resource('automations.supervisor.state', () => ({
     runs: new Map<string, Run>(),
     launches: new Set<Promise<void>>(),
     effects: new Map<string, Promise<void>>(),
     closing: false,
   }))
-  const { runs, launches, effects } = shared
-  // home is the stable project state directory (~/.ultimate/projects/<name>-<hash>), not a worktree cwd. Ids restart in
-  // each chapter, so a later chapter keeps its scripts apart as `<key>@<chapter>`, like its cloud backup; the first
-  // chapter keeps the project key. Chapter and host restart together, so reading it here is stable.
-  const scriptsRoot = () =>
+  const { runs, launches, effects } = reloadStableProcessState
+  const chapterIsolatedRuntimeRoot = () =>
     join(
       host.userHome,
       '.ultimate/automations',
@@ -154,13 +140,11 @@ export function supervisor(
         ? basename(host.home)
         : `${basename(host.home)}@${host.chapter.name}`,
     )
-  const folder = (id: string) => join(scriptsRoot(), id)
-  // A project automation's `run` and manifest are committed in the host checkout; its runtime stays in folder().
+  const folder = (id: string) => join(chapterIsolatedRuntimeRoot(), id)
   const projectDir = (id: string) => join(host.projectRoot, '.ultimate/automations', id)
   const runPath = (sub: Pick<Automation, 'id' | 'scope'>) =>
     join(sub.scope === 'project' ? projectDir(sub.id) : folder(sub.id), 'run')
   const trusted = async () => (await host.projectSetup()).decision === true
-  /** Manifests under `<project>/.ultimate/automations/<slug>/`, only in a project chosen as local. */
   async function manifests() {
     const found = new Map<string, Manifest>()
     if (!(await trusted())) return found
@@ -187,7 +171,6 @@ export function supervisor(
         parsed = manifest(JSON.parse(text))
         parsed?.secrets?.forEach(validateName)
       } catch {
-        // Malformed JSON or a bad secret name is reported below like any other invalid manifest.
         parsed = undefined
       }
       if (parsed) found.set(entry.name, parsed)
@@ -195,13 +178,6 @@ export function supervisor(
     }
     return found
   }
-  /**
-   * Bring project records in line with the committed manifests: a new folder becomes a stopped automation that
-   * never starts by itself, a changed manifest updates its fields, and a removed folder (or an untrusted project)
-   * stops and forgets its record. The only place project records are made: a create publishes its manifest and
-   * discovers it. A new record wakes the manifest's `to`; a changed `to` replaces the old one among the subscribers.
-   * Commits only when something changed.
-   */
   async function discover() {
     const found = await manifests()
     const gone = (s: Automation) => s.scope === 'project' && !found.has(s.id)
@@ -225,8 +201,8 @@ export function supervisor(
     const current =
       (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations ?? {}
     if (!differs(current)) return
-    // A new automation gets its idle agent conversation now, so every record has one.
-    const prepared = [...found.keys()].some((id) => !current[id]) ? await agentFor() : undefined
+    const needsIdleAgentConversation = [...found.keys()].some((id) => !current[id])
+    const prepared = needsIdleAgentConversation ? await agentFor() : undefined
     const trust = await trusted()
     const removed = await host.harness().commit(async (tx) => {
       const state = await tx.doc(Automations)
@@ -270,8 +246,8 @@ export function supervisor(
       }
       for (const sub of Object.values(state.automations)) {
         if (!gone(sub)) continue
-        // The scan may predate a manifest a create has since published: forget only what is still gone.
-        if (trust && (await exists(join(projectDir(sub.id), MANIFEST)))) continue
+        const publishedSinceScan = trust && (await exists(join(projectDir(sub.id), MANIFEST)))
+        if (publishedSinceScan) continue
         delete state.automations[sub.id]
         stops.push({
           id: sub.id,
@@ -283,7 +259,6 @@ export function supervisor(
     }, BACKGROUND_CONTEXT)
     for (const stop of removed) await apply(stop)
   }
-  /** Create, inside `tx`, the ownerless conversation of automation `id`'s agent. */
   async function agentConversation(
     tx: Tx,
     prepared: Prepared,
@@ -303,7 +278,6 @@ export function supervisor(
     })
     return child.id
   }
-  /** The agent a new automation conversation is configured from, and whose model and tools it copies: the caller, else @ultimate. */
   async function agentFor(caller?: ConversationId): Promise<Prepared> {
     const profile = (
       await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
@@ -315,7 +289,6 @@ export function supervisor(
     if (!conversation) throw new Error(`Unknown caller #${parentId}`)
     return { profile, parent: await conversation.agent(BACKGROUND_CONTEXT) }
   }
-  /** What a watcher is told about its automation, at creation and on each failure. */
   const brief = (sub: Automation) =>
     [
       `You own automation ${sub.id} "${sub.name}".`,
@@ -363,8 +336,7 @@ export function supervisor(
             : kind === 'failed'
               ? `Automation ${sub.id} "${sub.name}" failed (${sub.script!.failures ?? 1} of ${FAILURE_LIMIT} in a row; the ${FAILURE_LIMIT}rd escalates by itself): ${text}\nInvestigate, fix run, and use automation resume, or automation escalate with a clear reason when it cannot work. Ending your turn without resuming escalates it.\n${sub.scope === 'project' ? `${brief(sub)}\n` : ''}Last 50 log lines:\n${await tail(sub.id)}`
               : `Automation ${sub.id} "${sub.name}" ${kind}: ${text}`
-        // Read only for an escalation, which already messages @ultimate.
-        const ultimate =
+        const alreadyMessagedUltimate =
           kind === 'escalated'
             ? (await runtime.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
             : undefined
@@ -377,22 +349,20 @@ export function supervisor(
               `automations:${sub.id}:${event}:ultimate`,
               ctx,
             )
+        let servingRun: Submission | undefined
         for (const target of targets) {
-          // `@name` follows the standing agent to its conversation of the moment, across chapters; one not made yet
-          // is made now, as a message to it would.
           const id =
             typeof target === 'string'
               ? await host.need(SubagentsApi).standing(target.slice(1), ctx)
               : target
-          // The escalation message already reached @ultimate.
-          if (kind === 'escalated' && id === ultimate) continue
-          // A lander conversation is its log and takes no input; a subscriber stored before that stays harmless.
-          if ((await runtime.snapshot(host.metadata, id, ctx))?.label === 'lander') continue
+          if (kind === 'escalated' && id === alreadyMessagedUltimate) continue
+          const isReadOnlyLander =
+            (await runtime.snapshot(host.metadata, id, ctx))?.label === 'lander'
+          if (isReadOnlyLander) continue
           const requestId = `automations:${sub.id}:${event}:${target}`
           const conversation = await runtime.conversation(id, ctx)
           if (!conversation) throw new Error(`Automation ${sub.id}: conversation #${id} is missing`)
-          // Pi admits requestId in the submission transaction, including queued follow-ups.
-          await conversation.submit(
+          const submitted = await conversation.submit(
             {
               type: 'input',
               content,
@@ -404,18 +374,41 @@ export function supervisor(
                   id: sub.id,
                   name: sub.name,
                   text,
-                  // The run this wakes in its creator answers the request the creator owed then (messages' route.ts).
                   ...(kind === 'fired' && sub.serves?.by === id
                     ? {
                         serves: (({ by: _by, ...serves }) => serves)(sub.serves),
                         at: sub.lastFireAt ?? 0,
                       }
                     : {}),
+                  ...(kind === 'fired' && sub.branches?.by === id
+                    ? { branches: sub.branches.ids, at: sub.lastFireAt ?? 0 }
+                    : {}),
                 },
               },
             },
             ctx,
           )
+          if (kind === 'fired' && sub.serves?.by === id && sub.serves.from === 'remote')
+            servingRun = submitted
+        }
+        const servingRunEnd = await servingRun?.wait(ctx)
+        if (servingRunEnd?.status === 'unanswered') {
+          const { by, ...serves } = sub.serves!
+          await host
+            .harness()
+            .commit(
+              (tx) =>
+                host
+                  .need(MessagesApi)
+                  .dropped(
+                    tx,
+                    by,
+                    serves,
+                    `The run automation ${sub.id} "${sub.name}" woke for your message ${serves.message} ended without an answer (${servingRunEnd.reason}); no result will come from it.`,
+                    servingRunEnd.entry,
+                  ),
+              ctx,
+            )
         }
         await runtime.commit(() => terminal, ctx)
       },
@@ -446,12 +439,9 @@ export function supervisor(
     )
   }
   const readPid = (id: string) => readPidFile(join(folder(id), 'pid'))
-  /** Pause, relaunch, delete, disable/release and shutdown all stop a script here: SIGTERM, three seconds, SIGKILL. */
   function cleanup(id: string, pid: number, run?: Run): Promise<void> {
     if (run?.cleanup) return run.cleanup
     const work = (async () => {
-      // The pid file stays until the whole group is confirmed gone, and never names a replacement when removed.
-      // A run's own group is identified by its unreaped leader, a crashed host's by its pid file.
       await stopGroup(pid, {
         pidFile: join(folder(id), 'pid'),
         leader: run?.group,
@@ -463,16 +453,14 @@ export function supervisor(
     })()
     if (!run) return work
     run.cleanup = work.catch((error: unknown) => {
-      // Keep the pid file and allow a later close/open to retry cleanup after a failed kill.
-      delete run.cleanup
+      retryCleanup(run)
       throw error
     })
     return run.cleanup
   }
-  /**
-   * Inside `tx`: fail script `sub` for `reason`: it stops, its subscribers are woken and @ultimate is messaged. The
-   * tool's escalate, the third failure in a row and a watcher that stops mid-repair all end here.
-   */
+  function retryCleanup(run: Run) {
+    delete run.cleanup
+  }
   async function escalate(tx: Tx, sub: Automation, reason: string) {
     sub.enabled = false
     sub.script!.state = 'failed'
@@ -495,28 +483,26 @@ export function supervisor(
     }
     if (run?.child.pid) await cleanup(id, run.child.pid, run)
     else if (run && runs.get(id) === run) runs.delete(id)
-    if (shared.closing && !run) return
+    if (reloadStableProcessState.closing && !run) return
     await host.harness().commit(async (tx) => {
       const sub = (await tx.doc(Automations)).automations[id]
       if (!sub || (run && sub.script!.pid !== run.child.pid)) return
       const done = sub.script!.once && sub.script!.state === 'done'
-      const stopped = !!run?.stopped || shared.closing
+      const stopped = !!run?.stopped || reloadStableProcessState.closing
       if (!stopped && sub.script!.state !== 'running' && !done) return
-      // A recurring script that printed DONE and exited 0 asked to stop: the same state as pause, with nobody woken.
       const said = run?.done
-      const finished = !sub.script!.once && !stopped && !done && said !== undefined && code === 0
-      // A fired one-shot is already done in its FIRE commit, so any other unplanned exit is a failure.
-      // Shutdown keeps running automations enabled for reopen.
+      const cleanRecurringExit =
+        !sub.script!.once && !stopped && !done && said !== undefined && code === 0
       const now = Date.now()
-      const failed = !finished && !stopped && !done
-      if (finished) {
+      const failed = !cleanRecurringExit && !stopped && !done
+      if (cleanRecurringExit) {
         sub.script!.state = 'stopped'
         sub.enabled = false
       } else if (failed) {
         sub.script!.state = 'investigating'
-        // A script that ran for an hour worked: this exit starts a new count.
-        const healthy = !!sub.script!.startedAt && now - sub.script!.startedAt >= HEALTHY_MS
-        sub.script!.failures = healthy ? 1 : (sub.script!.failures ?? 0) + 1
+        const ranLongEnoughToResetFailures =
+          !!sub.script!.startedAt && now - sub.script!.startedAt >= FAILURE_RESET_AFTER_RUNNING_MS
+        sub.script!.failures = ranLongEnoughToResetFailures ? 1 : (sub.script!.failures ?? 0) + 1
       }
       sub.updatedAt = sub.script!.exitedAt = now
       if (code !== null) sub.script!.exitCode = code
@@ -526,7 +512,7 @@ export function supervisor(
         code,
         ...(signal ? { signal } : {}),
       })
-      if (finished) await host.emit(tx, Done, { id, ...(said ? { text: said } : {}) })
+      if (cleanRecurringExit) await host.emit(tx, Done, { id, ...(said ? { text: said } : {}) })
       else if (sub.script!.state === 'done') sub.enabled = false
       else if (failed) {
         const reason = error ?? `Process exited with code ${code}${signal ? ` (${signal})` : ''}`
@@ -540,10 +526,10 @@ export function supervisor(
     }, BACKGROUND_CONTEXT)
   }
   async function stopProcess(id: string, pid?: number, reason: Run['stopped'] = 'pause') {
-    // Receipts target the process present at mutation time, never a later start.
     if (!pid) return
     const run = runs.get(id)
-    if (run && run.child.pid !== pid) return
+    const receiptTargetsReplacedProcess = run && run.child.pid !== pid
+    if (receiptTargetsReplacedProcess) return
     if (run) {
       run.stopped = reason
       run.active = false
@@ -561,17 +547,13 @@ export function supervisor(
     }
   }
   async function launchRun(id: string, previousPid?: number) {
-    if (shared.closing) throw new Error('Automation supervisor is closing')
+    if (reloadStableProcessState.closing) throw new Error('Automation supervisor is closing')
     const sub = await snapshot(id)
     if (!sub.enabled || sub.script!.state !== 'running') return
     const current = runs.get(id)
-    // A replay of a start receipt (including after onOpen reconciliation) reuses this process.
-    if (
-      current?.active &&
-      current.child.pid === sub.script!.pid &&
-      current.child.pid !== previousPid
-    )
-      return
+    const replayAlreadyLaunchedProcess =
+      current?.active && current.child.pid === sub.script!.pid && current.child.pid !== previousPid
+    if (replayAlreadyLaunchedProcess) return
     await stopProcess(id, current?.child.pid, 'restart')
     const recorded = await readPid(id)
     if (recorded) await cleanup(id, recorded)
@@ -588,10 +570,9 @@ export function supervisor(
       env[name] = value
     }
     await access(runPath(sub), constants.X_OK)
-    if (shared.closing) throw new Error('Automation supervisor is closing')
+    if (reloadStableProcessState.closing) throw new Error('Automation supervisor is closing')
     let group: Group
     try {
-      // The script waits behind the handshake until its pid file is written.
       group = spawnGroup(runPath(sub), [], {
         cwd: sub.scope === 'project' ? host.projectRoot : dir,
         env,
@@ -617,8 +598,7 @@ export function supervisor(
     child.on('close', (code, signal) => {
       enqueue(() => finish(id, run, code, signal ?? undefined, run.error))
     })
-    // Hold output until the pid and Started event are committed, even for an immediately exiting script.
-    run.queue = host.harness().commit(async (tx) => {
+    const committedPidAndStarted = host.harness().commit(async (tx) => {
       const saved = (await tx.doc(Automations)).automations[id]
       if (!saved || !saved.enabled || saved.script!.state !== 'running') {
         run.active = false
@@ -634,6 +614,7 @@ export function supervisor(
         await host.emit(tx, Started, { id, pid: child.pid })
       }
     }, BACKGROUND_CONTEXT)
+    run.queue = committedPidAndStarted
     function enqueue(work: () => Promise<void>) {
       run.queue = run.queue
         .then(work)
@@ -642,7 +623,6 @@ export function supervisor(
           await finish(id, run, null, undefined, String(error))
         })
         .catch((error: unknown) => {
-          // If storage itself failed, no durable recovery can be scheduled; retain a loud host diagnostic.
           host.notice(`Automation ${id} recovery could not be recorded: ${String(error)}`)
         })
     }
@@ -661,8 +641,7 @@ export function supervisor(
         if (!saved || saved.script!.pid !== child.pid || saved.script!.state !== 'running') return
         saved.script!.lastOutputAt = saved.updatedAt = Date.now()
         if (fire === undefined || run.afterFire) return
-        // A FIRE is the script doing its job: earlier failures no longer count toward escalation.
-        delete saved.script!.failures
+        resetFailuresOnSuccessfulFire(saved)
         await fireAutomation(tx, saved, Date.now(), fire)
         if (!saved.enabled) {
           run.stopped = 'pause'
@@ -692,11 +671,10 @@ export function supervisor(
           pending = pending.slice(index + 1)
           enqueue(() => line(text, stdout))
         }
-        // Bound memory for scripts that produce output without newlines; only a complete line can FIRE.
-        if (Buffer.byteLength(pending) > 256 * 1024) {
-          const text = pending
+        if (Buffer.byteLength(pending) > MAX_UNTERMINATED_OUTPUT_BYTES) {
+          const incompleteNonProtocolLine = pending
           pending = ''
-          enqueue(() => line(text, false))
+          enqueue(() => line(incompleteNonProtocolLine, false))
         }
       })
       stream.on('end', () => {
@@ -705,6 +683,9 @@ export function supervisor(
     }
     await run.queue
     if (!run.active && !run.afterFire) await stopProcess(id, child.pid)
+  }
+  function resetFailuresOnSuccessfulFire(sub: Automation) {
+    delete sub.script!.failures
   }
   async function effect(value: Effect) {
     if (value.action === 'resume') {
@@ -730,10 +711,6 @@ export function supervisor(
       if (effects.get(value.id) === done) effects.delete(value.id)
     }
   }
-  /**
-   * A watcher gave its final answer. When its script is still being written or investigated and no input waits for
-   * it, nobody would ever look again: escalate with its answer. A replay finds the script failed and does nothing.
-   */
   async function watcherYielded(conversationId: ConversationId, answer: string) {
     await host.harness().commit(async (tx) => {
       const sub = Object.values((await tx.doc(Automations)).automations).find(
@@ -741,7 +718,6 @@ export function supervisor(
       )
       if (!sub?.enabled || !['writing', 'investigating'].includes(sub.script!.state)) return
       if ((await tx.doc(InboxDoc, conversationId)).items.length) return
-      // A brief or failure committed but not yet delivered is still coming: the watcher will look again.
       for (const live of ['pending', 'running'] as const) {
         let cursor: Cursor | undefined
         do {
@@ -750,12 +726,10 @@ export function supervisor(
             100,
             cursor,
           )
-          if (
-            page.items.some((task) =>
-              (task.input as Delivery).targets.includes(sub.script!.conversationId),
-            )
+          const briefOrFailureStillComing = page.items.some((task) =>
+            (task.input as Delivery).targets.includes(sub.script!.conversationId),
           )
-            return
+          if (briefOrFailureStillComing) return
           cursor = page.next
         } while (cursor)
       }
@@ -773,30 +747,31 @@ export function supervisor(
     return { ...json(sub), alive: groupAlive(sub.script?.pid) }
   }
   const close = async () => {
-    shared.closing = true
-    // A pending launch may be reading secrets or checking its executable; it must settle before cleanup.
+    reloadStableProcessState.closing = true
     await Promise.allSettled(launches)
     for (const [id, run] of runs) await stopProcess(id, run.child.pid, 'shutdown')
   }
   const open = async () => {
-    shared.closing = false
-    let folders: Dirent[]
+    reloadStableProcessState.closing = false
+    let runtimeFoldersBeyondLedger: Dirent[]
     try {
-      folders = await readdir(scriptsRoot(), { withFileTypes: true })
+      runtimeFoldersBeyondLedger = await readdir(chapterIsolatedRuntimeRoot(), {
+        withFileTypes: true,
+      })
     } catch (error) {
       if (!isMissing(error)) throw error
-      folders = []
+      runtimeFoldersBeyondLedger = []
     }
-    // Sweep files, not ledger records: stop/delete may have committed just before a crash.
-    for (const entry of folders) {
+    for (const entry of runtimeFoldersBeyondLedger) {
       if (!entry.isDirectory() || !isId(entry.name)) continue
       const pid = await readPid(entry.name)
       if (pid) await cleanup(entry.name, pid, runs.get(entry.name))
     }
-    // A project automation whose folder is gone, or whose project is no longer chosen, is forgotten before restarts.
     await discover()
-    const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
-    for (const sub of Object.values(state?.automations ?? {})) {
+    const restartStateAfterDiscovery = await host
+      .harness()
+      .snapshot(Automations, BACKGROUND_CONTEXT)
+    for (const sub of Object.values(restartStateAfterDiscovery?.automations ?? {})) {
       if (sub.script?.state !== 'running' || !sub.enabled) continue
       try {
         await launch(sub.id)

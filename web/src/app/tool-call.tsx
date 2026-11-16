@@ -13,7 +13,6 @@ import { toolRenderers } from '../sdk/registry.ts'
 import type { ToolCallView } from '../sdk/types.ts'
 import { ExtensionBoundary } from './boundary.tsx'
 
-/** Tool renderers compose in discovery order, starting with the generic card. */
 export function ToolCallBlock({ call }: { call: ToolCallView }) {
   const content = toolRenderers(useExtensions(), call.name).reduce<ReactNode>(
     (inner, { extension, version, component: Renderer }) => (
@@ -38,7 +37,6 @@ function summary(args: ToolCallView['args']): string {
     .slice(0, 200)
 }
 
-/** Name, arguments, output, and diagnostics of any tool. */
 export function GenericToolCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   return (

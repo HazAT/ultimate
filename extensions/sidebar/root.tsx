@@ -14,7 +14,17 @@ import {
 } from '@/sdk'
 import { MEMORY_SURFACE, MemoryDoc, TallyDoc, useOpenMemory } from '../lineage/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  conversationWait,
+  waitLabel,
+  emptyMessages,
+  useRemoteProgress,
+  useStarters,
+  useUnderway,
+} from '../messages/ui.tsx'
+import { useAutomations, timerWaits } from '../automations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { CommitCount, ProgressAction, Review, useWorkspaceIndex } from '../workspaces/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
@@ -33,7 +43,6 @@ import { useShell } from './state.tsx'
 import { workOf } from './work.ts'
 import type { Work } from './work.ts'
 
-/** When a branch last landed: its latest landed submission's last step. */
 export function landedAt(index: ReturnType<typeof useWorkspaceIndex>, id: number) {
   let at: number | undefined
   for (const result of Object.values(index.results))
@@ -42,10 +51,6 @@ export function landedAt(index: ReturnType<typeof useWorkspaceIndex>, id: number
   return at
 }
 
-/**
- * Whether a branch is still in flight: started and neither concluded (the caller leaves those out) nor landed since
- * its latest input. A branch that lands and then gets new work is in flight again.
- */
 export function inFlight(
   conversation: ConversationSummary,
   index: ReturnType<typeof useWorkspaceIndex>,
@@ -56,7 +61,6 @@ export function inFlight(
   return landed === undefined || (conversation.inputAt ?? 0) > landed
 }
 
-/** Where an open branch stands, in a word or two, and how loud to say it. */
 function useBranchState(
   conversation: ConversationSummary,
   working: boolean,
@@ -65,26 +69,51 @@ function useBranchState(
 ) {
   const index = useWorkspaceIndex()
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
-  const runState = useOverview()[conversation.id]?.runState
-  const primary = useDocOf(ROOT, StandingDoc)?.ultimate
+  const overview = useOverview()
+  const runState = overview[conversation.id]?.runState
+  const standing = useDocOf(ROOT, StandingDoc)
+  const primary = standing?.ultimate
+  const timers = timerWaits(useAutomations(5000).data, standing)
   const concludedSince = useConcludedSince()(conversation.id)
+  const starter = useStarters()(conversation.id)
+  const underway = useUnderway()
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
+  const facts = {
+    id: conversation.id,
+    kind: 'other' as const,
+    runState,
+    busy: working || underway(conversation.id),
+    starter,
+    concludedSince,
+  }
+  const state = conversationState(facts, log, timers)
+  const primaryWait =
+    primary === undefined
+      ? undefined
+      : conversationWait(
+          {
+            id: primary,
+            kind: 'primary',
+            runState: overview[primary]?.runState,
+            busy: underway(primary),
+          },
+          log,
+          timers,
+        )
+  const wait = conversationWait(facts, log, timers)
+  const remoteWait = wait?.on === 'remote' ? wait : primaryWait
+  const remote = useRemoteProgress(remoteWait?.on === 'remote' ? remoteWait.project : undefined)
+  const label = waitLabel(wait, primary, primaryWait, remote.data)
   if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
   if (queued) return { label: 'submitted', tone: 'success' } as const
-  // A pause holds its run: nothing of it executes until Play.
   if (parked) return { label: 'paused', tone: 'paused' } as const
-  // The sidebar's one conversation state; `working` also counts its subagents' runs.
-  const state = conversationState(
-    { id: conversation.id, kind: 'other', runState, busy: working, primary, concludedSince },
-    log,
-  )
   if (state === 'working')
     return {
       label: phase && !phase.waiting ? phase.word : 'working',
       tone: 'brand',
     } as const
   if (state === 'waits') return { label: 'waits on you', tone: 'waiting' } as const
-  if (state === 'awaiting') return { label: 'awaiting @ultimate', tone: 'awaiting' } as const
+  if (state === 'awaiting') return { label: label!, tone: 'awaiting' } as const
   if (state === 'failed') return { label: 'failed', tone: 'failed' } as const
   return { label: 'idle', tone: 'quiet' } as const
 }
@@ -99,8 +128,7 @@ const tones = {
   quiet: 'text-muted-foreground/70',
 }
 
-/** The `data-status` hook of a row's dot, for themes. */
-const statusOf = {
+const dotStatusByTone = {
   failed: 'failed',
   success: 'done',
   brand: 'working',
@@ -113,17 +141,14 @@ const statusOf = {
 type FlightProps = {
   conversation: ConversationSummary
   working: boolean
-  /** A pause parked its run. */
   parked?: boolean
   shown: boolean
   now: number
   work?: Work
-  /** Its subagents, one line each. */
   children?: ReactNode
   onConclude: (conclude: boolean) => void
 }
 
-/** Uncommitted edits as "+ 4 edits", opening a review of them while something reviews. */
 function Edits({ count, spec }: { count: number; spec: string }) {
   const label = `+ ${count} edit${count === 1 ? '' : 's'}`
   return (
@@ -146,7 +171,6 @@ function Edits({ count, spec }: { count: number; spec: string }) {
   )
 }
 
-/** One open branch: its feature and title, where it stands, and its age; click opens it. */
 function FlightRow(props: FlightProps) {
   return (
     <Provided input={props.working ? props.conversation.id : undefined} point={ConversationPhase}>
@@ -224,7 +248,7 @@ function PhasedFlightRow({
                             ? 'bg-error'
                             : 'bg-muted-foreground/40',
                 )}
-                data-status={statusOf[state.tone]}
+                data-status={dotStatusByTone[state.tone]}
               />
               <span
                 className={cn(
@@ -236,8 +260,10 @@ function PhasedFlightRow({
               </span>
             </span>
             <span className="flex w-full min-w-0 items-center gap-1.5 pl-3 font-mono text-[10px] leading-4 text-muted-foreground">
-              {feature && <FeatureTag feature={feature} />}
-              <span className={cn('shrink-0', tones[state.tone])}>{state.label}</span>
+              {feature && <FeatureTag className="max-w-[35%] shrink-0" feature={feature} />}
+              <span className={cn('min-w-0 truncate', tones[state.tone])} title={state.label}>
+                {state.label}
+              </span>
               {latest > 0 && (
                 <span className="ml-auto shrink-0 pl-1 text-muted-foreground/60">
                   {formatAgo(latest, now)}
@@ -247,7 +273,6 @@ function PhasedFlightRow({
           </button>
         </SummaryHistory>
         {!editing && (
-          // Beside the title rather than at the bottom right, where the age is.
           <div className="absolute top-1 right-2 size-5">
             <RowMenu
               concluded={false}
@@ -262,7 +287,6 @@ function PhasedFlightRow({
         )}
       </div>
       {work && (
-        // Its own line under the row's button, so its links never nest in it.
         <span
           className="flex min-w-0 items-center gap-2 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground/80"
           data-flight-work={conversation.id}
@@ -276,27 +300,27 @@ function PhasedFlightRow({
   )
 }
 
-/**
- * Each open branch's work so far, read once for all of them. It is read again only when something can have changed it:
- * an agent commits (`coding-tools.committed`), a worktree changes in the index, or a branch's run ends (edits happen in
- * runs). Never on a timer, nor when a run starts: each read runs git per worktree on the host.
- */
 function useFlightWork(branches: ConversationSummary[]) {
-  const ids = branches.filter((branch) => branch.workspace?.state === 'ready').map((b) => b.id)
-  // A worktree becoming ready or going changes `ids`, which refetches by itself.
-  const commit = useEvents({ events: [Committed], limit: 1 })?.[0]?.id
+  const readyWorktreeIds = branches
+    .filter((branch) => branch.workspace?.state === 'ready')
+    .map((b) => b.id)
+  const latestCommitEvent = useEvents({ events: [Committed], limit: 1 })?.[0]?.id
   const busy = branches.filter((branch) => branch.busy).map((branch) => branch.id)
-  // Counts the runs that ended: a branch that was working is not anymore.
-  const [runs, setRuns] = useState({ busy, ended: 0 })
+  const [runs, setRuns] = useState({ busy, endedRunRefetchVersion: 0 })
   if (busy.join() !== runs.busy.join())
     setRuns({
       busy,
-      ended: runs.ended + (runs.busy.some((id) => !busy.includes(id)) ? 1 : 0),
+      endedRunRefetchVersion:
+        runs.endedRunRefetchVersion + (runs.busy.some((id) => !busy.includes(id)) ? 1 : 0),
     })
   const progress = useAction(
     ProgressAction,
-    { ids },
-    { enabled: ids.length > 0, onError: keepLast, on: [commit, runs.ended] },
+    { ids: readyWorktreeIds },
+    {
+      enabled: readyWorktreeIds.length > 0,
+      onError: keepLast,
+      on: [latestCommitEvent, runs.endedRunRefetchVersion],
+    },
   )
   const byId = new Map((progress.data ?? []).map((item) => [item.id, item]))
   return new Map(
@@ -307,7 +331,6 @@ function useFlightWork(branches: ConversationSummary[]) {
   )
 }
 
-/** An open branch for the In flight section, with whether it (or a subagent of it) works and its subagent lines. */
 export type Flight = {
   conversation: ConversationSummary
   working: boolean
@@ -315,23 +338,17 @@ export type Flight = {
   subagents?: ReactNode
 }
 
-/**
- * Whether a flight still counts as open once the roots' own landing notes are known too: the lander keeps only recent
- * results, so a branch whose landing note is newer than its latest input landed, unless it works again.
- */
-export const stillOpen = (flight: Flight, landings: readonly Landing[]) =>
+export const stillOpen = (
+  flight: Flight,
+  rootLandingNotesBeyondRecentResults: readonly Landing[],
+) =>
   flight.working ||
-  !landings.some(
+  !rootLandingNotesBeyondRecentResults.some(
     (event) =>
       event.from === flight.conversation.id &&
       (event.at ?? 0) >= (flight.conversation.inputAt ?? 0),
   )
 
-/**
- * In flight · N: every open branch across the project's trees, newest input first, each with its feature, state, age,
- * its work so far and its subagents nested below it. It replaces the per-root tree; concluded and landed work sits in
- * the Landed, Earlier and Concluded folds.
- */
 export function InFlight({
   flights,
   shownId,
@@ -373,11 +390,6 @@ const kinds = [
   ['lesson', 'lessons'],
 ] as const
 
-/**
- * A root's project memory as one row: what every new branch starts from, counted by kind, with the brief's size; a
- * click opens the Memory surface, and the row shows selected while it does. Its tally, the browsable history behind
- * it, opens from the project header above it. A root without memories yet shows its context's size.
- */
 export function useMemorySummary(id: ConversationId) {
   const tally = useDocOf(id, TallyDoc)
   const memories = Object.values(useDocOf(id, MemoryDoc)?.memories ?? {})
@@ -397,9 +409,6 @@ export function useMemorySummary(id: ConversationId) {
   }
 }
 
-/**
- * A root's project memory as one row in the project block, opening the Memory surface (see `useMemorySummary`).
- */
 export function MemoryRow({
   conversation,
   working,

@@ -85,6 +85,19 @@ export default defineConfig({
         rules: { 'ultimate/no-raw-timer': 'error' },
       },
       {
+        files: [
+          'bin/**',
+          'extensions/**',
+          'lib/**',
+          'scripts/**',
+          'server/**',
+          'shared/**',
+          'web/**',
+        ],
+        excludeFiles: ['extensions/*/test/**'],
+        rules: { 'ultimate/no-comments': 'error' },
+      },
+      {
         files: ['server/**', 'bin/**'],
         rules: {
           'no-restricted-imports': [

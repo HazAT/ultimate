@@ -3,27 +3,12 @@
  * and the sounds read, and the event of a question to the user. Browser-safe.
  * Stored identifiers keep the board prefix because history, tasks and events persist under them.
  */
-import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
+import type { Remote } from '../entries/refs.ts'
 
-/**
- * Another project's Ultimate: its project and machine, and `id`, that instance's id of the same message (the sender's
- * for an incoming one, the target's once an outgoing one is delivered).
- */
-export type Remote = {
-  project: string
-  machine: string
-  id?: number
-  /** The sender's random key for the message: the target delivers it once, and only the target can reply to it. */
-  key: string
-}
-/**
- * An agent's request that later work serves (a branch, an automation): the message the conversation that started it
- * still owed an answer, so the work's result reaches that agent.
- */
-export type Serves = { message: number; from: ConversationId | 'remote'; remote?: Remote }
+export type { DeliveredMessage, Remote, Serves } from '../entries/refs.ts'
 
 /**
  * One question an agent asks the user with a message, as the `message` tool's `questions` argument declares it: the
@@ -66,14 +51,14 @@ export type Message = {
   images?: { entry: EntryId; count: number }
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
-  /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
-  awaits?: true
   /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
   routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
+  /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
+  interim?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
@@ -82,22 +67,6 @@ export type Message = {
 /** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
 export type Via = { conversation: ConversationId; entry?: EntryId }
 export type MessagesData = { messages: Message[]; next: number }
-
-/** A message or reply delivered to a conversation. */
-export type DeliveredMessage = {
-  id: number
-  from: ConversationId | 'user' | 'remote'
-  text: string
-  reply?: boolean
-  re?: number
-  routed?: true
-  echo?: true
-  delivery?: 'note' | 'steer' | 'followUp'
-  images?: number
-  remote?: Remote
-  failed?: boolean
-  stopped?: boolean
-}
 
 /** A branch's question pointer in @ultimate. */
 export type QuestionNotice = {
@@ -108,6 +77,21 @@ export type QuestionNotice = {
   dismissed?: boolean
   via?: Via
 }
+
+/** Whether another project answers status, with its optional project progress. */
+export type RemoteProgress = {
+  reachable: boolean
+  progress?: { label: string; index: number; total: number }
+}
+
+/** `{ project }` → reachability and optional progress from that project's status. Read-only; polls are quiet. */
+export const RemoteProgressAction = actionRef<{ project: string }, RemoteProgress>(
+  'messages',
+  'remoteProgress',
+)
+
+/** The conversation that started a branch, read-only in the browser. */
+export const StartedDoc = docRef<{ by?: ConversationId }>('board.started')
 
 /** Every message between conversations and the user, oldest first, on conversation 1. */
 export const MessagesDoc = docRef<MessagesData>('board')
@@ -143,9 +127,3 @@ export const MessageSent = defineEvent<{
   reply: boolean
   steer: boolean
 }>('board.sent')
-
-/** Message delivered as a conversation input. */
-export const MessageEntry = defineEntry<DeliveredMessage>('board.message')
-
-/** Reply delivered as a conversation input. */
-export const ReplyEntry = defineEntry<DeliveredMessage>('board.reply')

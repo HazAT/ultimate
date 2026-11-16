@@ -1,5 +1,4 @@
 import { parseConversationId } from '../../lib/ids.ts'
-/** The memory and notify tools as what they did: friendly rows with an icon, memory slugs as chips. */
 import { BellIcon, BookOpenIcon, BrainIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import {
@@ -18,7 +17,6 @@ import { MemoryChip } from './ui.tsx'
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const failed = (call: ToolCallView) => call.status === 'error' || call.status === 'interrupted'
 
-/** One `remember` op as far as the model has written it; streaming args may be partial. */
 export type RememberOp = {
   op: 'add' | 'update' | 'delete'
   slug: string
@@ -28,7 +26,6 @@ export type RememberOp = {
   source?: string
 }
 
-/** The well-formed ops of a `remember` call's arguments, in order. */
 export function rememberOps(ops: unknown): RememberOp[] {
   if (!Array.isArray(ops)) return []
   return ops.flatMap((raw) => {
@@ -51,7 +48,6 @@ export function rememberOps(ops: unknown): RememberOp[] {
 
 const verbs = { add: 'added', update: 'updated', delete: 'deleted' } as const
 
-/** What a batch did: `updated fleet-failure-modes` for one op, `added 2 · updated 1 · deleted 1` for more. */
 export function rememberSummary(ops: readonly RememberOp[]) {
   if (ops.length === 1) return `${verbs[ops[0].op]} ${ops[0].slug}`
   return (['add', 'update', 'delete'] as const)
@@ -63,33 +59,31 @@ export function rememberSummary(ops: readonly RememberOp[]) {
 
 const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90'
 
-/** A `remember` batch: what changed in the header, each op as a readable block. */
 export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
   if (failed(call)) return core
   const ops = rememberOps(call.args.ops)
-  // A deleted memory is gone: its slug opens nothing, so only the others show as chips.
-  const kept = [...new Set(ops.filter((op) => op.op !== 'delete').map((op) => op.slug))]
-  // One op whose memory is kept names it by its chip alone.
-  const sole = ops.length === 1 && kept.length === 1
+  const openableMemorySlugs = [
+    ...new Set(ops.filter((op) => op.op !== 'delete').map((op) => op.slug)),
+  ]
+  const singleKeptMemoryNeedsOnlyChip = ops.length === 1 && openableMemorySlugs.length === 1
   return (
     <Tool>
       <ToolHeader
         action={
-          kept.length > 0 && (
-            // On a phone a batch's chips would crowd out the summary; its unfolded ops carry them.
+          openableMemorySlugs.length > 0 && (
             <span
               className={cn(
                 'max-w-[45%] shrink-0 items-center gap-1 overflow-hidden',
-                sole ? 'flex' : 'hidden sm:flex',
+                singleKeptMemoryNeedsOnlyChip ? 'flex' : 'hidden sm:flex',
               )}
             >
-              {kept.slice(0, 2).map((slug) => (
+              {openableMemorySlugs.slice(0, 2).map((slug) => (
                 <MemoryChip className="min-w-0" key={slug} slug={slug} />
               ))}
-              {kept.length > 2 && (
+              {openableMemorySlugs.length > 2 && (
                 <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                  +{kept.length - 2}
+                  +{openableMemorySlugs.length - 2}
                 </span>
               )}
             </span>
@@ -102,7 +96,12 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
         title={
           <>
             <span className="text-foreground">Memory</span>
-            {ops.length > 0 && <span> · {sole ? verbs[ops[0].op] : rememberSummary(ops)}</span>}
+            {ops.length > 0 && (
+              <span>
+                {' '}
+                · {singleKeptMemoryNeedsOnlyChip ? verbs[ops[0].op] : rememberSummary(ops)}
+              </span>
+            )}
           </>
         }
       />
@@ -139,7 +138,6 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
   )
 }
 
-/** A `memory` read: one memory with its chip, or the index. */
 export function MemoryCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
   if (failed(call)) return core
@@ -161,7 +159,6 @@ export function MemoryCall({ call, core }: { call: ToolCallView; core: ReactNode
   )
 }
 
-/** A `notify` request: one flat row, with the conversation it waits on as a link. */
 export function NotifyCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const { switchConversation } = useUltimate()
   if (failed(call)) return core

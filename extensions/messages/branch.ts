@@ -1,5 +1,4 @@
 import { parseEntryId, parseConversationId } from '../../lib/ids.ts'
-/** The `branch` tool: start a lineage branch and send it its first message. */
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
 import { configure, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -16,7 +15,7 @@ import { LineageApi, Roots } from '../lineage/api.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter } from './images.ts'
 import { send } from './send.ts'
-import { owedRequest, Started } from './addresses.ts'
+import { serve, Started } from './addresses.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export const branchTool = (host: ExtensionHost) =>
@@ -67,16 +66,14 @@ export const branchTool = (host: ExtensionHost) =>
                 await readFamilies(host.userHome, host.projectRoot),
                 host.modelRuntime.getAvailableSnapshot(),
               )
-        // The model and thinking level the definition pins when its provider has a login here, thinking clamped to
-        // what the model supports; without one, the current default model and thinking level, never what the root
-        // last stored.
-        const rootAgent = await (await host.harness().conversation(root, ctx))!.agent(ctx)
-        const change = definitionAgent(
+
+        const inheritedRootAgent = await (await host.harness().conversation(root, ctx))!.agent(ctx)
+        const authenticatedOrDefaultAgent = definitionAgent(
           coordinator,
-          { ...rootAgent, ...(await hostDefault(host)) },
+          { ...inheritedRootAgent, ...(await hostDefault(host)) },
           host.modelRuntime,
         )
-        const { model, thinkingLevel, modelTools } = change
+        const { model, thinkingLevel, modelTools } = authenticatedOrDefaultAgent
         const branch = await lineage.branch(
           {
             from: root,
@@ -91,22 +88,22 @@ export const branchTool = (host: ExtensionHost) =>
           },
           ctx,
         )
-        // The fork has no input yet. Its instructions come from the definition; its tools stay inherited, plus the
-        // deferred ones the definition names (an overlay's `addTools: [debug]`).
+
         await host.harness().commit(async (tx) => {
           await configure(tx, branch.id, {
             instructions: coordinator.instructions,
             ...(modelTools && 'add' in modelTools && modelTools.add?.length ? { modelTools } : {}),
           })
           ;(await tx.doc(host.metadata, branch.id)).label = 'coordinator'
-          ;(await tx.doc(Family, branch.id)).name = definitionFamily(coordinator, change)
+          ;(await tx.doc(Family, branch.id)).name = definitionFamily(
+            coordinator,
+            authenticatedOrDefaultAgent,
+          )
           const started = await tx.doc(Started, branch.id)
           started.by = from
-          // An agent's request the starter still owes an answer is what the branch works on: its result reaches that
-          // agent once it is concluded (route.ts). Without the link, a result routed to a concluded branch reached no
-          // one (danielgriesser.com #13859/15161, @writer's briefing).
-          const serves = await owedRequest(tx, from)
-          if (serves) started.serves = serves
+
+          const servedRequest = await serve(tx, from)
+          if (servedRequest) started.serves = servedRequest
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
       }

@@ -8,10 +8,8 @@ import { api, errorMessage, useDialog, useDocOf, useUltimate } from '@/sdk'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { GoalDoc, StartAction } from './refs.ts'
 
-/** The dialog ⌘K "Go hands-off…" opens. */
 export const goalDialog = 'goal.start'
 
-/** What going hands-off means, the goal in the user's words, and the button that grants it. */
 export function GoalDialog() {
   const [open, setOpen] = useDialog(goalDialog)
   return (

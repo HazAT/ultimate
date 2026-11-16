@@ -10,9 +10,10 @@ export function reportCore(message: CoreReport) {
   if (process.send && process.connected) process.send(message, () => {})
 }
 
-/** Presentation never enters the lifecycle acknowledgement queue. */
 export function isCoreReport(message: ChildMessage): message is CoreReport {
-  return message.type === 'log' || message.type === 'web' || message.type === 'access'
+  const presentationOutsideLifecycleQueue =
+    message.type === 'log' || message.type === 'web' || message.type === 'access'
+  return presentationOutsideLifecycleQueue
 }
 
 export type ChildMessage =
@@ -28,9 +29,8 @@ export type SupervisorMessage =
   | { type: 'swap-result'; requestId: string; ok: false; error: string }
   | { type: 'swap-result'; requestId: string; ok: true; generation: number }
 
-// Success is acknowledged only after the caller has durably recorded its replay result.
 export async function requestSwap(
-  approved: (generation: number) => Promise<void>,
+  recordDurableReplayResult: (generation: number) => Promise<void>,
   build?: BuildInfo,
 ): Promise<string> {
   if (!process.send) return 'Restart requires pnpm start (the supervisor).'
@@ -40,7 +40,7 @@ export async function requestSwap(
       if (message.type !== 'swap-result' || message.requestId !== requestId) return
       process.off('message', listener)
       if (!message.ok) return resolve(message.error.slice(-4096))
-      void approved(message.generation).then(
+      void recordDurableReplayResult(message.generation).then(
         () => {
           process.send?.({ type: 'swap-ack', requestId, ok: true } satisfies ChildMessage)
         },

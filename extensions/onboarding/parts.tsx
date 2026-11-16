@@ -3,11 +3,8 @@ import { cn, useAction, useSystem } from '@/sdk'
 import type { ExtensionInfo, SystemInfo } from '@/sdk'
 import { ExtensionsAction } from './refs.ts'
 
-/** The Extensions panel's setup entry point; the overlay routes it to @ultimate, not a dialog. */
 export const projectDialog = 'onboarding.project'
-/** The start page's Isolated switch entry point; the overlay routes it to @ultimate. */
 export const gitDialog = 'onboarding.git'
-/** ⌘K Get ready…: the first run again, whatever the recorded state. */
 export const firstRunDialog = 'onboarding.first-run'
 
 export const sources: Record<ExtensionInfo['source'], string> = {
@@ -16,17 +13,12 @@ export const sources: Record<ExtensionInfo['source'], string> = {
   project: 'this project',
 }
 
-/**
- * Each extension's line by name, and whether a project folder replaces a built-in of that name; read when mounted and
- * again when the set of extension folders changes.
- */
 export function useDescribed() {
   const system = useSystem()
   const folders = system?.extensions.map((extension) => extension.path)
   const described = useAction(ExtensionsAction, null, { on: folders })
   const entry = (name: string) => described.data?.find((candidate) => candidate.name === name)
   return {
-    /** With `source`, the line of that folder: a built-in a project folder replaces has its own. */
     line: (name: string, source?: ExtensionInfo['source']) => {
       const known = entry(name)
       if (known && (!source || known.source === source)) return known.readme
@@ -37,7 +29,6 @@ export function useDescribed() {
   }
 }
 
-/** The names a project's `.ultimate/settings.json` enables and disables. */
 export function projectLists(system: SystemInfo) {
   const extensions = system.project.settings.extensions
   const names = (key: string) => {
@@ -52,7 +43,6 @@ export function projectLists(system: SystemInfo) {
   return { enable: names('enable'), disable: names('disable') }
 }
 
-/** A README line with its `code` spans set in monospace. */
 export function Line({ text, className }: { text: string; className?: string }) {
   if (!text) return null
   return (
@@ -70,7 +60,6 @@ export function Line({ text, className }: { text: string; className?: string }) 
   )
 }
 
-/** A small section heading with a meta value on the right, as in the Agents and Info panels. */
 export function Heading({
   children,
   meta,
@@ -90,7 +79,6 @@ export function Heading({
   )
 }
 
-/** Two or three exclusive choices as one control; `value` null selects none. */
 export function Segmented<T extends string>({
   value,
   options,

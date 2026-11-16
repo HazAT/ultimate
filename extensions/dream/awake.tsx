@@ -1,9 +1,4 @@
 import { ROOT } from '@/sdk'
-/**
- * The way from a finished dream into a fresh chapter, in the sidebar and the status line on every surface: once the
- * dream branch is concluded, Fall asleep asks @ultimate to prepare the chapter; once it is prepared, the Fall asleep
- * card opens. The user may stay in this chapter instead.
- */
 import { LoaderCircleIcon, MoonIcon, MoonStarIcon } from 'lucide-react'
 import { useState } from 'react'
 import { api, errorMessage, useDocOf, useUltimate } from '@/sdk'
@@ -13,20 +8,14 @@ import { talkToUltimate } from '../subagents/ui.tsx'
 import { DismissAction, DreamDoc, ReadyAction } from './refs.ts'
 import { dreamStage } from './stage.ts'
 
-/** The dialog the pinned line opens: the Fall asleep card. */
 export const nextDialog = 'dream.next'
 
-/** The dream document and its stage (`dreamStage`); undefined until the document loads. */
 export function useDreamStage() {
   const doc = useDocOf(ROOT, DreamDoc)
   const concluded = useConcludedSince()
   return doc && { doc, stage: dreamStage(doc, concluded) }
 }
 
-/**
- * The sidebar cue's phase: `woke` and `preparing` as the stage says, `prepared` while a prepared chapter waits, falls
- * asleep or failed to; undefined when there is nothing to do.
- */
 export function useAwake() {
   const { doc, stage } = useDreamStage() ?? {}
   if (stage === 'woke' || stage === 'preparing') return { phase: stage }
@@ -35,7 +24,6 @@ export function useAwake() {
   return undefined
 }
 
-/** The sidebar's cue: what the dream left to do, and the button that does it; `onAct` after it did. */
 export function AwakeSection({ onAct }: { onAct?: () => void }) {
   const awake = useAwake()
   const actions = useUltimate()

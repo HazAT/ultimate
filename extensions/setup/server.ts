@@ -31,8 +31,7 @@ import type { SetupIssue } from './refs.ts'
 
 const LOGIN = { label: 'Log in', command: 'auth.login' }
 
-/** The warnings the primary agent last heard about, so its next input carries a line only when they change. */
-const Seen = defineDoc<{ key?: string }>({
+const LastWarningsCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'setup.seen',
   checkpointWhen: () => false,
   version: 1,
@@ -41,7 +40,7 @@ const Seen = defineDoc<{ key?: string }>({
   fork: 'current',
   initial: () => ({}),
 })
-export const docs = [Seen]
+export const docs = [LastWarningsCommittedWithInput]
 
 type CheckHost = Pick<
   ExtensionHost,
@@ -60,11 +59,9 @@ type CheckHost = Pick<
 const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   host.modelRuntime.getProviderAuthStatus(provider).configured
 
-/** Whether `provider` holds an API key that stands in for a secret naming it; an OAuth login is no API key. */
-const providerKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
+const configuredNonOAuthApiKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
 
-/** Whether any model has a login here. Without one nothing runs, so that is the only model-related warning. */
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
 
@@ -80,7 +77,6 @@ function loginArea(host: CheckHost): SetupIssue | undefined {
 }
 
 async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
-  // Before any login the Login row says it all.
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
   const fix = { label: 'Choose', command: 'conversations.summary-model' }
@@ -113,10 +109,6 @@ async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Summary model', status: 'ok', summary: using }
 }
 
-/**
- * Definitions that pin a model whose provider has no login here. They still load, since Pi resolves a definition's
- * model among every known model, and fail at their first model call.
- */
 async function agentsArea(host: CheckHost): Promise<SetupIssue[]> {
   const { definitions, errors, replaced } = await discoverAgents(
     host.ultimateRoot,
@@ -172,18 +164,19 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
   if (!providers?.length) return undefined
   const failing = providers.filter((provider) => provider.state === 'failing')
   if (failing.length) {
-    // A credit limit is not a login problem: logging in again does not fix it.
-    const billing = failing.every((provider) => provider.cause === 'billing')
+    const billingCannotBeFixedByLogin = failing.every((provider) => provider.cause === 'billing')
     return {
       area: 'Providers',
       status: 'warn',
       summary: failing
         .map((provider) => `${provider.provider} ✗ ${provider.error ?? 'failed'}`)
         .join(' · '),
-      impact: billing
+      impact: billingCannotBeFixedByLogin
         ? 'It refused calls for payment: the account hit a credit or spending limit. Add credits or raise the limit with the provider.'
         : 'Its login was refused, or its calls kept failing on this machine.',
-      ...(billing ? {} : { fix: { label: 'Log in again', command: 'auth.login' } }),
+      ...(billingCannotBeFixedByLogin
+        ? {}
+        : { fix: { label: 'Log in again', command: 'auth.login' } }),
     }
   }
   return {
@@ -193,11 +186,6 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/**
- * Missing secrets of enabled extensions. One the user turned on (in settings or a project folder) warns; a built-in
- * that is on by default only offers its key, since the rest of Ultimate works without it (voice without
- * `OPENAI_API_KEY`).
- */
 async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
   const set = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
   const chosen = new Map<string, string[]>()
@@ -206,7 +194,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (!set.has(name) && !(provider && providerKey(host, provider)))
+      if (!set.has(name) && !(provider && configuredNonOAuthApiKey(host, provider)))
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)
@@ -250,8 +238,10 @@ function extensionsArea(host: CheckHost): SetupIssue | undefined {
 }
 
 async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
-  // Invalid user settings are reported where settings load; here they count as unset.
-  const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
+  const invalidSettingsAlreadyReported = () => ({})
+  const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(
+    invalidSettingsAlreadyReported,
+  )
   const cloud = settings.cloud as { url?: unknown } | undefined
   if (typeof cloud?.url !== 'string')
     return {
@@ -297,8 +287,7 @@ async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/** Files that say a fresh checkout needs installing before it runs: a worktree has none of their ignored output. */
-const MANIFESTS = [
+const INSTALL_MANIFESTS = [
   'package.json',
   'composer.json',
   'Gemfile',
@@ -317,7 +306,7 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
   if (Array.isArray(commands) && commands.length)
     return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
-  const manifests = MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
+  const manifests = INSTALL_MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
   if (!manifests.length) return undefined
   return {
     area: 'Worktree setup',
@@ -328,23 +317,17 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/** Reads a conversation document; inside a transaction it must read through `tx`, or it waits on its own line. */
-type ReadDoc = (
+type ReadCurrentDoc = (
   doc: ConversationDocToken<JsonObject>,
   id: ConversationId,
 ) => Promise<Readonly<JsonObject> | undefined>
 
 const snapshots =
-  (host: Pick<CheckHost, 'harness'>): ReadDoc =>
+  (host: Pick<CheckHost, 'harness'>): ReadCurrentDoc =>
   (doc, id) =>
     host.harness().snapshot(doc, id, BACKGROUND_CONTEXT)
 
-/**
- * Listed roots that have branched but have no memory: their branches start from the whole tally instead of a memory
- * brief. A root that never branched (a fresh project, where onboarding writes the first memories) has nothing to warn
- * about yet.
- */
-async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | undefined> {
+async function memoryArea(host: CheckHost, read: ReadCurrentDoc): Promise<SetupIssue | undefined> {
   const rootsDoc = host.doc('lineage.roots')
   const memoryDoc = host.doc('lineage.memory')
   const tallyDoc = host.doc('lineage.tally')
@@ -355,7 +338,8 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
   const empty: number[] = []
   for (const root of listed?.roots ?? []) {
     const tally = (await read(tallyDoc, root)) as (typeof TallyDoc)['value'] | undefined
-    if (tally?.since === undefined) continue
+    const rootHasNeverBranched = tally?.since === undefined
+    if (rootHasNeverBranched) continue
     const doc = (await read(memoryDoc, root)) as (typeof MemoryDoc)['value'] | undefined
     if (!Object.keys(doc?.memories ?? {}).length) empty.push(root)
   }
@@ -364,16 +348,34 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
     area: 'Project memory',
     status: 'warn',
     summary: `none in root ${empty.map((root) => `#${root}`).join(', ')}`,
-    // No fix button: no command opens @ultimate with a request, so the row says what to ask.
     impact:
       "New branches start from the full project context (large, slow, costly). Ask @ultimate to review the project's memory.",
   }
 }
 
-/** Every area, warnings first, then information, then what is set up; a failing area is skipped, not fatal. */
+type SetupAreaResult = SetupIssue | SetupIssue[] | undefined
+type SetupAreaCheck = (
+  host: CheckHost,
+  read: ReadCurrentDoc,
+) => SetupAreaResult | Promise<SetupAreaResult>
+
+function checkAreaWithDeferredThrowHandling(
+  area: SetupAreaCheck,
+  host: CheckHost,
+  read: ReadCurrentDoc,
+) {
+  return Promise.resolve()
+    .then(() => area(host, read))
+    .catch((error: unknown): SetupIssue => ({
+      area: 'Setup check',
+      status: 'info',
+      summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
+    }))
+}
+
 export async function check(
   host: CheckHost,
-  read: ReadDoc = snapshots(host),
+  read: ReadCurrentDoc = snapshots(host),
 ): Promise<SetupIssue[]> {
   const areas = await Promise.all(
     (
@@ -389,29 +391,19 @@ export async function check(
         landerArea,
         worktreeArea,
         memoryArea,
-      ] as ((
-        host: CheckHost,
-        read: ReadDoc,
-      ) => SetupIssue | SetupIssue[] | undefined | Promise<SetupIssue | SetupIssue[] | undefined>)[]
-    ).map((area) =>
-      // Started inside the promise, so an area that throws synchronously is caught like one that rejects.
-      Promise.resolve()
-        .then(() => area(host, read))
-        .catch((error: unknown): SetupIssue => ({
-          area: 'Setup check',
-          status: 'info',
-          summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
-        })),
-    ),
+      ] as SetupAreaCheck[]
+    ).map((area) => checkAreaWithDeferredThrowHandling(area, host, read)),
   )
-  const rank = { warn: 0, info: 1, ok: 2 }
+  const warningsBeforeInformationBeforeOk = { warn: 0, info: 1, ok: 2 }
   return areas
     .flat()
     .filter((issue): issue is SetupIssue => !!issue)
-    .toSorted((a, b) => rank[a.status] - rank[b.status])
+    .toSorted(
+      (a, b) =>
+        warningsBeforeInformationBeforeOk[a.status] - warningsBeforeInformationBeforeOk[b.status],
+    )
 }
 
-/** The line the primary agent's input carries, or undefined while no warning stands. */
 export function setupNote(issues: SetupIssue[]) {
   const warnings = issues.filter((issue) => issue.status === 'warn')
   if (!warnings.length) return undefined
@@ -420,11 +412,6 @@ export function setupNote(issues: SetupIssue[]) {
     .join('\n')}`
 }
 
-/**
- * Inside the input's commit: a note on the primary agent's input when its warnings differ from those it last heard,
- * including "resolved" once they all clear. The note and the doc that remembers it commit together, so an input
- * gets at most one.
- */
 export async function noteFor(
   tx: Tx,
   conversationId: ConversationId,
@@ -434,7 +421,7 @@ export async function noteFor(
   if (!issues) return undefined
   const text = setupNote(issues)
   const key = text ?? ''
-  const seen = await tx.doc(Seen, conversationId)
+  const seen = await tx.doc(LastWarningsCommittedWithInput, conversationId)
   if ((seen.key ?? '') === key) return undefined
   seen.key = key
   return {
@@ -455,10 +442,10 @@ export async function noteFor(
 }
 
 export default function setup(host: ExtensionHost) {
-  // The check reads files and the model runtime: cached briefly so a burst of inputs reads once.
   const cache = host.resource('setup.check', () => ({ at: 0, issues: [] as SetupIssue[] }))
+  const burstCheckCacheMs = 30_000
   const current = async (tx: Tx) => {
-    if (Date.now() - cache.at > 30_000) {
+    if (Date.now() - cache.at > burstCheckCacheMs) {
       cache.issues = await check(host, (doc, id) => tx.doc(doc, id))
       cache.at = Date.now()
     }
@@ -469,9 +456,7 @@ export default function setup(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-        // Only the primary agent hears about setup, and only when its warnings change: a per-input note, never a
-        // system-prompt section, keeps the prompt cached.
-        beforeInput: async (_input, { tx, conversationId }) => {
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
           return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())

@@ -34,8 +34,7 @@ function target(serve: Serve, dns: string, port: number) {
     return undefined
   return proxy && /^http:\/\/127\.0\.0\.1:\d+$/.test(proxy) ? proxy : undefined
 }
-/** A claimed HTTPS port. A project's entry outlives its server so the project keeps its address; another home's does not. */
-type Entry = { port: number; owner: string; temporary?: true }
+type RetainedProjectOrTemporaryPortClaim = { port: number; owner: string; temporary?: true }
 export const reloadOnSettings = true
 const statuses = new WeakMap<ExtensionHost, Status>()
 const retries = new WeakMap<ExtensionHost, () => Promise<void>>()
@@ -45,7 +44,6 @@ export const actions: Record<string, ExtensionAction> = {
     async (_args, { host }): Promise<Status> =>
       statuses.get(host) ?? { state: 'disabled', allow: [] },
   ),
-  /** Starts again, or once ready serves the mapping again if it went missing, and returns the new status. */
   retry: implementAction(RetryAction, async (_args, { host }): Promise<Status> => {
     await retries.get(host)?.()
     return statuses.get(host) ?? { state: 'disabled', allow: [] }
@@ -54,20 +52,15 @@ export const actions: Record<string, ExtensionAction> = {
 
 export default function tailscale(host: ExtensionHost) {
   let status: Status = { state: 'disabled', allow: [] }
-  // TAILSCALE_COMMAND names another CLI; tests point it at a missing one so test servers stay off the tailnet.
-  const override = process.env.TAILSCALE_COMMAND
-  let cli = override ?? 'tailscale'
+  const cliOverrideWithoutFallback = process.env.TAILSCALE_COMMAND
+  let cli = cliOverrideWithoutFallback ?? 'tailscale'
   let ownedPort: number | undefined
   let localTarget: string | undefined
   let dnsName: string | undefined
   const ownerToken = `${process.pid}:${randomUUID()}`
   const registryPath = join(host.userHome, '.ultimate/tailscale.json')
-  // Only the server on the project's default home (held by its lock, so at most one runs) is the project's server.
-  // Any other home (a preview, a scratch server on `mktemp -d`) claims its own temporary port under that home, so it
-  // never takes or removes the address of the live server of the same folder. Inherited ULTIMATE_* variables do not
-  // matter: the home is what is isolated.
-  const temporary = host.home !== projectHome(host.projectRoot, host.userHome)
-  const key = temporary ? host.home : host.projectRoot
+  const temporaryHomeNeedsSeparatePort = host.home !== projectHome(host.projectRoot, host.userHome)
+  const key = temporaryHomeNeedsSeparatePort ? host.home : host.projectRoot
   let remove: (() => void) | undefined
   let opening: Promise<void> | undefined
   let running: Promise<void> | undefined
@@ -77,8 +70,7 @@ export default function tailscale(host: ExtensionHost) {
     statuses.set(host, next)
   }
   const command = (args: string[]) => exec(cli, args, { timeout: 15000, maxBuffer: 1024 * 1024 })
-  // Tailscale user IDs can exceed Number.MAX_SAFE_INTEGER; preserve the original numeric token.
-  const parse = (output: string) =>
+  const parsePreserving64BitUserIds = (output: string) =>
     JSON.parse(output, (property: string, value: unknown, context?: { source?: string }) =>
       property === 'UserID' && typeof value === 'number' ? context?.source : value,
     ) as {
@@ -87,7 +79,7 @@ export default function tailscale(host: ExtensionHost) {
       User?: Record<string, { LoginName?: string }>
       CertDomains?: string[]
     }
-  const ownerOf = (node: ReturnType<typeof parse>) => {
+  const ownerOf = (node: ReturnType<typeof parsePreserving64BitUserIds>) => {
     const login = node.Self?.UserID ? node.User?.[node.Self.UserID]?.LoginName : undefined
     return login ? [login] : undefined
   }
@@ -95,23 +87,29 @@ export default function tailscale(host: ExtensionHost) {
     set({ state, allow: status.allow, hint })
     host.notice(`Tailscale: ${hint}`)
   }
-  async function withRegistry<T>(use: (value: { ports: Record<string, Entry> }) => Promise<T>) {
+  async function withRegistry<T>(
+    use: (value: { ports: Record<string, RetainedProjectOrTemporaryPortClaim> }) => Promise<T>,
+  ) {
     await mkdir(join(host.userHome, '.ultimate'), { recursive: true })
-    // Lock beside the file itself: a preview's registry links to the host's, and both must take one lock.
-    const locked = (await writeTarget(registryPath)) + '.lock'
-    const lock = await acquireLock(locked, { pid: process.pid }, 120000).catch((error) => {
-      if (
-        error instanceof Error &&
-        error.message.startsWith('Ultimate core already owns this storage')
-      )
-        throw new Error(
-          `Tailscale port registry is busy (${registryPath}); wait for the current instance to finish and retry. Dead owners are recovered automatically.`,
-          { cause: error },
+    const sharedRegistryTargetLock = (await writeTarget(registryPath)) + '.lock'
+    const lock = await acquireLock(sharedRegistryTargetLock, { pid: process.pid }, 120000).catch(
+      (error) => {
+        if (
+          error instanceof Error &&
+          error.message.startsWith('Ultimate core already owns this storage')
         )
-      throw error
-    })
+          throw new Error(
+            `Tailscale port registry is busy (${registryPath}); wait for the current instance to finish and retry. Dead owners are recovered automatically.`,
+            { cause: error },
+          )
+        throw error
+      },
+    )
     try {
-      const value = await readJson<{ ports: Record<string, Entry> }>(registryPath, { ports: {} })
+      const value = await readJson<{ ports: Record<string, RetainedProjectOrTemporaryPortClaim> }>(
+        registryPath,
+        { ports: {} },
+      )
       if (
         !value.ports ||
         Object.values(value.ports).some(
@@ -132,8 +130,7 @@ export default function tailscale(host: ExtensionHost) {
     }
   }
   let ready: Status | undefined
-  let reading: ReturnType<typeof command> | undefined
-  /** Whether this server's mapping still stands (`own`), a live successor took it over, or it is gone. */
+  let sharedOwnerLoginRead: ReturnType<typeof command> | undefined
   const intact = () =>
     withRegistry(async (registry) => {
       const owner = registry.ports[key]?.owner
@@ -148,10 +145,8 @@ export default function tailscale(host: ExtensionHost) {
     try {
       if (ownedPort !== undefined) {
         const mapping = await intact()
-        // A probe that failed earlier left an error status over a mapping that stands: show it ready again.
         if (mapping === 'own') set(ready!)
         if (mapping) return
-        // Removed behind this server's back (`tailscale serve … off`, or another server's cleanup): claim it again.
         remove?.()
         ownedPort = undefined
       }
@@ -166,12 +161,10 @@ export default function tailscale(host: ExtensionHost) {
       } catch (error) {
         if (!isMissing(error)) throw error
         try {
-          // A named CLI that is missing means none: the macOS app is only the default's fallback.
-          if (override) throw error
+          if (cliOverrideWithoutFallback) throw error
           cli = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
           await access(cli, constants.X_OK)
         } catch {
-          // On by default, so a machine without Tailscale gets a status, not a notice on every start.
           set({
             state: 'not-installed',
             allow: [],
@@ -181,7 +174,7 @@ export default function tailscale(host: ExtensionHost) {
         }
         output = (await command(['status', '--json'])).stdout
       }
-      const node = parse(output)
+      const node = parsePreserving64BitUserIds(output)
       if (node.BackendState !== 'Running') {
         fail('not-running', 'Start Tailscale and log in (tailscale up).')
         return
@@ -222,9 +215,9 @@ export default function tailscale(host: ExtensionHost) {
             delete serve.Web?.[`${dns}:${entry.port}`]
             delete serve.TCP?.[String(entry.port)]
           }
-          // A dead owner's entry goes with its temporary home or with its folder; a project's keeps its port.
-          if (dead && name !== key && (entry.temporary || !existsSync(name)))
-            delete registry.ports[name]
+          const deadTemporaryOrRemovedProject =
+            dead && name !== key && (entry.temporary || !existsSync(name))
+          if (deadTemporaryOrRemovedProject) delete registry.ports[name]
         }
         const used = new Set([
           443,
@@ -272,7 +265,7 @@ export default function tailscale(host: ExtensionHost) {
         registry.ports[key] = {
           port,
           owner: ownerToken,
-          ...(temporary && { temporary: true as const }),
+          ...(temporaryHomeNeedsSeparatePort && { temporary: true as const }),
         }
         ownedPort = port
         localTarget = `http://127.0.0.1:${localPort}`
@@ -283,11 +276,11 @@ export default function tailscale(host: ExtensionHost) {
           verify: async ({ headers }) => {
             const login = headers['tailscale-user-login']
             if (typeof login !== 'string') return undefined
-            // Right after boot, status can lack the owner's login: read it again until it lists it,
-            // one read at a time, since a page load sends many requests at once.
             if (!allow) {
-              reading ??= command(['status', '--json']).finally(() => (reading = undefined))
-              allow ??= ownerOf(parse((await reading).stdout))
+              sharedOwnerLoginRead ??= command(['status', '--json']).finally(
+                () => (sharedOwnerLoginRead = undefined),
+              )
+              allow ??= ownerOf(parsePreserving64BitUserIds((await sharedOwnerLoginRead).stdout))
               if (allow) ready = { state: 'ready', url, allow }
               if (allow && status.state === 'ready') set(ready!)
             }
@@ -314,13 +307,12 @@ export default function tailscale(host: ExtensionHost) {
       else fail('error', message.slice(0, 500))
     }
   }
-  // One start at a time: a retry during a start waits for it; once ready it only repairs a missing mapping.
-  function begin() {
+  function startOrJoinCurrentRepair() {
     running ??= start().finally(() => (running = undefined))
     return (opening = running)
   }
-  host.onOpen(begin)
-  retries.set(host, begin)
+  host.onOpen(startOrJoinCurrentRepair)
+  retries.set(host, startOrJoinCurrentRepair)
   host.implement(TailscaleApi, { status: () => status })
   host.onClose(async () => {
     closed = true
@@ -333,7 +325,7 @@ export default function tailscale(host: ExtensionHost) {
           const serve = JSON.parse((await command(['serve', 'status', '--json'])).stdout) as Serve
           if (target(serve, dnsName!, ownedPort!) === localTarget)
             await command(['serve', `--https=${ownedPort}`, 'off'])
-          if (temporary) delete value.ports[key]
+          if (temporaryHomeNeedsSeparatePort) delete value.ports[key]
         })
       } catch (error) {
         fail('error', `Could not remove Serve mapping: ${String(error)}`)

@@ -14,10 +14,9 @@ export const actions = {
     if (conversationId === undefined) throw new Error('No conversation')
     const conversation = await host.harness().conversation(conversationId, context)
     if (!conversation) throw new Error(`Unknown conversation: ${conversationId}`)
-    // The model context carries every system message in effect, also those far older than the stream's window.
-    const view = await conversation.context(context)
-    const prompt = promptOf(view.messages)
-    const at = view.entries.findLast((entry) => entry.kind === 'pi.system')?.id
+    const fullPromptContext = await conversation.context(context)
+    const prompt = promptOf(fullPromptContext.messages)
+    const at = fullPromptContext.entries.findLast((entry) => entry.kind === 'pi.system')?.id
     if (since === undefined || since === at) return { prompt, ...(at && { at }) }
     const before = await conversation.context(context, { at: parseEntryId(Number(since)) })
     return {

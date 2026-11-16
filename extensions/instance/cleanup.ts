@@ -2,20 +2,18 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-// Cleanup must use the same owner validation and PID semantics as the storage lock.
-import { alive, readOwner } from '../../lib/lock.ts'
+import { alive as storageOwnerAlive, readOwner as readStorageOwner } from '../../lib/lock.ts'
 import { git } from '../../lib/git.ts'
 import { sqliteCode } from '../../lib/errors.ts'
 
-/** Hold both lock transactions throughout cleanup; PID sidecars also protect startup and shutdown gaps. */
 export async function cleanPreview(home: string) {
-  const locks: DatabaseSync[] = []
+  const heldCleanupTransactions: DatabaseSync[] = []
   try {
     for (const name of ['ultimate.lock', 'storage.lock']) {
-      const owner = await readOwner(join(home, name))
-      if (owner && alive(owner.pid)) return false
+      const startupShutdownPidLease = await readStorageOwner(join(home, name))
+      if (startupShutdownPidLease && storageOwnerAlive(startupShutdownPidLease.pid)) return false
       const database = new DatabaseSync(join(home, name + '.db'))
-      locks.push(database)
+      heldCleanupTransactions.push(database)
       try {
         database.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE')
       } catch (error) {
@@ -23,13 +21,11 @@ export async function cleanPreview(home: string) {
         throw error
       }
     }
-    // The original project checkout may have been released. Discover repositories from the previews themselves.
-    const repositories = new Set<string>()
+    const previewCheckoutRepositories = new Set<string>()
     for (const name of ['lander', 'worktrees']) {
       const directory = join(home, name)
       const checkouts = await readdir(directory, { withFileTypes: true }).catch(
         (error: NodeJS.ErrnoException) => {
-          // A preview without isolates or a lander has no checkout directory.
           if (error.code === 'ENOENT') return []
           throw error
         },
@@ -42,38 +38,43 @@ export async function cleanPreview(home: string) {
           '--path-format=absolute',
           '--git-common-dir',
         ).catch((error: unknown) => {
-          // Its repository is gone (a preview of a deleted temporary project): nothing is registered to release.
-          if (
+          const repositoryWasDeleted =
             /not a git repository|gitfile does not point to a valid repository/.test(
               (error as { stderr?: string }).stderr ?? '',
             )
-          )
-            return undefined
+          if (repositoryWasDeleted) return undefined
           throw error
         })
-        if (common) repositories.add(common)
+        if (common) previewCheckoutRepositories.add(common)
       }
     }
     const branchPrefix = `ultimate/${createHash('sha256').update(home).digest('hex').slice(0, 6)}-`
-    for (const common of repositories) {
+    for (const common of previewCheckoutRepositories) {
       const records = (
         await git(common, '--git-dir', common, 'worktree', 'list', '--porcelain', '-z')
       ).split('\0\0')
       for (const record of records) {
         const fields = record.split('\0')
-        const path = fields.find((field) => field.startsWith('worktree '))?.slice(9)
-        if (!path) continue
-        const inside = relative(resolve(home), path)
-        if (!inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside))
-          continue
-        // The preview's own checkout, possibly half removed (no `.git`) by a release its stop interrupted, which `git
-        // worktree remove` refuses while the folder exists: delete it first, then unregister it, locked or not.
-        await rm(path, { recursive: true, force: true })
-        await git(common, '--git-dir', common, 'worktree', 'remove', '--force', '--force', path)
+        const previewCheckoutPath = fields.find((field) => field.startsWith('worktree '))?.slice(9)
+        if (!previewCheckoutPath) continue
+        const inside = relative(resolve(home), previewCheckoutPath)
+        const outsidePreviewHome =
+          !inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside)
+        if (outsidePreviewHome) continue
+        await rm(previewCheckoutPath, { recursive: true, force: true })
+        await git(
+          common,
+          '--git-dir',
+          common,
+          'worktree',
+          'remove',
+          '--force',
+          '--force',
+          previewCheckoutPath,
+        )
       }
       await git(common, '--git-dir', common, 'worktree', 'prune')
-      // The branch it landed on and its workspace branches, now that no checkout holds them.
-      const left = await git(
+      const branchesWithoutCheckouts = await git(
         common,
         '--git-dir',
         common,
@@ -81,38 +82,33 @@ export async function cleanPreview(home: string) {
         '--format=%(refname:short)',
         `refs/heads/${branchPrefix}*`,
       )
-      for (const branch of left.split('\n').filter(Boolean))
+      for (const branch of branchesWithoutCheckouts.split('\n').filter(Boolean))
         await git(common, '--git-dir', common, 'branch', '-D', '--', branch)
     }
     await rm(home, { recursive: true, force: true })
     return true
   } finally {
-    for (const database of locks) database.close()
+    for (const database of heldCleanupTransactions) database.close()
   }
 }
 
-/**
- * Only real preview directories in the supplied directory; never follow a symlink into another home.
- * Every host sweeps the shared temporary directory on open, so one sweep at a time owns it: a home's own lock file is
- * deleted with the home, and a racing sweep would recreate it, lock the new file and clean alongside.
- */
 export async function sweepPreviews(directory: string, notice: (message: string) => void) {
-  const lock = new DatabaseSync(join(directory, 'ultimate-preview-sweep.lock.db'))
+  const directoryWideSweepLock = new DatabaseSync(join(directory, 'ultimate-preview-sweep.lock.db'))
   try {
-    lock.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE')
+    directoryWideSweepLock.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE')
   } catch (error) {
-    lock.close()
+    directoryWideSweepLock.close()
     if (sqliteCode(error) === 5) return
     throw error
   }
   try {
-    await sweep(directory, notice)
+    await sweepRealPreviewDirectories(directory, notice)
   } finally {
-    lock.close()
+    directoryWideSweepLock.close()
   }
 }
 
-async function sweep(directory: string, notice: (message: string) => void) {
+async function sweepRealPreviewDirectories(directory: string, notice: (message: string) => void) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (!entry.isDirectory() || !entry.name.startsWith('ultimate-instance-')) continue
     const home = join(directory, entry.name)

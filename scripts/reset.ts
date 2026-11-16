@@ -1,5 +1,3 @@
-// Start a project's Ultimate from a fresh state: its conversation state moves into a backup folder, nothing is deleted.
-// Usage: pnpm reset [dir] [--dry-run] [--yes]. See "Starting fresh" in docs/running.md.
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -13,43 +11,30 @@ import { acquireLock, readOwner } from '../lib/lock.ts'
 import { projectHome } from '../lib/project-paths.ts'
 import type { BackupFile } from '../extensions/cloud/backup.ts'
 
-/**
- * Files that go: the state, the call trace and states parked by earlier versions, each with its `-wal` and `-shm` (also
- * one whose database already went, as an interrupted reset leaves it), later chapters with their record and a pending
- * switch, and files describing the old state, rebuilt when needed.
- */
 export const MOVES =
   /^((state|trace|state\.stale-.+)\.sqlite(-wal|-shm)?|chapters|chapters\.json|pending-chapter\.json|conversations\.json|previews\.json|supervisor\.log)$/
-/**
- * The reset or restore in progress, written before the first file moves: a rerun finishes it into the same backup.
- * While it exists no Ultimate opens the home (`server/harness.ts`).
- */
 export const JOURNAL = 'reset.json'
+
+type ReplayableInstallation = { database: string; record: BackupFile }
 
 export interface Journal {
   backup: string
-  /** A restore's: the downloaded database in the home, installed last, and the `cloud-backup.json` it gets. */
-  restore?: { database: string; record: BackupFile }
+  restore?: ReplayableInstallation
 }
 
 export const readJournal = (home: string) =>
   readJson<Journal | undefined>(join(home, JOURNAL), undefined)
 
-/** The locks a running Ultimate holds: the supervisor's, and storage's, which a standalone `server/main.ts` takes. */
-const LOCKS = ['ultimate.lock', 'storage.lock']
+const SUPERVISOR_AND_STORAGE_LOCKS = ['ultimate.lock', 'storage.lock']
 
 export interface Plan {
   home: string
   backup: string
-  /** Names in the home that move to the backup. */
   moves: string[]
-  /** An interrupted reset this one finishes. */
   resumes: boolean
-  /** The Ultimate running in this home; `apply` refuses while it runs. */
   running?: { pid: number; port?: number }
 }
 
-/** What a reset of `home` moves now. `apply` asks again under the home's lock. */
 async function inventory(home: string) {
   const journal = await readJournal(home)
   if (journal?.restore)
@@ -57,15 +42,12 @@ async function inventory(home: string) {
   return { journal, moves: await movable(home) }
 }
 
-/** The names in `home` that hold its state, sorted. */
 export const movable = async (home: string) =>
   (await readdir(home)).filter((name) => MOVES.test(name)).toSorted()
 
-/** `<backups>/<kind>-<time>/<home's folder>`: where a reset or restore keeps the state it replaces. */
 export const backupFolder = (backups: string, kind: string, home: string, now = new Date()) =>
   join(backups, `${kind}-${now.toISOString().replace(/[:.]/g, '-')}`, home.split('/').at(-1)!)
 
-/** What a reset of `home` moves. */
 export async function plan(home: string, backups: string, now = new Date()): Promise<Plan> {
   if (!existsSync(home)) throw new Error(`No Ultimate home at ${home}`)
   const { journal, moves } = await inventory(home)
@@ -78,15 +60,14 @@ export async function plan(home: string, backups: string, now = new Date()): Pro
   }
 }
 
-/** The Ultimate that holds one of `home`'s locks; a sidecar a crashed process left is no owner. */
 export async function holder(home: string) {
-  for (const name of LOCKS) {
+  for (const name of SUPERVISOR_AND_STORAGE_LOCKS) {
     const lock = join(home, name)
     const running = await readOwner(lock)
     if (!running) continue
-    const probe = await acquireLock(lock, { pid: process.pid }).catch(meansNone)
-    if (!probe) return { running }
-    await probe.close()
+    const staleSidecarProbe = await acquireLock(lock, { pid: process.pid }).catch(meansNone)
+    if (!staleSidecarProbe) return { running }
+    await staleSidecarProbe.close()
   }
   return {}
 }
@@ -99,17 +80,13 @@ export const refusal = (owner: { pid: number; port?: number }, command = 'pnpm r
       `or Ctrl+C the terminal running it, then run ${command} again.`,
   )
 
-/**
- * Hold `home`'s locks, the supervisor's and storage's, so no Ultimate starts or opens the state meanwhile; refuses
- * while one runs. Close the returned lock.
- */
 export async function lockHome(home: string, command?: string) {
   const held: Awaited<ReturnType<typeof acquireLock>>[] = []
   const close = async () => {
     for (const lock of held.toReversed()) await lock.close()
   }
   try {
-    for (const name of LOCKS) {
+    for (const name of SUPERVISOR_AND_STORAGE_LOCKS) {
       const path = join(home, name)
       held.push(
         await acquireLock(path, { pid: process.pid }).catch(async () => {
@@ -124,7 +101,6 @@ export async function lockHome(home: string, command?: string) {
   return { close }
 }
 
-/** Move `names` from `home` into `backup`, never overwriting a file already there. */
 export async function moveInto(home: string, backup: string, names: string[]) {
   await mkdir(backup, { recursive: true })
   for (const name of names) {
@@ -134,26 +110,25 @@ export async function moveInto(home: string, backup: string, names: string[]) {
   }
 }
 
-/**
- * Move the files into the plan's backup folder, holding the home's lock so Ultimate cannot start meanwhile. Each
- * step can be repeated: an interrupted reset leaves its journal, and running it again finishes it.
- */
+const journalBeforeMoves = (home: string, journal: Journal) =>
+  writeJson(join(home, JOURNAL), journal)
+const removeJournalLast = (home: string) => rm(join(home, JOURNAL))
+
 export async function apply(p: Plan) {
   const lock = await lockHome(p.home)
   try {
-    const { journal, moves } = await inventory(p.home)
-    const backup = journal?.backup ?? p.backup
+    const { journal: existingResetIntent, moves: stateRecheckedUnderLock } = await inventory(p.home)
+    const backup = existingResetIntent?.backup ?? p.backup
     await mkdir(backup, { recursive: true })
-    if (!journal) await writeJson(join(p.home, JOURNAL), { backup } satisfies Journal)
-    await moveInto(p.home, backup, moves)
-    await rm(join(p.home, JOURNAL))
+    if (!existingResetIntent) await journalBeforeMoves(p.home, { backup } satisfies Journal)
+    await moveInto(p.home, backup, stateRecheckedUnderLock)
+    await removeJournalLast(p.home)
     return { backup }
   } finally {
     await lock.close()
   }
 }
 
-/** Worktrees with uncommitted changes and `ultimate/*` branches not merged into HEAD: work the reset leaves in place. */
 async function unlanded(home: string, project: string) {
   const dirty: string[] = []
   const worktrees = join(home, 'worktrees')

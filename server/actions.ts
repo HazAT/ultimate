@@ -7,7 +7,6 @@ import type { ExtensionHost } from './extensions.ts'
 export interface ActionContext {
   host: ExtensionHost
   conversationId?: ConversationId
-  /** The browser that asked, for a call from the UI; agents' calls have none. */
   device?: Device
   signal: AbortSignal
   exec(
