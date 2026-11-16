@@ -28,7 +28,11 @@
 - `tsconfig.swap.json` is the server-only type-check gate for swaps.
 - `tsconfig.json` (server, tests, tooling) references `tsconfig.web.json` (browser: `web/src`, `extensions/**/*.tsx`).
   `pnpm check` type-checks both; with plain `tsc`, run `tsc -b`.
-- The standalone server shuts down on SIGINT/SIGTERM; reopening resumes durable work.
+- The standalone server shuts down on SIGINT/SIGTERM; reopening resumes durable work. A supervised core ignores both
+  and logs an error: the supervisor stops it over IPC, so such a signal comes from outside (an agent's kill by port or
+  name). Stop Ultimate through the supervisor (`pnpm start`'s process, or its service).
+- Closing a server closes the Harness before the extensions, so work running at shutdown stays pending and resumes
+  on the next open instead of faulting on a disposed extension.
 
 ## Starting fresh
 
