@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useConversations, useStore } from '@/sdk'
 import { store } from '@/sdk/client'
 import { parseConversationId } from '../../lib/ids.ts'
@@ -19,11 +19,28 @@ export function useStarters() {
       : []
     return () => stop.forEach((cancel) => cancel())
   }, [ids])
-  const docs = useStore((state) => state.docsOf)
-  return (id: number) => {
-    const by = docs[id]?.[StartedDoc.kind]?.by
-    return typeof by === 'number' ? by : undefined
-  }
+  const starters = useStore((state) =>
+    ids
+      .split(',')
+      .flatMap((id) => {
+        const by = state.docsOf[Number(id)]?.[StartedDoc.kind]?.by
+        return typeof by === 'number' ? [`${id}:${by}`] : []
+      })
+      .join(','),
+  )
+  const by = useMemo(
+    () =>
+      new Map(
+        starters
+          ? starters.split(',').map((pair) => {
+              const [id, starter] = pair.split(':')
+              return [Number(id), Number(starter)] as const
+            })
+          : [],
+      ),
+    [starters],
+  )
+  return (id: number) => by.get(id)
 }
 
 export function useUnderway() {
