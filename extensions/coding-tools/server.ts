@@ -11,6 +11,7 @@ import {
   defineExtension,
   defineTool,
   LiveDoc,
+  ROOT_CONVERSATION_ID,
   type ToolExecutionApi,
   type ToolExecutionResult,
   type ToolRegistration,
@@ -30,6 +31,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { CancelAction, CancelledDoc, Committed } from './refs.ts'
 import { Concluded } from '../conversations/api.ts'
+import { defineEffect } from '../../lib/effect.ts'
 import { startBackground, stopConcluded, sweepEarlierProcesses } from './background.ts'
 
 const modelSizedImages = await createNodePhotonImages()
@@ -247,10 +249,35 @@ async function madeCommits(path: string, conversation: ConversationId) {
 export default function codingTools(
   host: Pick<ExtensionHost, 'emit' | 'home' | 'notice' | 'onOpen' | 'react'>,
 ) {
-  host.onOpen(() => sweepEarlierProcesses(host))
-  host.react('stop-background', [Concluded], (_tx, { data }) =>
-    stopConcluded(host, data.conversations),
+  host.onOpen(() =>
+    sweepEarlierProcesses(host.home).catch((error: unknown) =>
+      host.notice(`Stopping background processes an earlier Ultimate left: ${String(error)}`),
+    ),
   )
+  const StopBackground = defineEffect<{ conversations: ConversationId[]; at: number }, null>(
+    'coding-tools.stop-background',
+    async ({ conversations, at }) => {
+      await stopConcluded(host.home, conversations, at)
+      return null
+    },
+    async (_tx, { conversations }, outcome) => {
+      if (!outcome.ok)
+        host.notice(
+          `Stopping background processes of #${conversations.join(', #')} failed: ${outcome.error}`,
+        )
+    },
+  )
+  host.react('stop-background', [Concluded], async (tx, event) => {
+    await tx.createTask(
+      StopBackground,
+      { conversations: event.data.conversations, at: Date.parse(event.at) },
+      {
+        conversationId: ROOT_CONVERSATION_ID,
+        ownership: { kind: 'conversation' },
+        background: true,
+      },
+    )
+  })
   const shell = createBashTool()
   const parameters = obj({
     command: str({ description: 'Bash command to execute' }),
@@ -318,6 +345,7 @@ export default function codingTools(
   })
   return defineExtension({
     name: 'coding-tools',
+    tasks: [StopBackground],
     tools: [
       createReadTool({ images: modelSizedImages }),
       createWriteTool(),

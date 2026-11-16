@@ -2,15 +2,16 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isMissing, inProcess, rebuiltOnOpen } from '../../lib/errors.ts'
+import { isMissing, inProcess } from '../../lib/errors.ts'
 import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
 type Host = Pick<ExtensionHost, 'home' | 'notice'>
 
 const groups = (home: string) => join(home, 'background')
-const conversationGroups = (home: string, id: ConversationId) => join(groups(home), String(id))
+const conversationGroups = (home: string, id: string) => join(groups(home), id)
 const startedByThisProcess = (name: string) => name.startsWith(`${process.pid}-`)
+const startedAfter = (at: number) => (name: string) => Number(name.split('-')[1]) > at
 const quoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`
 
 export async function startBackground(
@@ -19,9 +20,9 @@ export async function startBackground(
   cwd: string,
   command: string,
 ) {
-  const directory = conversationGroups(host.home, conversation)
+  const directory = conversationGroups(host.home, String(conversation))
   await mkdir(directory, { recursive: true })
-  const name = `${process.pid}-${randomUUID()}`
+  const name = `${process.pid}-${Date.now()}-${randomUUID()}`
   const pidFile = join(directory, `${name}.pid`)
   const log = join(directory, `${name}.log`)
   await writeFile(log, '')
@@ -51,32 +52,17 @@ async function filesIn(directory: string) {
   }
 }
 
-async function sweepConversations(
-  host: Host,
-  ids: string[],
-  keep: (name: string) => boolean = () => false,
-) {
+async function sweep(home: string, ids: string[], keep: (name: string) => boolean) {
   for (const id of ids) {
-    const directory = join(groups(host.home), id)
+    const directory = conversationGroups(home, id)
     await sweepPidFiles(directory, keep)
     for (const file of await filesIn(directory))
       if (!keep(file)) await rm(join(directory, file), { force: true })
-    if (!(await filesIn(directory)).length) await rm(directory, { recursive: true, force: true })
   }
 }
 
-export function stopConcluded(host: Host, ids: ConversationId[]) {
-  rebuiltOnOpen(
-    "a restart's open stops every group an earlier process recorded",
-    sweepConversations(host, ids.map(String)).catch((error: unknown) =>
-      host.notice(`Stopping background processes of concluded conversations: ${String(error)}`),
-    ),
-  )
-}
+export const stopConcluded = (home: string, ids: ConversationId[], concludedAt: number) =>
+  sweep(home, ids.map(String), startedAfter(concludedAt))
 
-export const sweepEarlierProcesses = (host: Host) =>
-  filesIn(groups(host.home))
-    .then((ids) => sweepConversations(host, ids, startedByThisProcess))
-    .catch((error: unknown) =>
-      host.notice(`Stopping background processes an earlier Ultimate left: ${String(error)}`),
-    )
+export const sweepEarlierProcesses = async (home: string) =>
+  sweep(home, await filesIn(groups(home)), startedByThisProcess)

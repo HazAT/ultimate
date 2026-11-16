@@ -23,9 +23,11 @@ an `install` or `migrate` word) is refused with a hint to split it, so a steer c
 
 A bash call with `background: true` (dev servers, watchers) starts the command in its own process group through
 `spawnGroup` (`lib/process-group.ts`) and returns at once with the group id, a log of its output and `kill -- -<pgid>`.
-The pid file and log live in `<home>/background/<conversation>/`, named after the Ultimate process that started them.
-When a conversation concludes, conversations emits `conversations.concluded` with it and every conversation it owns
-in the concluding commit; coding-tools' `stop-background` reactor stops their groups and removes their folders. Each
+The pid file and log live in `<home>/background/<conversation>/`, named after the Ultimate process that started them
+and the start time. When a conversation concludes, conversations emits `conversations.concluded` with it and every
+conversation it owns in the concluding commit; coding-tools' `stop-background` reactor creates a durable effect that
+stops the groups started before the conclusion and removes their files, so a resumed conversation keeps what it
+started since. Each
 open stops the groups an earlier process recorded, so a restart ends every background process; the agent starts it
 again. A pid is signalled only while its pid file still names it with the start time it recorded.
 
