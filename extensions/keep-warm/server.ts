@@ -142,6 +142,7 @@ async function sendOneShotPingWithoutSession(
     lastRequest: number
     previous?: number
   },
+  signal: AbortSignal,
 ) {
   const paused = () => host.want(PauseApi)?.paused()
   const { id, provider } = found
@@ -188,7 +189,7 @@ async function sendOneShotPingWithoutSession(
             { messages },
             {
               ...(agent.thinkingLevel === 'off' ? {} : { reasoning: agent.thinkingLevel }),
-              signal: AbortSignal.timeout(180_000),
+              signal: AbortSignal.any([AbortSignal.timeout(180_000), signal]),
             },
           )
           .result(),
@@ -237,18 +238,22 @@ async function sendOneShotPingWithoutSession(
   )
 }
 
-async function tick(host: ExtensionHost) {
+async function tick(host: ExtensionHost, signal: AbortSignal) {
   if (host.want(PauseApi)?.paused()) return
   const doc = await read(host)
   if (doc.off) return
   const now = Date.now()
   const found = await activity(host, doc, now)
   if (!found?.lastRequest || !due({ now, ...found })) return
-  await sendOneShotPingWithoutSession(host, {
-    ...found,
-    lastRequest: found.lastRequest,
-    previous: doc.last?.at,
-  })
+  await sendOneShotPingWithoutSession(
+    host,
+    {
+      ...found,
+      lastRequest: found.lastRequest,
+      previous: doc.last?.at,
+    },
+    signal,
+  )
 }
 
 async function state(host: ExtensionHost): Promise<WarmState> {
@@ -284,15 +289,24 @@ export default function keepWarm(host: ExtensionHost) {
     },
     { from: 'now' },
   )
-  const shared = host.resource('keep-warm.timer', () => ({
+  const shared = host.resource('keep-warm.ping', () => ({
     running: undefined as Promise<void> | undefined,
+    released: new AbortController(),
   }))
   const stopPolling = every(CACHE_CHECK_INTERVAL_MS, () => {
-    shared.running ??= tick(host)
+    if (shared.released.signal.aborted) return
+    shared.running ??= tick(host, shared.released.signal)
       .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
       .finally(() => {
         shared.running = undefined
       })
+  })
+  host.onRelease(async () => {
+    shared.released.abort()
+    await shared.running
+  })
+  host.onOpen(async () => {
+    if (shared.released.signal.aborted) shared.released = new AbortController()
   })
   host.onClose(async () => {
     stopPolling()

@@ -22,6 +22,7 @@ import {
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
+import type { Message } from '../messages/api.ts'
 import { Standing, Subagents } from '../subagents/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
@@ -58,6 +59,12 @@ const failed = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
   ['model_error', 'no_model'].includes(
     (task.state.outcome.error.detail as { reason?: string } | undefined)?.reason ?? '',
   )
+const faultedDelivery = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
+  task.kind === 'board.delivery' &&
+  task.state.status === 'terminal' &&
+  task.state.outcome.status === 'faulted'
+const reportable = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
+  failed(task) || faultedDelivery(task)
 const failedInput = (input: SubmissionRecord) =>
   input.type === 'input' &&
   input.status === 'unanswered' &&
@@ -185,7 +192,13 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
 
 export default function watchdog(host: ExtensionHost) {
   const Watchdog = defineTask<
-    Failure & { failedTask: number; recipient: ConversationId; temporary: boolean; until: number },
+    Failure & {
+      failedTask: number
+      recipient: ConversationId
+      temporary: boolean
+      until: number
+      delivery?: true
+    },
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
     null
   >({
@@ -230,7 +243,7 @@ export default function watchdog(host: ExtensionHost) {
           ...(hint ? { hint } : {}),
         }
         const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
-        if (recipient === conversation) {
+        if (recipient === conversation && !task.input.delivery) {
           host.notice(content)
         } else {
           const target = (await runtime.conversation(recipient, ctx))!
@@ -272,10 +285,43 @@ export default function watchdog(host: ExtensionHost) {
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
 
+  async function detectFaultedDelivery(task: TaskRecord<JsonValue, JsonValue, JsonValue>) {
+    await host.harness().commit(async (tx) => {
+      const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
+      if (task.id <= (receipts.highWater ?? Infinity) || receipts.tasks[String(task.id)]) return
+      receipts.tasks[String(task.id)] = true
+      if (task.state.status !== 'terminal' || task.state.outcome.status !== 'faulted') return
+      const { message } = task.input as { message: Message }
+      const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+      const recipient = typeof message.from === 'number' ? message.from : ultimate
+      if (recipient === undefined)
+        throw new Error('Watchdog needs @ultimate to report a faulted message delivery')
+      const conversation = typeof message.to === 'number' ? message.to : recipient
+      const title = (await tx.doc(host.metadata, conversation)).title ?? 'Untitled'
+      await tx.createTask(
+        Watchdog,
+        {
+          failedTask: task.id,
+          conversation,
+          recipient,
+          title,
+          error: `Message ${message.id} to ${typeof message.to === 'number' ? `#${message.to}` : message.to} was not delivered: ${task.state.outcome.error.message}`,
+          step: 'message delivery',
+          retried: false,
+          temporary: false,
+          delivery: true,
+          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+        },
+        { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
+      )
+    }, context)
+  }
+
   async function detect(
     task: TaskRecord<JsonValue, JsonValue, JsonValue>,
     inputs?: SubmissionRecord[],
   ) {
+    if (faultedDelivery(task)) return detectFaultedDelivery(task)
     if (!failed(task)) return
     let submissions = inputs
     if (!submissions) {
@@ -362,7 +408,7 @@ export default function watchdog(host: ExtensionHost) {
         change.type === 'submission' && failedInput(change.value) ? [change.value] : [],
       )
       for (const change of publication.changes) {
-        if (change.type !== 'task' || !failed(change.value)) continue
+        if (change.type !== 'task' || !reportable(change.value)) continue
         recovery = recovery
           .then(() =>
             detect(
@@ -385,7 +431,7 @@ export default function watchdog(host: ExtensionHost) {
             newest = task.id
             if (task.state.status !== 'terminal')
               oldestUnfinishedTaskId = Math.min(oldestUnfinishedTaskId, task.id)
-            const failurePredatesWatchdogInstallation = failed(task)
+            const failurePredatesWatchdogInstallation = reportable(task)
             if (failurePredatesWatchdogInstallation) receipts.tasks[String(task.id)] = true
           }
           cursor = page.next

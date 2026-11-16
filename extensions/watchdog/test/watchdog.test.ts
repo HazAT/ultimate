@@ -574,6 +574,84 @@ it('lets reply:true board messages report their own failures, including during r
   expect(await f.tasks()).toHaveLength(0)
 })
 
+it('reports a faulted message delivery to its sender, once', async () => {
+  const f = await fixture()
+  const branch = await f.conversation('Favourites')
+  const Delivery = defineTask<
+    { message: { id: number; from: number; to: number } },
+    { phase: 'deliver' },
+    null
+  >({
+    name: 'board.delivery',
+    version: 1,
+    initial: () => ({ phase: 'deliver' }),
+    phases: {
+      deliver: () => {
+        throw new Error('messages needs subagents, which no enabled extension provides')
+      },
+    },
+    abort: (_task, runtime, ctx) =>
+      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
+  })
+  f.registry.install(defineExtension({ name: 'messages', tasks: [Delivery] }))
+  await f.harness.commit(
+    (tx) =>
+      tx.createTask(
+        Delivery,
+        { message: { id: 5, from: f.ultimate, to: branch } },
+        { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' } },
+      ),
+    context,
+  )
+  await until(async () => (await f.entries()).length === 1)
+  expect((await f.entries())[0].data).toEqual({
+    conversation: branch,
+    title: 'Favourites',
+    error:
+      'Message 5 to #' +
+      branch +
+      ' was not delivered: messages needs subagents, which no enabled extension provides',
+    step: 'message delivery',
+    retried: false,
+  })
+  await f.reopen()
+  await f.harness.waitForIdle(context)
+  expect(await f.entries()).toHaveLength(1)
+})
+
+it('reports a faulted delivery from the user to @ultimate as a card, not a notice', async () => {
+  const f = await fixture()
+  const Delivery = defineTask<
+    { message: { id: number; from: 'user'; to: number } },
+    { phase: 'deliver' },
+    null
+  >({
+    name: 'board.delivery',
+    version: 1,
+    initial: () => ({ phase: 'deliver' }),
+    phases: {
+      deliver: () => {
+        throw new Error('disposed')
+      },
+    },
+    abort: (_task, runtime, ctx) =>
+      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
+  })
+  f.registry.install(defineExtension({ name: 'messages', tasks: [Delivery] }))
+  await f.harness.commit(
+    (tx) =>
+      tx.createTask(
+        Delivery,
+        { message: { id: 9, from: 'user', to: f.ultimate } },
+        { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' } },
+      ),
+    context,
+  )
+  await until(async () => (await f.entries()).length === 1)
+  expect((await f.entries())[0].data).toMatchObject({ step: 'message delivery' })
+  expect(f.notices).toEqual([])
+})
+
 it('reports a generation running at installation without backfilling newer historical failures', async () => {
   const f = await fixture((transcript) => {
     if (inputText(transcript).startsWith('[run failed]')) return fauxAssistantMessage('ok')
