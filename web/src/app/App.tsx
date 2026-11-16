@@ -8,7 +8,6 @@ import { errorMessage } from '../sdk/format.ts'
 import {
   ExtensionNameContext,
   useConversation,
-  useConversationSummary,
   useExtensions,
   useReady,
   useShownSurface,
@@ -103,8 +102,9 @@ function Surfaces({ surfaces }: { surfaces: readonly SurfaceItem[] }) {
 }
 
 function useDocumentTitle(surface: { id: string; title: string } | undefined) {
-  const { id, busy } = useConversation()
-  const label = useConversationSummary(id)?.label
+  const id = useConversation((conversation) => conversation.id)
+  const busy = useConversation((conversation) => conversation.busy)
+  const label = useStore((state) => state.conversations.find((row) => row.id === id)?.label)
   const project = projectTitle(useSystem())
   const app = surface && surface.id !== HOME ? surface.title : undefined
   useEffect(() => {
