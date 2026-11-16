@@ -101,6 +101,7 @@ export async function sendPush(
   privateKey: string,
   payload: object,
   urgency: 'high' | 'normal',
+  signal?: AbortSignal,
 ) {
   const response = await fetch(subscription.endpoint, {
     method: 'POST',
@@ -112,7 +113,7 @@ export async function sendPush(
       Urgency: urgency,
     },
     body: encrypt(Buffer.from(JSON.stringify(payload)), subscription.keys),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]),
     redirect: 'error',
   })
   const gone = response.status === 404 || response.status === 410
