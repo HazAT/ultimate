@@ -289,7 +289,7 @@ export default function keepWarm(host: ExtensionHost) {
     },
     { from: 'now' },
   )
-  const shared = host.resource('keep-warm.timer', () => ({
+  const shared = host.resource('keep-warm.ping', () => ({
     running: undefined as Promise<void> | undefined,
     released: new AbortController(),
   }))
