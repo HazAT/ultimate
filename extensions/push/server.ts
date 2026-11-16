@@ -127,7 +127,12 @@ const deliver = (host: ExtensionHost) =>
       (each) =>
         Date.now() - (visibleEndpointsAt.get(each.endpoint) ?? 0) >= VISIBLE_BROWSER_GRACE_MS,
     )
-    await Promise.all(hidden.map((each) => send(host, each, push, signal)))
+    await Promise.all(hidden.map((each) => send(host, each, push, signal))).catch(
+      (error: unknown) => {
+        if (!signal.aborted) host.notice(`Push: ${String(error)}`)
+        throw error
+      },
+    )
     return hidden.length
   })
 
