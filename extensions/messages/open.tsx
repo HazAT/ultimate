@@ -3,7 +3,19 @@ import { ROOT } from '@/sdk'
 import { HourglassIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { formatAgo, useConversation, useDocOf, useNow, useUltimate } from '@/sdk'
+import {
+  formatAgo,
+  Provided,
+  useConversation,
+  useConversations,
+  useDocOf,
+  useNow,
+  useUltimate,
+} from '@/sdk'
+import type { WaitFacts } from '../../lib/waits.ts'
+import { parseConversationId } from '../../lib/ids.ts'
+import { WaitTimers } from './points.tsx'
+import { useStarters, useUnderway } from './started.tsx'
 import { Address } from './cards.tsx'
 import { useConcludedSince } from '../conversations/ui.tsx'
 import { emptyMessages, openMessages } from './data.tsx'
@@ -50,19 +62,38 @@ function Section({
   )
 }
 
-/** The composer's chip for the shown conversation's open messages; a click lists them, and each opens its conversation. */
 export function OpenMessages() {
+  return (
+    <Provided input={null} point={WaitTimers}>
+      {(timers) => <Open timers={timers} />}
+    </Provided>
+  )
+}
+
+function Open({ timers }: { timers: WaitFacts['automations'] }) {
   const id = useConversation((conversation) => conversation.id)
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const concludedSince = useConcludedSince()
+  const starters = useStarters()
+  const conversations = useConversations()
+  const underway = useUnderway()
+  const branches = conversations
+    .filter((c) => c.branchOf)
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      starter: starters(c.id),
+      working: underway(c.id),
+      concluded: concludedSince(c.id) === Infinity,
+    }))
   const now = useNow(30_000)
   const { switchConversation } = useUltimate()
   const [shown, setShown] = useState(false)
   if (id === undefined) return null
-  const { waiting, owed, delivering } = openMessages(log.messages, id, concludedSince)
+  const { waiting, requests, delivering, owed } = openMessages(log.messages, id, branches, timers)
   const parts = [
     waiting.length && `${waiting.length} waiting`,
-    owed.length && `${owed.length} owed`,
+    requests.length + owed.length > 0 && `${requests.length + owed.length} owed`,
     delivering.length && `${delivering.length} delivering`,
   ].filter(Boolean)
   if (!parts.length) return null
@@ -89,7 +120,22 @@ export function OpenMessages() {
         side="top"
       >
         <Section messages={waiting} now={now} open={go} side="to" title="Waiting on" />
-        <Section messages={owed} now={now} open={go} side="from" title="You owe an answer to" />
+        <Section messages={requests} now={now} open={go} side="from" title="You owe an answer to" />
+        {owed.length > 0 && (
+          <div className="grid gap-0.5">
+            <div className="px-1.5 section-label">Branches waiting on you</div>
+            {owed.map((branch) => (
+              <button
+                className="min-w-0 truncate rounded-sm px-1.5 py-1 text-left hover:bg-accent"
+                key={branch.id}
+                onClick={() => go(parseConversationId(branch.id))}
+                type="button"
+              >
+                #{branch.id} · {branches.find((b) => b.id === branch.id)?.title ?? 'Branch'}
+              </button>
+            ))}
+          </div>
+        )}
         <Section messages={delivering} now={now} open={go} side="to" title="Delivering to" />
       </PopoverContent>
     </Popover>

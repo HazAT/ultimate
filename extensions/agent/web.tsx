@@ -14,7 +14,6 @@ import type { CommandContribution } from '@/sdk'
 import { CompactAction, getRoots } from '../lineage/ui.tsx'
 import { PanelActions } from './panel-actions.tsx'
 
-/** The conversation in a centred column, with the sidebar and the right panel beside it. */
 function Agent() {
   return (
     <>
@@ -31,10 +30,6 @@ function Agent() {
   )
 }
 
-/**
- * Commands for the shown conversation, on every surface; the palette lists them under Ultimate, with the shell's. A
- * shortcut pressed inside a `ConversationScope` (a side chat) acts on that conversation instead.
- */
 const commands: CommandContribution[] = [
   {
     id: 'agent.stop',
@@ -47,7 +42,6 @@ const commands: CommandContribution[] = [
   {
     id: 'agent.compact',
     title: 'Compact the context',
-    // A root compacts through lineage, which admits only a tally and gives it the root's summary focus.
     run: (context) =>
       context.conversationId !== undefined && getRoots()?.includes(context.conversationId)
         ? api.action(CompactAction, { id: context.conversationId })
@@ -69,7 +63,6 @@ const commands: CommandContribution[] = [
 ]
 
 export default defineWebExtension({
-  // After the other items, just before the command palette button.
   slots: { 'titlebar.right': [{ component: PanelActions, order: 100 }] },
   surfaces: [
     {

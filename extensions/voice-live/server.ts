@@ -40,6 +40,14 @@ import {
   StartAction,
   StatusAction,
 } from './refs.ts'
+import {
+  VoiceLineEntry,
+  VoiceContextEntry,
+  VoiceAnswerEntry,
+  VoiceHeardEntry,
+  VoiceQuestionEntry,
+  VoiceUtteranceEntry,
+} from './entries.ts'
 import type {
   VoiceAnswer,
   VoiceContext,
@@ -62,8 +70,7 @@ export const secrets = [
   },
 ]
 
-/** The same API-key-only policy as composer voice; an OpenAI OAuth login is not an API key. */
-async function apiKey(host: ExtensionHost, signal: AbortSignal) {
+async function openaiSecretOrNonOAuthKey(host: ExtensionHost, signal: AbortSignal) {
   const key = await readSecret(host.userHome, SECRET)
   if (key) return key
   const runtime = host.modelRuntime
@@ -72,7 +79,6 @@ async function apiKey(host: ExtensionHost, signal: AbortSignal) {
   return (await runtime.getAuth('openai', { signal }))?.auth.apiKey
 }
 
-/** GPT-Live is only the audio interface; the standing Voice agent decides and answers. */
 export function liveInstructions() {
   return `Listen to the user. Speak exactly the commentary you receive, in the user's language, without adding content. Never answer questions about their work yourself or announce a handoff on your own.
 
@@ -86,7 +92,7 @@ Delegation policy
 Do not generate <|SpawnThinking|>: always. Do not delegate. The Voice agent receives every finished line and handles requests. Thinking notes are quiet context, not words to read aloud.`
 }
 
-const Forwarded = defineDoc<{ scheduled: boolean }>({
+const ForwardReceipt = defineDoc<{ scheduled: boolean }>({
   kind: 'voice-live.forwarded',
   checkpointWhen: () => false,
   version: 1,
@@ -111,7 +117,7 @@ async function lines(tx: Tx, id: ConversationId, limit: number) {
   do {
     const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
     for (const entry of page.items) {
-      if (entry.kind === 'voice.line') result.push(entry.data as VoiceLine)
+      if (VoiceLineEntry.is(entry)) result.push(entry.data)
       if (result.length === limit) return result.toReversed()
     }
     cursor = page.next
@@ -119,8 +125,7 @@ async function lines(tx: Tx, id: ConversationId, limit: number) {
   return result.toReversed()
 }
 
-/** The brief each Voice conversation's session is still putting together; a heard line waits for it. */
-const pending = (host: ExtensionHost) =>
+const pendingBriefs = (host: ExtensionHost) =>
   host.resource('voice-live.briefs', () => new Map<ConversationId, Promise<unknown>>())
 
 const briefMessage = (text: string) => ({
@@ -129,49 +134,44 @@ const briefMessage = (text: string) => ({
   timestamp: Date.now(),
 })
 
-/** The newest stored brief of Voice conversation `id`, read inside `tx`. */
 async function newestBrief(tx: Tx, id: ConversationId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
-    const found = page.items.find((entry) => entry.kind === 'voice.context')
+    const found = page.items.find((candidate) => VoiceContextEntry.is(candidate))
     if (found) return found
     cursor = page.next
   } while (cursor)
   return undefined
 }
 
-/**
- * Put the session's brief into Voice's transcript as a context entry, replacing the previous brief for the model: its
- * edit omits it, and that one's edit the one before, so only the newest counts. `transient`: compaction summaries leave
- * it out, and Voice's next request places it again when compaction cut it (see the beforeRequest hook).
- */
-async function placeBrief(
+async function queueLatestBrief(
   host: ExtensionHost,
   id: ConversationId,
   session: string,
   brief: VoiceContext,
 ) {
-  const previous = await host.harness().commit((tx) => newestBrief(tx, id), context)
+  const supersededBrief = await host.harness().commit((tx) => newestBrief(tx, id), context)
   const conversation = (await host.harness().conversation(id, context))!
-  // Admitted, not awaited: while Voice is busy it queues, still ahead of any line heard after it.
+
   await conversation.submit(
     {
       type: 'write',
       requestId: `voice:context:${session}`,
       entry: {
-        kind: 'voice.context',
+        kind: VoiceContextEntry.kind,
         data: { ...brief, transient: true },
         ...(brief.error ? {} : { model: [briefMessage(brief.text)] }),
-        ...(previous ? { edits: [{ target: previous.id, action: 'omit' as const }] } : {}),
+        ...(supersededBrief
+          ? { edits: [{ target: supersededBrief.id, action: 'omit' as const }] }
+          : {}),
       },
     },
     context,
   )
 }
 
-/** Display-only writes need no model message and never launch a turn. */
-async function write(
+async function writeDisplayOnlyEntry(
   host: ExtensionHost,
   id: ConversationId,
   kind: 'voice.line' | 'voice.session',
@@ -206,7 +206,6 @@ function questionsText(questions: Question[]) {
     .join('\n\n')
 }
 
-/** Who asks `message`, for Voice to say: @ultimate, or the branch by title and id. */
 function askerOf(
   host: ExtensionHost,
   message: Pick<Message, 'from'>,
@@ -217,7 +216,6 @@ function askerOf(
   return `#${message.from}${title ? ` "${title}"` : ''}`
 }
 
-/** One open question to the user in full, the way Voice reads it out. */
 function questionText(host: ExtensionHost, message: Message, main: ConversationId | undefined) {
   return [
     `Message ${message.id} from ${askerOf(host, message, main)}, asked ${formatAgo(message.at, Date.now(), { ago: true })}:`,
@@ -226,7 +224,6 @@ function questionText(host: ExtensionHost, message: Message, main: ConversationI
   ].join('\n')
 }
 
-/** The open questions to the user, oldest first (the Inbox's order), one line each, the way their cards head them. */
 export async function openList(host: ExtensionHost, ctx: Context) {
   const [open, standing] = await Promise.all([
     host.need(MessagesApi).openQuestions(ctx),
@@ -243,25 +240,29 @@ export async function openList(host: ExtensionHost, ctx: Context) {
     : 'No open questions.'
 }
 
-/** The one-line gist of open question `message`, as its card heads it; undefined once it is not open. */
 async function gistOf(host: ExtensionHost, message: number, ctx: Context) {
   return (await host.need(MessagesApi).openQuestions(ctx)).find((q) => q.message === message)?.text
 }
 
-/** Voice's spoken line for tool `taskId`, when a tool speaks and ends Voice's turn in one call. */
 const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: TaskId) =>
-  write(host, id, 'voice.line', { role: 'ultimate', text, speech: true }, `voice:say:${taskId}`)
+  writeDisplayOnlyEntry(
+    host,
+    id,
+    'voice.line',
+    { role: 'ultimate', text, speech: true },
+    `voice:say:${taskId}`,
+  )
 
-/** Both writers share one request id, so the first write's time is the one kept. */
-const userLine = (input: { text: string }): VoiceLine => ({
+const forwardedLineKey = (request: string) => `voice:line:${request}`
+
+const forwardedUserLine = (input: { text: string }): VoiceLine => ({
   role: 'user',
   text: input.text,
   forwarded: true,
   at: Date.now(),
 })
 
-/** A stable input request id makes answer delivery safe if the task resumes after submitting it. */
-async function answerVoice(
+async function submitAnswerOnce(
   host: ExtensionHost,
   voice: ConversationId,
   line: number,
@@ -275,7 +276,7 @@ async function answerVoice(
       type: 'input',
       requestId: `voice:answer:${line}`,
       whenBusy: 'steer',
-      entry: { kind: 'voice.answer', data },
+      entry: { kind: VoiceAnswerEntry.kind, data },
       content: `@ultimate answered (to forwarded line ${line}):\n${text}`,
     },
     context,
@@ -287,11 +288,9 @@ export function answerTask(host: ExtensionHost) {
     {
       voice: ConversationId
       main: ConversationId
-      /** Names the user's forwarded line, written once under `voice:line:<request>`. */
       request: string
       text: string
       firstMessage: number
-      /** @ultimate's open question this utterance answers, named by Voice (voice_answer). */
       message?: number
     },
     { phase: 'answer' },
@@ -305,38 +304,36 @@ export function answerTask(host: ExtensionHost) {
         const input = task.input
         const main = input.main
         const recipient = (await host.harness().conversation(main, ctx))!
-        const line = await write(
+        const line = await writeDisplayOnlyEntry(
           host,
           input.voice,
           'voice.line',
-          userLine(input),
-          `voice:line:${input.request}`,
+          forwardedUserLine(input),
+          forwardedLineKey(input.request),
         )
-        // The question Voice named with voice_answer; none is guessed. Without one the utterance goes in as plain input.
-        const question = input.message ?? false
+
+        const explicitlyNamedQuestion = input.message ?? false
         let receipt
-        // A crash after answer() finds this utterance's own reply by its text, never another answer to the question.
+
         const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-        const previous =
-          question === false
+        const matchingReplyBeforeCrash =
+          explicitlyNamedQuestion === false
             ? undefined
             : log?.messages.find(
-                (m) => m.from === 'user' && m.re === question && m.text === input.text,
+                (m) =>
+                  m.from === 'user' && m.re === explicitlyNamedQuestion && m.text === input.text,
               )
         const reply =
-          question === false
+          explicitlyNamedQuestion === false
             ? undefined
-            : (previous?.id ??
+            : (matchingReplyBeforeCrash?.id ??
               (await host
                 .need(MessagesApi)
-                .answer(question, input.text, ctx)
+                .answer(explicitlyNamedQuestion, input.text, ctx)
                 .catch((error: unknown) => {
-                  // Answered meanwhile (its card, another utterance): this utterance goes in as plain voice input.
-                  if (
-                    error instanceof Error &&
-                    error.message === 'These questions are no longer open'
-                  )
-                    return undefined
+                  const alreadyAnsweredElsewhere =
+                    error instanceof Error && error.message === 'These questions are no longer open'
+                  if (alreadyAnsweredElsewhere) return undefined
                   throw error
                 })))
         if (reply !== undefined) {
@@ -375,7 +372,7 @@ export function answerTask(host: ExtensionHost) {
               requestId: `voice:${line}`,
               whenBusy: 'steer',
               entry: {
-                kind: 'voice.utterance',
+                kind: VoiceUtteranceEntry.kind,
                 data: { text: input.text, line },
               },
               content: `The user, by voice (live transcript, may contain mistakes):\n${input.text}`,
@@ -385,8 +382,7 @@ export function answerTask(host: ExtensionHost) {
         }
         const settled = await receipt.wait(ctx)
         if (settled.status !== 'done' || settled.type !== 'input') {
-          // Said out loud too: the user waits by ear, so a silent failure looks like nothing happened.
-          await write(
+          await writeDisplayOnlyEntry(
             host,
             input.voice,
             'voice.line',
@@ -400,7 +396,7 @@ export function answerTask(host: ExtensionHost) {
             },
             `voice:notice:${line}`,
           )
-          await answerVoice(host, input.voice, line, 'Ultimate did not answer that request.')
+          await submitAnswerOnce(host, input.voice, line, 'Ultimate did not answer that request.')
           await runtime.commit(
             () => ({
               status: 'terminal',
@@ -420,8 +416,8 @@ export function answerTask(host: ExtensionHost) {
             message?.role === 'assistant'
               ? message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
               : ''
-          // A tool-terminated message can have no final prose. Match calls in this run, not another concurrent run.
-          const calls = new Set<string>()
+
+          const toolCallsInAnsweredRun = new Set<string>()
           let cursor: Cursor | undefined
           do {
             const page = await tx.scanEntries(
@@ -437,7 +433,8 @@ export function answerTask(host: ExtensionHost) {
             for (const entry of page.items)
               for (const m of entry.model ?? [])
                 if (m.role === 'assistant')
-                  for (const p of m.content) if (p.type === 'toolCall') calls.add(p.id)
+                  for (const p of m.content)
+                    if (p.type === 'toolCall') toolCallsInAnsweredRun.add(p.id)
             cursor = page.next
           } while (cursor)
           const sent = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
@@ -446,13 +443,15 @@ export function answerTask(host: ExtensionHost) {
               m.from === main &&
               m.to === 'user' &&
               m.call &&
-              [...calls].some((call) => m.call === call || m.call!.startsWith(`${call}/`)),
+              [...toolCallsInAnsweredRun].some(
+                (call) => m.call === call || m.call!.startsWith(`${call}/`),
+              ),
           )
           return sent
             ? `${sent.text}${sent.questions?.length ? `\n\nQuestions:\n${questionsText(sent.questions)}` : ''}`
             : plain
         }, ctx)
-        await answerVoice(
+        await submitAnswerOnce(
           host,
           input.voice,
           line,
@@ -470,28 +469,27 @@ export function answerTask(host: ExtensionHost) {
   })
 }
 
-/** The dock's message when OpenAI refuses a session: its own words, since a bare "(HTTP 429)" hid "no credits". */
-function liveFailure({ status, message, code }: OpenAiError) {
+function liveFailureWithProviderReason({ status, message, code }: OpenAiError) {
   const said = message ? `: ${message}` : ''
   return `OpenAI live session failed (HTTP ${status}${code ? ` ${code}` : ''})${said}`
 }
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) =>
-    (await apiKey(host, signal))
+    (await openaiSecretOrNonOAuthKey(host, signal))
       ? { available: true as const }
       : { available: false as const, reason: NO_KEY },
   ),
   start: implementAction(StartAction, async (args, { host, signal }) => {
     const sdp = args && typeof args === 'object' && !Array.isArray(args) ? args.sdp : undefined
     if (typeof sdp !== 'string' || !sdp.trim()) throw new Error('Expected an SDP offer')
-    const key = await apiKey(host, signal)
+    const key = await openaiSecretOrNonOAuthKey(host, signal)
     if (!key) throw new Error(NO_KEY)
     const id = await host.need(SubagentsApi).standing('voice', context)
-    // Put together while the session connects; a failure becomes a brief that says so, never a failed start.
+
     const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
     const started = performance.now()
-    const brief = (
+    const advisoryBrief = (
       main
         ? voiceBrief(host, main, context)
         : Promise.reject(new Error('@ultimate is not available'))
@@ -507,9 +505,10 @@ export const actions = {
         error: error instanceof Error ? error.message : String(error),
       }),
     )
-    const recent = await host.harness().commit((tx) => lines(tx, id, 10), context)
-    // Bound both messages and input size, leaving room below the 8,192-token session seed cap.
-    const input = recent
+    const sessionSeedLineLimit = 10
+    const sessionSeedLineCharsBelowTokenCap = 200
+    const recent = await host.harness().commit((tx) => lines(tx, id, sessionSeedLineLimit), context)
+    const boundedSessionSeed = recent
       .filter((line) => line.role !== 'note')
       .map((line) => ({
         type: 'message',
@@ -517,7 +516,7 @@ export const actions = {
         content: [
           {
             type: line.role === 'user' ? 'input_text' : 'output_text',
-            text: line.text.slice(0, 200),
+            text: line.text.slice(0, sessionSeedLineCharsBelowTokenCap),
           },
         ],
       }))
@@ -533,29 +532,29 @@ export const actions = {
           instructions: liveInstructions(),
           audio: { output: { voice: 'marin' } },
           delegation: { type: 'client' },
-          ...(input.length ? { input } : {}),
+          ...(boundedSessionSeed.length ? { input: boundedSessionSeed } : {}),
         },
         transport: { type: 'webrtc', sdp },
       }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     })
-    if (!response.ok) throw new Error(liveFailure(await openaiError(response)))
+    if (!response.ok) throw new Error(liveFailureWithProviderReason(await openaiError(response)))
     const answer = (await response.json()) as {
       session?: { id?: string }
       transport?: { type?: string; sdp?: string }
     }
     if (!answer.session?.id || answer.transport?.type !== 'webrtc' || !answer.transport.sdp)
       throw new Error('OpenAI returned no WebRTC session answer')
-    await write(
+    await writeDisplayOnlyEntry(
       host,
       id,
       'voice.session',
       { phase: 'started', at: Date.now() },
       `voice:start:${answer.session.id}`,
     )
-    const briefs = pending(host)
-    const placing = brief
-      .then((made) => placeBrief(host, id, answer.session!.id!, made))
+    const briefs = pendingBriefs(host)
+    const placing = advisoryBrief
+      .then((made) => queueLatestBrief(host, id, answer.session!.id!, made))
       .catch((error: unknown) => console.error('Voice brief:', error))
       .finally(() => {
         if (briefs.get(id) === placing) briefs.delete(id)
@@ -567,14 +566,14 @@ export const actions = {
     const text = args && typeof args === 'object' && !Array.isArray(args) ? args.text : undefined
     if (typeof text !== 'string' || !text.trim()) throw new Error('Expected text')
     const id = await voiceId(host)
-    // The first line of a session goes in after its brief, so Voice reads it with the context.
-    await pending(host).get(id)
+
+    await pendingBriefs(host).get(id)
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
         type: 'input',
         whenBusy: 'steer',
-        entry: { kind: 'voice.heard', data: { text: text.trim() } },
+        entry: { kind: VoiceHeardEntry.kind, data: { text: text.trim() } },
         content: `The user, by voice (live transcript, may contain mistakes):\n${text.trim()}`,
       },
       context,
@@ -590,7 +589,7 @@ export const actions = {
       host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context),
     ])
     const question = open.find((q) => q.message === id)
-    // Answered before the user paused: nothing to announce.
+
     if (!question) return {}
     const data: VoiceQuestion = {
       message: id,
@@ -599,13 +598,13 @@ export const actions = {
       gist: question.text,
     }
     const conversation = (await host.harness().conversation(voice, context))!
-    // Once per message, however many times the page asks.
+    const oncePerQuestionKey = `voice:asked:${id}`
     await conversation.submit(
       {
         type: 'input',
-        requestId: `voice:asked:${id}`,
+        requestId: oncePerQuestionKey,
         whenBusy: 'steer',
-        entry: { kind: 'voice.question', data },
+        entry: { kind: VoiceQuestionEntry.kind, data },
         content: `A new question for the user arrived: message ${id} from ${data.title}: ${data.gist}`,
       },
       context,
@@ -616,7 +615,7 @@ export const actions = {
     const { role, text } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if ((role !== 'live' && role !== 'notice') || typeof text !== 'string' || !text.trim())
       throw new Error('Expected a live or notice role and text')
-    const line = await write(
+    const line = await writeDisplayOnlyEntry(
       host,
       await voiceId(host),
       'voice.line',
@@ -633,7 +632,7 @@ export const actions = {
       (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0)
     )
       throw new Error('Expected nonnegative seconds')
-    await write(
+    await writeDisplayOnlyEntry(
       host,
       await voiceId(host),
       'voice.session',
@@ -649,11 +648,12 @@ export const actions = {
 }
 
 export default (host: ExtensionHost) => {
-  /**
-   * Pass `text` to @ultimate as the user's forwarded line, answering its open question `message` when given; the answer
-   * task brings @ultimate's answer back to Voice.
-   */
-  async function forward(api: ToolExecutionApi, ctx: Context, text: string, message?: number) {
+  async function commitForwardOnce(
+    api: ToolExecutionApi,
+    ctx: Context,
+    text: string,
+    message?: number,
+  ) {
     const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
     if (!main) throw new Error('@ultimate is not available')
     const input = {
@@ -663,10 +663,10 @@ export default (host: ExtensionHost) => {
       text,
       ...(message !== undefined ? { message } : {}),
     }
-    // Record and create atomically: a crash after scheduling never creates a second answer task.
+
     await api.commit(async (tx) => {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-      const receipt = await tx.doc(Forwarded, api.taskId)
+      const receipt = await tx.doc(ForwardReceipt, api.taskId)
       if (receipt.scheduled) return
       await tx.createTask(
         answerTask(host),
@@ -680,12 +680,12 @@ export default (host: ExtensionHost) => {
       receipt.scheduled = true
     }, ctx)
     host.harness().resume()
-    await write(
+    await writeDisplayOnlyEntry(
       host,
       api.conversationId,
       'voice.line',
-      userLine(input),
-      `voice:line:${input.request}`,
+      forwardedUserLine(input),
+      forwardedLineKey(input.request),
     )
   }
   host.need(MessagesApi)
@@ -697,8 +697,6 @@ export default (host: ExtensionHost) => {
     tasks: [answerTask(host)],
     hooks: [
       hook(GenerationTask, {
-        // A compaction that cut the newest brief leaves Voice without it: place it again after the summary. Like recall,
-        // the entry lands after this request's cutoff, so this request gets the same message appended.
         beforeRequest: async (request, api, ctx) => {
           if (
             (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.voice !== api.conversationId
@@ -707,20 +705,20 @@ export default (host: ExtensionHost) => {
           const id = api.conversationId
           const view = await (await host.harness().conversation(id, ctx))!.context(ctx)
           if (!view.head) return undefined
-          const message = await host.harness().commit(async (tx) => {
+          const postCutoffBrief = await host.harness().commit(async (tx) => {
             const newest = await newestBrief(tx, id)
-            const data = newest?.data as VoiceContext | undefined
+            const data = newest?.data
             if (!newest || !data || data.error || view.entries.some((e) => e.id === newest.id))
               return undefined
             const again = briefMessage(data.text)
             await tx.appendEntry(id, {
-              kind: 'voice.context',
+              kind: VoiceContextEntry.kind,
               data: { ...data, again: true, transient: true },
               model: [again],
             })
             return again
           }, ctx)
-          return message ? { messages: [...request.messages, message] } : undefined
+          return postCutoffBrief ? { messages: [...request.messages, postCutoffBrief] } : undefined
         },
       }),
     ],
@@ -736,10 +734,10 @@ export default (host: ExtensionHost) => {
         ),
         async execute({ text }, api, ctx) {
           if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice speaks')
-          // Locate the input this tool round saw, not a later queued/steering input. No model-supplied correlation id.
+
           const task = await api.getTask(api.taskId, ctx)
-          const input = task?.input as ToolTaskInput
-          const re =
+          const roundInput = task?.input as ToolTaskInput
+          const roundReplyTo =
             (await api.memo('re', ctx)) ??
             (await api.memo(
               're',
@@ -749,14 +747,14 @@ export default (host: ExtensionHost) => {
                   const page = await tx.scanEntries(
                     {
                       conversationId: api.conversationId,
-                      ...(input.kind === 'model' ? { maxEntryId: input.assistant } : {}),
+                      ...(roundInput.kind === 'model' ? { maxEntryId: roundInput.assistant } : {}),
                       order: 'descending',
                     },
                     100,
                     cursor,
                   )
                   for (const entry of page.items) {
-                    if (entry.kind === 'voice.answer') return (entry.data as { re: number }).re
+                    if (VoiceAnswerEntry.is(entry)) return entry.data.re
                     if (entry.kind === 'voice.heard') return false
                   }
                   cursor = page.next
@@ -765,7 +763,7 @@ export default (host: ExtensionHost) => {
               }, ctx),
               ctx,
             ))
-          await write(
+          await writeDisplayOnlyEntry(
             host,
             api.conversationId,
             'voice.line',
@@ -773,7 +771,7 @@ export default (host: ExtensionHost) => {
               role: 'ultimate',
               text,
               speech: true,
-              ...(typeof re === 'number' ? { re } : {}),
+              ...(typeof roundReplyTo === 'number' ? { re: roundReplyTo } : {}),
             },
             `voice:say:${api.taskId}`,
           )
@@ -795,7 +793,7 @@ export default (host: ExtensionHost) => {
         async execute({ request }, api, ctx) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice forwards requests')
-          await forward(api, ctx, request)
+          await commitForwardOnce(api, ctx, request)
           return {
             output: [
               {
@@ -836,11 +834,10 @@ export default (host: ExtensionHost) => {
             go = { conversation: parseConversationId(conversation) }
             label = `#${conversation}${found.title ? ` ${found.title}` : ''}`
           } else {
-            // The page knows its surfaces; it reports one it does not have as a notice.
             go = { surface: surface! }
             label = surface!
           }
-          await write(
+          await writeDisplayOnlyEntry(
             host,
             api.conversationId,
             'voice.line',
@@ -883,7 +880,7 @@ export default (host: ExtensionHost) => {
               ],
             }
           if (show !== false)
-            await write(
+            await writeDisplayOnlyEntry(
               host,
               api.conversationId,
               'voice.line',
@@ -917,21 +914,22 @@ export default (host: ExtensionHost) => {
             (m) => m.id === message,
           )
           const call = { taskId: api.taskId, callId: api.callId }
-          // Only the forward to @ultimate writes this memo, so a replay that finds it goes the same way.
-          const settled = await api.memo<boolean>('settled', ctx)
-          const toMain = settled || (!dismiss && found !== undefined && found.from === main)
+
+          const forwardedBeforeReplay = await api.memo<boolean>('settled', ctx)
+          const toMain =
+            forwardedBeforeReplay || (!dismiss && found !== undefined && found.from === main)
           if (toMain) {
-            if (!settled) {
+            if (!forwardedBeforeReplay) {
               if (!openQuestion(found!))
                 throw new Error(`Message ${message} is not an open question to the user`)
-              // @ultimate's own question: its answer follows, and comes back to Voice to speak.
-              await forward(api, ctx, text!, message)
+
+              await commitForwardOnce(api, ctx, text!, message)
               await api.memo('settled', true, ctx)
             }
           } else if (dismiss) await host.need(MessagesApi).dismiss(message, ctx, undefined, call)
           else await host.need(MessagesApi).answer(message, text!, ctx, undefined, call)
           if (!toMain)
-            await write(
+            await writeDisplayOnlyEntry(
               host,
               api.conversationId,
               'voice.line',
@@ -962,7 +960,7 @@ export default (host: ExtensionHost) => {
         async execute({ text }, api) {
           if (api.conversationId !== (await voiceId(host)))
             throw new Error('Only Voice sends thinking notes')
-          await write(
+          await writeDisplayOnlyEntry(
             host,
             api.conversationId,
             'voice.line',

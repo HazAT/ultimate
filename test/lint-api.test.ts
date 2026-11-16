@@ -29,7 +29,13 @@ function diagnose(rule: Rule, file: string, source: string) {
   const visitors = ultimate.rules[rule].create({
     filename: resolve(file),
     options: [],
-    sourceCode: { text: source, getCommentsBefore, getCommentsInside: () => [] },
+    sourceCode: {
+      text: source,
+      getCommentsBefore,
+      getCommentsInside: (node: Located) =>
+        comments.filter((comment) => comment.start >= node.start && comment.end <= node.end),
+      getAllComments: () => comments,
+    },
     report: ({ message }) => reports.push(message),
   }) as Record<string, ((node: Located) => void) | undefined>
   const visit = (node: Located, parent?: Located) => {
@@ -156,6 +162,7 @@ const refs = `/**
  * Echo in the browser: the echo log and the action that echoes. Browser-safe.
  */
 import type { JsonValue } from '@earendil-works/chord/json'
+import { defineEntry } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ProviderHealth } from '../../shared/protocol.ts'
@@ -171,6 +178,8 @@ export const LogDoc = docRef<Texts>('echo.log')
 export const EchoAction = actionRef<{ text: string }, Echoed>('echo', 'echo')
 /** Something was echoed; react to it to count echoes. */
 export const Repeated = defineEvent<{ text: string }>('echo.repeated')
+/** One echo in the transcript; renderers in other extensions narrow with \`EchoEntry.is(entry)\`. */
+export const EchoEntry = defineEntry<Echoed>('echo.entry')
 `
 
 it('accepts a refs.ts of documented browser-safe refs and rejects server reach, runtime code and missing docs', () => {
@@ -191,14 +200,14 @@ export const limit = 3
 `
   expect(lint('api-file-shape', 'extensions/echo/refs.ts', bad)).toEqual([
     'refs.ts is a contract: it imports no node:* module.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "Document each ref: what it holds, or an action's arguments and result.",
-    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent(...)` and types.',
+    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.',
   ])
   expect(
     lint('api-naming', 'extensions/echo/refs.ts', "export const A = actionRef('messages', 'send')"),
@@ -306,4 +315,36 @@ const later = () => import('../questions/web.tsx')`
   ])
   expect(lint('core-tier-deps', 'extensions/phase/web.tsx', source)).toEqual([])
   expect(lint('core-tier-deps', 'test/example.test.ts', source)).toEqual([])
+})
+
+it('rejects every product comment except contract JSDoc, Pi upstream markers and copied licences', () => {
+  // Shipped in server/api.ts and web/src/sdk/client.ts at 0e27be8.
+  const server = `export async function invoke(data: object) {
+    // Missing args mean none, so \`curl -d '{}'\` and agents can call argument-free actions.
+    return Object.hasOwn(data, 'args')
+  }`
+  expect(lint('no-comments', 'server/api.ts', server)).toEqual([
+    expect.stringMatching(/^An invariant .* becomes a name, a type or a small function/),
+  ])
+  const sdk = `/** How long the status line shows "ready · switching" before the page reloads onto a new bundle. */
+const switchDelay = 600
+/** Installed web facets of \`extensions/*\`. */
+export const registry = createRegistry()
+// Pi upstream: the event bus, adapted.
+/** Compact token counts, as Pi's footer prints them. */
+export function formatTokens(count: number) {}`
+  expect(lint('no-comments', 'web/src/sdk/client.ts', sdk)).toHaveLength(2)
+  const contract = `/**
+ * Entry kinds that core extensions on both sides of a dependency read.
+ */
+import { defineEntry } from '@earendil-works/pi-durable'
+/** A branch abstract: what a conversation did. */
+export type AbstractData = {
+  /** Where it stands. */
+  at: number
+}
+/*
+MIT License — Copyright (c) 2025 Mario Zechner
+*/`
+  expect(lint('no-comments', 'extensions/entries/refs.ts', contract)).toEqual([])
 })

@@ -1,7 +1,19 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
-import { expect, it } from 'vitest'
-import { demo, demoPlayer, tracker } from '../../agents.ts'
-import type { Snapshot } from '../../agents.ts'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import { expect, it, vi } from 'vitest'
+import { demo, demoPlayer, tracker } from '../../agents.tsx'
+import type { Snapshot } from '../../agents.tsx'
+import type { EventRecord } from '../../../../shared/events.ts'
+
+vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))
+
+const event = (id: number, kind: string, data: EventRecord['data'] = {}): EventRecord => ({
+  id: id as EntryId,
+  kind,
+  name: kind.slice('event.'.length),
+  v: 1,
+  at: '',
+  data,
+})
 
 const snapshot = (extra: Partial<Snapshot> = {}): Snapshot => ({
   conversations: [],
@@ -20,7 +32,7 @@ it('turns project changes into happenings, taking the first snapshot as heard', 
       { id: 10, label: 'coordinator', busy: true },
     ],
     tools: { '10:a': { name: 'bash', conversationId: 10 as ConversationId } },
-    events: [{ id: 1, kind: 'event.workspaces.landed', data: {} }],
+    events: [event(1, 'event.workspaces.landed')],
   })
   expect(follow(busy)).toEqual([])
   const next = follow(
@@ -36,9 +48,9 @@ it('turns project changes into happenings, taking the first snapshot as heard', 
       },
       runs: { '11': { runState: 'error', inputId: 3 } },
       events: [
-        { id: 1, kind: 'event.workspaces.landed', data: {} },
-        { id: 2, kind: 'event.coding-tools.committed', data: {} },
-        { id: 3, kind: 'event.workspaces.check', data: { result: 'passed' } },
+        event(1, 'event.workspaces.landed'),
+        event(2, 'event.coding-tools.committed'),
+        event(3, 'event.workspaces.check', { result: 'passed' }),
       ],
     }),
   )
@@ -62,10 +74,7 @@ it('takes what a tab catches up on after a reconnect as heard', () => {
     ],
     tools: { '11:a': { name: 'edit', conversationId: 11 as ConversationId } },
     runs: { '11': { runState: 'error', inputId: 1 } },
-    events: [
-      { id: 4, kind: 'event.workspaces.landed', data: {} },
-      { id: 5, kind: 'event.coding-tools.committed', data: {} },
-    ],
+    events: [event(4, 'event.workspaces.landed'), event(5, 'event.coding-tools.committed')],
   })
   expect(follow(away, true)).toEqual([])
   // Replayed again once caught up, it stays heard; only what is new from then on sounds.
@@ -73,7 +82,7 @@ it('takes what a tab catches up on after a reconnect as heard', () => {
   expect(
     follow({
       ...away,
-      events: [...away.events, { id: 6, kind: 'event.coding-tools.committed', data: {} }],
+      events: [...away.events, event(6, 'event.coding-tools.committed')],
     }),
   ).toEqual([{ kind: 'commit' }])
 })

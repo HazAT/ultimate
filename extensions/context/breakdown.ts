@@ -15,11 +15,9 @@ export const systemOf = (entry: EntryRecord | undefined): SystemMessage | undefi
   return entry?.kind === 'pi.system' && message?.role === 'system' ? message : undefined
 }
 
-/** A reset or compaction: the model's context starts again here. */
 export const startsContext = (entry: EntryRecord) =>
   entry.kind === 'pi.reset' || entry.kind === 'pi.compaction'
 
-/** A patch removing every section, which Pi Durable writes right before re-adding them in a new order. */
 export function removesAll(entry: EntryRecord | undefined) {
   const values = Object.values(systemOf(entry)?.sections ?? {})
   return values.length > 0 && values.every((value) => value === null)
@@ -30,10 +28,6 @@ export const toolTokens = (tool: { name: string; description: string; parameters
     JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }),
   )
 
-/**
- * The prompt replayed from the context start before `index` through `index`: `null` removes, re-adding appends. Entries
- * in `aside`, which a go-back set aside (`setAsideIds`), left the model's context and do not count.
- */
 export function promptAt(
   entries: readonly EntryRecord[],
   index: number,
@@ -49,7 +43,6 @@ export function promptAt(
   return promptOf(messages)
 }
 
-/** The prompt the system messages among `messages` add up to, such as a model context's: `null` removes, re-adding appends. */
 export function promptOf(messages: readonly Message[]): Prompt {
   const sections = new Map<string, string>()
   const tools = new Map<string, NonNullable<SystemMessage['toolsAdded']>[number]>()
@@ -73,15 +66,13 @@ export function promptOf(messages: readonly Message[]): Prompt {
   }
 }
 
-/** Where the context of `index` starts: its reset or compaction, or `own`, the conversation's first entry, if later. */
-function anchorOf(entries: readonly EntryRecord[], index: number, own: number) {
+function contextOrOwnStart(entries: readonly EntryRecord[], index: number, own: number) {
   let at = index
   while (at >= 0 && !startsContext(entries[at])) at--
   return Math.max(at, own)
 }
 
-/** The first `pi.system` at or after `from`, before the next context start; a remove-all and its re-add count as one. */
-function firstSystem(entries: readonly EntryRecord[], from: number) {
+function firstSystemFoldingReorder(entries: readonly EntryRecord[], from: number) {
   for (let at = from; at < entries.length; at++) {
     if (at > from && startsContext(entries[at])) return -1
     if (!systemOf(entries[at])) continue
@@ -90,28 +81,25 @@ function firstSystem(entries: readonly EntryRecord[], from: number) {
   return -1
 }
 
-/**
- * Whether the `pi.system` at `index` opens its context, alone or as the re-add after a remove-all: the breakdown above
- * the context shows it instead.
- */
 export function opensContext(entries: readonly EntryRecord[], index: number, own: number) {
-  const anchor = anchorOf(entries, index, own)
-  return index >= anchor && firstSystem(entries, anchor) === index
+  const anchor = contextOrOwnStart(entries, index, own)
+  return index >= anchor && firstSystemFoldingReorder(entries, anchor) === index
 }
 
 const injectedLabel = (entry: EntryRecord) => {
   if (entry.kind === 'pi.compaction') return 'compaction summary'
-  const lineage = (entry.data as { lineage?: { brief?: unknown; tally?: unknown } } | undefined)
-    ?.lineage
-  if (lineage?.brief) return 'memory brief'
-  if (lineage?.tally) return 'tally'
+  const data = entry.data
+  const lineage = data && typeof data === 'object' && 'lineage' in data ? data.lineage : undefined
+  if (lineage && typeof lineage === 'object') {
+    if ('brief' in lineage && lineage.brief) return 'memory brief'
+    if ('tally' in lineage && lineage.tally) return 'tally'
+  }
   return 'handoff'
 }
 
 const sum = (items: readonly { tokens: number }[] = []) =>
   items.reduce((total, item) => total + item.tokens, 0)
 
-/** The text of a message as one block, for history a fork inherited into its context. */
 function plain(entry: EntryRecord) {
   const message = entry.model?.[0]
   if (!message || message.role === 'system') return ''
@@ -132,12 +120,10 @@ function plain(entry: EntryRecord) {
   return text && `${message.role}: ${text}`
 }
 
-/**
- * The history a fork carries into its first context: its source's entries from their last context start up to `own`,
- * the fork's first entry. A compaction keeps the entries from its `head` on, before its marker too, but no older
- * compaction's summary: Pi shows only the newest. Empty when the fork starts its own context.
- */
-function inherited(entries: readonly EntryRecord[], own: number): Injected | undefined {
+function inheritedWithLatestCompaction(
+  entries: readonly EntryRecord[],
+  own: number,
+): Injected | undefined {
   if (own <= 0 || startsContext(entries[own])) return undefined
   let from = own - 1
   while (from > 0 && !startsContext(entries[from])) from--
@@ -164,11 +150,6 @@ function inherited(entries: readonly EntryRecord[], own: number): Injected | und
   }
 }
 
-/**
- * The breakdown of the context that starts at `anchor`, a reset or compaction, or the conversation's first entry:
- * what it injected, the first system prompt after it, and the model of its first response. A fork's own first entry
- * that starts no context of its own carries its source's history in, which counts as injected.
- */
 export function breakdownAt(entries: readonly EntryRecord[], anchor: number): Breakdown {
   const start = entries[anchor] && startsContext(entries[anchor]) ? entries[anchor] : undefined
   const message = start?.model?.[0]
@@ -182,8 +163,8 @@ export function breakdownAt(entries: readonly EntryRecord[], anchor: number): Br
         }
       : start
         ? undefined
-        : inherited(entries, anchor)
-  const systemIndex = firstSystem(entries, anchor)
+        : inheritedWithLatestCompaction(entries, anchor)
+  const systemIndex = firstSystemFoldingReorder(entries, anchor)
   const prompt = systemIndex < 0 ? undefined : promptAt(entries, systemIndex)
   let model: Breakdown['model']
   for (let at = Math.max(systemIndex, anchor) + 1; at < entries.length && !model; at++) {
@@ -212,20 +193,16 @@ export function breakdownAt(entries: readonly EntryRecord[], anchor: number): Br
   }
 }
 
-/**
- * How the `pi.system` at `index` changed the prompt. A remove-all patch right before it belongs to it: the diff is
- * taken against the state before that one, so a reorder shows only what really changed.
- */
 export function diffAt(
   entries: readonly EntryRecord[],
   index: number,
   aside: ReadonlySet<number> = new Set(),
 ): Diff {
-  const before = promptAt(entries, removesAll(entries[index - 1]) ? index - 2 : index - 1, aside)
+  const beforeReorderRemoval = removesAll(entries[index - 1]) ? index - 2 : index - 1
+  const before = promptAt(entries, beforeReorderRemoval, aside)
   return comparePrompts(before, promptAt(entries, index, aside))
 }
 
-/** How `after` differs from `before`: each section and tool added, changed or removed, with its token delta. */
 export function comparePrompts(before: Prompt, after: Prompt): Diff {
   const sections: SectionChange[] = []
   const old = new Map(before.sections.map((section) => [section.key, section]))
@@ -267,10 +244,6 @@ export function comparePrompts(before: Prompt, after: Prompt): Diff {
   return { sections, tools, delta }
 }
 
-/**
- * The model line of a breakdown: the model and thinking level its first response recorded, or, before any response,
- * the conversation's configured ones, marked `configured` since no request has used them yet.
- */
 export function modelLine(
   recorded: Breakdown['model'],
   configured: { model?: { provider: string; modelId: string }; thinkingLevel?: string },
@@ -288,6 +261,5 @@ export function modelLine(
   }
 }
 
-/** The index of the shown conversation's first own entry; a fork's earlier entries are its source's history. */
 export const ownStart = (entries: readonly EntryRecord[], id: number | undefined) =>
   entries.findIndex((entry) => entry.conversationId === id)

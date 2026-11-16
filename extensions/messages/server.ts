@@ -31,18 +31,19 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import { owedRequest, parentOf, Started, starterOf } from './addresses.ts'
+import { owed, parentOf, Started, starterOf, stillServedAfter } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
-import { reported, route, working } from './route.ts'
+import { answerRemoteRequest, reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
+import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
-export const docs = [Messages]
+export const docs = [Messages, Started]
 
 async function openMessage(host: ExtensionHost, messageId: number, ctx: Context) {
   const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
@@ -50,7 +51,7 @@ async function openMessage(host: ExtensionHost, messageId: number, ctx: Context)
   if (!message || !openQuestion(message)) throw new Error('These questions are no longer open')
   return message
 }
-/** The user's answer `text` to open message `messageId`, or @ultimate's on their behalf (`via`). */
+
 async function answer(
   host: ExtensionHost,
   messageId: number,
@@ -67,23 +68,29 @@ async function answer(
     if (id !== undefined) return id
   }
   const message = await openMessage(host, messageId, ctx)
-  // @ultimate settling its own question has the answer already: a one-way note, not another turn.
-  const own = options.via !== undefined && message.from === options.via.primary
+
+  const settledOwnQuestionWithoutWake =
+    options.via !== undefined && message.from === options.via.primary
   return send(
     host,
     'user',
-    { to: `#${message.from}`, text, re: messageId, ...(own ? { reply: false } : {}) },
+    {
+      to: `#${message.from}`,
+      text,
+      re: messageId,
+      ...(settledOwnQuestionWithoutWake ? { reply: false } : {}),
+    },
     ctx,
     {
       answerId: messageId,
       ...options.call,
-      ...(own ? { note: true } : {}),
+      ...(settledOwnQuestionWithoutWake ? { note: true } : {}),
       device: options.device,
       ...(options.via ? { via: options.via.via } : {}),
     },
   )
 }
-/** Close open message `messageId` unanswered: the user's dismissal, or @ultimate's on their behalf with `reason`. */
+
 async function dismiss(
   host: ExtensionHost,
   messageId: number,
@@ -101,7 +108,7 @@ async function dismiss(
   }
   const message = await openMessage(host, messageId, ctx)
   const { reason, call, ...rest } = options
-  // A one-way note: the asker reads it with its next input, and no run starts for it.
+
   return send(
     host,
     'user',
@@ -118,8 +125,8 @@ async function dismiss(
     { answerId: messageId, note: true, ...call, ...rest },
   )
 }
-/** The user's own input that started `id`'s current run, which a settlement names as its source. */
-async function runInput(host: ExtensionHost, id: ConversationId, ctx: Context) {
+
+async function userRunInput(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const run = (await host.harness().snapshot(LiveDoc, id, ctx))?.run
   let found: EntryId | undefined
   for (const submission of run?.inputs ?? []) {
@@ -137,8 +144,8 @@ export const actions = {
     if (!Number.isSafeInteger(conversation) || (conversation as number) < 1)
       throw new Error('conversation must be a conversation id')
     if (typeof call !== 'string' || !call) throw new Error('call must be a tool call id')
-    // A nested codemode call (`<script>/<n>`) was made by the response that called the script.
-    const id = call.split('/')[0]
+
+    const scriptParentCallId = call.split('/')[0]
     return host.harness().commit(async (tx) => {
       let cursor: Parameters<Tx['scanEntries']>[2]
       do {
@@ -147,7 +154,7 @@ export const actions = {
           SCAN_PAGE,
           cursor,
         )
-        const found = callerOf(page.items, id)
+        const found = callerOf(page.items, scriptParentCallId)
         if (found) return { entry: found.id }
         cursor = page.next
       } while (cursor !== undefined)
@@ -169,7 +176,7 @@ export const actions = {
       (await actingAs(host, conversationId, ctx)) !== primary
     )
       throw new Error("Only @ultimate settles the user's questions")
-    const entry = await runInput(host, conversationId, ctx)
+    const entry = await userRunInput(host, conversationId, ctx)
     const via = { conversation: conversationId, ...(entry === undefined ? {} : { entry }) }
     return {
       id: closing
@@ -177,6 +184,7 @@ export const actions = {
         : await answer(host, messageId as number, text.trim(), ctx, { via: { via, primary } }),
     }
   }),
+  remoteProgress,
   remote: remoteAction,
   remoteReply: remoteReplyAction,
   async addresses(_args: unknown, { host }: ActionContext) {
@@ -196,14 +204,14 @@ export const actions = {
     }
   },
 }
-/** Only another instance posts these, over its API: no agent here can pose as a remote Ultimate. */
+
+export const pollActions = ['remoteProgress']
 export const userActions = ['remote', 'remoteReply']
 export default function messages(host: ExtensionHost) {
-  // Core, always on; resolved where they are called, declared here so the catalogue lists them.
   host.need(LineageApi)
   host.need(SubagentsApi)
   host.need(WorkspacesApi)
-  // What a landing asks about its branch, through workspaces' extension point, so workspaces does not depend on messages.
+
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),
     working: (tx, id) => working(tx, id),
@@ -222,7 +230,11 @@ export default function messages(host: ExtensionHost) {
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
-    owed: owedRequest,
+    owed,
+    dropped: async (tx, by, serves, why, fired) => {
+      if (serves.from === 'remote' && !(await stillServedAfter(tx, serves, fired)))
+        await answerRemoteRequest(host, tx, by, serves, why, undefined, undefined, true)
+    },
   })
   return defineExtension({
     name: 'messages',
@@ -232,7 +244,6 @@ export default function messages(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
         onYield: async (_answer, api, ctx) => {
-          // A branch's answers go up to its starter; the primary agent's answers to a branch go down to it.
           let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
           const down =
             by === undefined &&
@@ -241,9 +252,10 @@ export default function messages(host: ExtensionHost) {
           if (down) by = api.conversationId
           if (by === undefined) return undefined
           await host.harness().commit(async (tx) => {
-            // One observer per generation, decided in the commit that creates it.
             const started = await tx.doc(Started, api.conversationId)
-            if (started.yielded !== undefined && started.yielded >= api.taskId) return
+            const generationObserverAlreadyCreated =
+              started.yielded !== undefined && started.yielded >= api.taskId
+            if (generationObserverAlreadyCreated) return
             started.yielded = api.taskId
             await tx.createTask(
               route(host),
@@ -278,11 +290,14 @@ export default function messages(host: ExtensionHost) {
             : ` #${starter} started you: when you stop with nothing under way (no subagent, landing or reply pending), your final answer goes to it and wakes it; while work is under way it arrives as a note, and so do your one-way messages to it.`
         return `Use message to contact #id or @name. @ultimate and branches may message user. Messages wake their recipient; its answer returns as a reply and wakes you. End your turn instead of waiting. A one-way message (reply: false) gets no answer; use reply: true when you need one. Inputs identify their sender; answer here and your answer is sent to the sender automatically; do not use message to reply. A message to an agent whose message you still owe an answer becomes that answer and ends your run; use it only to attach images.${upward}\n${agents.map((a) => `@${a.name} — ${a.description}`).join('\n')}`
       }),
-      // Only @ultimate can tell; the list changes when a project or a standing agent is added, not per turn.
+
       section('projects', async (input, ctx) => {
         const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-        if (standing?.ultimate !== input.conversationId) return undefined
-        return projectsSection(host)
+        if (standing?.ultimate === (await actingAs(host, input.conversationId, ctx)))
+          return projectsSection(host)
+        if (!input.agent.tools.some((tool) => tool.name === 'message')) return undefined
+        if ((await parentOf(host, input.conversationId, ctx)) !== undefined) return undefined
+        return 'To reach another project, ask @ultimate to relay.'
       }),
     ],
     tools: [
@@ -303,9 +318,10 @@ export default function messages(host: ExtensionHost) {
           'The task-scoped receipt deduplicates admission; the memo returns the same id on replay.',
         ),
         async execute(input, api, ctx) {
-          // A temporary copy cannot use main's privilege to message the user.
-          const from =
-            input.to === 'user' ? api.conversationId : await actingAs(host, api.conversationId, ctx)
+          const toUserWithoutBorrowedPrivilege = input.to === 'user'
+          const from = toUserWithoutBorrowedPrivilege
+            ? api.conversationId
+            : await actingAs(host, api.conversationId, ctx)
           const id =
             (await api.memo<number>('message-id', ctx)) ??
             (await api.memo(
@@ -332,8 +348,7 @@ export default function messages(host: ExtensionHost) {
             .snapshot(Messages, ROOT_CONVERSATION_ID, ctx))!.messages.find(
             (message) => message.id === id,
           )
-          // It answered a message the recipient is waiting on: the answer is given, so the run ends here. A message to
-          // the user answers theirs too, but shows as their message below; the check after it ends the run.
+
           if (sent?.re !== undefined && sent.to !== 'user')
             return {
               output: [
@@ -358,11 +373,7 @@ export default function messages(host: ExtensionHost) {
           }
           if (input.to !== 'user')
             return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
-          // The message is @ultimate's answer: the run ends here instead of restating it, unless a reply it has read
-          // is owed. One still queued gets its own turn. Pi ends the run only when every call of the tool round
-          // terminates, and codemode's nested calls never end it. Nor does it end while a branch whose reply or report
-          // this run read awaits its answer, or an agent whose request a concluded branch or a fired automation served:
-          // the final answer goes there (#570368).
+
           const inputs =
             (await host.harness().snapshot(LiveDoc, api.conversationId, ctx))?.run?.inputs ?? []
           const read = (
@@ -370,7 +381,7 @@ export default function messages(host: ExtensionHost) {
               inputs.map(async (s) => (await host.harness().submission(s, ctx))?.status(ctx)),
             )
           ).flatMap((s) => (s?.type === 'input' && s.entry !== undefined ? [s.entry] : []))
-          const owed = await host
+          const hasPendingReplies = await host
             .harness()
             .commit(
               async (tx) =>
@@ -384,7 +395,7 @@ export default function messages(host: ExtensionHost) {
             )
           return {
             output: [{ type: 'text', text: `Message ${id} sent.` }],
-            ...(owed ? {} : { control: { terminate: true as const } }),
+            ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
           }
         },
       }),

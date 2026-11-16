@@ -9,7 +9,6 @@ import { useMemorySummary } from './root.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 import { ProjectSwatch, RepoLabel } from './tile.tsx'
 
-/** The repository line under the project's name: a link to it on GitHub, with its visibility when `gh` knew it. */
 function Repo({ repo }: { repo: GithubRepo }) {
   return (
     <a
@@ -30,12 +29,6 @@ function Repo({ repo }: { repo: GithubRepo }) {
   )
 }
 
-/**
- * The project: its colour bar, its display name over its path from home (or `#<worktree>`), and its GitHub repository,
- * heading its root's Memory row. Clicking the name opens the root's History, the project's read-only tally; the chevron
- * on the right folds the Memory row away (folded by default, kept in `ext.conversations.projectOpen`), and folded, a
- * quiet brain count beside it still opens Memory.
- */
 export function Project({
   root,
   shown,
@@ -103,7 +96,6 @@ export function Project({
         </div>
       )}
       {repo && (
-        // Beside the button, not in it: a link cannot sit inside a button. Aligned with the name above.
         <div className="mx-2 flex min-w-0 pr-2 pl-[24px]">
           <Repo repo={repo} />
         </div>
@@ -113,7 +105,6 @@ export function Project({
   )
 }
 
-/** The folded project block's trace of its memory: a brain and the count, opening the Memory surface. */
 function MemoryHint({ root }: { root: ConversationId }) {
   const openMemory = useOpenMemory()
   const shown = useShell().surface === MEMORY_SURFACE

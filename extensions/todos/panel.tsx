@@ -15,11 +15,6 @@ const owners: { id: Todo['owner']; label: string }[] = [
   { id: 'ultimate', label: '@ultimate' },
 ]
 
-/**
- * The project's to-dos: what waits on you (one Inbox row for the questions asked of you and the other extensions'
- * Inbox items, then your own to-dos), what @ultimate is still on, a field to add one for either of you, and the done
- * ones folded away. Inbox entries are answered in the Inbox.
- */
 export function Todos() {
   return <Waiting>{(entries) => <List questions={entries} />}</Waiting>
 }
@@ -47,7 +42,6 @@ function List({ questions }: { questions: readonly unknown[] }) {
   const toggle = (todo: Todo) =>
     void run(api.action(todo.done ? ReopenAction : DoneAction, { id: todo.id }))
   const { showSurface, switchConversation } = useUltimate()
-  // Sent as the user, like typing it into @ultimate's composer; a busy @ultimate takes it after its current run.
   const start = (todo: Todo) =>
     void run(
       (async () => {
@@ -116,7 +110,6 @@ function List({ questions }: { questions: readonly unknown[] }) {
   )
 }
 
-/** A labelled group of rows; an empty one says so in a quiet line rather than disappearing. */
 function Section({
   title,
   owner,
@@ -140,10 +133,6 @@ function Section({
   )
 }
 
-/**
- * One to-do: a check, its text and its age; ticking a done one reopens it. An open one also offers, on hover or focus,
- * to send @ultimate to work on it.
- */
 function TodoRow({
   todo,
   now,
@@ -207,7 +196,6 @@ function TodoRow({
   )
 }
 
-/** The questions waiting on you, as one row: a click opens the Inbox, where each is answered. */
 function InboxRow({ count }: { count: number }) {
   const { showSurface } = useUltimate()
   return (
@@ -225,7 +213,6 @@ function InboxRow({ count }: { count: number }) {
   )
 }
 
-/** The add field: text, whose it is, Enter adds; the owner stays as last chosen. */
 function AddTodo({ add }: { add: (text: string, owner: Todo['owner']) => Promise<boolean> }) {
   const [text, setText] = useState('')
   const [owner, setOwner] = useState<Todo['owner']>('user')

@@ -1,5 +1,4 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-/** From a response in the transcript to the call that produced it in Wire. */
 import type { ReactNode } from 'react'
 import {
   cn,
@@ -17,10 +16,8 @@ import { SYSTEM_TAB_KEY } from '../system/ui.tsx'
 import { ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
 
-/** Which call Wire shows, for the conversation it was picked in. */
 export type Picked = { conversation: ConversationId; n: number }
 
-/** Wire is a tab of the System surface: a function that selects it there, then shows System. */
 export function useOpenWire() {
   const [, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
   const { showSurface } = useUltimate()
@@ -30,13 +27,8 @@ export function useOpenWire() {
   }
 }
 
-/** A payload call starts when pi-ai sends; its message's timestamp is taken then too. Further apart is another call. */
-const NEAR = 60_000
+const MAX_RESPONSE_START_DISTANCE_MS = 60_000
 
-/**
- * The kept call behind a response: by its provider id; only a response without one goes by the call that started
- * nearest to it. A response whose id no kept call has left the window, and must not point at a neighbour.
- */
 export function callFor(
   calls: readonly WireSummary[],
   responseId: string | undefined,
@@ -46,13 +38,9 @@ export function callFor(
   let best: WireSummary | undefined
   for (const call of calls)
     if (!best || Math.abs(call.startedAt - at) < Math.abs(best.startedAt - at)) best = call
-  return best && Math.abs(best.startedAt - at) <= NEAR ? best : undefined
+  return best && Math.abs(best.startedAt - at) <= MAX_RESPONSE_START_DISTANCE_MS ? best : undefined
 }
 
-/**
- * Wraps a response with a quiet `wire` link at its top right, shown on hover, that opens Wire at the call behind it;
- * on a response that rebuilt the cache it stays visible on the warning line, where the reason is the question.
- */
 export function WireLink({
   entry,
   core,

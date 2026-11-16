@@ -1,41 +1,27 @@
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
 import { MessageCircleQuestionIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
-import { Card, cn, events, useConversation, useDocOf, useUltimate } from '@/sdk'
+import { Card, cn, events, renderEntry, useConversation, useDocOf, useUltimate } from '@/sdk'
 import { Address, useAccentOf } from './cards.tsx'
 import { MessagesDoc } from './refs.ts'
+import { AskedEntry, AnsweredEntry } from './entries.ts'
 import { openQuestion } from './data.tsx'
 
-type Notice = {
-  message: number
-  from: ConversationId
-  call?: string
-  summary?: string
-  dismissed?: boolean
-  via?: { conversation: ConversationId }
-}
-
-/**
- * A branch's question stays visible in @ultimate, with the answer card one click away. Its outcome comes from the
- * `board.answered` note that follows it in this conversation, so it survives the capped message log; while that has not
- * arrived, the log says whether the question is still open.
- */
-export function QuestionPointer({ entry }: { entry: EntryRecord }) {
-  const { message: id, from, call, summary } = entry.data as Notice
-  const outcome = useConversation(
+export const QuestionPointer = renderEntry(AskedEntry, function QuestionPointer({ entry }) {
+  const { message: id, from, call, summary } = entry.data
+  const transcriptOutcome = useConversation(
     (conversation) =>
-      conversation.entries.find(
-        (e) => e.kind === 'board.answered' && (e.data as Notice).message === id,
-      )?.data as Notice | undefined,
+      conversation.entries
+        .filter((candidate) => AnsweredEntry.is(candidate))
+        .find((e) => e.data.message === id)?.data,
   )
   const message = useDocOf(ROOT, MessagesDoc)?.messages.find((m) => m.id === id)
-  const open = !outcome && message !== undefined && openQuestion(message)
+  const open = !transcriptOutcome && message !== undefined && openQuestion(message)
   const accent = useAccentOf(from)
   const { showSurface, switchConversation } = useUltimate()
-  const [state, text] = outcome
-    ? outcome.dismissed
-      ? [outcome.via ? 'dismissed for you' : 'dismissed', undefined]
-      : [outcome.via ? 'answered for you' : 'answered', outcome.summary]
+  const [state, text] = transcriptOutcome
+    ? transcriptOutcome.dismissed
+      ? [transcriptOutcome.via ? 'dismissed for you' : 'dismissed', undefined]
+      : [transcriptOutcome.via ? 'answered for you' : 'answered', transcriptOutcome.summary]
     : [undefined, summary]
   return (
     <Card attention={open} data-message-pointer={id}>
@@ -70,4 +56,4 @@ export function QuestionPointer({ entry }: { entry: EntryRecord }) {
       </header>
     </Card>
   )
-}
+})

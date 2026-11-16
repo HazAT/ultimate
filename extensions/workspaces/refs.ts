@@ -2,6 +2,7 @@
  * Workspaces in the browser: the worktree index every conversation's isolate and the lander queue live in, the actions
  * that inspect worktrees, and the landing event. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -103,3 +104,9 @@ export const CheckRan = defineEvent<{
   result: 'passed' | 'failed' | 'flaky' | 'timeout'
   ms: number
 }>('workspaces.check')
+
+/** A submission's outcome card, shared with its starter. */
+export const LanderReportEntry = defineEntry<{
+  id: string
+  outcome: WorkspaceIndex['results'][string]
+}>('workspaces.lander-report')

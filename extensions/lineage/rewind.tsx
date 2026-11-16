@@ -1,8 +1,3 @@
-import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-/**
- * Going back to an entry in the browser: the "Go back to here" message action and its confirm dialog, the note card
- * the go-back leaves, and the marker on conversations that built on the set-aside path.
- */
 import { FileIcon, GitCommitIcon, GitForkIcon, HistoryIcon } from 'lucide-react'
 import { useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -13,12 +8,12 @@ import { api, Card, errorMessage, Fold, useAction, useConversation, useUltimate 
 import type { EntryRecord } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { RewindAction, RewindPreviewAction } from './refs.ts'
+import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
 import { useRoots } from './ui.tsx'
 
 const via = { subagent: 'subagent', branch: 'branch', message: 'messaged' } as const
 
-/** Changed files with their line counts, as a landing card lists them. */
 function Files({ files }: { files: readonly RewindFile[] }) {
   return (
     <ul className="flex flex-col gap-0.5 font-mono text-[11.5px]">
@@ -71,7 +66,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-/** Confirms going back to `entry`: what it sets aside, what stays in the checkout, who built on it. */
 function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => void }) {
   const { conversationId: conversation, id: at } = entry
   const preview = useAction(RewindPreviewAction, { conversation, at })
@@ -172,7 +166,6 @@ function GoBackDialog({ entry, onClose }: { entry: EntryRecord; onClose: () => v
   )
 }
 
-/** The hover action on a stored message of any conversation but a root. */
 export function GoBackAction({ entry }: { entry: EntryRecord }) {
   const roots = useRoots()
   const shown = useConversation((conversation) => conversation.id)
@@ -195,20 +188,9 @@ export function GoBackAction({ entry }: { entry: EntryRecord }) {
   )
 }
 
-type RewoundData = {
-  at: EntryId
-  steps: number
-  files: RewindFile[]
-  commits: { sha: string; subject: string }[]
-  dependents: RewindDependent[]
-  summary?: string
-  summaryMissing?: true
-}
-
-/** The note a go-back left: where it went back to, the summary when asked for, the files and who built on the path. */
 export function Rewound({ entry }: { entry: EntryRecord }) {
-  const { at, steps, files, commits, dependents, summary, summaryMissing } =
-    entry.data as RewoundData
+  if (!RewoundEntry.is(entry)) return null
+  const { at, steps, files, commits, dependents, summary, summaryMissing } = entry.data
   return (
     <Fold
       card={entry.id}
@@ -281,14 +263,10 @@ export function Rewound({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** In a conversation that built on a path its source later set aside: a quiet divider that opens the go-back. */
 export function RewoundDependent({ entry }: { entry: EntryRecord }) {
   const { switchConversation } = useUltimate()
-  const {
-    from,
-    at,
-    entry: note,
-  } = entry.data as { from: ConversationId; at: EntryId; entry: EntryId }
+  if (!RewoundDependentEntry.is(entry)) return null
+  const { from, at, entry: note } = entry.data
   return (
     <button
       className="flex w-full min-w-0 cursor-pointer items-center gap-3 font-mono text-[11px] text-warning/90 before:h-px before:flex-1 before:bg-warning/30 after:h-px after:flex-1 after:bg-warning/30 hover:text-warning"

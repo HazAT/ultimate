@@ -16,7 +16,6 @@ import {
   defineExtension,
   defineTask,
   GenerationTask,
-  hook,
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
@@ -24,14 +23,12 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
 import { Standing, Subagents } from '../subagents/api.ts'
-import { idleNote } from './idle.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
+import { FailureEntry } from './entries.ts'
 
-/** How long after a temporary failure its one retry starts. */
-const RETRY_AFTER = 60_000
-/** Reported failures kept for `failures()`; older ones drop off. */
+const TEMPORARY_FAILURE_RETRY_DELAY_MS = 60_000
 export const FAILURE_LIMIT = 20
 
 const Reported = defineDoc<{ failures: ReportedFailure[] }>({
@@ -66,10 +63,8 @@ const failedInput = (input: SubmissionRecord) =>
   input.status === 'unanswered' &&
   ['model_error', 'no_model'].includes(input.reason)
 
-/** The final error entry of a generation, excluding any later run. Pi can append several
- * assistant errors during its internal retries; only the last one ended the run. */
-async function boundary(tx: Tx, task: Generation, next?: Generation) {
-  let upper = parseEntryId(Number(task.id))
+async function lastErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Generation) {
+  let upper = sharedOrderTaskEntryBoundary(task.id)
   let assistant: AssistantMessage | undefined
   if (
     task.state.status === 'terminal' &&
@@ -81,8 +76,8 @@ async function boundary(tx: Tx, task: Generation, next?: Generation) {
       const page = await tx.scanEntries(
         {
           conversationId: task.conversationId,
-          minEntryId: parseEntryId(Number(task.id)),
-          ...(next ? { maxEntryId: offsetEntryId(parseEntryId(Number(next.id)), -1) } : {}),
+          minEntryId: sharedOrderTaskEntryBoundary(task.id),
+          ...(next ? { maxEntryId: offsetEntryId(sharedOrderTaskEntryBoundary(next.id), -1) } : {}),
           order: 'descending',
         },
         100,
@@ -103,12 +98,6 @@ async function boundary(tx: Tx, task: Generation, next?: Generation) {
   return { upper, assistant }
 }
 
-/**
- * What a failed run's error asks for: a broken login needs the user, so it reports at once with a hint to log in again;
- * a rate limit that outlasted Pi's retries reports once and never re-prompts into the limit; an
- * incomplete Claude Code relay response (status 200 or unknown) is a dropped stream, so it retries like Pi's own
- * retryable errors.
- */
 export function diagnose(error: string, assistant?: AssistantMessage) {
   if (rateLimited(error))
     return {
@@ -117,7 +106,6 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
     }
   if (/not logged in/i.test(error))
     return { hint: 'Run `claude auth login` in a terminal', temporary: false }
-  // The conversation's model has no login here; its next input switches it to one that has.
   const missing = /Provider is not configured: ([\w-]+)|No API key (?:found )?for "?([\w-]+)/i.exec(
     error,
   )
@@ -140,10 +128,15 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
 }
 
 type Generation = TaskRecord<JsonValue, JsonValue, JsonValue>
-/** Live commits give us the exact settled inputs. On reopen, only model_error/no_model
- * submissions matter: their entries lie between consecutive failed-run boundaries.
- * Successful and stopped runs cannot match that filter. No-model has no assistant entry,
- * so its generation ID supplies its boundary. All IDs share one allocation order. */
+const sharedOrderTaskEntryBoundary = (id: Generation['id']) => parseEntryId(Number(id))
+
+function advanceCompletedPrefixWatermark(receipts: { highWater?: number }, tasks: Generation[]) {
+  for (const task of tasks) {
+    if (task.state.status !== 'terminal') break
+    receipts.highWater = task.id
+  }
+}
+
 async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Generation) {
   const generations: Generation[] = []
   let cursor: Cursor | undefined
@@ -160,9 +153,12 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
   const previous = generations.findLastIndex(
     (candidate) => candidate.id < task.id && failed(candidate),
   )
-  const { upper, assistant } = await boundary(tx, task, generations[index + 1])
+  const { upper, assistant } = await lastErrorBeforeNextGeneration(tx, task, generations[index + 1])
   const lower =
-    previous < 0 ? 0 : (await boundary(tx, generations[previous], generations[previous + 1])).upper
+    previous < 0
+      ? 0
+      : (await lastErrorBeforeNextGeneration(tx, generations[previous], generations[previous + 1]))
+          .upper
   let step = 'model request'
   cursor = undefined
   do {
@@ -201,14 +197,16 @@ export default function watchdog(host: ExtensionHost) {
       retry: async (task, runtime, ctx) => {
         const { conversation, failedTask, error } = task.input
         const child = (await runtime.conversation(conversation, ctx))!
-        // A replay after submit must finish, not mistake its own retry for someone else's recovery.
-        let submitted = false
+        let retryAlreadySubmitted = false
         let busy = false
         await runtime.commit(async (tx) => {
-          submitted = !!(await tx.submissionByRequest(child.id, `watchdog-retry:${failedTask}`))
+          retryAlreadySubmitted = !!(await tx.submissionByRequest(
+            child.id,
+            `watchdog-retry:${failedTask}`,
+          ))
           busy = (await tx.doc(LiveDoc, child.id)).run !== undefined
         }, ctx)
-        if (!submitted && !busy)
+        if (!retryAlreadySubmitted && !busy)
           await child.submit(
             {
               type: 'input',
@@ -233,7 +231,6 @@ export default function watchdog(host: ExtensionHost) {
         }
         const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
         if (recipient === conversation) {
-          // Notices are process-local diagnostics, not submissions; a reopened facet retains no old notice.
           host.notice(content)
         } else {
           const target = (await runtime.conversation(recipient, ctx))!
@@ -241,7 +238,7 @@ export default function watchdog(host: ExtensionHost) {
             {
               type: 'input',
               content: `${content}\nCheck the conversation; resume it with a message, or tell the user if it needs them.`,
-              entry: { kind: 'watchdog.failure', data },
+              entry: { kind: FailureEntry.kind, data },
               requestId: `watchdog-report:${failedTask}`,
               whenBusy: 'steer',
             },
@@ -250,16 +247,22 @@ export default function watchdog(host: ExtensionHost) {
         }
         await runtime.commit(async (tx) => {
           const reported = await tx.doc(Reported, ROOT_CONVERSATION_ID)
-          // Newest first by when the run failed: reports of older failures can finish later.
-          reported.failures.push({ ...data, at: task.input.until - RETRY_AFTER })
+          reported.failures.push({
+            ...data,
+            at: task.input.until - TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          })
           reported.failures.sort((a, b) => b.at - a.at)
           reported.failures.splice(FAILURE_LIMIT)
-          // Reporting ends the watchdog's hold on a subagent's provider failure: its action has given up.
           const actions = Object.values((await tx.doc(Subagents, recipient)).actions)
-          const action = actions.findLast((candidate) => candidate.conversationId === conversation)
-          if (action?.status === 'failed') {
-            const input = await tx.submissionByRequest(conversation, `subagent:${action.reporter}`)
-            if (input && failedInput(input)) action.status = 'given-up'
+          const actionWhoseFailureIsNowReported = actions.findLast(
+            (candidate) => candidate.conversationId === conversation,
+          )
+          if (actionWhoseFailureIsNowReported?.status === 'failed') {
+            const input = await tx.submissionByRequest(
+              conversation,
+              `subagent:${actionWhoseFailureIsNowReported.reporter}`,
+            )
+            if (input && failedInput(input)) actionWhoseFailureIsNowReported.status = 'given-up'
           }
           return terminal
         }, ctx)
@@ -330,7 +333,7 @@ export default function watchdog(host: ExtensionHost) {
           ...(hint ? { hint } : {}),
           retried: runInputs.some((input) => input.requestId?.startsWith('watchdog-retry:')),
           temporary,
-          until: (task.endedAt ?? Date.now()) + RETRY_AFTER,
+          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )
@@ -374,19 +377,21 @@ export default function watchdog(host: ExtensionHost) {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
       if (receipts.highWater === undefined) {
         let newest = 0
-        let unfinished = Infinity
+        let oldestUnfinishedTaskId = Infinity
         let cursor: Cursor | undefined
         do {
           const page = await tx.scanTasks({}, 500, cursor)
           for (const task of page.items) {
             newest = task.id
-            if (task.state.status !== 'terminal') unfinished = Math.min(unfinished, task.id)
-            // Terminal failures are historical even when a still-running older task holds the mark back.
-            if (failed(task)) receipts.tasks[String(task.id)] = true
+            if (task.state.status !== 'terminal')
+              oldestUnfinishedTaskId = Math.min(oldestUnfinishedTaskId, task.id)
+            const failurePredatesWatchdogInstallation = failed(task)
+            if (failurePredatesWatchdogInstallation) receipts.tasks[String(task.id)] = true
           }
           cursor = page.next
         } while (cursor)
-        receipts.highWater = unfinished === Infinity ? newest : unfinished - 1
+        receipts.highWater =
+          oldestUnfinishedTaskId === Infinity ? newest : oldestUnfinishedTaskId - 1
         return []
       }
       const all = []
@@ -399,25 +404,13 @@ export default function watchdog(host: ExtensionHost) {
       return all.toReversed()
     }, context)
     for (const task of tasks) await detect(task)
-    // Do not pass unfinished tasks: an older run can fail after a newer one, even across restart.
     await host.harness().commit(async (tx) => {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
-      for (const task of tasks) {
-        if (task.state.status !== 'terminal') break
-        receipts.highWater = task.id
-      }
+      advanceCompletedPrefixWatermark(receipts, tasks)
     }, context)
   })
   return defineExtension({
     name: 'watchdog',
     tasks: [Watchdog],
-    hooks: [
-      hook(GenerationTask, {
-        beforeInput: async (_input, { tx, conversationId }) =>
-          (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
-            ? idleNote(tx, host, conversationId, Date.now())
-            : undefined,
-      }),
-    ],
   })
 }

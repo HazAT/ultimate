@@ -1,5 +1,5 @@
 import type { EntryRecord, EntryId } from '@earendil-works/pi-durable'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   anchorSelector,
   compactRows,
@@ -13,6 +13,17 @@ import {
 } from '../../web/src/app/compact.ts'
 import type { CompactPart, WorkRun } from '../../web/src/app/compact.ts'
 import { threadRow } from '../../extensions/messages/data.tsx'
+
+vi.mock('@/sdk', async () => import('../../web/src/sdk/format.ts'))
+vi.mock('../../extensions/lineage/ui.tsx', async () => import('../../extensions/lineage/refs.ts'))
+vi.mock(
+  '../../extensions/workspaces/ui.tsx',
+  async () => import('../../extensions/workspaces/refs.ts'),
+)
+vi.mock(
+  '../../extensions/subagents/ui.tsx',
+  async () => import('../../extensions/subagents/refs.ts'),
+)
 
 let nextId = 1
 const entry = (kind: string, message?: object, data?: object) =>

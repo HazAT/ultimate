@@ -2,6 +2,8 @@
  * Subagents for other extensions' browser code: opening the message that started an agent, the standing agents and
  * talking to the primary one, and the agent definitions.
  */
+export { InstructionEntry, ReportEntry } from './refs.ts'
+
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
 import { WandSparklesIcon } from 'lucide-react'

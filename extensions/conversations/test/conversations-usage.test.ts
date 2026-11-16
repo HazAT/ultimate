@@ -15,7 +15,8 @@ import { afterEach, expect, it } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
 import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { IntentSummarized, Summaries, summaryBehavior, TitleChanged } from '../summary.ts'
+import { Summaries, summaryBehavior } from '../summary.ts'
+import { IntentSummarized, TitleChanged } from '../entries.ts'
 import { until } from '../../../test/helpers.ts'
 
 const reported = {

@@ -1,9 +1,3 @@
-/**
- * The web UI, served as a production bundle. `web-build.ts` builds it in a process of its own, into
- * `<home>/web/<id>/`, when a page asks for it and it is stale; while a page is open, a change to its sources rebuilds
- * it at once and the page reloads onto it (`system.web.id`). A facet that fails to build is left out with its error,
- * so its card shows the error and the rest runs; any other failure keeps the previous bundle and raises a notice.
- */
 import { createReadStream } from 'node:fs'
 import { mkdir, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -23,15 +17,16 @@ import type { WebBuildRequest, WebBuildResult } from './web-build.ts'
 
 interface Manifest {
   id: string
-  /** When the build started: a source changed after it makes the bundle stale. */
   at: number
   inputs: string[]
   facets: string[]
-  /** Folders of facets left out because they did not build: any change in one may fix it. */
   broken: string[]
-  /** Bundles replaced by this one, by when: kept for pages still loading them, across restarts too. */
   retired: Record<string, number>
 }
+
+const replacedBundleGracePeriodMs = 10 * 60_000
+const missingSourceMeansChanged = Number.POSITIVE_INFINITY
+const removedFileIsHandledByWatcher = 0
 
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -46,7 +41,6 @@ const types: Record<string, string> = {
   '.wasm': 'application/wasm',
 }
 
-/** The enabled web facets' `web.tsx` paths, as the bundle's loader map keys them. */
 export async function webFacets(ultimateRoot: string, projectRoot: string, userHome: string) {
   return (await discoverExtensions(ultimateRoot, projectRoot, userHome))
     .filter((entry) => entry.enabled && entry.files.includes('web.tsx'))
@@ -59,11 +53,8 @@ export async function createWeb(options: {
   userHome: string
   home: string
   watch: Watch
-  /** Settles once the checkout and its packages can be read: each build waits for it. */
   before: () => Promise<unknown>
-  /** Open browser pages: with none, a change only marks the bundle stale. */
   pages: () => number
-  /** A new bundle is current, or a build started or ended. */
   changed: () => void
   notice: (message: string) => void
 }) {
@@ -87,39 +78,37 @@ export async function createWeb(options: {
       try {
         return JSON.parse(text) as Manifest
       } catch {
-        return undefined // Unreadable: build afresh.
+        return undefined
       }
     },
-    () => undefined, // No bundle yet: the first page builds one.
+    () => undefined,
   )
   let inputs = new Set(manifest?.inputs)
   let brokenRoots = manifest?.broken ?? []
-  /** Bundles replaced in this process, by when: a page still loading one may ask for its chunks for a while. */
   const retired = new Map(Object.entries(manifest?.retired ?? {}))
   let stale = !manifest || !(await fresh(manifest))
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
-  /** The last build's facets left out with their errors, or the error that failed it as a whole. */
   let left: { file: string; error: string }[] = []
   let failed: string | undefined
   let pending = new Set<string>()
-  const scheduleUpdate = debounce(150, () => void update())
+  const scheduleUpdate = debounce(150, () => void buildUntilFreshSerially())
   const closing = new AbortController()
 
   async function fresh(current: Manifest) {
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
-    // A broken facet may have been fixed while the host was down: try it again.
-    if (current.broken?.length || facets.join('\0') !== current.facets.join('\0')) return false
-    return !(await changedSince(current.inputs, current.at))
+    const retryPossiblyFixedFacets = current.broken?.length
+    if (retryPossiblyFixedFacets || facets.join('\0') !== current.facets.join('\0')) return false
+    const { at: buildStartedEpochMs } = current
+    return !(await changedSince(current.inputs, buildStartedEpochMs))
   }
 
-  /** Whether a file in `files` was saved after `at`. */
   async function savedSince(files: string[], at: number) {
     const times = await Promise.all(
       files.map((file) =>
         stat(file).then(
           (info) => info.mtimeMs,
-          () => 0, // Removed: the watcher reports that on its own.
+          () => removedFileIsHandledByWatcher,
         ),
       ),
     )
@@ -131,7 +120,7 @@ export async function createWeb(options: {
       files.map((file) =>
         stat(file).then(
           (info) => info.mtimeMs,
-          () => Number.POSITIVE_INFINITY, // A missing source changed.
+          () => missingSourceMeansChanged,
         ),
       ),
     )
@@ -139,7 +128,7 @@ export async function createWeb(options: {
   }
 
   async function buildOnce() {
-    const at = Date.now()
+    const buildStartedEpochMs = Date.now()
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
     const targets = await discoverExtensions(ultimateRoot, projectRoot, userHome)
     const outDir = join(folder, 'next')
@@ -158,7 +147,6 @@ export async function createWeb(options: {
       const { stdout } = await exec(
         process.execPath,
         [fileURLToPath(new URL('./web-build.ts', import.meta.url)), JSON.stringify(request)],
-        // The server's Vite set NODE_ENV to development; inherited, the bundle would ship React's development build.
         {
           cwd: ultimateRoot,
           maxBuffer: 64 * 1024 * 1024,
@@ -184,30 +172,26 @@ export async function createWeb(options: {
       left.push({ file: join(facet.path, 'web.tsx'), error: result.error.message })
       options.notice(`${join(facet.path, 'web.tsx')} did not build: ${result.error.message}`)
     }
-    // Every file's name and content: a facet's own chunk or a public file changes without index.html changing.
-    const digest = createHash('sha256')
+    const allFileNamesAndContentsHash = createHash('sha256')
     for (const file of (await readdir(outDir, { recursive: true })).toSorted()) {
       const full = join(outDir, file)
-      if ((await stat(full)).isFile()) digest.update(file + '\0').update(await readFile(full))
+      if ((await stat(full)).isFile())
+        allFileNamesAndContentsHash.update(file + '\0').update(await readFile(full))
     }
-    const id = digest.digest('hex').slice(0, 12)
-    const target = join(folder, id)
-    // An identical bundle is already there, maybe being served: keep it.
-    if (
-      await stat(target).then(
-        () => true,
-        () => false, // Not built before.
-      )
+    const id = allFileNamesAndContentsHash.digest('hex').slice(0, 12)
+    const bundlePath = join(folder, id)
+    const identicalBundleExists = await stat(bundlePath).then(
+      () => true,
+      () => false,
     )
-      await rm(outDir, { recursive: true, force: true })
-    else await rename(outDir, target)
+    if (identicalBundleExists) await rm(outDir, { recursive: true, force: true })
+    else await rename(outDir, bundlePath)
     const publicFiles = (
       await readdir(join(webRoot, 'public'), { recursive: true }).catch(() => [])
-    ) // No public files.
-      .map((file) => join(webRoot, 'public', file))
+    ).map((file) => join(webRoot, 'public', file))
     const next: Manifest = {
       id,
-      at,
+      at: buildStartedEpochMs,
       inputs: [
         ...new Set([
           ...result.inputs.filter((file) => !file.includes('/node_modules/')),
@@ -223,22 +207,21 @@ export async function createWeb(options: {
     const switched = manifest?.id !== id
     if (manifest && switched) retired.set(manifest.id, Date.now())
     retired.delete(id)
-    // Bundles replaced over ten minutes ago go; a page that slow to load reloads onto the current one anyway.
-    for (const [old, since] of retired) if (Date.now() - since > 10 * 60_000) retired.delete(old)
+    for (const [old, since] of retired)
+      if (Date.now() - since > replacedBundleGracePeriodMs) retired.delete(old)
     next.retired = Object.fromEntries(retired)
     await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     manifest = next
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
-    // A source saved while the build read it, such as a new facet's file it had not seen yet: build again.
-    if (await savedSince(result.inputs, at)) stale = true
+    const sourceSavedDuringBuild = await savedSince(result.inputs, buildStartedEpochMs)
+    if (sourceSavedDuringBuild) stale = true
     for (const name of await readdir(folder))
       if (name !== id && !name.startsWith('.') && name !== 'manifest.json' && !retired.has(name))
         await rm(join(folder, name), { recursive: true, force: true })
   }
 
-  /** Build while stale, one build at a time; changes during a build build again after it. */
-  function update() {
+  function buildUntilFreshSerially() {
     building ??= (async () => {
       try {
         await mkdir(folder, { recursive: true })
@@ -283,7 +266,7 @@ export async function createWeb(options: {
       void realpath(file).then(
         (real) =>
           (inputs.has(real) || brokenRoots.some((root) => inside(real, root))) && touched(file),
-        () => touched(file), // Gone since the event: a source of the bundle may have been removed.
+        () => touched(file),
       )
   }
   const onStructure = (file: string) => {
@@ -293,7 +276,6 @@ export async function createWeb(options: {
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
   const unwatch = options.watch((watcher) => {
     watcher.add([...roots, ...settings, webRoot])
-    // A root missing at start (a project's first extension folder) is watched once it appears.
     const stopRoots = watchRoots([...roots, ...settings], (root) => {
       watcher.add(root)
       touched(root)
@@ -307,14 +289,13 @@ export async function createWeb(options: {
     }
   })
 
-  /** `path` in bundle `id`, when it is a file there. */
   async function bundled(id: string, path: string) {
     const base = join(folder, id)
     const full = resolve(base, '.' + path)
     if (!inside(full, base)) return undefined
     return stat(full).then(
       (info) => (info.isFile() ? full : undefined),
-      () => undefined, // Not in this bundle.
+      () => undefined,
     )
   }
 
@@ -326,18 +307,15 @@ export async function createWeb(options: {
       ...(left.length ? { left } : {}),
       ...(failed ? { error: failed } : {}),
     }),
-    /** The facets the bundle's loader map holds, by web.tsx path, as the next build will see them. */
     facets: () => webFacets(ultimateRoot, projectRoot, userHome),
-    /** Rebuild now when a page is open, else at the next page load; settles once applied. */
     async rebuild() {
       stale = true
-      if (options.pages() > 0 || building) await update()
+      if (options.pages() > 0 || building) await buildUntilFreshSerially()
     },
     async handle(request: IncomingMessage, response: ServerResponse) {
-      if (stale || !manifest) await update()
-      // One bundle for the whole request, though a build may finish while it is served.
-      const current = manifest
-      if (!current) {
+      if (stale || !manifest) await buildUntilFreshSerially()
+      const bundleForEntireRequest = manifest
+      if (!bundleForEntireRequest) {
         response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
         response.end('The web UI did not build; the notices name the error.')
         return
@@ -345,7 +323,7 @@ export async function createWeb(options: {
       const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname)
       let found: string | undefined
       if (path !== '/' && path !== '/index.html')
-        for (const id of [current.id, ...retired.keys()]) {
+        for (const id of [bundleForEntireRequest.id, ...retired.keys()]) {
           found = await bundled(id, path)
           if (found) break
         }
@@ -355,10 +333,11 @@ export async function createWeb(options: {
           response.end()
           return
         }
-        // The app, for every route: it names its bundle, so the page knows when a new one is current.
-        const html = (await readFile(join(folder, current.id, 'index.html'), 'utf8')).replace(
+        const html = (
+          await readFile(join(folder, bundleForEntireRequest.id, 'index.html'), 'utf8')
+        ).replace(
           '<head>',
-          `<head><meta name="ultimate-web" content="${current.id}">`,
+          `<head><meta name="ultimate-web" content="${bundleForEntireRequest.id}">`,
         )
         response.writeHead(200, {
           'Content-Type': types['.html'],
@@ -371,14 +350,12 @@ export async function createWeb(options: {
         /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') &&
         (await stat(found + '.gz').then(
           () => true,
-          () => false, // Small files are not compressed.
+          () => false,
         ))
+      const contentAddressedAsset = path.startsWith('/assets/')
       response.writeHead(200, {
         'Content-Type': types[extname(found)] ?? 'application/octet-stream',
-        // Asset names carry their content hash; the other public files can change in place.
-        'Cache-Control': path.startsWith('/assets/')
-          ? 'public, max-age=31536000, immutable'
-          : 'no-cache',
+        'Cache-Control': contentAddressedAsset ? 'public, max-age=31536000, immutable' : 'no-cache',
         ...(gzip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}),
       })
       createReadStream(gzip ? found + '.gz' : found)
@@ -388,7 +365,6 @@ export async function createWeb(options: {
     close() {
       scheduleUpdate.cancel()
       unwatch()
-      // A build no one will be served: stop it rather than wait for it.
       closing.abort()
       return building
     },

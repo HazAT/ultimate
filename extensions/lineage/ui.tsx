@@ -8,6 +8,7 @@ import { BrainIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { cn, definePoint, getState, useDocOf, useUiState, useUltimate } from '@/sdk'
 import { RootsDoc } from './refs.ts'
+export { FinishedEntry, AbstractEntry } from './refs.ts'
 
 export {
   Branched,

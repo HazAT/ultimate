@@ -11,9 +11,11 @@ interface ImportNode {
 
 interface Node {
   type: string
+  start?: number
+  end?: number
   name?: string
   id?: Node
-  specifiers?: { type?: string; imported?: Node }[]
+  specifiers?: { type?: string; imported?: Node; exported?: Node }[]
   source?: Node
   value?: unknown
   computed?: boolean
@@ -48,8 +50,16 @@ interface Context {
     text: string
     getCommentsBefore(node: Node): unknown[]
     getCommentsInside(node: Node): unknown[]
+    getAllComments(): Comment[]
   }
   report(diagnostic: { node: ImportNode | Node; message: string }): void
+}
+
+interface Comment {
+  type: string
+  value: string
+  start: number
+  end: number
 }
 
 const extensionOf = (filename: string) => {
@@ -93,9 +103,14 @@ const membersOf = (declaration: Node): Node[] =>
   declaration.type === 'TSInterfaceDeclaration'
     ? (((declaration.body as Node | undefined)?.body as Node[] | undefined) ?? [])
     : literals(declaration.typeAnnotation)
+const onlyDefineEntry = (node: Node) =>
+  node.source?.value === '@earendil-works/pi-durable' &&
+  node.specifiers?.length === 1 &&
+  node.specifiers[0].imported?.name === 'defineEntry'
+
 const definers: Record<'api.ts' | 'refs.ts', Set<string>> = {
   'api.ts': new Set(['defineApi', 'defineDoc', 'defineEntry']),
-  'refs.ts': new Set(['docRef', 'actionRef', 'defineEvent']),
+  'refs.ts': new Set(['docRef', 'actionRef', 'defineEvent', 'defineEntry']),
 }
 
 /** The declarator of `export const tier = …`, which declares an extension's tier, if `statement` is one. */
@@ -142,9 +157,100 @@ const isGlobal = (node: Node | undefined, name: string) =>
       ['window', 'globalThis'].includes(node.object.name ?? '') &&
       propertyName(node) === name
 
+const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
+const inSdk = (filename: string) =>
+  path.relative(process.cwd(), filename).startsWith(`web${path.sep}src${path.sep}sdk${path.sep}`)
+let sdkExports: Set<string> | undefined
+/** The names `web/src/sdk/index.ts` exports: the SDK's public surface, read once per lint process. */
+function publicSdk() {
+  sdkExports ??= new Set(
+    [
+      ...readFileSync(path.join(process.cwd(), 'web/src/sdk/index.ts'), 'utf8').matchAll(
+        /export\s+(?:type\s+)?\{([^}]*)\}/g,
+      ),
+    ].flatMap((match) =>
+      match[1].split(',').map((name) =>
+        name
+          .trim()
+          .split(/\s+as\s+/)
+          .pop()!,
+      ),
+    ),
+  )
+  return sdkExports
+}
+/** The names an `export` statement declares or passes on. */
+const exportedNames = (statement: Node): string[] => {
+  const declaration = statement.declaration
+  if (!declaration)
+    return (statement.specifiers ?? []).map((specifier) => String(specifier.exported?.name))
+  if (declaration.type === 'VariableDeclaration')
+    return (declaration.declarations ?? []).map((declarator) => String(declarator.id?.name))
+  return [String(declaration.id?.name)]
+}
+const functionTypes = ['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression']
+/** Whether an export is a function, whose body is implementation rather than contract. */
+const hasBody = (statement: Node) =>
+  functionTypes.includes(statement.declaration?.type ?? '') ||
+  (statement.declaration?.declarations ?? []).some((declarator) =>
+    functionTypes.includes(declarator.init?.type ?? ''),
+  )
+/** Where JSDoc is a contract: the statements of a contract file, or those exporting the web SDK's public names. */
+function contractStatements(filename: string, statements: Node[]) {
+  if (contractFile(filename)) return statements
+  if (!inSdk(filename)) return []
+  const names = publicSdk()
+  return statements.filter(
+    (statement) =>
+      statement.type === 'ExportNamedDeclaration' &&
+      exportedNames(statement).some((name) => names.has(name)),
+  )
+}
+
 export default {
   meta: { name: 'ultimate' },
   rules: {
+    'no-comments': {
+      meta: { schema: [] },
+      create(context: Context) {
+        return {
+          Program(program: Node) {
+            const statements = (program.body as Node[] | undefined) ?? []
+            const contractDocs = new Set<number>()
+            for (const statement of contractStatements(context.filename, statements))
+              for (const comment of [
+                ...(context.sourceCode.getCommentsBefore(statement) as Comment[]),
+                ...(hasBody(statement)
+                  ? []
+                  : (context.sourceCode.getCommentsInside(statement) as Comment[])),
+              ])
+                contractDocs.add(comment.start)
+            const opening = context.sourceCode.getAllComments()[0]
+            if (
+              opening &&
+              (contractFile(context.filename) ||
+                path.relative(process.cwd(), context.filename) ===
+                  path.join('web/src/sdk/index.ts')) &&
+              (statements.length === 0 || opening.end <= statements[0].start!)
+            )
+              contractDocs.add(opening.start)
+            for (const comment of context.sourceCode.getAllComments()) {
+              if (
+                comment.type === 'Shebang' ||
+                /^\s*Pi upstream:|License — Copyright/.test(comment.value)
+              )
+                continue
+              if (isJsDoc(comment) && contractDocs.has(comment.start)) continue
+              context.report({
+                node: comment,
+                message:
+                  'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
+              })
+            }
+          },
+        }
+      },
+    },
     'no-raw-stream': {
       meta: { schema: [] },
       create(context: Context) {
@@ -427,11 +533,11 @@ export default {
           if (file === 'refs.ts') {
             // The browser imports refs.ts (tsconfig.web.json), so it may not reach server code even for types.
             if (node.importKind !== 'type')
-              return target?.[0] === 'shared'
+              return target?.[0] === 'shared' || onlyDefineEntry(node)
                 ? undefined
                 : report(
                     node,
-                    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
+                    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
                   )
             if (
               target &&
@@ -514,7 +620,7 @@ export default {
                 report(
                   statement,
                   file === 'refs.ts'
-                    ? 'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent(...)` and types.'
+                    ? 'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.'
                     : "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types and `export const tier = 'core'`.",
                 )
             }

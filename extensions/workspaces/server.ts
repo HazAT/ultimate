@@ -40,11 +40,10 @@ import { inBackground } from '../../lib/errors.ts'
 export const order = -200
 export const docs = [Workspaces]
 export const userActions = ['setupGit']
-/** Each origin's repository with its visibility, read once per process: it rarely changes and `gh` asks the network. */
-const repos = new Map<string, Promise<GithubRepo>>()
+const githubReposOncePerProcess = new Map<string, Promise<GithubRepo>>()
 function readRepo(key: string) {
-  let repo = repos.get(key)
-  if (!repo) repos.set(key, (repo = readGithubRepo(key)))
+  let repo = githubReposOncePerProcess.get(key)
+  if (!repo) githubReposOncePerProcess.set(key, (repo = readGithubRepo(key)))
   return repo
 }
 
@@ -69,12 +68,10 @@ async function setupGit(host: ExtensionHost) {
 }
 
 export const actions = {
-  /** `github.com/<owner>/<repo>` of the project's `origin`, or null off GitHub: landing cards link ranges. */
   github: implementAction(
     GithubAction,
     async (_args, { host }) => (await githubRepo(host.projectRoot)) ?? null,
   ),
-  /** The project's `origin` on GitHub with its visibility, or null off GitHub: the sidebar's project header. */
   repo: implementAction(RepoAction, async (_args, { host }) => {
     const key = await githubRepo(host.projectRoot)
     return key ? readRepo(key) : null
@@ -115,11 +112,6 @@ export const actions = {
     host.harness().resume()
     return { id }
   },
-  /**
-   * Why the project cannot start isolated conversations, if it cannot, and whether its folder is still empty, so
-   * `setupGit` can make the first commit. Once it can, the project's lander is stood if it has none yet, so a first
-   * commit made in a conversation brings the lander without a restart.
-   */
   isolation: implementAction(IsolationAction, async (_args, { host }) => {
     const checkout = await isolatable(host.projectRoot)
     if ('reason' in checkout)
@@ -129,10 +121,6 @@ export const actions = {
       await workspaces(host).standLander(context)
     return {}
   }),
-  /**
-   * Make an empty folder isolatable: `git init` where there is no repository, then an empty first commit. A folder
-   * with files needs judgement about what to commit, so it is left to an agent.
-   */
   async setupGit(_args: JsonValue, { host }: ActionContext) {
     await setupGit(host)
     return {}
@@ -147,7 +135,6 @@ export const actions = {
   disk: implementAction(DiskAction, (_args, { host }) => workspaces(host).disk()),
 }
 export default function workspaceExtension(host: ExtensionHost) {
-  // What a landing asks about its branch is an extension point, wanted where the lander calls it.
   host.want(Branches)
   const conversations = host.need(ConversationsApi)
   const service = workspaces(host)
@@ -157,7 +144,6 @@ export default function workspaceExtension(host: ExtensionHost) {
     doc: Workspaces,
     setupGit: () => setupGit(host),
   })
-  // Concluding conversations frees their worktrees, through conversations' extension point.
   host.implement(Release, { release: (ids, caller) => service.release(ids, caller) })
   const resume = () =>
     service.resume(context).catch((error: unknown) => {
@@ -166,10 +152,6 @@ export default function workspaceExtension(host: ExtensionHost) {
   let unsubscribe: (() => void) | undefined
   let releasing: Promise<unknown> | undefined
   let releaseController: AbortController | undefined
-  // A lander task that faults leaves its queue behind. One run by older code, as on a reload of this code that changed
-  // the Workspaces document, is replaced at once; a fault of this code's own task would only repeat, so it waits for
-  // the next submit or open. Opening (and each reload while open) picks up any such queue. An aborted task stays
-  // stopped until then too.
   const stand = () =>
     service.standLander(context).catch((error: unknown) => {
       host.notice(`Lander setup failed: ${String(error)}`)
@@ -180,13 +162,11 @@ export default function workspaceExtension(host: ExtensionHost) {
     releasing = conversations
       .concluded(context)
       .then((ids) => service.release([...ids], context, signal))
-      // Checkouts an earlier chapter made: no record here knows them, so the concluded list never frees them.
       .then(() => service.sweep(context, signal))
       .catch((error: unknown) => {
         host.notice(`Workspace release failed: ${String(error)}`)
       })
     unsubscribe?.()
-    // Not a reactor: a lander task's fault is a Pi task record, not a domain event.
     unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (
@@ -196,7 +176,8 @@ export default function workspaceExtension(host: ExtensionHost) {
           change.value.state.outcome.status !== 'faulted'
         )
           continue
-        if (service.started.has(change.value.id))
+        const faultedTaskFromCurrentCode = service.started.has(change.value.id)
+        if (faultedTaskFromCurrentCode)
           host.notice(
             `Lander task ${change.value.id} faulted: ${change.value.state.outcome.error.message}; its queue resumes on the next submit or restart`,
           )
@@ -204,7 +185,6 @@ export default function workspaceExtension(host: ExtensionHost) {
       }
     })
     await stand()
-    // Checks a crashed host left running would compete with the resumed lander's own run of them.
     await sweepChecks(host.home).catch((error: unknown) => {
       host.notice(`Lander check sweep failed: ${String(error)}`)
     })
@@ -222,13 +202,12 @@ export default function workspaceExtension(host: ExtensionHost) {
     hooks: [
       hook(ToolTask, {
         beforeTool: async (call, api, caller) => {
-          // `message` never touches the checkout, and it is how a conversation reports that its workspace is gone.
-          if (call.name === 'message') return undefined
+          const reportsWithoutTouchingCheckout = call.name === 'message'
+          if (reportsWithoutTouchingCheckout) return undefined
           const reason = await service.unavailable(api.conversationId, caller)
           return reason ? { block: `${reason}. \`message\` still works, to report it.` } : undefined
         },
       }),
-      // The lander conversation is its log: no model runs there.
       hook(GenerationTask, {
         beforeInput: async (_input, api) => {
           const index = await api.tx.doc(Workspaces, ROOT_CONVERSATION_ID)
@@ -279,7 +258,6 @@ export default function workspaceExtension(host: ExtensionHost) {
         const own = await service.get(input.conversationId, caller)
         if (!own) return undefined
         const head = `Workspace: ${own.path} (branch ${own.branch}).\nSource: ${own.source}, target: ${own.target}.\n\`workspace status\` shows both tips.`
-        // Ownership never changes, so each conversation keeps one fixed text.
         const row = await host
           .harness()
           .commit((tx) => tx.conversation(input.conversationId), caller)

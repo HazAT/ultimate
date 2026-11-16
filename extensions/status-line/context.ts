@@ -1,6 +1,5 @@
 import type { UsageState } from '@earendil-works/pi-durable'
 
-/** A conversation's own spend: every model and tool bucket of its `pi.usage`, added up. */
 export function usageTotals(usage: Readonly<UsageState>) {
   return [...Object.values(usage.models), ...Object.values(usage.tools)].reduce(
     (sum, bucket) => ({

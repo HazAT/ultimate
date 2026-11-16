@@ -3,10 +3,6 @@ import { stateTone, stateWord } from '../messages/ui.tsx'
 import type { ConversationState } from '../messages/ui.tsx'
 import type { useWorkspaceIndex } from '../workspaces/ui.tsx'
 
-/**
- * The lander's line: a pulsing "landing" while it lands, else its conversation state; then how many submissions wait
- * in its queue and when it last landed. What landed is its Landed section's first row.
- */
 export function LanderState({
   id,
   index,

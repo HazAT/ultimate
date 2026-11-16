@@ -40,12 +40,14 @@ import {
   requestSummary,
   setAutomaticSummaries,
   askSummaryModel,
+} from '../summary.ts'
+import {
   IntentSummarized,
   FeatureChanged,
   TitleChanged,
   ReplySummarized,
   SummaryDiscarded,
-} from '../summary.ts'
+} from '../entries.ts'
 
 it('schedules no summary task for intent, reply or spawn once automatic summaries are off, while askSummaryModel still answers', async () => {
   const f = await launch(false, true)

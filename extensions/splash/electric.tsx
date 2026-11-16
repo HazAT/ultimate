@@ -1,20 +1,15 @@
-/*
- * Adapted from React Bits' ElectricLogo (https://reactbits.dev/animations/electric-logo, MIT), without its pointer
- * interactions and shape morphing: the shape is traced once and the strands flow around it.
- */
 import { Mesh, Program, Renderer, Texture, Triangle } from 'ogl'
 import { useEffect, useRef } from 'react'
 
-/** The traced raster's area in px, whatever the image's aspect. */
-const RASTER = 640 * 640
-const CELL = 4
+const tracedRasterAreaPx = 640 * 640
+const glowCellSizePx = 4
 const FAR = 1e20
 const ARCS = 5
 const PIXEL_BUDGET = 4e6
 
 interface Shape {
-  field: Float32Array
-  edges: number[]
+  signedDistanceField: Float32Array
+  edgePointsInShapeUnits: number[]
   width: number
   height: number
   pad: number
@@ -120,7 +115,7 @@ const blurGrid = (grid: Float32Array, w: number, h: number, r: number) => {
 }
 
 const sampleField = (shape: Shape, x: number, y: number) => {
-  const { field, width, height } = shape
+  const { signedDistanceField, width, height } = shape
   const cx = Math.min(Math.max(x, 0.5), width - 0.5)
   const cy = Math.min(Math.max(y, 0.5), height - 0.5)
   const x0 = Math.min(Math.floor(cx - 0.5), width - 2)
@@ -128,17 +123,18 @@ const sampleField = (shape: Shape, x: number, y: number) => {
   const tx = cx - 0.5 - x0
   const ty = cy - 0.5 - y0
   const i = y0 * width + x0
-  const top = field[i] + (field[i + 1] - field[i]) * tx
-  const bottom = field[i + width] + (field[i + width + 1] - field[i + width]) * tx
+  const top = signedDistanceField[i] + (signedDistanceField[i + 1] - signedDistanceField[i]) * tx
+  const bottom =
+    signedDistanceField[i + width] +
+    (signedDistanceField[i + width + 1] - signedDistanceField[i + width]) * tx
   return top + (bottom - top) * ty + Math.hypot(x - cx, y - cy)
 }
 
-/** The shape's signed distance field, edge points and glow, from the image's alpha. */
-const traceShape = (image: HTMLImageElement): Shape | undefined => {
+const traceAlphaShape = (image: HTMLImageElement): Shape | undefined => {
   const iw = image.naturalWidth
   const ih = image.naturalHeight
   if (!iw || !ih) return undefined
-  const fit = Math.sqrt(RASTER / (iw * ih))
+  const fit = Math.sqrt(tracedRasterAreaPx / (iw * ih))
   const w = Math.max(2, Math.round(iw * fit))
   const h = Math.max(2, Math.round(ih * fit))
   const canvas = document.createElement('canvas')
@@ -196,45 +192,56 @@ const traceShape = (image: HTMLImageElement): Shape | undefined => {
   transformGrid(outer, width, height)
   transformGrid(inner, width, height)
 
-  const field = new Float32Array(width * height)
-  for (let i = 0; i < width * height; i++) field[i] = Math.sqrt(outer[i]) - Math.sqrt(inner[i])
+  const signedDistanceField = new Float32Array(width * height)
+  for (let i = 0; i < width * height; i++)
+    signedDistanceField[i] = Math.sqrt(outer[i]) - Math.sqrt(inner[i])
 
   const points: number[] = []
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const i = y * width + x
-      const d = field[i]
+      const d = signedDistanceField[i]
       if (d > 0) continue
-      if (field[i - 1] <= 0 && field[i + 1] <= 0 && field[i - width] <= 0 && field[i + width] <= 0)
+      if (
+        signedDistanceField[i - 1] <= 0 &&
+        signedDistanceField[i + 1] <= 0 &&
+        signedDistanceField[i - width] <= 0 &&
+        signedDistanceField[i + width] <= 0
+      )
         continue
-      const gx = field[i + 1] - field[i - 1]
-      const gy = field[i + width] - field[i - width]
+      const gx = signedDistanceField[i + 1] - signedDistanceField[i - 1]
+      const gy = signedDistanceField[i + width] - signedDistanceField[i - width]
       const len = Math.hypot(gx, gy) || 1
       points.push(x + 0.5 - (d * gx) / len, y + 0.5 - (d * gy) / len)
     }
   }
   const stride = Math.max(1, Math.ceil(points.length / 2 / 3000)) * 2
-  const edges: number[] = []
-  for (let i = 0; i < points.length; i += stride) edges.push(points[i], points[i + 1])
+  const edgePointsInShapeUnits: number[] = []
+  for (let i = 0; i < points.length; i += stride)
+    edgePointsInShapeUnits.push(points[i], points[i + 1])
 
-  const glowPad = Math.ceil((size * 0.7) / CELL)
-  const glowWidth = Math.ceil(logoWidth / CELL) + glowPad * 2
-  const glowHeight = Math.ceil(logoHeight / CELL) + glowPad * 2
+  const glowPad = Math.ceil((size * 0.7) / glowCellSizePx)
+  const glowWidth = Math.ceil(logoWidth / glowCellSizePx) + glowPad * 2
+  const glowHeight = Math.ceil(logoHeight / glowCellSizePx) + glowPad * 2
   const tight = new Float32Array(glowWidth * glowHeight)
   for (let y = 0; y < height; y++) {
-    const gy = Math.floor((y - pad) / CELL) + glowPad
+    const gy = Math.floor((y - pad) / glowCellSizePx) + glowPad
     for (let x = 0; x < width; x++) {
-      const gx = Math.floor((x - pad) / CELL) + glowPad
-      tight[gy * glowWidth + gx] += Math.exp(-Math.abs(field[y * width + x]) / 1.5) / (CELL * CELL)
+      const gx = Math.floor((x - pad) / glowCellSizePx) + glowPad
+      tight[gy * glowWidth + gx] +=
+        Math.exp(-Math.abs(signedDistanceField[y * width + x]) / 1.5) /
+        (glowCellSizePx * glowCellSizePx)
     }
   }
   const wide = tight.slice()
-  const tightRadius = Math.max(1, Math.round((size * 0.035) / CELL))
-  const wideRadius = Math.max(2, Math.round((size * 0.13) / CELL))
+  const tightRadius = Math.max(1, Math.round((size * 0.035) / glowCellSizePx))
+  const wideRadius = Math.max(2, Math.round((size * 0.13) / glowCellSizePx))
   blurGrid(tight, glowWidth, glowHeight, tightRadius)
   blurGrid(wide, glowWidth, glowHeight, wideRadius)
-  const tightNorm = (Math.sqrt(2 * Math.PI * (tightRadius * tightRadius + tightRadius)) * CELL) / 3
-  const wideNorm = (Math.sqrt(2 * Math.PI * (wideRadius * wideRadius + wideRadius)) * CELL) / 3
+  const tightNorm =
+    (Math.sqrt(2 * Math.PI * (tightRadius * tightRadius + tightRadius)) * glowCellSizePx) / 3
+  const wideNorm =
+    (Math.sqrt(2 * Math.PI * (wideRadius * wideRadius + wideRadius)) * glowCellSizePx) / 3
   const glow = new Float32Array(glowWidth * glowHeight * 2)
   for (let i = 0; i < glowWidth * glowHeight; i++) {
     glow[i * 2] = tight[i] * tightNorm
@@ -242,8 +249,8 @@ const traceShape = (image: HTMLImageElement): Shape | undefined => {
   }
 
   return {
-    field,
-    edges,
+    signedDistanceField,
+    edgePointsInShapeUnits,
     width,
     height,
     pad,
@@ -252,21 +259,17 @@ const traceShape = (image: HTMLImageElement): Shape | undefined => {
     glow,
     glowWidth,
     glowHeight,
-    glowOffset: pad - glowPad * CELL,
+    glowOffset: pad - glowPad * glowCellSizePx,
   }
 }
 
-/**
- * A short arc leaping off the edge and landing further along it, bowing outwards; with `focus`, from an edge point within
- * its radius, in shape units.
- */
-const spawnArc = (
+const outwardShapeArc = (
   shape: Shape,
   time: number,
   focus?: { x: number; y: number; radius: number },
 ): Spark | undefined => {
-  const { edges, logoWidth, logoHeight } = shape
-  const count = edges.length / 2
+  const { edgePointsInShapeUnits, logoWidth, logoHeight } = shape
+  const count = edgePointsInShapeUnits.length / 2
   if (count < 2) return undefined
   const size = Math.sqrt(logoWidth * logoHeight)
   let i = Math.floor(Math.random() * count)
@@ -274,19 +277,24 @@ const spawnArc = (
     let found = false
     for (let attempt = 0; attempt < 40 && !found; attempt++) {
       const j = Math.floor(Math.random() * count)
-      if (Math.hypot(edges[j * 2] - focus.x, edges[j * 2 + 1] - focus.y) < focus.radius) {
+      if (
+        Math.hypot(
+          edgePointsInShapeUnits[j * 2] - focus.x,
+          edgePointsInShapeUnits[j * 2 + 1] - focus.y,
+        ) < focus.radius
+      ) {
         i = j
         found = true
       }
     }
     if (!found) return undefined
   }
-  const ax = edges[i * 2]
-  const ay = edges[i * 2 + 1]
+  const ax = edgePointsInShapeUnits[i * 2]
+  const ay = edgePointsInShapeUnits[i * 2 + 1]
   for (let attempt = 0; attempt < 24; attempt++) {
     const j = Math.floor(Math.random() * count)
-    const bx = edges[j * 2]
-    const by = edges[j * 2 + 1]
+    const bx = edgePointsInShapeUnits[j * 2]
+    const by = edgePointsInShapeUnits[j * 2 + 1]
     const len = Math.hypot(bx - ax, by - ay)
     if (len < size * 0.08 || len > size * 0.3) continue
     const nx = -(by - ay) / len
@@ -371,7 +379,7 @@ float shape(vec2 p) {
 
 vec2 aura(vec2 p) {
   vec2 f = (p - uMap.xy) / uMap.z - uMap.w;
-  return textureLod(tGlow, f / (uSize.zw * ${CELL}.0), 0.0).rg;
+  return textureLod(tGlow, f / (uSize.zw * ${glowCellSizePx}.0), 0.0).rg;
 }
 
 vec4 corner(ivec2 c, uint seed) {
@@ -431,12 +439,13 @@ vec2 wander(vec2 p, float t, uint seed, float reachScale, out mat2 jac, out vec2
 vec2 ripple(vec2 p, out float surge) {
   surge = 0.0;
   if (uPulse.w <= 0.0) return vec2(0.0);
-  // The ring crosses the shape's half-width in about half a second, as wide as a tenth of it.
-  float reach = uMap.z * uSize.x * 0.5;
+  float shapeHalfWidth = uMap.z * uSize.x * 0.5;
   vec2 d = p - uPulse.xy;
   float dist = length(d);
-  float front = (dist - uPulse.z * reach * 2.2) / (reach * 0.2);
-  surge = exp(-front * front) * uPulse.w * exp(-uPulse.z * 1.7) * smoothstep(reach * 0.05, reach * 0.3, dist);
+  float halfWidthsPerSecond = 2.2;
+  float ringWidthFraction = 0.2;
+  float front = (dist - uPulse.z * shapeHalfWidth * halfWidthsPerSecond) / (shapeHalfWidth * ringWidthFraction);
+  surge = exp(-front * front) * uPulse.w * exp(-uPulse.z * 1.7) * smoothstep(shapeHalfWidth * 0.05, shapeHalfWidth * 0.3, dist);
   return d / max(dist, 1.0) * surge * cos(front * 2.2) * uUnit * 7.5;
 }
 
@@ -567,48 +576,32 @@ void main() {
 `
 
 export interface ElectricProps {
-  /** An image traced by its alpha, such as an SVG data URL. */
-  src: string
-  /** The hot core of every strand. */
+  alphaImageSrc: string
   color: string
-  /** The glow around the strands, the bloom and the fill. */
   glowColor: string
-  /** The shape's size as a fraction of the container; glow and arcs reach beyond it. */
-  scale?: number
+  containerSizeFraction?: number
   intensity?: number
   glow?: number
-  /** The main strand's width in px. */
-  thickness?: number
-  /** Filaments tracing the outline, 1 to 6. */
-  strands?: number
+  strandWidthPx?: number
+  outlineFilaments?: number
   bend?: number
   crackle?: number
-  /** How often arcs leap off the edge; 0 turns them off. */
-  arcs?: number
+  edgeArcRate?: number
   flicker?: number
   fill?: number
   speed?: number
-  /** The strength, read every frame: 0 shows nothing, 1 is full, more flares. */
   presence: () => number
-  /** How much of the shape the lightning has reached, left to right, read every frame; the head of the sweep flares. */
-  reveal?: () => number
-  /** How many bursts have fired, read every frame: each new one sends a ripple out from the shape's centre with a
-   * spray of arcs, as React Bits' click does. */
-  bursts?: () => number
-  /** Light renders crisp electric ink instead of emitted light. */
+  sweepLeftToRight?: () => number
+  burstCount?: () => number
   theme: 'dark' | 'light'
   className?: string
 }
 
-/**
- * Lightning flowing around the outline of `src`, on a WebGL2 canvas filling the container, as strong as `presence` says.
- * It renders nothing without WebGL2 and slows down without flicker under reduced motion.
- */
 export function Electric(props: ElectricProps) {
   const container = useRef<HTMLDivElement>(null)
   const settings = useRef(props)
   settings.current = props
-  const { src } = props
+  const { alphaImageSrc } = props
 
   useEffect(() => {
     const element = container.current
@@ -640,12 +633,12 @@ export function Electric(props: ElectricProps) {
         flipY: false,
         unpackAlignment: 1,
       })
-    const field = texture(1, WebGL2RenderingContext.R16F, WebGL2RenderingContext.RED)
+    const signedDistanceField = texture(1, WebGL2RenderingContext.R16F, WebGL2RenderingContext.RED)
     const halo = texture(2, WebGL2RenderingContext.RG16F, WebGL2RenderingContext.RG)
     const arcEnds = Array.from({ length: ARCS * 4 }, () => 0)
     const arcShape = Array.from({ length: ARCS * 4 }, () => 0)
     const uniforms = {
-      tField: { value: field },
+      tField: { value: signedDistanceField },
       tGlow: { value: halo },
       uMap: { value: [0, 0, 1, 0] },
       uSize: { value: [1, 1, 1, 1] },
@@ -692,19 +685,19 @@ export function Electric(props: ElectricProps) {
     const image = new Image()
     image.decoding = 'async'
     const traced = () => {
-      shape = traceShape(image)
+      shape = traceAlphaShape(image)
       if (!shape) return
-      field.image = shape.field
-      field.width = shape.width
-      field.height = shape.height
-      field.needsUpdate = true
+      signedDistanceField.image = shape.signedDistanceField
+      signedDistanceField.width = shape.width
+      signedDistanceField.height = shape.height
+      signedDistanceField.needsUpdate = true
       halo.image = shape.glow
       halo.width = shape.glowWidth
       halo.height = shape.glowHeight
       halo.needsUpdate = true
     }
     image.addEventListener('load', traced)
-    image.src = src
+    image.src = alphaImageSrc
 
     const resize = () => {
       width = Math.max(1, element.clientWidth)
@@ -721,10 +714,10 @@ export function Electric(props: ElectricProps) {
       last = now
       if (shape) {
         const presence = s.presence()
-        const reveal = s.reveal?.() ?? 1
-        const scale = s.scale ?? 0.7
+        const reveal = s.sweepLeftToRight?.() ?? 1
+        const scale = s.containerSizeFraction ?? 0.7
         const speed = s.speed ?? 2.5
-        const arcs = s.arcs ?? 1
+        const arcs = s.edgeArcRate ?? 1
         const fit = Math.max(
           1e-4,
           Math.min((width * scale) / shape.logoWidth, (height * scale) / shape.logoHeight),
@@ -735,13 +728,16 @@ export function Electric(props: ElectricProps) {
 
         for (let i = sparks.length - 1; i >= 0; i--)
           if (time - sparks[i].born > sparks[i].life) sparks.splice(i, 1)
-        const fired = s.bursts?.() ?? 0
+        const fired = s.burstCount?.() ?? 0
         if (fired > bursts && !reducedMotion) {
           pulse = now
           sparks.length = 0
           const centre = { x: shape.pad + shape.logoWidth / 2, y: shape.pad + shape.logoHeight / 2 }
           for (let i = 0; i < ARCS * 3 && sparks.length < ARCS; i++) {
-            const spark = spawnArc(shape, time, { ...centre, radius: shape.logoWidth * 0.3 })
+            const spark = outwardShapeArc(shape, time, {
+              ...centre,
+              radius: shape.logoWidth * 0.3,
+            })
             if (spark) sparks.push(spark)
           }
         }
@@ -757,7 +753,7 @@ export function Electric(props: ElectricProps) {
           sparks.length < ARCS &&
           Math.random() < dt * speed * arcs * 2.2
         ) {
-          const spark = spawnArc(shape, time)
+          const spark = outwardShapeArc(shape, time)
           if (spark) sparks.push(spark)
         }
         for (let i = 0; i < ARCS; i++) {
@@ -790,8 +786,8 @@ export function Electric(props: ElectricProps) {
         uniforms.uGlowColor.value = hexToRgb(s.glowColor)
         uniforms.uIntensity.value = s.intensity ?? 1
         uniforms.uGlow.value = s.glow ?? 1
-        uniforms.uThickness.value = s.thickness ?? 1.5
-        uniforms.uStrands.value = Math.max(1, Math.min(6, Math.round(s.strands ?? 4)))
+        uniforms.uThickness.value = s.strandWidthPx ?? 1.5
+        uniforms.uStrands.value = Math.max(1, Math.min(6, Math.round(s.outlineFilaments ?? 4)))
         uniforms.uBend.value = s.bend ?? 0.6
         uniforms.uCrackle.value = s.crackle ?? 1.5
         uniforms.uFlicker.value = reducedMotion ? 0 : (s.flicker ?? 0.6)
@@ -826,7 +822,7 @@ export function Electric(props: ElectricProps) {
       gl.getExtension('WEBGL_lose_context')?.loseContext()
       canvas.remove()
     }
-  }, [src])
+  }, [alphaImageSrc])
 
   return <div className={props.className} ref={container} />
 }

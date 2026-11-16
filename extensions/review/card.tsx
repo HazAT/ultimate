@@ -3,16 +3,13 @@ import { FileDiffIcon } from 'lucide-react'
 import { Fold } from '@/sdk'
 import { Lines } from './comment.tsx'
 import { commentCount, location } from './comments.ts'
-import type { ReviewComments } from './comments.ts'
+import { ReviewCommentsEntry } from './entries.ts'
 import { openReview } from './link.tsx'
 import { shortSpec } from './selector.tsx'
 
-/**
- * A review the user sent, in its recipient's transcript: on the user's side, like their typed messages. Each comment's
- * place opens Review at that spec, file and line.
- */
 export function ReviewCard({ entry }: { entry: EntryRecord }) {
-  const { spec, comments, note } = entry.data as ReviewComments
+  if (!ReviewCommentsEntry.is(entry)) return null
+  const { spec, comments, note } = entry.data
   const title = (
     <>
       Review · {commentCount(comments.length)} on{' '}

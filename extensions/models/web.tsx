@@ -23,6 +23,7 @@ import { nextThinking, openLogin, openPicker, thinkingDialog, useCurrentModel } 
 import type { ThinkingLevel } from './state.tsx'
 import { switchAt } from './switches.ts'
 import type { Fallback } from './refs.ts'
+import { FallbackEntry } from './entries.ts'
 
 const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
@@ -135,7 +136,6 @@ function ThinkingButton() {
   )
 }
 
-/** A response that ran on another model or thinking level than the one before it, marked above it. */
 function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const change = switchAt(useTranscript(), entry)
   if (!change) return core
@@ -170,13 +170,10 @@ const switchedTo: Record<Exclude<Fallback['reason'], 'none'>, string> = {
   default: 'the default model',
 }
 
-/**
- * A conversation whose model had no login here switched to another as its next run started, or, with no subscription
- * login to replace it, kept its model and waits for the user.
- */
 function FellBack({ entry }: { entry: EntryRecord }) {
-  const { from, to, reason } = entry.data as Fallback
   const actions = useUltimate()
+  if (!FallbackEntry.is(entry)) return null
+  const { from, to, reason } = entry.data
   const provider = from.split('/')[0]
   return (
     <section
@@ -251,7 +248,6 @@ export default defineWebExtension({
       title: 'Cycle the thinking level',
       keys: 'shift+tab',
       whileTyping: true,
-      // Shift+Tab in a side chat's composer cycles the side chat's level, not main's.
       run: async (context) => {
         const { agent, loading } = getConversation(context.conversationId)
         if (loading) return undefined

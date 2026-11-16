@@ -18,6 +18,7 @@ import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { DiscardAction, InjectAction, OpenAction, SideChatDoc, SideChatsDoc } from './refs.ts'
 import type { SideChat, SideChatIndex, SideChatSummary } from './refs.ts'
+import { SideChatSummaryEntry } from './entries.ts'
 
 export const Side = defineDoc<Partial<SideChat>>({
   kind: SideChatDoc.kind,
@@ -49,9 +50,9 @@ const Ending = defineDoc<{ mode?: 'discarded' | 'injected'; task?: TaskId; intro
 export const docs = [Side, Index]
 export const userActions = ['open', 'discard', 'inject']
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
+const crashSafeSummaryWriteRequest = (side: ConversationId) => `sidechat:summary:${side}`
 
-/** Generations finish after each tool round; only a settled input's answer proves that the run finished. */
-async function lastAnswer(host: ExtensionHost, main: ConversationId): Promise<EntryId> {
+async function lastSettledInputAnswer(host: ExtensionHost, main: ConversationId): Promise<EntryId> {
   let cursor: Cursor | undefined
   let answer: EntryId | undefined
   do {
@@ -74,8 +75,11 @@ async function lastAnswer(host: ExtensionHost, main: ConversationId): Promise<En
   return answer
 }
 
-/** A tool-terminated run (notably message to user) answers at the assistant, but its tool results must also be inherited. */
-async function closingEntry(tx: Tx, main: ConversationId, answer: EntryId): Promise<EntryId> {
+async function answerIncludingClosingToolResults(
+  tx: Tx,
+  main: ConversationId,
+  answer: EntryId,
+): Promise<EntryId> {
   const entry = (await tx.entry(answer))!
   const pending = new Set(
     entry.model?.flatMap((message) =>
@@ -121,15 +125,13 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
     const side = await tx.doc(Side, id)
     if (side.of === undefined) throw new Error(`#${id} is not a side chat`)
     const ending = await tx.doc(Ending, id)
-    // An ending whose task faulted or was aborted (a summary failure reopens the copy itself) is no ending: without
-    // this, every retry waited on the dead task again and Discard refused the chat as "already ending".
     const previous = ending.task === undefined ? undefined : await tx.task(ending.task)
-    if (
+    const failedEndingCanRetry =
       ending.mode &&
       !side.ended &&
       (!previous ||
         (previous.state.status === 'terminal' && previous.state.outcome.status !== 'completed'))
-    ) {
+    if (failedEndingCanRetry) {
       delete ending.mode
       delete ending.task
     }
@@ -246,8 +248,8 @@ export function endTask(host: ExtensionHost) {
                 `summaryModel failed (${response.stopReason}): ${response.text || 'no answer'}`,
               )
           } catch (error) {
-            // Shutdown resumes this same task. A model failure before admission instead reopens the copy for a retry.
-            if (runtime.signal.aborted) throw error
+            const shutdownWillResumeTask = runtime.signal.aborted
+            if (shutdownWillResumeTask) throw error
             await runtime.commit(async (tx) => {
               const ending = await tx.doc(Ending, id)
               delete ending.mode
@@ -268,13 +270,12 @@ export function endTask(host: ExtensionHost) {
           const at = await host.harness().commit((tx) => tx.entry(side.at!), ctx)
           const time = new Date(at!.model![0].timestamp).toISOString().slice(11, 16)
           const data: SideChatSummary = { side: id, at: side.at!, from: id, to: side.of!, text }
-          // Standard write admission preserves main's inbox/reset order; the request id survives a crash before conclusion.
           await (await host.harness().conversation(side.of!, ctx))!.submit(
             {
               type: 'write',
-              requestId: `sidechat:summary:${id}`,
+              requestId: crashSafeSummaryWriteRequest(id),
               entry: {
-                kind: 'sidechat.summary',
+                kind: SideChatSummaryEntry.kind,
                 data,
                 model: [
                   {
@@ -317,16 +318,15 @@ export const actions = {
       if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== main)
         throw new Error('Only @ultimate can open a side chat')
     }, context)
-    const answer = await lastAnswer(host, main)
+    const answer = await lastSettledInputAnswer(host, main)
     const id = await host.harness().commit(async (tx) => {
-      const at = await closingEntry(tx, main, answer)
+      const at = await answerIncludingClosingToolResults(tx, main, answer)
       const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
       Object.assign(await tx.doc(Side, fork.id), { of: main, at, effects: false })
       Object.assign(await tx.doc(host.metadata, fork.id), {
         title: 'Side chat',
         label: 'side-chat',
       })
-      // A temporary copy keeps its fixed title; only Summarize & inject asks the summary model.
       await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
       ;(await tx.doc(Index, main)).sides.push({ id: fork.id, at, openedAt: Date.now() })
       await tx.createTask(
@@ -343,7 +343,6 @@ export const actions = {
   inject: implementAction(InjectAction, (args, { host }) => end(host, sideId(args), 'injected')),
 }
 
-/** Calls that could affect the world; marking first deliberately also locks Discard after failures. */
 export function tracksEffect(name: string, args: Record<string, unknown>) {
   if (name === 'todo') return args.action === 'add' || args.action === 'done'
   if (name === 'automation') return !['list', 'runs', 'log'].includes(String(args.action))
@@ -360,7 +359,6 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
   ].includes(name)
 }
 
-/** Read ahead of the user's first words in a side chat; agents/ultimate.md describes side chats the same way. */
 export function sideReminder(side: ConversationId, main: number, at: Date) {
   return [
     `You are in a side chat (#${side}): a temporary copy of @ultimate (#${main}), forked at ${at.toTimeString().slice(0, 5)}. Main keeps running without you.`,
@@ -386,7 +384,6 @@ export default (host: ExtensionHost) =>
           return {
             entries: [
               {
-                // Reuse the existing hidden identity renderer; this is identity context, not a user-visible message.
                 kind: 'conversations.identity',
                 model: [
                   {
@@ -407,7 +404,8 @@ export default (host: ExtensionHost) =>
             if (side.of === undefined) return undefined
             if (side.ended || (await tx.doc(Ending, api.conversationId)).mode)
               return { block: 'This side chat has ended' }
-            if (tracksEffect(call.name, call.arguments)) side.effects = true
+            const attemptedPersistentEffect = tracksEffect(call.name, call.arguments)
+            if (attemptedPersistentEffect) side.effects = true
             return undefined
           }, ctx)
         },

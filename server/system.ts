@@ -20,9 +20,9 @@ import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
 import { deadline } from '../lib/timers.ts'
+import { inBackground } from '../lib/errors.ts'
 import type { Cancel } from '../lib/timers.ts'
 
-/** The skills the Info tab lists, with their scope and overrides, and Pi's load diagnostics as text. */
 export function skillInfo({
   skills,
   diagnostics,
@@ -54,7 +54,7 @@ export async function createSystem(
   host: PreparedHost,
   watchRepo: Watch,
   url: string,
-  registry: (() => ExtensionInfo[]) & { diagnostics: () => string[] },
+  registry: (() => ExtensionInfo[]) & { diagnostics: () => Promise<string[]> },
   emit: (info: SystemInfo) => void,
   notice: (message: string) => void = () => {},
   processInfo: { activationError?: string } = {},
@@ -140,26 +140,33 @@ export async function createSystem(
       code,
       web: web(),
       extensions: registry(),
-      extensionDiagnostics: registry.diagnostics(),
+      extensionDiagnostics: await registry.diagnostics(),
       ...skillInfo(projectSkills(host)),
       contextFiles: loadProjectContextFiles({
         cwd: host.projectRoot,
         agentDir: join(host.userHome, '.ultimate'),
       }).map((file) => file.path),
     }
-    // Free memory and database sizes change all the time: new streams get them fresh, but alone they broadcast nothing,
-    // since every tab re-renders whatever reads the system info on each broadcast.
-    const json = JSON.stringify({
+    const withoutVolatileSizeAndMemory = JSON.stringify({
       ...value,
       machine: { ...value.machine, freeMemory: 0 },
       persistence: { ...value.persistence, sizeBytes: 0, walBytes: 0 },
     })
-    if (json !== previous) {
-      previous = json
+    if (withoutVolatileSizeAndMemory !== previous) {
+      previous = withoutVolatileSizeAndMemory
       emit(value)
     }
   }
+  const changed = () => {
+    if (!closed) chain = chain.then(() => refresh()).catch(reportError)
+    return chain
+  }
+  const secrets = join(host.userHome, '.ultimate/secrets.json')
   const schedule = (_event?: string, path?: string | null) => {
+    if (path === secrets) {
+      inBackground(changed())
+      return
+    }
     if (path && /^(server|shared)\//.test(relative(host.ultimateRoot, path))) {
       coreStale = true
       code.coreStale = true
@@ -170,17 +177,17 @@ export async function createSystem(
       chain = chain.then(() => refresh(true)).catch(reportError)
     })
   }
-  // Not the storage home: it changes with every conversation update (conversations.json), each refresh runs git, and
-  // nothing broadcast reads it (database sizes are left out above).
   const unwatch = watchRepo((watcher) => {
-    watcher.add([
+    const sourceRootsExcludingStorageHome = [
       host.ultimateRoot,
       join(host.projectRoot, '.ultimate'),
       join(host.userHome, '.ultimate/extensions'),
       join(host.userHome, '.ultimate/skills'),
       join(host.projectRoot, '.agents/skills'),
       join(host.projectRoot, '.pi/skills'),
-    ])
+    ]
+    const secretsClearMissingSecretNotices = secrets
+    watcher.add([...sourceRootsExcludingStorageHome, secretsClearMissingSecretNotices])
     const stopRoots = watchRoots([join(host.projectRoot, '.ultimate')], (root) => {
       watcher.add(root)
       schedule()
@@ -194,10 +201,7 @@ export async function createSystem(
   await refresh(true)
   return {
     current: () => value,
-    changed() {
-      if (!closed) chain = chain.then(() => refresh()).catch(reportError)
-      return chain
-    },
+    changed,
     async close() {
       closed = true
       cancelRefresh?.()

@@ -1,7 +1,3 @@
-/**
- * Projects: the Ultimate instances running on this machine, from the host's project list (`host.projects()`), each
- * with its live counts from its own `status` action, for the rail's project switcher.
- */
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
@@ -16,75 +12,60 @@ import { MessagesApi } from '../messages/api.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
-/** How long the list waits for another instance's counts; a slower one shows without them until the next poll. */
-const STATUS_WAIT = 1_500
+const REMOTE_COUNTS_TIMEOUT_MS = 1_500
 
 type Counts = { busy: number; questions: number }
 
-/** This instance's counts, as its own `status` action reports them. */
-async function own(host: ExtensionHost): Promise<Counts> {
+async function localCounts(host: ExtensionHost): Promise<Counts> {
   return {
     busy: host.conversations().filter((conversation) => conversation.busy).length,
     questions: (await host.need(MessagesApi).openQuestions(context)).length,
   }
 }
 
-/** Another instance's counts from its `status` action, or nothing when it does not answer in time. */
-async function counts(name: string, url: string, signal: AbortSignal) {
+async function timedRemoteCounts(name: string, url: string, signal: AbortSignal) {
   const status = (await postAction(
     { url, label: name },
     'status',
     'status',
     {},
-    AbortSignal.any([signal, AbortSignal.timeout(STATUS_WAIT)]),
+    AbortSignal.any([signal, AbortSignal.timeout(REMOTE_COUNTS_TIMEOUT_MS)]),
   ).catch(meansNone)) as { busy?: unknown; questions?: { count?: unknown } } | undefined
   const busy = status?.busy
   const questions = status?.questions?.count
   return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}
 }
 
-/**
- * Each project folder's GitHub repository, once known: read in the background on first sight (`git` here, then one
- * `gh` call for its visibility) and kept for the process, so a poll never waits on the network.
- */
-const repos = new Map<string, GithubRepo | null>()
-const reading = new Set<string>()
-function repoOf(root: string | undefined) {
+const repoCache = new Map<string, GithubRepo | null>()
+const pendingRepoReads = new Set<string>()
+function cachedRepo(root: string | undefined) {
   if (!root) return undefined
-  if (!repos.has(root) && !reading.has(root)) {
-    reading.add(root)
+  if (!repoCache.has(root) && !pendingRepoReads.has(root)) {
+    pendingRepoReads.add(root)
     inBackground(
       (async () => {
         const key = await githubRepo(root)
-        repos.set(root, key ? await readGithubRepo(key) : null)
-        reading.delete(root)
+        repoCache.set(root, key ? await readGithubRepo(key) : null)
+        pendingRepoReads.delete(root)
       })(),
     )
   }
-  return repos.get(root) ?? undefined
+  return repoCache.get(root) ?? undefined
 }
 
-/**
- * A branch's checkout (`<home>/worktrees/<id>`, as previews run) is named for its project and that conversation,
- * `ultimate #586869`, as the sidebar heads it, so it shows and colours with its project rather than as a bare number.
- */
 function checkoutName(name: string, root: string | undefined) {
   const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(root ?? '')
   return worktree ? `${worktree[1]} #${worktree[2]}` : name
 }
 
-/** Each project's port on the tailnet by its root, from the registry the tailscale extension keeps. */
 async function tailnetPorts(host: ExtensionHost) {
   type Registry = { ports?: Record<string, { port?: unknown }> }
-  const registry = await readJson<Registry>(
+  const registryOrNoPorts = await readJson<Registry>(
     join(host.userHome, '.ultimate', 'tailscale.json'),
     {},
-  ).catch((): Registry => {
-    // Without a readable registry nothing is published on the tailnet: instances are reached over loopback only.
-    return {}
-  })
+  ).catch((): Registry => ({}))
   const ports: Record<string, number> = {}
-  for (const [root, entry] of Object.entries(registry.ports ?? {}))
+  for (const [root, entry] of Object.entries(registryOrNoPorts.ports ?? {}))
     if (typeof entry?.port === 'number') ports[root] = entry.port
   return ports
 }
@@ -93,19 +74,20 @@ export async function list(host: ExtensionHost, signal: AbortSignal): Promise<Ru
   const tailnet = await tailnetPorts(host)
   return Promise.all(
     (await host.projects()).flatMap(({ name, root, running, current }) => {
-      // This server answers whether or not a supervisor wrote its port into the lock (a preview's has none).
-      const url = current ? host.system().process.url : running?.url
-      if (!url) return []
+      const processOrLockUrl = current ? host.system().process.url : running?.url
+      if (!processOrLockUrl) return []
       return [
         (async () => {
-          const repo = repoOf(root)
+          const repo = cachedRepo(root)
           return {
             name: checkoutName(name, root),
-            url,
+            url: processOrLockUrl,
             current,
             ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
             ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
-            ...(current ? await own(host) : await counts(name, url, signal)),
+            ...(current
+              ? await localCounts(host)
+              : await timedRemoteCounts(name, processOrLockUrl, signal)),
           }
         })(),
       ]
@@ -113,20 +95,18 @@ export async function list(host: ExtensionHost, signal: AbortSignal): Promise<Ru
   )
 }
 
-/** The rail's pin, one file for every instance on this machine, so jumping keeps the rail as it was. */
-const pinPath = (host: ExtensionHost) => join(host.userHome, '.ultimate', 'projects-rail.json')
+const sharedRailPinPath = (host: ExtensionHost) =>
+  join(host.userHome, '.ultimate', 'projects-rail.json')
 const readPin = async (path: string) => {
   const value = await readJson<{ pinned?: unknown }>(path, {})
   return { pinned: value.pinned === true }
 }
 
 export default function projects(host: ExtensionHost) {
-  // Resolved where it is called; declared here so the catalogue lists it.
   host.need(MessagesApi)
   return defineExtension({ name: 'projects' })
 }
 
-/** The rail polls both: the trace counts their repeats instead of writing each. */
 export const pollActions = ['list', 'pin']
 
 export const actions = {
@@ -136,7 +116,7 @@ export const actions = {
       args && typeof args === 'object' && !Array.isArray(args) ? args.pinned : undefined
     if (pinned !== undefined && typeof pinned !== 'boolean')
       throw new Error('pinned must be a boolean')
-    const path = pinPath(host)
+    const path = sharedRailPinPath(host)
     if (pinned !== undefined)
       await updateJson(path, readPin, (value) => {
         value.pinned = pinned

@@ -1,8 +1,3 @@
-/**
- * The process helper `lib/spawn.ts` forks: a small Node process that starts every child process on the host's behalf.
- * Starting a process forks the caller, which copies its page tables and blocks its main thread for tens of
- * milliseconds once it holds a gigabyte; this process stays small, so the copy is cheap. It exits with the host.
- */
 import { execFile, spawn } from 'node:child_process'
 import type { ChildProcess, ExecFileOptions, SpawnOptions } from 'node:child_process'
 
@@ -14,7 +9,6 @@ export type Request =
   | { id: number; op: 'kill'; signal?: NodeJS.Signals | number }
   | { id: number; op: 'pause' | 'resume' | 'destroy'; stream: 'stdout' | 'stderr' }
 
-/** An error as plain data: its message, name and own fields (code, errno, killed, signal, cmd…). */
 export type ErrorData = Record<string, unknown> & { message: string; name: string }
 
 export type Reply =
@@ -34,9 +28,8 @@ const data = (error: Error): ErrorData => ({
 
 function serve() {
   const send = (reply: Reply) =>
-    process.send!(reply, (error: Error | null) => {
-      // Only a closed channel fails a send: the host is gone, and 'disconnect' below ends this process.
-      void error
+    process.send!(reply, (closedHostChannel: Error | null) => {
+      void closedHostChannel
     })
   const aborts = new Map<number, AbortController>()
   const children = new Map<number, ChildProcess>()
@@ -55,7 +48,6 @@ function serve() {
         { ...options, encoding: 'utf8', signal: abort.signal },
         done,
       )
-      // Nothing writes to an exec's input: a program that reads it gets EOF, not a wait forever.
       child.stdin?.end()
     } catch (error) {
       done(error as Error)
@@ -79,9 +71,7 @@ function serve() {
       children.delete(id)
       send({ id, event: 'close', code, signal })
     })
-    child.stdin?.on('error', () => {
-      // A child that exits before reading its input closes the pipe; the failed write reports it to the host.
-    })
+    child.stdin?.on('error', () => {})
     for (const name of ['stdout', 'stderr'] as const) {
       const stream = child[name]
       stream?.on('data', (chunk: Buffer) => send({ id, event: 'data', stream: name, data: chunk }))
@@ -89,12 +79,7 @@ function serve() {
     }
   }
 
-  /**
-   * Write to a child's input; the host writes its next chunk only once this one was taken, or failed. Every chunk was
-   * already taken, so closing it is done once asked, as `end()` on a ChildProcess's own stdin is: Node destroys the
-   * input of a child that exits, which fails an end still under way, but the input is closed all the same.
-   */
-  function input({ id, data: chunk, end }: Extract<Request, { op: 'stdin' }>) {
+  function writeInputWithReceipt({ id, data: chunk, end }: Extract<Request, { op: 'stdin' }>) {
     const stdin = children.get(id)?.stdin
     const written = (error?: Error | null) =>
       send({ id, event: 'written', ...(error && { error: data(error) }) })
@@ -109,13 +94,13 @@ function serve() {
     const child = children.get(request.id)
     if (request.op === 'exec') exec(request)
     else if (request.op === 'spawn') start(request)
-    else if (request.op === 'stdin') input(request)
+    else if (request.op === 'stdin') writeInputWithReceipt(request)
     else if (request.op === 'abort') aborts.get(request.id)?.abort()
     else if (request.op === 'kill') child?.kill(request.signal)
     else child?.[request.stream]?.[request.op]()
   })
-  // The host is gone: so is the reason to run. Its children carry on as they would have without a helper.
-  process.on('disconnect', () => process.exit(0))
+  const exitWhenHostGone = () => process.exit(0)
+  process.on('disconnect', exitWhenHostGone)
 }
 
 if (process.send) serve()

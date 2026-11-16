@@ -6,23 +6,14 @@ import type { Skill } from '@earendil-works/pi-coding-agent'
 
 export type SkillScope = 'clone' | 'user' | 'project'
 
-/** A loaded skill with where it came from, and the paths of same-named skills it overrides in earlier scopes. */
 export type ScopedSkill = Skill & { scope: SkillScope; overrides: string[] }
 
-/**
- * Skills from the clone, the project's `.pi/skills`, `~/.ultimate/skills` and, once the project is trusted,
- * `<project>/.ultimate/skills`. A later scope overrides an earlier skill of the same name (Pi keeps the first;
- * Ultimate lets the project override the user and the user the clone). Diagnostics are Pi's, per file.
- */
 export function projectSkills(
   host: { ultimateRoot: string; projectRoot: string; userHome: string },
   cwd = host.projectRoot,
 ) {
-  // A project's `.agents/skills` (the Agent Skills folder other tools share) loads with its `.ultimate/skills`, once the
-  // project is trusted. The personal `~/.agents/skills` does not: personal skills for Ultimate live in
-  // `~/.ultimate/skills`.
   const trusted = useProjectSetup(host.projectRoot, host.userHome)
-  const layers: [string, SkillScope][] = [
+  const layersInOverrideOrder: [string, SkillScope][] = [
     [join(host.ultimateRoot, 'skills'), 'clone'],
     [join(cwd, '.pi/skills'), 'project'],
     [join(host.userHome, '.ultimate/skills'), 'user'],
@@ -34,30 +25,24 @@ export function projectSkills(
       : []),
   ]
   const agentDir = join(host.userHome, '.ultimate')
-  const byName = new Map<string, ScopedSkill>()
+  const winnersInScopeOrder = new Map<string, ScopedSkill>()
   const diagnostics = []
-  // Most folders don't exist; Pi warns about each missing one, which says nothing here.
-  for (const [path, scope] of layers.filter(([folder]) => existsSync(folder))) {
+  for (const [path, scope] of layersInOverrideOrder.filter(([folder]) => existsSync(folder))) {
     const loaded = loadSkills({ cwd, agentDir, skillPaths: [path], includeDefaults: false })
     diagnostics.push(...loaded.diagnostics)
     for (const skill of loaded.skills) {
-      const earlier = byName.get(skill.name)
-      // Map order is first insertion: delete so the winner lists where its own scope puts it.
-      byName.delete(skill.name)
-      byName.set(skill.name, {
+      const earlier = winnersInScopeOrder.get(skill.name)
+      winnersInScopeOrder.delete(skill.name)
+      winnersInScopeOrder.set(skill.name, {
         ...skill,
         scope,
         overrides: earlier ? [...earlier.overrides, earlier.filePath] : [],
       })
     }
   }
-  return { skills: [...byName.values()], diagnostics }
+  return { skills: [...winnersInScopeOrder.values()], diagnostics }
 }
 
-/**
- * `/skill:name args` as Pi's AgentSession expands it: the skill's body in a `<skill>` block, then the arguments as the
- * request. Any other text, or an unknown skill, comes back as it was.
- */
 export function expandSkillCommand(text: string, skills: readonly Skill[]) {
   // Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/core/agent-session.ts _expandSkillCommand — copied block format. Drop when Pi exports the expansion.
   const match = /^\/skill:(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim())

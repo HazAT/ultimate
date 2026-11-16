@@ -2,9 +2,11 @@
  * Subagents in the browser: the standing agents' conversations, and the actions that open a standing agent and read,
  * save and delete agent definitions. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
+import type { AgentOrigin } from './types.ts'
 
 /** Where a definition file lives: shipped with Ultimate, in the user's home, or in the project. */
 export type Source = 'builtin' | 'user' | 'project'
@@ -26,6 +28,8 @@ export type Definition = {
   runs?: { family?: string; model?: ModelRef; thinking?: string; via: 'pin' | 'family' }
   tools?: string[]
   denyTools?: string[]
+  /** The skills it is given by name; absent, every skill. */
+  skills?: string[]
   isolate?: 'none' | 'worktree'
   resident?: boolean
   fast?: boolean
@@ -41,6 +45,8 @@ export type Discovery = {
   errors: Invalid[]
   /** The main conversation's model and tools; a definition may list a subset of the tools. */
   main: { model?: ModelRef; thinking?: string; tools: { name: string; description: string }[] }
+  /** The project's skills a definition may list. */
+  skills: { name: string; description: string }[]
   /** The folder each scope saves to. */
   scopes: Record<Scope, string>
   /** The user's choice on the project's `.ultimate/` setup; the project scope needs it trusted. */
@@ -64,6 +70,7 @@ export type DefinitionFields = {
   family?: string
   tools?: string[]
   denyTools?: string[]
+  skills?: string[]
   isolate?: 'none' | 'worktree'
   resident?: boolean
   fast?: boolean
@@ -122,3 +129,9 @@ export const DeleteDefinitionAction = actionRef<{ name: string; scope: Scope }, 
   'subagents',
   'deleteDefinition',
 )
+
+/** Instruction delivered to a child. */
+export const InstructionEntry = defineEntry<AgentOrigin>('subagents.instruction')
+
+/** Child report delivered to its parent. */
+export const ReportEntry = defineEntry<AgentOrigin>('subagents.report')

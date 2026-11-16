@@ -1,4 +1,3 @@
-/** A call's request and response, readable (structure first) or raw. */
 import { ChevronRightIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
@@ -22,18 +21,15 @@ const parse = (text: string): Json | undefined => {
   try {
     return JSON.parse(text) as Json
   } catch {
-    // A body that is not JSON (an error page, a truncated stream) shows as text instead.
     return undefined
   }
 }
 
-/** The parts of a request body in the order the provider caches them; the rest are settings. */
 const CACHE_ORDER: Record<string, string[]> = {
   anthropic: ['tools', 'system', 'messages'],
   responses: ['instructions', 'tools', 'input'],
 }
 
-/** A header's value; a comma list (`anthropic-beta`) one item per line. */
 function HeaderValue({ name, value }: { name: string; value: string }) {
   if (value === '[redacted]') return <span className="text-muted-foreground/60">{value}</span>
   if (!name.endsWith('-beta')) return value
@@ -59,7 +55,6 @@ function Headers({ headers }: { headers: Record<string, string> }) {
   )
 }
 
-/** A part that starts folded: headers, a stream's events. */
 function Folded({ title, note, children }: { title: string; note: string; children: ReactNode }) {
   return (
     <Collapsible className="mt-5 first:mt-0">
@@ -73,7 +68,6 @@ function Folded({ title, note, children }: { title: string; note: string; childr
   )
 }
 
-/** Settings outside the cached prefix: model, max_tokens, thinking … */
 function Settings({ body }: { body: JsonObject }) {
   return (
     <div className="flex flex-col">
@@ -93,7 +87,6 @@ function Settings({ body }: { body: JsonObject }) {
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
-/** Where the body's `cache_control` markers sit, as paths, in body order. */
 function breakpoints(value: Json, path: string, out: { path: string; ttl?: string }[] = []) {
   if (Array.isArray(value))
     value.forEach((item, index) => breakpoints(item, `${path}[${index}]`, out))
@@ -106,7 +99,6 @@ function breakpoints(value: Json, path: string, out: { path: string; ttl?: strin
   return out
 }
 
-/** The request, structure first: its cache breakpoints, headers, the prefix in cache order, then settings. */
 export function ReadableRequest({ call }: { call: WireCall }) {
   const body = useMemo(() => parse(call.request), [call.request])
   if (!body || !isObject(body)) return <TextBlock text={call.request} />
@@ -167,22 +159,20 @@ export function ReadableRequest({ call }: { call: WireCall }) {
   )
 }
 
-/** A body exactly as kept, pretty-printed when it is JSON. Plain text, never highlighted: it can be megabytes. */
 export function Raw({ text }: { text: string }) {
-  const pretty = useMemo(() => {
+  const prettyPlainTextForLargeBody = useMemo(() => {
     const value = parse(text)
     return value === undefined ? text : JSON.stringify(value, null, 2)
   }, [text])
   return (
     <pre className="rounded-sm bg-terminal px-3 py-2 text-[11.5px] leading-[1.55] break-all whitespace-pre-wrap text-foreground/85">
-      {pretty}
+      {prettyPlainTextForLargeBody}
     </pre>
   )
 }
 
 type Event = { name: string; data: string }
 
-/** The events of a server-sent stream, in order. */
 const events = (stream: string): Event[] =>
   stream
     .split(/\r?\n\r?\n/u)
@@ -201,7 +191,6 @@ const events = (stream: string): Event[] =>
     })
     .filter((event) => event.data || event.name !== 'message')
 
-/** Runs of the same event, so 200 deltas read as one row. */
 function runs(list: Event[]) {
   const out: { name: string; events: Event[] }[] = []
   for (const event of list) {
@@ -212,7 +201,6 @@ function runs(list: Event[]) {
   return out
 }
 
-/** What a run of deltas adds up to: the text, thinking or tool input they stream. */
 function joined(list: Event[]) {
   return list
     .map((event) => {
@@ -223,7 +211,6 @@ function joined(list: Event[]) {
     .join('')
 }
 
-/** One run of the stream's events; a single event opens straight to its data. */
 function Run({ name, list }: { name: string; list: Event[] }) {
   const value = (event: Event): Json => parse(event.data) ?? event.data
   const hint = useMemo(() => joined(list).replaceAll(/\s+/gu, ' ').trim(), [list])
@@ -282,7 +269,6 @@ export function Usage({ usage }: { usage: WireUsage }) {
   )
 }
 
-/** What came back: usage, the assembled message, and for a relay call the response headers and its event stream. */
 export function ReadableResponse({ call }: { call: WireCall }) {
   const stream = useMemo(() => (call.response ? events(call.response) : []), [call.response])
   const relay = call.source === 'relay'
@@ -345,7 +331,6 @@ export function ReadableResponse({ call }: { call: WireCall }) {
   )
 }
 
-/** The response as kept: the raw event stream (relay), or Pi's assembled message as JSON. */
 export function RawResponse({ call }: { call: WireCall }) {
   if (call.response !== undefined)
     return (

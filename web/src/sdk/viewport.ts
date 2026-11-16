@@ -35,6 +35,5 @@ export const useViewport = () => useSyncExternalStore(subscribe, viewport)
 /** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
 export const touchKeyboard = () => matchMedia('(pointer: coarse)').matches
 
-/** Whether `region` overlays the conversation rather than docking beside it. */
 export const overlays = (region: 'sidebar' | 'panels', on: Viewport = viewport()) =>
   on === 'phone' || (region === 'panels' && on === 'tablet')

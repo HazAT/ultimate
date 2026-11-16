@@ -5,36 +5,29 @@ import { cn, defineWebExtension, useDoc, useTranscript } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import { MemoryChip } from '../lineage/ui.tsx'
 import { RecallDoc } from './refs.ts'
-import { RECALL_ENTRY } from './types.ts'
+import { RecalledEntry } from './types.ts'
 import type { Recalled } from './types.ts'
 
-/**
- * On the user's bubble: while recall checks the message, a band of light runs around its border and fades; recalled
- * memories then fly in as chips hanging on its bottom edge, each opening the Memory surface. Nothing when none applies.
- */
 function RecallBubble({ entry }: { entry: EntryRecord }) {
   const pending = useDoc(RecallDoc)?.pending === entry.id
-  const recalled = useTranscript().find(
-    (other) => other.kind === RECALL_ENTRY && (other.data as Recalled).input === entry.id,
-  )?.data as Recalled | undefined
-  // Mounted once this view saw the check start, so the fade-out and the fly-in play; history shows chips still.
-  const [watched, setWatched] = useState(false)
-  // A check takes about 0.2 s: the light runs at least one lap so it reads as a check, not a flicker.
-  const [lap, setLap] = useState(false)
-  // Started when the check starts and left running when it ends early; only unmounting cancels it.
-  const cancelLap = useRef<Cancel>(undefined)
+  const recalled = useTranscript()
+    .filter((candidate) => RecalledEntry.is(candidate))
+    .find((other) => other.data.input === entry.id)?.data
+  const [checkStartedInThisView, setCheckStartedInThisView] = useState(false)
+  const [minimumSweepStillRunning, setMinimumSweepStillRunning] = useState(false)
+  const cancelSweepOnUnmount = useRef<Cancel>(undefined)
   useEffect(() => {
     if (!pending) return
-    setWatched(true)
-    setLap(true)
-    cancelLap.current?.()
-    cancelLap.current = deadline(1200, () => setLap(false))
+    setCheckStartedInThisView(true)
+    setMinimumSweepStillRunning(true)
+    cancelSweepOnUnmount.current?.()
+    cancelSweepOnUnmount.current = deadline(1200, () => setMinimumSweepStillRunning(false))
   }, [pending])
-  useEffect(() => () => cancelLap.current?.(), [])
-  const checking = pending || lap
+  useEffect(() => () => cancelSweepOnUnmount.current?.(), [])
+  const checking = pending || minimumSweepStillRunning
   return (
     <>
-      {watched && (
+      {checkStartedInThisView && (
         <span
           aria-hidden
           className={cn(
@@ -43,7 +36,6 @@ function RecallBubble({ entry }: { entry: EntryRecord }) {
           )}
           data-recall-checking={checking || undefined}
           style={{
-            // One lap of the band across the border per minimum check time.
             animation: checking ? 'sweep 1.2s linear infinite' : undefined,
             background:
               'linear-gradient(90deg, transparent 30%, var(--color-brand) 50%, transparent 70%) 0 0 / 300% 100%',
@@ -51,7 +43,7 @@ function RecallBubble({ entry }: { entry: EntryRecord }) {
           }}
         />
       )}
-      {recalled && !checking && <Chips animate={watched} recalled={recalled} />}
+      {recalled && !checking && <Chips animate={checkStartedInThisView} recalled={recalled} />}
     </>
   )
 }
@@ -93,8 +85,9 @@ function Chips({ recalled, animate }: { recalled: Recalled; animate: boolean }) 
   )
 }
 
+const ModelOnlyRecalledMemories = () => null
+
 export default defineWebExtension({
   userBubble: [RecallBubble],
-  // The bubble shows what was recalled; the entry carries the memories for the model.
-  entries: { [RECALL_ENTRY]: () => null },
+  entries: { [RecalledEntry.kind]: ModelOnlyRecalledMemories },
 })

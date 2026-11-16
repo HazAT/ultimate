@@ -62,6 +62,7 @@ it('names a report by its standing agent, a subagent by its definition', () => {
       createElement(AgentInput, {
         entry: {
           id: 2,
+          kind: 'subagents.report',
           data: { kind: 'report', agent: 'worker', sender, body: 'done' },
         } as unknown as EntryRecord,
       }),

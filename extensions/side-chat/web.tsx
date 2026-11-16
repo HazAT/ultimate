@@ -1,5 +1,5 @@
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
-import { ROOT } from '@/sdk'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT, renderEntry } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
 import {
   ArrowLeftIcon,
@@ -39,16 +39,14 @@ import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.tsx'
 import { createEndings, endings, frontSide, openSides, togglesSideMode } from './logic.ts'
 import { DiscardAction, InjectAction, OpenAction, SideChatDoc, SideChatsDoc } from './refs.ts'
-import type { SideChatIndex, SideChatSummary } from './refs.ts'
+import { SideChatSummaryEntry } from './entries.ts'
+import type { SideChatIndex } from './refs.ts'
 import { useSideChatFront as useFront } from './ui.tsx'
 
-// ---- state ---------------------------------------------------------------------------------------------------------
-
-/** Whether @ultimate's composer forks a side chat on Enter; this tab's own, back to normal once one opened. */
-let sideMode = false
+let forkOnEnterInThisTab = false
 const listeners = new Set<() => void>()
 const setSide = (value: boolean) => {
-  sideMode = value
+  forkOnEnterInThisTab = value
   for (const listener of listeners) listener()
 }
 const useSideMode = () =>
@@ -57,13 +55,11 @@ const useSideMode = () =>
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    () => sideMode,
+    () => forkOnEnterInThisTab,
   )
 
-/** Each side chat's ending in flight and its last failure. */
 const sideEndings = createEndings(errorMessage)
 
-/** @ultimate's conversation id, and the side chats it has. */
 function useMain() {
   const main = useDocOf(ROOT, StandingDoc)?.ultimate
   const index = useDocOf(main, SideChatsDoc) ?? undefined
@@ -71,10 +67,9 @@ function useMain() {
 }
 
 const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
-const duration = 420
+const sheetTransitionMs = 420
+const unmountAfterExitPaddingMs = 60
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-
-// ---- composer: Tab toggles, Enter forks ----------------------------------------------------------------------------
 
 function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -115,16 +110,14 @@ function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
-/** Wraps @ultimate's composer: the mode switch above it, and Enter forking a side chat while it is on. */
-function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
+function StableComposerFrame({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const { main, index } = useMain()
-  // Keep the editor in the same tree position while the standing conversation's document arrives.
   const active = id !== undefined && id === main && !dock
   const on = useSideMode() && active
   const [front, setFront] = useFront()
-  const shown = active ? frontSide(front, index) : undefined
-  const parked = openSides(index).filter((item) => item.id !== shown?.id)
+  const sideCoveringMainComposer = active ? frontSide(front, index) : undefined
+  const parked = openSides(index).filter((item) => item.id !== sideCoveringMainComposer?.id)
   const target: ComposerTarget | undefined = on
     ? {
         placeholder: 'Ask on the side — @ultimate keeps running…',
@@ -149,8 +142,7 @@ function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
       data-side-mode={active ? (on ? 'side' : 'normal') : undefined}
       onKeyDownCapture={onKeyDown}
     >
-      {/* Covered by a side chat in front, main's composer and its controls take no focus, typing or clicks. */}
-      <div data-main-composer={active || undefined} inert={!!shown}>
+      <div data-main-composer={active || undefined} inert={!!sideCoveringMainComposer}>
         <div
           className={cn(column(), 'flex items-center justify-between gap-2 pb-1.5')}
           hidden={!active}
@@ -202,12 +194,11 @@ function SideComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
           <ComposerRedirect to={target}>{core}</ComposerRedirect>
         </div>
       </div>
-      {shown && <MainBlocked onBack={() => setFront(null)} />}
+      {sideCoveringMainComposer && <MainBlocked onBack={() => setFront(null)} />}
     </div>
   )
 }
 
-/** Over main's composer while a side chat is in front: typing goes there, with the way back. */
 function MainBlocked({ onBack }: { onBack: () => void }) {
   return (
     <div className="absolute inset-0 z-10 flex items-center bg-background/70 backdrop-blur-[1px]">
@@ -229,9 +220,6 @@ function MainBlocked({ onBack }: { onBack: () => void }) {
   )
 }
 
-// ---- depth view: main recedes, the side chat comes forward ---------------------------------------------------------
-
-/** In @ultimate's conversation: moves main back as one layer and brings the side chat in front of it. */
 function Stage() {
   const id = useConversation((conversation) => conversation.id)
   const { main, index } = useMain()
@@ -241,12 +229,11 @@ function Stage() {
   const [width, setWidth] = useState(0)
   const isMain = id !== undefined && id === main
   const current = isMain ? frontSide(front, index) : undefined
-  // The last side chat stays mounted while its sheet leaves.
-  const [shown, setShown] = useState<ConversationId>()
-  if (current && shown !== current.id) setShown(current.id)
+  const [mountedThroughExit, setShown] = useState<ConversationId>()
+  if (current && mountedThroughExit !== current.id) setShown(current.id)
   useEffect(() => {
     if (current) return undefined
-    return deadline(duration + 60, () => setShown(undefined))
+    return deadline(sheetTransitionMs + unmountAfterExitPaddingMs, () => setShown(undefined))
   }, [current])
 
   useLayoutEffect(() => {
@@ -257,7 +244,6 @@ function Stage() {
     return () => observer.disconnect()
   }, [isMain])
 
-  // Main's transcript and composer move back together, around one origin, and stay visible as they keep streaming.
   const inFront = current !== undefined
   useLayoutEffect(() => {
     const parent = ref.current?.parentElement
@@ -266,24 +252,24 @@ function Stage() {
       (child): child is HTMLElement => child instanceof HTMLElement && !child.contains(ref.current),
     )
     const still = reduced()
-    // The column as laid out, so a `--reading-width` set by the user moves it to the same resting place.
     const reading = layers
       .map((layer) => layer.querySelector<HTMLElement>('[data-ui="transcript"]'))
       .find(Boolean)
-    const columnWidth = reading?.offsetWidth ?? width
+    const userConfiguredReadingWidth = reading?.offsetWidth ?? width
     const scale = phone ? 0.92 : 0.88
-    // Main's column comes to rest near the region's left edge, beside the sheet.
-    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (columnWidth / 2) * scale))
+    const restBesideSheetX = phone
+      ? 0
+      : Math.min(0, 24 - (width / 2 - (userConfiguredReadingWidth / 2) * scale))
     for (const layer of layers) {
       layer.style.transition = still
-        ? `opacity ${duration}ms ease`
-        : `transform ${duration}ms ${ease}, opacity ${duration}ms ease, filter ${duration}ms ease`
+        ? `opacity ${sheetTransitionMs}ms ease`
+        : `transform ${sheetTransitionMs}ms ${ease}, opacity ${sheetTransitionMs}ms ease, filter ${sheetTransitionMs}ms ease`
       layer.style.transformOrigin = `50% ${(phone ? 0 : parent.clientHeight / 2) - layer.offsetTop}px`
       layer.style.transform =
         inFront && !still
           ? phone
             ? `translateY(10px) scale(${scale})`
-            : `translateX(${shift}px) scale(${scale})`
+            : `translateX(${restBesideSheetX}px) scale(${scale})`
           : ''
       layer.style.opacity = inFront ? (phone ? '0.45' : still ? '0.5' : '0.62') : ''
       layer.style.filter = inFront ? 'saturate(0.7)' : ''
@@ -312,7 +298,7 @@ function Stage() {
           @ultimate keeps working · <span className="text-foreground">show main</span>
         </button>
       )}
-      {shown !== undefined && (
+      {mountedThroughExit !== undefined && (
         <section
           aria-label="Side chat"
           className={cn(
@@ -322,24 +308,24 @@ function Stage() {
               ? 'inset-x-0 top-11 bottom-0 rounded-t-2xl border-b-0'
               : 'top-3 right-5 bottom-3 rounded-xl',
           )}
-          data-side-chat={shown}
+          data-side-chat={mountedThroughExit}
           inert={!inFront}
           style={{
             width: phone ? undefined : `min(44rem, ${Math.round(width * 0.6)}px)`,
             transition: still
-              ? `opacity ${duration}ms ease`
-              : `transform ${duration}ms ${ease}, opacity ${duration}ms ease`,
+              ? `opacity ${sheetTransitionMs}ms ease`
+              : `transform ${sheetTransitionMs}ms ${ease}, opacity ${sheetTransitionMs}ms ease`,
             transform: inFront || still ? 'none' : away,
             opacity: inFront ? 1 : 0,
           }}
         >
-          <ConversationScope id={shown}>
+          <ConversationScope id={mountedThroughExit}>
             <SidePane
               front={inFront}
               index={index}
               onPark={() => setFront(null)}
               phone={phone}
-              side={shown}
+              side={mountedThroughExit}
             />
           </ConversationScope>
         </section>
@@ -348,7 +334,6 @@ function Stage() {
   )
 }
 
-/** The side chat itself: a live transcript and composer, and the one decision that ends it. */
 function SidePane({
   side,
   index,
@@ -365,10 +350,8 @@ function SidePane({
   const state = useDoc(SideChatDoc) ?? undefined
   const busy = useConversation((conversation) => conversation.busy)
   const can = endings(state)
-  // By side chat: one's failed inject or spinner never shows on another, nor retries it.
   const { ending, error } = useSyncExternalStore(sideEndings.subscribe, () => sideEndings.get(side))
   const openedAt = index?.sides.find((item) => item.id === side)?.openedAt
-  // Coming forward puts the cursor in the side chat's composer, the copy you now type into.
   useEffect(() => {
     if (front) document.getElementById(`composer-input-${side}`)?.focus()
   }, [front, side])
@@ -455,7 +438,6 @@ function SidePane({
   )
 }
 
-/** Where the copy starts: earlier history is @ultimate's and does not repeat here. */
 function Cut({ at }: { at: number }) {
   return (
     <div
@@ -473,11 +455,8 @@ function Cut({ at }: { at: number }) {
   )
 }
 
-// ---- in main: the summary card -------------------------------------------------------------------------------------
-
-/** A side chat's summary in main, the card main reads with its next input. */
-function SummaryCard({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as SideChatSummary
+const SummaryCard = renderEntry(SideChatSummaryEntry, function SummaryCard({ entry }) {
+  const data = entry.data
   const { switchConversation } = useUltimate()
   const index = useDocOf(data.to, SideChatsDoc)
   const openedAt = index?.sides.find((item) => item.id === data.side)?.openedAt
@@ -508,11 +487,8 @@ function SummaryCard({ entry }: { entry: EntryRecord }) {
       </div>
     </Card>
   )
-}
+})
 
-// ---- sidebar: open side chats under @ultimate ----------------------------------------------------------------------
-
-/** Rows for @ultimate's open side chats; clicking one brings it to the front, or parks it when it already is. */
 function useSideRows(main: ConversationId | undefined): ReactNode {
   const index = useDocOf(main, SideChatsDoc) ?? undefined
   const [front, setFront] = useFront()
@@ -561,14 +537,13 @@ function useSideRows(main: ConversationId | undefined): ReactNode {
   )
 }
 
-/** Every side chat of @ultimate, open or ended: none is a row of the sidebar's own sections. */
 function useSideIds(main: ConversationId | undefined): ReadonlySet<number> {
   const sides = (useDocOf(main, SideChatsDoc) ?? undefined)?.sides
   return useMemo(() => new Set(sides?.map((side) => side.id)), [sides])
 }
 
 export default defineWebExtension({
-  composer: SideComposer,
+  composer: StableComposerFrame,
   slots: { 'conversation.overlay': [Stage] },
   entries: { 'sidechat.summary': SummaryCard },
   provides: [provide(UnderUltimate, useSideRows), provide(Unlisted, useSideIds)],

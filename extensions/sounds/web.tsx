@@ -27,8 +27,8 @@ import { CheckRan, SubmissionLanded } from '../workspaces/ui.tsx'
 import { Branched } from '../lineage/ui.tsx'
 import { listener, sounds } from './cues.ts'
 import type { Cue, Sound } from './cues.ts'
-import { tracker, variants } from './agents.ts'
-import type { Variant } from './agents.ts'
+import { tracker, variants } from './agents.tsx'
+import type { Variant } from './agents.tsx'
 import * as conductor from './conductor.ts'
 import * as tones from './tones.ts'
 import { spoken } from './narration.ts'
@@ -37,20 +37,20 @@ import { speaker } from './speaker.ts'
 import { SayAction } from './refs.ts'
 import { questionsSpoken } from './ui.tsx'
 
-const playedKey = 'ultimate.sounds.played'
+const eventClaimKey = 'ultimate.sounds.played'
 
 function useSettings() {
   const [muted, setMuted] = useExtensionUiState('muted', false)
   const [off, setOff] = useExtensionUiState<Sound[]>('off', [])
   const [volume, setVolume] = useExtensionUiState('volume', 0.8)
-  // The sound of agents: off, or the variant that plays.
+
   const [stored, setAgents] = useExtensionUiState<string>('agents', 'off')
-  // Ambient became Chiptune; a variant from another build plays as off.
+
   const id = stored === 'ambient' ? 'chiptune' : stored
   const agents: Variant | 'off' = variants.some((variant) => variant.id === id)
     ? (id as Variant)
     : 'off'
-  // The narrator speaks a line after each cue; new branches only with `branches` on.
+
   const [narrator, setNarrator] = useExtensionUiState('narrator', false)
   const [branches, setBranches] = useExtensionUiState('narrateBranches', false)
   return {
@@ -69,24 +69,20 @@ function useSettings() {
   }
 }
 
-/**
- * Sounds `cue` in one tab only: every open tab sees the same event, and the first that may play claims it under a
- * lock, in this origin's storage. A tab nobody has clicked in yet may not play, so it leaves the event to another.
- */
-async function claim(cues: readonly Cue[]) {
-  if (!navigator.userActivation.hasBeenActive) return []
-  return navigator.locks.request(playedKey, () => {
-    const played: string[] = JSON.parse(localStorage.getItem(playedKey) ?? '[]')
+async function claimPlayableCues(cues: readonly Cue[]) {
+  const tabCannotPlayWithoutGesture = !navigator.userActivation.hasBeenActive
+  if (tabCannotPlayWithoutGesture) return []
+  return navigator.locks.request(eventClaimKey, () => {
+    const played: string[] = JSON.parse(localStorage.getItem(eventClaimKey) ?? '[]')
     const fresh = cues.filter((cue) => !played.includes(cue.key))
     localStorage.setItem(
-      playedKey,
+      eventClaimKey,
       JSON.stringify([...played, ...fresh.map((cue) => cue.key)].slice(-100)),
     )
     return fresh
   })
 }
 
-/** Says one line after its notification sound; a line OpenAI's voice cannot say is said by the browser's. */
 async function sayLine(line: Line) {
   if (!line.text || (line.sound === 'input' && questionsSpoken())) return tones.play(line.sound)
   const { audio } = await api.action(SayAction, { text: line.text }).catch((error: unknown) => {
@@ -97,17 +93,12 @@ async function sayLine(line: Line) {
   await tones.say(line.sound, line.text, pcm)
 }
 
-/** The narrator, which says what this tab claimed before it switched to a new bundle. */
-function narratorOfTab() {
+function resumeSwitchedNarrator() {
   const narrate = speaker(sayLine, sessionStorage)
   narrate.resume(Boolean(switched))
   return narrate.add
 }
 
-/**
- * Watches @ultimate and sounds what it newly tells the user: a question, a finished answer,
- * a failed run, and each landing. Whatever it shows when this tab opens has been heard already.
- */
 function Player() {
   const overview = useDocOf(ROOT, OverviewDoc)
   const log = useDocOf(ROOT, MessagesDoc)
@@ -117,8 +108,8 @@ function Player() {
   const conversations = useConversations()
   const { muted, off, volume, agents, narrator: narrating, branches } = useSettings()
   const [hear] = useState(listener)
-  const [narrate] = useState(narratorOfTab)
-  // The narrator speaks while the tab is hidden too; only a reconnect or the tab opening counts as catching up.
+  const [narrate] = useState(resumeSwitchedNarrator)
+
   const catchingUp = useCatchingUp(narrating)
   const titles = useRef(conversations)
   titles.current = conversations
@@ -129,8 +120,8 @@ function Player() {
       .catch((error: unknown) => console.warn('Sound of agents failed', error))
   }, [muted, agents])
   useEffect(() => {
-    // Until the event feed has arrived, its whole history would come as news.
-    if (!overview || agent === undefined || !landings || !branched) return
+    const missingCueHistory = !overview || agent === undefined || !landings || !branched
+    if (missingCueHistory) return
     const due = hear(
       {
         agent,
@@ -146,7 +137,7 @@ function Player() {
         !muted && !off.includes(cue.sound) && (cue.sound !== 'started' || (narrating && branches)),
     )
     if (!due.length) return
-    claim(due)
+    claimPlayableCues(due)
       .then(async (mine) => {
         if (narrating) return narrate(mine)
         for (const cue of mine) await tones.play(cue.sound)
@@ -166,23 +157,18 @@ function Player() {
     catchingUp,
     narrate,
   ])
-  // The Landed notification plays each landing once; the band lands with it only when that notification is off.
-  return agents !== 'off' && !muted ? <Listener landings={off.includes('landed')} /> : null
+
+  return agents !== 'off' && !muted ? <Listener bandOwnsLanding={off.includes('landed')} /> : null
 }
 
 const watched = [SubmissionLanded, Committed, CheckRan] as const
 
-/** How long after the tab opens, shows again or reconnects its stream what arrives is taken as heard. */
-const settleMs = 3000
+const reconnectCatchUpMs = 3000
 
-/**
- * Whether what arrives now was heard already: while the tab is hidden or its stream is down, and for a moment after it
- * opens, shows again or reconnects, while the documents and the event feed catch up with what happened meanwhile.
- */
-function useCatchingUp(hidden = false) {
+function useCatchingUp(narrateWhileHidden = false) {
   const connection = useConnection()
-  const latest = useRef({ connection, hidden })
-  latest.current = { connection, hidden }
+  const latest = useRef({ connection, narrateWhileHidden })
+  latest.current = { connection, narrateWhileHidden }
   const opened = useRef(Date.now())
   const shown = useRef(Date.now())
   useEffect(() => {
@@ -192,34 +178,35 @@ function useCatchingUp(hidden = false) {
     document.addEventListener('visibilitychange', update)
     return () => document.removeEventListener('visibilitychange', update)
   }, [])
-  // With `hidden`, a hidden tab still hears what happens now: only the tab opening or the stream reconnecting catch up.
+
   return useCallback(() => {
     const current = latest.current
     return (
       current.connection.status !== 'open' ||
-      (!current.hidden && document.hidden) ||
+      (!current.narrateWhileHidden && document.hidden) ||
       Date.now() <
-        Math.max(current.hidden ? opened.current : shown.current, current.connection.since) +
-          settleMs
+        Math.max(
+          current.narrateWhileHidden ? opened.current : shown.current,
+          current.connection.since,
+        ) +
+          reconnectCatchUpMs
     )
   }, [])
 }
 
-/** While the sound of agents plays: follows every conversation, tool call and landing, and hands them to the band. */
-function Listener({ landings }: { landings: boolean }) {
+function Listener({ bandOwnsLanding }: { bandOwnsLanding: boolean }) {
   const conversations = useConversations()
   const overview = useDocOf(ROOT, OverviewDoc)
   const standing = useDocOf(ROOT, StandingDoc)
   const events = useEvents({ events: watched, limit: 20 })
   const [follow] = useState(tracker)
   const catchingUp = useCatchingUp()
-  // Each busy conversation's live round, reported by a `RoundOf`: its tool calls by name. A fast call passes through
-  // `pi.live` but often not through the coalesced task graph.
+
   const [rounds, setRounds] = useState<Record<number, Round>>({})
   const busy = conversations.filter((conversation) => conversation.busy).map(({ id }) => id)
   useEffect(() => {
-    // Until every source has arrived, a later one would bring its whole history as news.
-    if (!overview || !standing || !events) return
+    const missingBandHistory = !overview || !standing || !events
+    if (missingBandHistory) return
     const live = conversations
       .filter((conversation) => conversation.busy)
       .map(({ id }) => rounds[id])
@@ -235,17 +222,15 @@ function Listener({ landings }: { landings: boolean }) {
       catchingUp(),
     )
     for (const happening of happenings)
-      if (landings || happening.kind !== 'landed') conductor.hit(happening)
-  }, [follow, conversations, standing, rounds, overview, events, landings, catchingUp])
+      if (bandOwnsLanding || happening.kind !== 'landed') conductor.hit(happening)
+  }, [follow, conversations, standing, rounds, overview, events, bandOwnsLanding, catchingUp])
   return busy.map((id) => <RoundOf id={id} key={id} report={setRounds} />)
 }
 
-/** `pi.live` alone: a conversation's whole view would stream its transcript to every tab that plays. */
-const LiveDoc = docRef<LiveState>('pi.live')
+const LiveToolsDoc = docRef<LiveState>('pi.live')
 
 type Round = { tools: [string, { name: string; conversationId: ConversationId }][] }
 
-/** Reports conversation `id`'s current round from its `pi.live`. */
 function RoundOf({
   id,
   report,
@@ -253,7 +238,7 @@ function RoundOf({
   id: ConversationId
   report: (update: (previous: Record<number, Round>) => Record<number, Round>) => void
 }) {
-  const live = useDocOf(id, LiveDoc)
+  const live = useDocOf(id, LiveToolsDoc)
   useEffect(() => {
     const round: Round = {
       tools: [...(live?.tools ?? []), ...(live?.nestedTools ?? [])].map((slot) => [
@@ -272,7 +257,6 @@ const preview = (sound: Sound) =>
 const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[12px]'
 const section = 'border-t border-border/70 pt-1'
 
-/** The status-bar entry: sounds on or off, volume, the sound of agents, and each notification cue. */
 function Control() {
   const {
     muted,

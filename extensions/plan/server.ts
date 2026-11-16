@@ -45,7 +45,6 @@ export const Plan = defineDoc<{ next: number; epics: Record<string, Epic> }>({
   fork: 'asOf',
   initial: () => ({ next: 1, epics: {} }),
 })
-/** The task each linked child conversation works on, across every coordinator's plan; kept with the root. */
 export type TaskLink = {
   coordinator: number
   epic: string
@@ -63,17 +62,15 @@ export const TaskIndex = defineDoc<{ children: Record<string, TaskLink> }>({
   initial: () => ({ children: {} }),
 })
 export const docs = [Plan, TaskIndex]
-// Commit the receipt with the edit, closing the crash window before api.memo stores the result.
-const Receipt = defineDoc<{ results: Record<string, string> }>({
+const AtomicEditReceipt = defineDoc<{ results: Record<string, string> }>({
   kind: 'ultimate.plan.receipt',
   checkpointWhen: () => false,
   version: 1,
   scope: 'task',
   initial: () => ({ results: {} }),
 })
-// structuredContent hands codemode scripts the object itself. As text, `shown.description` was undefined, and
-// `update {description: shown.description + more}` wrote "undefined" over the description (#159728).
-const reply = (text: string) => ({
+const ORDERED_EMPTY_SECTION = ''
+const structuredReply = (text: string) => ({
   output: [{ type: 'text' as const, text }],
   structuredContent: JSON.parse(text) as JsonObject,
 })
@@ -82,11 +79,7 @@ const required = (value: string | undefined, field: string) => {
   return value
 }
 
-/**
- * Rewrite the index entries of `coordinator` from its plan. A link that is new or whose task title changed renames
- * the child after its task.
- */
-async function reindex(
+async function indexAndNameChildren(
   tx: Tx,
   host: Pick<ExtensionHost, 'metadata'>,
   coordinator: ConversationId,
@@ -118,7 +111,6 @@ async function reindex(
   }
 }
 
-/** Set by a conversation's first run; a fork starts without it. */
 export const Started = defineDoc<{ started?: true }>({
   kind: 'plan.started',
   checkpointWhen: () => false,
@@ -129,8 +121,7 @@ export const Started = defineDoc<{ started?: true }>({
   initial: () => ({}),
 })
 
-/** Whether branch `id` has answered since it forked at entry `at`. */
-async function answered(tx: Tx, id: ConversationId, at: EntryId) {
+async function answeredSinceFork(tx: Tx, id: ConversationId, at: EntryId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries(
@@ -149,23 +140,20 @@ export default (host: ExtensionHost) => {
     name: 'plan',
     hooks: [
       // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-      // A lineage branch starts with an empty plan, not the one it forked with: emptied in the commit that places its
-      // first input, so its first request never sees the inherited plan. A branch that answered before it was marked
-      // started (one made before this hook) keeps its own.
       hook(GenerationTask, {
         beforeInput: async (_input, { tx, conversationId }) => {
           if ((await tx.doc(Started, conversationId)).started) return undefined
           const branch = (await tx.doc(Branch, conversationId)).branch
-          const reset = !!branch && !(await answered(tx, conversationId, branch.at))
+          const unusedForkPlan =
+            !!branch && !(await answeredSinceFork(tx, conversationId, branch.at))
           ;(await tx.doc(Started, conversationId)).started = true
-          if (reset) Object.assign(await tx.doc(Plan, conversationId), Plan.definition.initial())
+          if (unusedForkPlan)
+            Object.assign(await tx.doc(Plan, conversationId), Plan.definition.initial())
           return undefined
         },
       }),
     ],
     sections: [
-      // Empty, not undefined, without open epics: the slot keeps its place, so coming back patches only this section
-      // (Pi re-sends every section when one would land out of order, #573861).
       section(
         'plan',
         async ({ read, conversationId }, context) => {
@@ -181,7 +169,7 @@ export default (host: ExtensionHost) => {
                   (task.child !== undefined ? ` child:${task.child}` : ''),
               ),
             ])
-          return lines.length ? `<plan>\n${lines.join('\n')}\n</plan>` : ''
+          return lines.length ? `<plan>\n${lines.join('\n')}\n</plan>` : ORDERED_EMPTY_SECTION
         },
         { tag: false },
       ),
@@ -217,7 +205,7 @@ export default (host: ExtensionHost) => {
           text: opt(str()),
         }),
         execute: async (args, api, context) => {
-          const cached = await api.memo<ReturnType<typeof reply>>('result', context)
+          const cached = await api.memo<ReturnType<typeof structuredReply>>('result', context)
           if (cached) return cached
           const receiptId = await api.memo('receipt-id', randomUUID(), context)
           const text = await api.commit(async (tx) => {
@@ -231,7 +219,7 @@ export default (host: ExtensionHost) => {
               throw new Error(
                 `Only conversation ${coordinator} edits this plan; report to it instead`,
               )
-            const receipt = await tx.doc(Receipt, api.taskId)
+            const receipt = await tx.doc(AtomicEditReceipt, api.taskId)
             if (receipt.results[receiptId] !== undefined) return receipt.results[receiptId]
             const plan = await tx.doc(Plan, coordinator)
             const lookup = (key: string) => {
@@ -310,11 +298,11 @@ export default (host: ExtensionHost) => {
               }
               result = item
             }
-            if (args.action !== 'show') await reindex(tx, host, coordinator, plan)
+            if (args.action !== 'show') await indexAndNameChildren(tx, host, coordinator, plan)
             receipt.results[receiptId] = JSON.stringify(result)
             return receipt.results[receiptId]
           }, context)
-          return api.memo('result', reply(text), context)
+          return api.memo('result', structuredReply(text), context)
         },
       }),
     ].map((tool) => ({ ...tool, outputSchema: { type: 'object' } })),

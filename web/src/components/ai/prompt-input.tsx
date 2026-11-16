@@ -1,5 +1,3 @@
-// Adapted from vercel/ai-elements packages/elements/src/prompt-input.tsx (Apache-2.0, see LICENSE).
-// Changes: the form, an autosizing textarea, footer, and submit/stop button only; no attachments or `ai` status.
 import { cn } from 'cn'
 import { ArrowUpIcon, SquareIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'
@@ -18,7 +16,6 @@ export const PromptInput = ({ className, ...props }: ComponentProps<'form'>) => 
 
 export type PromptInputTextareaProps = ComponentProps<'textarea'> & { maxHeight?: number }
 
-/** Grows with its content up to `maxHeight`, then scrolls. */
 export const PromptInputTextarea = ({
   className,
   maxHeight = 320,
@@ -58,7 +55,6 @@ export const PromptInputTools = ({ className, ...props }: ComponentProps<'div'>)
 )
 
 export type PromptInputSubmitProps = ComponentProps<typeof Button> & {
-  /** `stop` turns the button into an abort button. */
   mode?: 'send' | 'stop'
 }
 
@@ -70,7 +66,6 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => (
   <Button
     aria-label={mode === 'stop' ? 'Stop' : 'Send'}
-    // On touch devices the button grows and gains an invisible hit area toward the 44pt guideline.
     className={cn(
       'size-7 rounded-lg pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1',
       className,

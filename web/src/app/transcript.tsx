@@ -1,4 +1,5 @@
 import { parseEntryId } from '../../../lib/ids.ts'
+import { CompactionEntry } from '@earendil-works/pi-durable'
 import type {
   ConversationId,
   EntryId,
@@ -84,21 +85,15 @@ import type { ToolResult } from './model.ts'
 import { ToolCallBlock } from './tool-call.tsx'
 import { TranscriptSkeleton } from './transcript-skeleton.tsx'
 
-/**
- * The transcript around a contribution: its scroller, the element holding its rows (each top-level row carries
- * `data-entry-id`), and whether it follows its newest row. For `transcript.*` slots.
- */
 export function useTranscriptScroll() {
   const { scrollRef, contentRef, isAtBottom } = useStickToBottomContext()
   return { scrollRef, contentRef, atBottom: isAtBottom }
 }
 
-/** The shown conversation; `dock` fits it into a narrow side region. */
 export function Transcript({ dock }: { dock?: boolean }) {
   const { id, loading } = useConversation()
   const { conversationId } = useUltimate()
-  // A conversation without messages opens as it is: no placeholder, nothing rising in.
-  const messages = useStore((state) => {
+  const hasPriorMessages = useStore((state) => {
     const shown = state.conversations.find(
       (conversation) => conversation.id === (conversationId ?? state.requested),
     )
@@ -106,13 +101,14 @@ export function Transcript({ dock }: { dock?: boolean }) {
   })
   const stick = useRef<StickToBottomContext>(null)
   const skeleton = useRef<HTMLDivElement>(null)
-  // The placeholder outlives loading by its fade-out, which crosses over with the rows coming in.
-  const [placeholder, setPlaceholder] = useState(loading && messages)
-  if (loading && messages && !placeholder) setPlaceholder(true)
+  const [placeholderThroughFadeOut, setPlaceholderThroughFadeOut] = useState(
+    loading && hasPriorMessages,
+  )
+  if (loading && hasPriorMessages && !placeholderThroughFadeOut) setPlaceholderThroughFadeOut(true)
   useLayoutEffect(() => {
-    if (loading || !placeholder) return undefined
+    if (loading || !placeholderThroughFadeOut) return undefined
     if (!skeleton.current || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setPlaceholder(false)
+      setPlaceholderThroughFadeOut(false)
       return undefined
     }
     const fade = skeleton.current.animate([{ opacity: 0 }], {
@@ -121,27 +117,21 @@ export function Transcript({ dock }: { dock?: boolean }) {
       fill: 'forwards',
     })
     fade.finished.then(
-      () => setPlaceholder(false),
-      () => {
-        // Cancelled: another conversation started loading, and the placeholder stays for it.
-      },
+      () => setPlaceholderThroughFadeOut(false),
+      () => {},
     )
     return () => fade.cancel()
-  }, [loading, placeholder])
-  // Rows on screen come in from the bottom up when a conversation first loads: not when there are none, when a resumed
-  // reload already shows them, or when this tab showed them before (`restored`), which opens as it was.
-  // Opacity only: a moving row would suspend the browser's scroll anchoring while older rows render above.
+  }, [loading, placeholderThroughFadeOut])
   const restored = useStore((state) => state.restored)
-  const reveal = useEffectEvent((scroll: HTMLElement, content: HTMLElement) => {
-    if (!messages || restored || covered()) return
+  const revealRowsWithOpacityOnly = useEffectEvent((scroll: HTMLElement, content: HTMLElement) => {
+    if (!hasPriorMessages || restored || covered()) return
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    // Rows settle shorter as they finish rendering, pulling rows from above into view: animate a screen of those too.
     const view = scroll.getBoundingClientRect()
-    const rows = [...content.children].filter((row) => {
+    const rowsWithinOneViewportAbove = [...content.children].filter((row) => {
       const box = row.getBoundingClientRect()
       return box.height > 0 && box.bottom > view.top - view.height && box.top < view.bottom
     })
-    rows.toReversed().forEach((row, index) =>
+    rowsWithinOneViewportAbove.toReversed().forEach((row, index) =>
       row.animate([{ opacity: 0 }, { opacity: 1 }], {
         delay: index * 14,
         duration: 260,
@@ -150,15 +140,12 @@ export function Transcript({ dock }: { dock?: boolean }) {
       }),
     )
   })
-  // Paint a newly shown conversation at its newest row; sticking to the bottom only scrolls a frame later.
   useLayoutEffect(() => {
     const scroll = stick.current?.scrollRef.current
     const content = stick.current?.contentRef.current
     if (!scroll || !content) return undefined
     scroll.scrollTop = scroll.scrollHeight
-    if (id !== undefined) reveal(scroll, content)
-    // Pin to the bottom before paint as content grows or the viewport shrinks: the library follows a frame later, and in
-    // that frame the scrollbar thumb jumps. Its follow lock still decides, so nobody reading older messages is pulled.
+    if (id !== undefined) revealRowsWithOpacityOnly(scroll, content)
     const resize = new ResizeObserver(() => {
       const state = stick.current?.state
       if (state?.isAtBottom) state.scrollTop = state.targetScrollTop
@@ -167,12 +154,10 @@ export function Transcript({ dock }: { dock?: boolean }) {
     resize.observe(content)
     return () => resize.disconnect()
   }, [id])
-  // A sent message pins the view to the bottom and follows the run, even when the reader had scrolled up.
   useEvent('ultimate:sent', (value) => {
     if ((value as { conversationId?: ConversationId } | undefined)?.conversationId === id)
       void stick.current?.scrollToBottom({ animation: 'instant' })
   })
-  // Keyed so a conversation never inherits the previous one's scroll position or follow state.
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <Conversation className="min-h-0" contextRef={stick} key={id} resize="instant">
@@ -181,14 +166,23 @@ export function Transcript({ dock }: { dock?: boolean }) {
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-      {placeholder && <TranscriptSkeleton dock={dock} ref={skeleton} />}
+      {placeholderThroughFadeOut && <TranscriptSkeleton dock={dock} ref={skeleton} />}
     </div>
   )
 }
 
-/** The space between a transcript's rows. */
 const rowGap = (content: Element | null) =>
   content ? Number.parseFloat(getComputedStyle(content).rowGap) || 0 : 0
+const preloadOneViewportBeforeTop = '100% 0px 0px 0px'
+
+function useAnchoringAfterAncestorRefs(
+  scrollRef: StickToBottomContext['scrollRef'],
+  following: boolean,
+) {
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.style.overflowAnchor = following ? 'none' : ''
+  }, [following, scrollRef])
+}
 
 function TranscriptEntries() {
   const { id, entries: active, older, live, busy, loading } = useConversation()
@@ -197,35 +191,24 @@ function TranscriptEntries() {
   const [tailSpace, setTailSpace] = useState(0)
   const anchor = useRef<{
     entryId: EntryId
-    /** The last entry of a folded run: its row keeps that id when a page brings earlier entries into the run. */
     last?: number
-    /** A row inside an opened run. */
     inner?: boolean
     toolCallId?: string
     top: number
   } | null>(null)
   const sentinel = useRef<HTMLDivElement>(null)
-  /** What `transcript.top` pins over the top of the rows. */
   const pinned = useRef<HTMLDivElement>(null)
   const { contentRef, scrollRef, stopScroll, state, isAtBottom, escapedFromLock } =
     useStickToBottomContext()
-  // While following, the browser must not anchor: a row above that shrinks as the last one grows would move the view up,
-  // and the library reads that scroll as the reader leaving. A reader who scrolled up keeps anchoring, so rows changing
-  // above them stay put. A passive effect: the scroller, an ancestor, attaches its ref after these rows' layout effects.
   const following = isAtBottom && !escapedFromLock
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.style.overflowAnchor = following ? 'none' : ''
-  }, [following, scrollRef])
-  // Stop following the moment the reader moves the view up: the library notices touch, keyboard and scrollbar scrolls a
-  // moment late, or not at all while content resizes. Captured, so it reads the library's own last placement before
-  // the library's listener clears it.
-  const seenTop = useRef(0)
+  useAnchoringAfterAncestorRefs(scrollRef, following)
+  const topAtLastCapturedScroll = useRef(0)
   const left = useEffectEvent(() => {
     const scroll = scrollRef.current
     if (!scroll) return false
     return readerLeft({
       top: scroll.scrollTop,
-      seen: seenTop.current,
+      seen: topAtLastCapturedScroll.current,
       placed: state.ignoreScrollToTop,
       distance: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight,
     })
@@ -233,16 +216,20 @@ function TranscriptEntries() {
   useEffect(() => {
     const scroll = scrollRef.current
     if (!scroll) return undefined
-    seenTop.current = scroll.scrollTop
+    topAtLastCapturedScroll.current = scroll.scrollTop
     const onScroll = () => {
       if (left()) stopScroll()
-      seenTop.current = scroll.scrollTop
+      topAtLastCapturedScroll.current = scroll.scrollTop
     }
+    const captureBeforeLibraryClearsPlacement = true
     scroll.addEventListener('scroll', onScroll, {
-      capture: true,
+      capture: captureBeforeLibraryClearsPlacement,
       passive: true,
     })
-    return () => scroll.removeEventListener('scroll', onScroll, { capture: true })
+    return () =>
+      scroll.removeEventListener('scroll', onScroll, {
+        capture: captureBeforeLibraryClearsPlacement,
+      })
   }, [scrollRef, stopScroll])
   useLayoutEffect(() => {
     if (anchor.current && scrollRef.current) {
@@ -261,33 +248,29 @@ function TranscriptEntries() {
     const scroll = scrollRef.current
     if (!scroll || tailSpace === 0) return undefined
     const releaseTail = () => {
-      // Release temporary space once it cannot clamp the reader, or they return to the bottom.
       const gap = rowGap(contentRef.current)
       const bottom = scroll.scrollHeight - scroll.clientHeight
-      if (scroll.scrollTop <= bottom - tailSpace - gap || scroll.scrollTop >= bottom - 1)
-        setTailSpace(0)
+      const removingTailCannotClampReader = scroll.scrollTop <= bottom - tailSpace - gap
+      const readerReturnedToBottom = () => scroll.scrollTop >= bottom - 1
+      if (removingTailCannotClampReader || readerReturnedToBottom()) setTailSpace(0)
     }
     scroll.addEventListener('scroll', releaseTail)
     releaseTail()
     return () => scroll.removeEventListener('scroll', releaseTail)
   }, [tailSpace, active, scrollRef, contentRef])
-  // Page in earlier history, holding the rows the reader sees in place while the page goes in above them.
-  const earlier = useEffectEvent(() =>
+  const prependHistoryKeepingVisibleRows = useEffectEvent(() =>
     loadEarlier((page) => {
       const { calls: mergedCalls } = indexTools([...entries, ...page])
-      // Rows older than the page, such as a head marker shown first, stay above it: anchor a row the page goes above.
-      const newest = Math.max(0, ...page.map((entry) => entry.id))
+      const newestPrependedEntry = Math.max(0, ...page.map((entry) => entry.id))
       const survivors = new Set<number>(
         entries
           .filter(
             (entry) =>
-              entry.id > newest &&
+              entry.id > newestPrependedEntry &&
               !(entry.kind === 'pi.tool-result' && mergedCalls.has(toolCallId(entry) ?? '')),
           )
           .map((entry) => entry.id),
       )
-      // Rows the reader sees: top-level rows, and the rows inside an opened run instead of the run itself, whose top stays
-      // put while a page reaches into it and grows it above them; an inner anchor is found inside its run only.
       const shown = (contentRef.current?.querySelectorAll(':scope > [data-entry-id]') ??
         []) as Iterable<Element>
       const candidates = [...shown]
@@ -300,24 +283,22 @@ function TranscriptEntries() {
             row.getBoundingClientRect().bottom >
             (scrollRef.current?.getBoundingClientRect().top ?? 0),
         )
-      // A result row disappears when this page brings its assistant call. Anchor a surviving
-      // row, or its matching replacement tool when no existing displayed row survives.
-      const element = candidates.find((row) =>
+      const survivingVisibleRow = candidates.find((row) =>
         survivors.has(Number(row.getAttribute('data-entry-id'))),
       )
-      if (element) {
+      if (survivingVisibleRow) {
         anchor.current = {
-          entryId: parseEntryId(Number(element.getAttribute('data-entry-id'))),
-          last: Number(element.getAttribute('data-run-last')) || undefined,
-          inner: !element.parentElement?.isSameNode(contentRef.current),
-          top: element.getBoundingClientRect().top,
+          entryId: parseEntryId(Number(survivingVisibleRow.getAttribute('data-entry-id'))),
+          last: Number(survivingVisibleRow.getAttribute('data-run-last')) || undefined,
+          inner: !survivingVisibleRow.parentElement?.isSameNode(contentRef.current),
+          top: survivingVisibleRow.getBoundingClientRect().top,
         }
       } else if (candidates[0]) {
         const orphan = entries.find(
           (entry) => entry.id === Number(candidates[0].getAttribute('data-entry-id')),
         )
         const callId = orphan && toolCallId(orphan)
-        const replacement = page.find((entry) => {
+        const assistantReplacingOrphanResult = page.find((entry) => {
           const message = entry.model?.[0]
           return (
             entry.kind === 'pi.assistant' &&
@@ -325,43 +306,37 @@ function TranscriptEntries() {
             message.content.some((block) => block.type === 'toolCall' && block.id === callId)
           )
         })
-        if (replacement)
+        if (assistantReplacingOrphanResult)
           anchor.current = {
-            entryId: replacement.id,
+            entryId: assistantReplacingOrphanResult.id,
             toolCallId: callId,
             top: candidates[0].getBoundingClientRect().top,
           }
       }
-      // The anchor holds the rows in place; a reader who left the bottom stops following, even when the page arrives
-      // before their scroll's event.
-      if (!state.isAtBottom || left()) stopScroll()
-      // A short transcript needs its existing empty tail to remain scrollable after prepending.
-      setTailSpace((space) =>
-        Math.max(
-          space,
-          (scrollRef.current?.clientHeight ?? 0) - (contentRef.current?.clientHeight ?? 0),
-        ),
-      )
+      const readerLeftBeforeScrollEvent = !state.isAtBottom || left()
+      if (readerLeftBeforeScrollEvent) stopScroll()
+      setTailSpace((space) => {
+        const emptyTailToKeepScrollable =
+          (scrollRef.current?.clientHeight ?? 0) - (contentRef.current?.clientHeight ?? 0)
+        return Math.max(space, emptyTailToKeepScrollable)
+      })
     }),
   )
-  // Page in earlier history while the top comes within a viewport. A new observer after each page reports at once
-  // whether the top is still that close.
   useEffect(() => {
     const root = scrollRef.current
     if (!root || !sentinel.current || loading || pending || error || cursor === undefined)
       return undefined
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) void earlier()
+        if (entry?.isIntersecting) void prependHistoryKeepingVisibleRows()
       },
-      { root, rootMargin: '100% 0px 0px 0px' },
+      { root, rootMargin: preloadOneViewportBeforeTop },
     )
     observer.observe(sentinel.current)
     return () => observer.disconnect()
   }, [scrollRef, loading, pending, error, cursor, history])
   const { results, calls } = useMemo(() => indexTools(entries), [entries])
-  // Keyed on the tools, not `live`: a streamed token must not re-render every row.
-  const slots = useMemo(() => slotsOf(live.tools), [live.tools])
+  const slotsUnaffectedByStreamedTokens = useMemo(() => slotsOf(live.tools), [live.tools])
   const partial = partialOf(live)
   const visible = entries.filter(
     (entry) =>
@@ -374,10 +349,8 @@ function TranscriptEntries() {
   const rows: (CompactPart | WorkRun)[] = compact
     ? compactRows(visible, keeps)
     : visible.map((entry) => ({ entry }))
-  // What a go-back set aside folds into one quiet row; the rows themselves render as usual inside it.
   const aside = useMemo(() => setAsideIds(entries), [entries])
   const grouped = groupAside(rows, aside)
-  // What lies between two rows of what the reader follows folds into one line that opens it.
   const follows = thread?.test
   const threaded = follows
     ? groupBetween(
@@ -389,34 +362,35 @@ function TranscriptEntries() {
     : grouped.map((row) => row)
   const [shownBetween, setShownBetween] = useState(0)
   const [shownAside, setShownAside] = useState<ReadonlySet<number>>(new Set())
-  // Folded runs the reader or a reveal opened, by the keys of all their parts: a run that gains earlier entries from a
-  // page, or later ones live, stays open.
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
-  const isOpen = (run: WorkRun) => isOpenIn(opened, run)
-  const open = (run: WorkRun, value: boolean) => setOpened((keys) => openIn(keys, run, value))
-  // A revealed row keeps its top at the top of the view, below what `transcript.top` pins over the rows, while what is
-  // above it settles: the pinned strip arriving after the jump, rows above finishing their layout (Safari does not
-  // anchor scrolling). The reader's own scroll or tap, or following the newest row again, lets it go.
-  const held = useRef<Element>(null)
-  // The most the strip covered while holding: it hides while the start card shows, and chasing that would loop.
-  const cover = useRef(0)
+  const [openedPartKeys, setOpenedPartKeys] = useState<ReadonlySet<string>>(new Set())
+  const isOpen = (run: WorkRun) => isOpenIn(openedPartKeys, run)
+  const open = (run: WorkRun, value: boolean) =>
+    setOpenedPartKeys((keys) => openIn(keys, run, value))
+  const revealedRowHeldBelowPinnedStrip = useRef<Element>(null)
+  const maxPinnedCoverDuringHold = useRef(0)
+  const adjustScrollWithoutReaderInput = (delta: number) => {
+    state.scrollTop += delta
+  }
   const hold = useEffectEvent(() => {
-    const element = held.current
+    const element = revealedRowHeldBelowPinnedStrip.current
     const scroll = scrollRef.current
     if (!element || !scroll) return
     if (!element.isConnected || state.isAtBottom) {
-      held.current = null
+      revealedRowHeldBelowPinnedStrip.current = null
       return
     }
-    cover.current = Math.max(cover.current, pinned.current?.offsetHeight ?? 0)
+    maxPinnedCoverDuringHold.current = Math.max(
+      maxPinnedCoverDuringHold.current,
+      pinned.current?.offsetHeight ?? 0,
+    )
     const move =
-      element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - cover.current
-    // A short row at the end needs room below it to reach the top: tail space, with a row gap more so the reader is not
-    // at the very bottom, where it is released.
-    const room = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
-    if (move > room) setTailSpace(tailSpace + move - room + rowGap(contentRef.current))
-    // Through the library's setter, so its scroll handler does not take the move for the reader's.
-    state.scrollTop += move
+      element.getBoundingClientRect().top -
+      scroll.getBoundingClientRect().top -
+      maxPinnedCoverDuringHold.current
+    const scrollRoomBelow = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
+    if (move > scrollRoomBelow)
+      setTailSpace(tailSpace + move - scrollRoomBelow + rowGap(contentRef.current))
+    adjustScrollWithoutReaderInput(move)
   })
   useEffect(() => {
     const scroll = scrollRef.current
@@ -425,7 +399,7 @@ function TranscriptEntries() {
     const resize = new ResizeObserver(() => hold())
     for (const element of [scroll, content, pinned.current]) resize.observe(element)
     const release = () => {
-      held.current = null
+      revealedRowHeldBelowPinnedStrip.current = null
     }
     const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown']
     for (const type of inputs) scroll.addEventListener(type, release, { passive: true })
@@ -434,8 +408,6 @@ function TranscriptEntries() {
       for (const type of inputs) scroll.removeEventListener(type, release)
     }
   }, [scrollRef, contentRef])
-  // Reveal a stored row, or one tool call in it, without the auto-follow animation overriding the jump; a row older than
-  // those loaded needs the history down to it first, and one in a folded run needs the run open.
   const [reveal, setReveal] = useState<{ entry: EntryId; call?: string }>()
   useEvent('ultimate:reveal-entry', (value) => {
     const target = value as
@@ -445,7 +417,7 @@ function TranscriptEntries() {
     if (target?.conversationId === id && entryId !== undefined && Number.isSafeInteger(entryId))
       setReveal({ entry: entryId, call: target?.toolCallId })
   })
-  const revealStep = useEffectEvent(() => {
+  const openGroupsThenRevealOnNextCommit = useEffectEvent(() => {
     if (reveal === undefined || loading || pending) return
     if (error) {
       setReveal(undefined)
@@ -457,10 +429,9 @@ function TranscriptEntries() {
         void loadDown(revealed, stopScroll)
         return
       }
-      // Inside the window's range: a fill still reading it brings it.
-      if (filling) return
+      const gapFillWillBringRevealedEntry = filling
+      if (gapFillWillBringRevealedEntry) return
     }
-    // Open its stretch between thread rows, set-aside group and folded run first; the next commit scrolls.
     const between = threaded.find(
       (row): row is BetweenGroup<(typeof grouped)[number]> =>
         'between' in row &&
@@ -474,7 +445,7 @@ function TranscriptEntries() {
     const group = grouped.find(
       (row): row is AsideGroup => 'aside' in row && !!runOf(row.aside, revealed),
     )
-    const first = group && asideKey(group)
+    const first = group && asideFirstEntryKey(group)
     if (first !== undefined && !shownAside.has(first)) {
       setShownAside((keys) => new Set(keys).add(first))
       return
@@ -484,7 +455,6 @@ function TranscriptEntries() {
       open(run, true)
       return
     }
-    // In compact mode an entry's text and its kept tools are separate rows, each with the entry's id.
     const row = `[data-entry-id="${revealed}"]`
     const block =
       call === undefined
@@ -496,15 +466,15 @@ function TranscriptEntries() {
         : contentRef.current?.querySelector(row)
     if (element) {
       stopScroll()
-      held.current = element
-      cover.current = 0
+      revealedRowHeldBelowPinnedStrip.current = element
+      maxPinnedCoverDuringHold.current = 0
       hold()
     }
     setReveal(undefined)
   })
   useLayoutEffect(
-    () => revealStep(),
-    [reveal, loading, pending, error, history, opened, filling, shownAside, shownBetween],
+    () => openGroupsThenRevealOnNextCommit(),
+    [reveal, loading, pending, error, history, openedPartKeys, filling, shownAside, shownBetween],
   )
   const render = (row: CompactPart | WorkRun, last: boolean, faded = ''): ReactNode =>
     'work' in row ? (
@@ -521,7 +491,7 @@ function TranscriptEntries() {
           open={isOpen(row)}
           results={results}
           run={row}
-          slots={slots}
+          slots={slotsUnaffectedByStreamedTokens}
           working={busy && last}
         />
       </div>
@@ -537,13 +507,12 @@ function TranscriptEntries() {
           busy={busy}
           entry={row.entry}
           results={results}
-          slots={slots}
+          slots={slotsUnaffectedByStreamedTokens}
         />
       </div>
     )
   return (
     <TranscriptContext value={entries}>
-      {/* At the top of the view as it scrolls, taking no room: its margin cancels the gap after it. */}
       <div className="pointer-events-none sticky top-0 z-10 -mb-3 h-0 [overflow-anchor:none]">
         <div ref={pinned}>
           <Slot name="transcript.top" />
@@ -588,8 +557,8 @@ function TranscriptEntries() {
         const last = index === threaded.length - 1
         if (!('between' in item)) return renderItem(item, last)
         const key = `between:${partKey(itemParts(item.between[0])[0])}`
-        // The stretch the agent works in now stays in view while it works.
-        const shown = (busy && last) || readBetween(id, item)
+        const agentWorkingInLastStretch = busy && last
+        const shown = agentWorkingInLastStretch || readBetween(id, item)
         const faded = item.between.map((inner, inside) =>
           renderItem(inner, last && inside === item.between.length - 1, recedeRow),
         )
@@ -611,7 +580,13 @@ function TranscriptEntries() {
         )
       })}
       {partial && (
-        <AssistantView busy message={partial} results={results} slots={slots} streaming />
+        <AssistantView
+          busy
+          message={partial}
+          results={results}
+          slots={slotsUnaffectedByStreamedTokens}
+          streaming
+        />
       )}
       <Slot name="transcript.end" />
       <LiveStatus busy={busy} id={id} live={live} partial={partial} />
@@ -626,7 +601,7 @@ function TranscriptEntries() {
     faded = '',
   ): ReactNode {
     if (!('aside' in item)) return render(item, last, faded)
-    const key = asideKey(item)
+    const key = asideFirstEntryKey(item)
     const shown = shownAside.has(key)
     return (
       <Collapsible
@@ -661,19 +636,13 @@ function TranscriptEntries() {
   }
 }
 
-/** Opened rows between thread rows stay faded and tighter, back to full on hover or focus. */
 const recedeRow =
   '-mt-1.5 opacity-45 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100'
 
-/** All parts of a top-level row, set-aside groups included. */
 const itemParts = (item: CompactPart | WorkRun | AsideGroup) =>
   'aside' in item ? item.aside.flatMap(partsOf) : partsOf(item)
 
-/**
- * Whether the reader opened a stretch: kept in this browser per conversation, under its first and its last part, so it
- * stays open when a page brings earlier rows into it or live rows join it.
- */
-const betweenKeys = (
+const betweenEndpointKeys = (
   id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
 ) => {
@@ -683,23 +652,19 @@ const betweenKeys = (
 const readBetween = (
   id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
-) => betweenKeys(id, group).some(readFold)
+) => betweenEndpointKeys(id, group).some(readFold)
 const writeBetween = (
   id: ConversationId | undefined,
   group: BetweenGroup<CompactPart | WorkRun | AsideGroup>,
   open: boolean,
 ) => {
-  for (const key of betweenKeys(id, group)) writeFold(key, open)
+  for (const key of betweenEndpointKeys(id, group)) writeFold(key, open)
 }
 
-/** The hairline that closes a stretch between thread rows. */
 function BetweenRule() {
   return <div aria-hidden="true" className="my-1 h-px bg-border/50" />
 }
 
-/**
- * A stretch between thread rows as a hairline divider carrying its summary, which opens or closes it.
- */
 function BetweenLine({
   group,
   open,
@@ -719,7 +684,6 @@ function BetweenLine({
       }
     | undefined
 }) {
-  // Rows outside runs of work, which count as steps instead.
   const rows = group.between
     .flatMap((row) => ('aside' in row ? row.aside : [row]))
     .flatMap((row) => ('work' in row ? [] : [{ entry: row.entry, calls: shownCalls(row) }]))
@@ -758,10 +722,8 @@ function BetweenLine({
   )
 }
 
-/** A set-aside group is known by its first entry, so it stays open while later rows join it. */
-const asideKey = (group: AsideGroup) => partsOf(group.aside[0])[0].entry.id
+const asideFirstEntryKey = (group: AsideGroup) => partsOf(group.aside[0])[0].entry.id
 
-/** The tool calls a row shows: all of its entry's, or those of its blocks. */
 function shownCalls({ entry, blocks }: CompactPart): ToolCall[] {
   const message = entry.model?.[0]
   if (message?.role !== 'assistant') return []
@@ -770,7 +732,6 @@ function shownCalls({ entry, blocks }: CompactPart): ToolCall[] {
   )
 }
 
-/** A run of work in compact mode as one quiet row that expands to the usual rendering. */
 function WorkRow({
   run,
   working,
@@ -827,7 +788,6 @@ function WorkRow({
   )
 }
 
-/** The tool calls of a folded run, in order. */
 function runCalls(run: WorkRun): { block: ToolCall; startedAt: number }[] {
   return run.work.flatMap(({ entry, blocks }) => {
     const message = entry.model?.[0]
@@ -841,10 +801,8 @@ function runCalls(run: WorkRun): { block: ToolCall; startedAt: number }[] {
   })
 }
 
-/** Lines a folded run lists before “+N earlier”: the newest ones. */
-const STEP_LINES = 8
+const NEWEST_STEP_LINE_LIMIT = 8
 
-/** A folded run's tool calls as a quiet list of one-line steps, newest last; clicking it opens the run. */
 function StepLines({
   run,
   results,
@@ -861,7 +819,7 @@ function StepLines({
   const extensions = useExtensions()
   const calls = runCalls(run)
   if (calls.length === 0) return null
-  const shown = calls.slice(-STEP_LINES)
+  const shown = calls.slice(-NEWEST_STEP_LINE_LIMIT)
   return (
     <button
       className="mt-1.5 flex w-full min-w-0 cursor-pointer flex-col gap-0.5 border-l border-border/70 pl-3 text-left font-mono text-[11.5px] leading-[1.6] text-muted-foreground hover:text-foreground/90"
@@ -904,7 +862,6 @@ function StepLines({
   )
 }
 
-/** What this Ultimate is and runs on, before the first message. */
 function EmptyState() {
   const system = useSystem()
   const { agent } = useConversation()
@@ -978,7 +935,6 @@ function toolCallId(entry: EntryRecord) {
 
 interface RowProps {
   entry: EntryRecord
-  /** The content blocks of an assistant message shown in this row; all when absent. */
   blocks?: readonly number[]
   results: Map<string, ToolResult>
   slots: Map<string, ToolSlot>
@@ -986,7 +942,6 @@ interface RowProps {
 }
 
 const EntryView = memo(function EntryView({ entry, blocks, results, slots, busy }: RowProps) {
-  // Renderers compose in discovery order: each receives the one before it as `core`, and falls back to it.
   return entryRenderers(useExtensions(), entry.kind).reduce<ReactNode>(
     (inner, { extension, version, component: Renderer }) => (
       <ExtensionBoundary extension={extension} fallback={inner} key={extension} version={version}>
@@ -995,9 +950,8 @@ const EntryView = memo(function EntryView({ entry, blocks, results, slots, busy 
     ),
     coreEntry(entry, results, slots, busy, blocks),
   )
-}, sameRow)
+}, sameEntryAndOwnCalls)
 
-/** The tool calls a row shows: an assistant's calls, or the call of a result shown on its own. */
 function rowCalls(entry: EntryRecord): string[] {
   const message = entry.model?.[0]
   if (message?.role === 'toolResult') return [message.toolCallId]
@@ -1005,8 +959,7 @@ function rowCalls(entry: EntryRecord): string[] {
   return message.content.flatMap((block) => (block.type === 'toolCall' ? [block.id] : []))
 }
 
-/** A row changes only with its entry and its own calls, so a new entry or run re-renders just the rows it touches. */
-function sameRow(a: RowProps, b: RowProps) {
+function sameEntryAndOwnCalls(a: RowProps, b: RowProps) {
   if (a.entry !== b.entry || a.blocks?.join() !== b.blocks?.join()) return false
   return rowCalls(b.entry).every((id) => {
     const result = b.results.get(id)?.message
@@ -1080,7 +1033,6 @@ function AssistantView({
 }: {
   entry?: EntryRecord
   message: AssistantMessage
-  /** Show only these content blocks; the notice and actions go with the last block. */
   blocks?: readonly number[]
   results: Map<string, ToolResult>
   slots: Map<string, ToolSlot>
@@ -1096,7 +1048,7 @@ function AssistantView({
     !message.content.some((block) => block.type === 'toolCall') &&
     message.content.some((block) => block.type === 'text' && block.text.trim())
   const ended = !streaming && message.stopReason !== 'toolUse'
-  const tail = !blocks || blocks.includes(last)
+  const lastBlockOwnsNoticeAndActions = !blocks || blocks.includes(last)
   const text = message.content
     .flatMap((block) => (block.type === 'text' && block.text.trim() ? [block.text] : []))
     .join('\n\n')
@@ -1157,10 +1109,12 @@ function AssistantView({
         }
         return null
       })}
-      {tail && !streaming && (message.stopReason !== 'toolUse' || message.errorMessage) && (
-        <AssistantNotice message={message} />
-      )}
-      {tail && entry && (text || ended) && (
+      {lastBlockOwnsNoticeAndActions &&
+        !streaming &&
+        (message.stopReason !== 'toolUse' || message.errorMessage) && (
+          <AssistantNotice message={message} />
+        )}
+      {lastBlockOwnsNoticeAndActions && entry && (text || ended) && (
         <MessageActions entry={entry} text={text} timestamp={message.timestamp} />
       )}
     </Message>
@@ -1210,7 +1164,7 @@ function CompactionView({ entry }: { entry: EntryRecord }) {
   const end = wrapped.lastIndexOf('\n</summary>')
   const summary =
     start >= 0 && end > start ? wrapped.slice(start + '<summary>\n'.length, end) : wrapped
-  const reason = (entry.data as { reason?: string } | undefined)?.reason
+  const reason = CompactionEntry.is(entry) ? entry.data?.reason : undefined
   return (
     <Collapsible className="group/compaction rounded-lg border border-brand/30 bg-brand/5">
       <CollapsibleTrigger className="flex w-full cursor-pointer flex-col gap-1 px-3.5 py-2.5 text-left">
@@ -1246,8 +1200,7 @@ function UnknownEntry({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** Whether a streaming partial shows anything yet; a reasoning model's first phase is often an empty thinking block. */
-function shows(message: AssistantMessage | undefined) {
+function partialHasVisibleContent(message: AssistantMessage | undefined) {
   return !!message?.content.some((block) =>
     block.type === 'toolCall'
       ? true
@@ -1257,7 +1210,6 @@ function shows(message: AssistantMessage | undefined) {
   )
 }
 
-/** What the run is doing when the transcript alone does not show it; a run a pause parked says so instead. */
 function LiveStatus(props: {
   id: ConversationId | undefined
   live: LiveState
@@ -1286,22 +1238,20 @@ export function LiveLines({
   busy,
   partial,
   parked,
-  since,
+  since: durableRunStartedAt,
 }: {
   live: LiveState
   busy: boolean
   partial: AssistantMessage | undefined
   parked: boolean
-  /** When the run started (its task first ran), for the working clock; none shows while unknown. */
   since?: number
 }) {
-  // Parked by a pause, nothing of the run executes, a retry's backoff and a deferred poll included: the paused line
-  // replaces every other one and no clock ticks until Play.
   const paused = busy && parked
   const retry = paused ? undefined : live.generation?.retry
   const running = (live.tools ?? []).some((slot) => slot.status !== 'done')
-  const idle = busy && !shows(partial) && !running
-  const now = useNow(100, !paused && (!!retry || idle))
+  const idle = busy && !partialHasVisibleContent(partial) && !running
+  const statusClockRunsOnlyUnpaused = !paused && (!!retry || idle)
+  const now = useNow(100, statusClockRunsOnlyUnpaused)
   if (paused)
     return (
       <div className="flex flex-col gap-1 font-mono text-[12px] text-muted-foreground">
@@ -1334,9 +1284,9 @@ export function LiveLines({
       <span className="flex items-center gap-2" key="working">
         <span className="size-1.5 animate-pulse-dot rounded-full bg-brand" />
         <Shimmer>{thinking ? 'thinking…' : 'working…'}</Shimmer>
-        {since !== undefined && now - since >= 2000 && (
+        {durableRunStartedAt !== undefined && now - durableRunStartedAt >= 2000 && (
           <span className="text-muted-foreground/60 tabular-nums">
-            {formatDuration(now - since)}
+            {formatDuration(now - durableRunStartedAt)}
           </span>
         )}
       </span>,

@@ -32,24 +32,20 @@ import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
 import { inBackground } from '../../lib/errors.ts'
 
-/** A Pi type as a document holds it: plain JSON, arrays mutable. */
-type Json<T> = T extends readonly (infer U)[]
-  ? Json<U>[]
+type MutableJson<T> = T extends readonly (infer U)[]
+  ? MutableJson<U>[]
   : T extends object
-    ? { -readonly [K in keyof T]: Json<T[K]> }
+    ? { -readonly [K in keyof T]: MutableJson<T[K]> }
     : T
-type WirePrompt<T> = T extends AuthPrompt ? Omit<T, 'signal'> : never
-/** One login flow as the browser sees it. Answers and credentials never enter it. */
+type PromptWithoutSignal<T> = T extends AuthPrompt ? Omit<T, 'signal'> : never
 export type LoginFlow = {
   provider: string
   type: AuthType
   status: 'running' | 'complete' | 'cancel' | 'error'
-  /** The prompt waiting for an answer. */
-  prompt?: Json<WirePrompt<AuthPrompt>>
-  events: Json<AuthEvent>[]
+  prompt?: MutableJson<PromptWithoutSignal<AuthPrompt>>
+  events: MutableJson<AuthEvent>[]
   error?: string
 }
-/** The login flows started from a conversation, by flow id; the login dialog streams it with `useDoc`. */
 export const Logins = defineDoc<{ flows: Record<string, LoginFlow> }>({
   kind: LoginDoc.kind,
   checkpointWhen: () => false,
@@ -61,19 +57,16 @@ export const Logins = defineDoc<{ flows: Record<string, LoginFlow> }>({
 })
 export const docs = [Logins, Family]
 
-/** A running flow: process-local, so a flow the document shows running without one here died with its process. */
-interface Flow {
+interface ProcessLocalLoginFlow {
   controller: AbortController
   answer?: (value: string) => void
-  /** Document changes, applied in order. */
   writes: Promise<void>
 }
-/** Finished flows a conversation's document keeps. */
-const kept = 10
+const FINISHED_LOGIN_FLOW_LIMIT = 10
 
 function liveFlows(host: ExtensionHost) {
   return host.resource('models.login', () => {
-    const live = new Map<string, Flow>()
+    const live = new Map<string, ProcessLocalLoginFlow>()
     host.onClose(async () => {
       for (const flow of live.values()) flow.controller.abort()
     })
@@ -93,34 +86,25 @@ function running(host: ExtensionHost, args: ActionInput<{ flowId: string }>) {
   if (!flow) throw new Error('Unknown login flow')
   return flow
 }
-/** Prompts and events as plain JSON: a document holds no `undefined`. */
-const json = <T>(value: T): Json<T> => JSON.parse(JSON.stringify(value))
+const withoutUndefined = <T>(value: T): MutableJson<T> => JSON.parse(JSON.stringify(value))
 
 export const userActions = ['login', 'answer', 'cancel', 'logout']
 
-/**
- * Record that `provider`'s login changed: its recorded health is meaningless now, and health resets it to unknown
- * (`extensions/health`).
- */
-const loginChanged = async (host: ActionContext['host'], provider: string) =>
+const invalidateLoginHealthBestEffort = async (host: ActionContext['host'], provider: string) =>
   host
     .harness()
     .commit((tx) => host.emit(tx, LoginChanged, { provider }), context)
     .catch((error: unknown) => {
-      // Health is advisory: the login itself succeeded, and the next call corrects the record.
       console.error('models: login change not recorded:', error)
     })
 
 export const actions = {
-  /** The families, and who runs on which, for the Agents panel. */
   families: implementAction(FamiliesAction, (_args, { host }) => familiesView(host)),
-  /** Save the families: their models, the features' assignments; optionally move open conversations along. */
   saveFamilies: implementAction(SaveFamiliesAction, (args, { host }) => {
     if (!args || typeof args !== 'object' || Array.isArray(args))
       throw new Error('Expected families')
     return saveFamilies(host, args as SaveFamilies)
   }),
-  /** Record the family the calling conversation runs as after the picker configured it; null for a model by id. */
   setFamily: implementAction(SetFamilyAction, async (args, { host, conversationId }) => {
     const family = field(args, 'family')
     if (family !== null && (typeof family !== 'string' || !family))
@@ -132,7 +116,6 @@ export const actions = {
     }, context)
     return null
   }),
-  /** Get ready's choice: the default family's model and thinking, and the calling conversation on that family. */
   setDefault: implementAction(SetDefaultAction, async (args, { host, conversationId }) => {
     const change = await setDefault(host, text(args, 'model'))
     if (conversationId !== undefined)
@@ -144,7 +127,6 @@ export const actions = {
       }, context)
     return null
   }),
-  /** Start a login flow for the calling conversation and resolve with its id; the document shows its progress. */
   login: implementAction(LoginAction, async (args, { host, conversationId }) => {
     const provider = text(args, 'provider')
     const type = field(args, 'type')
@@ -161,11 +143,14 @@ export const actions = {
       if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
       const { flows } = await tx.doc(Logins, id)
       const finished = Object.keys(flows).filter((key) => flows[key].status !== 'running')
-      for (const key of finished.slice(0, -kept)) delete flows[key]
+      for (const key of finished.slice(0, -FINISHED_LOGIN_FLOW_LIMIT)) delete flows[key]
       flows[flowId] = { provider, type, status: 'running', events: [] }
     }, context)
-    const flow: Flow = { controller: new AbortController(), writes: Promise.resolve() }
-    const update = (change: (state: LoginFlow) => void) => {
+    const flow: ProcessLocalLoginFlow = {
+      controller: new AbortController(),
+      writes: Promise.resolve(),
+    }
+    const queueLoginDocumentUpdate = (change: (state: LoginFlow) => void) => {
       flow.writes = flow.writes
         .then(() =>
           host.harness().commit(async (tx) => {
@@ -173,12 +158,13 @@ export const actions = {
             if (state) change(state)
           }, context),
         )
-        // The harness closes only with the process; the next start marks the flow cancelled.
         .catch((error: unknown) => console.error('models: login document not updated:', error))
       return flow.writes
     }
     live.set(flowId, flow)
     const { signal } = flow.controller
+    const credentialSafeLoginRejection = (): 'cancel' | 'error' =>
+      signal.aborted ? 'cancel' : 'error'
     void host.modelRuntime
       .login(provider, type, {
         signal,
@@ -188,7 +174,7 @@ export const actions = {
             const cleanup = () => {
               for (const item of signals) item.removeEventListener('abort', abort)
               delete flow.answer
-              inBackground(update((state) => delete state.prompt))
+              inBackground(queueLoginDocumentUpdate((state) => delete state.prompt))
             }
             const abort = () => {
               cleanup()
@@ -207,22 +193,21 @@ export const actions = {
             }
             const { signal: _signal, ...wire } = prompt
             inBackground(
-              update((state) => {
-                state.prompt = json(wire)
+              queueLoginDocumentUpdate((state) => {
+                state.prompt = withoutUndefined(wire)
               }),
             )
           }),
-        notify: (event) => inBackground(update((state) => state.events.push(json(event)))),
+        notify: (event) =>
+          inBackground(
+            queueLoginDocumentUpdate((state) => state.events.push(withoutUndefined(event))),
+          ),
       })
-      .then(
-        () => (signal.aborted ? 'cancel' : 'complete'),
-        // Provider errors may include secrets or callback codes; never forward them.
-        () => (signal.aborted ? 'cancel' : 'error'),
-      )
+      .then(() => (signal.aborted ? 'cancel' : 'complete'), credentialSafeLoginRejection)
       .then(async (status) => {
         live.delete(flowId)
-        if (status === 'complete') await loginChanged(host, provider)
-        return update((state) => {
+        if (status === 'complete') await invalidateLoginHealthBestEffort(host, provider)
+        return queueLoginDocumentUpdate((state) => {
           state.status = status
           delete state.prompt
           if (status === 'error') state.error = 'Login failed'
@@ -231,14 +216,12 @@ export const actions = {
       .catch(() => host.notice('Login flow finalization failed'))
     return { flowId }
   }),
-  /** Answer the flow's pending prompt; an empty answer is allowed. */
   answer: implementAction(AnswerAction, async (args, { host }) => {
     const flow = running(host, args)
     const value = field(args, 'value')
     if (typeof value !== 'string') throw new Error('Expected value')
     if (!flow.answer) throw new Error('No pending prompt for flow')
     flow.answer(value)
-    // The prompt leaves the document before the UI hears back.
     await flow.writes
     return null
   }),
@@ -246,19 +229,16 @@ export const actions = {
     running(host, args).controller.abort()
     return null
   }),
-  /** Remove the provider's stored credential, which pi shares. */
   logout: implementAction(LogoutAction, async (args, { host }) => {
     const provider = text(args, 'provider')
     await host.modelRuntime.logout(provider)
-    await loginChanged(host, provider)
+    await invalidateLoginHealthBestEffort(host, provider)
     return null
   }),
 }
 
 export default function models(host: ExtensionHost) {
   const live = liveFlows(host)
-  // Each facet registers its own, so it reads Logins with this load's token: flows no live login drives (those of a
-  // previous process) are marked cancelled.
   host.onOpen(async () => {
     const harness = host.harness()
     const ids: ConversationId[] = []
@@ -269,14 +249,18 @@ export default function models(host: ExtensionHost) {
       cursor = page.next
     } while (cursor !== undefined)
     for (const id of ids) {
-      const dead = (records: Readonly<Record<string, LoginFlow>>) =>
+      const runningFlowsWithoutLiveProcess = (records: Readonly<Record<string, LoginFlow>>) =>
         Object.keys(records).filter(
           (flowId) => records[flowId].status === 'running' && !live.has(flowId),
         )
-      if (!dead((await harness.snapshot(Logins, id, context))?.flows ?? {}).length) continue
+      if (
+        !runningFlowsWithoutLiveProcess((await harness.snapshot(Logins, id, context))?.flows ?? {})
+          .length
+      )
+        continue
       await harness.commit(async (tx) => {
         const { flows } = await tx.doc(Logins, id)
-        for (const flowId of dead(flows)) {
+        for (const flowId of runningFlowsWithoutLiveProcess(flows)) {
           flows[flowId].status = 'cancel'
           delete flows[flowId].prompt
         }
@@ -287,8 +271,7 @@ export default function models(host: ExtensionHost) {
     name: 'models',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Every run's first
-        // input is placed through it (a typed input, a delivery, a queued follow-up), before the run reads its agent.
+        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         beforeInput: (_input, { tx, conversationId }) => fallback(host, tx, conversationId),
       }),
     ],

@@ -1,7 +1,5 @@
-/** Shortcuts: `mod+shift+k`, sequences separated by spaces (`mod+k m`). `mod` is ⌘ on macOS and Ctrl elsewhere. */
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 
-/** The normalized chord of a key event, such as `mod+shift+k` or `escape`. */
 export function chordOf(event: KeyboardEvent): string {
   const key = event.code.startsWith('Key')
     ? event.code.slice(3).toLowerCase()
@@ -17,7 +15,6 @@ export function chordOf(event: KeyboardEvent): string {
   return parts.join('+')
 }
 
-/** Normalize a written shortcut so it compares equal to `chordOf()` output. */
 export function parseKeys(keys: string): string[] {
   const order = ['mod', 'ctrl', 'alt', 'shift']
   return keys

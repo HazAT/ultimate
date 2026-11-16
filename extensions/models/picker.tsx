@@ -45,8 +45,7 @@ import type { ModelInfo, ProviderInfo } from './state.tsx'
 
 const LIMIT = 150
 
-/** Every term of the query appears in the model's provider, id, or name. */
-function matches(model: ModelInfo, terms: readonly string[]) {
+function matchesEveryQueryTerm(model: ModelInfo, terms: readonly string[]) {
   const haystack = `${model.provider}/${model.id} ${model.name}`.toLowerCase()
   return terms.every((term) => haystack.includes(term))
 }
@@ -100,7 +99,6 @@ export function ModelRow({
   )
 }
 
-/** Searchable models of every provider, grouped; picking one configures the conversation that opened it. */
 export function ModelPicker() {
   const [open, setOpen] = useDialog(dialogs.picker)
   const actions = useUltimate()
@@ -115,9 +113,7 @@ export function ModelPicker() {
   const families = useFamilies()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string>()
-  // The highlighted row: the reader's, once they move it; until then the current family or model, which may load after
-  // the picker opens (cmdk reads `defaultValue` only on mount and otherwise highlights the first row).
-  const [highlighted, setHighlighted] = useState<string>()
+  const [readerHighlightedValue, setReaderHighlightedValue] = useState<string>()
   const providers = useMemo(
     () => new Map((models?.providers ?? []).map((provider) => [provider.id, provider])),
     [models],
@@ -125,23 +121,20 @@ export function ModelPicker() {
   const groups = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
     const all = models?.models ?? []
-    // Without a query: what can run now. With one: everything that matches, runnable and direct matches first
-    // (`claude-opus-4-8` before a reseller's `eu.anthropic.claude-opus-4-8`). A Claude model Claude Code also offers
-    // lists it before the paid Anthropic API even while logged out, so Enter never picks the paid one by accident.
-    const claude = new Set(
+    const claudeCodeModelIds = new Set(
       all.filter((model) => model.provider === 'claude-code').map((model) => model.id),
     )
-    const twin = (model: ModelInfo) => claude.has(model.id)
-    const rank = (model: ModelInfo) =>
+    const alsoOfferedByClaudeCode = (model: ModelInfo) => claudeCodeModelIds.has(model.id)
+    const runnableSubscriptionFirstRank = (model: ModelInfo) =>
       (model.available || (model.provider === 'claude-code' && terms.length) ? 0 : 2) +
-      (model.provider === 'anthropic' && twin(model) ? 0.5 : 0) +
+      (model.provider === 'anthropic' && alsoOfferedByClaudeCode(model) ? 0.5 : 0) +
       (terms.length && !model.id.toLowerCase().startsWith(terms[0]) ? 1 : 0)
     const found = (
       terms.length
-        ? all.filter((model) => matches(model, terms))
+        ? all.filter((model) => matchesEveryQueryTerm(model, terms))
         : all.filter((model) => model.available)
     )
-      .toSorted((a, b) => rank(a) - rank(b))
+      .toSorted((a, b) => runnableSubscriptionFirstRank(a) - runnableSubscriptionFirstRank(b))
       .slice(0, LIMIT)
     return [...Map.groupBy(found, (model) => model.provider)]
   }, [models, query])
@@ -171,7 +164,6 @@ export function ModelPicker() {
     )
   }
 
-  /** A family's model and thinking level for this conversation; a model without a login opens its login first. */
   function chooseFamily(family: FamilyView) {
     const name = runsOn(family)!
     const [provider, modelId] = [name.slice(0, name.indexOf('/')), modelIdOf(name)]
@@ -199,7 +191,7 @@ export function ModelPicker() {
         if (!next) {
           setQuery('')
           setError(undefined)
-          setHighlighted(undefined)
+          setReaderHighlightedValue(undefined)
         }
       }}
       open={open}
@@ -215,10 +207,10 @@ export function ModelPicker() {
         </DialogDescription>
         <Command
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:section-label"
-          onValueChange={setHighlighted}
+          onValueChange={setReaderHighlightedValue}
           shouldFilter={false}
           value={
-            highlighted ??
+            readerHighlightedValue ??
             (current && shownFamilies.includes(current)
               ? `family/${current.name}`
               : ref
