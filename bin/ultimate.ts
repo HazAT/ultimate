@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util'
 import { projectHome } from '../lib/project-paths.ts'
 import { acquireLock, readOwner, retireStorageOwner } from '../lib/lock.ts'
 import { deadline, pace } from '../lib/timers.ts'
-import { watch, existsSync } from 'node:fs'
+import { watch, existsSync, readFileSync } from 'node:fs'
 import { watchRoots } from '../server/watch-roots.ts'
 import { join, resolve as resolvePath } from 'node:path'
 import { createServer, connect } from 'node:net'
@@ -67,7 +67,17 @@ const projectRoot = await realpath(positionals[0] ?? process.cwd()).catch((error
   process.exit(1)
 })
 const home = process.env.ULTIMATE_HOME ?? projectHome(projectRoot)
-const requestedPort = values.port ?? process.env.ULTIMATE_PORT
+/** The project's `.ultimate/settings.json` `port`, read alone so the supervisor stays free of the app graph. */
+function settingsPort() {
+  let settings: { port?: unknown }
+  try {
+    settings = JSON.parse(readFileSync(join(projectRoot, '.ultimate/settings.json'), 'utf8'))
+  } catch {
+    return undefined // No project settings, or unreadable: the core reports those itself.
+  }
+  return settings?.port === undefined ? undefined : JSON.stringify(settings.port)
+}
+const requestedPort = values.port ?? process.env.ULTIMATE_PORT ?? settingsPort()
 let port = Number(requestedPort ?? 4747)
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port')
 const lockPath = join(home, 'ultimate.lock')
@@ -207,6 +217,10 @@ try {
   })
 } catch (error) {
   await lock.close()
+  if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+    console.error(`Port ${port} is in use; free it or start with --port N.`)
+    process.exit(1)
+  }
   throw error
 }
 const address = proxy.address()
