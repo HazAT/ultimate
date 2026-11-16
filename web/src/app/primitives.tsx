@@ -1,4 +1,3 @@
-// The building blocks of surfaces, exported from `@/sdk`. Each is a thin wrapper over what the shell already has.
 import { cn } from 'cn'
 import {
   EllipsisIcon,
@@ -35,12 +34,6 @@ import { IconButton } from './header.tsx'
 import { useSurfaceId } from './surface.ts'
 import { Transcript } from './transcript.tsx'
 
-/**
- * The bottom line with the `statusline.left` and `statusline.right` slots. On a touch screen of tablet width (an
- * unfolded foldable, a tablet) the page reaches the display's rounded corners, so the line's ends move in and up to
- * clear them. A phone keeps only the items marked `phone` on the line, moved in from the corners, and lists the
- * rest in a ⋯ popover; the shown conversation's composer puts its `composer.status` line first.
- */
 export function StatusLine() {
   const phone = useViewport() === 'phone'
   return (
@@ -74,7 +67,6 @@ export function StatusLine() {
   )
 }
 
-/** On a phone, the status-line items that don't fit the line: one per row, each still opening its own popover. */
 function StatusMore() {
   return (
     <Popover>
@@ -99,10 +91,6 @@ function StatusMore() {
   )
 }
 
-/**
- * The shown conversation: transcript and composer, filling the space it gets. `main` centres a reading column;
- * `dock` fits a narrow side region such as a `Dock`.
- */
 export function Conversation({ variant = 'main' }: { variant?: 'main' | 'dock' }) {
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -113,15 +101,10 @@ export function Conversation({ variant = 'main' }: { variant?: 'main' | 'dock' }
   )
 }
 
-/** Mount `region` while this component is, so the header shows its toggle. Before paint: no flicker. */
-function useMountRegion(region: 'sidebar' | 'panels') {
+function useMountRegionBeforePaint(region: 'sidebar' | 'panels') {
   useLayoutEffect(() => layout.mount(region), [region])
 }
 
-/**
- * A region over the conversation, sliding in from `side` at most of the window's width; the strip of conversation
- * beside it closes it on a tap, and so does a swipe towards its edge. Its content stays mounted once it has opened.
- */
 function Overlay({
   side,
   open,
@@ -135,8 +118,8 @@ function Overlay({
   className?: string
   children: ReactNode
 }) {
-  const [opened, setOpened] = useState(open)
-  if (open && !opened) setOpened(true)
+  const [everOpened, setEverOpened] = useState(open)
+  if (open && !everOpened) setEverOpened(true)
   const [drag, setDrag] = useState<number>()
   const touch = useRef<{ x: number; y: number; swipe?: boolean }>(undefined)
   const sign = side === 'left' ? -1 : 1
@@ -150,8 +133,8 @@ function Overlay({
     if (!from) return
     const dx = event.touches[0].clientX - from.x
     const dy = event.touches[0].clientY - from.y
-    // The first clear movement decides between a swipe and a scroll.
-    if (from.swipe === undefined && Math.hypot(dx, dy) > 8) from.swipe = Math.abs(dx) > Math.abs(dy)
+    const firstClearMovement = from.swipe === undefined && Math.hypot(dx, dy) > 8
+    if (firstClearMovement) from.swipe = Math.abs(dx) > Math.abs(dy)
     if (from.swipe) setDrag(Math.max(0, dx * sign) * sign)
   }
   const end = () => {
@@ -184,22 +167,16 @@ function Overlay({
         onTouchStart={start}
         style={drag ? { transform: `translateX(${drag}px)` } : undefined}
       >
-        {opened && children}
+        {everOpened && children}
       </aside>
     </div>
   )
 }
 
-/** The `sidebar` slot as a left column (`mod+b`), or over the conversation on a phone; gone while nothing is in it. */
-/**
- * The docked sidebar's width (18 rem); the title bar's left part takes it beyond a phone on every surface, so the
- * surface tabs stay put and start where Agent's sidebar ends. Change both together.
- */
-export const sidebarWidth = 'w-72'
-export const sidebarWidthBeyondPhone = 'md:w-72'
+export const [sidebarWidth, sidebarWidthBeyondPhone] = ['w-72', 'md:w-72'] as const
 
 export function Sidebar() {
-  useMountRegion('sidebar')
+  useMountRegionBeforePaint('sidebar')
   const open = useRegionOpen('sidebar')
   const viewport = useViewport()
   const empty = slotItems(useExtensions(), 'sidebar').length === 0
@@ -224,12 +201,10 @@ const tabButton =
   'text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset'
 const GAP = 2
 
-/** How the tabs fit: whether the others drop their labels, and which of them move into the `⋯` menu. */
 type Fit = { compact: boolean; overflow: Set<string> }
 
 const key = (panel: PanelItem) => `${panel.extension}:${panel.id}`
 
-/** The badges extensions put on panel `id`'s tab (`panelBadges`), each in its own boundary. */
 function TabBadges({ id }: { id: string }) {
   return panelBadges(useExtensions(), id).map(({ extension, version, component: Badge }) => (
     <ExtensionBoundary extension={extension} key={extension} variant="inline" version={version}>
@@ -238,19 +213,15 @@ function TabBadges({ id }: { id: string }) {
   ))
 }
 
-/**
- * A tab per extension panel. When not every label fits, the tabs other than the shown one keep only their icon and
- * name themselves in a tooltip; when even the icons do not fit, the last ones move into a `⋯` menu. The shown tab
- * always stays in the row.
- */
 function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem }) {
   const row = useRef<HTMLDivElement>(null)
-  const measure = useRef<HTMLDivElement>(null)
+  const hiddenTabMeasurements = useRef<HTMLDivElement>(null)
   const [fit, setFit] = useState<Fit>({ compact: false, overflow: new Set() })
   useLayoutEffect(() => {
     const compute = () => {
       const width = (name: string) =>
-        measure.current!.querySelector<HTMLElement>(`[data-measure="${name}"]`)!.offsetWidth
+        hiddenTabMeasurements.current!.querySelector<HTMLElement>(`[data-measure="${name}"]`)!
+          .offsetWidth
       const available = row.current!.clientWidth
       const labelled = panels.map((panel) => width(`label:${key(panel)}`))
       const icons = panels.map((panel) => width(`icon:${key(panel)}`))
@@ -258,11 +229,16 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
       const next: Fit = { compact: false, overflow: new Set() }
       if (labelled.reduce((a, b) => a + b, 0) + gaps > available) {
         next.compact = true
-        const at = panels.indexOf(active)
-        const others = panels.flatMap((_, index) => (index === at ? [] : [index]))
-        const compact = labelled[at] + others.reduce((sum, index) => sum + icons[index], 0) + gaps
+        const alwaysVisibleActiveTab = panels.indexOf(active)
+        const others = panels.flatMap((_, index) =>
+          index === alwaysVisibleActiveTab ? [] : [index],
+        )
+        const compact =
+          labelled[alwaysVisibleActiveTab] +
+          others.reduce((sum, index) => sum + icons[index], 0) +
+          gaps
         if (compact > available) {
-          let used = labelled[at] + GAP + width('more')
+          let used = labelled[alwaysVisibleActiveTab] + GAP + width('more')
           for (const index of others) {
             used += GAP + icons[index]
             if (used > available) next.overflow.add(key(panels[index]))
@@ -279,15 +255,18 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
     compute()
     const observer = new ResizeObserver(compute)
     observer.observe(row.current!)
-    observer.observe(measure.current!)
+    observer.observe(hiddenTabMeasurements.current!)
     return () => observer.disconnect()
   }, [panels, active])
   const hidden = panels.filter((panel) => fit.overflow.has(key(panel)))
   return (
     <div className="flex h-10 shrink-0 items-center border-b border-border/70 px-2 font-mono text-[11.5px]">
       <div className="relative flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden" ref={row}>
-        {/* Every tab with and without its label, and the menu button, unseen: what fits. */}
-        <div aria-hidden className="invisible absolute flex w-max gap-0.5" ref={measure}>
+        <div
+          aria-hidden
+          className="invisible absolute flex w-max gap-0.5"
+          ref={hiddenTabMeasurements}
+        >
           {panels.map((panel) => {
             const Icon = panel.icon
             return (
@@ -370,12 +349,10 @@ function PanelTabs({ panels, active }: { panels: PanelItem[]; active: PanelItem 
   )
 }
 
-/** The right panel: a tab per extension panel (`mod+alt+b`), over the conversation below desktop width. */
 export function Panels() {
-  useMountRegion('panels')
+  useMountRegionBeforePaint('panels')
   const { open, active, tabs } = usePanels()
   const viewport = useViewport()
-  // Only tabless panels and none opened: nothing to show until one is.
   if (!active) return null
   const overlay = overlays('panels', viewport)
   if (!open && !overlay) return null
@@ -414,15 +391,10 @@ export function Panels() {
 
 const DOCK_WIDTH = 416
 const MIN_WIDTH = 280
-/** The widest a dock gets: the window less room for the surface beside it. */
-const maxWidth = () => Math.max(MIN_WIDTH, window.innerWidth - 360)
+const MIN_SURFACE_WIDTH_BESIDE_DOCK_PX = 360
+const maxWidth = () => Math.max(MIN_WIDTH, window.innerWidth - MIN_SURFACE_WIDTH_BESIDE_DOCK_PX)
 const clamp = (width: number) => Math.round(Math.min(Math.max(width, MIN_WIDTH), maxWidth()))
 
-/**
- * A collapsible, resizable side region, usually holding `<Conversation variant="dock" />`. Collapsed it is a rail
- * that still shows when the agent works. Open state and width are durable per surface and side
- * (`shell.dock.<surface>.<side>`); drag the inner edge to resize, double-click it to reset.
- */
 export function Dock({
   title = 'conversation',
   side = 'right',

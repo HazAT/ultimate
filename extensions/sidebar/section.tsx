@@ -4,10 +4,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/sdk'
 import { useSidebarState } from './state.tsx'
 
-/**
- * A folding sidebar section: a quiet mono heading with a count bubble, as automations'
- * Scheduled sections draw theirs, and its rows. `rule` closes it with the hairline the sidebar's groups end with. The fold state is kept per `id`.
- */
 export function Section({
   id,
   label,
@@ -46,7 +42,6 @@ export function Section({
   )
 }
 
-/** The `+N more` / `fewer` toggle at a section's end, aligned with its rows' titles. */
 export function More({
   hidden,
   all,

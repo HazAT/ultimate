@@ -76,6 +76,7 @@
     "lib/families.ts",
     "lib/marks.ts",
     "lib/message-state.ts",
+    "lib/waits.ts",
     "lib/source-frames.ts",
     "lib/timers.ts",
     "lib/errors.ts",

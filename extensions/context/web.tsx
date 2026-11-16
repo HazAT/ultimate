@@ -22,14 +22,12 @@ import { DiffBody, Header, signed } from './parts.tsx'
 import { PinnedPrompt } from './pinned.tsx'
 import { CacheRebuiltLine } from './ui.tsx'
 
-/** The breakdown of the context starting at entry index `anchor`; nothing until its first system prompt. */
 function ContextAt({ anchor }: { anchor: number }) {
   const entries = useTranscript()
   const breakdown = useMemo(() => breakdownAt(entries, anchor), [entries, anchor])
   return breakdown.system ? <Header breakdown={breakdown} /> : null
 }
 
-/** Above the first row of a fully loaded transcript: the conversation's first context. */
 function Start() {
   const entries = useTranscript()
   const id = useConversation((conversation) => conversation.id)
@@ -37,10 +35,6 @@ function Start() {
   return own < 0 ? null : <ContextAt anchor={own} />
 }
 
-/**
- * A context start: the conversation's own first one says nothing, the header above shows what it injected; a later
- * one keeps its card and shows its context's breakdown under it.
- */
 function ContextStart({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const entries = useTranscript()
   const id = useConversation((conversation) => conversation.id)
@@ -55,9 +49,7 @@ function ContextStart({ entry, core }: { entry: EntryRecord; core: ReactNode }) 
   )
 }
 
-/** A divider line that opens to the prompt diff under it. */
 function Marker({ id, diff, children }: { id: number; diff: Diff; children: ReactNode }) {
-  // In a chat its open state is kept like a card's; elsewhere it opens and closes on its own.
   const fold = useFold(id)
   return (
     <Collapsible
@@ -84,20 +76,15 @@ function Marker({ id, diff, children }: { id: number; diff: Diff; children: Reac
   )
 }
 
-/**
- * A `pi.system` entry. A context's first one shows nothing: the header above its first input breaks it down. A later
- * one is a quiet marker of what changed, opening to its diff; a remove-all entry right before a reordered re-add
- * belongs to that re-add's marker and shows nothing.
- */
 function SystemEntry({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const entries = useTranscript()
   const id = useConversation((conversation) => conversation.id)
   const index = entries.findIndex((candidate) => candidate.id === entry.id)
   const diff = useMemo(() => {
     if (index < 0) return undefined
-    // Patches a go-back set aside left the model's context; a set-aside one still shows what it changed back then.
     const aside = setAsideIds(entries)
-    return diffAt(entries, index, aside.has(entries[index].id) ? undefined : aside)
+    const historicalDiffForSetAsideEntry = aside.has(entries[index].id)
+    return diffAt(entries, index, historicalDiffForSetAsideEntry ? undefined : aside)
   }, [entries, index])
   if (!systemOf(entry) || !diff) return core
   if (opensContext(entries, index, Math.max(0, ownStart(entries, id)))) return null
@@ -120,11 +107,6 @@ const causes: Record<CacheBust['cause'], (bust: CacheBust) => string> = {
   prefix: () => 'earlier context changed',
 }
 
-/**
- * A response that rebuilt the prompt cache: a quiet warning line above it with what it wrote fresh, what it still read
- * against the prompt before, and why; other extensions may redraw it (`CacheRebuiltLine`). A response split over
- * several rows shows it on its first.
- */
 function CacheRebuilt({
   entry,
   core,
@@ -135,7 +117,9 @@ function CacheRebuilt({
   blocks?: readonly number[]
 }) {
   const bust = cacheBusts(useTranscript()).get(entry.id)
-  if (!bust || (blocks && blocks[0] !== 0)) return core
+  if (!bust) return core
+  const continuationOfSplitResponse = blocks && blocks[0] !== 0
+  if (continuationOfSplitResponse) return core
   return (
     <div className="flex flex-col gap-3">
       <Rendered input={{ entry, bust }} point={CacheRebuiltLine}>

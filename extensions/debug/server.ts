@@ -10,10 +10,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { CallRow, CallTree } from '../../server/trace.ts'
 import { readOnly } from '../../lib/replay.ts'
 
-/** The most text one call returns; rows past it are cut with a note. */
-const BUDGET = 16_000
+const MAX_RETURNED_TEXT_CHARS = 16_000
 
-/** How long ago `at` (ISO) was: `40s`, `12m`, `3h`, `2d`. */
 export function age(at: string, now = Date.now()) {
   const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000))
   if (seconds < 60) return `${seconds}s`
@@ -47,12 +45,11 @@ function tree(nodes: CallTree[], depth = 0): string[] {
     ...tree(node.children, depth + 1),
   ])
 }
-/** At most `limit` lines within the budget, saying how many were left out. */
 function bounded(lines: string[], limit: number) {
   const shown: string[] = []
   let size = 0
   for (const line of lines.slice(0, limit)) {
-    if (size + line.length > BUDGET) break
+    if (size + line.length > MAX_RETURNED_TEXT_CHARS) break
     shown.push(line)
     size += line.length + 1
   }
@@ -164,7 +161,9 @@ export default function debug(host: ExtensionHost) {
       default: {
         if (!args.name) throw new Error('api: name is required')
         const source = await apiSource(host.extensions(), args.name)
-        return source.length > BUDGET ? `${source.slice(0, BUDGET)}\n[truncated]` : source
+        return source.length > MAX_RETURNED_TEXT_CHARS
+          ? `${source.slice(0, MAX_RETURNED_TEXT_CHARS)}\n[truncated]`
+          : source
       }
     }
   }

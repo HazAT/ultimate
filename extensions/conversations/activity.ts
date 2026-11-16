@@ -4,7 +4,6 @@ import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
-/** Publish sidebar naming and activity in metadata; core reads the projection without interpreting history. */
 export function activityBehavior(
   host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'onClose' | 'notice'>,
 ) {
@@ -26,9 +25,10 @@ export function activityBehavior(
     let inputAt = entries.findLast(isInput)?.model?.[0]?.timestamp
     let answerAt = entries.findLast((entry) => entry.model?.[0]?.role === 'assistant')?.model?.[0]
       ?.timestamp
-    // Reset and compaction cut the view, not the conversation's activity history.
     const head = entries[0]?.head
-    if (head !== undefined && (inputAt === undefined || answerAt === undefined)) {
+    const needsActivityBeforeContextHead =
+      head !== undefined && (inputAt === undefined || answerAt === undefined)
+    if (needsActivityBeforeContextHead) {
       let cursor: Cursor | undefined
       do {
         const page = await conversation.entries({ maxEntryId: head }, 64, cursor, context)
@@ -41,10 +41,9 @@ export function activityBehavior(
     }
     const inputTitle = title ? title.replace(/\s+/g, ' ').slice(0, 160) : undefined
     const previous = await host.harness().snapshot(host.metadata, id, context)
-    // The latest input only moves forward: a branch is active from the moment it was asked for, while the history
-    // it inherited is older.
-    if (previous?.inputAt !== undefined && (inputAt === undefined || inputAt < previous.inputAt))
-      inputAt = previous.inputAt
+    const inheritedInputIsOlder =
+      previous?.inputAt !== undefined && (inputAt === undefined || inputAt < previous.inputAt)
+    if (inheritedInputIsOlder) inputAt = previous.inputAt
     if (
       previous?.inputTitle === inputTitle &&
       previous?.inputAt === inputAt &&
@@ -81,7 +80,6 @@ export function activityBehavior(
   }
   host.onOpen(async () => {
     closed = false
-    // Not a reactor: activity follows Pi's conversation records and entries, not domain events.
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'conversation') pending.add(change.value.id)

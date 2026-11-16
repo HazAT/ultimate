@@ -16,11 +16,6 @@ import type { SummaryModelSetting } from './refs.ts'
 import { parseSummaryModel } from './summary-model-ref.ts'
 export const summaryModelDialog = 'conversations.summary-model'
 
-/**
- * Picks the model for titles, summaries, assessments and conclusions, saved as `summaryModel` in the user's settings.
- * It shows the effective value and where it comes from. A project's setting overrides the user's and is never written
- * here: while it applies, picking is disabled.
- */
 export function SummaryModelDialog() {
   const [open, setOpen] = useDialog(summaryModelDialog)
   const models = useModels()

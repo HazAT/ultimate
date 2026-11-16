@@ -34,7 +34,6 @@ import type { WireSummary } from './refs.ts'
 type Tab = 'request' | 'response' | 'diff'
 type Mode = 'readable' | 'raw'
 
-/** Cache read and write of a call, the numbers that say whether its prefix held. */
 function CacheNumbers({ call }: { call: WireSummary }) {
   if (!call.usage) return null
   const { cacheRead, cacheWrite, input, output } = call.usage
@@ -95,7 +94,6 @@ function CallRow({
   )
 }
 
-/** A segmented switch: Request · Response · Diff, Readable · Raw. */
 function Segments<T extends string>({
   value,
   options,
@@ -132,7 +130,6 @@ function Segments<T extends string>({
   )
 }
 
-/** The selected call: its line of facts, the tabs, and the tab's view. */
 function Detail({ summary, calls }: { summary: WireSummary; calls: WireSummary[] }) {
   const call = useAction(CallAction, { n: summary.n })
   const [tab, setTab] = useExtensionUiState<Tab>('tab', 'request')
@@ -210,7 +207,6 @@ function Detail({ summary, calls }: { summary: WireSummary; calls: WireSummary[]
   )
 }
 
-/** The call list as a dropdown, on a phone. */
 function CallMenu({
   calls,
   selected,
@@ -246,7 +242,6 @@ function CallMenu({
   )
 }
 
-/** The shown conversation's kept calls on the left, the selected one in the middle, the agent docked on the right. */
 function Wire() {
   const busy = useConversation((conversation) => conversation.busy)
   const conversationId = useConversation((conversation) => conversation.id)
@@ -254,7 +249,6 @@ function Wire() {
   const [picked, setPicked] = useExtensionUiState<Picked | null>('picked', null)
   const phone = useViewport() === 'phone'
   const calls = list.data ?? []
-  // A pick belongs to the conversation it was made in; another conversation starts at its newest call.
   const own = picked?.conversation === conversationId ? picked : null
   const selected = own ? calls.find((call) => call.n === own.n) : calls.at(-1)
   const pick = (n: number) => {
@@ -328,7 +322,6 @@ function Wire() {
 
 const openDialog = 'wire.open'
 
-/** The ⌘K command opens this pseudo-dialog; selecting System's Wire tab needs a hook, so a component does it. */
 function OpenOnCommand() {
   const [open, setOpen] = useDialog(openDialog)
   const openWire = useOpenWire()

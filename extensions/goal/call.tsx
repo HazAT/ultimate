@@ -7,7 +7,6 @@ import type { ToolCallView } from '@/sdk'
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90'
 
-/** What a `goal` call did, in a line: its verb first, then what it was about. */
 function headline(args: ToolCallView['args']): [string, string] {
   const n = typeof args.n === 'number' ? args.n : undefined
   const count = Array.isArray(args.criteria) ? args.criteria.length : 0
@@ -31,7 +30,6 @@ function headline(args: ToolCallView['args']): [string, string] {
   }
 }
 
-/** One `goal` call as the step it records on the hands-off goal; a failed call keeps the generic card. */
 export function GoalCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
   if (call.status === 'error' || call.status === 'interrupted') return core

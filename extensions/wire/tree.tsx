@@ -1,8 +1,3 @@
-/**
- * A request or response body as a tree: structure first, every object, array and long string folded to one line with
- * its size, and `cache_control` markers shown where they sit. Folded content never renders, so a 2 MB body costs one
- * row per top-level item until someone opens it.
- */
 import { ChevronRightIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
@@ -16,18 +11,15 @@ const isObject = (value: Json): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 const isBranch = (value: Json): value is JsonObject | Json[] =>
   typeof value === 'object' && value !== null
-/** A string short enough to read inline. */
 const SHORT = 96
 const isShort = (value: string) => value.length <= SHORT && !value.includes('\n')
 
-/** The first line of prose in a string, for a folded row's hint. */
 const firstLine = (text: string) =>
   text
     .split('\n')
     .map((line) => line.trim())
     .find(Boolean) ?? ''
 
-/** The text a folded item is best recognised by: its text, description, content or arguments. */
 function hintOf(value: Json): string {
   if (typeof value === 'string') return firstLine(value)
   if (Array.isArray(value)) {
@@ -55,7 +47,6 @@ function hintOf(value: Json): string {
   return ''
 }
 
-/** What an item is: a tool's name, a message's role, a block's type and the tool it calls; never its label again. */
 function kindOf(value: Json, label: ReactNode): string {
   if (!isObject(value)) return ''
   const name = typeof value.name === 'string' ? value.name : undefined
@@ -66,7 +57,6 @@ function kindOf(value: Json, label: ReactNode): string {
   return name ?? type ?? ''
 }
 
-/** How many blocks or items a branch holds, for its row. */
 function countOf(value: JsonObject | Json[]): string {
   if (Array.isArray(value)) return `${value.length}`
   const content = value.content
@@ -75,14 +65,12 @@ function countOf(value: JsonObject | Json[]): string {
 }
 
 type Marker = { ttl?: string }
-/** The cache marker on `value` itself. */
 const markerOf = (value: Json): Marker | undefined => {
   if (!isObject(value) || !isObject(value.cache_control ?? null)) return undefined
   const control = value.cache_control as JsonObject
   return typeof control.ttl === 'string' ? { ttl: control.ttl } : {}
 }
 
-/** A cache breakpoint: the provider caches everything up to and including the item it sits on. */
 export function CacheMark({ ttl, inside = false }: { ttl?: string; inside?: boolean }) {
   return (
     <span
@@ -102,8 +90,7 @@ export function CacheMark({ ttl, inside = false }: { ttl?: string; inside?: bool
   )
 }
 
-/** A folded row: chevron, label, what it is, a hint, markers and its size; opens to `children`. */
-function Fold({
+function UnmountWhenFolded({
   label,
   kind,
   hint,
@@ -139,7 +126,6 @@ function Fold({
   )
 }
 
-/** A long string, readable as it was sent. */
 export function TextBlock({ text, className }: { text: string; className?: string }) {
   return (
     <pre
@@ -153,10 +139,8 @@ export function TextBlock({ text, className }: { text: string; className?: strin
   )
 }
 
-/** A string, number, boolean or null as JSON writes it. */
 const scalar = (value: Json) => JSON.stringify(value)
 
-/** One field or item of a branch. */
 export function Node({
   label,
   value,
@@ -168,9 +152,14 @@ export function Node({
 }) {
   if (typeof value === 'string' && !isShort(value))
     return (
-      <Fold hint={firstLine(value)} label={label} size={value.length} defaultOpen={defaultOpen}>
+      <UnmountWhenFolded
+        hint={firstLine(value)}
+        label={label}
+        size={value.length}
+        defaultOpen={defaultOpen}
+      >
         <TextBlock text={value} />
-      </Fold>
+      </UnmountWhenFolded>
     )
   if (!isBranch(value))
     return (
@@ -203,7 +192,7 @@ function Branch({
   const inside = !marker && json.includes('"cache_control"')
   const count = countOf(value)
   return (
-    <Fold
+    <UnmountWhenFolded
       defaultOpen={defaultOpen}
       hint={hintOf(value)}
       kind={[kindOf(value, label), count && Array.isArray(value) ? `${count} items` : count]
@@ -214,11 +203,10 @@ function Branch({
       size={json.length}
     >
       <Children value={value} />
-    </Fold>
+    </UnmountWhenFolded>
   )
 }
 
-/** A branch's fields in order, or its items by index; a message's content opens with it. */
 export function Children({ value }: { value: JsonObject | Json[] }) {
   if (Array.isArray(value))
     return value.map((item, index) => <Node key={index} label={`[${index}]`} value={item} />)
@@ -240,7 +228,6 @@ export function Children({ value }: { value: JsonObject | Json[] }) {
   )
 }
 
-/** A heading over one part of a body, with its count and size. */
 export function Part({
   title,
   note,
@@ -268,7 +255,6 @@ export function Part({
   )
 }
 
-/** Fields of a flat record (headers, settings), one per line. */
 export function Fields({ fields }: { fields: [string, ReactNode][] }) {
   return (
     <dl className="grid grid-cols-[minmax(0,14rem)_minmax(0,1fr)] gap-x-4 gap-y-0.5 px-1 py-1">

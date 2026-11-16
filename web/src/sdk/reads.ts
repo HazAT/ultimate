@@ -6,51 +6,41 @@ import { actionMessage } from './api.ts'
 import type { ActionArgs, ActionError, ActionOptions, Api } from './api.ts'
 import type { Store } from './store.ts'
 
-/** What one component reading an action wants: its own error handler, a poll period, refreshing on window focus. */
 export interface Reader {
   onError?: (error: ActionError) => void
   every?: number
   focus?: boolean
 }
-/** A read's result as its readers see it; a new object on every change. */
+
 export interface ReadState {
   data?: unknown
   error?: ActionError
-  /** A call is in flight. */
+
   loading: boolean
-  /** A call has settled, so `data` or `error` answers it. */
+
   settled: boolean
 }
 export interface Read {
   get: () => ReadState
   subscribe: (listener: () => void) => () => void
-  /**
-   * Count `reader` in until the returned release runs. A mount asks again unless a call is in flight or answered within
-   * `FRESH`, showing the last answer meanwhile.
-   */
+
   use: (reader: Reader) => () => void
-  /** Call again; calls asked for in the same tick share one request, and a newer call aborts the older one. */
+
   refetch: () => Promise<unknown>
-  /** Re-plan the poll after a reader changed its `every`. */
+
   repoll: () => void
 }
 
-/** Reads kept for remounts after their last reader left, so a panel opened again shows its data at once. */
-const IDLE = 50
-/** How long an answer serves a newly mounted reader without asking again. */
-const FRESH = 2000
+const MAX_RETAINED_IDLE_READS = 50
 
-/**
- * The page's action reads (`useAction`), one per action, args and conversation however many components read it:
- * one request in flight, one result. A new server process refetches every read in use, since its answers came from
- * the old one.
- */
+const REMOUNT_FRESHNESS_MS = 2000
+
 export function createReads(api: Api, store: Store) {
   const reads = new Map<string, Read & { readers: Set<Reader> }>()
-  /** Reads whose last call never reached the server (status 0), asked again once the page is back. */
-  const missed = new Set<Read & { readers: Set<Reader> }>()
-  function retryMissed() {
-    for (const read of missed) if (read.readers.size) void read.refetch()
+
+  const networkFailedReads = new Set<Read & { readers: Set<Reader> }>()
+  function retryNetworkFailedReads() {
+    for (const read of networkFailedReads) if (read.readers.size) void read.refetch()
   }
   let process: string | undefined
   let connection = store.getState().connection.status
@@ -58,7 +48,7 @@ export function createReads(api: Api, store: Store) {
     const status = store.getState().connection.status
     if (status !== connection) {
       connection = status
-      if (status === 'open') retryMissed()
+      if (status === 'open') retryNetworkFailedReads()
     }
     const system = store.getState().system
     const next = system && `${system.process.pid}:${system.process.generation}`
@@ -72,16 +62,16 @@ export function createReads(api: Api, store: Store) {
       for (const read of reads.values())
         if ([...read.readers].some((reader) => reader.focus)) void read.refetch()
     })
-  if (typeof window !== 'undefined') window.addEventListener('online', retryMissed)
+  if (typeof window !== 'undefined') window.addEventListener('online', retryNetworkFailedReads)
   if (typeof document !== 'undefined')
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') retryMissed()
+      if (document.visibilityState === 'visible') retryNetworkFailedReads()
     })
 
-  /** Forget the oldest reads nobody reads beyond `IDLE`, disabled ones included. */
-  function evict() {
+  function evictOldestIdleReads() {
     const idle = [...reads].filter(([, other]) => !other.readers.size)
-    for (const [stale] of idle.slice(0, Math.max(0, idle.length - IDLE))) reads.delete(stale)
+    for (const [stale] of idle.slice(0, Math.max(0, idle.length - MAX_RETAINED_IDLE_READS)))
+      reads.delete(stale)
   }
 
   function create(
@@ -95,9 +85,9 @@ export function createReads(api: Api, store: Store) {
     const listeners = new Set<() => void>()
     const readers = new Set<Reader>()
     let controller: AbortController | undefined
-    let queued: Promise<unknown> | undefined
+    let sameTickRequest: Promise<unknown> | undefined
     let cancelPoll: Cancel | undefined
-    let answered = 0
+    let lastAnswerAtMs = 0
     const set = (change: Partial<ReadState>) => {
       state = { ...state, ...change }
       for (const listener of listeners) listener()
@@ -112,8 +102,10 @@ export function createReads(api: Api, store: Store) {
       cancelPoll?.()
       const own = new AbortController()
       controller = own
-      // The readers' reporting as the call starts: one that leaves meanwhile still keeps its failure quiet.
-      const onError = [...readers].find((reader) => reader.onError)?.onError
+
+      const firstReaderErrorHandlerAtCallStart = [...readers].find(
+        (reader) => reader.onError,
+      )?.onError
       set({ loading: true })
       try {
         const data = await api.action(
@@ -121,25 +113,24 @@ export function createReads(api: Api, store: Store) {
           ...([args, { signal: own.signal, conversationId }] as ActionArgs<unknown, ActionOptions>),
         )
         if (own.signal.aborted) return undefined
-        answered = Date.now()
-        missed.delete(read)
+        lastAnswerAtMs = Date.now()
+        networkFailedReads.delete(read)
         set({ data, error: undefined, loading: false, settled: true })
         return data
       } catch (error) {
         if (own.signal.aborted) return undefined
         const failure = error as ActionError
-        // The request never reached the server: a sleeping tab, the network gone, or the server down (which the
-        // status line shows as reconnecting). Nobody asked for this read by hand, so keep the last answer and ask again
-        // when the page is back instead of reporting it (#555684).
-        if (failure.status === 0) {
-          missed.add(read)
+
+        const silentRetryableFailure = failure.status === 0
+        if (silentRetryableFailure) {
+          networkFailedReads.add(read)
           set({ loading: false })
           return undefined
         }
-        missed.delete(read)
+        networkFailedReads.delete(read)
         set({ error: failure, loading: false, settled: true })
-        // One report per failed call: the first reader's handler, else a notice.
-        if (onError) onError(failure)
+
+        if (firstReaderErrorHandlerAtCallStart) firstReaderErrorHandlerAtCallStart(failure)
         else store.notify({ level: 'error', message: actionMessage(failure) })
         return undefined
       } finally {
@@ -159,30 +150,29 @@ export function createReads(api: Api, store: Store) {
         }
       },
       use(reader: Reader) {
-        // Most recently used last, so the oldest idle reads go first.
         reads.delete(key)
         reads.set(key, read)
         readers.add(reader)
-        // A reader joining a call in flight, or an answer just given, takes that one: components of one page mount over
-        // several commits, and each asking again aborted the call before it.
-        if (!controller && !queued && Date.now() - answered > FRESH) void read.refetch()
+
+        const needsFreshCallAfterRemount =
+          !controller && !sameTickRequest && Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS
+        if (needsFreshCallAfterRemount) void read.refetch()
         else repoll()
-        return () => {
+        return function releaseReaderKeepingInFlightCall() {
           readers.delete(reader)
           if (readers.size) return repoll()
-          // A call in flight finishes: a component remounting at once, as the shell does while its facets load, takes it.
+
           cancelPoll?.()
-          missed.delete(read)
-          evict()
+          networkFailedReads.delete(read)
+          evictOldestIdleReads()
         }
       },
       refetch() {
-        // Effects of one commit, or readers reacting to one change, ask in the same tick: one request answers them.
-        queued ??= Promise.resolve().then(() => {
-          queued = undefined
+        sameTickRequest ??= Promise.resolve().then(() => {
+          sameTickRequest = undefined
           return run()
         })
-        return queued
+        return sameTickRequest
       },
       repoll,
     }
@@ -190,14 +180,13 @@ export function createReads(api: Api, store: Store) {
   }
 
   return {
-    /** The read of `extension/name` with `args` on `conversationId` (the shown conversation when absent). */
     get(extension: string, name: string, args: unknown, conversationId?: ConversationId): Read {
       const key = JSON.stringify([extension, name, args ?? null, conversationId ?? null])
       let read = reads.get(key)
       if (!read) {
         read = create(key, extension, name, args, conversationId)
         reads.set(key, read)
-        evict()
+        evictOldestIdleReads()
       }
       return read
     },

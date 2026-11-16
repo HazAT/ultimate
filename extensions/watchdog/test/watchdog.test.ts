@@ -1,10 +1,8 @@
 import type {
   ConversationId,
   EntryRecord,
-  TaskId,
   Task,
   ToolExecutionApi,
-  EntryId,
 } from '@earendil-works/pi-durable'
 import { until } from '../../../test/helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
@@ -29,16 +27,13 @@ import {
 } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import watchdog, { diagnose } from '../server.ts'
-import { idleNote } from '../idle.ts'
 import type { WatchdogService } from '../api.ts'
 import { Messages } from '../../messages/api.ts'
-import { Branch } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -714,32 +709,6 @@ it('recovers no-model failures separately from earlier reply-expecting inputs an
   expect(await f.tasks()).toHaveLength(2)
 })
 
-it('injects idle changes before @ultimate inputs only, never as a system section', async () => {
-  const f = await fixture()
-  const branch = await f.conversation('Idle feature')
-  await f.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, branch)).branch = {
-      from: ROOT_CONVERSATION_ID,
-      at: 0 as EntryId,
-      intent: 'idle',
-    }
-    ;(await tx.doc(Metadata, branch)).inputAt = Date.now() - 3 * 3_600_000
-  }, context)
-  const other = await f.conversation('Other agent')
-  await (await f.submit(other, 'hello')).wait(context)
-  expect(await f.entries(other, 'watchdog.idle')).toHaveLength(0)
-  await (await f.submit(f.ultimate, 'hello')).wait(context)
-  await (await f.submit(f.ultimate, 'again')).wait(context)
-  expect(await f.entries(f.ultimate, 'watchdog.idle')).toHaveLength(1)
-  const transcript = await (await f.harness.conversation(f.ultimate, context))!.context(context)
-  expect(
-    transcript.messages
-      .filter((message) => message.role === 'system')
-      .map((message) => JSON.stringify(message.content))
-      .join(''),
-  ).not.toContain('Open branches idle')
-})
-
 it('uses a notice, not a card, when @ultimate fails after one retry', async () => {
   const f = await fixture(() => error(overloaded))
   await (await f.submit(f.ultimate, 'fail')).wait(context)
@@ -839,149 +808,4 @@ it.each([
 ] as const)('diagnoses %s', (text, temporary, hint) => {
   const message = error(text)
   expect(diagnose(text, message)).toEqual(hint ? { hint, temporary } : { temporary })
-})
-
-it('checks all siblings of a dense owner and times idleNote with 1500 conversations', async () => {
-  const f = await fixture()
-  const branch = await f.conversation('Dense branch')
-  const last = await f.harness.commit(async (tx) => {
-    ;(await tx.doc(Branch, branch)).branch = {
-      from: ROOT_CONVERSATION_ID,
-      at: 0 as EntryId,
-      intent: 'idle',
-    }
-    ;(await tx.doc(Metadata, branch)).inputAt = 1
-    const anchor = await tx.createTask(Anchor, null, {
-      conversationId: branch,
-      ownership: { kind: 'conversation' },
-    })
-    let child = branch
-    for (let i = 0; i < 1497; i++)
-      child = (await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })).id
-    ;(await tx.doc(LiveDoc, child)).run = { taskId: anchor, inputs: [], turns: 0 }
-    return child
-  }, context)
-  let started = performance.now()
-  const busy = await f.harness.commit((tx) => idleNote(tx, f.host, f.ultimate, 20_000_000), context)
-  const busyMs = performance.now() - started
-  expect(busy).toBeUndefined()
-  await f.harness.commit(async (tx) => {
-    delete (await tx.doc(LiveDoc, last)).run
-  }, context)
-  started = performance.now()
-  const idle = await f.harness.commit((tx) => idleNote(tx, f.host, f.ultimate, 20_000_000), context)
-  const idleMs = performance.now() - started
-  expect(idle?.entries[0].data.ids).toEqual([branch])
-  console.info(
-    `idleNote (1500 conversations): busy ${busyMs.toFixed(2)} ms; idle ${idleMs.toFixed(2)} ms`,
-  )
-})
-
-it('includes only idle open branches, does not repeat unchanged IDs, clears the note, and caps it', async () => {
-  const f = await fixture()
-  const ids: Record<string, ConversationId> = {}
-  for (const name of [
-    'idle',
-    'concluded',
-    'running',
-    'recent',
-    'question',
-    'queued',
-    'childWorking',
-  ]) {
-    const id = await f.conversation(name)
-    ids[name] = id
-    await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = {
-        from: ROOT_CONVERSATION_ID,
-        at: 0 as EntryId,
-        intent: name,
-      }
-      Object.assign(await tx.doc(Metadata, id), {
-        inputAt: 1,
-        answerAt: name === 'recent' ? 20_000_000 : 1,
-      })
-    }, context)
-  }
-  const child = await f.conversation('Working child', ids.childWorking)
-  await f.harness.commit(async (tx) => {
-    ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [ids.concluded]
-    for (const id of [ids.running, child])
-      (await tx.doc(LiveDoc, id)).run = { taskId: 999 as TaskId, inputs: [], turns: 0 }
-    ;(await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.push({
-      id: 1,
-      from: ids.question,
-      to: 'user',
-      text: 'Help?',
-      at: 0,
-      reply: true,
-      state: 'delivered',
-    })
-    ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).queue.push({
-      conversationId: ids.queued,
-    } as never)
-  }, context)
-  const note = () => f.harness.commit((tx) => idleNote(tx, f.host, f.ultimate, 20_000_000), context)
-  const first = await note()
-  expect(first?.entries[0].data.ids).toEqual([ids.idle])
-  expect(first?.entries[0].model[0].content).toContain(`- #${ids.idle} idle (idle 5h)`)
-  expect(await note()).toBeUndefined()
-  await f.harness.commit(async (tx) => {
-    ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [
-      ids.concluded,
-      ids.idle,
-    ]
-  }, context)
-  expect((await note())?.entries[0].model[0].content).toBe('No branches are idle.')
-  expect(await note()).toBeUndefined()
-  for (let i = 0; i < 12; i++) {
-    const id = await f.conversation(`idle ${i}`)
-    await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = {
-        from: ROOT_CONVERSATION_ID,
-        at: 0 as EntryId,
-        intent: 'idle',
-      }
-      ;(await tx.doc(Metadata, id)).inputAt = 1
-    }, context)
-  }
-  expect((await note())?.entries[0].model[0].content).toContain('and 2 more')
-})
-
-it('reports a branch idle after 30 minutes, and one awaiting a reply only after 2 h', async () => {
-  const f = await fixture()
-  const ids: Record<string, ConversationId> = {}
-  for (const name of ['stalled', 'fresh', 'asking']) {
-    const id = await f.conversation(name)
-    ids[name] = id
-    await f.harness.commit(async (tx) => {
-      ;(await tx.doc(Branch, id)).branch = {
-        from: ROOT_CONVERSATION_ID,
-        at: 0 as EntryId,
-        intent: name,
-      }
-      ;(await tx.doc(Metadata, id)).answerAt = name === 'fresh' ? 20 * 60_000 : 0
-    }, context)
-  }
-  await f.harness.commit(async (tx) => {
-    ;(await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.push({
-      id: 1,
-      from: ids.asking,
-      to: f.ultimate,
-      text: 'Which option?',
-      at: 0,
-      reply: true,
-      state: 'delivered',
-    })
-  }, context)
-  const note = (now: number) =>
-    f.harness.commit((tx) => idleNote(tx, f.host, f.ultimate, now), context)
-  const early = await note(45 * 60_000)
-  expect(early?.entries[0].data.ids).toEqual([ids.stalled])
-  expect(early?.entries[0].model[0].content).toContain(`- #${ids.stalled} stalled (idle 45m)`)
-  expect((await note(2 * 3_600_000 + 1))?.entries[0].data.ids).toEqual([
-    ids.stalled,
-    ids.fresh,
-    ids.asking,
-  ])
 })

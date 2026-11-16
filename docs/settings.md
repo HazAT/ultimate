@@ -7,7 +7,8 @@ Skills ([Agent Skills](https://agentskills.io) folders with a `SKILL.md`, as Pi 
 project's `.pi/skills/`, `~/.ultimate/skills/`, then, once the project is trusted, its `.agents/skills/` and
 `.ultimate/skills/`; a later scope overrides an earlier skill of the same name. Every agent's
 system prompt lists each skill's name, description and path after the project context, and the agent reads `SKILL.md`
-when a task matches (`disable-model-invocation: true` leaves a skill out of that list). The user runs one with
+when a task matches (`disable-model-invocation: true` leaves a skill out of that list; an agent definition's `skills:`
+list narrows it for that agent, and the Agent card shows the result as pills). The user runs one with
 `/skill:name request` in the composer or ⌘K → Run a skill: the server sends the skill's body in Pi's `<skill>` block
 ahead of the request. The Info tab lists skills with their scope, overrides and Pi's load warnings; a read of a
 `SKILL.md` shows as `skill <name>` in the transcript. Personal instructions load from `~/.ultimate/AGENTS.md`

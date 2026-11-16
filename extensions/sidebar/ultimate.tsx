@@ -14,24 +14,25 @@ import {
 import {
   MessagesDoc,
   conversationState,
+  conversationWait,
+  waitLabel,
   emptyMessages,
   stateTone,
   stateWord,
   waitingOnUser,
+  useUnderway,
 } from '../messages/ui.tsx'
 import { AgentMark, ConversationPhase, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
+import { useAutomations, timerWaits } from '../automations/ui.tsx'
 
-/** Renders with how many questions wait on the user's answer or dismissal. */
 export function WaitingOnUser({ children }: { children: (waiting: number) => ReactNode }) {
   return children(waitingOnUser(useDocOf(ROOT, MessagesDoc) ?? emptyMessages))
 }
 
-/** A busy standing agent's word: its classified phase, lower case like its idle line, else "working". */
 const workingWord = (phase: { word: string; waiting: boolean } | undefined) =>
   phase && !phase.waiting ? phase.word : 'working'
 
-/** A busy standing agent's line in the sidebar: its working word in the brand colour. */
 export function StandingPhase({ id }: { id: number }) {
   return (
     <Provided input={id} point={ConversationPhase}>
@@ -40,16 +41,11 @@ export function StandingPhase({ id }: { id: number }) {
   )
 }
 
-/** The title bar's wordmark beyond a phone opens @ultimate, as its sidebar row does. */
 export function UltimateWordmark() {
   const actions = useUltimate()
   return <Wordmark label="Talk to @ultimate" onClick={() => void talkToUltimate(actions)} />
 }
 
-/**
- * The title bar's way to @ultimate on phones, where the sidebar with its row is hidden: its state as its sidebar row
- * says it (`conversationState`), the mark pulsing while it works and amber while questions wait on you.
- */
 export function UltimateButton() {
   return (
     <span className="contents md:hidden">
@@ -64,7 +60,9 @@ const name = 'ultimate'
 
 function Primary({ parked }: { parked?: ReadonlySet<number> }) {
   const actions = useUltimate()
-  const id = useDocOf(ROOT, StandingDoc)?.[name]
+  const standing = useDocOf(ROOT, StandingDoc)
+  const id = standing?.[name]
+  const timers = timerWaits(useAutomations(5000).data, standing)
   const tasks = useTasks()
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const runState = useOverview()[id ?? -1]?.runState
@@ -77,17 +75,23 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
       Object.values(tasks?.tasks ?? {}).some(
         (task) => !task.background && task.conversationId === id,
       ))
-  const state = conversationState(
-    { id: id ?? -1, kind: 'primary', runState, busy: working, parked: paused },
-    log,
-  )
+  const underway = useUnderway()
+  const facts = {
+    id: id ?? -1,
+    kind: 'primary' as const,
+    runState,
+    busy: working || (!paused && underway(id ?? -1)),
+    parked: paused,
+  }
+  const state = conversationState(facts, log, timers)
+  const wait = waitLabel(conversationWait(facts, log, timers), id)
   const waiting = waitingOnUser(log)
   const active = id !== undefined && shown === id && actions.surface === 'agent'
   return (
     <Provided input={working ? id : undefined} point={ConversationPhase}>
       {(phase) => {
         const word = workingWord(phase)
-        const label = state === 'working' ? word : stateWord(state, waiting)
+        const label = state === 'working' ? word : stateWord(state, waiting, wait)
         return (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -105,14 +109,21 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
               >
                 <AgentMark
                   name={name}
-                  presence={working ? 'working' : state === 'waits' ? 'waiting' : undefined}
+                  presence={
+                    working
+                      ? 'working'
+                      : state === 'waits'
+                        ? 'waiting'
+                        : state === 'awaiting'
+                          ? 'awaiting'
+                          : undefined
+                  }
                   size="sm"
                 />
                 @{name}
                 {state === 'working' && word !== 'working' && (
                   <span className="text-brand">{word}</span>
                 )}
-                {/* The bare count: the phone bar has no room for its words, which the label carries. */}
                 {(state === 'paused' || state === 'waits') && (
                   <span className={stateTone[state]}>{state === 'waits' ? waiting : 'paused'}</span>
                 )}

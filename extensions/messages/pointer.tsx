@@ -6,27 +6,22 @@ import { MessagesDoc } from './refs.ts'
 import { AskedEntry, AnsweredEntry } from './entries.ts'
 import { openQuestion } from './data.tsx'
 
-/**
- * A branch's question stays visible in @ultimate, with the answer card one click away. Its outcome comes from the
- * `board.answered` note that follows it in this conversation, so it survives the capped message log; while that has not
- * arrived, the log says whether the question is still open.
- */
 export const QuestionPointer = renderEntry(AskedEntry, function QuestionPointer({ entry }) {
   const { message: id, from, call, summary } = entry.data
-  const outcome = useConversation(
+  const transcriptOutcome = useConversation(
     (conversation) =>
       conversation.entries
         .filter((candidate) => AnsweredEntry.is(candidate))
         .find((e) => e.data.message === id)?.data,
   )
   const message = useDocOf(ROOT, MessagesDoc)?.messages.find((m) => m.id === id)
-  const open = !outcome && message !== undefined && openQuestion(message)
+  const open = !transcriptOutcome && message !== undefined && openQuestion(message)
   const accent = useAccentOf(from)
   const { showSurface, switchConversation } = useUltimate()
-  const [state, text] = outcome
-    ? outcome.dismissed
-      ? [outcome.via ? 'dismissed for you' : 'dismissed', undefined]
-      : [outcome.via ? 'answered for you' : 'answered', outcome.summary]
+  const [state, text] = transcriptOutcome
+    ? transcriptOutcome.dismissed
+      ? [transcriptOutcome.via ? 'dismissed for you' : 'dismissed', undefined]
+      : [transcriptOutcome.via ? 'answered for you' : 'answered', transcriptOutcome.summary]
     : [undefined, summary]
   return (
     <Card attention={open} data-message-pointer={id}>

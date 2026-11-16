@@ -1,8 +1,4 @@
 import { ROOT, renderEntry } from '@/sdk'
-/**
- * The goal's two transcript cards in @ultimate's conversation: `goal.started`, live while it works (criteria, the latest
- * decisions, End), and `goal.report`, what happened while the user was away: every decision with its reason.
- */
 import {
   CheckIcon,
   CircleDashedIcon,
@@ -36,7 +32,6 @@ function useGoal(id: number) {
   return useDocOf(ROOT, GoalDoc)?.goals.find((goal) => goal.id === id)
 }
 
-/** The frame both cards share: an accent rule on the left, a mono header row. */
 function Card({
   goal,
   header,
@@ -165,7 +160,6 @@ function Words({ goal }: { goal: Goal }) {
   )
 }
 
-/** `goal.started`: the goal while @ultimate works on it, with End; once ended, a pointer to its report. */
 export const StartedCard = renderEntry(GoalStartedEntry, function StartedCard({ entry }) {
   const { goal: id } = entry.data
   const goal = useGoal(id)
@@ -206,7 +200,6 @@ export const StartedCard = renderEntry(GoalStartedEntry, function StartedCard({ 
   )
 })
 
-/** The goal reminder's state: waking @ultimate every 30 minutes, or paused while it waits on the user. */
 function Reminder({ goal }: { goal: Goal }) {
   if (!goal.reminder && !goal.waiting) return null
   return (
@@ -276,7 +269,6 @@ const headlines = {
   ended: 'You ended it',
 }
 
-/** `goal.report`: how the goal ended, its criteria, and every decision @ultimate took for the user. */
 export const ReportCard = renderEntry(GoalReportEntry, function ReportCard({ entry }) {
   const { goal: id } = entry.data
   const goal = useGoal(id)

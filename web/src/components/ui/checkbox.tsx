@@ -3,7 +3,6 @@ import { cn } from 'cn'
 import { CheckIcon } from 'lucide-react'
 import { Checkbox as CheckboxPrimitive } from 'radix-ui'
 
-/** A checkbox in the brand colour; inside a `<label>`, the whole row toggles it. */
 function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
   return (
     <CheckboxPrimitive.Root

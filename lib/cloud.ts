@@ -1,25 +1,23 @@
-/** The user's cloud settings: the backup Worker's URL, its token and this machine's name. */
 import { hostname } from 'node:os'
 import { readSecret } from './secrets.ts'
 import { readSettings, userSettingsPath } from './settings.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 
-/** `https://host` for the user's `wss://host/...` `cloud.url`. */
 export function httpBase(url: string) {
   const endpoint = new URL(url)
   endpoint.protocol = endpoint.protocol === 'ws:' ? 'http:' : 'https:'
   return endpoint.origin
 }
 
-/** The user's `cloud` settings object; project settings are never read. */
 async function userCloudSettings(host: Pick<ExtensionHost, 'userHome'>) {
-  // Invalid user settings are reported by the settings loader; treat them as unset here.
-  const settings = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
+  const reportedInvalidSettingsMeanUnset = () => ({})
+  const settings = await readSettings(userSettingsPath(host.userHome)).catch(
+    reportedInvalidSettingsMeanUnset,
+  )
   const cloud = 'cloud' in settings ? settings.cloud : undefined
   return cloud && typeof cloud === 'object' && !Array.isArray(cloud) ? cloud : {}
 }
 
-/** Only user settings may select the cloud: a repository must not redirect the user's history. */
 export async function cloudConfig(
   host: Pick<ExtensionHost, 'userHome' | 'notice'>,
   env: NodeJS.ProcessEnv = process.env,
@@ -31,16 +29,17 @@ export async function cloudConfig(
   const token =
     env.ULTIMATE_CLOUD_TOKEN ?? (await readSecret(host.userHome, 'ULTIMATE_CLOUD_TOKEN'))
   if (!token) {
-    host.notice('Missing ULTIMATE_CLOUD_TOKEN. Add it in the Secrets panel (⌘K → Secrets).')
+    host.notice('Missing ULTIMATE_CLOUD_TOKEN. Add it in the Secrets panel (⌘K → Secrets).', {
+      untilSecretSet: 'ULTIMATE_CLOUD_TOKEN',
+    })
     return undefined
   }
   const machine =
     env.ULTIMATE_CLOUD_MACHINE ?? (typeof config.machine === 'string' ? config.machine : hostname())
-  // A satellite runs the project beside the machine that backs it up; it must never replace that machine's backups.
-  return { url, token, machine, satellite: config.satellite === true }
+  const satelliteDoesNotOwnBackups = config.satellite === true
+  return { url, token, machine, satellite: satelliteDoesNotOwnBackups }
 }
 
-/** The Worker's `GET /sync/register`: every project's latest backup and every machine that backed up. */
 export interface Register {
   projects: {
     hash: string
@@ -63,7 +62,6 @@ export interface Register {
   }[]
 }
 
-/** `GET /sync/register` with the bearer token; throws with the status on anything but 200. */
 export async function fetchRegister(
   cloud: { url: string; token: string },
   fetcher: typeof fetch = fetch,

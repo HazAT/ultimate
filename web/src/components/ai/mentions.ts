@@ -1,19 +1,9 @@
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
-/**
- * `#157029` and `#157029/158003` in running text: a conversation, and an entry in it. Never part of a word, a path, a
- * URL fragment or an HTML entity; ids under three digits stay text, since `#1 priority` or `#12` is usually not a
- * conversation.
- */
 export const mentionPattern = /(?<![\w/#&])#(\d{3,})(?:\/(\d+))?(?![\w/])/g
 
-/**
- * The link a mention becomes in Markdown; the conversations extension's `link` renderer turns it into a chip. A bare
- * fragment, since Streamdown's hardening blocks other relative links, and no other link renderer reads one.
- */
 export const mentionHref = (conversation: string, entry?: string) =>
   `#conversation-${conversation}${entry ? `-${entry}` : ''}`
 
-/** A mention link's conversation and entry, or undefined for any other href. */
 export function parseMention(href: string) {
   const match = /^#conversation-(\d+)(?:-(\d+))?$/.exec(href)
   return match
@@ -24,7 +14,6 @@ export function parseMention(href: string) {
     : undefined
 }
 
-/** Splits text into strings and mentions, in order. */
 export function splitMentions(text: string) {
   const parts: (string | { conversation: string; entry?: string; text: string })[] = []
   let last = 0
@@ -39,13 +28,10 @@ export function splitMentions(text: string) {
 
 type Node = { type: string; value?: string; children?: Node[]; url?: string }
 
-/**
- * Remark plugin: mentions in text become links to `mentionHref`. Code, inline code and existing links keep their text,
- * since only plain `text` nodes outside links are rewritten.
- */
 export function remarkMentions() {
   const visit = (node: Node) => {
-    if (!node.children || node.type === 'link' || node.type === 'linkReference') return
+    const preservesExistingLink = () => node.type === 'link' || node.type === 'linkReference'
+    if (!node.children || preservesExistingLink()) return
     node.children = node.children.flatMap((child) => {
       if (child.type !== 'text' || !child.value?.includes('#')) {
         visit(child)

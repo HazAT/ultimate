@@ -1,5 +1,4 @@
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-/** Passive context for @ultimate about a branch's questions to the user. */
 import { defineTask } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
@@ -14,7 +13,6 @@ export const notice = (host: Pick<ExtensionHost, 'harness'>) =>
         call?: string
         summary?: string
         dismissed?: boolean
-        /** @ultimate settled it for the user. */
         via?: { conversation: ConversationId; entry?: EntryId }
       }
       content: string

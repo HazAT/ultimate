@@ -1,8 +1,9 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx, TaskId } from '@earendil-works/pi-durable'
-/** Who a message is from and to: resolving addresses, naming senders, and a subagent's parent. */
 import type { Context } from '@earendil-works/chord/context'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
+import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
@@ -10,26 +11,97 @@ import { Messages } from './api.ts'
 import { isOwed } from '../../lib/message-state.ts'
 
 export type { Serves }
-/**
- * The newest agent's request `to` still owes an answer: what a branch or an automation it makes now works on, so its
- * later result reaches that agent (route.ts). Undefined when no agent waits on `to`.
- */
+
+export const Serving = defineDoc<{
+  keys: Record<string, number>
+  handed: Record<string, true>
+  handedOnBy: Record<string, string>
+}>({
+  kind: 'board.serving',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ keys: {}, handed: {}, handedOnBy: {} }),
+})
+const ANSWERING_RUN = 0
+
+export function closeServed(
+  serving: { keys: Record<string, number>; handedOnBy: Record<string, string> },
+  key: string,
+) {
+  delete serving.keys[key]
+  for (const [entry, handedKey] of Object.entries(serving.handedOnBy))
+    if (handedKey === key) delete serving.handedOnBy[entry]
+}
+
+export async function stillServedAfter(tx: Tx, serves: Serves, fired?: number) {
+  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  if (!serves.remote || !Object.hasOwn(serving.keys, serves.remote.key)) return false
+  const firedRunHandedItOn = fired !== undefined && Object.hasOwn(serving.handedOnBy, String(fired))
+  const laterStepServesIt = fired !== undefined && serving.keys[serves.remote.key] > fired
+  return firedRunHandedItOn || laterStepServesIt
+}
+
 export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
-  const owed = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
+  const newestOwedRequestProxy = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
     (m) => m.to === to && m.from !== 'user' && isOwed(m),
   )
-  if (!owed || owed.from === 'user') return undefined
-  // A copy: the doc's proxy is unusable once the commit settles.
+  if (!newestOwedRequestProxy || newestOwedRequestProxy.from === 'user') return undefined
   return {
-    message: owed.id,
-    from: owed.from,
-    ...(owed.remote ? { remote: { ...owed.remote } } : {}),
+    message: newestOwedRequestProxy.id,
+    from: newestOwedRequestProxy.from,
+    ...(newestOwedRequestProxy.remote ? { remote: { ...newestOwedRequestProxy.remote } } : {}),
   }
 }
-/**
- * Who started a branch through `branch`, so its later final answers reach that conversation, and the request it serves.
- * `yielded` is the newest generation observed, so a replayed hook creates no second observer.
- */
+
+export async function serve(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
+  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  const request = await owedRequest(tx, to)
+  if (request) {
+    if (request.remote) {
+      serving.keys[request.remote.key] = ANSWERING_RUN
+      serving.handed[request.remote.key] = true
+    }
+    return request
+  }
+  for (const submission of ((await tx.doc(LiveDoc, to)).run?.inputs ?? []).toReversed()) {
+    const record = await tx.submission(submission)
+    if (record?.type !== 'input' || record.entry === undefined) continue
+    const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
+    if (!serves?.remote || !Object.hasOwn(serving.keys, serves.remote.key)) continue
+    serving.keys[serves.remote.key] = record.entry
+    serving.handedOnBy[String(record.entry)] = serves.remote.key
+    return { message: serves.message, from: serves.from, remote: { ...serves.remote } }
+  }
+  return undefined
+}
+
+export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
+  const log = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
+  const read = new Set<ConversationId>()
+  for (const submission of (await tx.doc(LiveDoc, to)).run?.inputs ?? []) {
+    const record = await tx.submission(submission)
+    if (record?.type !== 'input' || record.entry === undefined) continue
+    const entry = await tx.entry(record.entry)
+    const data: Partial<DeliveredMessage> | undefined =
+      MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+    if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && data?.reply === false)) continue
+    if (typeof data?.from !== 'number' || data.echo === true) continue
+    if ((await tx.doc(Started, data.from)).by !== to) continue
+    const since = data.id ?? 0
+    if (!log.some((m) => m.from === to && m.to === data.from && m.id > since)) read.add(data.from)
+  }
+  return [...read]
+}
+
+export async function owed(tx: Tx, to: ConversationId, answersBack = true) {
+  const serves = answersBack ? await serve(tx, to) : undefined
+  const branches = await branchesReadThisRun(tx, to)
+  return { ...(serves ? { serves } : {}), ...(branches.length ? { branches } : {}) }
+}
+
 export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves?: Serves }>({
   kind: 'board.started',
   checkpointWhen: () => false,
@@ -39,15 +111,12 @@ export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves
   fork: 'initial',
   initial: () => ({}),
 })
-/** The conversation that started branch `id`, which hears its final answers; undefined for anything else. */
+
 export async function starterOf(host: ExtensionHost, id: ConversationId | 'user', ctx: Context) {
   if (typeof id !== 'number') return undefined
   return (await host.harness().snapshot(Started, id, ctx))?.by
 }
-/**
- * Inside `tx`, for the starter `to` reading branch `from`'s reply or report: whose request the branch serves, and that
- * concluding it sends the starter's final answer there. Empty for anything else.
- */
+
 export async function servesLine(
   tx: Tx,
   from: ConversationId | 'user' | 'remote',
@@ -59,7 +128,7 @@ export async function servesLine(
   const asker = serves.from === 'remote' ? remoteLabel(serves.remote!) : `#${serves.from}`
   return `\n#${from} works on ${asker}'s message ${serves.message}. Once #${from} is concluded, your final answer to it goes to ${asker} instead.`
 }
-/** The conversation that started `id` as a subagent, which is the only one it may message. */
+
 export async function parentOf(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const owner = (await host.harness().commit((tx) => tx.conversation(id), ctx))?.owner
     ?.conversationId
@@ -79,7 +148,7 @@ export async function senderName(
   const name = Object.keys(index ?? {}).find((candidate) => index?.[candidate] === id)
   return `#${id}${name ? ` (@${name})` : ''}`
 }
-export async function resolve(
+export async function resolveRecipient(
   host: ExtensionHost,
   to: string,
   from: ConversationId | 'user',
@@ -116,6 +185,6 @@ export async function resolve(
   }, ctx)
   return id
 }
-/** How another project's Ultimate is named, as data.tsx names it in the browser. */
+
 export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
   `@ultimate@${remote.project} on ${remote.machine}`

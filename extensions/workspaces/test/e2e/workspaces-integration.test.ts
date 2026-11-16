@@ -1885,7 +1885,7 @@ it('sweep removes unrecorded clean worktrees and merged branches but keeps and r
   expect(await readFile(join(dirty, 'draft.txt'), 'utf8')).toBe('draft')
   expect(await git(f.projectRoot, 'worktree', 'list', '--porcelain')).toContain(dirty)
   expect(await git(f.projectRoot, 'branch', '--list', 'ultimate/x-998')).toContain('ultimate/x-998')
-  expect(f.notice.mock.calls.flat().join('\n')).toContain(
+  expect(f.notice.mock.calls.map(([message]) => message).join('\n')).toContain(
     `unrecorded worktrees with changes: ${dirty}`,
   )
 })

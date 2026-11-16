@@ -17,7 +17,6 @@ import { JoinDialog, joinDialog } from './join.tsx'
 import { BackupAction, BackupEvent, StateAction } from './refs.ts'
 import type { CloudState } from './types.ts'
 
-/** One poll shared by every component that reads it, running while any is mounted; a failed poll keeps the last value. */
 function poll<T>(
   load: (signal: AbortSignal) => Promise<T>,
   every: (value: T | undefined) => number,
@@ -75,7 +74,6 @@ const mb = (bytes: number) => {
   return value < 10 ? value.toFixed(1) : String(Math.round(value))
 }
 
-/** A button that runs `action`, showing its failure under the row. */
 function useAct() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -89,7 +87,6 @@ function useAct() {
   return { busy, error, act }
 }
 
-/** The last backup, "Back up now" and the upload while it runs. */
 function BackupRow({ state }: { state: CloudState }) {
   const { busy, error, act } = useAct()
   const { lastBackup, backup } = state
@@ -142,7 +139,6 @@ function BackupRow({ state }: { state: CloudState }) {
   )
 }
 
-/** A refused backup: the Worker's sentence, then "Back up anyway" with a confirm naming what it replaces. */
 function ConflictRow({
   conflict,
   busy,
@@ -206,7 +202,6 @@ function ConflictRow({
   )
 }
 
-/** The restore command, for reference: what another machine runs to take this backup. */
 function RestoreRow({ name }: { name: string }) {
   return (
     <div className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
@@ -221,7 +216,6 @@ function RestoreRow({ name }: { name: string }) {
 const statusButton =
   '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent'
 
-/** The status line's cloud item: when this project was last backed up, and the popover to back up now. */
 function CloudStatus() {
   const state = useLocal()
   const backup = useEvents({ events: [BackupEvent], limit: 1 })?.[0]?.id
@@ -257,7 +251,6 @@ function CloudStatus() {
       : state.lastBackup
         ? `backed up ${since(state.lastBackup.at)}`
         : 'no backup yet'
-  // The first chapter's backups are the project's; later chapters name theirs, as the dream cards do.
   const label =
     state.chapter && state.chapter.number > 1
       ? `Chapter ${state.chapter.number} · ${state.chapter.name} · ${status}`

@@ -7,6 +7,7 @@ import type { TaskId, ConversationId, EntryId } from '@earendil-works/pi-durable
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { RootEvent } from './types.ts'
+import type { AbstractData } from '../entries/refs.ts'
 
 /** `{ roots }` on conversation 1: the project's roots, each the top of one conversation tree. */
 export const RootsDoc = docRef<{ roots: ConversationId[] }>('lineage.roots')
@@ -15,18 +16,11 @@ export const RootsDoc = docRef<{ roots: ConversationId[] }>('lineage.roots')
  * `briefTokens`, that of the memory brief a branch starts from (absent while it has no memories), and `since`, the
  * entry it became a tally at (absent while it is an ordinary conversation).
  */
-export const TallyDoc = docRef<{ tokens: number; briefTokens?: number; since?: EntryId }>(
-  'lineage.tally',
-)
-
-export type AbstractData = {
-  conversation: ConversationId
-  at: EntryId
-  text: string
-  title?: string
-  feature?: string
-  anchor?: EntryId
-}
+export const TallyDoc = docRef<{
+  tokens: number
+  briefTokens?: number
+  since?: EntryId
+}>('lineage.tally')
 
 /** One project memory: a durable decision, fact or lesson a future branch needs. */
 export type MemoryItem = {
@@ -80,7 +74,10 @@ export type RewindFile = {
   outside?: true
 }
 /** A conversation that built on the path a go-back set aside: a subagent or branch it started, or one it messaged. */
-export type RewindDependent = { id: ConversationId; via: 'subagent' | 'branch' | 'message' }
+export type RewindDependent = {
+  id: ConversationId
+  via: 'subagent' | 'branch' | 'message'
+}
 /** What going back to an entry would set aside and leave in the checkout; `refused` says why it cannot now. */
 export type RewindPreview = {
   refused?: string
@@ -138,35 +135,8 @@ export const LineageResetEntry = defineEntry<{
 export const AbstractEntry = defineEntry<AbstractData>('lineage.abstract')
 
 /** A notify result delivered as an input. */
-export const FinishedEntry = defineEntry<{ from: ConversationId; title?: string; text: string }>(
-  'lineage.finished',
-)
-
-/** A note received from another conversation, the lander, or tally catch-up. */
-export const NoteEntry = defineEntry<
-  | {
-      text: string
-      from?: ConversationId
-      title?: string
-      source?: 'finished' | 'main'
-      tally?: EntryId
-    }
-  | {
-      source: 'lander'
-      text: string
-      from: ConversationId
-      at?: number
-      divergence?: string
-      sha: string
-      base?: string
-      target: string
-      title?: string
-      summary?: string
-      feature?: string
-      commits: { sha: string; subject: string }[]
-      paths: string[]
-      more: number
-      pushed?: string
-      abstract?: Omit<AbstractData, 'conversation'>
-    }
->('lineage.note')
+export const FinishedEntry = defineEntry<{
+  from: ConversationId
+  title?: string
+  text: string
+}>('lineage.finished')

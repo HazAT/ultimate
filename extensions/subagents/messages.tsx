@@ -51,11 +51,9 @@ export function AgentMessages() {
   )
 }
 
-/** A subagent's definition name; a standing agent (label `agent`) and a coordinator go by their conversation. */
 const senderAgent = (origin: AgentOrigin, label?: string) =>
   label === 'agent' ? undefined : (label ?? (origin.kind === 'report' ? origin.agent : undefined))
 
-/** Who sent a message: a subagent by its agent name, a standing agent by its `@name`, a coordinator by its feature. */
 function Sender({ origin, label }: { origin: AgentOrigin; label?: string }) {
   const agent = senderAgent(origin, label)
   return agent ? `${agent} #${origin.sender}` : <ConversationRef id={origin.sender} />

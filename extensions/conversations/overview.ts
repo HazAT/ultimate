@@ -18,21 +18,15 @@ export const Overview = defineDoc<OverviewState>({
   initial: () => ({ conversations: {} }),
 })
 
-/** Settlement reasons that end an input without a failure: the user stopped it or a reset cut it. */
-const quiet = new Set(['aborted', 'reset', 'stale'])
+const nonFailureSettlements = new Set(['aborted', 'reset', 'stale'])
+const queuedFollowUpLookback = 32
 
-/**
- * The input placed last in the transcript (greatest entry id); writes and withdrawn inputs are skipped. A steer placed
- * at a tool boundary can precede an older queued follow-up, so submission order is not transcript order.
- */
-async function latestInput(
+async function lastPlacedInput(
   host: Pick<ExtensionHost, 'scanSubmissions'>,
   id: ConversationId,
 ): Promise<SubmissionRecord | undefined> {
-  // An older input is placed after a newer one only if it still waited in the inbox when the newer one was
-  // submitted, so it is among the next few older submissions: 32 more covers any realistic queue.
   let latest: SubmissionRecord | undefined
-  let remaining = 32
+  let remaining = queuedFollowUpLookback
   let cursor: Cursor | undefined
   do {
     const page = await host.scanSubmissions(
@@ -51,10 +45,6 @@ async function latestInput(
   return latest
 }
 
-/**
- * A root index of rows, each derived only from committed records: the newest input submission, `pi.live`,
- * `pi.inbox`, and the `Summaries` projection. Commits only choose which rows to derive again.
- */
 export function overviewBehavior(
   host: Pick<ExtensionHost, 'harness' | 'scanSubmissions' | 'onOpen' | 'onClose' | 'notice'>,
 ) {
@@ -62,12 +52,11 @@ export function overviewBehavior(
   let closed = false
   let draining: Promise<void> | undefined
   const pending = new Set<ConversationId>()
-  const reconcile = async (ids: ConversationId[]) => {
+  const reconcileFromCommittedRecords = async (ids: ConversationId[]) => {
     const harness = host.harness()
-    // Read outside the commit: a commit that changes them afterwards schedules this row again.
     const [states, inputs] = await Promise.all([
       Promise.all(ids.map((id) => harness.snapshot(Summaries, id, context))),
-      Promise.all(ids.map((id) => latestInput(host, id))),
+      Promise.all(ids.map((id) => lastPlacedInput(host, id))),
     ])
     await harness.commit(async (tx) => {
       const index = await tx.doc(Overview, ROOT_CONVERSATION_ID)
@@ -77,10 +66,10 @@ export function overviewBehavior(
         const input = inputs[position]
         const live = await tx.doc(LiveDoc, id)
         const inbox = await tx.doc(InboxDoc, id)
-        // Only a reset ends an exchange; compaction keeps it.
         const active = input !== undefined && !(await resetAfter(tx, id, input.entry!))
         const answerId = active && input.status === 'done' ? input.answer : undefined
-        const failed = active && input.status === 'unanswered' && !quiet.has(input.reason)
+        const failed =
+          active && input.status === 'unanswered' && !nonFailureSettlements.has(input.reason)
         const row: OverviewRow = {
           runState: live.run
             ? 'working'
@@ -114,7 +103,7 @@ export function overviewBehavior(
         if (closed) break
         const ids = [...pending]
         pending.clear()
-        await reconcile(ids)
+        await reconcileFromCommittedRecords(ids)
       }
     })()
       .catch((error: unknown) => {
@@ -127,7 +116,6 @@ export function overviewBehavior(
   }
   host.onOpen(async () => {
     closed = false
-    // Not a reactor: the overview follows Pi's records, entries and live documents, not domain events.
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'conversation') pending.add(change.value.id)

@@ -22,7 +22,6 @@ function isSummary(entry: EntryRecord) {
   )
 }
 
-/** The entry kinds a summary task writes, each with the word the folded line names it by. */
 const summaryKinds: Record<string, string> = {
   'conversations.intent-summarized': 'intent',
   'conversations.title-changed': 'title',
@@ -31,13 +30,8 @@ const summaryKinds: Record<string, string> = {
   'conversations.assessed': 'reply',
   'conversations.summary-discarded': 'summary',
 }
-/**
- * Entries that show no row of their own, so summary lines on either side still sit next to each other: a tool result
- * shows inside the call that made it.
- */
 const invisible = new Set(['conversations.identity', 'pi.tool-result'])
 
-/** What a summary task concluded, as one quiet line; each entry traces to its task by `byTaskId`. */
 function summaryText(entry: EntryRecord) {
   if (IntentSummarized.is(entry)) return `Intent: ${entry.data.summary}`
   if (TitleChanged.is(entry)) return `Title changed to “${entry.data.title}”`
@@ -51,11 +45,7 @@ function summaryText(entry: EntryRecord) {
     : `Summary unavailable: ${entry.data.cause}`
 }
 
-/**
- * The run of summary entries `entry` belongs to, oldest first, when it starts the run; undefined when an earlier entry
- * of the run renders it.
- */
-function runFrom(entries: readonly EntryRecord[], entry: EntryRecord) {
+function summaryRunAtFirstVisibleEntry(entries: readonly EntryRecord[], entry: EntryRecord) {
   const shown = entries.filter(
     (other) => other.conversationId === entry.conversationId && !invisible.has(other.kind),
   )
@@ -68,8 +58,7 @@ function runFrom(entries: readonly EntryRecord[], entry: EntryRecord) {
 
 export function SummaryAction({ entry }: { entry: EntryRecord }) {
   const compact = useCompact()
-  const run = runFrom(useTranscript(), entry)
-  // An agent in compact mode and a root get no summaries; older lines would only interrupt them.
+  const run = summaryRunAtFirstVisibleEntry(useTranscript(), entry)
   if (compact || !run) return null
   return (
     <Provided input={entry.conversationId} point={Unsummarized}>
@@ -78,7 +67,6 @@ export function SummaryAction({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** Neighbouring summary lines fold into one quiet line naming what changed; opening it shows each line. */
 function SummaryRun({ run }: { run: readonly EntryRecord[] }) {
   const names = [...new Set(run.map((entry) => summaryKinds[entry.kind]))]
   const last = run.at(-1)!

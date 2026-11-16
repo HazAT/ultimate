@@ -15,9 +15,9 @@ conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
   `steer: true`, the default for @ultimate's messages and `false` for everyone else. A message to a concluded
   conversation resumes it.
 - **Answers.** With `reply` (the default) the recipient's final answer returns as a `board.reply`, steering the sender;
-  an unanswered input returns a `failed` reply, or `stopped` when a person pressed Stop. Answer directly instead of
-  messaging the sender: a reply-enabled message back to a sender whose message you have read and owe becomes that
-  answer and ends your run. A message still queued is unread and never owed. `reply: false` is one-way: it wakes the
+  one answer to several of the sender's messages returns once and closes them all. An unanswered input returns a
+  `failed` reply, or `stopped` when a person pressed Stop. Answer directly instead of messaging the sender: a
+  reply-enabled message back to a sender whose message you have read and owe becomes that answer and ends your run. A message still queued is unread and never owed. `reply: false` is one-way: it wakes the
   recipient and returns nothing.
 - **Images.** `images` forwards images from the sender's own conversation: `'latest'` takes the newest entry with
   images in the current turn (its input, or a tool result such as a screenshot since) and fails when there is none; an
@@ -44,9 +44,14 @@ report.**
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
-Routing cannot loop: an answer to a routed answer is an `echo` and routes no further. A branch whose latest report or
-reply came after @ultimate's latest message to it shows as `awaiting @ultimate`, as does one with a reply-enabled
-message to @ultimate open; @ultimate messaging or concluding it clears that.
+Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
+further. Conversation waits are derived from existing records: work, an open user question, an open agent or remote
+request, a subscribed timer, then an unconcluded branch's starter. Rows name the wait (`waits on @ultimate`,
+`waits on #N`, `waits on ultimate-eval`, or `waits on <timer> · <time>`); a branch waiting on @ultimate also shows
+its remote dependency, one hop only. Remote waits poll the target's optional Status progress every 15 seconds and
+append ` · run 2/4` (using its label and counts), or ` · not running` when it cannot be reached. The Open messages
+popover counts branches the conversation started that currently wait on it, rather than inferring a debt from past
+reports. The browser reads `board.started` read-only.
 
 ### Messages to the user
 
@@ -95,8 +100,18 @@ message is never the user's.
 - **Target:** `messages.remote { key, text, reply, from: { project, machine } }` delivers to its own primary agent only,
   which reads `Message from @ultimate@<project> on <machine> (another project's Ultimate, not the user)`. A repeated key
   delivers once.
-- **One hop back:** with `reply`, the answer posts to the sender's `messages.remoteReply { key, text, failed, stopped? }`
-  as a reply that expects none. Two Ultimates exchange at most a message and its answer per `tell`.
+- **One hop back:** with `reply`, the answer posts to the sender's
+  `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none.
+- **The reply is the wait.** When the run answering a remote request starts work for it (a branch, or an automation
+  that records `serves`), the request is _served_ (`board.serving`) and that run's answer goes back as an interim reply
+  (`interim`: the answering message's id, which dedupes it). The sender places it as a note that wakes no one, and the
+  request stays open (`waits on <project>`). The served work's result, routed as for local askers, closes the request
+  with the final `remoteReply`; a run woken by the serving automation's fire that starts another one (a check-back that
+  finds the job still running) hands the request on and answers interim again. The sender's @ultimate wakes once, with
+  the result, and its answer to it goes to the branches whose reply or report its `tell` run read.
+- **Failures are loud.** An answer that cannot be posted wakes the answering @ultimate with the cause and the
+  undelivered text. A serving automation deleted before it fires sends the asker a failed final reply.
+  Two Ultimates never loop: a reply expects no answer.
 - **Not durable on the sender:** `tell` runs inside codemode, which is not replayed. A crash between logging and posting
   leaves the message `sent`; telling again uses a new key.
 
@@ -111,12 +126,16 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
-- `board.reply` data: `{ id, re, from, text, failed, stopped?, images? }`; `stopped` also sets `failed`.
+- `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets
+  `failed`; an `interim` reply is placed as a note (`delivery: 'note'`).
 - Each post emits `board.sent` `{ message, from, to, reply, steer }` (`MessageSent`), never the text; replies emit
   nothing.
 
 ## Actions and service
 
+- `remoteProgress({ project }) → { reachable, progress? }`: polls the project's `status/status` action with a short
+  timeout. Progress is `{ label, index, total }` when provided. Unreachable or current-project targets return
+  `reachable: false`.
 - `addresses({}) → { agents, conversations }`: resident names and descriptions, with an id once created, and up to 50
   recent top-level conversation summaries.
 - `settle({ messageId, text, dismiss? }) → { id }`: from @ultimate's conversation or its side chat, settles the user's

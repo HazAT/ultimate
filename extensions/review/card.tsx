@@ -7,10 +7,6 @@ import { ReviewCommentsEntry } from './entries.ts'
 import { openReview } from './link.tsx'
 import { shortSpec } from './selector.tsx'
 
-/**
- * A review the user sent, in its recipient's transcript: on the user's side, like their typed messages. Each comment's
- * place opens Review at that spec, file and line.
- */
 export function ReviewCard({ entry }: { entry: EntryRecord }) {
   if (!ReviewCommentsEntry.is(entry)) return null
   const { spec, comments, note } = entry.data

@@ -25,7 +25,7 @@ import {
   addCheckout,
   clearCheckout,
   hasAddCommand,
-  removeCheckout,
+  removeCheckout as removeCheckoutWithoutForce,
   treeName,
   treePath,
 } from './tree.ts'
@@ -57,13 +57,12 @@ export const Workspaces = defineDoc<WorkspaceIndex>({
         landerConversations: {},
         results: {},
       }
-    // Version 4 records each submission's steps; earlier ones start without.
-    const index = value as WorkspaceIndex
+    const indexBeforeSubmissionSteps = value as WorkspaceIndex
     return {
-      ...index,
-      queue: index.queue.map((item) => ({ ...item, steps: [] })),
+      ...indexBeforeSubmissionSteps,
+      queue: indexBeforeSubmissionSteps.queue.map((item) => ({ ...item, steps: [] })),
       results: Object.fromEntries(
-        Object.entries(index.results).map(([id, result]) => [
+        Object.entries(indexBeforeSubmissionSteps.results).map(([id, result]) => [
           id,
           { ...result, tip: id.split('-')[1], steps: [] },
         ]),
@@ -71,12 +70,7 @@ export const Workspaces = defineDoc<WorkspaceIndex>({
     }
   },
 })
-/**
- * Lander tasks started by this version of the code. A reload that changes it imports this module anew with an empty
- * set, so a fault of a task outside it is the previous code's.
- */
-const started = new Set<number>()
-/** Whether `source` has no live lander task: none recorded, or one that ended (finished, faulted, aborted). */
+const tasksStartedByThisModule = new Set<number>()
 async function landerIdle(tx: Tx, index: WorkspaceIndex, source: string) {
   const running = index.landers[source]
   const live = running === undefined ? undefined : await tx.task(running)
@@ -126,13 +120,7 @@ async function onDisk(path: string) {
     },
   )
 }
-/**
- * The work only a checkout folder holds, which removing it would lose: uncommitted changes, and commits on its HEAD that
- * neither its branch nor the target has (detached work). Commits on its branch stay in the source with the branch, and
- * recreating the checkout checks that branch out again. A folder Git no longer lists as a worktree (ignored files left
- * after `git worktree remove`) is not a repository to inspect, and holds none.
- */
-async function atRisk(
+async function workLostWithCheckout(
   workspace: Pick<WorkspaceIndex['items'][string], 'path' | 'branch' | 'target'>,
 ): Promise<Omit<KeptWork, 'id'>> {
   const branch = (await git(workspace.path, 'branch', '--list', workspace.branch))
@@ -154,21 +142,19 @@ async function atRisk(
     ),
   }
 }
-const held = (
+const workHeldByRegisteredCheckout = (
   id: ConversationId,
   workspace: WorkspaceIndex['items'][string],
   registered: boolean,
 ): Promise<KeptWork> =>
   registered
-    ? atRisk(workspace).then((work) => ({ id, ...work }))
+    ? workLostWithCheckout(workspace).then((work) => ({ id, ...work }))
     : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
-/** Whether the source lists the path as a worktree; throws when the source cannot tell, so callers never guess. */
 async function listedBySource(workspace: WorkspaceIndex['items'][string]) {
   return (await git(workspace.source, 'worktree', 'list', '--porcelain'))
     .split('\n\n')
     .some((entry) => entry.split('\n').includes(`worktree ${workspace.path}`))
 }
-/** Whether the folder at the path holds only what the source's ignore rules ignore, such as `.vite/` or `node_modules/`. */
 async function onlyIgnored(workspace: WorkspaceIndex['items'][string]) {
   const entries = await readdir(workspace.path, { withFileTypes: true })
   if (!entries.length) return true
@@ -181,39 +167,37 @@ async function onlyIgnored(workspace: WorkspaceIndex['items'][string]) {
 }
 async function registeredCheckout(workspace: WorkspaceIndex['items'][string]) {
   if (!(await onDisk(workspace.path))) return false
-  const listed = await git(workspace.path, 'worktree', 'list', '--porcelain').catch(
-    // A folder Git cannot inspect is not a usable registered checkout.
-    () => '',
-  )
+  const listed = await git(workspace.path, 'worktree', 'list', '--porcelain').catch(() => '')
   return listed
     .split('\n\n')
     .some((entry) => entry.split('\n').includes(`worktree ${workspace.path}`))
 }
 export function workspaces(host: Host) {
-  const queues = host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
-  /** Runs writes to one source checkout one at a time, across synchronous landing and the lander. */
-  async function serial<T>(source: string, operation: () => Promise<T>): Promise<T> {
-    const queued = settled(queues.get(source) ?? Promise.resolve()).then(operation)
-    queues.set(source, queued)
+  const sourceWriteQueues = host.resource(
+    'workspaces.land',
+    () => new Map<string, Promise<unknown>>(),
+  )
+  async function serializeSourceWrites<T>(source: string, operation: () => Promise<T>): Promise<T> {
+    const queued = settled(sourceWriteQueues.get(source) ?? Promise.resolve()).then(operation)
+    sourceWriteQueues.set(source, queued)
     try {
       return await queued
     } finally {
-      if (queues.get(source) === queued) queues.delete(source)
+      if (sourceWriteQueues.get(source) === queued) sourceWriteQueues.delete(source)
     }
   }
   const disk = host.resource(
     'workspaces.disk',
     (): { last?: WorkspaceDisk; running?: Promise<WorkspaceDisk> } => ({}),
   )
-  const Lander = createLander(host, Workspaces, serial, {
+  const Lander = createLander(host, Workspaces, serializeSourceWrites, {
     starter: async (id, context) => host.want(Branches)?.starter(id, context),
     working: async (tx, id) => (await host.want(Branches)?.working(tx, id)) ?? false,
     conclude: (tx, id) => host.need(ConversationsApi).concludeIn(tx, [id]),
     release: (id, context) => release([id], context),
   })
-  /** Start the lander task of `source` in its lander conversation. Call only after `landerIdle`, before any write. */
-  const startLander = async (tx: Tx, index: WorkspaceIndex, source: string) => {
-    // Not background: the task is the lander conversation's work, so it shows as working while it lands.
+  type IdleReadBeforeWrites = string
+  const startIdleLander = async (tx: Tx, index: WorkspaceIndex, source: IdleReadBeforeWrites) => {
     index.landers[source] = await tx.createTask(
       Lander,
       { source },
@@ -222,20 +206,14 @@ export function workspaces(host: Host) {
         ownership: { kind: 'conversation' },
       },
     )
-    started.add(index.landers[source])
+    tasksStartedByThisModule.add(index.landers[source])
   }
-  /**
-   * The lander conversation of `source`, created once with title "@lander" and label `lander`, and marked standing so
-   * it is never concluded; its cwd is the lander's checkout. Reads before writes, as a transaction requires: call it
-   * before anything else writes.
-   */
-  async function ensureLander(
+  async function ensureLanderBeforeWrites(
     tx: Tx,
     index: WorkspaceIndex,
     source: string,
     target: string,
-    /** `landerPath()` of `source`, resolved before the transaction. */
-    path: string,
+    pathResolvedBeforeTransaction: string,
   ) {
     const known = index.landerConversations[source]
     if (known !== undefined && (await tx.conversation(known))) {
@@ -244,7 +222,7 @@ export function workspaces(host: Host) {
       return known
     }
     const lander = (await tx.createConversation({ ownership: { kind: 'ownerless' } })).id
-    await configure(tx, lander, { cwd: path })
+    await configure(tx, lander, { cwd: pathResolvedBeforeTransaction })
     Object.assign(await tx.doc(host.metadata, lander), {
       title: '@lander',
       label: 'lander',
@@ -253,12 +231,7 @@ export function workspaces(host: Host) {
     index.landerConversations[source] = lander
     return lander
   }
-  /**
-   * Make sure the project's checkout has its lander conversation. Idempotent; a project that cannot be isolated (outside
-   * Git, or before its first commit) has none until it can.
-   */
   async function standLander(context: Context) {
-    // Landers stay standing even when preparing the checkout below fails.
     await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       for (const id of Object.values(index.landerConversations))
@@ -266,7 +239,6 @@ export function workspaces(host: Host) {
     }, context)
     const checkout = await isolatable(host.projectRoot)
     const { source, target } = 'source' in checkout ? checkout : {}
-    // The conversation's cwd exists from the start, at the target tip, so it can answer before any submission.
     const path =
       source && target && (await landerCheckout(host.home, source, await host.projectSettings()))
     await host.harness().commit(async (tx) => {
@@ -275,18 +247,13 @@ export function workspaces(host: Host) {
       for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) landers.push(id)
       if (source && target && path) {
-        const own = await ensureLander(tx, index, source, target, path)
+        const own = await ensureLanderBeforeWrites(tx, index, source, target, path)
         if (!landers.includes(own)) landers.push(own)
       }
-      // A lander keeps its `@lander` title: no automatic summaries.
       for (const id of landers)
         await host.need(ConversationsApi).setAutomaticSummaries(tx, id, false)
     }, context)
   }
-  /**
-   * Restart the lander of every source whose queue holds submissions but whose task ended without draining it, as a
-   * task faulted by a reload of this code does. Idempotent: a source with a live task keeps it.
-   */
   async function resume(context: Context) {
     const restarted = await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
@@ -301,7 +268,7 @@ export function workspaces(host: Host) {
             item.state = 'queued'
             delete item.step
           }
-        await startLander(tx, index, source)
+        await startIdleLander(tx, index, source)
       }
       return stopped.length
     }, context)
@@ -320,33 +287,29 @@ export function workspaces(host: Host) {
     phases: {
       prepare: async (task, runtime, context) => {
         const workspace = (await get(task.input.id, context))!
-        let created = false
+        let checkoutCreatedByPreparation = false
         try {
-          // Git reads every `.git/worktrees/<name>` on list and add, and fails on one a concurrent add has only half
-          // written ("failed to read .git/worktrees/<name>/locked"), so preparations of one source take turns.
-          await serial(workspace.source, async () => {
+          await serializeSourceWrites(workspace.source, async () => {
             const list = async () =>
               (await git(workspace.source, 'worktree', 'list', '--porcelain'))
                 .split('\n\n')
                 .find((entry) => entry.split('\n').includes(`worktree ${workspace.path}`))
             let registered = await list()
-            const resumed = await runtime.memo<boolean>('started', context)
+            const pathReservedBeforeCrash = await runtime.memo<boolean>('started', context)
             const settings = await host.projectSettings()
-            // A crash during a configured add command can leave its half-made checkout. It is this preparation's own:
-            // `started` is recorded only after the path was found free. Clear it and run the command again.
-            if (
-              resumed &&
+            const reservedAddInterrupted =
+              pathReservedBeforeCrash &&
               hasAddCommand(settings) &&
               (registered
                 ? !registered.split('\n').includes(`branch refs/heads/${workspace.branch}`)
                 : await onDisk(workspace.path))
-            ) {
+            if (reservedAddInterrupted) {
               await clearCheckout(workspace.source, workspace.path)
               registered = await list()
             }
             if (registered) {
               if (
-                !resumed ||
+                !pathReservedBeforeCrash ||
                 !registered.split('\n').includes(`branch refs/heads/${workspace.branch}`)
               )
                 throw new Error(`Workspace path already exists: ${workspace.path}`)
@@ -361,14 +324,14 @@ export function workspaces(host: Host) {
               if (await git(workspace.source, 'branch', '--list', workspace.branch)) {
                 if (
                   !task.input.reset &&
-                  (!resumed ||
+                  (!pathReservedBeforeCrash ||
                     (await git(workspace.source, 'rev-parse', workspace.branch)) !== workspace.base)
                 )
                   throw new Error(`Workspace branch already exists: ${workspace.branch}`)
                 if (!task.input.reset) await git(workspace.source, 'branch', '-D', workspace.branch)
               }
               await runtime.memo('started', true, context)
-              created = true
+              checkoutCreatedByPreparation = true
               await addCheckout(
                 settings,
                 workspace.source,
@@ -380,7 +343,7 @@ export function workspaces(host: Host) {
               )
             }
           })
-          created = true
+          checkoutCreatedByPreparation = true
           await setup(
             workspace.source,
             workspace.path,
@@ -394,8 +357,7 @@ export function workspaces(host: Host) {
           }, context)
         } catch (error) {
           if (runtime.signal.aborted) throw error
-          await serial(workspace.source, async () => {
-            // Remove only the registered checkout created for this record, never an existing path.
+          await serializeSourceWrites(workspace.source, async () => {
             const registered = (await git(workspace.source, 'worktree', 'list', '--porcelain'))
               .split('\n\n')
               .find(
@@ -403,9 +365,9 @@ export function workspaces(host: Host) {
                   entry.split('\n').includes(`worktree ${workspace.path}`) &&
                   entry.split('\n').includes(`branch refs/heads/${workspace.branch}`),
               )
-            if (created) {
+            if (checkoutCreatedByPreparation) {
               if (registered)
-                await removeCheckout(
+                await removeCheckoutWithoutForce(
                   await host.projectSettings(),
                   workspace.source,
                   workspace.path,
@@ -483,28 +445,21 @@ export function workspaces(host: Host) {
     if (!workspace || !['ready', 'failed', 'removed'].includes(workspace.state)) return undefined
     return (await onDisk(workspace.path)) ? workspace : undefined
   }
-  /**
-   * The checkout recorded for `id` that release would act on: a registered worktree, or the leftover folder of one Git
-   * already removed (ignored files such as `.wrangler/` after `git worktree remove`) while a ready record still claims
-   * it. Registration is read from the source, and a failure to read it throws, so a folder whose own `.git` is broken
-   * never counts as a leftover. A removed or failed record's unregistered folder may be someone else's.
-   */
   async function recordedCheckout(id: ConversationId, context: Context) {
     const workspace = await presentCheckout(id, context)
     if (!workspace) return undefined
     const registered = await listedBySource(workspace)
-    if (!registered && workspace.state !== 'ready') return undefined
+    const potentiallyForeignFolder = !registered && workspace.state !== 'ready'
+    if (potentiallyForeignFolder) return undefined
     return { workspace, registered }
   }
-  /** The commits and uncommitted changes of each ready worktree among `ids`, without their subagents'. */
   async function progress(ids: ConversationId[], context: Context): Promise<KeptWork[]> {
     const result = await Promise.all(
       ids.map(async (id) => {
         const workspace = await get(id, context)
-        // Its `.git` file, not `git worktree list`: the sidebar asks often, and every git process blocks the host while
-        // it forks. `git worktree remove` deletes that file and leaves only ignored files behind.
-        if (workspace?.state !== 'ready' || !(await onDisk(join(workspace.path, '.git'))))
-          return undefined
+        const readyWithoutGitSpawn =
+          workspace?.state === 'ready' && (await onDisk(join(workspace.path, '.git')))
+        if (!readyWithoutGitSpawn) return undefined
         return changes(id, workspace).catch(meansNone)
       }),
     )
@@ -514,14 +469,12 @@ export function workspaces(host: Host) {
     const result: KeptWork[] = []
     for (const id of (await candidates(ids, context)).ids) {
       const checkout = await recordedCheckout(id, context)
-      // Concluding keeps a branch's commits; the warning still names them, since they have not landed.
       if (!checkout?.registered) continue
       const item = await changes(id, checkout.workspace)
       if (item.uncommitted || item.unlanded) result.push(item)
     }
     return result
   }
-  /** Finish an interrupted removal, or keep newly found work and make the checkout usable again. */
   async function finishRemoval(
     id: ConversationId,
     workspace: WorkspaceIndex['items'][string],
@@ -530,23 +483,20 @@ export function workspaces(host: Host) {
     let item: KeptWork = { id, uncommitted: 0, unlanded: 0 }
     try {
       if (await listedBySource(workspace)) {
-        item = { id, ...(await atRisk(workspace)) }
+        item = { id, ...(await workLostWithCheckout(workspace)) }
         if (item.uncommitted || item.unlanded) {
           await host.harness().commit(async (tx) => {
             ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'ready'
           }, context)
           return item
         }
-        // Never force: Git refuses uncommitted changes made since the status check.
-        await removeCheckout(
+        await removeCheckoutWithoutForce(
           await host.projectSettings(),
           workspace.source,
           workspace.path,
           treeName(workspace.branch),
         )
       } else if (await onDisk(workspace.path)) {
-        // A process left running in the released checkout (a dev server) can re-create ignored state there; any
-        // other folder at the path is not ours to remove.
         if (!(await onlyIgnored(workspace)))
           throw new Error(`Workspace path is not a registered checkout: ${workspace.path}`)
         await rm(workspace.path, { recursive: true, force: true })
@@ -590,7 +540,7 @@ export function workspaces(host: Host) {
       if (signal?.aborted) break
       const record = await get(id, context)
       if (!record) continue
-      await serial(record.source, async () => {
+      await serializeSourceWrites(record.source, async () => {
         if (signal?.aborted) return
         const workspace = (await get(id, context))!
         if (workspace.state === 'preparing') {
@@ -601,7 +551,7 @@ export function workspaces(host: Host) {
         const present = Boolean(checkout)
         const registered = Boolean(checkout?.registered)
         const item: KeptWork = present
-          ? await held(id, workspace, registered)
+          ? await workHeldByRegisteredCheckout(id, workspace, registered)
           : { id, uncommitted: 0, unlanded: 0 }
         if (retained.has(id)) item.descendant = retained.get(id)
         const reason = await host.harness().commit(async (tx) => {
@@ -639,7 +589,6 @@ export function workspaces(host: Host) {
           }))
         )
           return
-        // Git already removed this worktree; what remains in its folder is not tracked by any checkout.
         if (present && !registered) await rm(workspace.path, { recursive: true, force: true })
         const remaining = await finishRemoval(id, workspace, context)
         if (remaining) kept.push(remaining)
@@ -654,15 +603,9 @@ export function workspaces(host: Host) {
     }
     return kept
   }
-  /**
-   * Remove checkouts in `<home>/worktrees` that no record of this chapter knows: an earlier chapter made them, and its
-   * concluded list is gone with it. Each must be a clean, registered worktree whose branch keeps its commits; one with
-   * uncommitted changes or detached commits stays. Configured checkout paths are left to their owner.
-   */
   async function sweep(context: Context, signal?: AbortSignal) {
     const directory = join(host.home, 'worktrees')
     const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
-      // No worktree was ever made in this home.
       if (error.code === 'ENOENT') return []
       throw error
     })
@@ -671,8 +614,7 @@ export function workspaces(host: Host) {
     if ('reason' in checkout) return []
     const { source, target } = checkout
     const index = await host.harness().snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
-    // Recorded checkouts and every source's lander checkout, which a configured layout may put in this folder.
-    const known = new Set([
+    const recordedAndLanderPaths = new Set([
       ...Object.values(index?.items ?? {}).map((workspace) => workspace.path),
       ...(await Promise.all(
         [...new Set([source, ...Object.keys(index?.landerConversations ?? {})])].map(
@@ -685,19 +627,17 @@ export function workspaces(host: Host) {
     for (const name of names) {
       if (signal?.aborted) break
       const path = join(root, name)
-      if (known.has(path)) continue
-      await serial(source, async () => {
+      if (recordedAndLanderPaths.has(path)) continue
+      await serializeSourceWrites(source, async () => {
         const record = (await git(source, 'worktree', 'list', '--porcelain'))
           .split('\n\n')
           .map((lines) => lines.split('\n'))
           .find((lines) => lines[0] === `worktree ${path}`)
-        // Not a worktree of this project: not ours to judge.
         if (!record) return
         const branch = record
           .find((line) => line.startsWith('branch refs/heads/'))
           ?.slice('branch refs/heads/'.length)
-        // A detached checkout counts its HEAD's commits not on the target as work only it holds.
-        const work = await atRisk({ path, branch: branch ?? '', target })
+        const work = await workLostWithCheckout({ path, branch: branch ?? '', target })
         if (work.uncommitted || work.unlanded) {
           kept.push(path)
           return
@@ -711,11 +651,10 @@ export function workspaces(host: Host) {
       host.notice(`Kept ${kept.length} unrecorded worktrees with changes: ${kept.join(', ')}`)
     return kept
   }
-  /** Fast-forward subagent `id`'s source (its owner's worktree) to its tip; `subagent land` calls it. */
   async function land(id: ConversationId, context: Context): Promise<LandResult> {
     const record = await get(id, context)
     if (!record) throw new Error('Conversation has no workspace')
-    return serial(record.source, async () => {
+    return serializeSourceWrites(record.source, async () => {
       const workspace = (await get(id, context))!
       const source = workspace.source
       await idle(id, context)
@@ -758,9 +697,12 @@ export function workspaces(host: Host) {
           .split('\n')
           .filter(Boolean)
           .map((line) => {
-            // Binary files count `-` lines.
-            const [added, removed, path] = line.split('\t')
-            return { path, added: Number(added) || 0, removed: Number(removed) || 0 }
+            const [addedOrBinaryDash, removedOrBinaryDash, path] = line.split('\t')
+            return {
+              path,
+              added: Number(addedOrBinaryDash) || 0,
+              removed: Number(removedOrBinaryDash) || 0,
+            }
           })
         const needsRestart =
           (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
@@ -810,9 +752,8 @@ export function workspaces(host: Host) {
         throw new Error('Submitting requires a conversation entry for its breadcrumb')
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       const { source, target } = index.items[String(id)]
-      // Reads first: a transaction cannot read tables after its first write.
-      const stopped = await landerIdle(tx, index, source)
-      const lander = await ensureLander(tx, index, source, target, path)
+      const idleReadBeforeWrites = await landerIdle(tx, index, source)
+      const lander = await ensureLanderBeforeWrites(tx, index, source, target, path)
       const queued = index.queue.find(
         (item) => item.conversationId === id && item.tip === tip && item.state === 'queued',
       )
@@ -832,7 +773,7 @@ export function workspaces(host: Host) {
         await log(tx, lander, entry, { step: 'queued' })
         index.queue.push(entry)
       }
-      if (stopped) await startLander(tx, index, source)
+      if (idleReadBeforeWrites) await startIdleLander(tx, index, source)
       const position = index.queue
         .filter((item) => item.source === source)
         .findIndex((item) => item.id === entry.id)
@@ -850,7 +791,6 @@ export function workspaces(host: Host) {
     let workspace = await get(id, context)
     if (!workspace) return undefined
     if (workspace.state === 'failed') {
-      // Each tool call retries a failed setup, so a fixed environment (PATH, a lockfile) takes effect in place.
       const kept = await ready(id, context, true)
       if (kept) return `Workspace setup failed and its checkout keeps changes: ${kept.reason ?? ''}`
       workspace = (await get(id, context))!
@@ -858,7 +798,6 @@ export function workspaces(host: Host) {
         return `Workspace setup failed: ${workspace.error}; fix the cause, then call a tool again to retry the setup`
     }
     if (workspace.state === 'removed') {
-      // A released checkout comes back on its first tool call, also mid-run.
       const kept = await ready(id, context)
       if (kept) return `Workspace is removed: ${kept.reason ?? 'its checkout keeps changes'}`
       workspace = (await get(id, context))!
@@ -869,10 +808,6 @@ export function workspaces(host: Host) {
       return `Workspace checkout is missing or unregistered: ${workspace.path}${workspace.error ? `; ${workspace.error}` : ''}`
     return undefined
   }
-  /**
-   * Recreate a released checkout before the conversation uses it again, and with `retryFailed` also a failed setup whose
-   * checkout the failure rolled back (a path still there, as a foreign folder, stays failed).
-   */
   async function ready(
     id: ConversationId,
     context: Context,
@@ -886,7 +821,7 @@ export function workspaces(host: Host) {
       ([, workspace]) => workspace.path === record.source,
     )?.[0]
     const recreate = () =>
-      serial(record.source, async () => {
+      serializeSourceWrites(record.source, async () => {
         if (parent && (await get(parseConversationId(Number(parent)), context))?.state !== 'ready')
           return true
         const workspace = (await get(id, context))!
@@ -960,7 +895,7 @@ export function workspaces(host: Host) {
         const source = (await get(parentId, context))!
         if (source.state === 'failed')
           throw new Error(`Source workspace #${parent} setup failed: ${source.error}`)
-        retry = await serial(source.source, recreate)
+        retry = await serializeSourceWrites(source.source, recreate)
       } else retry = await recreate()
     } while (retry === true)
     if (typeof retry === 'object') return retry
@@ -984,7 +919,7 @@ export function workspaces(host: Host) {
     Lander,
     resume,
     standLander,
-    started,
+    started: tasksStartedByThisModule,
     get,
     unavailable,
     land,
@@ -1017,13 +952,14 @@ export function workspaces(host: Host) {
         target,
         state: 'preparing',
       }
-      // A project in a subfolder of its repository opens in the same subfolder of its checkout.
-      const below = relative(source, await realpath(cwd))
+      const repositoryRelativeCwd = relative(source, await realpath(cwd))
       await configure(tx, id, {
         cwd:
-          below === '..' || below.startsWith(`..${sep}`) || isAbsolute(below)
+          repositoryRelativeCwd === '..' ||
+          repositoryRelativeCwd.startsWith(`..${sep}`) ||
+          isAbsolute(repositoryRelativeCwd)
             ? path
-            : join(path, below),
+            : join(path, repositoryRelativeCwd),
       })
       await tx.createTask(
         Preparation,
@@ -1059,7 +995,7 @@ export function workspaces(host: Host) {
       if (workspace.state === 'preparing') throw new Error('Workspace is preparing')
       if (workspace.state !== 'removed') {
         if (await listedBySource(workspace))
-          await removeCheckout(
+          await removeCheckoutWithoutForce(
             await host.projectSettings(),
             workspace.source,
             workspace.path,
@@ -1071,7 +1007,6 @@ export function workspaces(host: Host) {
       }
       return { text: `Discarded isolate; kept branch ${workspace.branch}.` }
     },
-    /** Counts of the checkouts by state and by what their commits are, and the disk the worktrees directory takes. */
     async stats(context: Context): Promise<WorkspaceStats> {
       const items = Object.values(
         (await host.harness().snapshot(Workspaces, ROOT_CONVERSATION_ID, context))?.items ?? {},
@@ -1112,13 +1047,10 @@ export function workspaces(host: Host) {
       )
       return stats
     },
-    /**
-     * The disk the worktrees directory takes: `bytes` counts every checkout's blocks, `real` counts blocks shared
-     * between them once (btrfs only, null elsewhere). Measuring takes seconds, so one runs at a time and its result is
-     * reused for a minute.
-     */
     disk(): Promise<WorkspaceDisk> {
-      if (disk.last && Date.now() - disk.last.at < 60_000) return Promise.resolve(disk.last)
+      const diskMeasurementCacheMs = 60_000
+      if (disk.last && Date.now() - disk.last.at < diskMeasurementCacheMs)
+        return Promise.resolve(disk.last)
       if (disk.running) return disk.running
       const directory = join(host.home, 'worktrees')
       const promise: Promise<WorkspaceDisk> = Promise.all([
@@ -1130,9 +1062,13 @@ export function workspaces(host: Host) {
           timeout: 120_000,
         }).then(
           ({ stdout }) => {
-            // Total, Exclusive, Set shared, Filename.
-            const [, exclusive, shared] = stdout.trim().split('\n').at(-1)!.trim().split(/\s+/)
-            return Number(exclusive) + Number(shared)
+            const [, exclusiveBytes, sharedBytesCountedOnce] = stdout
+              .trim()
+              .split('\n')
+              .at(-1)!
+              .trim()
+              .split(/\s+/)
+            return Number(exclusiveBytes) + Number(sharedBytesCountedOnce)
           },
           () => null,
         ),
