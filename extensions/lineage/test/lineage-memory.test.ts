@@ -1,5 +1,5 @@
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -49,12 +49,8 @@ const textOf = (content: unknown) =>
         .join('')
 
 /** A faux server that echoes; compaction summary requests are recorded and can be held. */
-async function fixture(settings?: object) {
+async function fixture() {
   const home = await temp('ultimate-memory-')
-  if (settings) {
-    await mkdir(join(home, '.ultimate'), { recursive: true })
-    await writeFile(join(home, '.ultimate/settings.json'), JSON.stringify(settings))
-  }
   const server = await fauxServer({ ultimateRoot, home, userHome: home })
   servers.push(server)
   const state = {
