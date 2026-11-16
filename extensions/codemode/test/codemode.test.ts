@@ -273,10 +273,10 @@ it('traces a tool a codemode script calls, and its service call, inside the code
           execute: async () => ({ output: [{ type: 'text', text: echo.echo('probed') }] }),
         }), defineTool({
           name: 'outer',
-          description: 'Runs a codemode script as a Pi nested call',
+          description: 'Runs probe as a Pi nested call',
           parameters: obj({}),
           execute: async (_args, api, ctx) => {
-            const result = await api.executeTool('codemode', { code: 'return await tools.probe({})' }, ctx)
+            const result = await api.executeTool('probe', {}, ctx)
             return { output: [{ type: 'text', text: JSON.stringify(result.details?.value ?? result) }] }
           },
         })] }
@@ -300,7 +300,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
     ],
   ])
 
-  // A model call runs codemode as a Pi nested task, which calls probe in-process: one chain of immediate parents.
+  // A model call runs outer, which runs probe as a Pi nested task: one chain of immediate parents.
   server.host.faux!.setResponses([
     fauxAssistantMessage([fauxToolCall('outer', {})], { stopReason: 'toolUse' }),
     fauxAssistantMessage('Complete'),
@@ -313,14 +313,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
       'tool',
       'agent',
       'outer',
-      [
-        [
-          'tool',
-          'trace-probe',
-          'codemode',
-          [['tool', 'codemode', 'probe', [['service', 'trace-probe', 'trace-echo.echo', []]]]],
-        ],
-      ],
+      [['tool', 'trace-probe', 'probe', [['service', 'trace-probe', 'trace-echo.echo', []]]]],
     ],
   ])
 })
