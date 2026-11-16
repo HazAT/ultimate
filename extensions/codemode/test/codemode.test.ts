@@ -440,12 +440,6 @@ it('applies each automation call in one script to its own arguments', async () =
   const home = await temp('ultimate-codemode-automation-')
   directories.push(home)
   await mkdir(join(home, 'project'))
-  await mkdir(join(home, '.ultimate'))
-  // Dream seeds its own automations once @ultimate starts, racing the script's list.
-  await writeFile(
-    join(home, '.ultimate/settings.json'),
-    JSON.stringify({ extensions: { disable: ['dream'] } }),
-  )
   const server = await createServer({
     ultimateRoot: resolve('.'),
     projectRoot: join(home, 'project'),
@@ -459,11 +453,12 @@ it('applies each automation call in one script to its own arguments', async () =
      const id = created.split(' ')[0];
      await tools.automation({action:'subscribe', id, to:'@ultimate'});
      await tools.automation({action:'unsubscribe', id, to:'#${server.root.id}'});
-     const [stored] = await ultimate.action('automations', 'list');
-     return { line: await tools.automation({action:'list'}), subscribers: stored.subscribers };`,
+     const stored = (await ultimate.action('automations', 'list')).find((item) => item.id === id);
+     const lines = (await tools.automation({action:'list'})).split('\\n');
+     return { line: lines.find((line) => line.startsWith(id + ' ')).slice(id.length + 1), subscribers: stored.subscribers };`,
   )
   expect(result.data.details.value).toEqual({
-    line: 'A1 Probe — Every 1 day — enabled → @ultimate',
+    line: 'Probe — Every 1 day — enabled → @ultimate',
     subscribers: ['@ultimate'],
   })
 })
