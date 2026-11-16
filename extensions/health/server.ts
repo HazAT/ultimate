@@ -2,6 +2,7 @@ import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { defineExtension, GenerationTask, hook } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { inProcess } from '../../lib/errors.ts'
 import { readHealth, record, reset } from './store.ts'
 import { HealthApi } from './api.ts'
 import { LoginChanged } from '../models/api.ts'
@@ -72,9 +73,12 @@ export default function health(host: ExtensionHost) {
             entry,
             announceHealthFlip,
           )
-          advisoryWrite.catch((error: unknown) => {
-            console.error('health: recording a response failed:', error)
-          })
+          inProcess(
+            'a health sample is advisory: the next response to the same provider records its state',
+            advisoryWrite.catch((error: unknown) => {
+              console.error('health: recording a response failed:', error)
+            }),
+          )
         },
       }),
     ],

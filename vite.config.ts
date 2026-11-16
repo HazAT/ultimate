@@ -71,6 +71,21 @@ export default defineConfig({
         rules: { 'ultimate/replay-safe-by-name': 'error' },
       },
       {
+        files: ['server/**', 'lib/**', 'shared/**', 'extensions/**/*.ts'],
+        excludeFiles: [
+          'test/**',
+          'extensions/*/test/**',
+          'lib/errors.ts',
+          'extensions/review/drafts.ts',
+          'extensions/sounds/conductor.ts',
+          'extensions/sounds/engine.ts',
+          'extensions/sounds/speaker.ts',
+          'extensions/sounds/tones.ts',
+          'extensions/voice-live/session.ts',
+        ],
+        rules: { 'ultimate/no-unowned-work': 'error' },
+      },
+      {
         files: [
           'bin/**',
           'extensions/**',

@@ -112,8 +112,9 @@ message is never the user's.
 - **Failures are loud.** An answer that cannot be posted wakes the answering @ultimate with the cause and the
   undelivered text. A serving automation deleted before it fires sends the asker a failed final reply.
   Two Ultimates never loop: a reply expects no answer.
-- **Not durable on the sender:** `tell` runs inside codemode, which is not replayed. A crash between logging and posting
-  leaves the message `sent`; telling again uses a new key.
+- **Durable on the sender:** `tell` logs the message and creates the `messages.tell` effect task in one commit; the
+  task posts and settles the message `delivered` or `failed`. A crash before it settles posts again with the same
+  key, which the target delivers once.
 
 `remote` and `remoteReply` are user-only actions, reached only by another instance's HTTP call. A remote sender shows
 as `@ultimate@<project> on <machine>` with a globe mark and a violet accent.

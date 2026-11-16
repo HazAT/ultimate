@@ -116,6 +116,35 @@ it('rejects a commented replay: safe, as the restart tool declared it, and accep
   )
 })
 
+it('rejects server work started and dropped, as the first chapter backup was, and accepts named exceptions', async () => {
+  const { parseSync } = await import('vite-plus')
+  const run = (source: string) => {
+    const f = context()
+    const rule = ultimate.rules['no-unowned-work'].create(f.context)
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit)
+      if (!node || typeof node !== 'object') return
+      if ((node as { type?: string }).type === 'ExpressionStatement')
+        rule.ExpressionStatement(node as never)
+      for (const value of Object.values(node)) visit(value)
+    }
+    visit(parseSync('server.ts', source).program)
+    return f.reports
+  }
+  const shipped = `const backupInBackground = () => {
+    firstBackup(host).catch((error) => host.notice(\`Chapter backup: \${String(error)}\`))
+  }`
+  expect(run(shipped)).toEqual([
+    expect.stringMatching(/lost on a crash.*defineEffect.*rebuiltOnOpen/),
+  ])
+  expect(run(`void post(target)`)).toHaveLength(1)
+  expect(run(`inBackground(post(target))`)).toHaveLength(1)
+  expect(run(`await post(target)`)).toEqual([])
+  expect(
+    run(`rebuiltOnOpen('each open checks for a first backup again', firstBackup(host))`),
+  ).toEqual([])
+  expect(run(`notify(push)`)).toEqual([])
+})
 it('rejects local polling function declarations in favor of the shared real-deadline helper', () => {
   const f = context()
   const rule = ultimate.rules['no-local-test-polling'].create(f.context)

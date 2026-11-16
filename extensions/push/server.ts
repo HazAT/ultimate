@@ -1,5 +1,8 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { Tx } from '@earendil-works/pi-durable'
+import { defineEffect } from '../../lib/effect.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { onCommit } from '../../lib/commits.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -47,20 +50,27 @@ const Closed = defineDoc<{ tags: string[] }>({
   fork: 'initial',
   initial: () => ({ tags: [] }),
 })
+const LastFailureTag = defineDoc<{ tag?: string }>({
+  kind: 'push.last-failure',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
 export const docs = [Closed]
 
-const markTagClosed = (host: ExtensionHost, tag: string, closed: boolean) =>
-  host.harness().commit(async (tx) => {
-    const doc = await tx.doc(Closed, ROOT_CONVERSATION_ID)
-    if (doc.tags.includes(tag) === closed) return
-    const rest = doc.tags.filter((each) => each !== tag)
-    doc.tags = closed ? [...rest, tag].slice(-CLOSED_TAG_HISTORY_LIMIT) : rest
-  }, context)
+async function markTagClosed(tx: Tx, tag: string, closed: boolean) {
+  const doc = await tx.doc(Closed, ROOT_CONVERSATION_ID)
+  if (doc.tags.includes(tag) === closed) return
+  const rest = doc.tags.filter((each) => each !== tag)
+  doc.tags = closed ? [...rest, tag].slice(-CLOSED_TAG_HISTORY_LIMIT) : rest
+}
 
 const state = (host: ExtensionHost) =>
   host.resource('push.state', () => ({
     shown: new Map<string, number>(),
-    sending: new Set<Promise<unknown>>(),
     keying: undefined as Promise<string> | undefined,
   }))
 
@@ -89,59 +99,66 @@ const remove = (host: ExtensionHost, endpoint: string) =>
     doc.subscriptions = doc.subscriptions.filter((each) => each.endpoint !== endpoint)
   }, context)
 
-async function send(host: ExtensionHost, subscription: Subscription, push: Push) {
+async function send(
+  host: ExtensionHost,
+  subscription: Subscription,
+  push: Push,
+  signal?: AbortSignal,
+) {
   const privateKey = await readSecret(host.userHome, KEY)
   if (!privateKey) throw new Error(`${KEY} is missing: turn notifications off and on again`)
   const { urgency, ...payload } = push
-  const result = await sendPush(subscription, privateKey, payload, urgency)
+  const result = await sendPush(subscription, privateKey, payload, urgency, signal)
   if (result.gone) await remove(host, subscription.endpoint)
   else if (result.error !== undefined)
     host.notice(`Push: the push service answered ${result.status} ${result.error}`)
   return result.status
 }
 
-function trackPushUntilClosed(host: ExtensionHost, work: Promise<unknown>) {
-  const shared = state(host)
-  const sending = work
-    .catch((error: unknown) => host.notice(`Push: ${String(error)}`))
-    .finally(() => shared.sending.delete(sending))
-  shared.sending.add(sending)
-}
-
 const closed = async (host: ExtensionHost, tag: string) =>
   (await host.harness().snapshot(Closed, ROOT_CONVERSATION_ID, context))?.tags.includes(tag) ??
   false
 
-function pushToHiddenBrowsers(host: ExtensionHost, push: Push) {
-  const { shown: visibleEndpointsAt } = state(host)
-  trackPushUntilClosed(
-    host,
-    subscriptions(host).then(async (all) =>
-      (await closed(host, push.tag))
-        ? []
-        : Promise.all(
-            all
-              .filter(
-                (each) =>
-                  Date.now() - (visibleEndpointsAt.get(each.endpoint) ?? 0) >=
-                  VISIBLE_BROWSER_GRACE_MS,
-              )
-              .map((each) => send(host, each, push)),
-          ),
-    ),
-  )
-}
+const deliver = (host: ExtensionHost) =>
+  defineEffect<Push, number>('push.deliver', async (push, { signal }) => {
+    if (await closed(host, push.tag)) return 0
+    const { shown: visibleEndpointsAt } = state(host)
+    const hidden = (await subscriptions(host)).filter(
+      (each) =>
+        Date.now() - (visibleEndpointsAt.get(each.endpoint) ?? 0) >= VISIBLE_BROWSER_GRACE_MS,
+    )
+    await Promise.all(hidden.map((each) => send(host, each, push, signal))).catch(
+      (error: unknown) => {
+        if (!signal.aborted) host.notice(`Push: ${String(error)}`)
+        throw error
+      },
+    )
+    return hidden.length
+  })
 
 export default function pushExtension(host: ExtensionHost) {
   host.need(SecretsApi)
+  const Deliver = deliver(host)
+  const pushToHiddenBrowsers = async (tx: Tx, push: Push) => {
+    await tx.createTask(Deliver, push, {
+      conversationId: ROOT_CONVERSATION_ID,
+      ownership: { kind: 'conversation' },
+      background: true,
+    })
+  }
+  const committed = (change: (tx: Tx) => Promise<void>) =>
+    host
+      .harness()
+      .commit(change, context)
+      .then(() => host.harness().resume())
+      .catch((error: unknown) => host.notice(`Push: ${String(error)}`))
   host.implement(PushApi, {
-    notify: (push) => {
-      trackPushUntilClosed(
-        host,
-        markTagClosed(host, push.tag, false).then(() => pushToHiddenBrowsers(host, push)),
-      )
-    },
-    close: (tag) => trackPushUntilClosed(host, markTagClosed(host, tag, true)),
+    notify: (push) =>
+      committed(async (tx) => {
+        await markTagClosed(tx, push.tag, false)
+        await pushToHiddenBrowsers(tx, push)
+      }),
+    close: (tag) => committed((tx) => markTagClosed(tx, tag, true)),
   })
   host.react(
     'questions',
@@ -155,34 +172,38 @@ export default function pushExtension(host: ExtensionHost) {
       const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
       const title = host.conversations().find((each) => each.id === data.from)?.title
       const push = questionPush(message, ultimate, title)
-      if (push) pushToHiddenBrowsers(host, push)
+      if (push) await pushToHiddenBrowsers(tx, push)
     },
     { from: 'now' },
   )
   host.react(
     'landings',
     [SubmissionLanded],
-    (_tx, { data }) => pushToHiddenBrowsers(host, landingPush(data)),
+    (tx, { data }) => pushToHiddenBrowsers(tx, landingPush(data)),
     {
       from: 'now',
     },
   )
 
   let stop: (() => void) | undefined
-  let lastFailureTag: string | undefined
-  const failed = async () => {
+  const pushNewFailure = async (tx: Tx) => {
     const token = host.doc(OVERVIEW)
-    if (!token) return undefined
-    const [standing, overview] = await Promise.all([
-      host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context),
-      host.harness().snapshot(token, ROOT_CONVERSATION_ID, context),
-    ])
-    const ultimate = standing?.ultimate
-    if (ultimate === undefined) return undefined
-    return failedPush((overview as OverviewState | undefined)?.conversations[ultimate], ultimate)
+    if (!token) return
+    const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+    if (ultimate === undefined) return
+    const overview = (await tx.doc(token, ROOT_CONVERSATION_ID)) as OverviewState
+    const push = failedPush(overview.conversations[ultimate], ultimate)
+    const last = await tx.doc(LastFailureTag, ROOT_CONVERSATION_ID)
+    if (last.tag === undefined) {
+      last.tag = push?.tag ?? ''
+      return
+    }
+    if (!push || push.tag === last.tag) return
+    last.tag = push.tag
+    await pushToHiddenBrowsers(tx, push)
   }
   host.onOpen(async () => {
-    lastFailureTag = (await failed())?.tag
+    await committed(pushNewFailure)
     stop = onCommit(host.harness(), (publication) => {
       if (
         !publication.changes.some(
@@ -193,24 +214,19 @@ export default function pushExtension(host: ExtensionHost) {
         )
       )
         return
-      failed()
-        .then((push) => {
-          if (!push || push.tag === lastFailureTag) return
-          lastFailureTag = push.tag
-          pushToHiddenBrowsers(host, push)
-        })
-        .catch((error: unknown) => host.notice(`Push: ${String(error)}`))
+      rebuiltOnOpen(
+        'push.last-failure claims the tag in the commit; open and overview changes recheck it',
+        committed(pushNewFailure),
+      )
     })
   })
   const close = async () => {
     stop?.()
     stop = undefined
-    const { sending } = state(host)
-    while (sending.size) await Promise.all(sending)
   }
   host.onRelease(close)
   host.onClose(close)
-  return defineExtension({ name: 'push' })
+  return defineExtension({ name: 'push', tasks: [Deliver] })
 }
 
 function endpointOf(args: unknown) {

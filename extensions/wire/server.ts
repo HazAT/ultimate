@@ -4,6 +4,7 @@ import { getOpenAICodexWebSocketDebugStats } from '@earendil-works/pi-ai/api/ope
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { inProcess } from '../../lib/errors.ts'
 import { ClaudeCodeExchanges } from '../claude-code/api.ts'
 import type { ClaudeCodeExchange } from '../claude-code/api.ts'
 import { diffBodies } from './diff.ts'
@@ -69,9 +70,12 @@ export default function wire(host: ExtensionHost) {
     tail: Promise.resolve() as Promise<unknown>,
   }))
   const storeWithoutBlockingGeneration = (call: Omit<WireCall, 'n'>) => {
-    save(reloadSharedWriteQueue, host.home, call).catch((error: unknown) => {
-      console.error('wire: storing a call failed:', error)
-    })
+    inProcess(
+      'Wire is a debug log of recent calls: a call a crash cuts off is not worth replaying',
+      save(reloadSharedWriteQueue, host.home, call).catch((error: unknown) => {
+        console.error('wire: storing a call failed:', error)
+      }),
+    )
   }
   host.implement(ClaudeCodeExchanges, {
     record(exchange) {

@@ -6,6 +6,15 @@ Conversations, tool calls, subagents, and documents are committed to SQLite (`$U
 replay-safe only if a rerun cannot do harm, and store decisions in `api.memo()`.
 A replay-safe tool says why in code: it spreads `...readOnly` or `...safeToRerun(why a rerun does no harm)` from `lib/replay.ts`, enforced by `ultimate/replay-safe-by-name`.
 
+An effect outside the store (a post to another Ultimate, a push, a git or file change) is a durable task too:
+`defineEffect(name, run, settle?)` from `lib/effect.ts` defines it, and the commit that decides the effect creates it
+with `tx.createTask`, so the effect exists exactly when the decision does. It runs at least once, again after a crash
+before its outcome commits, so `run` is idempotent by its `key` (the task id) or its input; `settle` writes the outcome
+in the task's terminal commit, and `{ ok: false, error: 'stopped' }` when it is aborted. `effectResult` waits for one.
+Server code never starts work and drops it (`ultimate/no-unowned-work`): what open derives again says so with
+`rebuiltOnOpen(why, work)`, what belongs to this process only (a request, a stream, a child, shutdown) with
+`inProcess(why, work)`, both from `lib/errors.ts`.
+
 Each folder keeps its own conversations in that central projects directory. Homes describe themselves with `project.json` and debounced `conversations.json`; `host.projects()` (or `ultimate.projects()` in codemode) lists these manifests and live supervisor URLs without opening another project's SQLite.
 
 Durable events (`host.emit`, see [Extension mechanics](extensions.md#durable-events)) are entries of one ownerless

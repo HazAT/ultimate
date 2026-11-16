@@ -135,6 +135,7 @@ table once its mistake can no longer happen.
 | No swallowed errors                                                      | `ultimate/no-silent-catch`                                          |
 | Product code explains itself; comments only document contracts           | `ultimate/no-comments`                                              |
 | A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
+| Server work is a durable task, or says why a crash loses nothing         | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.ts`        |
 | Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
 | One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |
 | A switch over a union names every case                                   | `typescript/switch-exhaustiveness-check`                            |

@@ -38,7 +38,7 @@ import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { answerRemoteRequest, reported, route, working } from './route.ts'
-import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
+import { projectsSection, remoteAction, remoteReplyAction, Tell, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
@@ -229,7 +229,7 @@ export default function messages(host: ExtensionHost) {
       ),
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
-    tell: (from, input, ctx, signal) => tell(host, from, input, ctx, signal),
+    tell: (from, input, ctx) => tell(host, from, input, ctx),
     owed,
     dropped: async (tx, by, serves, why, fired) => {
       if (serves.from === 'remote' && !(await stillServedAfter(tx, serves, fired)))
@@ -238,7 +238,7 @@ export default function messages(host: ExtensionHost) {
   })
   return defineExtension({
     name: 'messages',
-    tasks: [delivery(host), route(host), notice(host)],
+    tasks: [delivery(host), route(host), notice(host), Tell],
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.

@@ -32,11 +32,20 @@ export const keepLast = (_error: unknown): undefined => undefined
 
 export const overshadowed = (_error: unknown): undefined => undefined
 
-export function inBackground(workReportsOwnFailure: Promise<unknown>): void {
-  workReportsOwnFailure.catch((error: unknown) =>
-    console.error('Background work failed without reporting it:', error),
+function unowned(name: string, why: string, work: Promise<unknown>) {
+  if (!why.trim()) throw new Error(`${name} needs why a crash loses nothing`)
+  work.catch((error: unknown) =>
+    console.error(`Background work failed without reporting it (${why}):`, error),
   )
 }
+
+export const rebuiltOnOpen = (whyOpenRebuildsIt: string, workReportsOwnFailure: Promise<unknown>) =>
+  unowned('rebuiltOnOpen', whyOpenRebuildsIt, workReportsOwnFailure)
+
+export const inProcess = (
+  whyItDiesWithTheProcess: string,
+  workReportsOwnFailure: Promise<unknown>,
+) => unowned('inProcess', whyItDiesWithTheProcess, workReportsOwnFailure)
 
 export const retriedLater = (_error: unknown): undefined => undefined
 

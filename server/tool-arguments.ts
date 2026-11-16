@@ -10,6 +10,7 @@ import type {
 } from '@earendil-works/pi-ai'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import { traceContext } from './trace.ts'
+import { inProcess } from '../lib/errors.ts'
 import type { CallTrace } from './trace.ts'
 
 export const MAX_WHITESPACE_RUN = 1000
@@ -85,16 +86,19 @@ function record(
     },
     extensionCallInheritsTrace ? (traceContext() ?? null) : null,
   )
-  void stream.result().then(
-    (message) => {
-      const { input, output, cacheRead, cacheWrite } = message.usage
-      const result = { input, output, cacheRead, cacheWrite, stopReason: message.stopReason }
-      if (message.stopReason === 'error' || message.stopReason === 'aborted')
-        finish(false, new Error(classify(message.stopReason, message.errorMessage)))
-      else finish(true, result)
-    },
-    (error: unknown) =>
-      finish(false, new Error(classify('error', error instanceof Error ? error.message : ''))),
+  inProcess(
+    'the model trace records a stream owned by this process',
+    stream.result().then(
+      (message) => {
+        const { input, output, cacheRead, cacheWrite } = message.usage
+        const result = { input, output, cacheRead, cacheWrite, stopReason: message.stopReason }
+        if (message.stopReason === 'error' || message.stopReason === 'aborted')
+          finish(false, new Error(classify(message.stopReason, message.errorMessage)))
+        else finish(true, result)
+      },
+      (error: unknown) =>
+        finish(false, new Error(classify('error', error instanceof Error ? error.message : ''))),
+    ),
   )
 }
 
@@ -184,33 +188,36 @@ export function guardStream(
     const error = { ...partial, content: [...partial.content], stopReason: 'error' as const }
     guarded.push({ type: 'error', reason: 'error', error: { ...error, errorMessage } })
   }
-  void (async () => {
-    for await (const event of sourceWithFinalResult) {
-      if ('partial' in event) partial = event.partial
-      if (event.type === 'toolcall_delta') {
-        let run = whitespaceRunsIncludingStringValues.get(event.contentIndex) ?? 0
-        for (const char of event.delta) {
-          run = /\s/.test(char) ? run + 1 : 0
-          if (run > MAX_WHITESPACE_RUN) break
+  inProcess(
+    'the guarded model stream belongs to this process',
+    (async () => {
+      for await (const event of sourceWithFinalResult) {
+        if ('partial' in event) partial = event.partial
+        if (event.type === 'toolcall_delta') {
+          let run = whitespaceRunsIncludingStringValues.get(event.contentIndex) ?? 0
+          for (const char of event.delta) {
+            run = /\s/.test(char) ? run + 1 : 0
+            if (run > MAX_WHITESPACE_RUN) break
+          }
+          whitespaceRunsIncludingStringValues.set(event.contentIndex, run)
+          if (run > MAX_WHITESPACE_RUN) {
+            controller.abort()
+            const call = event.partial.content[event.contentIndex]
+            const name = call?.type === 'toolCall' ? `${call.name} ` : ''
+            // Pi upstream: @earendil-works/pi-ai@1.5.2 src/utils/retry.ts — RETRYABLE_PROVIDER_ERROR_PATTERN decides which errors a generation retries. Drop when Pi Durable lets a stream mark its error retryable.
+            const errorMessage = `Aborted degenerate tool-call arguments: ${name}arguments contain more than ${MAX_WHITESPACE_RUN} whitespace characters in a row; you can retry your request`
+            fail(errorMessage)
+            return
+          }
         }
-        whitespaceRunsIncludingStringValues.set(event.contentIndex, run)
-        if (run > MAX_WHITESPACE_RUN) {
-          controller.abort()
-          const call = event.partial.content[event.contentIndex]
-          const name = call?.type === 'toolCall' ? `${call.name} ` : ''
-          // Pi upstream: @earendil-works/pi-ai@1.5.2 src/utils/retry.ts — RETRYABLE_PROVIDER_ERROR_PATTERN decides which errors a generation retries. Drop when Pi Durable lets a stream mark its error retryable.
-          const errorMessage = `Aborted degenerate tool-call arguments: ${name}arguments contain more than ${MAX_WHITESPACE_RUN} whitespace characters in a row; you can retry your request`
-          fail(errorMessage)
-          return
-        }
+        guarded.push(event)
+        if (event.type === 'done' || event.type === 'error') return guarded.end()
       }
-      guarded.push(event)
-      if (event.type === 'done' || event.type === 'error') return guarded.end()
-    }
-    guarded.end(await sourceWithFinalResult.result())
-  })().catch((error: unknown) => {
-    fail(`Model stream failed: ${String(error)}`)
-    guarded.end()
-  })
+      guarded.end(await sourceWithFinalResult.result())
+    })().catch((error: unknown) => {
+      fail(`Model stream failed: ${String(error)}`)
+      guarded.end()
+    }),
+  )
   return guarded
 }

@@ -12,7 +12,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { git } from '../../lib/git.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
@@ -75,9 +75,12 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
     unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
-          void seed(change.value.id).catch((error: unknown) => {
-            host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
-          })
+          rebuiltOnOpen(
+            'open seeds every root conversation with its main commit',
+            seed(change.value.id).catch((error: unknown) => {
+              host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
+            }),
+          )
     })
     const records = await harness.commit(async (tx) => {
       const ids: ConversationId[] = []

@@ -30,8 +30,8 @@ import type { WorkspaceService } from '../workspaces/api.ts'
 import { cleanPreview, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
-import { meansNone, overshadowed } from '../../lib/errors.ts'
-import { spawnGroup, stopGroup } from '../../lib/process-group.ts'
+import { rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
+import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { Previews } from '../conversations/api.ts'
@@ -202,9 +202,13 @@ interface Instance {
   conversationId?: ConversationId
   child: GroupProcess
   group: Group
+  pidFile: string
   output: string
   stopping?: RetryableStopInFlight
 }
+
+const previewPids = (home: string) => join(home, 'preview-pids')
+const startedByThisProcess = (name: string) => name.startsWith(`${process.pid}-`)
 
 const info = ({ id, url, home, pid, conversationId }: Instance) => ({
   id,
@@ -274,7 +278,11 @@ function stop(instances: Map<string, Instance>, id: string) {
 async function stopInstance(instances: Map<string, Instance>, instance: Instance) {
   const unreapedGroupLeaderPid = instance.child.pid
   if (unreapedGroupLeaderPid !== undefined)
-    await stopGroup(unreapedGroupLeaderPid, { leader: instance.group, grace: 5000 })
+    await stopGroup(unreapedGroupLeaderPid, {
+      leader: instance.group,
+      grace: 5000,
+      pidFile: instance.pidFile,
+    })
   if (instance.temporary) {
     await unlink(join(instance.home, 'ultimate.lock')).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
@@ -375,9 +383,15 @@ export default function instanceExtension(
   const starts = host.resource('instance.starts', () => ({ pending: 0 }))
   const projectIsUltimateSource = host.projectRoot === host.ultimateRoot
   host.onOpen(async () => {
-    void sweepPreviews(tmpdir(), host.notice).catch((error: unknown) => {
-      host.notice(`Preview sweep failed: ${String(error)}`)
+    await sweepPidFiles(previewPids(host.home), startedByThisProcess).catch((error: unknown) => {
+      host.notice(`Stopping previews a crash left running failed: ${String(error)}`)
     })
+    rebuiltOnOpen(
+      'every open sweeps preview directories again',
+      sweepPreviews(tmpdir(), host.notice).catch((error: unknown) => {
+        host.notice(`Preview sweep failed: ${String(error)}`)
+      }),
+    )
   })
   async function start(
     args: { home?: string; model?: string | null },
@@ -441,10 +455,13 @@ export default function instanceExtension(
           args.model === undefined ? await previewModelSetting(host) : (args.model ?? undefined),
         git: await previewGit(project, home),
       })
+      await mkdir(previewPids(host.home), { recursive: true })
+      const pidFile = join(previewPids(host.home), `${process.pid}-${randomUUID()}.pid`)
       const group = spawnGroup(process.execPath, ['server/main.ts'], {
         cwd,
         env,
         grace: 5000,
+        pidFile,
       })
       const { child } = group
       const id = randomUUID()
@@ -457,6 +474,7 @@ export default function instanceExtension(
         conversationId,
         child,
         group,
+        pidFile,
         output: '',
       }
       instances.set(id, item)

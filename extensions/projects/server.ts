@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { inBackground, meansNone } from '../../lib/errors.ts'
+import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import type { GithubRepo } from '../../lib/project-identity.ts'
@@ -42,7 +42,8 @@ function cachedRepo(root: string | undefined) {
   if (!root) return undefined
   if (!repoCache.has(root) && !pendingRepoReads.has(root)) {
     pendingRepoReads.add(root)
-    inBackground(
+    rebuiltOnOpen(
+      'a later project list reads the repository cache again',
       (async () => {
         const key = await githubRepo(root)
         repoCache.set(root, key ? await readGithubRepo(key) : null)
