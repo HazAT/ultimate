@@ -101,7 +101,7 @@ it('includes optional progress from a project extension and leaves it out otherw
       layer: 'project',
       enabled: true,
       path: '/bench',
-      actions: ['progress'],
+      actions: ['projectProgress'],
       events: [],
       facets: { server: true, web: false },
     },
@@ -109,7 +109,7 @@ it('includes optional progress from a project extension and leaves it out otherw
   const invoke = vi.fn<ExtensionHost['invoke']>().mockResolvedValue(progress)
   project.invoke = invoke
   expect((await status(project, 0, 1000, signal)).progress).toEqual(progress)
-  expect(invoke).toHaveBeenCalledWith('bench', 'progress', {}, signal)
+  expect(invoke).toHaveBeenCalledWith('bench', 'projectProgress', {}, signal)
   expect(await status(host(), 0, 1000, signal)).not.toHaveProperty('progress')
   invoke.mockResolvedValue(null)
   expect(await status(project, 0, 1000, signal)).not.toHaveProperty('progress')

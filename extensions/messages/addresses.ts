@@ -12,14 +12,17 @@ import { isOwed } from '../../lib/message-state.ts'
 
 export type { Serves }
 
-export const Serving = defineDoc<{ keys: Record<string, number> }>({
+export const Serving = defineDoc<{
+  keys: Record<string, number>
+  handed: Record<string, true>
+}>({
   kind: 'board.serving',
   checkpointWhen: () => false,
   version: 1,
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ keys: {} }),
+  initial: () => ({ keys: {}, handed: {} }),
 })
 const ANSWERING_RUN = 0
 
@@ -39,7 +42,10 @@ export async function serve(tx: Tx, to: ConversationId): Promise<Serves | undefi
   const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
   const request = await owedRequest(tx, to)
   if (request) {
-    if (request.remote) serving.keys[request.remote.key] = ANSWERING_RUN
+    if (request.remote) {
+      serving.keys[request.remote.key] = ANSWERING_RUN
+      serving.handed[request.remote.key] = true
+    }
     return request
   }
   for (const submission of ((await tx.doc(LiveDoc, to)).run?.inputs ?? []).toReversed()) {
@@ -71,8 +77,8 @@ export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
   return [...read]
 }
 
-export async function owed(tx: Tx, to: ConversationId) {
-  const serves = await serve(tx, to)
+export async function owed(tx: Tx, to: ConversationId, answersBack = true) {
+  const serves = answersBack ? await serve(tx, to) : undefined
   const branches = await branchesReadThisRun(tx, to)
   return { ...(serves ? { serves } : {}), ...(branches.length ? { branches } : {}) }
 }

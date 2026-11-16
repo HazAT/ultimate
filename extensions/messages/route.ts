@@ -231,8 +231,11 @@ export async function answerRemoteRequest(
   const key = serves.remote!.key
   if (!Object.hasOwn(serving, key)) return
   const handedOnAgain = !failed && fired !== undefined && serving[key] === fired
-  if (!handedOnAgain) delete serving[key]
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  const replayedInterim =
+    answer !== undefined && log.messages.some((m) => m.to === 'remote' && m.routed === answer)
+  if (replayedInterim) return
+  if (!handedOnAgain) delete serving[key]
   const request = log.messages.find((m) => m.id === serves.message) ?? {
     id: serves.message,
     from: 'remote' as const,
@@ -293,6 +296,31 @@ export function route(host: ExtensionHost) {
     phases: {
       observe: async (task, runtime, ctx) => {
         const settled = await runtime.waitForTask(task.input.generation, ctx)
+        const failServedRemoteRequests = (why: string) =>
+          host.harness().commit(async (tx) => {
+            if (task.input.down)
+              for (const submission of task.input.inputs) {
+                const record = await tx.submission(submission)
+                if (record?.type !== 'input' || record.entry === undefined) continue
+                const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
+                const handedOnToWorkThatGoesOn =
+                  serves?.remote &&
+                  (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys[serves.remote.key] ===
+                    record.entry
+                if (serves?.from === 'remote' && !handedOnToWorkThatGoesOn)
+                  await answerRemoteRequest(
+                    host,
+                    tx,
+                    runtime.conversationId,
+                    serves,
+                    `The run that worked on your message ${serves.message} ${why}; no result will come from it.`,
+                    undefined,
+                    record.entry,
+                    true,
+                  )
+              }
+            return terminal
+          }, ctx)
         if (settled.state.outcome.status !== 'completed') {
           await runtime.commit(() => terminal, ctx)
           return
@@ -305,6 +333,7 @@ export function route(host: ExtensionHost) {
         )
         const { by } = task.input
         const id = runtime.conversationId
+        let unanswered: string | undefined
         const routed = await host.harness().commit(async (tx): Promise<Route[]> => {
           const inputsSettledByThisAnswer = inputs.flatMap((input) =>
             input?.type === 'input' && input.status === 'done' && input.answer === answer
@@ -317,11 +346,19 @@ export function route(host: ExtensionHost) {
             message?.role !== 'assistant' ||
             message.stopReason === 'error' ||
             message.stopReason === 'aborted'
-          )
+          ) {
+            unanswered =
+              message?.role === 'assistant' && message.stopReason === 'aborted'
+                ? 'was stopped'
+                : 'failed'
             return []
+          }
           const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
           if (task.input.down) {
-            if (!text.trim()) return []
+            if (!text.trim()) {
+              unanswered = 'ended without an answer'
+              return []
+            }
             const { branches, askers } = await reported(host, tx, by, inputsSettledByThisAnswer)
             const together =
               branches.length > 1
@@ -400,6 +437,7 @@ export function route(host: ExtensionHost) {
           }
           return routeToStarter(text, { echo: answersOnlyRoutedInputs })
         }, ctx)
+        if (unanswered) await failServedRemoteRequests(unanswered)
         for (const { to, text, requestId, options } of routed) {
           if (!text.trim()) continue
           await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {

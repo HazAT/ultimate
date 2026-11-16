@@ -17,10 +17,10 @@ async function projectProgress(host: ExtensionHost, signal: AbortSignal) {
     if (
       extension.name === 'status' ||
       !extension.enabled ||
-      !extension.actions.includes('progress')
+      !extension.actions.includes('projectProgress')
     )
       continue
-    const value = await host.invoke(extension.name, 'progress', {}, signal).catch(meansNone)
+    const value = await host.invoke(extension.name, 'projectProgress', {}, signal).catch(meansNone)
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue
     const { label, index, total } = value as Record<string, unknown>
     if (

@@ -105,14 +105,20 @@ export type MessagesService = {
   /**
    * Inside `tx`, what work conversation `to` starts now answers: `serves`, the newest agent's request it still owes,
    * and `branches`, those whose reply or report its current run read and it has not messaged since. An
-   * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts).
+   * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts). Pass
+   * `answersBack: false` for work whose answer never returns to `to` (a prompt-only automation): it serves nothing.
    */
-  owed(tx: Tx, to: ConversationId): Promise<{ serves?: Serves; branches?: ConversationId[] }>
+  owed(
+    tx: Tx,
+    to: ConversationId,
+    answersBack?: boolean,
+  ): Promise<{ serves?: Serves; branches?: ConversationId[] }>
   /**
    * Inside `tx`, the work `by` started to serve `serves` (an automation) ended before it answered: another Ultimate's
-   * request still open on it gets a failed reply saying `why`, so that Ultimate learns of it at once.
+   * request still open on it gets a failed reply saying `why`, so that Ultimate learns of it at once. `fired` is the
+   * input entry of the run that failed, if one ran: work that run handed the request on to keeps it open.
    */
-  dropped(tx: Tx, by: ConversationId, serves: Serves, why: string): Promise<void>
+  dropped(tx: Tx, by: ConversationId, serves: Serves, why: string, fired?: number): Promise<void>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

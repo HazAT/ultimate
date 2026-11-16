@@ -40,7 +40,7 @@ One compact, read-only summary of this Ultimate for dashboards that poll several
 }
 ```
 
-Projects can optionally expose progress by adding a read-only `progress` action to any enabled extension. It takes `{}` and returns `{ label: string, index: number, total: number }`, for example `{ "label": "run", "index": 2, "total": 4 }`, or `null` when there is no progress to show. The label must be nonempty, `total` a positive safe integer and `index` a safe integer from 0 through `total`. Status calls providers in registry order (excluding itself), passes the caller's abort signal, and keeps the first valid non-null result as `progress`. Errors and invalid results count as absent. No provider is required.
+Projects can optionally expose progress by adding a read-only `projectProgress` action to any enabled extension. It takes `{}` and returns `{ label: string, index: number, total: number }`, for example `{ "label": "run", "index": 2, "total": 4 }`, or `null` when there is no progress to show. The label must be nonempty, `total` a positive safe integer and `index` a safe integer from 0 through `total`. Status calls providers in registry order (excluding itself), passes the caller's abort signal, and keeps the first valid non-null result as `progress`. Errors and invalid results count as absent. No provider is required.
 
 Each field comes from the API of the extension that owns it, never from its documents:
 

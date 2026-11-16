@@ -208,9 +208,12 @@ export function delivery(host: ExtensionHost) {
               ? `ended its turn without an answer (${settled.status === 'unanswered' ? settled.reason : settled.status})`
               : undefined
           const state = stopped ? 'stopped' : failed ? 'failed' : undefined
-          const serving = m.remote && (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
-          const interim = !failed && serving && Object.hasOwn(serving, m.remote!.key)
-          if (failed && serving) delete serving[m.remote!.key]
+          const serving = m.remote && (await tx.doc(Serving, ROOT_CONVERSATION_ID))
+          const interim = !failed && serving && Object.hasOwn(serving.handed, m.remote!.key)
+          if (serving) {
+            delete serving.handed[m.remote!.key]
+            if (failed) delete serving.keys[m.remote!.key]
+          }
 
           const answerAlreadyReturnedToLocalSender =
             !failed &&

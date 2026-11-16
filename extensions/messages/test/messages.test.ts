@@ -37,6 +37,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { emit } from '../../../server/events.ts'
 import messagesExtension, { actions } from '../server.ts'
+import { answerRemoteRequest } from '../route.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
 import { Messages, MessageSent } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
@@ -2279,4 +2280,49 @@ it('wakes @ultimate with the cause when its answer cannot reach the other Ultima
   const loud = (await replies(f)).find((e) => (e.data as { failed?: boolean }).failed)!
   expect(JSON.stringify(loud.model)).toContain('The reply did not reach @ultimate@poe2-rust')
   expect(f.observed.some((text) => text.includes('The reply did not reach'))).toBe(true)
+})
+it("keeps the answering run's early answer interim when the served result goes out first", async () => {
+  // Review of 70a00e62: the result cleared the served mark, so a later "started" answer went out as the final reply.
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  await actions.remote({ key: 'race', text: 'Job\nHOLD', reply: true, from }, f.action())
+  await until(f.holding)
+  await f.opened.harness.commit(async (tx) => {
+    const { serves } = await f.service().owed(tx, ROOT_CONVERSATION_ID)
+    await answerRemoteRequest(f.host, tx, ROOT_CONVERSATION_ID, serves!, 'Result', undefined, 1)
+  }, context)
+  await until(() => other.posted.length === 1)
+  expect(other.posted[0].body).not.toHaveProperty('interim')
+  f.hold.release()
+  await until(() => other.posted.length === 2)
+  expect(other.posted[1].body).toMatchObject({ key: 'race', interim: expect.any(Number) })
+})
+it('serves nothing for work that never answers back, and fails a served request whose work ended', async () => {
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  await actions.remote({ key: 'job', text: 'Job\nHOLD', reply: true, from }, f.action())
+  await until(f.holding)
+  // A prompt-only automation runs elsewhere and never wakes @ultimate: the request is not served.
+  const promptOnly = await f.opened.harness.commit(
+    (tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, false),
+    context,
+  )
+  expect(promptOnly.serves).toBeUndefined()
+  const { serves } = await f.opened.harness.commit(
+    (tx) => f.service().owed(tx, ROOT_CONVERSATION_ID),
+    context,
+  )
+  f.hold.release()
+  await until(() => other.posted.length === 1)
+  expect(other.posted[0].body).toMatchObject({ interim: expect.any(Number) })
+  // The run its fire woke was stopped: the asker gets a failed final at once, and only one.
+  for (const _ of [1, 2])
+    await f.opened.harness.commit(
+      (tx) => f.service().dropped(tx, ROOT_CONVERSATION_ID, serves!, 'Run stopped', 99),
+      context,
+    )
+  await until(() => other.posted.length === 2)
+  await f.opened.root.waitForIdle(context)
+  expect(other.posted).toHaveLength(2)
+  expect(other.posted[1].body).toMatchObject({ key: 'job', failed: true, text: 'Run stopped' })
 })
