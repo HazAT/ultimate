@@ -296,7 +296,7 @@ export function supervisor(
       `Mode: ${sub.script!.once ? 'one-shot' : 'recurring'}`,
       `Named secret environment variables: ${sub.script!.secrets?.join(', ') || 'none'}`,
       `Executable: ${runPath(sub)}`,
-      `Persistent memory: ${join(folder(sub.id), 'state')} ($AUTOMATION_STATE).`,
+      `Persistent memory: the folder ${join(folder(sub.id), 'state')} ($AUTOMATION_STATE); keep files inside it, such as $AUTOMATION_STATE/state.json.`,
       ...(sub.scope === 'project'
         ? [
             `This is a project automation: run and ${MANIFEST} are committed in ${projectDir(sub.id)}, and run starts in ${host.projectRoot}. After you change run, say that the change is uncommitted in the project checkout.`,
