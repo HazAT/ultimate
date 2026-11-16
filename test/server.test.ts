@@ -298,9 +298,9 @@ export const actions={ late: async()=>{host.onOpen(async()=>{opened=true}); retu
     await stream.close()
   })
 
-  it('closes the harness before extensions, so a task running at shutdown resumes instead of faulting', async () => {
+  it('commits release work, then closes the harness before extensions, so a task running at shutdown resumes instead of faulting', async () => {
     const { server, options } = await fixture(false, {
-      teardown: `import { defineExtension, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+      teardown: `import { defineDoc, defineExtension, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { awaitWithContext, BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync, writeFileSync } from 'node:fs'
 import { defineApi } from '../../shared/extension-api.ts'
@@ -315,10 +315,13 @@ const Task = defineTask({ name: 'teardown.task', version: 1, initial: () => ({ p
     await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), ctx)
   } },
   abort: (_task, runtime, ctx) => runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx) })
-export default h => { host = h; h.implement(Probe, { ping: () => true }); h.onClose(async () => { writeFileSync(h.userHome + '/closed', ''); gate.resolve(); await new Promise(r => setImmediate(r)) }); return defineExtension({ name: 'teardown', tasks: [Task] }) }
+const Released = defineDoc({ kind: 'teardown.released', checkpointWhen: () => false, version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ at: 0 }) })
+export const docs = [Released]
+export default h => { host = h; h.implement(Probe, { ping: () => true }); h.onRelease(() => h.harness().commit(async tx => { (await tx.doc(Released, ROOT_CONVERSATION_ID)).at = 1 }, BACKGROUND_CONTEXT)); h.onClose(async () => { writeFileSync(h.userHome + '/closed', ''); gate.resolve(); await new Promise(r => setImmediate(r)) }); return defineExtension({ name: 'teardown', tasks: [Task] }) }
 export const actions = {
   start: async () => { await host.harness().commit(tx => tx.createTask(Task, null, { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' }, background: true }), BACKGROUND_CONTEXT); return true },
-  started: async () => started }`,
+  started: async () => started,
+  released: async () => (await host.harness().snapshot(Released, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))?.at }`,
     })
     await post(server, '/api/extensions/teardown/actions/start', { args: null })
     await until(
@@ -335,6 +338,10 @@ export const actions = {
         .items[0]
     await until(async () => (await task()).state.status === 'terminal')
     expect((await task()).state).toMatchObject({ outcome: { status: 'completed' } })
+    expect(
+      (await post(reopened, '/api/extensions/teardown/actions/released', { args: null })).data
+        .result,
+    ).toBe(1)
   })
 
   it('settles failing process resource cleanups and still closes the server', async () => {

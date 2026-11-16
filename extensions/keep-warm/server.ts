@@ -294,6 +294,9 @@ export default function keepWarm(host: ExtensionHost) {
         shared.running = undefined
       })
   })
+  host.onRelease(async () => {
+    await shared.running
+  })
   host.onClose(async () => {
     stopPolling()
     await shared.running

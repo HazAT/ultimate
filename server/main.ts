@@ -261,6 +261,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       const stopped = new Promise<void>((resolve, reject) =>
         http.close((error) => (error ? reject(error) : resolve())),
       )
+      if (opened) await extensions.released()
       await api?.close()
       await opened?.close()
       opened = undefined

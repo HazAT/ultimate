@@ -192,7 +192,13 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
 
 export default function watchdog(host: ExtensionHost) {
   const Watchdog = defineTask<
-    Failure & { failedTask: number; recipient: ConversationId; temporary: boolean; until: number },
+    Failure & {
+      failedTask: number
+      recipient: ConversationId
+      temporary: boolean
+      until: number
+      delivery?: true
+    },
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
     null
   >({
@@ -237,7 +243,7 @@ export default function watchdog(host: ExtensionHost) {
           ...(hint ? { hint } : {}),
         }
         const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
-        if (recipient === conversation) {
+        if (recipient === conversation && !task.input.delivery) {
           host.notice(content)
         } else {
           const target = (await runtime.conversation(recipient, ctx))!
@@ -303,6 +309,7 @@ export default function watchdog(host: ExtensionHost) {
           step: 'message delivery',
           retried: false,
           temporary: false,
+          delivery: true,
           until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
