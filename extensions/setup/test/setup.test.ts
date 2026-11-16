@@ -90,6 +90,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[] }) {
       isUsingOAuth: (provider: string) => options.oauth?.includes(provider) ?? false,
     },
     projectSettings: async () => ({ lander: { checks: ['pnpm check'] } }),
+    projectSetup: async () => ({ config: false, decision: null as boolean | null }),
     extensions: () => [
       {
         name: 'parallel',
@@ -276,10 +277,17 @@ it('warns about a missing worktree setup until one is configured', async () => {
   const workspaces = [...host.extensions(), { name: 'workspaces', enabled: true }] as ReturnType<
     typeof host.extensions
   >
-  const row = async (settings: JsonObject) =>
+  const row = async (settings: JsonObject, decision: boolean | null = true) =>
     (
-      await check({ ...host, extensions: () => workspaces, projectSettings: async () => settings })
+      await check({
+        ...host,
+        extensions: () => workspaces,
+        projectSetup: async () => ({ config: true, decision }),
+        projectSettings: async () => settings,
+      })
     ).find((issue) => issue.area === 'Worktree setup')
+  // Undecided, the project's settings read as empty: nothing to judge yet.
+  expect(await row({}, null)).toBeUndefined()
   expect(await row({})).toMatchObject({
     status: 'warn',
     summary: 'none, though the project has composer.json',
@@ -287,6 +295,35 @@ it('warns about a missing worktree setup until one is configured', async () => {
   expect(await row({ isolates: { worktree: { setup: ['composer install'] } } })).toMatchObject({
     status: 'ok',
   })
+})
+
+it('warns while the project setup is undecided, without judging the settings it ignores', async () => {
+  const host = await checkHost({ logins: ['openrouter', 'openai-codex'] })
+  const workspaces = [...host.extensions(), { name: 'workspaces', enabled: true }] as ReturnType<
+    typeof host.extensions
+  >
+  const areas = async (decision: boolean | null) =>
+    (
+      await check({
+        ...host,
+        extensions: () => workspaces,
+        projectSetup: async () => ({ config: true, decision }),
+        // An undecided project's settings read as empty.
+        projectSettings: async (): Promise<JsonObject> =>
+          decision ? { lander: { checks: ['pnpm check'] } } : {},
+      })
+    ).filter((issue) => ['Project setup', 'Lander checks'].includes(issue.area))
+  expect(await areas(null)).toEqual([
+    expect.objectContaining({
+      area: 'Project setup',
+      status: 'warn',
+      fix: { label: 'Decide', command: 'onboarding.extensions' },
+    }),
+  ])
+  expect(await areas(true)).toEqual([
+    expect.objectContaining({ area: 'Lander checks', status: 'ok' }),
+  ])
+  expect((await areas(false)).map((issue) => issue.area)).toEqual(['Lander checks'])
 })
 
 it('warns about a listed root without memories until it has one', async () => {
