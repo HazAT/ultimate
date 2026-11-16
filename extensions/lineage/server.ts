@@ -62,13 +62,11 @@ import {
   applyMemoryOps,
   BODY_CHARS,
   LINE_CHARS,
-  Memorized,
   Memory,
   memoryBrief,
   MEMORY_RULES,
   MEMORY_SLUG,
   memoryIndex,
-  memorizeTask,
   memoryText,
 } from './memory.ts'
 import { catchup, Seen, seedSeen, watchSeen } from './catchup.ts'
@@ -1302,34 +1300,6 @@ export default function lineageExtension(host: ExtensionHost) {
       { conversationId: root, ownership: { kind: 'conversation' }, background: true },
     )
   })
-  const Memorize = memorizeTask(
-    host,
-    async (tx, root, from) => (await tx.doc(Tally, root)).abstracts[String(from)]?.text,
-  )
-  host.react(
-    'memorize',
-    [SubmissionLanded],
-    async (tx, { data: landing }) => {
-      const from = landing.conversationId
-      const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-      const root = await climbOwnersThenForkSources(tx, await tx.conversation(from), roots)
-      if (root === undefined || root === from) return
-      const permanentLandingReceipt = await tx.doc(Memorized, root, landing.submission, null)
-      if (permanentLandingReceipt.task !== undefined) return
-      permanentLandingReceipt.task = await tx.createTask(
-        Memorize,
-        {
-          root,
-          submission: landing.submission,
-          from,
-          at: landing.at,
-          note: landingNote(landing).text,
-        },
-        { conversationId: root, ownership: { kind: 'conversation' }, background: true },
-      )
-    },
-    { from: 'now' },
-  )
   watchSeen(host, context)
   watchTally(host, context)
   return defineExtension({
@@ -1339,7 +1309,6 @@ export default function lineageExtension(host: ExtensionHost) {
       PromptCreatedWithBranch,
       ReplaySafeNonTallyLandingNote,
       WakeAfterPlacedManualCompaction,
-      Memorize,
       rewindTask(host),
     ],
     sections: [section('lineage', (input, ctx) => lineageSection(host, input.conversationId, ctx))],
@@ -1579,7 +1548,7 @@ export default function lineageExtension(host: ExtensionHost) {
       defineTool({
         name: 'remember',
         deferred: true,
-        description: `Change a root's project memory in one atomic batch. Limits, checked before anything is written: ${MEMORY_RULES}. One op over a limit refuses the whole batch, so count a line's characters before you send it and keep detail in the body. Ops are {op:'add', slug, kind: 'decision'|'fact'|'lesson', line, body, source?}, {op:'update', slug, kind?, line?, body?, source?} and {op:'delete', slug}; source is \`#<conversation>/<entry>\`. \`root\` defaults to your tree's root, or outside a tree to the project's only root.`,
+        description: `Change a root's project memory in one atomic batch. Memory is for what a future branch would get wrong without it: the user's way of working, standing decisions with their reason, lessons from real incidents; never what code, docs, git or your prompt show, one-off outcomes or tabled ideas. Limits, checked before anything is written: ${MEMORY_RULES}. One op over a limit refuses the whole batch, so count a line's characters before you send it and keep detail in the body. Ops are {op:'add', slug, kind: 'decision'|'fact'|'lesson', line, body, source?}, {op:'update', slug, kind?, line?, body?, source?} and {op:'delete', slug}; source is \`#<conversation>/<entry>\`. \`root\` defaults to your tree's root, or outside a tree to the project's only root.`,
         parameters: obj({
           root: opt(int({ minimum: 1 })),
           ops: arr(

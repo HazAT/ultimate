@@ -32,7 +32,6 @@ const chores: Record<string, string> = {
   'lineage.landing-note': 'Leaving a landing note in',
   'lineage.conclude-landed': 'Concluding after landing',
   'lineage.woken': 'Waking after compaction',
-  'lineage.memorize': 'Distilling memories',
   'lineage.rewind': 'Rewinding',
   'workspaces.prepare': 'Preparing a worktree for',
   'watchdog.failure': 'Reporting a failed run of',

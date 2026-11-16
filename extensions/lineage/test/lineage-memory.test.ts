@@ -10,22 +10,12 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import {
-  applyMemoryOps,
-  Memory,
-  MEMORY_LIMIT,
-  MEMORIZE_TOKENS,
-  normalizeMemoryOp,
-  parseMemoryOps,
-} from '../memory.ts'
+import { applyMemoryOps, Memory, MEMORY_LIMIT } from '../memory.ts'
 import { Seen } from '../catchup.ts'
 import { abstract, Tally } from '../server.ts'
 import { Roots } from '../api.ts'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { Standing } from '../../subagents/api.ts'
-import { SubmissionLanded } from '../../workspaces/api.ts'
-import type { LandedData } from '../../workspaces/api.ts'
-import { emit, EventFeed, EventLog } from '../../../server/events.ts'
 import { context } from '../../../server/harness.ts'
 import {
   branchProbe,
@@ -58,7 +48,7 @@ const textOf = (content: unknown) =>
         .flatMap((part) => (part.type === 'text' ? [part.text!] : []))
         .join('')
 
-/** A faux server that echoes; memorize requests answer `state.memorize` and are counted. */
+/** A faux server that echoes; compaction summary requests are recorded and can be held. */
 async function fixture(settings?: object) {
   const home = await temp('ultimate-memory-')
   if (settings) {
@@ -68,27 +58,13 @@ async function fixture(settings?: object) {
   const server = await fauxServer({ ultimateRoot, home, userHome: home })
   servers.push(server)
   const state = {
-    memorize: '{"ops":[]}',
-    // Answers to the next memorize requests, before `memorize`; `length` ends one cut off at the output budget.
-    queued: [] as (string | { text: string; stopReason: 'length' })[],
-    asked: [] as string[],
-    // The output budget of each memorize request.
-    budgets: [] as (number | undefined)[],
     condensed: [] as string[],
     // Holds a compaction's summary request until it resolves.
     gate: undefined as Promise<void> | undefined,
   }
-  const route: FauxResponseFactory = async (transcript, options) => {
+  const route: FauxResponseFactory = async (transcript) => {
     server.host.faux!.appendResponses([route])
     const [system, first] = transcript.messages
-    if (system?.role === 'system' && textOf(system.content).startsWith('You keep a software')) {
-      state.asked.push(textOf(first.content))
-      state.budgets.push(options?.maxTokens)
-      const answer = state.queued.shift() ?? state.memorize
-      return typeof answer === 'string'
-        ? fauxAssistantMessage(answer)
-        : fauxAssistantMessage(answer.text, { stopReason: answer.stopReason })
-    }
     if (system?.role === 'system' && textOf(system.content).startsWith('You condense')) {
       state.condensed.push(textOf(first.content))
       await state.gate
@@ -242,80 +218,6 @@ it.concurrent('starts a branch from the memory brief, and without memories from 
   ).toContain("starts with your project's memory index")
 })
 
-it('finds the one batch of ops in a memorize answer, wrapped or not', () => {
-  const ops = [
-    { op: 'delete', slug: 'pnpm' },
-    { op: 'update', slug: 'git', body: 'a {b} [c]' },
-  ]
-  const json = JSON.stringify({ ops })
-  for (const answer of [
-    json,
-    `\`\`\`json\n${json}\n\`\`\``,
-    `Here is the batch:\n\`\`\`json\n${json}\n\`\`\`\nDone.`,
-    `Here is the batch: ${json} — two memories change.`,
-    JSON.stringify({ ops, reason: 'the landing replaced pnpm' }),
-    JSON.stringify(ops),
-    `Ops: ${JSON.stringify(ops)}`,
-  ])
-    expect(parseMemoryOps(answer)).toEqual(ops)
-  expect(parseMemoryOps('{"ops":[]}\nNothing here is worth remembering.')).toEqual([])
-  for (const answer of [
-    'null',
-    '{"op":"delete","slug":"pnpm"}',
-    'Sure! Here are the ops: none',
-    `\`\`\`json\n${json}\n\`\`\`\n\`\`\`json\n{"ops":[]}\n\`\`\``,
-    `${json}\n${json}`,
-  ])
-    expect(() => parseMemoryOps(answer)).toThrow('expected {"ops": [...]}')
-  // A raw newline inside a string is not JSON; the reason names the JSON error so the retry can fix it.
-  expect(() => parseMemoryOps('{"ops":[{"op":"update","slug":"git","body":"a\nb"}]}')).toThrow(
-    /not valid JSON: .*control character/i,
-  )
-})
-
-it('normalises what a landing writes: long lines and bodies are cut, slugs kebab-cased', () => {
-  const words = (count: number) => Array.from({ length: count }, (_, i) => `w${i}`).join(' ')
-  const exact = 'x'.repeat(120)
-  expect(normalizeMemoryOp({ op: 'update', slug: 'ok', line: exact })).toEqual({
-    op: 'update',
-    slug: 'ok',
-    line: exact,
-  })
-  // One over the limit cuts at the last word boundary that fits, ending with an ellipsis.
-  const spaced = `${words(30)} ${'y'.repeat(121 - words(30).length - 1)}`
-  expect(spaced).toHaveLength(121)
-  expect(normalizeMemoryOp({ op: 'update', slug: 'ok', line: spaced })).toEqual({
-    op: 'update',
-    slug: 'ok',
-    line: `${words(30)}…`,
-  })
-  // Without a usable space the cut is hard, still within the limit.
-  const solid = normalizeMemoryOp({ op: 'update', slug: 'ok', line: 'z'.repeat(140) }) as {
-    line: string
-  }
-  expect(solid.line).toBe(`${'z'.repeat(119)}…`)
-  expect(solid.line).toHaveLength(120)
-  // Whitespace collapses to one line first; a body is cut at its own limit; a bad slug is kebab-cased.
-  expect(
-    normalizeMemoryOp({
-      op: 'add',
-      slug: 'Pnpm Only!',
-      kind: 'fact',
-      line: '  two\n  lines\there ',
-      body: `${words(400)} ${'b'.repeat(2000)}`,
-    }),
-  ).toEqual({
-    op: 'add',
-    slug: 'pnpm-only',
-    kind: 'fact',
-    line: 'two lines here',
-    body: `${words(400)}…`,
-  })
-  // What is not a string, or not an object, passes through for applyMemoryOps to refuse.
-  expect(normalizeMemoryOp({ op: 'delete', slug: 7 })).toEqual({ op: 'delete', slug: 7 })
-  expect(normalizeMemoryOp('nope')).toBe('nope')
-})
-
 it.concurrent('forks of a briefed branch inherit the tally tip its brief covers', async () => {
   const { server } = await fixture()
   const older = (await server.harness.commit(
@@ -404,205 +306,6 @@ it.concurrent('reads memories with memory; only @ultimate writes them with remem
   await expect(run(server, 'memory', {}, ultimate)).rejects.toThrow(
     `#${ultimate} is in no tree and the project has no root yet`,
   )
-})
-
-const landing = (submission: string, conversationId: number): LandedData => ({
-  submission,
-  conversationId: conversationId as ConversationId,
-  at: 3 as EntryId,
-  sha: `${submission}abcdef0`,
-  base: '0000000',
-  target: 'main',
-  lander: 2 as ConversationId,
-  divergence: 'None',
-  title: 'Land me',
-  feature: 'Landing',
-  commits: [{ sha: 'abc1234', subject: `feat: ${submission}` }],
-  commitCount: 1,
-  paths: ['landed.txt'],
-})
-const memorizeTasks = (server: Server) =>
-  server.harness.commit(
-    async (tx) =>
-      (await tx.scanTasks({ conversationId: ROOT_CONVERSATION_ID, kind: 'lineage.memorize' }, 500))
-        .items,
-    context,
-  )
-const settledTasks = async (server: Server, count: number) => {
-  await until(async () => {
-    const tasks = await memorizeTasks(server)
-    return tasks.length === count && tasks.every((task) => task.state.status === 'terminal')
-  })
-  for (const task of await memorizeTasks(server))
-    expect(task.state).toMatchObject({ outcome: { status: 'completed' } })
-}
-
-it.concurrent('distils each landing into memory once and writes nothing from a refused answer', async () => {
-  const { server, state } = await fixture()
-  const { id } = await branch(server, 'Land me')
-  await server.harness.commit(
-    (tx) => abstract(tx, id, { text: 'State: done.', at: 3 as EntryId }),
-    context,
-  )
-  await apply(server, [add('old-tool', 'Uses old-tool')])
-  state.memorize = `\`\`\`json\n${JSON.stringify({
-    ops: [
-      { op: 'delete', slug: 'old-tool' },
-      {
-        op: 'add',
-        slug: 'new-tool',
-        kind: 'decision',
-        line: 'Use new-tool',
-        body: 'old-tool was replaced by new-tool.',
-      },
-    ],
-  })}\n\`\`\``
-  const land = (data: LandedData) =>
-    server.harness.commit((tx) => emit(tx, SubmissionLanded, data), context)
-  await land(landing('s1', id))
-  await settledTasks(server, 1)
-  expect(await memories(server)).toEqual({
-    'new-tool': {
-      kind: 'decision',
-      line: 'Use new-tool',
-      body: 'old-tool was replaced by new-tool.',
-      source: `#${id}/3`,
-      updated: expect.any(Number),
-    },
-  })
-  // The model read the landing, the submitter's abstract frozen into it, and the memory with bodies.
-  expect(state.asked).toHaveLength(1)
-  expect(state.asked[0]).toContain('Landed s1abcde on main')
-  expect(state.asked[0]).toContain('State: done.')
-  expect(state.asked[0]).toContain('old-tool [fact] — Uses old-tool')
-
-  // The same landing again starts no second task, so its ops apply once.
-  const again = (await land(landing('s1', id))).id
-  await until(
-    async () =>
-      ((await server.harness.snapshot(EventLog, ROOT_CONVERSATION_ID, context))?.cursors[
-        'lineage/memorize'
-      ] ?? 0) >= again,
-  )
-  expect(await memorizeTasks(server)).toHaveLength(1)
-
-  // A batch applyMemoryOps refuses is asked once more with the reason; a valid retry is written.
-  state.queued.push(
-    JSON.stringify({ ops: [{ ...add('retried', 'An opinion'), kind: 'opinion' }] }),
-    JSON.stringify({ ops: [add('retried', 'Short enough')] }),
-  )
-  await land(landing('retry', id))
-  await settledTasks(server, 2)
-  expect(state.asked).toHaveLength(3)
-  expect(state.asked[2]).toContain('Op 1: kind must be decision, fact or lesson')
-  expect(state.asked[2]).toContain('An opinion')
-  expect((await memories(server)).retried).toMatchObject({ line: 'Short enough' })
-  // Distillation asks with a budget far over a summary's 2048 tokens, which batches of long bodies ran out of.
-  expect(state.budgets.every((budget) => budget! > 2048)).toBe(true)
-
-  // A line over 120 characters, which the model keeps writing on a retry too, is cut short and written the first
-  // time, so there is no retry and no notice.
-  const long = `${'word '.repeat(27)}and-then-some-more`
-  expect(long).toHaveLength(153)
-  state.memorize = JSON.stringify({ ops: [add('long', long)] })
-  await land(landing('long', id))
-  await settledTasks(server, 3)
-  expect(state.asked).toHaveLength(4)
-  expect((await memories(server)).long).toMatchObject({
-    line: `${'word '.repeat(22)}word…`,
-    body: `${long}, in full.`,
-  })
-  const notices = async () =>
-    ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
-      .filter((event) => event.name === 'ultimate.notice')
-      .map((event) => event.data as { extension: string; message: string })
-      .filter((data) => data.extension === 'lineage')
-      .map((data) => data.message)
-  expect(await notices()).toEqual([])
-
-  // An answer cut off at the output budget is asked again, told so; the shorter retry is written.
-  state.queued.push(
-    { text: '{"ops":[{"op":"add","slug":"cut","kind":"fact","line":"Cut', stopReason: 'length' },
-    JSON.stringify({ ops: [add('cut', 'Cut short, retried')] }),
-  )
-  await land(landing('cut', id))
-  await settledTasks(server, 4)
-  expect(state.asked).toHaveLength(6)
-  expect(state.asked[5]).toContain(
-    `the answer was cut off at the output limit of ${MEMORIZE_TOKENS} tokens, reasoning included: answer with fewer, shorter ops`,
-  )
-  expect((await memories(server)).cut).toMatchObject({ line: 'Cut short, retried' })
-
-  // An empty batch with commentary writes nothing and is not retried, so it leaves no notice.
-  state.memorize = '{"ops":[]}\nNothing here is worth remembering.'
-  await land(landing('empty', id))
-  await settledTasks(server, 5)
-  expect(state.asked).toHaveLength(7)
-
-  // A malformed answer, and a batch applyMemoryOps refuses, write nothing, retried or not.
-  const before = await memories(server)
-  state.memorize = 'Sure! Here are the ops: none'
-  await land(landing('s2', id))
-  await settledTasks(server, 6)
-  state.memorize = JSON.stringify({
-    ops: [
-      { op: 'add', slug: 'fine', kind: 'fact', line: 'Fine', body: 'Fine.' },
-      { op: 'update', slug: 'missing', line: 'x' },
-    ],
-  })
-  await land(landing('s3', id))
-  await settledTasks(server, 7)
-  expect(state.asked).toHaveLength(11)
-  expect(state.asked[10]).toContain('Op 2: no memory missing')
-  expect(await memories(server)).toEqual(before)
-  await until(async () => (await notices()).length === 2)
-  expect(await notices()).toEqual([
-    expect.stringContaining(
-      'Memory from landing s2 in #1 was not written: Error: expected {"ops": [...]}',
-    ),
-    expect.stringContaining(
-      'Memory from landing s3 in #1 was not written: Error: Op 2: no memory missing',
-    ),
-  ])
-
-  // Receipts are never evicted: after more than 100 further landings, the first again starts no task.
-  state.memorize = '{"ops":[]}'
-  await server.harness.commit(async (tx) => {
-    for (let index = 0; index < 101; index++)
-      await emit(tx, SubmissionLanded, landing(`bulk-${index}`, id))
-  }, context)
-  await settledTasks(server, 108)
-  const repeat = (await land(landing('s1', id))).id
-  await until(
-    async () =>
-      ((await server.harness.snapshot(EventLog, ROOT_CONVERSATION_ID, context))?.cursors[
-        'lineage/memorize'
-      ] ?? 0) >= repeat,
-  )
-  expect(await memorizeTasks(server)).toHaveLength(108)
-})
-
-it.concurrent('a fresh memorize reactor skips landings from before it and distils new ones', async () => {
-  const { server, state } = await fixture()
-  const { id } = await branch(server, 'Land me')
-  state.memorize = JSON.stringify({ ops: [add('fresh')] })
-  // Past landings with no memorize cursor, as on a fresh install: the reactor starts after them.
-  await server.harness.commit(async (tx) => {
-    for (let index = 0; index < 3; index++)
-      await emit(tx, SubmissionLanded, landing(`past-${index}`, id))
-    delete (await tx.doc(EventLog, ROOT_CONVERSATION_ID)).cursors['lineage/memorize']
-  }, context)
-  const cursor = async () =>
-    (await server.harness.snapshot(EventLog, ROOT_CONVERSATION_ID, context))?.cursors[
-      'lineage/memorize'
-    ]
-  await until(async () => (await cursor()) !== undefined)
-  expect(await memorizeTasks(server)).toEqual([])
-  await server.harness.commit((tx) => emit(tx, SubmissionLanded, landing('new', id)), context)
-  await settledTasks(server, 1)
-  expect(state.asked).toHaveLength(1)
-  expect(state.asked[0]).toContain('Landed newabcd on main')
-  expect(Object.keys(await memories(server))).toEqual(['fresh'])
 })
 
 it.concurrent('ends a compaction of @ultimate with its project memory', async () => {
@@ -755,14 +458,4 @@ it.concurrent('lets any conversation compact itself with the tool and wakes it t
     return (await tx.createConversation({ ownership: { kind: 'task', taskId: owner } })).id
   }, context)
   await expect(run(server, 'compact', {}, child)).rejects.toThrow('A subagent does not compact')
-})
-
-it.concurrent('completes a landing task without asking when no summary model runs', async () => {
-  const { server, state } = await fixture({ summaryModel: 'not a model' })
-  const { id } = await branch(server, 'Land me')
-  state.memorize = JSON.stringify({ ops: [add('never')] })
-  await server.harness.commit((tx) => emit(tx, SubmissionLanded, landing('s1', id)), context)
-  await settledTasks(server, 1)
-  expect(state.asked).toEqual([])
-  expect(await memories(server)).toEqual({})
 })
