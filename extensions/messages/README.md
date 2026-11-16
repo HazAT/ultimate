@@ -7,8 +7,9 @@ Durable messages between conversations, standing agents and the user. Built in a
 `message { to, text, reply?: true, steer?, images?, questions? }` returns the message id at once. Address a
 conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
 
-- **Who may message whom.** Only @ultimate and branches may message `user`. A subagent may message only its parent, so
-  its work reaches the user through its coordinator. Automation runs and other top-level conversations may message any
+- **Who may message whom.** @ultimate, standing agents and branches may message `user`; a message to the user ends
+  the run like a final answer. A subagent may message only its parent, so its work reaches the user through its
+  coordinator. Automation runs and other top-level conversations may message any
   agent. Self-messages, unknown conversations and tallies (use `note`) are refused, as is the lander, which takes no
   messages; an unknown standing name lists the valid ones.
 - **Delivery.** An idle recipient wakes. A busy one gets a follow-up after its current run, or steering with

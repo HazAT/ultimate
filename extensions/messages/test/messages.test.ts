@@ -664,13 +664,30 @@ it('allows one-way updates to the sender while answering', async () => {
     { from: f.recipient.id, to: 1, re: 1 },
   ])
 })
-it('refuses messages to the user from non-branch conversations other than @ultimate', async () => {
+it('lets a standing agent message the user and ends its run with it', async () => {
+  const f = await fixture()
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).writer = f.recipient.id
+  }, context)
+  await (
+    await f.recipient.submit(
+      { type: 'input', content: 'SEND ' + JSON.stringify({ to: 'user', text: 'Draft ready' }) },
+      context,
+    )
+  ).wait(context)
+  expect((await f.log())!.messages).toMatchObject([
+    { from: f.recipient.id, to: 'user', text: 'Draft ready', state: 'delivered' },
+  ])
+  const view = await f.recipient.context(context)
+  expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')
+})
+it('refuses messages to the user from conversations that are not standing agents or branches', async () => {
   const f = await fixture()
   await f.send('@scout', 'SEND ' + JSON.stringify({ to: 'user', text: 'Update' }))
   await until(async () => (await replies(f)).length === 1)
   expect((await f.log())!.messages).toHaveLength(2)
   expect(f.observed.join('\n')).toContain(
-    'Only @ultimate and branches message the user; send this to the conversation that started you.',
+    'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
   )
   await f.send('user', 'Relayed update')
   expect((await f.log())!.messages.at(-1)).toMatchObject({
@@ -870,6 +887,9 @@ it('lets a subagent message only the conversation that started it', async () => 
 
   const workerId = await child(true)
   await send(workerId, 'user')
+  expect(f.observed.join('\n')).toContain(
+    'A subagent answers the conversation that started it: give your final answer, or message #1.',
+  )
   await send(workerId, `#${f.recipient.id}`)
   await send(workerId, '#1')
   expect(f.observed.filter((text) => text.includes('message only #1'))).toHaveLength(1)
@@ -881,7 +901,9 @@ it('lets a subagent message only the conversation that started it', async () => 
   const run = await child(false)
   await send(run, 'user')
   expect((await f.log())!.messages).toHaveLength(1)
-  expect(f.observed.join('\n')).toContain('Only @ultimate and branches message the user')
+  expect(f.observed.join('\n')).toContain(
+    'Only @ultimate, standing agents and branches message the user',
+  )
 })
 it('refuses self, unknown ids, tally roots and unknown names with valid names', async () => {
   const f = await fixture()
