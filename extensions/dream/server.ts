@@ -93,7 +93,7 @@ const text = (value: unknown, name: string, max: number) => {
 export function prepare(args: unknown, now: number): Prepared {
   const input = fields(args)
   if (!Array.isArray(input.learned) || input.learned.length !== LEARNED_LINES)
-    throw new Error(`learned must be ${LEARNED_LINES} lines`)
+    throw new Error(`learned must be an array of ${LEARNED_LINES} strings`)
   return {
     chapter: chapterName(input.chapter),
     learned: input.learned.map((line, index) => text(line, `learned[${index}]`, LINE_CHARS)),
