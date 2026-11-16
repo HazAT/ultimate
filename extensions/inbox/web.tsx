@@ -345,6 +345,7 @@ function Zero({ messages, now }: { messages: readonly Message[]; now: number }) 
 }
 
 let linkedKeyAwaitingSurfaceMount: string | undefined
+let keyShownBeforeSurfaceUnmount: string | undefined
 
 function Inbox() {
   return <Waiting>{(items, messages) => <Surface items={items} messages={messages} />}</Waiting>
@@ -355,7 +356,9 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   const now = useNow(60_000)
   const openBranch = useOpenBranch()
 
-  const [anchoredSelection, setAnchoredSelection] = useState<string | null>(null)
+  const [anchoredSelection, setAnchoredSelection] = useState(
+    () => keyShownBeforeSurfaceUnmount ?? null,
+  )
 
   const [linkedKeyAwaitingItemLoad, setLinkedKeyAwaitingItemLoad] = useState(
     () => linkedKeyAwaitingSurfaceMount,
@@ -373,6 +376,9 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   )
   const at = items.findIndex((candidate) => candidate.key === selected)
   const item = items[at]
+  useEffect(() => {
+    if (selected !== undefined) keyShownBeforeSurfaceUnmount = selected
+  }, [selected])
 
   useEffect(() => {
     if (at >= 0) setIndexAfterSelectedItemLeaves(at)
