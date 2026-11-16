@@ -29,6 +29,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { CancelAction, CancelledDoc, Committed } from './refs.ts'
+import { Concluded } from '../conversations/api.ts'
+import { startBackground, stopConcluded, sweepEarlierProcesses } from './background.ts'
 
 const modelSizedImages = await createNodePhotonImages()
 
@@ -242,7 +244,13 @@ async function madeCommits(path: string, conversation: ConversationId) {
   return events
 }
 
-export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
+export default function codingTools(
+  host: Pick<ExtensionHost, 'emit' | 'home' | 'notice' | 'onOpen' | 'react'>,
+) {
+  host.onOpen(() => sweepEarlierProcesses(host))
+  host.react('stop-background', [Concluded], (_tx, { data }) =>
+    stopConcluded(host, data.conversations),
+  )
   const shell = createBashTool()
   const parameters = obj({
     command: str({ description: 'Bash command to execute' }),
@@ -258,11 +266,31 @@ export default function codingTools(host: Pick<ExtensionHost, 'emit'>) {
           'Only for commands that just wait or poll (CI checks, deploys, a file appearing): a steering message ends the command early. Never combine with commands that change things.',
       }),
     ),
+    background: opt(
+      bool({
+        description:
+          'For servers and other long-running processes: start the command in its own process group and return at once with the group id, a log file of its output and the command that stops it. Do not add & yourself. Ultimate stops it when this conversation concludes or Ultimate restarts.',
+      }),
+    ),
   })
   const tracedBashTool = defineTool({
     ...shell,
     parameters,
-    async execute({ interruptible, ...args }, api, context) {
+    async execute({ interruptible, background, ...args }, api, context) {
+      if (background) {
+        if (!api.env) throw new Error('No execution environment is configured')
+        const { pgid, log } = await startBackground(
+          host,
+          api.conversationId,
+          api.env.cwd,
+          args.command,
+        )
+        const output = `Started in the background as process group ${pgid}.\nOutput: ${log}\nStop it with: kill -- -${pgid}`
+        return {
+          output: [{ type: 'text', text: output }],
+          structuredOutput: { output, truncated: false, exitCode: 0 },
+        }
+      }
       const change = interruptible ? changes(args.command) : undefined
       if (change)
         throw new Error(

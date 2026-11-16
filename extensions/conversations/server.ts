@@ -36,6 +36,7 @@ import { contextBehavior } from './context.ts'
 import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
 import {
   ConcludeAction,
+  Concluded,
   RenameAction,
   ResumeAction,
   SetSummaryModelAction,
@@ -176,8 +177,7 @@ async function concludeAndStopOtherTrees(
 ) {
   const harness = host.harness()
   const { tree, callerWouldWaitForItself } = await harness.commit(async (tx) => {
-    await concludeIn(host, tx, ids)
-    const owned = await ownedTree(tx, ids)
+    const owned = await concludeIn(host, tx, ids)
     return { tree: owned, callerWouldWaitForItself: from !== undefined && owned.has(from) }
   }, context)
   const stopped: ConversationId[] = []
@@ -219,7 +219,11 @@ async function ownedTree(tx: Tx, ids: ConversationId[]) {
   }
   return tree
 }
-export async function concludeIn(host: Pick<ExtensionHost, 'doc'>, tx: Tx, ids: ConversationId[]) {
+export async function concludeIn(
+  host: Pick<ExtensionHost, 'doc' | 'emit'>,
+  tx: Tx,
+  ids: ConversationId[],
+) {
   for (const id of ids) {
     const found = await tx.conversation(id)
     if (!found) throw new Error(`Unknown conversation ${id}`)
@@ -241,6 +245,9 @@ export async function concludeIn(host: Pick<ExtensionHost, 'doc'>, tx: Tx, ids: 
       : {}),
     ...Object.fromEntries(ids.map((id) => [id, now])),
   }
+  const tree = await ownedTree(tx, ids)
+  await host.emit(tx, Concluded, { conversations: [...tree].toSorted((a, b) => a - b) })
+  return tree
 }
 
 function conversationIds(args: ActionInput<{ ids: number[] }>): ConversationId[] {

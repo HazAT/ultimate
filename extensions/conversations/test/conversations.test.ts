@@ -24,6 +24,8 @@ import type { ExtensionHost } from '../../../server/extensions.ts'
 import { actionExec } from '../../../server/actions.ts'
 import { currentAnswer, exchangeUser } from '../summary.ts'
 import { Overview } from '../overview.ts'
+import { Concluded } from '../refs.ts'
+import { EventLog } from '../../../server/events.ts'
 import { Branch } from '../../lineage/api.ts'
 
 type Server = Awaited<ReturnType<typeof fauxServer>>
@@ -632,6 +634,7 @@ it.concurrent('conclude merges concurrent additions, deduplicates ids and return
   const host = {
     harness: () => server.harness,
     doc: () => undefined,
+    emit: async () => {},
     metadata: Metadata,
     want: () => ({
       release: async (ids: number[]) => {
@@ -705,6 +708,13 @@ it.concurrent('concluding a busy conversation stops it and the subagents it runs
   })
   expect(await running(id)).toBeUndefined()
   expect(await running(child())).toBeUndefined()
+  const events = await server.harness.commit(async (tx) => {
+    const log = (await tx.doc(EventLog, ROOT_CONVERSATION_ID)).conversation!
+    return (await tx.scanEntries({ conversationId: log }, 256)).items
+  }, context)
+  expect(events.find((entry) => entry.kind === Concluded.kind)?.data).toMatchObject({
+    data: { conversations: [id, child()] },
+  })
   const live = (await server.harness.inspect(context)).tasks.filter(({ record }) =>
     [id, child()].includes(record.conversationId as number),
   )

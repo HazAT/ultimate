@@ -18,6 +18,13 @@ export const Compacted = defineEvent<{
 }>('conversations.compacted')
 
 /**
+ * Top-level conversations were concluded: `conversations` lists them with every conversation they own, ascending.
+ * Emitted in the commit that concludes them (the Conclude action, a landing, a side chat ending), so whatever a
+ * conversation held outside the store can be freed exactly when it ends.
+ */
+export const Concluded = defineEvent<{ conversations: ConversationId[] }>('conversations.concluded')
+
+/**
  * How full conversation `id`'s context is: `tokens` its next request carries (the latest answer's prompt, or after a
  * compaction or reset an `estimated` count until the next answer), `window` its model's context window and `percent`
  * the two as 0–100. Fields are absent while unknown (no model window, an estimate that failed). `at` is when it was

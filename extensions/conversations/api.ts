@@ -26,9 +26,10 @@ export type ConversationsService = {
   concludedIn(tx: Tx): Promise<Set<ConversationId>>
   /**
    * Conclude top-level conversations `ids` inside `tx`, as the Conclude action does before it frees their resources
-   * through `Release`; throws for unknown and owned conversations, roots and standing agents.
+   * through `Release`; throws for unknown and owned conversations, roots and standing agents. Returns them with every
+   * conversation they own, as the `Concluded` event it emits lists them.
    */
-  concludeIn(tx: Tx, ids: ConversationId[]): Promise<void>
+  concludeIn(tx: Tx, ids: ConversationId[]): Promise<Set<ConversationId>>
   /** The summary model to ask now, from settings; undefined while none is valid and available. */
   summaryModel(): Promise<SummaryModel | undefined>
   /** The summary model with why: the configured one, a fallback for a default without a login, or why none runs. */
@@ -109,6 +110,7 @@ export const ContextUsageDoc = defineDoc<ContextUsage>({
   initial: () => ({ at: 0 }),
 })
 export type { ContextUsage } from './refs.ts'
+export { Concluded } from './refs.ts'
 /** How each standing agent's mark looks, on conversation 1; subagents writes it from the definitions. */
 export const Marks = defineDoc<Record<string, AgentMarkStyle>>({
   kind: MarksDoc.kind,
