@@ -27,7 +27,7 @@ import { Subagents } from '../subagents/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import type { WorkspaceService } from '../workspaces/api.ts'
-import { cleanPreview, sweepPreviews } from './cleanup.ts'
+import { cleanPreview, makeOwnerWritable, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
 import { rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
@@ -103,6 +103,7 @@ export async function seedUserHome(from: string, to: string) {
       errorOnExist: true,
       force: false,
     }).catch(missing)
+  await makeOwnerWritable(target)
   for (const name of SHARED_CODE_AND_REGISTRY) await symlink(join(source, name), join(target, name))
 }
 

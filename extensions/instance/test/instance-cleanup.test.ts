@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -158,6 +158,19 @@ it.each([true, false])(
   },
 )
 
+// Regression: stopping a preview failed with EACCES on its copy of a read-only skill tree, so its conversation could
+// not conclude. Deleting the home by hand then failed every later stop with "unable to open database file".
+it('cleans a home with a read-only tree, and counts a home that is already gone as cleaned', async () => {
+  const { home } = await fixture()
+  const skill = join(home, 'user/.ultimate/skills/locked')
+  await mkdir(skill, { recursive: true })
+  await writeFile(join(skill, 'SKILL.md'), 'x')
+  await chmod(join(skill, 'SKILL.md'), 0o444)
+  await chmod(skill, 0o555)
+  expect(await cleanPreview(home)).toBe(true)
+  expect(await stat(home).catch(() => undefined)).toBeUndefined()
+  expect(await cleanPreview(home)).toBe(true)
+})
 it('cleans a home whose checkout points at a repository that no longer exists', async () => {
   const { root, home } = await fixture()
   const gone = join(root, 'gone')
