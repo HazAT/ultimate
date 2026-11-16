@@ -1,9 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
-/**
- * Chapters in the browser: their names, the switch between them and the night veil while the server restarts into
- * another one. A successful switch never answers: the process exits, the page reconnects to the new one and reloads.
- */
 import { ArrowRightIcon, LibraryIcon, LoaderCircleIcon, MoonIcon, RotateCwIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
@@ -27,52 +23,37 @@ import { ConversationRef } from '../conversations/ui.tsx'
 import { AsleepAction, ChaptersAction, DreamDoc, SwitchAction } from './refs.ts'
 import { busyElsewhere } from './types.ts'
 
-/** How a chapter reads everywhere: "Chapter 2 · fresh-roots". The status line names later ones by name alone. */
 export const chapterLabel = (number: number, name: string) => `Chapter ${number} · ${name}`
 
-/** Same rule as `chapterName` in lib/chapters.ts, checked while typing. */
 export const CHAPTER_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/
 
-/** The dialog id of "Chapters…": every chapter, and the switch between them. */
 export const chaptersDialog = 'dream.chapters'
 
-/** The chapters of this home; they change only with a restart, which reloads the page. */
 export function useChapters() {
   return useAction(ChaptersAction, null, { onError: keepLast }).data
 }
 
-/**
- * Conversations at work, @ultimate included: a chapter change waits for them, as the server does. Work parked by a
- * switch would keep the chapter left behind from ever being switched back to.
- */
 export function useBusyElsewhere() {
   return busyElsewhere(useConversations())
 }
 
-// ---- the switch in flight ------------------------------------------------------------------------------------------
+type ChapterRestartIntent = 'asleep' | 'switch'
+type ActivationErrorAtDisconnect = { error?: string }
+type RestartRolledBackToSameProcess = true
 
 type Pending = {
-  /** The chapter the server restarts into, as a label. */
   to: string
-  /** `asleep` wakes @ultimate there; `switch` reopens the chapter where it was left. */
-  verb: 'asleep' | 'switch'
-  /** The process that was serving when the switch began; another one serving means the switch happened. */
+  verb: ChapterRestartIntent
   pid?: number
   since: number
-  /**
-   * The activation error the process reported when the stream dropped. A rolled-back restart reopens the same process
-   * with a new one (`reacquire`); a plain reconnect while the switch is still prepared does not change it.
-   */
-  dropped?: { error?: string }
-  /** The restart failed after its approval and the same process serves again. */
-  failed?: true
+  dropped?: ActivationErrorAtDisconnect
+  failed?: RestartRolledBackToSameProcess
 }
 
-/** Latched until the page reloads: the new chapter's documents no longer show the sleep that started it. */
-let pending: Pending | undefined
+let pendingUntilReload: Pending | undefined
 const listeners = new Set<() => void>()
 const setPending = (next: Pending | undefined) => {
-  pending = next
+  pendingUntilReload = next
   for (const listener of listeners) listener()
 }
 const usePending = () =>
@@ -81,21 +62,17 @@ const usePending = () =>
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    () => pending,
+    () => pendingUntilReload,
   )
 
-/** Read on the next page load: open @ultimate, where the morning card waits. */
-const WAKE = 'ultimate.dream.wake'
+const OPEN_ULTIMATE_AFTER_WAKE_RELOAD = 'ultimate.dream.wake'
 
-/** A request the restart cut off: the process exited before answering, which is how a switch succeeds. */
 export const cutOff = (error: unknown) => error instanceof ActionError && error.status === 0
 
-/** Restart into existing chapter `name`; resolves with the refusal, or never while the server switches. */
 export async function switchChapter(label: string, name: string, pid?: number) {
   setPending({ to: label, verb: 'switch', pid, since: Date.now() })
   try {
     await api.action(SwitchAction, { chapter: name })
-    // `switch` never returns on success; an answer is a refusal.
     setPending(undefined)
     return 'The switch did not happen'
   } catch (error) {
@@ -105,10 +82,6 @@ export async function switchChapter(label: string, name: string, pid?: number) {
   }
 }
 
-/**
- * Fall asleep into new chapter `name`: resolves with a refusal, or undefined once `sleep` says how it went (a failed
- * step returns) or the restart cut the request off (it switched; the veil takes over).
- */
 export async function fallAsleep(label: string, name: string, pid?: number) {
   try {
     await api.action(AsleepAction, { name })
@@ -120,10 +93,6 @@ export async function fallAsleep(label: string, name: string, pid?: number) {
   }
 }
 
-/**
- * Over everything while the server restarts into another chapter: a quiet night screen, then a reload once the new
- * process serves. A Fall asleep in any tab shows it too, from its `switching` phase.
- */
 export function SwitchVeil() {
   const ours = usePending()
   const system = useSystem()
@@ -134,7 +103,7 @@ export function SwitchVeil() {
   const now = useNow(1000, ours !== undefined)
   const pid = system?.process.pid
   useEffect(() => {
-    if (sleep && !pending && current)
+    if (sleep && !pendingUntilReload && current)
       setPending({
         to: chapterLabel(current.chapters.length + 1, sleep.chapter),
         verb: 'asleep',
@@ -143,26 +112,37 @@ export function SwitchVeil() {
       })
   }, [sleep, current, pid])
   useEffect(() => {
-    // A restart refused before it began leaves the same process serving and the session failed.
-    if (pending?.verb === 'asleep' && pending.pid === pid && doc !== undefined && !sleep)
-      setPending(undefined)
+    const restartRefused =
+      pendingUntilReload?.verb === 'asleep' &&
+      pendingUntilReload.pid === pid &&
+      doc !== undefined &&
+      !sleep
+    if (restartRefused) setPending(undefined)
   }, [doc, sleep, pid])
   useEffect(() => {
-    if (!pending || pid === undefined || pending.pid === undefined || pending.failed) return
+    if (
+      !pendingUntilReload ||
+      pid === undefined ||
+      pendingUntilReload.pid === undefined ||
+      pendingUntilReload.failed
+    )
+      return
     const error = system?.process.activationError
     if (connection.status !== 'open') {
-      if (!pending.dropped) setPending({ ...pending, dropped: { error } })
+      if (!pendingUntilReload.dropped) setPending({ ...pendingUntilReload, dropped: { error } })
       return
     }
-    if (pid === pending.pid) {
-      // The same process reports a new activation error: the supervisor rolled the restart back to it.
-      if (pending.dropped && error !== undefined && error !== pending.dropped.error)
-        setPending({ ...pending, failed: true })
+    if (pid === pendingUntilReload.pid) {
+      const rolledBackToSameProcess =
+        pendingUntilReload.dropped &&
+        error !== undefined &&
+        error !== pendingUntilReload.dropped.error
+      if (rolledBackToSameProcess) setPending({ ...pendingUntilReload, failed: true })
       return
     }
-    if (pending.verb === 'asleep') sessionStorage.setItem(WAKE, '1')
-    // A fresh page: nothing of the old chapter's documents, views or selection stays behind.
-    location.replace('/')
+    if (pendingUntilReload.verb === 'asleep')
+      sessionStorage.setItem(OPEN_ULTIMATE_AFTER_WAKE_RELOAD, '1')
+    reloadChapterPage()
   }, [pid, connection.status, system])
   useReloadOnChapterChange(pid)
   if (!ours) return null
@@ -225,40 +205,32 @@ export function SwitchVeil() {
   )
 }
 
-/**
- * Another tab switched chapters: this one reconnects to a new process without reloading, while its chapter names and
- * views still belong to the chapter before. A new process with another active chapter reloads the page.
- */
+const reloadChapterPage = () => location.replace('/')
 function useReloadOnChapterChange(pid: number | undefined) {
-  /** The active chapter this page was loaded with, read once from the first process it saw. */
-  const loaded = useRef<string>(undefined)
+  const chapterAtPageLoad = useRef<string>(undefined)
   useEffect(() => {
     if (pid === undefined) return undefined
     const controller = new AbortController()
     api
       .action(ChaptersAction, null, { signal: controller.signal })
       .then((chapters) => {
-        if (loaded.current === undefined) loaded.current = chapters.active
-        else if (loaded.current !== chapters.active) location.replace('/')
+        if (chapterAtPageLoad.current === undefined) chapterAtPageLoad.current = chapters.active
+        else if (chapterAtPageLoad.current !== chapters.active) reloadChapterPage()
       })
       .catch(keepLast)
     return () => controller.abort()
   }, [pid])
 }
 
-/** After a Fall asleep reloaded the page: show @ultimate, where the morning card is. */
 export function useWakeUp(open: () => Promise<void>) {
   const system = useSystem()
   useEffect(() => {
-    if (!system || !sessionStorage.getItem(WAKE)) return
-    sessionStorage.removeItem(WAKE)
+    if (!system || !sessionStorage.getItem(OPEN_ULTIMATE_AFTER_WAKE_RELOAD)) return
+    sessionStorage.removeItem(OPEN_ULTIMATE_AFTER_WAKE_RELOAD)
     void open()
   }, [system, open])
 }
 
-// ---- switching later: the dialog, the banner -----------------------------------------------------------------------
-
-/** Every chapter, newest last, and the switch to any of them. */
 export function ChaptersDialog() {
   const [open, setOpen] = useDialog(chaptersDialog)
   return (
@@ -400,7 +372,6 @@ function ChaptersBody() {
   )
 }
 
-/** Why a chapter change waits: conversations at work, each a way to it. */
 export function BusyBlocker({
   busy,
   onGo,
@@ -438,7 +409,6 @@ export function BusyBlocker({
   )
 }
 
-/** A refused chapter change: the server's reason, and that nothing moved. */
 export function Refusal({ text }: { text: string }) {
   return (
     <p className="text-[12px] leading-relaxed" data-dream-refused role="alert">
@@ -448,10 +418,6 @@ export function Refusal({ text }: { text: string }) {
   )
 }
 
-/**
- * At the top of the sidebar while an older chapter is open: which one, and the way to the newest. Quiet, since being
- * here on purpose is fine.
- */
 export function OlderChapterBanner() {
   const chapters = useChapters()
   const actions = useUltimate()
@@ -482,7 +448,6 @@ export function OlderChapterBanner() {
   )
 }
 
-/** The same fact in the status line, where it shows at every width; it opens the chapters. */
 export function OlderChapterStatus() {
   const chapters = useChapters()
   const actions = useUltimate()

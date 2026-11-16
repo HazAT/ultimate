@@ -1,29 +1,22 @@
-/**
- * The only timers product code uses (`ultimate/no-raw-timer`). Each name says why time, not an event, decides when it
- * runs, and each returns its cancel, so an effect can return it as its cleanup. Browser-safe.
- */
-
 export type Cancel = () => void
 
 type Handle = ReturnType<typeof setTimeout>
-const lenient = (handle: Handle, unref: boolean | undefined) => {
+const allowProcessExitWhenUnref = (handle: Handle, unref: boolean | undefined) => {
   if (unref) (handle as { unref?: () => void }).unref?.()
   return handle
 }
 
-/** Runs `fn` `ms` after the latest call: input that settles before it is acted on. */
-export function debounce(ms: number, fn: () => void) {
+export function debounce(quietPeriodMs: number, fn: () => void) {
   let handle: Handle | undefined
   const call = () => {
     clearTimeout(handle)
-    handle = setTimeout(fire, ms)
+    handle = setTimeout(fire, quietPeriodMs)
   }
   const fire = () => {
     handle = undefined
     fn()
   }
   return Object.assign(call, {
-    /** Runs a pending call now. */
     flush: () => {
       if (handle !== undefined) {
         clearTimeout(handle)
@@ -37,15 +30,14 @@ export function debounce(ms: number, fn: () => void) {
   })
 }
 
-/** Runs `fn` once, `ms` after the first of a burst of calls: changes gathered into one write. */
-export function batch(ms: number, fn: () => void, { unref }: { unref?: boolean } = {}) {
+export function batch(batchWindowMs: number, fn: () => void, { unref }: { unref?: boolean } = {}) {
   let handle: Handle | undefined
   const call = () => {
-    handle ??= lenient(
+    handle ??= allowProcessExitWhenUnref(
       setTimeout(() => {
         handle = undefined
         fn()
-      }, ms),
+      }, batchWindowMs),
       unref,
     )
   }
@@ -57,19 +49,17 @@ export function batch(ms: number, fn: () => void, { unref }: { unref?: boolean }
   })
 }
 
-/** Calls `expire` unless cancelled within `ms`: a real deadline on something that has no signal of its own. */
 export function deadline(
-  ms: number,
+  deadlineMs: number,
   expire: () => void,
   { unref }: { unref?: boolean } = {},
 ): Cancel {
-  const handle = lenient(setTimeout(expire, Math.max(0, ms)), unref)
+  const handle = allowProcessExitWhenUnref(setTimeout(expire, Math.max(0, deadlineMs)), unref)
   return () => clearTimeout(handle)
 }
 
-/** `work`, or `error` once `ms` pass first: a deadline on a promise that may never settle. `signal` drops the deadline. */
 export function within<T>(
-  ms: number,
+  timeoutMs: number,
   work: Promise<T>,
   error: () => Error,
   signal?: AbortSignal,
@@ -78,28 +68,32 @@ export function within<T>(
   return Promise.race([
     work,
     new Promise<never>((_resolve, reject) => {
-      cancel = deadline(ms, () => reject(error()))
+      cancel = deadline(timeoutMs, () => reject(error()))
       signal?.addEventListener('abort', () => cancel?.(), { once: true })
     }),
   ]).finally(() => cancel?.())
 }
 
-/** Calls `fn` again after `ms`: the next attempt after a failure. */
-export const retryAfter = (ms: number, fn: () => void, options: { unref?: boolean } = {}): Cancel =>
-  deadline(ms, fn, options)
+export const retryAfter = (
+  retryDelayMs: number,
+  fn: () => void,
+  options: { unref?: boolean } = {},
+): Cancel => deadline(retryDelayMs, fn, options)
 
-/** Calls `fn` every `ms`: a real schedule, or a poll of something that publishes no change. */
-export function every(ms: number, fn: () => void, { unref }: { unref?: boolean } = {}): Cancel {
-  const handle = setInterval(fn, ms)
+export function every(
+  intervalMs: number,
+  fn: () => void,
+  { unref }: { unref?: boolean } = {},
+): Cancel {
+  const handle = setInterval(fn, intervalMs)
   if (unref) (handle as { unref?: () => void }).unref?.()
   return () => clearInterval(handle)
 }
 
-/** Resolves after `ms`, or rejects when `signal` aborts: the beats of a paced sequence (animation, audio, backoff). */
-export function pace(ms: number, signal?: AbortSignal): Promise<void> {
+export function pace(beatMs: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted()
-    const cancel = deadline(ms, () => {
+    const cancel = deadline(beatMs, () => {
       signal?.removeEventListener('abort', aborted)
       resolve()
     })
@@ -111,7 +105,6 @@ export function pace(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** Runs `fn` in a later task, once the current one and the work it queued are done. */
 export function nextTurn(fn: () => void): Cancel {
   return deadline(0, fn)
 }

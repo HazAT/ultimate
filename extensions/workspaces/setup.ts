@@ -1,7 +1,6 @@
 import type { JsonObject } from '@earendil-works/pi-durable'
-import { exec } from '../../lib/exec.ts'
+import { exec as execWithClosedInput } from '../../lib/exec.ts'
 
-/** Run the project's `isolates.worktree.setup` commands in a new worktree at `path`, branched from `source`. */
 export async function setup(
   source: string,
   path: string,
@@ -15,8 +14,7 @@ export async function setup(
   for (const command of commands) {
     signal.throwIfAborted()
     try {
-      // exec closes the command's input, so one that reads it gets EOF.
-      await exec('sh', ['-c', command], {
+      await execWithClosedInput('sh', ['-c', command], {
         cwd: path,
         env: { ...process.env, ULTIMATE_SOURCE: source },
         signal,

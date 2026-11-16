@@ -31,18 +31,14 @@ function checkAnswers(answers: { question: string }[], questions: Question[]) {
   )
     throw new Error('Unknown question')
 }
-/** The keys of the chosen options, in option order: "a", "a,c"; none when an answer names no option. */
+
 function keysOf(question: Question, labels: string[]) {
   const keys = (question.options ?? []).flatMap((o) =>
     o.key && labels.includes(o.label) ? [o.key] : [],
   )
   return keys.length === labels.length ? keys.join(',') : ''
 }
-/**
- * The reply naming each answer by the message's own numbering: `1a. Topic: label` for an option (`2a,c.` for
- * several), `3: text` for typed text or a rating, `Topic: answer` when the message numbered nothing; a note from the
- * card's field follows the answers.
- */
+
 export function answerText(answers: Answer[], questions: Question[], note?: string) {
   const lines = answers.map(({ question, answer: given }) => {
     const q = questions.find((candidate) => candidate.text === question)!
@@ -58,7 +54,6 @@ export function answerText(answers: Answer[], questions: Question[], note?: stri
 
 export const userActions = ['answer', 'dismiss']
 export const actions = {
-  /** Answer an open message from its questions, with a note, or as free text: a user reply to its sender. */
   answer: implementAction(AnswerAction, async (args, { host, signal, device }) => {
     const data = args as {
       messageId: number
@@ -91,7 +86,6 @@ export const actions = {
         .answer(data.messageId, reply, withAbortSignal(signal, context), device),
     }
   }),
-  /** Close an open message to the user unanswered; its sender gets a one-way note. */
   dismiss: implementAction(DismissAction, async (args, { host, signal, device }) => {
     const data = args as { messageId: number }
     if (!data || !Number.isSafeInteger(data.messageId)) throw new Error('Invalid message')
@@ -104,7 +98,6 @@ export const actions = {
 }
 
 export default function questionsExtension(host: ExtensionHost) {
-  // Core, always on; resolved where it is called, declared here so the catalogue lists it.
   host.need(MessagesApi)
   return defineExtension({ name: 'questions' })
 }

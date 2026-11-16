@@ -72,12 +72,15 @@ const validUiKey = (key: unknown) =>
   typeof key === 'string' && key.length <= 200 && /^[A-Za-z0-9_.:-]+$/.test(key)
 const actionPath = /^\/api\/extensions\/([^/]+)\/actions\/([^/]+)$/
 const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)\/(\d+)$/
-/** One open `/api/events` stream: a browser tab's only long-lived request, carrying all its subscriptions. */
+const maxResentSummaryTitleCharacters = 200
+const taskGraphBroadcastIntervalMs = 100
+const liveViewMinimumEntries = 150
+type StreamUniqueSubscriptionId = number
+
 interface Connection {
   send: ReturnType<typeof eventStream>['send']
-  subscriptions: Map<number, () => Promise<void>>
-  /** Subscriptions closed before they were open, so an open that arrives after its close is not started. */
-  closed: Set<number>
+  subscriptions: Map<StreamUniqueSubscriptionId, () => Promise<void>>
+  closedBeforeOpen: Set<StreamUniqueSubscriptionId>
   ended: boolean
 }
 function reply(response: ServerResponse, status: number, data: unknown) {
@@ -91,10 +94,6 @@ function failed(response: ServerResponse, error: unknown) {
     })
   else response.destroy()
 }
-/**
- * Start a server-sent event stream; `end` stops its heartbeat and closes it. An event of a subscription carries its id
- * on its first data line.
- */
 function eventStream(response: ServerResponse) {
   response.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -119,7 +118,6 @@ function eventStream(response: ServerResponse) {
     },
   }
 }
-/** `POST /api/extensions/:name/actions/:action`: answers `{ result }`, or the action's error message. */
 async function runAction(
   request: IncomingMessage,
   response: ServerResponse,
@@ -139,12 +137,11 @@ async function runAction(
   }
   response.once('close', cancel)
   try {
-    // Missing args mean none, so `curl -d '{}'` and agents can call argument-free actions.
-    const args = (Object.hasOwn(data, 'args') ? data.args : {}) as JsonValue
+    const argsWithMissingMeaningNone = (Object.hasOwn(data, 'args') ? data.args : {}) as JsonValue
     const result = await extensions.invoke(
       name,
       key,
-      args,
+      argsWithMissingMeaningNone,
       controller.signal,
       id === undefined ? undefined : parseConversationId(id),
       'ui',
@@ -152,12 +149,10 @@ async function runAction(
     )
     reply(response, 200, { result })
   } catch (error) {
-    // An aborted action is the client leaving (a newer call, an unmount), not a fault.
-    if (!controller.signal.aborted && (error as Error)?.name !== 'AbortError')
-      console.error(`Extension action ${name}/${key}:`, error)
-    // The message is the action author's; the UI shows it, so a setup problem can say what is missing.
-    const message = error instanceof Error ? error.message : String(error)
-    reply(response, 500, { error: message.slice(0, 500) })
+    const clientLeft = controller.signal.aborted || (error as Error)?.name === 'AbortError'
+    if (!clientLeft) console.error(`Extension action ${name}/${key}:`, error)
+    const userFacingActionError = error instanceof Error ? error.message : String(error)
+    reply(response, 500, { error: userFacingActionError.slice(0, 500) })
   } finally {
     response.off('close', cancel)
   }
@@ -174,23 +169,21 @@ export async function createApi(
   const { harness, root } = opened
   const streams = new Set<() => Promise<void>>()
   const connections = new Map<string, Connection>()
-  // The live task graph, kept current synchronously as commits are adopted; its changes are sent at most every 100 ms.
   let onGraph = () => {}
-  // A change can arrive before the observation resolves; it is newer than the observation's value.
-  const latest: { tasks?: TaskGraph } = {}
+  const latestCommitGraph: { tasks?: TaskGraph } = {}
   const graph = await harness.observeTaskGraph(
     {
       advance: (call) => {
         if (call.kind !== 'value') return
-        latest.tasks = call.value
+        latestCommitGraph.tasks = call.value
         onGraph()
       },
       end: () => {},
     },
     context,
   )
-  latest.tasks ??= graph.value
-  const tasks = () => latest.tasks!
+  latestCommitGraph.tasks ??= graph.value
+  const tasks = () => latestCommitGraph.tasks!
   let closed = false
   let summaries: ConversationSummary[] = []
   const projectIndex = conversationIndex(host.home)
@@ -220,11 +213,12 @@ export async function createApi(
       if (!conversation) continue
       const agent = await conversation.agent(context)
       const metadata = await harness.snapshot(Metadata, record.id, context)
-      // Every list the user sees (sidebar, search, @ultimate, the cloud front page) comes from these summaries.
       if (metadata?.label === EVENT_LOG_LABEL) continue
-      // Older subagents were titled with their whole prompt; every switch resends this list, so long titles are cut.
       const full = metadata?.title ?? metadata?.inputTitle
-      const title = full && full.length > 200 ? shortTitle(full, 200) : full
+      const title =
+        full && full.length > maxResentSummaryTitleCharacters
+          ? shortTitle(full, maxResentSummaryTitleCharacters)
+          : full
       refreshed.push({
         id: record.id,
         ...(record.owner ? { parentConversationId: record.owner.conversationId } : {}),
@@ -237,8 +231,7 @@ export async function createApi(
         ...(metadata?.answerAt === undefined ? {} : { answerAt: metadata.answerAt }),
       })
     }
-    // Merged into the current list with busy from the current graph, so updates made during the awaits above survive.
-    const next = ids ? [...summaries] : []
+    const summariesIncludingConcurrentUpdates = ids ? [...summaries] : []
     for (const fresh of refreshed) {
       const summary = {
         ...fresh,
@@ -246,19 +239,19 @@ export async function createApi(
           (task) => task.conversationId === fresh.id && !task.background,
         ),
       }
-      const index = next.findIndex((item) => item.id === summary.id)
-      if (index < 0) next.push(summary)
-      else next[index] = summary
+      const index = summariesIncludingConcurrentUpdates.findIndex((item) => item.id === summary.id)
+      if (index < 0) summariesIncludingConcurrentUpdates.push(summary)
+      else summariesIncludingConcurrentUpdates[index] = summary
     }
-    if (JSON.stringify(next) !== JSON.stringify(summaries)) {
-      summaries = next
+    if (JSON.stringify(summariesIncludingConcurrentUpdates) !== JSON.stringify(summaries)) {
+      summaries = summariesIncludingConcurrentUpdates
       events.emit('conversations', summaries)
     }
   }
   await refreshConversations()
   projectIndex.update(summaries)
   let lastGraph = JSON.stringify(tasks())
-  const scheduleGraph = batch(100, () => {
+  const scheduleGraph = batch(taskGraphBroadcastIntervalMs, () => {
     const graphJson = JSON.stringify(tasks())
     if (graphJson !== lastGraph) {
       lastGraph = graphJson
@@ -300,7 +293,6 @@ export async function createApi(
         events.emit('notice', { level: 'error', message: 'Could not refresh conversation list' }),
       )
   })
-  /** Open the tab's stream: its id, then the state every tab shares, then whatever it subscribes. */
   async function stream(request: IncomingMessage, response: ServerResponse) {
     const ui = await harness.watchDoc(UiState, root.id, context)
     const sse = eventStream(response)
@@ -308,7 +300,7 @@ export async function createApi(
     const connection: Connection = {
       send: sse.send,
       subscriptions: new Map(),
-      closed: new Set(),
+      closedBeforeOpen: new Set(),
       ended: false,
     }
     connections.set(id, connection)
@@ -338,13 +330,9 @@ export async function createApi(
     })
     if (request.destroyed || response.destroyed) await stop()
   }
-  /**
-   * Stream a conversation's view (when `view`) and documents on `connection` as subscription `sub`: snapshots first,
-   * then ops. Its id is the client's; an id is never reused, so its events never mix with a replaced subscription's.
-   */
   async function subscribe(
     connection: Connection,
-    sub: number,
+    streamUniqueId: StreamUniqueSubscriptionId,
     id: ConversationId,
     kinds: string[],
     withView: boolean,
@@ -375,39 +363,44 @@ export async function createApi(
         }
       }
       if (withView) {
-        // Pi's window: the newest 150 entries, growing to 300 before its oldest leave; `/history` pages the rest.
-        live = await conversation.watch(context, { min: 150 })
+        live = await conversation.watch(context, { min: liveViewMinimumEntries })
         watches.push(live)
       }
     } catch (error) {
       await stop()
       throw error
     }
-    // The stream ended, or the client closed or reused this id, while its watches opened.
-    if (connection.ended || connection.closed.has(sub) || connection.subscriptions.has(sub)) {
+    if (
+      connection.ended ||
+      connection.closedBeforeOpen.has(streamUniqueId) ||
+      connection.subscriptions.has(streamUniqueId)
+    ) {
       await stop()
       return
     }
-    connection.subscriptions.set(sub, stop)
+    connection.subscriptions.set(streamUniqueId, stop)
     const send = <K extends keyof ServerEvents>(name: K, data: ServerEvents[K]) =>
-      connection.send(name, data, sub)
+      connection.send(name, data, streamUniqueId)
     for (const kind of unknown)
       connection.send('notice', {
         level: 'warning',
         message: `Unknown extension document: ${kind}`,
       })
-    if (live) {
-      send('view', live.value)
-      live.start(async (call) => {
-        if (call.kind === 'value') send('ops', call.ops)
-      })
+    function deliverSnapshotsThenOps() {
+      if (live) {
+        send('view', live.value)
+        live.start(async (call) => {
+          if (call.kind === 'value') send('ops', call.ops)
+        })
+      }
+      for (const doc of docs) {
+        send('doc', { kind: doc.kind, value: doc.watch.value })
+        doc.watch.start(async (call) => {
+          if (call.kind === 'value') send('docOps', { kind: doc.kind, ops: call.ops })
+        })
+      }
     }
-    for (const doc of docs) {
-      send('doc', { kind: doc.kind, value: doc.watch.value })
-      doc.watch.start(async (call) => {
-        if (call.kind === 'value') send('docOps', { kind: doc.kind, ops: call.ops })
-      })
-    }
+    deliverSnapshotsThenOps()
   }
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
@@ -418,14 +411,12 @@ export async function createApi(
     conversations() {
       return summaries
     },
-    /** Open browser tabs: each holds one event stream. */
     pages: () => connections.size,
     async handle(request: IncomingMessage, response: ServerResponse) {
       const url = new URL(request.url ?? '/', 'http://localhost')
       if (!url.pathname.startsWith('/api/')) return false
       const json = (status: number, data: unknown) => reply(response, status, data)
       try {
-        // Local-only does not mean safe from cross-origin browser requests.
         if (
           !(await admit(request, new URL(system.current().process.url).port || '80', access.rules))
         )
@@ -442,9 +433,8 @@ export async function createApi(
           if (request.method === 'DELETE') {
             const close = connection.subscriptions.get(sub)
             connection.subscriptions.delete(sub)
-            // Not open (yet): its POST, still opening or not arrived, must not start it.
             if (close) await close()
-            else connection.closed.add(sub)
+            else connection.closedBeforeOpen.add(sub)
           } else {
             const data = await body(request)
             const docs = data.docs ?? []
@@ -465,8 +455,7 @@ export async function createApi(
         if (request.method === 'GET' && history) {
           const id = parseConversationId(Number(history[1]))
           const before = parseEntryId(Number(url.searchParams.get('before')))
-          // `after` bounds the page from below, so a reveal reads down to one entry in large pages.
-          const after = parseEntryId(
+          const revealLowerBoundEntryId = parseEntryId(
             url.searchParams.has('after') ? Number(url.searchParams.get('after')) : 0,
           )
           if (
@@ -474,15 +463,18 @@ export async function createApi(
             id < 1 ||
             !Number.isSafeInteger(before) ||
             before < 1 ||
-            !Number.isSafeInteger(after) ||
-            after < 0
+            !Number.isSafeInteger(revealLowerBoundEntryId) ||
+            revealLowerBoundEntryId < 0
           )
             throw new HttpError(400, 'Invalid history cursor or conversation id')
           const conversation = await harness.conversation(id, context)
           if (!conversation) throw new HttpError(404, 'Unknown conversation')
-          const size = after ? 512 : 64
+          const size = revealLowerBoundEntryId ? 512 : 64
           const page = await conversation.entries(
-            { maxEntryId: offsetEntryId(before, -1), ...(after && { minEntryId: after }) },
+            {
+              maxEntryId: offsetEntryId(before, -1),
+              ...(revealLowerBoundEntryId && { minEntryId: revealLowerBoundEntryId }),
+            },
             size + 1,
             undefined,
             context,
@@ -500,13 +492,9 @@ export async function createApi(
         }
         if (request.method !== 'POST') throw new HttpError(404, 'Unknown endpoint')
         const action = actionPath.exec(url.pathname)
-        // Submissions carry images and actions can carry media (a voice recording); other commands stay small.
-        const data = await body(
-          request,
-          action || /^\/api\/conversations\/\d+\/submit$/.test(url.pathname)
-            ? 12 * 1024 * 1024
-            : undefined,
-        )
+        const mayCarryMedia = action || /^\/api\/conversations\/\d+\/submit$/.test(url.pathname)
+        const mediaBodyLimitBytes = 12 * 1024 * 1024
+        const data = await body(request, mayCarryMedia ? mediaBodyLimitBytes : undefined)
         if (action) {
           await runAction(request, response, extensions, action, data)
           return true
@@ -528,18 +516,17 @@ export async function createApi(
               throw new HttpError(413, 'UI state too large')
             for (const [key, item] of Object.entries(set)) value[key] = item as JsonValue
             for (const key of remove) delete value[key]
-            // Counted in the write's own commit, so a client knows which stream snapshot first carries it.
             const previous = value[UI_REVISION]
-            const counted = (typeof previous === 'number' ? previous : 0) + 1
-            value[UI_REVISION] = counted
-            return counted
+            const revisionInSameCommit = (typeof previous === 'number' ? previous : 0) + 1
+            value[UI_REVISION] = revisionInSameCommit
+            return revisionInSameCommit
           }, context)
           json(200, { ok: true, rev })
           return true
         }
         if (url.pathname === '/api/restart') {
           const error =
-            (await extensions.prepared()) ??
+            (await extensions.restartRefusal()) ??
             (await requestSwap(async (generation) => {
               json(202, { ok: true, generation })
             }, host.build()))
@@ -627,7 +614,6 @@ export async function createApi(
               })
               if (!data.text.trim() && !blocks.length)
                 throw new HttpError(400, 'Expected text or images')
-              // `/skill:name args` sends the skill's instructions with the request, as Pi does.
               const expanded = data.text.startsWith('/skill:')
                 ? expandSkillCommand(
                     data.text,
@@ -644,22 +630,20 @@ export async function createApi(
                 { type: 'input', content, whenBusy: data.whenBusy },
                 context,
               )
-              // Pi admits the input in a commit with no hook for steers and follow-ups, so the event commits right
-              // after it: a crash in between loses the event, never the input.
-              const admitted = await submission.status(context)
+              const inputAlreadyCommitted = await submission.status(context)
               await harness.commit(
                 (tx) =>
                   emit(tx, UserInputEvent, {
                     conversation: conversation.id,
                     kind:
-                      admitted.status !== 'queued'
+                      inputAlreadyCommitted.status !== 'queued'
                         ? 'prompt'
                         : data.whenBusy === 'steer'
                           ? 'steer'
                           : 'follow-up',
-                    ...(admitted.entry === undefined
+                    ...(inputAlreadyCommitted.entry === undefined
                       ? { submission: submission.id }
-                      : { entry: admitted.entry }),
+                      : { entry: inputAlreadyCommitted.entry }),
                     length,
                     ...deviceOf(request.headers),
                   }),
@@ -669,18 +653,17 @@ export async function createApi(
               break
             }
             case 'abort': {
-              // Stop aborts the conversation's own tasks (each cascades to the work it owns) instead of calling
-              // Conversation.abort(), which also withdraws queued inputs: queued follow-ups stay, and Pi places them
-              // with the next input, ahead of it. Repeated, since a run ending meanwhile starts the next with them.
-              for (;;) {
-                const own = (await harness.inspect(context)).tasks.filter(
+              abortUntilIdle: for (;;) {
+                const ownTasksPreservingQueuedInputs = (
+                  await harness.inspect(context)
+                ).tasks.filter(
                   ({ record }) =>
                     record.conversationId === conversation.id &&
                     !record.owner &&
                     !record.background,
                 )
-                if (own.length === 0) break
-                for (const { record } of own) {
+                if (ownTasksPreservingQueuedInputs.length === 0) break abortUntilIdle
+                for (const { record } of ownTasksPreservingQueuedInputs) {
                   await harness.abortTask(record.id, context)
                   await harness.waitForTask(record.id, context)
                 }
@@ -707,7 +690,6 @@ export async function createApi(
                   throw new HttpError(400, 'Model is not available')
                 configure.model = { provider, modelId }
               }
-              // Pi's policy: a requested level must suit the model; a new model clamps the current one.
               if (data.thinkingLevel !== undefined || configure.model) {
                 const agent = await conversation.agent(context)
                 const ref = configure.model ?? agent.model

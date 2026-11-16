@@ -20,17 +20,12 @@ export interface Connection {
   /** Epoch ms of the last status change. */
   since: number
 }
-/** Per-tab UI state; what should survive a reload lives in `uiState` (ui-state.ts). */
+
 export interface UiState {
   paletteOpen: boolean
   dialogs: Readonly<Record<string, boolean | undefined>>
   theme: 'dark' | 'light'
-  /** The surface on screen, which the host records as it renders: the shown one, or the next in line after it failed. */
   surface?: { id: string; title: string }
-  /**
-   * Whether the sidebar and the panel are open below desktop width, where they are this tab's own (viewport.ts), per
-   * viewport: folding a phone shows the conversation, unfolding it brings back what docked beside it.
-   */
   open?: Partial<Record<'phone' | 'tablet', { sidebar?: boolean; panels?: boolean }>>
 }
 type Docs = Readonly<Record<string, JsonObject | null>>
@@ -58,7 +53,6 @@ export interface State {
   ui: UiState
 }
 
-/** The subset of `EventSource` the store uses, so tests can pass a fake. */
 export interface EventSourceLike {
   readonly readyState: number
   addEventListener(name: string, listener: (event: Event) => void): void
@@ -67,14 +61,13 @@ export interface EventSourceLike {
 export interface StoreOptions {
   eventSource?: (url: string) => EventSourceLike
   fetch?: typeof fetch
-  /** Delay before reopening a stream the server closed, or a subscription it refused. */
   retryMs?: number
-  /** Called when the requested conversation could not be opened and the stream fell back to the root. */
   onFallback?: () => void
   ui?: Partial<UiState>
 }
 
-const CLOSED = 2
+const EVENT_SOURCE_CLOSED_NO_RETRY = 2
+const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
 const names = [
   'stream',
   'system',
@@ -88,11 +81,10 @@ const names = [
   'tasks',
   'notice',
 ] as const satisfies readonly (keyof ServerEvents)[]
-/** Events of one subscription, which carry its id on their first data line. */
-const subscribed = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
+
+const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
 type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
 
-/** A scoped view and/or documents of one conversation: its sorted, comma-joined kinds and its subscription. */
 interface DocStream {
   kinds: string
   view: boolean
@@ -100,15 +92,11 @@ interface DocStream {
   cancelRetry?: Cancel
 }
 
-/**
- * `docs` after a `doc` snapshot or `docOps` batch. Ops need their subscription's snapshot: a kind without one, such as a
- * kind watched again, waits for the new subscription that brings it.
- */
 function applyDoc(docs: Docs, event: ServerEvents['doc'] | ServerEvents['docOps']): Docs {
   if ('value' in event) return { ...docs, [event.kind]: event.value }
-  const current = docs[event.kind]
-  if (current === undefined) return docs
-  return { ...docs, [event.kind]: applyImmutable(current ?? {}, event.ops) }
+  const subscriptionSnapshot = docs[event.kind]
+  if (subscriptionSnapshot === undefined) return docs
+  return { ...docs, [event.kind]: applyImmutable(subscriptionSnapshot ?? {}, event.ops) }
 }
 
 export function createStore(options: StoreOptions = {}) {
@@ -130,17 +118,14 @@ export function createStore(options: StoreOptions = {}) {
   }
   const listeners = new Set<() => void>()
   const docKinds = new Map<string, number>()
-  /** Watch counts of documents of given conversations, by conversation id, then kind. */
-  const watchedOf = new Map<ConversationId, Map<string, number>>()
+
+  const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
-  /** One subscription per retained conversation, carrying its view and all its watched kinds. */
-  const docStreams = new Map<ConversationId, DocStream>()
-  /**
-   * The tab's one stream carries every subscription: the shown conversation's (`main`) and one per retained
-   * conversation. Browsers allow a handful of connections per host, so each further stream would block other requests.
-   */
-  let source: EventSourceLike | undefined
-  /** The open stream's id, which subscriptions are made on; absent until it arrives and after a drop. */
+
+  const sharedSubscriptionsByConversation = new Map<ConversationId, DocStream>()
+
+  let multiplexedEventSource: EventSourceLike | undefined
+
   let streamId: string | undefined
   const handlers = new Map<number, Handler>()
   let nextSub = 0
@@ -151,23 +136,21 @@ export function createStore(options: StoreOptions = {}) {
   let cancelSync: Cancel | undefined
   let noticeId = 0
   let stopped = true
-  /**
-   * The last `keep` views shown in this tab, by conversation, with the snapshot text each came from: showing one again
-   * paints it at once while its stream refreshes it, and a refresh that sends the same snapshot changes nothing.
-   */
-  const recent = new Map<ConversationId, { view: StreamedView; raw?: string }>()
-  const keep = 6
-  /**
-   * The last text of each whole-state event. Every (re)connect resends them, mostly unchanged: skipping an identical one
-   * spares the parse and a re-render of everything that reads it (the conversation list is megabytes in a long history).
-   */
-  const lastRaw: Partial<Record<keyof ServerEvents, string>> = {}
+
+  const recentViewsWithRawSnapshots = new Map<
+    ConversationId,
+    { view: StreamedView; raw?: string }
+  >()
+  const retainedConversationLimit = 6
+
+  const lastWholeStateEventText: Partial<Record<keyof ServerEvents, string>> = {}
   const snapshots = new Set<keyof ServerEvents>(['system', 'conversations', 'tasks'])
   function remember(view: StreamedView, raw?: string) {
     const id = view.conversation.id
-    recent.delete(id)
-    recent.set(id, { view, raw })
-    if (recent.size > keep) recent.delete(recent.keys().next().value!)
+    recentViewsWithRawSnapshots.delete(id)
+    recentViewsWithRawSnapshots.set(id, { view, raw })
+    if (recentViewsWithRawSnapshots.size > retainedConversationLimit)
+      recentViewsWithRawSnapshots.delete(recentViewsWithRawSnapshots.keys().next().value!)
   }
 
   function set(change: Partial<State>) {
@@ -194,12 +177,11 @@ export function createStore(options: StoreOptions = {}) {
         break
       }
       case 'conversations': {
-        // The server resends the whole list when one row changes: unchanged rows keep their object, so readers of one
-        // row (`useConversationSummary`) skip the re-render.
         const previous = new Map(state.conversations.map((summary) => [summary.id, summary]))
         const conversations = (data as ServerEvents['conversations']).map((summary) => {
           const kept = previous.get(summary.id)
-          return kept && JSON.stringify(kept) === JSON.stringify(summary) ? kept : summary
+          const unchangedRowKeepsIdentity = kept && JSON.stringify(kept) === JSON.stringify(summary)
+          return unchangedRowKeepsIdentity ? kept : summary
         })
         set({ conversations })
         break
@@ -242,9 +224,9 @@ export function createStore(options: StoreOptions = {}) {
     }
   }
 
-  /** A (re)connect starts from a fresh snapshot; ops of the old stream are gone with it. */
-  function receiveView(raw: string) {
-    const kept = state.requested === undefined ? undefined : recent.get(state.requested)
+  function replaceViewFromFreshSnapshot(raw: string) {
+    const kept =
+      state.requested === undefined ? undefined : recentViewsWithRawSnapshots.get(state.requested)
     if (kept && kept.raw === raw && state.view === kept.view) {
       if (state.restored) set({ restored: false })
       return
@@ -254,10 +236,6 @@ export function createStore(options: StoreOptions = {}) {
     set({ view, restored: false })
   }
 
-  /**
-   * Subscribe to a conversation on the open stream; `failed` gets the status of a refusal (0 for a network error) while
-   * the subscription is current. Without a stream yet, its `stream` event reopens every subscription instead.
-   */
   function subscribe(
     spec: { conversation?: ConversationId; docs: string[]; view: boolean },
     handler: Handler,
@@ -286,19 +264,21 @@ export function createStore(options: StoreOptions = {}) {
     if (sub === undefined || !handlers.delete(sub) || streamId === undefined) return
     request(`/api/events/${streamId}/${sub}`, { method: 'DELETE' }).catch(meansNone)
   }
-  /** (Re)subscribe the shown conversation with the watched kinds, replacing its previous subscription. */
+
   function openMain() {
     cancelResubscribe?.()
     unsubscribe(main)
     const requested = state.requested
     main = subscribe(
       { conversation: requested, docs: [...docKinds.keys()].toSorted(), view: true },
-      (name, raw) => (name === 'view' ? receiveView(raw) : handle(name, JSON.parse(raw))),
+      (name, raw) =>
+        name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
       (status) => {
-        // The stream ended: its reconnect resubscribes.
-        if (status === 410) return
-        // A conversation that never opened is likely gone (a new home): fall back to the root.
-        if (status === 404 && requested !== undefined && !state.view) {
+        if (status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return
+
+        const requestedConversationNeverOpened =
+          status === 404 && requested !== undefined && !state.view
+        if (requestedConversationNeverOpened) {
           set({ requested: undefined })
           options.onFallback?.()
           openMain()
@@ -309,48 +289,47 @@ export function createStore(options: StoreOptions = {}) {
 
   function connect() {
     cancelRetry?.()
-    source?.close()
+    multiplexedEventSource?.close()
     streamId = undefined
     const current = open('/api/events')
-    source = current
+    multiplexedEventSource = current
     opened = false
     current.addEventListener('open', () => {
-      if (source !== current) return
+      if (multiplexedEventSource !== current) return
       opened = true
       setConnection('open')
     })
     current.addEventListener('error', () => {
-      if (source !== current) return
+      if (multiplexedEventSource !== current) return
       streamId = undefined
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
-      // EventSource retries by itself unless the server answered with an error status.
-      if (current.readyState === CLOSED) cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
+
+      if (current.readyState === EVENT_SOURCE_CLOSED_NO_RETRY)
+        cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
     })
     for (const name of names)
       current.addEventListener(name, (event) => {
-        if (source !== current) return
+        if (multiplexedEventSource !== current) return
         const raw = (event as MessageEvent<string>).data
-        if (subscribed.has(name)) {
+        if (subscriptionIdPrefixedEvents.has(name)) {
           const cut = raw.indexOf('\n')
           handlers.get(Number(raw.slice(0, cut)))?.(
             name as Parameters<Handler>[0],
             raw.slice(cut + 1),
           )
         } else if (name === 'stream') {
-          // A new stream, first or after a drop, has no subscriptions: each starts again from a snapshot.
           streamId = (JSON.parse(raw) as ServerEvents['stream']).id
           handlers.clear()
           openMain()
-          // A copy: reopening one moves it to the end of the map.
-          for (const [conversation, stream] of Array.from(docStreams))
+
+          const subscriptionsBeforeReopen = Array.from(sharedSubscriptionsByConversation)
+          for (const [conversation, stream] of subscriptionsBeforeReopen)
             openDocs(conversation, stream.kinds, stream.view)
         } else if (snapshots.has(name)) {
-          if (lastRaw[name] !== raw) {
-            lastRaw[name] = raw
+          if (lastWholeStateEventText[name] !== raw) {
+            lastWholeStateEventText[name] = raw
             handle(name, JSON.parse(raw))
-          } else if (name === 'system' && !state.models)
-            // The same system info still retries models a failed fetch left missing.
-            void refreshModels()
+          } else if (name === 'system' && !state.models) void refreshModels()
         } else handle(name, JSON.parse(raw))
       })
   }
@@ -363,7 +342,7 @@ export function createStore(options: StoreOptions = {}) {
   function openDocs(conversation: ConversationId, kinds: string, withView: boolean) {
     closeDocs(conversation)
     const stream: DocStream = { kinds, view: withView, sub: 0 }
-    docStreams.set(conversation, stream)
+    sharedSubscriptionsByConversation.set(conversation, stream)
     stream.sub = subscribe(
       { conversation, docs: kinds ? kinds.split(',') : [], view: withView },
       (name, raw) => {
@@ -379,14 +358,13 @@ export function createStore(options: StoreOptions = {}) {
           return
         }
         const change = data as ServerEvents['doc'] | ServerEvents['docOps']
-        if (!watchedOf.get(conversation)?.has(change.kind)) return
+        if (!docWatchCountsByConversation.get(conversation)?.has(change.kind)) return
         const docs = state.docsOf[conversation] ?? {}
         const next = applyDoc(docs, change)
         if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
       },
       (status) => {
-        // The stream ended: its reconnect resubscribes.
-        if (status !== 410)
+        if (status !== STREAM_GONE_RECONNECT_RESUBSCRIBES)
           stream.cancelRetry = retryAfter(options.retryMs ?? 1000, () =>
             openDocs(conversation, kinds, withView),
           )
@@ -394,26 +372,26 @@ export function createStore(options: StoreOptions = {}) {
     )
   }
   function closeDocs(conversation: ConversationId) {
-    const stream = docStreams.get(conversation)
+    const stream = sharedSubscriptionsByConversation.get(conversation)
     unsubscribe(stream?.sub)
     stream?.cancelRetry?.()
-    docStreams.delete(conversation)
+    sharedSubscriptionsByConversation.delete(conversation)
   }
-  /** Scoped views and explicit document watches share one subscription per conversation. */
-  function syncDocs() {
-    const conversations = new Set([...watchedOf.keys(), ...watchedViews.keys()])
-    for (const conversation of docStreams.keys())
+
+  function syncSharedViewAndDocSubscriptions() {
+    const conversations = new Set([...docWatchCountsByConversation.keys(), ...watchedViews.keys()])
+    for (const conversation of sharedSubscriptionsByConversation.keys())
       if (!conversations.has(conversation)) closeDocs(conversation)
     const docsOf: Record<number, Docs> = {}
     for (const conversation of conversations) {
-      const kinds = watchedOf.get(conversation) ?? new Map<string, number>()
+      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
       const list = [...kinds.keys()].toSorted().join(',')
-      const stream = docStreams.get(conversation)
+      const stream = sharedSubscriptionsByConversation.get(conversation)
       const view = watchedViews.has(conversation)
-      // A view watched again needs a fresh snapshot, so adding or dropping it resubscribes.
-      if (stream?.kinds !== list || stream.view !== view) openDocs(conversation, list, view)
-      // Kinds nobody watches anymore go; the rest keep their value until the new subscription's snapshot replaces it.
-      // Unchanged documents stay the same object, so watching another conversation re-renders none of their readers.
+
+      const changedWatchesNeedFreshSnapshot = stream?.kinds !== list || stream.view !== view
+      if (changedWatchesNeedFreshSnapshot) openDocs(conversation, list, view)
+
       const current = state.docsOf[conversation] ?? {}
       docsOf[conversation] = Object.keys(current).every((kind) => kinds.has(kind))
         ? current
@@ -429,7 +407,7 @@ export function createStore(options: StoreOptions = {}) {
   function scheduleSync() {
     if (stopped) return
     cancelSync?.()
-    cancelSync = nextTurn(syncDocs)
+    cancelSync = nextTurn(syncSharedViewAndDocSubscriptions)
   }
 
   async function refreshModels() {
@@ -453,25 +431,25 @@ export function createStore(options: StoreOptions = {}) {
       if (!stopped) return
       stopped = false
       connect()
-      syncDocs()
+      syncSharedViewAndDocSubscriptions()
     },
     stop() {
       stopped = true
       cancelRetry?.()
       cancelResubscribe?.()
       cancelSync?.()
-      // Closing the stream closes its subscriptions.
+
       streamId = undefined
-      for (const conversation of docStreams.keys()) closeDocs(conversation)
+      for (const conversation of sharedSubscriptionsByConversation.keys()) closeDocs(conversation)
       unsubscribe(main)
       main = undefined
-      source?.close()
-      source = undefined
+      multiplexedEventSource?.close()
+      multiplexedEventSource = undefined
     },
-    /** Show another conversation: its replica replaces the current one, from the start when it was shown before. */
+
     show(id: ConversationId | undefined) {
       if (id === state.requested) return
-      const kept = id === undefined ? undefined : recent.get(id)?.view
+      const kept = id === undefined ? undefined : recentViewsWithRawSnapshots.get(id)?.view
       set({
         requested: id,
         view: kept,
@@ -480,7 +458,7 @@ export function createStore(options: StoreOptions = {}) {
       })
       scheduleMain()
     },
-    /** Retain a live replica without changing the shown conversation. Multiple scopes share one stream. */
+
     watchConversation(id: ConversationId) {
       watchedViews.set(id, (watchedViews.get(id) ?? 0) + 1)
       scheduleSync()
@@ -491,7 +469,7 @@ export function createStore(options: StoreOptions = {}) {
         scheduleSync()
       }
     },
-    /** Stream an extension document of the shown conversation until the returned release runs. */
+
     watchDoc(kind: string) {
       const count = docKinds.get(kind) ?? 0
       docKinds.set(kind, count + 1)
@@ -506,20 +484,17 @@ export function createStore(options: StoreOptions = {}) {
         }
       }
     },
-    /**
-     * Stream an extension document of conversation `conversation`, shown or not, until the returned release runs.
-     * Watches of one conversation share a stream.
-     */
+
     watchDocOf(conversation: ConversationId, kind: string) {
-      const kinds = watchedOf.get(conversation) ?? new Map<string, number>()
-      watchedOf.set(conversation, kinds)
+      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
+      docWatchCountsByConversation.set(conversation, kinds)
       kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
       scheduleSync()
       return () => {
         const left = (kinds.get(kind) ?? 1) - 1
         if (left > 0) kinds.set(kind, left)
         else kinds.delete(kind)
-        if (!kinds.size) watchedOf.delete(conversation)
+        if (!kinds.size) docWatchCountsByConversation.delete(conversation)
         scheduleSync()
       }
     },
@@ -527,7 +502,7 @@ export function createStore(options: StoreOptions = {}) {
     setUi(change: Partial<UiState>) {
       set({ ui: { ...state.ui, ...change } })
     },
-    /** Add a notice from the browser, such as a failed command. */
+
     notify(notice: Notice) {
       handle('notice', notice)
     },

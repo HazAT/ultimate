@@ -14,7 +14,6 @@ import { cn, useConversations, useDocOf } from '@/sdk'
 import { Address } from '../messages/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 
-/** Who a review goes to: a button naming the conversation, opening standing agents and recent conversations. */
 export function Recipient({
   value,
   onChange,

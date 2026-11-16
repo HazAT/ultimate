@@ -1,8 +1,4 @@
-/**
- * SHA-256 of a string's UTF-8 bytes, as hex, synchronously: the browser has only the async `crypto.subtle`, and a draft
- * key is computed while rendering. Pure and browser-safe (FIPS 180-4).
- */
-const K = Uint32Array.from(
+const FIPS_180_4_ROUND_CONSTANTS = Uint32Array.from(
   '428a2f98 71374491 b5c0fbcf e9b5dba5 3956c25b 59f111f1 923f82a4 ab1c5ed5 d807aa98 12835b01 243185be 550c7dc3 72be5d74 80deb1fe 9bdc06a7 c19bf174 e49b69c1 efbe4786 0fc19dc6 240ca1cc 2de92c6f 4a7484aa 5cb0a9dc 76f988da 983e5152 a831c66d b00327c8 bf597fc7 c6e00bf3 d5a79147 06ca6351 14292967 27b70a85 2e1b2138 4d2c6dfc 53380d13 650a7354 766a0abb 81c2c92e 92722c85 a2bfe8a1 a81a664b c24b8b70 c76c51a3 d192e819 d6990624 f40e3585 106aa070 19a4c116 1e376c08 2748774c 34b0bcb5 391c0cb3 4ed8aa4a 5b9cca4f 682e6ff3 748f82ee 78a5636f 84c87814 8cc70208 90befffa a4506ceb bef9a3f7 c67178f2'
     .split(' ')
     .map((word) => Number.parseInt(word, 16)),
@@ -12,8 +8,9 @@ const rotate = (value: number, by: number) => (value >>> by) | (value << (32 - b
 
 export function sha256(text: string) {
   const data = new TextEncoder().encode(text)
-  // The message, a 1 bit, zeros, and its length in bits as 64 bits: a whole number of 64-byte blocks.
-  const padded = new Uint8Array(((data.length + 9 + 63) >> 6) << 6)
+
+  const padded64ByteLength = ((data.length + 9 + 63) >> 6) << 6
+  const padded = new Uint8Array(padded64ByteLength)
   padded.set(data)
   padded[data.length] = 0x80
   const view = new DataView(padded.buffer)
@@ -33,7 +30,11 @@ export function sha256(text: string) {
     let [a, b, c, d, e, f, g, h] = hash
     for (let i = 0; i < 64; i++) {
       const t1 =
-        (h + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) |
+        (h +
+          (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) +
+          ((e & f) ^ (~e & g)) +
+          FIPS_180_4_ROUND_CONSTANTS[i] +
+          w[i]) |
         0
       const t2 =
         ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0

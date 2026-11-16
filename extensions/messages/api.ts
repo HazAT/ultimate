@@ -30,14 +30,14 @@ export type Message = {
   images?: { entry: EntryId; count: number }
   /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
   report?: true
-  /** A branch's reply to its starter: it awaits the starter's answer, routed down to it. */
-  awaits?: true
   /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
   routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */
   echo?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
+  /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
+  interim?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
@@ -103,10 +103,22 @@ export type MessagesService = {
     signal?: AbortSignal,
   ): Promise<{ message: number; delivered: number }>
   /**
-   * Inside `tx`, the newest agent's request conversation `to` still owes an answer: work it starts now serves it. An
-   * `automations.fired` input whose data carries it routes the woken run's final answer to that agent (route.ts).
+   * Inside `tx`, what work conversation `to` starts now answers: `serves`, the newest agent's request it still owes,
+   * and `branches`, those whose reply or report its current run read and it has not messaged since. An
+   * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts). Pass
+   * `answersBack: false` for work whose answer never returns to `to` (a prompt-only automation): it serves nothing.
    */
-  owed(tx: Tx, to: ConversationId): Promise<Serves | undefined>
+  owed(
+    tx: Tx,
+    to: ConversationId,
+    answersBack?: boolean,
+  ): Promise<{ serves?: Serves; branches?: ConversationId[] }>
+  /**
+   * Inside `tx`, the work `by` started to serve `serves` (an automation) ended before it answered: another Ultimate's
+   * request still open on it gets a failed reply saying `why`, so that Ultimate learns of it at once. `fired` is the
+   * input entry of the run that failed, if one ran: work that run handed the request on to keeps it open.
+   */
+  dropped(tx: Tx, by: ConversationId, serves: Serves, why: string, fired?: number): Promise<void>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

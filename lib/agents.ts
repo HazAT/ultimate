@@ -1,4 +1,3 @@
-/** Agent definitions: parsing, discovery across the `agents/` folders, and the agent change a definition makes. */
 import { readdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
@@ -17,6 +16,7 @@ import { projectDecision, useProjectSetup } from './project-setup.ts'
 import { discoverExtensions } from './discovery.ts'
 import { isMissing } from './errors.ts'
 
+type DeferredToolNamesWhenInheritingAll = string[]
 export interface AgentDefinition {
   name: string
   description: string
@@ -24,34 +24,21 @@ export interface AgentDefinition {
   instructions: string
   model?: { provider: string; modelId: string }
   thinking?: ModelThinkingLevel
-  /** The model family it runs on unless it pins a model or settings assign it another (lib/families.ts). */
   family?: string
-  /** What it runs on once the families are applied; discovery sets it. */
   runs?: ReturnType<typeof definitionRuns>
   tools?: string[]
-  /** Tools overlays added to a definition without a `tools` list: it has every tool already, and deferred ones load. */
-  addTools?: string[]
+  addTools?: DeferredToolNamesWhenInheritingAll
   denyTools?: string[]
+  skills?: string[]
   isolate?: 'none' | 'worktree'
-  /** A standing agent: one conversation per project, started on first use. */
   resident?: boolean
-  /** Requests on an `openai-codex/` or `openai/` model go on the priority (fast) tier; the fast extension reads it. */
   fast?: boolean
-  /** `false`: its conversations get no automatic summaries (intent, title, reply activity, spawn refresh, abstract). */
   summaries?: boolean
-  /** A standing agent's display name in the UI, such as `Atlas`; its `@name` stays its address. */
   title?: string
-  /** A standing agent's mark: a lucide icon name; an unknown one shows the default glyph. */
   icon?: string
-  /** A standing agent's mark colour. */
   tint?: MarkTint
-  /** Overlay files whose settings, `addTools` and body discovery merged into this definition, in order. */
   overlays?: string[]
 }
-/**
- * The model a preview runs every agent on, from `ULTIMATE_MODEL` (`provider/id`), which the parent's `instance.model`
- * setting sets; undefined outside a preview or when the parent opted out.
- */
 export function previewModel(env: NodeJS.ProcessEnv = process.env) {
   const value = env.ULTIMATE_MODEL
   const slash = value?.indexOf('/') ?? -1
@@ -62,32 +49,26 @@ export function previewModel(env: NodeJS.ProcessEnv = process.env) {
 type ModelRef = { provider: string; modelId: string }
 type Listed = { provider: string; id: string }
 
-/** Whether `ref` is among `available`, the models with a login here (`ModelRuntime.getAvailableSnapshot()`). */
 export const hasLogin = (available: readonly Listed[], ref: ModelRef | undefined) =>
   !!ref && available.some((model) => model.provider === ref.provider && model.id === ref.modelId)
 
-/**
- * The model a conversation runs on when nothing pins one: a preview's, else the default family's (`family`), else
- * Pi's default, the first of them with a login here. When none has one, the first configured one all the same: its
- * login is gone, and the fallback card asks the user, rather than a model nobody chose (rog, 2026-10-29: a logged-out
- * Claude Code default started a branch on a paid Anthropic key). Only with nothing configured, the first model with a
- * login. Undefined while none has one.
- */
 export function defaultModel(
   available: readonly Listed[],
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>,
   family?: ModelRef,
 ): ModelRef | undefined {
-  const first = available[0]
+  const firstLoggedInModel = available[0]
   return (
     configuredModel(available, settings, family) ??
-    configured(settings, family)[0] ??
-    (first && { provider: first.provider, modelId: first.id })
+    configuredModelsInPriorityOrder(settings, family)[0] ??
+    (firstLoggedInModel && {
+      provider: firstLoggedInModel.provider,
+      modelId: firstLoggedInModel.id,
+    })
   )
 }
 
-/** A preview's model, the default family's and Pi's default, those that name one, in that order. */
-const configured = (
+const configuredModelsInPriorityOrder = (
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>,
   family?: ModelRef,
 ) =>
@@ -97,16 +78,12 @@ const configured = (
     { provider: settings.getDefaultProvider(), modelId: settings.getDefaultModel() },
   ].filter((ref): ref is ModelRef => !!ref?.provider && !!ref.modelId)
 
-/**
- * A preview's model, else the default family's (`family`), else Pi's default, each only when it has a login here:
- * `defaultModel` without its last resort.
- */
 export function configuredModel(
   available: readonly Listed[],
   settings: Pick<SettingsManager, 'getDefaultProvider' | 'getDefaultModel'>,
   family?: ModelRef,
 ): ModelRef | undefined {
-  return configured(settings, family).find((ref) => hasLogin(available, ref))
+  return configuredModelsInPriorityOrder(settings, family).find((ref) => hasLogin(available, ref))
 }
 
 type DefaultSettings = Pick<
@@ -120,15 +97,9 @@ type DefaultHost = {
   projectRoot: string
 }
 
-/** The model of the project's default family, when it names one; else the default is Pi's. */
 export const familyDefault = async (host: Pick<DefaultHost, 'userHome' | 'projectRoot'>) =>
   refOf((await readFamilies(host.userHome, host.projectRoot)).families[DEFAULT_FAMILY].model)
 
-/**
- * What a conversation runs on when nothing pins it, as agent fields: `defaultModel`, and the default family's thinking
- * level, else Pi's default one. The one answer the root and every starter take, so the model and its thinking level
- * come from the same place (#552043: a branch got the default model with the root's stored thinking).
- */
 export function defaultAgent(
   available: readonly Listed[],
   settings: DefaultSettings,
@@ -139,7 +110,6 @@ export function defaultAgent(
   return { ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) }
 }
 
-/** `defaultAgent` for a host's model runtime, its project's default family and Pi settings. */
 export const hostDefault = async (host: DefaultHost) =>
   defaultAgent(
     host.modelRuntime.getAvailableSnapshot(),
@@ -147,10 +117,6 @@ export const hostDefault = async (host: DefaultHost) =>
     (await readFamilies(host.userHome, host.projectRoot)).families[DEFAULT_FAMILY],
   )
 
-/**
- * `definition` run on family `name`'s model and thinking instead of its own. Throws naming the families when `name` is
- * unknown or, outside a preview, its model has no login here: the caller chose it, so it never falls back.
- */
 export function onFamily(
   definition: AgentDefinition,
   name: string,
@@ -166,14 +132,6 @@ export function onFamily(
   return { ...definition, runs }
 }
 
-/**
- * The family a conversation configured with `change` from `definition` runs as, for the models extension's `Family`
- * document: the definition's family (or the one `onFamily` put it on) while it runs that family's model, null for a
- * pinned model or when it fell back to another. In a preview, which runs every family on its one model, the family
- * stays. Recorded at the
- * start because two families can share a model: worked out from the model, a Lead coordinator on Opus showed as Design
- * or, while the default family was on Opus, as Ultimate (#550837).
- */
 export function definitionFamily(
   definition: AgentDefinition | undefined,
   change: Pick<AgentChange, 'model'>,
@@ -182,15 +140,11 @@ export function definitionFamily(
   if (runs?.via !== 'family' || !runs.family) return null
   if (!runs.model || previewModel()) return runs.family
   const model = change.model
-  return model?.provider === runs.model.provider && model.modelId === runs.model.modelId
-    ? runs.family
-    : null
+  const stillOnAssignedFamilyModel =
+    model?.provider === runs.model.provider && model.modelId === runs.model.modelId
+  return stillOnAssignedFamilyModel ? runs.family : null
 }
 
-/**
- * The agent change a definition makes over `parent`: the explicit model, else the definition's pin when it has a login
- * here, else the parent's. In a preview, its model replaces every other choice.
- */
 export function definitionAgent(
   definition: AgentDefinition | undefined,
   parent: Agent,
@@ -208,10 +162,11 @@ export function definitionAgent(
   } = {},
 ): AgentChange {
   const excludeTools = [...excluded, ...(definition?.denyTools ?? [])]
-  // Discovery resolved the definition's family; a definition made elsewhere runs on its own pin.
-  const wanted = definition?.runs ? definition.runs.model : definition?.model
-  const pin = hasLogin(modelRuntime.getAvailableSnapshot(), wanted) ? wanted : undefined
-  const ref = previewModel() ?? overrideModel ?? pin ?? parent.model
+  const familyResolvedModelOrOwnPin = definition?.runs ? definition.runs.model : definition?.model
+  const loggedInPin = hasLogin(modelRuntime.getAvailableSnapshot(), familyResolvedModelOrOwnPin)
+    ? familyResolvedModelOrOwnPin
+    : undefined
+  const ref = previewModel() ?? overrideModel ?? loggedInPin ?? parent.model
   const model = ref && modelRuntime.getModel(ref.provider, ref.modelId)
   const thinking =
     overrideThinking ??
@@ -244,13 +199,10 @@ export function definitionAgent(
 export interface AgentDiscovery {
   definitions: (AgentDefinition & { source: Source })[]
   errors: { name: string; path: string; source: Source; error: string }[]
-  /** User and project files that replace a built-in definition whole instead of extending it with `addTools`. */
   replaced: { name: string; path: string; source: Source }[]
-  /** The user's choice on the project's `.ultimate/` setup; its definitions apply only once trusted. */
   projectSetup: 'trusted' | 'declined' | 'undecided'
 }
-// Pi's levels; `satisfies` fails the type check when Pi adds or drops one.
-const levels = {
+const exhaustivePiThinkingLevels = {
   off: true,
   minimal: true,
   low: true,
@@ -267,6 +219,7 @@ const fields = new Set([
   'family',
   'tools',
   'denyTools',
+  'skills',
   'isolate',
   'resident',
   'fast',
@@ -276,7 +229,6 @@ const fields = new Set([
   'tint',
 ])
 
-/** The settings a definition or overlay may set; `denyTools` is additive when merged. */
 function parseSettings(frontmatter: Record<string, unknown>): Partial<
   Pick<
     AgentDefinition,
@@ -288,6 +240,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     | 'fast'
     | 'summaries'
     | 'denyTools'
+    | 'skills'
     | 'title'
     | 'icon'
     | 'tint'
@@ -305,6 +258,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     fast,
     summaries,
     denyTools,
+    skills,
     title,
     icon,
     tint,
@@ -313,10 +267,15 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     throw new Error('family must be a family name: lowercase letters, digits and -')
   if (denyTools !== undefined && !isTools(denyTools))
     throw new Error('denyTools must be a list of tool names')
+  if (skills !== undefined && !isTools(skills))
+    throw new Error('skills must be a list of skill names')
   if (description !== undefined && (typeof description !== 'string' || !description.trim()))
     throw new Error('description is required')
-  if (thinking !== undefined && (typeof thinking !== 'string' || !Object.hasOwn(levels, thinking)))
-    throw new Error(`thinking must be one of ${Object.keys(levels).join(', ')}`)
+  if (
+    thinking !== undefined &&
+    (typeof thinking !== 'string' || !Object.hasOwn(exhaustivePiThinkingLevels, thinking))
+  )
+    throw new Error(`thinking must be one of ${Object.keys(exhaustivePiThinkingLevels).join(', ')}`)
   if (model !== undefined && (typeof model !== 'string' || !model.trim()))
     throw new Error('model must be a nonempty string')
   if (isolate !== undefined && isolate !== 'none' && isolate !== 'worktree')
@@ -342,6 +301,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     ...(fast !== undefined ? { fast } : {}),
     ...(summaries !== undefined ? { summaries } : {}),
     ...(denyTools !== undefined ? { denyTools } : {}),
+    ...(skills !== undefined ? { skills } : {}),
     ...(title !== undefined ? { title: title.trim() } : {}),
     ...(icon !== undefined ? { icon } : {}),
     ...(tint !== undefined ? { tint } : {}),
@@ -351,19 +311,16 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
 const isTools = (tools: unknown): tools is string[] =>
   Array.isArray(tools) && tools.every((tool) => typeof tool === 'string')
 
-/** A definition file: Pi's YAML frontmatter with Ultimate's fields, and the instructions as its body. */
 export function parseDefinition(
   text: string,
   path: string,
 ): Omit<AgentDefinition, 'model'> & { model?: string } {
   const { frontmatter, body } = parseFrontmatter(text)
-  // Without a frontmatter block Pi returns no fields; YAML may also parse to a list or a scalar.
-  if (
+  const missingFrontmatterFields =
     typeof frontmatter !== 'object' ||
     Array.isArray(frontmatter) ||
     !Object.keys(frontmatter).length
-  )
-    throw new Error('Expected frontmatter fields between --- lines')
+  if (missingFrontmatterFields) throw new Error('Expected frontmatter fields between --- lines')
   const { name, tools } = frontmatter
   const unknown = Object.keys(frontmatter).find((key) => !fields.has(key))
   if (unknown) throw new Error(`Unknown field: ${unknown}`)
@@ -383,7 +340,6 @@ export function parseDefinition(
   }
 }
 
-/** A model reference resolved as Pi's CLI resolves it; a `provider/id:level` model also sets the thinking level. */
 function resolveModel(
   cliModel: string | undefined,
   cliThinking: ModelThinkingLevel | undefined,
@@ -401,11 +357,6 @@ function resolveModel(
   }
 }
 
-/**
- * An overlay, marked by `addTools` (empty when it only changes settings): it extends the definition of the same name
- * an earlier folder holds. Its settings replace that definition's, its `addTools` join its tool list, its `denyTools`
- * join its deny list, and its body is appended to its instructions, so the earlier file stays the instructions' source.
- */
 export function parseOverlay(text: string, path: string, modelRuntime: ModelRuntime) {
   const { frontmatter, body } = parseFrontmatter(text)
   const { name, addTools } = frontmatter
@@ -430,13 +381,11 @@ const isOverlay = (text: string) => {
   return typeof frontmatter === 'object' && !Array.isArray(frontmatter) && 'addTools' in frontmatter
 }
 
-/** A definition file read and its model resolved, as discovery and saving accept it. */
 function readDefinition(text: string, path: string, modelRuntime: ModelRuntime): AgentDefinition {
   const { model, thinking, ...definition } = parseDefinition(text, path)
   return { ...definition, ...resolveModel(model, thinking, modelRuntime) }
 }
 
-/** Enabled extensions' definitions are built-ins, before user/project definitions and overlays. */
 export async function agentRoots(ultimateRoot: string, projectRoot: string, userHome: string) {
   const extensions = await discoverExtensions(ultimateRoot, projectRoot, userHome)
   return [
@@ -451,17 +400,12 @@ export async function agentRoots(ultimateRoot: string, projectRoot: string, user
   ]
 }
 
-/**
- * Definitions from `agents/` in Ultimate's clone, `~/.ultimate/`, and the project's `.ultimate/`; a later file wins
- * by name, unless it is an overlay (marked by `addTools`), which extends the earlier one.
- */
 export async function discoverAgents(
   ultimateRoot: string,
   projectRoot: string,
   userHome: string,
   modelRuntime: ModelRuntime,
-  /** A file read as if absent: saving an overlay diffs against what applies without it. */
-  skip?: string,
+  skipOverlayToReadItsBase?: string,
 ): Promise<AgentDiscovery> {
   const definitions = new Map<string, AgentDefinition & { source: Source }>()
   const errors: AgentDiscovery['errors'] = []
@@ -478,7 +422,7 @@ export async function discoverAgents(
     }
     for (const file of files.filter((entry) => entry.endsWith('.md')).toSorted()) {
       const path = join(directory, file)
-      if (path === skip) continue
+      if (path === skipOverlayToReadItsBase) continue
       try {
         const text = await readFile(path, 'utf8')
         if (isOverlay(text)) {
@@ -486,10 +430,10 @@ export async function discoverAgents(
           const base = definitions.get(overlay.name)
           if (!base) throw new Error(`addTools needs an earlier definition named ${overlay.name}`)
           const heading = source === 'user' ? 'User additions' : 'Project additions'
-          // A family without a model of its own replaces the model an earlier file pins.
           const { model: _pin, ...unpinned } = base
+          const familyReplacesEarlierPin = overlay.settings.family && !overlay.settings.model
           definitions.set(overlay.name, {
-            ...(overlay.settings.family && !overlay.settings.model ? unpinned : base),
+            ...(familyReplacesEarlierPin ? unpinned : base),
             ...overlay.settings,
             ...(overlay.settings.denyTools
               ? {
@@ -498,7 +442,6 @@ export async function discoverAgents(
                   ],
                 }
               : {}),
-            // A list grows; a base that inherits every tool keeps the names, so deferred ones load.
             ...(base.tools
               ? { tools: [...new Set([...base.tools, ...overlay.addTools])] }
               : overlay.addTools.length
@@ -534,7 +477,6 @@ export async function discoverAgents(
   }
 }
 
-/** The fields a definition file's frontmatter may carry besides its name; `model` is `provider/id`. */
 export interface DefinitionFields {
   description: string
   model?: string
@@ -542,6 +484,7 @@ export interface DefinitionFields {
   family?: string
   tools?: string[]
   denyTools?: string[]
+  skills?: string[]
   isolate?: 'none' | 'worktree'
   resident?: boolean
   fast?: boolean
@@ -551,21 +494,22 @@ export interface DefinitionFields {
   tint?: MarkTint
 }
 
-/** A flow list of tool names; in a flow list, commas and brackets end an item too. */
-const toolList = (tools: string[]) =>
-  `[${tools.map((tool) => (/^[\w.-]+$/.test(tool) ? scalar(tool) : JSON.stringify(tool))).join(', ')}]`
+const toolList = (tools: string[]) => {
+  const safeUnquotedFlowItem = /^[\w.-]+$/
+  return `[${tools.map((tool) => (safeUnquotedFlowItem.test(tool) ? scalar(tool) : JSON.stringify(tool))).join(', ')}]`
+}
 
-/** A YAML scalar: plain when it reads back as the same string, else JSON, which YAML reads as a quoted string. */
 function scalar(value: string) {
   try {
-    if (parseFrontmatter(`---\nvalue: ${value}\n---\n`).frontmatter.value === value) return value
+    const plainScalarRoundTripsUnchanged =
+      parseFrontmatter(`---\nvalue: ${value}\n---\n`).frontmatter.value === value
+    if (plainScalarRoundTripsUnchanged) return value
   } catch {
     return JSON.stringify(value)
   }
   return JSON.stringify(value)
 }
 
-/** The Markdown file of a definition, in the shape of the built-in ones. */
 export function serializeDefinition(
   name: string,
   frontmatter: DefinitionFields,
@@ -579,6 +523,7 @@ export function serializeDefinition(
     ...(frontmatter.family ? [`family: ${scalar(frontmatter.family)}`] : []),
     ...(frontmatter.tools ? [`tools: ${toolList(frontmatter.tools)}`] : []),
     ...(frontmatter.denyTools?.length ? [`denyTools: ${toolList(frontmatter.denyTools)}`] : []),
+    ...(frontmatter.skills ? [`skills: ${toolList(frontmatter.skills)}`] : []),
     ...(frontmatter.isolate === 'worktree' ? ['isolate: worktree'] : []),
     ...(frontmatter.resident !== undefined ? [`resident: ${frontmatter.resident}`] : []),
     ...(frontmatter.fast ? ['fast: true'] : []),
@@ -590,7 +535,6 @@ export function serializeDefinition(
   return `---\n${lines.join('\n')}\n---\n\n${instructions.trim()}\n`
 }
 
-/** The folder a user or project definition is written to; the project's only once its setup is chosen as local. */
 function scopeRoot(scope: 'user' | 'project', projectRoot: string, userHome: string) {
   if (scope === 'user') return join(userHome, '.ultimate/agents')
   if (!useProjectSetup(projectRoot, userHome))
@@ -598,10 +542,6 @@ function scopeRoot(scope: 'user' | 'project', projectRoot: string, userHome: str
   return join(projectRoot, '.ultimate/agents')
 }
 
-/**
- * Write `<scope>/agents/<name>.md` atomically, after it reads back as discovery reads it; an invalid definition
- * throws and writes nothing. A built-in is never changed: saving one writes an override into the scope.
- */
 export async function saveDefinition(
   roots: { projectRoot: string; userHome: string },
   modelRuntime: ModelRuntime,
@@ -612,17 +552,11 @@ export async function saveDefinition(
 ) {
   const directory = scopeRoot(scope, roots.projectRoot, roots.userHome)
   const text = serializeDefinition(name, frontmatter, instructions)
-  // Reading it back checks the name before it becomes a path.
-  const definition = readDefinition(text, join(directory, `${name}.md`), modelRuntime)
-  await writeTextAtomically(definition.path, text)
-  return { ...definition, source: scope }
+  const validatedBeforePathWrite = readDefinition(text, join(directory, `${name}.md`), modelRuntime)
+  await writeTextAtomically(validatedBeforePathWrite.path, text)
+  return { ...validatedBeforePathWrite, source: scope }
 }
 
-/**
- * Save the form of a definition overlays extend as the overlay `<scope>/agents/<name>.md`: only what differs from
- * the definition that applies without that file, so the base stays the source of its instructions and tool list.
- * A change an overlay cannot express (removing a base tool, rewriting the base instructions) throws and writes nothing.
- */
 export async function saveOverlay(
   roots: { ultimateRoot: string; projectRoot: string; userHome: string },
   modelRuntime: ModelRuntime,
@@ -643,12 +577,11 @@ export async function saveOverlay(
   )
   const base = definitions.find((definition) => definition.name === name)
   if (!base) throw new Error(`No definition named ${name} for an overlay to extend`)
-  // A project file applies over a user overlay, so the form shows it; saving it to the user file would copy it there.
-  const later = (await agentRoots(ultimateRoot, projectRoot, userHome))
+  const projectRootsInUserScope = (await agentRoots(ultimateRoot, projectRoot, userHome))
     .filter((root) => scope === 'user' && root.source === 'project')
     .map((root) => root.path)
   const shadowing = [base.path, ...(base.overlays ?? [])].find((file) =>
-    later.includes(dirname(file)),
+    projectRootsInUserScope.includes(dirname(file)),
   )
   if (shadowing) throw new Error(`${shadowing} applies over the ${scope} file: save to project`)
 
@@ -658,15 +591,14 @@ export async function saveOverlay(
   if (form.description.trim() !== base.description)
     settings.push(`description: ${scalar(form.description.trim())}`)
   const baseModel = base.model && `${base.model.provider}/${base.model.modelId}`
-  // A family replaces the model the base pins; without one, there is nothing to run on instead.
-  const unpin = !form.model && !!baseModel
-  if (unpin && !form.family) throw cannot('clear the model without a family')
+  const familyMustReplaceBasePin = !form.model && !!baseModel
+  if (familyMustReplaceBasePin && !form.family) throw cannot('clear the model without a family')
   if (form.model && form.model !== baseModel) settings.push(`model: ${scalar(form.model)}`)
   if (form.thinking !== base.thinking) {
     if (!form.thinking) throw cannot('clear thinking')
     settings.push(`thinking: ${scalar(form.thinking)}`)
   }
-  if (form.family !== base.family || unpin) {
+  if (form.family !== base.family || familyMustReplaceBasePin) {
     if (!form.family) throw cannot('clear the family')
     settings.push(`family: ${scalar(form.family)}`)
   }
@@ -680,12 +612,15 @@ export async function saveOverlay(
   if (form.title && form.title !== base.title) settings.push(`title: ${scalar(form.title)}`)
   if (form.icon && form.icon !== base.icon) settings.push(`icon: ${scalar(form.icon)}`)
   if (form.tint && form.tint !== base.tint) settings.push(`tint: ${form.tint}`)
+  if (form.skills?.join() !== base.skills?.join()) {
+    if (!form.skills) throw cannot('give every skill back')
+    settings.push(`skills: ${toolList(form.skills)}`)
+  }
 
   if (!base.tools && form.tools) throw cannot('limit the tools of a definition that inherits all')
   if (base.tools && !form.tools) throw cannot('make it inherit every tool')
   const removed = base.tools?.filter((tool) => !form.tools?.includes(tool)) ?? []
   if (removed.length) throw cannot(`remove ${removed.join(', ')}`)
-  // A base that inherits every tool shows no list in the form, so the file keeps the names it adds (deferred ones).
   const addTools =
     form.tools?.filter((tool) => !base.tools?.includes(tool)) ??
     (await readFile(path, 'utf8').then(
@@ -712,13 +647,11 @@ export async function saveOverlay(
   if (body.startsWith(heading)) body = body.slice(heading.length).trim()
 
   const overlay = `---\n${[`name: ${scalar(name)}`, `addTools: ${toolList(addTools)}`, ...settings].join('\n')}\n---\n${body ? `\n${body}\n` : ''}`
-  // Reading it back resolves the model, so an unknown one writes nothing.
   parseOverlay(overlay, path, modelRuntime)
   await writeTextAtomically(path, overlay)
   return { path }
 }
 
-/** Remove a user or project definition file; a built-in of the same name applies again. */
 export async function deleteDefinition(
   roots: { projectRoot: string; userHome: string },
   scope: 'user' | 'project',

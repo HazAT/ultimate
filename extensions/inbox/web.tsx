@@ -35,10 +35,9 @@ import type { Entry } from './items.tsx'
 import { Waiting } from './ui.tsx'
 
 const SURFACE = 'inbox'
-const HOUR = 60 * 60_000
+const WAIT_WARNING_AFTER_MS = 60 * 60_000
 const amber = stateTone.waits
 
-/** The conversation an entry belongs to: a question's asker, a provided item's `conversation`. */
 const conversationOf = (entry: Entry) =>
   entry.message
     ? typeof entry.message.from === 'number'
@@ -46,7 +45,6 @@ const conversationOf = (entry: Entry) =>
       : undefined
     : entry.item.conversation
 
-/** Who asks, as the sidebar draws a branch: its feature chip (or a standing agent's `@name`) and `#id`. */
 function Asker({ id }: { id: Message['from'] }) {
   const overview = useOverview()
   const agent = useStandingName(typeof id === 'number' ? id : undefined)
@@ -61,13 +59,12 @@ function Asker({ id }: { id: Message['from'] }) {
   )
 }
 
-/** How long it has waited; amber once it is over an hour. */
 function Waited({ at, now }: { at: number; now: number }) {
   return (
     <time
       className={cn(
         'shrink-0 font-mono text-[11px] tabular-nums',
-        now - at > HOUR ? amber : 'text-muted-foreground',
+        now - at > WAIT_WARNING_AFTER_MS ? amber : 'text-muted-foreground',
       )}
       dateTime={new Date(at).toISOString()}
       title={`Asked ${new Date(at).toLocaleString()}`}
@@ -88,11 +85,12 @@ const KindTag = ({ entry }: { entry: Entry }) => (
 
 const titleOf = (entry: Entry) => (entry.item ? entry.item.title : lead(entry.message.text).title)
 
-/** Who asks: a question's sender, a provided item's conversation, or nothing. */
 function From({ entry }: { entry: Entry }) {
   if (entry.message) return <Asker id={entry.message.from} />
   return entry.item.conversation === undefined ? null : <Asker id={entry.item.conversation} />
 }
+
+const blurRowToReleaseAnswerKeys = (row: HTMLButtonElement) => row.blur()
 
 function Row({
   entry,
@@ -117,8 +115,7 @@ function Row({
       )}
       data-inbox-row={entry.message?.id ?? entry.key}
       onClick={(event) => {
-        // A focused row would keep the answer card's keys for itself (the card leaves other buttons theirs).
-        event.currentTarget.blur()
+        blurRowToReleaseAnswerKeys(event.currentTarget)
         onSelect()
       }}
       type="button"
@@ -195,10 +192,6 @@ function List({
   )
 }
 
-/**
- * Opens the entry's conversation, as the To-dos rows did: at a question, messages scrolls to its card. Nothing for an
- * entry without one.
- */
 function useOpenBranch() {
   const { showSurface, switchConversation } = useUltimate()
   return (entry: Entry) => {
@@ -210,11 +203,7 @@ function useOpenBranch() {
   }
 }
 
-/** The reading pane's scroller: positioned, as the transcript's is, so an absolutely positioned descendant of what it
- * reads stays inside it. A question's `sr-only` legend otherwise takes the page as its containing block and lays itself
- * out at its static position below the window, letting the whole page scroll one screen into empty background (PR #144).
- */
-const pane = 'relative min-h-0 flex-1 overflow-y-auto'
+const positionedReadingScroller = 'relative min-h-0 flex-1 overflow-y-auto'
 
 function Reading({
   entry,
@@ -246,7 +235,6 @@ function Reading({
         {titleOf(entry)}
       </h2>
       {body && (
-        // Body's own card padding and 13px give way to the reading pane's prose.
         <div className="mt-1 [&>div]:px-0 [&>div]:py-0 [&>div]:text-[15px] [&>div]:leading-6">
           <Body text={body} />
         </div>
@@ -279,8 +267,7 @@ function Reading({
       </div>
     </>
   )
-  // The card takes the desktop keys here, whatever conversation is shown behind the Inbox; keyed by message so a new
-  // item starts with a fresh draft. A provided item brings its own pane.
+
   const answer = item ? (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
       <MessageQuestions key={item.id} keys={!phone} message={item} />
@@ -298,14 +285,19 @@ function Reading({
           </Button>
           <span className="section-label">Inbox</span>
         </div>
-        <div className={cn(pane, 'px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]')}>
+        <div
+          className={cn(
+            positionedReadingScroller,
+            'px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
+          )}
+        >
           {top}
           <div className="mt-5">{answer}</div>
         </div>
       </div>
     )
   return (
-    <div className={pane} data-inbox-item={id}>
+    <div className={positionedReadingScroller} data-inbox-item={id}>
       <div className="mx-auto w-full max-w-[44rem] px-8 pt-8 pb-12">
         {top}
         <div className="mt-6">{answer}</div>
@@ -352,8 +344,7 @@ function Zero({ messages, now }: { messages: readonly Message[]; now: number }) 
   )
 }
 
-/** A link's or a push's wish to show one entry, by key, held until the surface mounts and reads it. */
-let wanted: string | undefined
+let linkedKeyAwaitingSurfaceMount: string | undefined
 
 function Inbox() {
   return <Waiting>{(items, messages) => <Surface items={items} messages={messages} />}</Waiting>
@@ -363,44 +354,53 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   const phone = useViewport() === 'phone'
   const now = useNow(60_000)
   const openBranch = useOpenBranch()
-  // What the user picked, and where it stood: when it leaves (answered), the one now at that place is shown.
-  const [picked, setPicked] = useState<string | null>(null)
-  // A linked or clicked key, held until it is listed: a provider or the Messages log may still be loading.
-  const [pending, setPending] = useState(() => wanted)
-  const [index, setIndex] = useState(0)
-  // On a phone the list comes first; an item opens full screen only once tapped or linked.
-  const [open, setOpen] = useState(() => wanted !== undefined)
+
+  const [anchoredSelection, setAnchoredSelection] = useState<string | null>(null)
+
+  const [linkedKeyAwaitingItemLoad, setLinkedKeyAwaitingItemLoad] = useState(
+    () => linkedKeyAwaitingSurfaceMount,
+  )
+  const [indexAfterSelectedItemLeaves, setIndexAfterSelectedItemLeaves] = useState(0)
+
+  const [open, setOpen] = useState(() => linkedKeyAwaitingSurfaceMount !== undefined)
   useEffect(() => {
-    wanted = undefined
+    linkedKeyAwaitingSurfaceMount = undefined
   }, [])
-  const selected = selection(items, pending ?? picked, index)
+  const selected = selection(
+    items,
+    linkedKeyAwaitingItemLoad ?? anchoredSelection,
+    indexAfterSelectedItemLeaves,
+  )
   const at = items.findIndex((candidate) => candidate.key === selected)
   const item = items[at]
-  // Hold on to the item shown, also one that took an answered item's place, so a later change elsewhere in the list
-  // does not move the selection (and drop a half-answered card).
+
   useEffect(() => {
-    if (at >= 0) setIndex(at)
-    if (pending !== undefined) {
-      if (selected === pending) {
-        setPicked(pending)
-        setPending(undefined)
+    if (at >= 0) setIndexAfterSelectedItemLeaves(at)
+    if (linkedKeyAwaitingItemLoad !== undefined) {
+      if (selected === linkedKeyAwaitingItemLoad) {
+        setAnchoredSelection(linkedKeyAwaitingItemLoad)
+        setLinkedKeyAwaitingItemLoad(undefined)
       }
-    } else if (selected !== undefined && selected !== picked) setPicked(selected)
-  }, [at, selected, picked, pending])
+    } else if (selected !== undefined && selected !== anchoredSelection)
+      setAnchoredSelection(selected)
+  }, [at, selected, anchoredSelection, linkedKeyAwaitingItemLoad])
   const select = (key: string) => {
-    setPending(key)
+    setLinkedKeyAwaitingItemLoad(key)
     setOpen(true)
   }
   useEvent('inbox:show', (key) => {
-    wanted = undefined
+    linkedKeyAwaitingSurfaceMount = undefined
     select(key as string)
   })
 
-  // j/k move the selection, ⇧O opens the branch; the answer card keeps 1–9, letters and Enter.
   const keys = useRef({ items, at, item, openBranch })
   keys.current = { items, at, item, openBranch }
   useEffect(() => {
     if (phone) return undefined
+    const openDialogMenuOrPickerOwnsKeys = () =>
+      document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+      )
     const key = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (
@@ -410,10 +410,7 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
         event.ctrlKey ||
         event.altKey ||
         target?.closest('input, textarea, select, [contenteditable="true"]') ||
-        // A dialog, menu or popover (the palette, a picker) owns the keys while it is open.
-        document.querySelector(
-          '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
-        )
+        openDialogMenuOrPickerOwnsKeys()
       )
         return
       const current = keys.current
@@ -424,12 +421,13 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
         event.preventDefault()
         const step = event.key === 'j' ? 1 : -1
         const next = Math.max(0, Math.min(current.items.length - 1, current.at + step))
-        setPending(current.items[next].key)
+        setLinkedKeyAwaitingItemLoad(current.items[next].key)
       }
     }
-    // Capture: a choice letter j or k on the card stays j/k here, the Inbox's own navigation.
-    window.addEventListener('keydown', key, true)
-    return () => window.removeEventListener('keydown', key, true)
+
+    const captureBeforeAnswerCardChoices = true
+    window.addEventListener('keydown', key, captureBeforeAnswerCardChoices)
+    return () => window.removeEventListener('keydown', key, captureBeforeAnswerCardChoices)
   }, [phone])
 
   const title = (
@@ -441,7 +439,7 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
       )}
     </span>
   )
-  // Keyed by entry: each starts fresh, its images included.
+
   const reading = item && (
     <Reading entry={item} key={item.key} now={now} onBack={() => setOpen(false)} phone={phone} />
   )
@@ -471,20 +469,14 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   )
 }
 
-/** Shows the Inbox at entry `key`: a mounted Inbox selects it, else the one about to mount starts there. */
 function show(key: string | undefined, showSurface: (id: string) => void) {
   if (key !== undefined) {
-    wanted = key
+    linkedKeyAwaitingSurfaceMount = key
     events.emit('inbox:show', key)
   }
   showSurface(SURFACE)
 }
 
-/**
- * `?inbox=<key>` on load, and the `inbox:open {key}` event at runtime (a push's tap), open the Inbox at that entry; a
- * plain number, or `inbox:open {message}`, names a question. The parameter then leaves the address, so a reload does
- * not jump again.
- */
 function InboxLink() {
   const { showSurface } = useUltimate()
   useEvent('inbox:open', (value) => {
@@ -502,7 +494,6 @@ function InboxLink() {
   return null
 }
 
-/** The sidebar row under @ultimate's: amber with the count and the oldest wait while anything waits on the user. */
 function useInboxRow(): ReactNode {
   return <Waiting>{(items) => <InboxRow items={items} />}</Waiting>
 }

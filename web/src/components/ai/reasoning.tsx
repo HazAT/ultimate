@@ -1,5 +1,3 @@
-// Adapted from vercel/ai-elements packages/elements/src/reasoning.tsx (Apache-2.0, see LICENSE).
-// Changes: collapsed by default, also while streaming (the trigger shimmers instead); no auto open/close or timer.
 import { cn } from 'cn'
 import { ChevronRightIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'

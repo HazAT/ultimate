@@ -8,8 +8,9 @@ import { StatusAction, TranscribeAction } from './refs.ts'
 const SECRET = 'OPENAI_API_KEY'
 const NO_KEY = `Voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
 const TIMEOUT_MS = 65_000
-/** The largest recording taken, in bytes before base64: what fits the 12 MB action request. */
-export const MAX_AUDIO_BYTES = 8 * 1024 * 1024
+
+const action12MbAudioLimit = 8 * 1024 * 1024
+export { action12MbAudioLimit as MAX_AUDIO_BYTES }
 
 export const secrets = [
   {
@@ -22,8 +23,10 @@ export const secrets = [
 
 type VoiceHost = Pick<ExtensionHost, 'userHome' | 'modelRuntime'>
 
-/** The OpenAI API key: the `OPENAI_API_KEY` secret, else an API key Pi's `openai` provider holds (not its OAuth login). */
-async function apiKey(host: VoiceHost, signal?: AbortSignal): Promise<string | undefined> {
+async function openaiSecretOrNonOAuthKey(
+  host: VoiceHost,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
   const secret = await readSecret(host.userHome, SECRET)
   if (secret) return secret
   const runtime = host.modelRuntime
@@ -32,10 +35,6 @@ async function apiKey(host: VoiceHost, signal?: AbortSignal): Promise<string | u
   return (await runtime.getAuth('openai', { signal }))?.auth.apiKey
 }
 
-/**
- * OpenAI's documented transcription endpoint; the one place that knows its URL, form fields and answer. The ChatGPT
- * login's `chatgpt.com/backend-api/transcribe` is not an option: Cloudflare challenges every request from a server.
- */
 export async function openaiTranscribe(
   key: string,
   audio: Blob,
@@ -60,7 +59,6 @@ export async function openaiTranscribe(
   try {
     answer = await response.json()
   } catch {
-    // An HTML or truncated page instead of JSON: a proxy or an outage answered.
     answer = undefined
   }
   return typeof answer?.text === 'string'
@@ -68,7 +66,6 @@ export async function openaiTranscribe(
     : { status: 502, detail: 'no text in the answer' }
 }
 
-/** What the composer shows for a failed transcription, by the endpoint's HTTP status. */
 function failure(status: number, detail: string | undefined) {
   if (status === 401) return `OpenAI rejected the API key: check ${SECRET} in ⌘K → Secrets`
   if (status === 413) return 'The recording is too large to transcribe'
@@ -80,20 +77,20 @@ function failure(status: number, detail: string | undefined) {
 export default defineExtension({ name: 'voice' })
 
 export const actions = {
-  /** `{ available }`, or `{ available: false, reason }` without an OpenAI API key. */
   status: implementAction(StatusAction, async (_args, { host, signal }) =>
-    (await apiKey(host, signal))
+    (await openaiSecretOrNonOAuthKey(host, signal))
       ? { available: true as const }
       : { available: false as const, reason: NO_KEY },
   ),
-  /** `{ audio, mimeType }`: base64 audio as the browser recorded it (`audio/mp4` on iOS, `audio/webm` elsewhere). */
+
   transcribe: implementAction(TranscribeAction, async (args, { host, signal }) => {
     const { audio, mimeType } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if (typeof audio !== 'string' || !audio || typeof mimeType !== 'string' || !mimeType)
       throw new Error('Expected { audio: base64, mimeType }')
     const bytes = Buffer.from(audio, 'base64')
-    if (bytes.byteLength > MAX_AUDIO_BYTES) throw new Error(failure(413, undefined))
-    const key = await apiKey(host, signal)
+    const audioOverActionLimit = bytes.byteLength > action12MbAudioLimit
+    if (audioOverActionLimit) throw new Error(failure(413, undefined))
+    const key = await openaiSecretOrNonOAuthKey(host, signal)
     if (!key) throw new Error(NO_KEY)
     const answer = await openaiTranscribe(
       key,

@@ -9,7 +9,6 @@ function ClaudeCodePanel() {
     onError: keepLast,
   })
   useEffect(() => {
-    // A successful status check also refreshes the model cache, so a login or logout reaches the picker without a reload.
     if (data) void refreshModels()
   }, [data])
   const title = loading
@@ -77,7 +76,6 @@ export default defineWebExtension({
       icon: TerminalIcon,
       component: ClaudeCodePanel,
       order: 10,
-      // Opened from ⌘K and the model picker.
       tab: false,
     },
   ],

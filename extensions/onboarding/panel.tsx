@@ -50,7 +50,6 @@ const without =
   <T,>(record: Record<string, T>) =>
     Object.fromEntries(Object.entries(record).filter(([key]) => key !== name))
 
-/** Which layer decided an extension's state: a short label and the sentence behind it. */
 function decided(extension: ExtensionInfo, local: boolean): [string, string] {
   if (extension.core) return ['core', 'On: the core tier is always on, whatever the settings say']
   const state = extension.enabled ? 'On' : 'Off'
@@ -65,7 +64,6 @@ function decided(extension: ExtensionInfo, local: boolean): [string, string] {
   return ['its folder', 'On: extension folders of yours and of this project are on by default']
 }
 
-/** Settings problems of the last reload, such as an unknown name or an invalid file; its last valid state applies. */
 function Diagnostics({ messages }: { messages: readonly string[] }) {
   if (messages.length === 0) return null
   return (
@@ -88,7 +86,6 @@ function Diagnostics({ messages }: { messages: readonly string[] }) {
   )
 }
 
-/** The project's setup: the remembered choice, a way to change it, and taking its setup everywhere. */
 function ProjectSetup({ system }: { system: SystemInfo }) {
   const { project } = system
   const ui = useUltimate()
@@ -118,6 +115,14 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
         : project.config
           ? 'This folder has its own setup. Not chosen yet, so your global setup is in use.'
           : "This folder has no setup of its own. Choose this project's setup to keep changes to this folder only."
+  const setupScope =
+    project.decision === null
+      ? project.config
+        ? null
+        : 'global'
+      : project.decision
+        ? 'local'
+        : 'global'
   return (
     <section className="border-b border-border/60 px-3 pt-3 pb-3.5">
       <Heading meta={<span className="font-mono">{project.name}</span>}>Project</Heading>
@@ -164,16 +169,7 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
             disabled: busy !== undefined,
           },
         ]}
-        // Without a setup of its own, an open question means the global setup.
-        value={
-          project.decision === null
-            ? project.config
-              ? null
-              : 'global'
-            : project.decision
-              ? 'local'
-              : 'global'
-        }
+        value={setupScope}
       />
       {project.config && (
         <Button
@@ -208,10 +204,6 @@ function ProjectSetup({ system }: { system: SystemInfo }) {
 
 const openSecrets = (name?: string) => events.emit('secrets:open', name ? { name } : {})
 
-/**
- * Every declared or stored secret, metadata only; re-read when one is saved or deleted and when an extension turns on
- * or off, which changes who declares it.
- */
 function useSecrets(system: SystemInfo | undefined) {
   const secrets = useAction(ListAction, null, {
     onError: keepLast,
@@ -221,7 +213,6 @@ function useSecrets(system: SystemInfo | undefined) {
   return secrets.data
 }
 
-/** One line to the full Secrets panel, with how many declared secrets are still missing. */
 function SecretsLine({ secrets }: { secrets: readonly Secret[] | undefined }) {
   const missing = secrets?.filter(
     (secret) => !secret.set && !secret.via && secret.declaredBy.length > 0,
@@ -253,7 +244,6 @@ function SecretsLine({ secrets }: { secrets: readonly Secret[] | undefined }) {
   )
 }
 
-/** The secrets an extension declares, set or missing, each opening the Secrets panel at its row. Never a value. */
 function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
   if (secrets.length === 0) return null
   return (
@@ -291,7 +281,6 @@ function RowSecrets({ secrets }: { secrets: readonly Secret[] }) {
   )
 }
 
-/** One labelled line of an open row; empty values are left to the caller's `none` line. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 gap-2">
@@ -301,7 +290,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** What an open row shows: tools, contract, dependencies and contributions; loaded when it opens. */
 function Details({ extension }: { extension: ExtensionInfo }) {
   const web = useExtensions().find((record) => record.name === extension.name)?.extension
   const details = useAction(DetailsAction, { name: extension.name })
@@ -333,7 +321,6 @@ function Details({ extension }: { extension: ExtensionInfo }) {
     ...(web?.answerLabels?.length ? ['answer labels'] : []),
     ...(web?.userBubble?.length ? ['user bubble'] : []),
   ]
-  // Each labelled list, shown only when it has something; the empty ones share one dim line.
   const lists: [string, readonly string[]][] = [
     ['provides', [...(data?.provides ?? []), ...(data?.declares ?? [])]],
     ['needs', data?.needs ?? []],
@@ -415,7 +402,7 @@ function Row({
   line,
   open,
   onOpen,
-  replaces,
+  replaces: replacesBuiltinCode,
   local,
   scope,
   pending,
@@ -504,8 +491,7 @@ function Row({
             )}
             text={line}
           />
-          {/* A project folder in place of a built-in runs its own code under a trusted name. */}
-          {replaces && (
+          {replacesBuiltinCode && (
             <span
               className="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-warning"
               title={`This project's .ultimate/extensions/${extension.name} runs instead of the built-in ${extension.name}`}
@@ -517,23 +503,23 @@ function Row({
             </span>
           )}
         </button>
-        <span className="mt-0.5">
-          <Switch
-            busy={pending !== undefined}
-            checked={checked}
-            disabled={unusable || extension.core}
-            aria-label={`${extension.name} ${scope === 'project' ? 'for this project' : 'everywhere'}`}
-            onCheckedChange={onToggle}
-            title={
-              extension.core
-                ? 'Core tier: always on'
-                : unusable
+        {!extension.core && (
+          <span className="mt-0.5">
+            <Switch
+              busy={pending !== undefined}
+              checked={checked}
+              disabled={unusable}
+              aria-label={`${extension.name} ${scope === 'project' ? 'for this project' : 'everywhere'}`}
+              onCheckedChange={onToggle}
+              title={
+                unusable
                   ? "Choose this project's setup to use it"
                   : `${checked ? 'Turn off' : 'Turn on'} ${scope === 'project' ? 'for this project' : 'everywhere'}`
-            }
-            ref={switchRef}
-          />
-        </span>
+              }
+              ref={switchRef}
+            />
+          </span>
+        )}
       </div>
       <RowSecrets secrets={secrets} />
       {open && <Details extension={extension} />}
@@ -555,40 +541,33 @@ function Row({
   )
 }
 
-/**
- * Every extension, on and available, with its source, the layer that decided it, and a switch that writes the chosen
- * scope's settings. The list follows system info, so a change shows when it is live.
- */
 export function ExtensionsPanel() {
   const system = useSystem()
-  const { line, replaces } = useDescribed()
+  const { line, replaces: replacesBuiltinCode } = useDescribed()
   const [chosen, setChosen] = useState<Scope>()
-  // Names of the open rows, kept across reloads.
-  const [opened, setOpened] = useExtensionUiState<string[]>('open', [])
+  const [savedOpenRows, setSavedOpenRows] = useExtensionUiState<string[]>('open', [])
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
-  // Read by screen readers once a toggle has applied, since the row has moved.
-  const [announcement, setAnnouncement] = useState('')
+  const [toggleAnnouncement, setToggleAnnouncement] = useState('')
   const secrets = useSecrets(system)
   const root = useRef<HTMLDivElement>(null)
   const switches = useRef(new Map<string, HTMLButtonElement>())
-  // A toggle moves its row between On and Available, which remounts its switch; focus follows the row there.
-  const follow = useRef<{ name: string; enabled: boolean }>(undefined)
-  const track = (name: string, enabled: boolean) => {
-    if (root.current?.contains(document.activeElement)) follow.current = { name, enabled }
+  const remountFocus = useRef<{ name: string; enabled: boolean }>(undefined)
+  const trackRemountFocus = (name: string, enabled: boolean) => {
+    if (root.current?.contains(document.activeElement)) remountFocus.current = { name, enabled }
   }
   useLayoutEffect(() => {
-    if (!follow.current) return
-    const { name, enabled } = follow.current
+    if (!remountFocus.current) return
+    const { name, enabled } = remountFocus.current
     const target = switches.current.get(name)
-    // Only where focus fell to the document: a user who moved on keeps their place.
-    if (target && (!document.activeElement || document.activeElement === document.body))
-      target.focus()
+    const focusLostOnRemount =
+      target && (!document.activeElement || document.activeElement === document.body)
+    if (focusLostOnRemount) target.focus()
     const settled =
       pending[name] === undefined &&
       system?.extensions.find((extension) => extension.name === name)?.enabled === enabled
-    if (settled) follow.current = undefined
+    if (settled) remountFocus.current = undefined
   })
   if (!system)
     return <div className="p-3 font-mono text-[11.5px] text-muted-foreground">connecting…</div>
@@ -605,7 +584,7 @@ export function ExtensionsPanel() {
       : '~/.ultimate/settings.json'
   const toggle = async (extension: ExtensionInfo, enabled: boolean) => {
     const { name } = extension
-    track(name, enabled)
+    trackRemountFocus(name, enabled)
     setPending((previous) => ({ ...previous, [name]: enabled }))
     setErrors(without(name))
     setNotes(without(name))
@@ -614,30 +593,34 @@ export function ExtensionsPanel() {
       if (scope === 'user' && extension.layer === 'project' && local) {
         const note = `Saved everywhere; this project's settings keep it ${extension.enabled ? 'on' : 'off'} here.`
         setNotes((previous) => ({ ...previous, [name]: note }))
-        setAnnouncement(`${name}: ${note}`)
-        // It stays where it is.
-        follow.current = undefined
+        setToggleAnnouncement(`${name}: ${note}`)
+        remountFocus.current = undefined
       } else
-        setAnnouncement(
+        setToggleAnnouncement(
           `${name} is ${enabled ? 'on' : 'off'}, under ${enabled ? 'On' : 'Available'}`,
         )
     } catch (failure) {
       setErrors((previous) => ({ ...previous, [name]: errorMessage(failure) }))
-      setAnnouncement(`${name} did not change: ${errorMessage(failure)}`)
-      follow.current = undefined
+      setToggleAnnouncement(`${name} did not change: ${errorMessage(failure)}`)
+      remountFocus.current = undefined
     } finally {
       setPending(without(name))
     }
   }
   const sorted = system.extensions.toSorted((a, b) => a.name.localeCompare(b.name))
-  const groups: [string, ExtensionInfo[]][] = [
-    ['On', sorted.filter((extension) => extension.enabled)],
+  const groups: [string, ExtensionInfo[], string?][] = [
+    ['On', sorted.filter((extension) => extension.enabled && !extension.core)],
     ['Available', sorted.filter((extension) => !extension.enabled)],
+    [
+      'Always on',
+      sorted.filter((extension) => extension.core),
+      'The core Ultimate runs on. These stay on whatever the settings say.',
+    ],
   ]
   return (
     <div className="pb-4" ref={root}>
       <p aria-live="polite" className="sr-only">
-        {announcement}
+        {toggleAnnouncement}
       </p>
       <Diagnostics messages={system.extensionDiagnostics} />
       <ProjectSetup system={system} />
@@ -670,11 +653,14 @@ export function ExtensionsPanel() {
           saved in {file}
         </p>
       </div>
-      {groups.map(([title, extensions]) => (
+      {groups.map(([title, extensions, about]) => (
         <section aria-label={title} className="pt-3" key={title}>
           <Heading className="px-3 pb-1" meta={extensions.length}>
             {title}
           </Heading>
+          {about && (
+            <p className="px-3 pb-1 text-[12px] leading-snug text-muted-foreground/70">{about}</p>
+          )}
           <ul>
             {extensions.map((extension) => (
               <Row
@@ -685,16 +671,16 @@ export function ExtensionsPanel() {
                 local={local}
                 note={notes[extension.name]}
                 onOpen={(open) =>
-                  setOpened((names) =>
+                  setSavedOpenRows((names) =>
                     open
                       ? [...names.filter((name) => name !== extension.name), extension.name]
                       : names.filter((name) => name !== extension.name),
                   )
                 }
-                open={opened.includes(extension.name)}
+                open={savedOpenRows.includes(extension.name)}
                 onToggle={(enabled) => void toggle(extension, enabled)}
                 pending={pending[extension.name]}
-                replaces={replaces(extension.name)}
+                replaces={replacesBuiltinCode(extension.name)}
                 scope={scope}
                 secrets={
                   secrets?.filter((secret) => secret.declaredBy.includes(extension.name)) ?? []

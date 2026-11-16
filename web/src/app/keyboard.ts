@@ -13,13 +13,6 @@ function editable(target: EventTarget | null) {
   )
 }
 
-/**
- * Runs command shortcuts, including sequences such as `mod+k m`: a sequence's first chord runs its own command (the
- * palette) and, for a second, waits for the next key. Plain keys never fire while typing, except as the second key of a
- * sequence typed into the still-empty palette, or in the composer for a command marked `whileTyping` (such as Escape or
- * Shift+Tab); those do not fire in a dialog, where the keys close it and move focus. A key pressed inside a
- * `ConversationScope`, such as a side chat, runs with the scope's conversation as `context.conversationId`.
- */
 export function useShortcuts() {
   useEffect(() => {
     let pending: string[] = []
@@ -45,8 +38,8 @@ export function useShortcuts() {
         event.target.value === ''
       const dialogOpen = !!document.querySelector('[role="dialog"]')
       const allowed = ({ command, keys }: { command: CommandItem; keys: string[] }) => {
-        // The second key of a sequence; `pending` is already reset when this runs.
-        if (sequence.length > 1) return !typing || emptyPalette
+        const continuingCapturedSequence = sequence.length > 1
+        if (continuingCapturedSequence) return !typing || emptyPalette
         if (/\b(mod|alt|ctrl)\+/.test(keys[0] ?? '')) return true
         if (command.whileTyping) return !dialogOpen && (!typing || composer)
         return !typing

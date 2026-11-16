@@ -29,7 +29,13 @@ function diagnose(rule: Rule, file: string, source: string) {
   const visitors = ultimate.rules[rule].create({
     filename: resolve(file),
     options: [],
-    sourceCode: { text: source, getCommentsBefore, getCommentsInside: () => [] },
+    sourceCode: {
+      text: source,
+      getCommentsBefore,
+      getCommentsInside: (node: Located) =>
+        comments.filter((comment) => comment.start >= node.start && comment.end <= node.end),
+      getAllComments: () => comments,
+    },
     report: ({ message }) => reports.push(message),
   }) as Record<string, ((node: Located) => void) | undefined>
   const visit = (node: Located, parent?: Located) => {
@@ -309,4 +315,36 @@ const later = () => import('../questions/web.tsx')`
   ])
   expect(lint('core-tier-deps', 'extensions/phase/web.tsx', source)).toEqual([])
   expect(lint('core-tier-deps', 'test/example.test.ts', source)).toEqual([])
+})
+
+it('rejects every product comment except contract JSDoc, Pi upstream markers and copied licences', () => {
+  // Shipped in server/api.ts and web/src/sdk/client.ts at 0e27be8.
+  const server = `export async function invoke(data: object) {
+    // Missing args mean none, so \`curl -d '{}'\` and agents can call argument-free actions.
+    return Object.hasOwn(data, 'args')
+  }`
+  expect(lint('no-comments', 'server/api.ts', server)).toEqual([
+    expect.stringMatching(/^An invariant .* becomes a name, a type or a small function/),
+  ])
+  const sdk = `/** How long the status line shows "ready · switching" before the page reloads onto a new bundle. */
+const switchDelay = 600
+/** Installed web facets of \`extensions/*\`. */
+export const registry = createRegistry()
+// Pi upstream: the event bus, adapted.
+/** Compact token counts, as Pi's footer prints them. */
+export function formatTokens(count: number) {}`
+  expect(lint('no-comments', 'web/src/sdk/client.ts', sdk)).toHaveLength(2)
+  const contract = `/**
+ * Entry kinds that core extensions on both sides of a dependency read.
+ */
+import { defineEntry } from '@earendil-works/pi-durable'
+/** A branch abstract: what a conversation did. */
+export type AbstractData = {
+  /** Where it stands. */
+  at: number
+}
+/*
+MIT License — Copyright (c) 2025 Mario Zechner
+*/`
+  expect(lint('no-comments', 'extensions/entries/refs.ts', contract)).toEqual([])
 })

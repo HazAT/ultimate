@@ -40,8 +40,11 @@ One compact, read-only summary of this Ultimate for dashboards that poll several
 }
 ```
 
+Projects can optionally expose progress by adding a read-only `projectProgress` action to any enabled extension. It takes `{}` and returns `{ label: string, index: number, total: number }`, for example `{ "label": "run", "index": 2, "total": 4 }`, or `null` when there is no progress to show. The label must be nonempty, `total` a positive safe integer and `index` a safe integer from 0 through `total`. Status calls providers in registry order (excluding itself), passes the caller's abort signal, and keeps the first valid non-null result as `progress`. Errors and invalid results count as absent. No provider is required.
+
 Each field comes from the API of the extension that owns it, never from its documents:
 
+- `progress`: the optional project progress above; absent when no provider returns a valid result.
 - `head`: Update's state from its last check (`UpdateApi.state()`): HEAD of the clone Ultimate runs from, and `behind`/`ahead` against origin as of `fetchedAt`. Origin is fetched in the background at most hourly, never per call. `error` is the last fetch's failure. Absent while Update is off, on a preview, or when Update cannot read the clone (origin has no default branch); the rest of the status still answers.
 - `failures`: the failed runs Watchdog reported since `since` (`WatchdogApi.failures()`), newest first. Watchdog keeps the last 20, including @ultimate's own. Absent while Watchdog is off.
 - `providers`: Health's providers with a login on this machine (`HealthApi.providers()`), with `state` `ok`, `failing` or `unknown`, and the error of a failing one. Absent while Health is off.

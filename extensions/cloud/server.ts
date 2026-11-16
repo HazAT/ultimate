@@ -25,21 +25,15 @@ export const secrets = [
   },
 ]
 const SNAPSHOT_KEY = 'ULTIMATE_CLOUD_SNAPSHOT_KEY'
-/** A backup that takes longer is stopped. */
-const BACKUP_CAP = 10 * 60_000
+const BACKUP_TIMEOUT_MS = 10 * 60_000
 const PAUSED = 'Ultimate is paused; press Play first'
 
-/**
- * This process's backup state, kept across reloads of the facet: the running upload, and the conflict and error
- * of the last attempt.
- */
 interface Running {
   backup?: CloudState['backup']
   conflict?: CloudState['conflict']
   lastError?: string
 }
 
-/** Whether backups run here, and for which project; `cloud.state` reads it on every call. */
 async function setup(host: ExtensionHost) {
   const config = await cloudConfig(host)
   if (!config) return { status: 'off' as const }
@@ -56,23 +50,29 @@ async function setup(host: ExtensionHost) {
   }
 }
 
-/** Commit one event on its own, right after the change it records; a failure only reports. */
-async function record<D extends JsonValue>(host: ExtensionHost, event: EventToken<D>, data: D) {
+async function recordBackupEventNonfatally<D extends JsonValue>(
+  host: ExtensionHost,
+  event: EventToken<D>,
+  data: D,
+) {
   await host
     .harness()
     .commit((tx) => host.emit(tx, event, data), context)
     .catch((error: unknown) => host.notice(`Cloud backup: ${String(error)}`))
 }
 
-const runningIn = (host: ExtensionHost) => host.resource('cloud.backup', (): Running => ({}))
+const reloadSharedBackupState = (host: ExtensionHost) =>
+  host.resource('cloud.backup', (): Running => ({}))
 
-/** Back up now: one at a time, never while paused. */
-export async function backup(host: ExtensionHost, force: boolean) {
-  const running = runningIn(host)
+function claimBackupBeforeFirstAwait(host: ExtensionHost, running: Running) {
   if (running.backup) throw new Error('a backup is already running')
   if (host.want(PauseApi)?.paused()) throw new Error(PAUSED)
-  // Set before the first await, so a second call refuses at once.
   running.backup = { done: 0, total: 0, uploaded: 0 }
+}
+
+export async function backup(host: ExtensionHost, force: boolean) {
+  const running = reloadSharedBackupState(host)
+  claimBackupBeforeFirstAwait(host, running)
   try {
     const ready = await setup(host)
     if (ready.status === 'off')
@@ -101,7 +101,10 @@ async function upload(
   force: boolean,
 ) {
   const started = Date.now()
-  await record(host, BackupEvent, { phase: 'started', project: ready.key })
+  await recordBackupEventNonfatally(host, BackupEvent, {
+    phase: 'started',
+    project: ready.key,
+  })
   try {
     const secret = process.env[SNAPSHOT_KEY] ?? (await readSecret(host.userHome, SNAPSHOT_KEY))
     if (!secret)
@@ -116,13 +119,13 @@ async function upload(
       projectRoot: host.projectRoot,
       force,
       ...(tailnet?.startsWith('https://') ? { tailnet } : {}),
-      signal: AbortSignal.timeout(BACKUP_CAP),
+      signal: AbortSignal.timeout(BACKUP_TIMEOUT_MS),
       progress: (read, total, uploaded) => {
         running.backup = { done: read, total, uploaded }
       },
     })
     running.conflict = running.lastError = undefined
-    await record(host, BackupEvent, {
+    await recordBackupEventNonfatally(host, BackupEvent, {
       phase: 'done',
       project: ready.key,
       bytes: done.bytes,
@@ -140,7 +143,7 @@ async function upload(
       running.lastError = `Backup failed: ${message}`
       host.notice(running.lastError)
     }
-    await record(host, BackupEvent, {
+    await recordBackupEventNonfatally(host, BackupEvent, {
       phase: 'failed',
       project: ready.key,
       ms: Date.now() - started,
@@ -152,10 +155,9 @@ async function upload(
 }
 
 export const actions = {
-  /** `{ status, name, machine, lastBackup, backup, conflict, lastError }` for the status line. */
   state: implementAction(StateAction, async (_args, { host }): Promise<CloudState> => {
     const ready = await setup(host)
-    const running = runningIn(host)
+    const running = reloadSharedBackupState(host)
     const name = basename(host.projectRoot)
     if (ready.status === 'satellite')
       return { status: 'satellite', name, machine: ready.config.machine }
@@ -172,13 +174,10 @@ export const actions = {
       ...(running.lastError ? { lastError: running.lastError } : {}),
     }
   }),
-  /** `{ force? }`: Back up now; resolves once the backup is committed. */
   backup: implementAction(BackupAction, (args, { host }) =>
     backup(host, (args as { force?: unknown } | null)?.force === true),
   ),
-  /** Whether this machine joined cloud backups: `cloud.url` and both secrets, without their values. */
   joinState: implementAction(JoinStateAction, (_args, { host }) => joinState(host.userHome)),
-  /** User-only: the Join card's submit; checks the cloud, then stores the secrets and settings. */
   join: implementAction(JoinAction, async (args, { host }) => {
     const store = host.need(SecretsApi)
     return join(
@@ -191,7 +190,6 @@ export const actions = {
     )
   }),
 }
-/** The Join card's secrets never come from an agent; a backup only adds one, so agents may start it. */
 export const userActions = ['join']
 
 export default function cloud(host: ExtensionHost) {
@@ -202,7 +200,6 @@ export default function cloud(host: ExtensionHost) {
       if (ready.status !== 'on') return undefined
       const saved = await readBackup(ready.dir, ready.key)
       if (saved) return saved.last
-      // A backup the Worker registered before this home could record it (a restart in between) counts too.
       const latest = (await fetchRegister(ready.config)).projects.find(
         (project) => project.key === ready.key,
       )?.latest
@@ -212,7 +209,6 @@ export default function cloud(host: ExtensionHost) {
     },
     status: async () => (await setup(host)).status,
   })
-  // Optional services, resolved where they are called; declared here so the catalogue lists them.
   host.want(TailscaleApi)
   host.want(PauseApi)
   host.need(SecretsApi)

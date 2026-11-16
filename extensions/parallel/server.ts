@@ -41,7 +41,7 @@ export default function parallel(host: ExtensionHost) {
     }
     if (!notices.sent) {
       notices.sent = true
-      host.notice(missing)
+      host.notice(missing, { untilSecretSet: 'PARALLEL_API_KEY' })
     }
     throw new Error(missing)
   }

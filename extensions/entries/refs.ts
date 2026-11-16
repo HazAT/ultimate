@@ -77,6 +77,8 @@ export type DeliveredMessage = {
   remote?: Remote
   failed?: boolean
   stopped?: boolean
+  /** A remote reply sent while work serving the request goes on: the request stays open for the result. */
+  interim?: true
 }
 
 /** Message delivered as a conversation input. */
@@ -91,6 +93,8 @@ export type AutomationInput = {
   name: string
   text: string
   serves?: Serves
+  /** Branches whose reply or report the run that created the automation read: its first fire's answer goes to them. */
+  branches?: ConversationId[]
   at?: number
 }
 

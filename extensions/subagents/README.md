@@ -80,6 +80,8 @@ Fields (others are errors):
   subagent]` opts into bounded delegation. A deferred tool named here is loaded for that conversation. Tool lists
   select tools; they are not a shell sandbox.
 - `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored.
+- `skills`: a YAML list of the skill names its system prompt lists; omitted, every project skill, `[]` none. An overlay
+  replaces the list. `/skill:name` still runs any skill. The Agent card and the form flag names no skill provides.
 - `isolate`: `none` or `worktree`. `resident: true` makes it a standing agent.
 - `fast`: the priority tier for `openai-codex/` and `openai/` models (see the fast README).
 - `summaries: false` turns off automatic titles, summaries, reply activity lines and tree abstracts for its

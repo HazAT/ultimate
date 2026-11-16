@@ -10,10 +10,6 @@ import { fillComposer, useDialog, useSystem, useUltimate } from '@/sdk'
 
 export const skillDialog = 'info.skill'
 
-/**
- * ⌘K → Run a skill: picking one writes `/skill:name ` into the shown conversation's composer, where the user adds the
- * request and sends it; the server sends the skill's instructions with it.
- */
 export function SkillPicker() {
   const [open, setOpen] = useDialog(skillDialog)
   const actions = useUltimate()

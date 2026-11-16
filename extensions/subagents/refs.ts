@@ -28,6 +28,8 @@ export type Definition = {
   runs?: { family?: string; model?: ModelRef; thinking?: string; via: 'pin' | 'family' }
   tools?: string[]
   denyTools?: string[]
+  /** The skills it is given by name; absent, every skill. */
+  skills?: string[]
   isolate?: 'none' | 'worktree'
   resident?: boolean
   fast?: boolean
@@ -43,6 +45,8 @@ export type Discovery = {
   errors: Invalid[]
   /** The main conversation's model and tools; a definition may list a subset of the tools. */
   main: { model?: ModelRef; thinking?: string; tools: { name: string; description: string }[] }
+  /** The project's skills a definition may list. */
+  skills: { name: string; description: string }[]
   /** The folder each scope saves to. */
   scopes: Record<Scope, string>
   /** The user's choice on the project's `.ultimate/` setup; the project scope needs it trusted. */
@@ -66,6 +70,7 @@ export type DefinitionFields = {
   family?: string
   tools?: string[]
   denyTools?: string[]
+  skills?: string[]
   isolate?: 'none' | 'worktree'
   resident?: boolean
   fast?: boolean

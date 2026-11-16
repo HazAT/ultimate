@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Header, StatusLine } from '@/sdk'
 
-/** The surface's frame: its header with `controls`, the body, the status line. */
 export function Frame({ controls, children }: { controls?: ReactNode; children: ReactNode }) {
   return (
     <>
@@ -20,7 +19,6 @@ export function Frame({ controls, children }: { controls?: ReactNode; children: 
   )
 }
 
-/** A quiet line in place of the diff: why there is none. */
 export function Notice({ children }: { children: ReactNode }) {
   return (
     <p className="flex-1 py-10 text-center font-mono text-[11.5px] text-muted-foreground/70">
@@ -29,7 +27,6 @@ export function Notice({ children }: { children: ReactNode }) {
   )
 }
 
-/** File list and diff blocks while the diff loads. */
 export function Loading() {
   return (
     <>

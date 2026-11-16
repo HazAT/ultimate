@@ -13,17 +13,12 @@ import {
 } from '@/sdk'
 import type { DocumentItem } from '@/sdk'
 
-/** The value as a JSON tree, the view of every kind without a renderer. */
 function Json({ value }: { value: object }) {
   if (Object.keys(value).length === 0)
     return <p className="px-3 font-mono text-[11.5px] text-muted-foreground/70">empty</p>
   return <JsonTree className="px-2" open={1} value={value} />
 }
 
-/**
- * One document of the shown conversation: a header naming it, then its renderer, which a throw turns into an error
- * card above the JSON tree, or the JSON tree alone. Nothing until the stream delivers a value.
- */
 function Document({
   kind,
   owner,
@@ -77,10 +72,6 @@ function Document({
   )
 }
 
-/**
- * Every kind the server facets export (`docs`), for the shown conversation: kinds with a renderer first and open, the
- * rest as JSON and folded. Folding is durable per kind.
- */
 function DocumentsPanel() {
   const system = useSystem()
   const renderers = useDocumentRenderers()

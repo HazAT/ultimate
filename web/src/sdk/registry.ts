@@ -27,17 +27,17 @@ import type {
   WebExtension,
 } from './types.ts'
 
-/** Lazily imports one `extensions/<name>/web.tsx`; the key of its loader is the file path. */
 export type ExtensionLoader = () => Promise<unknown>
+type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
-  /** The installed version; kept when a later load fails, like the server facet. */
+
   extension?: WebExtension
-  /** Why the latest load failed. */
+
   error?: string
   loading: boolean
-  /** Bumped on every install, so error boundaries reset. */
+
   version: number
 }
 
@@ -75,7 +75,7 @@ const isString: Check = (value) => typeof value === 'string'
 const isNumber: Check = (value) => typeof value === 'number'
 const isBoolean: Check = (value) => typeof value === 'boolean'
 const isFunction: Check = (value) => typeof value === 'function'
-/** A function or class component, or an exotic one such as `memo(…)`. */
+
 const isComponent: Check = (value) => isFunction(value) || (isObject(value) && '$$typeof' in value)
 const optional =
   (check: Check): Check =>
@@ -97,7 +97,6 @@ const isContribution: Check = (value) =>
   isFunction(value) ||
   fields({ component: isComponent, order: optional(isNumber), phone: optional(isBoolean) })(value)
 
-/** What each contribution must look like; a facet that does not match keeps its previous version installed. */
 const shapes: Record<keyof WebExtension, [Check, string]> = {
   slots: [
     objectOf((value) => isContribution(value) || arrayOf(isContribution)(value)),
@@ -191,10 +190,6 @@ function validate(module: unknown): WebExtension {
   return extension
 }
 
-/**
- * The installed web facets. Each loads on its own: a broken one records its error and leaves the others (and its own
- * previous version) running.
- */
 export function createRegistry() {
   let records: readonly ExtensionRecord[] = []
   let readiness = { ready: false, timedOut: false, failed: [] as string[], pending: [] as string[] }
@@ -255,7 +250,7 @@ export function createRegistry() {
   return {
     getSnapshot: () => records,
     getReady: () => readiness,
-    /** The stream's first system snapshot is the other half of page readiness. */
+
     receiveSystem() {
       systemReceived = true
       refreshReady()
@@ -266,14 +261,14 @@ export function createRegistry() {
         listeners.delete(listener)
       }
     },
-    /** Load facets in discovery order (built-in → user → project, then name), dropping missing facets. */
-    async setLoaders(loaders: Readonly<Record<string, ExtensionLoader>>) {
+
+    async setLoaders(lastWinsDiscoveryOrder: BuiltinUserProjectByName) {
       if (!started) cancelDeadline = deadline(8000, () => refreshReady(true))
       started = true
       const current = ++generation
       settled = false
       tokens.clear()
-      const entries = Object.entries(loaders).flatMap(([path, loader]) => {
+      const entries = Object.entries(lastWinsDiscoveryOrder).flatMap(([path, loader]) => {
         const name = extensionName(path)
         return name ? [{ name, loader }] : []
       })
@@ -319,7 +314,6 @@ function normalize(value: Contribution | readonly Contribution[] | undefined) {
   )
 }
 
-/** Components for a slot, by `order`, then discovery order, then position. */
 export function slotItems(records: readonly ExtensionRecord[], slot: SlotName): SlotItem[] {
   return records
     .flatMap(({ name, extension, version }) =>
@@ -336,7 +330,6 @@ export function slotItems(records: readonly ExtensionRecord[], slot: SlotName): 
     .map(({ order: _order, ...item }) => item)
 }
 
-/** Every facet that provides `point`, in discovery order: for points that combine their providers' values. */
 export function provisionsOf(records: readonly ExtensionRecord[], point: string) {
   return records.flatMap(({ name, extension, version }) =>
     (extension?.provides ?? [])
@@ -345,7 +338,6 @@ export function provisionsOf(records: readonly ExtensionRecord[], point: string)
   )
 }
 
-/** The facet that provides `point`: the last in discovery order. */
 export function provisionOf(records: readonly ExtensionRecord[], point: string) {
   return provisionsOf(records, point).at(-1)
 }
@@ -358,7 +350,6 @@ export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
     .toSorted((a, b) => (a.order ?? 0) - (b.order ?? 0))
 }
 
-/** Every badge on panel `id`'s tab, in discovery order. */
 export function panelBadges(
   records: readonly ExtensionRecord[],
   id: string,
@@ -369,20 +360,14 @@ export function panelBadges(
   })
 }
 
-/**
- * The shown panel, `selected` or else the first with a tab (none while only tabless ones exist), and the tab row: every
- * panel with a tab, plus a tabless one (`tab: false`) while it is shown.
- */
 export function shownPanels(panels: readonly PanelItem[], selected: string | null) {
   const active =
     panels.find((panel) => panel.id === selected) ?? panels.find((panel) => panel.tab !== false)
   return { active, tabs: panels.filter((panel) => panel.tab !== false || panel === active) }
 }
 
-/** The home surface: shown by default, and whenever the chosen surface cannot be. */
 export const HOME = 'agent'
 
-/** Surfaces as the switcher lists them: Agent first, then by `order` and title. A later facet wins an id. */
 export function surfaceItems(records: readonly ExtensionRecord[]): SurfaceItem[] {
   const byId = new Map<string, SurfaceItem>()
   for (const { name, extension, version } of records)
@@ -396,12 +381,6 @@ export function surfaceItems(records: readonly ExtensionRecord[]): SurfaceItem[]
   )
 }
 
-/**
- * Which surface shows. The chosen one (`shell.surface`), else the project's `defaultSurface` when installed, else
- * Agent. While facets still load, a surface not yet installed is `pending`; after that, a chosen surface that is
- * missing falls back to Agent and is named in `missing`. `surface` is undefined only while pending or when even
- * Agent is not installed.
- */
 export function resolveSurface(
   surfaces: readonly SurfaceItem[],
   { chosen, preferred, loading }: { chosen?: string; preferred?: string; loading: boolean },
@@ -414,10 +393,6 @@ export function resolveSurface(
   return { surface: find(HOME), pending: false, missing: chosen }
 }
 
-/**
- * Whether `command` applies in `context`. A `when` that throws hides the command and goes to `report`, so one broken
- * extension cannot take down the palette, shortcuts, or the shell around them.
- */
 export function commandApplies(
   command: CommandItem,
   context: UltimateContext,
@@ -432,10 +407,6 @@ export function commandApplies(
   }
 }
 
-/**
- * The shell's own commands (`base`), then every extension's. A later one wins an id, like surfaces: it takes the place
- * of the command it replaces.
- */
 export function commandItems(
   records: readonly ExtensionRecord[],
   base: readonly CommandItem[] = [],
@@ -447,7 +418,6 @@ export function commandItems(
   return [...byId.values()]
 }
 
-/** Document renderers by kind; the last extension in discovery order wins a kind. */
 export function documentItems(records: readonly ExtensionRecord[]): Map<string, DocumentItem> {
   const byKind = new Map<string, DocumentItem>()
   for (const { name, extension, version } of records)
@@ -475,7 +445,6 @@ export function inboxRenderer(
   return undefined
 }
 
-/** Every renderer of an entry kind, in discovery order: each one wraps the rendering of the one before it. */
 export function entryRenderers(
   records: readonly ExtensionRecord[],
   kind: string,
@@ -486,7 +455,6 @@ export function entryRenderers(
   })
 }
 
-/** Every tool renderer in discovery order: each receives the previous rendering as `core`. */
 export function toolRenderers(
   records: readonly ExtensionRecord[],
   name: string,
@@ -497,7 +465,6 @@ export function toolRenderers(
   })
 }
 
-/** The one-line renderer of tool `name`: the last facet providing it. */
 export function toolLine(records: readonly ExtensionRecord[], name: string) {
   const record = records.findLast((candidate) => candidate.extension?.toolLines?.[name])
   return (
@@ -509,7 +476,6 @@ export function toolLine(records: readonly ExtensionRecord[], name: string) {
   )
 }
 
-/** Every Markdown link renderer in discovery order: each receives the previous rendering as `core`. */
 export function linkRenderers(
   records: readonly ExtensionRecord[],
 ): { extension: string; version: number; component: LinkRenderer }[] {
@@ -519,7 +485,6 @@ export function linkRenderers(
   })
 }
 
-/** Every Markdown inline code renderer in discovery order: each receives the previous rendering as `core`. */
 export function inlineCodeRenderers(
   records: readonly ExtensionRecord[],
 ): { extension: string; version: number; component: InlineCodeRenderer }[] {
@@ -529,7 +494,6 @@ export function inlineCodeRenderers(
   })
 }
 
-/** Every code block renderer of `language` in discovery order: each receives the previous rendering as `core`. */
 export function codeBlockRenderers(
   records: readonly ExtensionRecord[],
   language: string,
@@ -540,12 +504,10 @@ export function codeBlockRenderers(
   })
 }
 
-/** The languages some extension renders code blocks of. */
 export function codeBlockLanguages(records: readonly ExtensionRecord[]): string[] {
   return [...new Set(records.flatMap((record) => Object.keys(record.extension?.codeBlocks ?? {})))]
 }
 
-/** Message contributions, preserving discovery order and each facet's array order. */
 export function messageItems(
   records: readonly ExtensionRecord[],
   contribution: 'messageActions' | 'messageDetails' | 'answerLabels' | 'userBubble',
@@ -560,15 +522,9 @@ export function messageItems(
   )
 }
 
-/** The kinds of the root conversation's documents that `compact` contributions read (`docs`), sorted. */
 export const compactDocs = (records: readonly ExtensionRecord[]) =>
   [...new Set(records.flatMap(({ extension }) => extension?.compact?.docs ?? []))].toSorted()
 
-/**
- * Which calls stay visible when `conversation` uses compact mode, or `undefined` when no facet makes it one; `docs` are
- * the root documents of `compactDocs` kinds. A `when` or a call test that throws counts as no and goes to `report`, so
- * one broken extension cannot take down the transcript.
- */
 export function compactTools(
   records: readonly ExtensionRecord[],
   conversation: ConversationSummary | undefined,
@@ -598,8 +554,7 @@ export function compactTools(
     }
   })
   if (!matching.length) return undefined
-  // Rows that ask the user to act (`attention` renderers) never fold: their calls stay out of runs of work, and the rows
-  // count as thread.
+
   const asks = (kind: 'entries' | 'tools') =>
     new Set(
       records.flatMap(({ extension }) =>
@@ -610,7 +565,7 @@ export function compactTools(
     )
   const askingKinds = asks('entries')
   const askingTools = asks('tools')
-  const asking = (row: CompactRow) =>
+  const rowRequiresAttentionAndCannotFold = (row: CompactRow) =>
     askingKinds.has(row.entry.kind) || row.calls.some((call) => askingTools.has(call.name))
   const tools = matching.flatMap(({ name, compact }) =>
     (compact.tools ?? []).map((tool) => ({ name, tool })),
@@ -635,20 +590,20 @@ export function compactTools(
       }),
     thread: matching.some(({ compact }) => compact.thread)
       ? (row, docs) => {
-          if (asking(row)) return true
+          if (rowRequiresAttentionAndCannotFold(row)) return true
           const verdicts = matching.map(({ name, compact }) => {
             try {
               return compact.thread?.(row, docs) ?? false
             } catch (error) {
               report(name, error)
-              // A broken test keeps the row readable.
-              return true
+
+              const keepRowReadableOnPredicateFailure = true
+              return keepRowReadableOnPredicateFailure
             }
           })
-          // Hidden only when every facet says so: a row any facet shows counts in its stretch.
-          return (
-            verdicts.includes(true) || (verdicts.every((v) => v === 'hidden') ? 'hidden' : false)
-          )
+          if (verdicts.includes(true)) return true
+          const everyFacetHidesRow = verdicts.every((v) => v === 'hidden')
+          return everyFacetHidesRow ? 'hidden' : false
         }
       : undefined,
     summary: matching.flatMap(({ name, version, compact }) =>

@@ -10,13 +10,8 @@ import {
   worstFirst,
 } from './parts.tsx'
 
-/**
- * The status-line chip: how many automations are active, coloured by the worst; red while one needs attention. Gone
- * while none is active.
- */
 export function Chip() {
   const shell = useUltimate()
-  // The chip only needs to notice a failure within a few seconds; the open panel polls faster for everyone.
   const { data } = useAutomations(5000)
   const now = useNow(15_000)
   const list = worstFirst(

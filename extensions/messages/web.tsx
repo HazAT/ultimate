@@ -55,16 +55,10 @@ function MessageAnswerLabel({ entry }: { entry: EntryRecord }) {
   ))
 }
 
-/**
- * Stay mounted across surfaces so an Open click can reveal after Agent mounts and loads. `messages:open` names the entry,
- * or the tool call that sent a message (`call`): the response that made it, found in the loaded entries or else in the
- * stored history, which the transcript then pages in. It may name a question to the user instead (`message`, its id in
- * the log), as a link `?conversation=<c>&message=<m>` does once on load.
- */
 function MessageNavigation() {
   const { id, entries, loading } = useConversation()
   const { surface, showSurface } = useUltimate()
-  // A cold load mounts the overlays first: the transcript that reveals comes with the page.
+
   const { ready } = useReady()
   const log = useDocOf(ROOT, MessagesDoc)
   const [target, setTarget] = useState<{
@@ -74,7 +68,7 @@ function MessageNavigation() {
     message?: number
   }>()
   useEvent('messages:open', (value) => setTarget(value as NonNullable<typeof target>))
-  // `?conversation=` stays the shell's; `?message=` leaves the address, so a reload does not jump again.
+
   useEffect(() => {
     const url = new URL(location.href)
     const message = Number(url.searchParams.get('message'))
@@ -85,7 +79,7 @@ function MessageNavigation() {
     if (Number.isSafeInteger(message) && Number.isSafeInteger(conversation) && conversation > 0)
       setTarget({ conversation, message })
   }, [])
-  // Only a question still waiting on the user, asked in that conversation: otherwise the conversation just opens.
+
   useEffect(() => {
     if (target?.message === undefined || !log) return
     const asked = log.messages.find((m) => m.id === target.message)
@@ -105,24 +99,22 @@ function MessageNavigation() {
     )
       return undefined
     const { call } = target
-    // The call that sent the message, where its card shows: the response's top may be text before it.
+
     const toolCallId = call?.split('/')[0]
     const reveal = (entry: number) =>
       events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry, toolCallId })
     const loaded = target.entry ?? (toolCallId && callerOf(entries, toolCallId)?.id)
     if (loaded) {
-      // Cleared in the frame: clearing it first re-runs this effect, whose cleanup cancelled the frame before it revealed.
-      const frame = requestAnimationFrame(() => {
+      const revealAndClearTargetFrame = requestAnimationFrame(() => {
         setTarget(undefined)
         reveal(loaded)
       })
-      return () => cancelAnimationFrame(frame)
+      return () => cancelAnimationFrame(revealAndClearTargetFrame)
     }
     setTarget(undefined)
     if (call)
       api.action(CallerAction, { conversation: id, call }).then(
         ({ entry }) => entry !== undefined && reveal(entry),
-        // The conversation is open either way; only the scroll to the question is lost.
         () => undefined,
       )
     return undefined
@@ -130,21 +122,23 @@ function MessageNavigation() {
   return null
 }
 
+const afterPinnedPromptOrder = 1
+
 export default defineWebExtension({
   slots: {
     overlay: [MessageNavigation],
     'composer.status': [OpenMessages],
-    // Under the pinned prompt, which comes first, so a mark never covers it.
-    'transcript.top': [{ component: OffscreenQuestions, order: 1 }],
+
+    'transcript.top': [{ component: OffscreenQuestions, order: afterPinnedPromptOrder }],
   },
   entries: {
     'board.message': MessageInput,
     'board.reply': MessageInput,
     'board.asked': attention(QuestionPointer),
     'board.answered': () => null,
-    // Retired: triage's wake-up pointer in older transcripts.
+
     'board.wake': () => null,
-    // The agent's reminder of the questions still open; the user sees them in the Inbox.
+
     'board.open': () => null,
     'pi.assistant': CompactAnswer,
   },
@@ -155,16 +149,14 @@ export default defineWebExtension({
       'message',
       'branch',
       'workspace',
-      // A script that messaged you stays visible, so its messages show as bubbles, even when it was interrupted.
+
       (call, docs) => scriptMessaged(call, docs.board as MessagesData | null | undefined),
     ],
     docs: ['board', StandingDoc.kind],
-    // Your inputs and @ultimate's messages to you are what you read; everything between recedes into one line.
     thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
     summary: StretchSummary,
   },
   answerLabels: [MessageAnswerLabel],
-  // The `branch` tool labels the coordinator branches it starts; the title bar names their kind before the agent.
   provides: [
     provide(ConversationKind, (conversation) =>
       conversation?.label === 'coordinator' ? 'branch · coordinator' : undefined,

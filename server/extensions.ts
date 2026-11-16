@@ -38,8 +38,9 @@ import { extensionApis } from './extension-apis.ts'
 import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
+import { secretMetadata } from '../lib/secrets.ts'
 import type { Device } from '../shared/events.ts'
-import { inBackground, isMissing } from '../lib/errors.ts'
+import { inBackground, isMissing, meansNone } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -58,53 +59,28 @@ export type ExtensionHost = Pick<
   | 'chapter'
 > & {
   access: Pick<Access, 'allow'>
-  notice(message: string): void
-  /**
-   * Provide the service of `api`. Facet scope only: staged until the facet installs, replaced on reload, kept when a
-   * reload fails, and removed when the facet is disabled, removed or closed.
-   */
+  notice(message: string, options?: { untilSecretSet?: string }): void
   implement<S>(api: Api<string, S>, value: NoInfer<S>): void
-  /** A handle to the current provider of `api`; throws while none is enabled, except during facet setup. */
   need<S>(api: Api<string, S>): S
-  /** A handle to the current provider of `api`, or undefined while none is enabled. */
   want<S>(api: Api<string, S>): S | undefined
-  /** Who provides, needs and wants each API, plus missing providers and dependency cycles. */
   catalogue(): Catalogue
-  /** The recorded calls: services, actions, reactor runs and tools. */
   trace: TraceReader
   resource<T>(key: string, create: () => T): T
-  /** Run `callback` each time the harness opens, at once when it is open; the server serves once it settles. */
   onOpen(callback: () => Promise<void>): void
-  /** Run `callback` each time before the harness closes while the process stays: on a core swap. */
   onRelease(callback: () => Promise<void>): void
   onClose(cleanup: () => Promise<void>): void
-  /** Run `callback` each time an extension's server facet fails to load, with its name and error; facet-scoped. */
   onLoadError(callback: (name: string, error: string) => void): void
-  /**
-   * Run `callback` and wait for it before each extension reload, web build and restart, so none of them reads a
-   * checkout or packages that are still being written. When it throws, a reload or build goes on with a notice and a
-   * restart is refused with the message; facet-scoped.
-   */
   onBeforeLoad(callback: () => Promise<void>): void
   harness(): Harness
   system(): SystemInfo
-  /** Summaries of every conversation, as the web's conversation list shows them; empty until the harness is open. */
   conversations(): ConversationSummary[]
-  /** Read JSON manifests in the user's central project homes, never another project's SQLite; unknown roots remain absent. Includes this home and live supervisor URLs. */
   projects(): Promise<ProjectInfo[]>
-  /** Discovered extensions, including disabled project folders, with effective deciding layers. */
   extensions(): ExtensionInfo[]
-  /** Project setup availability, the decision of the root (a linked worktree's main checkout), and capped README. */
   projectSetup(): ReturnType<typeof projectSetup>
-  /** Parsed project settings only after a local decision; otherwise empty. Invalid JSON reports a notice and returns empty. */
   projectSettings(): Promise<JsonObject>
-  /** Read-only inventory of project folders, including replacements of active extensions. */
   projectExtensions(): Promise<ExtensionInfo[]>
-  /** Remember the local/global choice and apply it through the live settings reload path. */
   setProjectDecision(local: boolean): Promise<void>
-  /** Apply settings writes to the registry, browser facets, and styles before returning. */
   reloadExtensions(): Promise<void>
-  /** Call an installed extension action on behalf of a conversation; rejects user-only actions. */
   invoke(
     name: string,
     action: string,
@@ -119,7 +95,6 @@ const runOpener = (callback: () => Promise<void>) =>
   callback().catch((error: unknown) => console.error('Extension onOpen:', error))
 const runReleaser = (callback: () => Promise<void>) =>
   callback().catch((error: unknown) => console.error('Extension onRelease:', error))
-/** Attach listeners to Vite's current watcher and to each replacement; `attach` returns their removal. */
 export type Watch = (attach: (watcher: ViteDevServer['watcher']) => () => void) => () => void
 export async function loadExtensions(
   vite: ViteDevServer,
@@ -128,22 +103,21 @@ export async function loadExtensions(
   runtime: Pick<ExtensionHost, 'harness' | 'system' | 'conversations' | 'access'>,
   watch: Watch,
   notice: (message: string) => void = () => {},
-  /** Bring the web bundle up to date with the settings just applied. */
   rebuildWeb: () => Promise<void> = async () => {},
 ) {
   const trace = host.callTrace
   const log = eventLog(runtime.harness, trace.run, trace.keep)
   const roots = discoveryRoots(host.ultimateRoot, host.projectRoot, host.userHome)
   const directories = roots.map((root) => join(root.path, 'extensions'))
-  const provided = new Map<ExtensionHost, Map<string, unknown>>()
+  const stagedServicesByFacet = new Map<ExtensionHost, Map<string, unknown>>()
   const providers = new Map<string, { owner: ExtensionHost; value: unknown }>()
   const facetHosts = new Map<string, ExtensionHost>()
   const subscriptions = new Map<ExtensionHost, Set<() => void>>()
   const facetOpeners = new Map<ExtensionHost, Set<() => Promise<void>>>()
   const facetReleasers = new Map<ExtensionHost, Set<() => Promise<void>>>()
   const facetCleanups = new Map<ExtensionHost, Set<() => Promise<void>>>()
-  /** Each facet's distinct notice messages, and whether each is recorded as an event yet. */
-  const facetNotices = new Map<ExtensionHost, Map<string, boolean>>()
+  type FacetNotice = { recordedInEventLog: boolean; untilSecretSet?: string }
+  const facetNotices = new Map<ExtensionHost, Map<string, FacetNotice>>()
   const extensionOf = (facetHost: ExtensionHost) =>
     [...facetHosts].find(([, current]) => current === facetHost)?.[0]
   const apis = extensionApis(
@@ -165,7 +139,7 @@ export async function loadExtensions(
     if (!facetHost) return
     apis.dispose(facetHost)
     for (const [name, service] of providers) if (service.owner === facetHost) providers.delete(name)
-    provided.delete(facetHost)
+    stagedServicesByFacet.delete(facetHost)
     for (const stop of subscriptions.get(facetHost) ?? []) stop()
     subscriptions.delete(facetHost)
     for (const callback of facetOpeners.get(facetHost) ?? []) openers.delete(callback)
@@ -191,20 +165,19 @@ export async function loadExtensions(
         return extensionHost.chapter
       },
       implement: (api, value) => {
-        provided.get(facetHost)!.set(api.name, value)
+        stagedServicesByFacet.get(facetHost)!.set(api.name, value)
         if (facetHosts.get(name) === facetHost) providers.set(api.name, { owner: facetHost, value })
       },
       need: <S>(api: Api<string, S>): S =>
         apis.need(facetHost, name, api, facetHosts.get(name) !== facetHost),
       want: <S>(api: Api<string, S>): S | undefined => apis.want(facetHost, name, api),
-      notice: (message) => {
-        // Each distinct message once per facet load: a notice raised by a commit watcher cannot loop through its event.
-        // One raised while storage is closed is recorded when it opens.
+      notice: (message, options) => {
         const messages = facetNotices.get(facetHost)
-        // Pending facet work can finish after reload or shutdown; it must not revive a disposed facet's notices.
-        if (!messages) return
-        if (!messages.has(message)) {
-          messages.set(message, open)
+        const facetWasDisposed = !messages
+        if (facetWasDisposed) return
+        const firstNoticeOfMessageThisFacetLoad = !messages.has(message)
+        if (firstNoticeOfMessageThisFacetLoad) {
+          messages.set(message, { recordedInEventLog: open, ...options })
           if (open) log.notice(name, message)
         }
         notice(message)
@@ -268,7 +241,7 @@ export async function loadExtensions(
         stops.add(reactor.stop)
       },
     } satisfies ExtensionHost
-    provided.set(facetHost, new Map())
+    stagedServicesByFacet.set(facetHost, new Map())
     subscriptions.set(facetHost, stops)
     facetOpeners.set(facetHost, new Set())
     facetReleasers.set(facetHost, new Set())
@@ -278,25 +251,21 @@ export async function loadExtensions(
   }
   const actions = new Map<string, Record<string, ExtensionAction>>()
   const userActions = new Map<string, string[]>()
-  /** Read-only actions a surface polls: the trace counts their successful calls instead of writing them. */
   const pollActions = new Map<string, string[]>()
   const settingsReloads = new Set<string>()
   const records = new Map<string, ExtensionInfo>()
-  /** Each loaded extension's folder with symlinks resolved, where Vite keys its modules. */
   const targets = new Map<string, string>()
   const documents = new Map<string, ConversationDocToken<JsonObject>[]>()
   const findDoc = (kind: string) =>
     [
       EventFeed as never as ConversationDocToken<JsonObject>,
-      // A conversation's live round without its transcript, for watchers of many conversations (the sound of agents).
       LiveDoc as never as ConversationDocToken<JsonObject>,
       ...[...documents.values()].flat(),
     ].find((doc) => doc.definition.kind === kind)
   const openers = new Set<() => Promise<void>>()
   const loadErrorListeners = new Set<(name: string, error: string) => void>()
   const beforeLoad = new Set<() => Promise<void>>()
-  /** Wait for the `onBeforeLoad` callbacks; the message of the first that failed. */
-  async function prepared() {
+  async function preparationError() {
     let failed: string | undefined
     for (const callback of beforeLoad)
       try {
@@ -306,16 +275,11 @@ export async function loadExtensions(
       }
     return failed
   }
-  let unprepared: string | undefined
-  /** `prepared` for a reload or a web build: it goes on either way, and each failure is said once, not on every save. */
-  async function preparedToLoad() {
-    const failed = await prepared()
-    if (failed && failed !== unprepared) notice(`Loading as it is: ${failed}`)
-    unprepared = failed
-    // Vite's resolver remembers where each package resolved to. pnpm installs a changed (patched) package into a new
-    // folder and moves the link, so a facet reloaded after an install kept importing the old folder: "useUrl is not a
-    // function" in 19 of 56 patch landings on a scratch host (#545608). Telling the resolver that node_modules
-    // changed makes it look again; that costs a few stats per reload.
+  let lastReportedPreparationFailure: string | undefined
+  async function prepareLoadBestEffort() {
+    const failed = await preparationError()
+    if (failed && failed !== lastReportedPreparationFailure) notice(`Loading as it is: ${failed}`)
+    lastReportedPreparationFailure = failed
     const modules = join(host.ultimateRoot, 'node_modules')
     for (const environment of Object.values(vite.environments))
       await environment.pluginContainer.watchChange(modules, { event: 'create' })
@@ -413,7 +377,7 @@ export async function loadExtensions(
       host.scanSubmissions(query, limit, cursor, caller),
     models: () => host.models(),
     skills: (cwd) => host.skills(cwd),
-    restart: async (approved) => (await prepared()) ?? host.restart(approved),
+    restart: async (approved) => (await preparationError()) ?? host.restart(approved),
     get chapter() {
       return host.chapter
     },
@@ -459,10 +423,10 @@ export async function loadExtensions(
     },
     reloadExtensions: async () => {
       const work = chain
-        .then(() => (closed ? undefined : preparedToLoad()))
+        .then(() => (closed ? undefined : prepareLoadBestEffort()))
         .then(() => (closed ? undefined : reloadSettings()))
-      // The caller gets the failure; the chain recovers so later reloads still run.
-      chain = work.catch(() => changed())
+      const recoveredQueueForLaterReloads = work.catch(() => changed())
+      chain = recoveredQueueForLaterReloads
       await work
       await rebuildWeb()
     },
@@ -478,17 +442,15 @@ export async function loadExtensions(
       ),
     )
   let chain = Promise.resolve()
-  /** Runs `work` after earlier reloads; a failure becomes a notice and still publishes what is loaded. */
   function enqueue(work: () => Promise<void>) {
     chain = chain
-      .then(() => (closed ? undefined : preparedToLoad()))
+      .then(() => (closed ? undefined : prepareLoadBestEffort()))
       .then(() => (closed ? undefined : work()))
       .catch((error: unknown) => {
         notice(`Extension reload failed: ${String(error)}`)
         return changed()
       })
   }
-  /** Drops `name`'s server facet: its host, tools, documents and actions. */
   async function unload(name: string) {
     await dispose(facetHosts.get(name))
     facetHosts.delete(name)
@@ -583,7 +545,6 @@ export async function loadExtensions(
       if (enabled && record.facets.server && (!servers || servers.has(name))) {
         const facetHost = scope(name)
         try {
-          // Vite keeps a URL bound to the file it first resolved to, so a repointed link loads by its target.
           const module = await vite.ssrLoadModule(join(target, 'server.ts'))
           const extension: Extension =
             typeof module.default === 'function' ? await module.default(facetHost) : module.default
@@ -611,15 +572,12 @@ export async function loadExtensions(
             )
           )
             throw new Error('pollActions must contain registered action names')
-          // A function derives them from the facet's config; it runs again on each reload.
           const secrets = validateSecrets(
             typeof module.secrets === 'function'
               ? await module.secrets(facetHost)
               : (module.secrets ?? []),
           )
-          // Pi lets the last extension win a tool name silently. A later source layer overriding a tool on purpose is
-          // fine (a project's bash over coding-tools); within one layer, the extension holding the name keeps it.
-          const taken = host.registry
+          const sameLayerToolConflicts = host.registry
             .snapshot()
             .tools()
             .filter(
@@ -629,11 +587,11 @@ export async function loadExtensions(
                 extension.tools?.some((tool) => tool.name === entry.tool.name),
             )
             .map((entry) => `${entry.tool.name} is already provided by ${entry.extension.name}`)
-          if (taken.length) throw new Error(taken.join('; '))
+          if (sameLayerToolConflicts.length) throw new Error(sameLayerToolConflicts.join('; '))
           host.registry.install(trace.tools(extension))
           const previousHost = facetHosts.get(name)
           facetHosts.set(name, facetHost)
-          for (const [key, value] of provided.get(facetHost)!)
+          for (const [key, value] of stagedServicesByFacet.get(facetHost)!)
             providers.set(key, { owner: facetHost, value })
           await dispose(previousHost)
           if (open) await Promise.all([...facetOpeners.get(facetHost)!].map(runOpener))
@@ -714,9 +672,7 @@ export async function loadExtensions(
     )
   }
   await reload()
-  // A restarted Vite starts with an empty module graph, so the next change reloads every extension.
-  let graphLost = false
-  // Vite owns the transitive local module graph; query-string imports do not.
+  let reloadAllAfterGraphReplacement = false
   const onChange = (file: string) => {
     if (
       closed ||
@@ -733,17 +689,17 @@ export async function loadExtensions(
     const directory = directories.find((root) => file.startsWith(root + '/'))
     if (!directory && !/\.[cm]?[jt]s$/.test(file)) return
     if (directory && inExtensionTests(file.slice(directory.length + 1))) return
-    if (graphLost) {
-      graphLost = false
+    if (reloadAllAfterGraphReplacement) {
+      reloadAllAfterGraphReplacement = false
       enqueue(() => reload())
       return
     }
     enqueue(async () => {
       try {
         const selected = new Set<string>()
-        // Vite keys its graph by real path, while the watcher reports a symlinked extension's files through the
-        // link. A file removed since the event has no real path; its link path then misses the graph, as before.
-        const modules = vite.moduleGraph.getModulesByFile(await realpath(file).catch(() => file))
+        const modulesByRealPathOrRemovedLink = vite.moduleGraph.getModulesByFile(
+          await realpath(file).catch(() => file),
+        )
         const visited = new Set<import('vite-plus').ModuleNode>()
         const visit = (module: import('vite-plus').ModuleNode) => {
           if (visited.has(module)) return
@@ -752,7 +708,7 @@ export async function loadExtensions(
             if (module.file === join(targets.get(name)!, 'server.ts')) selected.add(name)
           for (const importer of module.importers) visit(importer)
         }
-        for (const module of modules ?? []) visit(module)
+        for (const module of modulesByRealPathOrRemovedLink ?? []) visit(module)
         for (const module of visited) vite.moduleGraph.invalidateModule(module)
         const name = directory ? file.slice(directory.length + 1).split('/')[0] : undefined
         const servers = new Set(selected)
@@ -772,8 +728,8 @@ export async function loadExtensions(
     const directory = directories.find((root) => file.startsWith(root + '/'))
     if (!directory) return onChange(file)
     if (inExtensionTests(file.slice(directory.length + 1))) return
-    if (graphLost) {
-      graphLost = false
+    if (reloadAllAfterGraphReplacement) {
+      reloadAllAfterGraphReplacement = false
       enqueue(() => reload())
       return
     }
@@ -781,10 +737,7 @@ export async function loadExtensions(
     enqueue(() => reload(new Set([name]), new Set([name])))
   }
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
-  // Vite's watcher follows links and reports a linked extension as gone once its target is; discovery then keeps the
-  // dangling link as a record with its error. Removing that link later is an event only the extensions folder itself
-  // sees, so each folder is also watched directly for a recorded entry that left (#561727).
-  const watchEntries = (directory: string) => {
+  const watchRemovals = (directory: string) => {
     try {
       return watchDirectory(directory, (_event, name) => {
         if (closed || !name || records.get(name)?.path !== join(directory, name)) return
@@ -792,14 +745,13 @@ export async function loadExtensions(
         enqueue(() => reload(new Set([name])))
       })
     } catch (error) {
-      // A missing folder has no entries; watchRoots reports it once it appears.
       if (!isMissing(error)) throw error
       return undefined
     }
   }
   let attached = false
   const unwatch = watch((watcher) => {
-    graphLost = attached
+    reloadAllAfterGraphReplacement = attached
     attached = true
     const watchedRoots = [
       ...directories,
@@ -807,12 +759,12 @@ export async function loadExtensions(
       ...roots.slice(1).map((root) => join(root.path, 'skills')),
     ]
     watcher.add(watchedRoots)
-    const entries = new Map(directories.map((directory) => [directory, watchEntries(directory)]))
+    const entries = new Map(directories.map((directory) => [directory, watchRemovals(directory)]))
     const stopRoots = watchRoots(watchedRoots, (root) => {
       watcher.add(root)
       if (entries.has(root)) {
         entries.get(root)?.close()
-        entries.set(root, watchEntries(root))
+        entries.set(root, watchRemovals(root))
       }
       enqueue(() => (settingsFiles.includes(root) ? reloadSettings() : reload()))
     })
@@ -827,14 +779,25 @@ export async function loadExtensions(
   })
   return {
     info: Object.assign(info, {
-      diagnostics: () => [
-        ...new Set([
-          ...diagnostics,
-          ...[...facetNotices.values()].flatMap((messages) => [...messages.keys()]),
-          ...apis.missing(),
-          ...projectDiagnostics(host.projectRoot, host.userHome),
-        ]),
-      ],
+      diagnostics: async () => {
+        const storedSecrets = new Set(
+          (await secretMetadata(host.userHome).catch(meansNone))?.map((secret) => secret.name),
+        )
+        return [
+          ...new Set([
+            ...diagnostics,
+            ...[...facetNotices.values()].flatMap((messages) =>
+              [...messages]
+                .filter(
+                  ([, { untilSecretSet }]) => !untilSecretSet || !storedSecrets.has(untilSecretSet),
+                )
+                .map(([message]) => message),
+            ),
+            ...apis.missing(),
+            ...projectDiagnostics(host.projectRoot, host.userHome),
+          ]),
+        ]
+      },
     }),
     action(name: string, action: string) {
       const table = actions.get(name)
@@ -844,21 +807,19 @@ export async function loadExtensions(
     doc: findDoc,
     catalogue: () => apis.catalogue(),
     trace: trace.reader,
-    prepared,
-    preparedToLoad,
-    /** The harness is open: run the `onOpen` callbacks. */
+    restartRefusal: preparationError,
+    prepareLoadBestEffort,
     async opened() {
       trace.open()
       open = true
       for (const [name, facetHost] of facetHosts)
         for (const [message, recorded] of facetNotices.get(facetHost) ?? [])
-          if (!recorded) {
+          if (!recorded.recordedInEventLog) {
             log.notice(name, message)
-            facetNotices.get(facetHost)!.set(message, true)
+            recorded.recordedInEventLog = true
           }
       await Promise.all([...openers].map(runOpener))
     },
-    /** The harness is about to close: run the `onRelease` callbacks. */
     async released() {
       open = false
       await Promise.all([...releasers].map(runReleaser))

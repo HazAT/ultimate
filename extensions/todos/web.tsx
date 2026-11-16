@@ -3,10 +3,11 @@ import { defineWebExtension } from '@/sdk'
 import { TodoCall } from './call.tsx'
 import { Todos } from './panel.tsx'
 
+const ModelOnlyTodoReminder = () => null
+
 export default defineWebExtension({
   tools: { todo: TodoCall },
-  // @ultimate's changed-list reminder is model context, not something to read in the transcript.
-  entries: { 'todos.note': () => null },
+  entries: { 'todos.note': ModelOnlyTodoReminder },
   panels: [{ id: 'todos', title: 'To-dos', icon: ListTodoIcon, component: Todos, order: 0 }],
   commands: [
     {
