@@ -1,4 +1,4 @@
-const firstSectionChars = 400
+const firstSectionChars = 250
 const sectionChars = 1200
 
 export function sections(markdown: string): string[] {
@@ -38,25 +38,28 @@ export function sections(markdown: string): string[] {
 }
 
 function sentencesWithin(block: string): string[] {
-  if (block.length <= sectionChars || /^\s*(```|~~~|\|)/.test(block)) return [block]
-  const pieces: string[] = []
-  let current = ''
-  for (const sentence of block.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [block]) {
-    if (current && current.length + sentence.length > sectionChars) {
-      pieces.push(current.trim())
-      current = ''
+  if (/^\s*(```|~~~|\|)/.test(block)) return [block]
+  return block.split(/\n(?=\s*(?:[-*+]|\d+[.)])\s)/).flatMap((item) => {
+    if (item.length <= firstSectionChars) return [item]
+    const pieces: string[] = []
+    let current = ''
+    for (const sentence of item.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [item]) {
+      if (current && current.length + sentence.length > firstSectionChars) {
+        pieces.push(current.trim())
+        current = ''
+      }
+      current += sentence
     }
-    current += sentence
-  }
-  if (current.trim()) pieces.push(current.trim())
-  return pieces
+    if (current.trim()) pieces.push(current.trim())
+    return pieces
+  })
 }
 
 export function plainSpeech(markdown: string): string {
   return markdown
-    .replace(/^\s*(```|~~~)[^\n]*\n[\s\S]*?^\s*\1[^\n]*$/gm, '')
-    .replace(/^\s*\|?[\s:|-]+\|[\s:|-]*$/gm, '')
-    .replace(/^\s*\|(.*)\|\s*$/gm, (_, cells: string) =>
+    .replace(/^[ \t]*(```|~~~)[^\n]*\n[\s\S]*?^[ \t]*\1[^\n]*$/gm, '')
+    .replace(/^[ \t]*\|?[ \t:|-]+\|[ \t:|-]*$/gm, '')
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, cells: string) =>
       cells
         .split('|')
         .map((cell) => cell.trim())
@@ -66,12 +69,12 @@ export function plainSpeech(markdown: string): string {
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/https?:\/\/\S+/g, '')
     .replace(/`([^`]*)`/g, (_, code: string) => (unspeakable(code) ? '' : code))
-    .replace(/(^|\s)#\d+(\/\d+)?\b/g, '$1')
+    .replace(/(^|[\s(])#\d+(\/\d+)?\b/g, '$1')
     .replace(/\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b/g, '')
-    .replace(/^\s*#{1,6}\s+(.*)$/gm, '$1.')
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/gm, '$1')
+    .replace(/^[ \t]*#{1,6}[ \t]+(.*)$/gm, '$1.')
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(.*)$/gm, '$1')
     .replace(/(\*\*|__|\*|_|~~)(\S(?:.*?\S)?)\1/g, '$2')
-    .replace(/[ \t]*\n(?!\n)/g, (match, offset: number, text: string) =>
+    .replace(/(?<!\n)[ \t]*\n(?!\n)/g, (_match, offset: number, text: string) =>
       /[.!?:;,]$/.test(text.slice(0, offset).trimEnd()) ? ' ' : '. ',
     )
     .replace(/\(\s*\)/g, '')

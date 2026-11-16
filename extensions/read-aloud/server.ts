@@ -29,10 +29,10 @@ Only change what does not work when heard:
 
 Return only the text to speak, as plain prose with paragraphs, no Markdown.`
 
-type Cached = SpokenSection
+type Cached = Omit<SpokenSection, 'sections'>
 
 function sectionCache(host: ExtensionHost) {
-  return host.resource('read-aloud.sections', () => new Map<string, Cached>())
+  return host.resource('read-aloud.spoken-sections', () => new Map<string, Cached>())
 }
 
 async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSignal) {
@@ -90,9 +90,9 @@ export const actions = {
       throw new Error('Expected { section } as a whole number from 0')
     if (section >= parts.length) throw new Error(`The text has ${parts.length} sections`)
     const cache = sectionCache(host)
-    const key = createHash('sha256').update(text).digest('hex') + `:${section}`
+    const key = createHash('sha256').update(parts[section]).digest('hex')
     const cached = cache.get(key)
-    if (cached) return cached
+    if (cached) return { sections: parts.length, ...cached }
     const spoken = await rewrite(host, parts[section], signal)
     const apiKey = await openaiSecretOrNonOAuthKey(host, signal)
     const audio =
@@ -103,9 +103,8 @@ export const actions = {
             AbortSignal.any([signal, AbortSignal.timeout(TTS_TIMEOUT_MS)]),
           )
         : null
-    const result = { sections: parts.length, spoken, audio }
-    cache.set(key, result)
+    cache.set(key, { spoken, audio })
     if (cache.size > CACHED_SECTIONS) cache.delete(cache.keys().next().value!)
-    return result
+    return { sections: parts.length, spoken, audio }
   }),
 }

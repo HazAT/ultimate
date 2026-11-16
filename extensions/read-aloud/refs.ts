@@ -6,7 +6,7 @@ export type SpokenSection = { sections: number; spoken: string; audio: string | 
 
 /**
  * `{ text, section }` → section `section` (from 0) of the Markdown `text`, rewritten for listening and voiced, with the
- * number of sections the text has. Cached by text and section.
+ * number of sections the text has. Cached by the section's text.
  */
 export const SpeakAction = actionRef<{ text: string; section: number }, SpokenSection>(
   'read-aloud',
