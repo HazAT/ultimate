@@ -440,12 +440,6 @@ it('applies each automation call in one script to its own arguments', async () =
   const home = await temp('ultimate-codemode-automation-')
   directories.push(home)
   await mkdir(join(home, 'project'))
-  await mkdir(join(home, '.ultimate'))
-  // Dream seeds its own automations once @ultimate starts, racing the script's list.
-  await writeFile(
-    join(home, '.ultimate/settings.json'),
-    JSON.stringify({ extensions: { disable: ['dream'] } }),
-  )
   const server = await createServer({
     ultimateRoot: resolve('.'),
     projectRoot: join(home, 'project'),
