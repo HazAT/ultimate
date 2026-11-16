@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { access, constants, mkdir, readdir, rm } from 'node:fs/promises'
-import { delimiter, dirname, join } from 'node:path'
+import { mkdir, readdir, rm } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT, withAbortSignal } from '@earendil-works/chord/context'
@@ -29,12 +29,12 @@ import {
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
 import { ignoring, isMissing } from '../../lib/errors.ts'
-import { exec as execFile } from '../../lib/exec.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Profile } from '../subagents/api.ts'
 import { Confinement, WorkspacesApi } from '../workspaces/api.ts'
 import { Gate, type Policy, SandboxEnv } from './env.ts'
-import { confinedExec, namespaceFlags, nodePrefix, prepareRun, type Run } from './layout.ts'
+import { probe } from './availability.ts'
+import { confinedExec, nodePrefix, prepareRun, type Run } from './layout.ts'
 import { parseAllow, startProxy } from './proxy.ts'
 
 export type Role = { network: string[]; tools: string[] }
@@ -71,44 +71,6 @@ export function roles(settings: JsonObject): Map<string, Role> {
       return [name, { network: parseAllow(role.network ?? []), tools }]
     }),
   )
-}
-
-export const unavailable = (detail: string) =>
-  `Sandbox unavailable: ${detail}. Install bubblewrap and allow it user namespaces: on Ubuntu 24.04+ add /etc/apparmor.d/bwrap containing "abi <abi/4.0>, include <tunables/global> profile bwrap /usr/bin/bwrap flags=(unconfined) { userns, }" and run sudo apparmor_parser -r /etc/apparmor.d/bwrap; in a Proxmox CT also set nesting=1. bash, read, write and edit stay blocked for this agent until then.`
-
-async function findBwrap() {
-  for (const folder of (process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
-    const candidate = join(folder, 'bwrap')
-    const runnable = await access(candidate, constants.X_OK).then(
-      () => true,
-      () => false,
-    )
-    if (runnable) return candidate
-  }
-  throw new Error(unavailable('bwrap is not installed'))
-}
-
-async function probe() {
-  const bwrap = await findBwrap()
-  await execFile(bwrap, [
-    ...namespaceFlags,
-    '--ro-bind',
-    '/',
-    '/',
-    '--proc',
-    '/proc',
-    '--dev',
-    '/dev',
-    'true',
-  ]).catch((error: Error & { stderr?: string }) => {
-    throw new Error(
-      unavailable(
-        `bwrap could not create its namespaces (${(error.stderr || error.message).trim()})`,
-      ),
-      { cause: error },
-    )
-  })
-  return bwrap
 }
 
 const bridge = join(dirname(fileURLToPath(import.meta.url)), 'bridge.cjs')
@@ -263,7 +225,10 @@ export default function sandbox(host: ExtensionHost) {
         },
         context,
       )
-      if (!result.ok) throw new Error(`${output}${result.error.message}`, { cause: result.error })
+      if (!result.ok)
+        throw new Error(`${output}${result.error.message}`, {
+          cause: result.error,
+        })
       if (result.value.exitCode !== 0)
         throw new Error(`${output}exit code ${result.value.exitCode}`)
     },
