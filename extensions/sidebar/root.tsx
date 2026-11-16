@@ -20,6 +20,7 @@ import {
   conversationWait,
   waitLabel,
   emptyMessages,
+  useRemoteProgress,
   useStarters,
   useUnderway,
 } from '../messages/ui.tsx'
@@ -77,9 +78,6 @@ function useBranchState(
   const starter = useStarters()(conversation.id)
   const underway = useUnderway()
   const queued = index.queue.find((item) => item.conversationId === conversation.id)
-  if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
-  if (queued) return { label: 'submitted', tone: 'success' } as const
-  if (parked) return { label: 'paused', tone: 'paused' } as const
   const facts = {
     id: conversation.id,
     kind: 'other' as const,
@@ -102,7 +100,13 @@ function useBranchState(
           log,
           timers,
         )
-  const label = waitLabel(conversationWait(facts, log, timers), primary, primaryWait)
+  const wait = conversationWait(facts, log, timers)
+  const remoteWait = wait?.on === 'remote' ? wait : primaryWait
+  const remote = useRemoteProgress(remoteWait?.on === 'remote' ? remoteWait.project : undefined)
+  const label = waitLabel(wait, primary, primaryWait, remote.data)
+  if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
+  if (queued) return { label: 'submitted', tone: 'success' } as const
+  if (parked) return { label: 'paused', tone: 'paused' } as const
   if (state === 'working')
     return {
       label: phase && !phase.waiting ? phase.word : 'working',

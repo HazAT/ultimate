@@ -40,6 +40,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
+import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages, Started]
@@ -183,6 +184,7 @@ export const actions = {
         : await answer(host, messageId as number, text.trim(), ctx, { via: { via, primary } }),
     }
   }),
+  remoteProgress,
   remote: remoteAction,
   remoteReply: remoteReplyAction,
   async addresses(_args: unknown, { host }: ActionContext) {
@@ -203,6 +205,7 @@ export const actions = {
   },
 }
 
+export const pollActions = ['remoteProgress']
 export const userActions = ['remote', 'remoteReply']
 export default function messages(host: ExtensionHost) {
   host.need(LineageApi)

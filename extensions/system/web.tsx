@@ -25,6 +25,7 @@ import {
   conversationState,
   conversationWait,
   waitLabel,
+  useRemoteProgress,
   useStarters,
   useUnderway,
   emptyMessages,
@@ -75,6 +76,7 @@ function useStates(parked: ReadonlySet<number>) {
           log,
           timers,
         )
+  const remote = useRemoteProgress(primaryWait?.on === 'remote' ? primaryWait.project : undefined)
   const concludedSince = useConcludedSince()
   return (lane: Lane) => {
     const id = lane.conversation
@@ -96,7 +98,7 @@ function useStates(parked: ReadonlySet<number>) {
     const state = conversationState(facts, log, timers)
     return {
       state: laneState(lane, state, overview[id] !== undefined),
-      label: waitLabel(conversationWait(facts, log, timers), primary, primaryWait),
+      label: waitLabel(conversationWait(facts, log, timers), primary, primaryWait, remote.data),
     }
   }
 }

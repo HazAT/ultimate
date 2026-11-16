@@ -41,6 +41,7 @@ import {
   conversationState,
   conversationWait,
   waitLabel,
+  useRemoteProgress,
   useStarters,
   useUnderway,
   emptyMessages,
@@ -179,8 +180,9 @@ function Tree({
           log,
           timers,
         )
+  const remote = useRemoteProgress(primaryWait?.on === 'remote' ? primaryWait.project : undefined)
   const labelOf = (conversation: Parameters<typeof conversationWait>[0]) =>
-    waitLabel(conversationWait(conversation, log, timers), ultimateId, primaryWait)
+    waitLabel(conversationWait(conversation, log, timers), ultimateId, primaryWait, remote.data)
   const ultimate = topLevel.find((conversation) => conversation.id === ultimateId)
   const agents = topLevel
     .filter(

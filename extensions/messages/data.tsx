@@ -4,7 +4,7 @@ import { waitsOn } from '../../lib/waits.ts'
 import type { Wait, WaitFacts } from '../../lib/waits.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
-import type { MessagesData, Message, Remote } from './refs.ts'
+import type { MessagesData, Message, Remote, RemoteProgress } from './refs.ts'
 import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/ui.tsx'
 import { FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
 import { LanderReportEntry } from '../workspaces/ui.tsx'
@@ -79,8 +79,19 @@ export function conversationState(
   return 'idle'
 }
 
-export function waitLabel(wait: Wait | undefined, primary?: number, primaryWait?: Wait) {
+export function waitLabel(
+  wait: Wait | undefined,
+  primary?: number,
+  primaryWait?: Wait,
+  remote?: RemoteProgress,
+) {
   if (!wait) return undefined
+  const suffix =
+    remote?.reachable === false
+      ? ' · not running'
+      : remote?.progress
+        ? ` · ${remote.progress.label} ${remote.progress.index}/${remote.progress.total}`
+        : ''
   switch (wait.on) {
     case 'work':
       return 'working'
@@ -89,10 +100,10 @@ export function waitLabel(wait: Wait | undefined, primary?: number, primaryWait?
     case 'agent':
     case 'starter':
       return wait.to === primary
-        ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}` : ''}`
+        ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}${suffix}` : ''}`
         : `waits on #${wait.to}`
     case 'remote':
-      return `waits on ${wait.project}`
+      return `waits on ${wait.project}${suffix}`
     case 'timer':
       return `waits on ${wait.name} · ${formatTime(wait.at)}`
   }

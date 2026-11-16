@@ -48,8 +48,10 @@ Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note
 further. Conversation waits are derived from existing records: work, an open user question, an open agent or remote
 request, a subscribed timer, then an unconcluded branch's starter. Rows name the wait (`waits on @ultimate`,
 `waits on #N`, `waits on ultimate-eval`, or `waits on <timer> · <time>`); a branch waiting on @ultimate also shows
-its remote dependency, one hop only. The Open messages popover counts branches the conversation started that
-currently wait on it, rather than inferring a debt from past reports. The browser reads `board.started` read-only.
+its remote dependency, one hop only. Remote waits poll the target's optional Status progress every 15 seconds and
+append ` · run 2/4` (using its label and counts), or ` · not running` when it cannot be reached. The Open messages
+popover counts branches the conversation started that currently wait on it, rather than inferring a debt from past
+reports. The browser reads `board.started` read-only.
 
 ### Messages to the user
 
@@ -120,6 +122,9 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
 
 ## Actions and service
 
+- `remoteProgress({ project }) → { reachable, progress? }`: polls the project's `status/status` action with a short
+  timeout. Progress is `{ label, index, total }` when provided. Unreachable or current-project targets return
+  `reachable: false`.
 - `addresses({}) → { agents, conversations }`: resident names and descriptions, with an id once created, and up to 50
   recent top-level conversation summaries.
 - `settle({ messageId, text, dismiss? }) → { id }`: from @ultimate's conversation or its side chat, settles the user's

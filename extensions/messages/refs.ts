@@ -76,6 +76,18 @@ export type QuestionNotice = {
   via?: Via
 }
 
+/** Whether another project answers status, with its optional project progress. */
+export type RemoteProgress = {
+  reachable: boolean
+  progress?: { label: string; index: number; total: number }
+}
+
+/** `{ project }` → reachability and optional progress from that project's status. Read-only; polls are quiet. */
+export const RemoteProgressAction = actionRef<{ project: string }, RemoteProgress>(
+  'messages',
+  'remoteProgress',
+)
+
 /** The conversation that started a branch, read-only in the browser. */
 export const StartedDoc = docRef<{ by?: ConversationId }>('board.started')
 

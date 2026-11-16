@@ -16,6 +16,8 @@ export {
 } from './data.tsx'
 export type { ConversationState } from './data.tsx'
 export { MessagesDoc, MessageSent } from './refs.ts'
+/** Poll another project's reachability and optional progress every 15 seconds while it is named. */
+export { useRemoteProgress } from './progress.tsx'
 export { useStarters, useUnderway } from './started.tsx'
 export { accentOf } from './accent.tsx'
 export { Address, Body, Bubble, MessageImages, useAccentOf } from './cards.tsx'
