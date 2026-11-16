@@ -5,7 +5,7 @@ import { onCommit } from '../../lib/commits.ts'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { settled } from '../../lib/errors.ts'
+import { rebuiltOnOpen, inProcess, settled } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
@@ -186,9 +186,12 @@ function rearmAutoPlay(host: Host, doc: PauseDocState) {
   slot.cancel = deadline(
     Math.max(0, at - Date.now()),
     () => {
-      autoPlay(host).catch((error: unknown) => {
-        console.error('pause: playing by itself failed:', error)
-      })
+      rebuiltOnOpen(
+        'open re-arms auto-play from the persisted pause deadline',
+        autoPlay(host).catch((error: unknown) => {
+          console.error('pause: playing by itself failed:', error)
+        }),
+      )
     },
     { unref: true },
   )
@@ -413,9 +416,12 @@ export default function pauseExtension(host: Host) {
           conversationId: change.value.conversationId,
         }
         holdRetryDuringPublication(host)
-        serializePause(host, () => holdRetryOrRelease(host, limit)).catch((error: unknown) => {
-          console.error('pause: pausing for a rate limit failed:', error)
-        })
+        inProcess(
+          'the rate-limit hold controls generation retries in this process',
+          serializePause(host, () => holdRetryOrRelease(host, limit)).catch((error: unknown) => {
+            console.error('pause: pausing for a rate limit failed:', error)
+          }),
+        )
       }
     })
   })

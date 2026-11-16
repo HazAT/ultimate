@@ -30,7 +30,7 @@ import type { WorkspaceService } from '../workspaces/api.ts'
 import { cleanPreview, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
-import { inBackground, meansNone, overshadowed } from '../../lib/errors.ts'
+import { rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
 import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
@@ -386,7 +386,8 @@ export default function instanceExtension(
     await sweepPidFiles(previewPids(host.home), startedByThisProcess).catch((error: unknown) => {
       host.notice(`Stopping previews a crash left running failed: ${String(error)}`)
     })
-    inBackground(
+    rebuiltOnOpen(
+      'every open sweeps preview directories again',
       sweepPreviews(tmpdir(), host.notice).catch((error: unknown) => {
         host.notice(`Preview sweep failed: ${String(error)}`)
       }),

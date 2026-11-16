@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { meansNone, settled } from '../../lib/errors.ts'
+import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.ts'
 import {
   chapterFiles,
   chapterName,
@@ -390,7 +390,10 @@ export default function dream(host: ExtensionHost) {
     return run.catch((error: unknown) => host.notice(`Dream automations: ${String(error)}`))
   }
   const backupInBackground = () => {
-    firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`))
+    rebuiltOnOpen(
+      'each open of a seeded chapter checks for its first backup again',
+      firstBackup(host).catch((error: unknown) => host.notice(`Chapter backup: ${String(error)}`)),
+    )
   }
   host.onOpen(async () => {
     await settleSleep(host)
@@ -402,7 +405,10 @@ export default function dream(host: ExtensionHost) {
     [StandingStarted],
     (_tx, { data }) => {
       if (data.kind === 'standing' && data.agent === 'ultimate')
-        initializeWithOwnCommit().catch((error: unknown) => host.notice(String(error)))
+        rebuiltOnOpen(
+          'open ensures the built-in dream automations again',
+          initializeWithOwnCommit().catch((error: unknown) => host.notice(String(error))),
+        )
     },
     { from: 'now' },
   )

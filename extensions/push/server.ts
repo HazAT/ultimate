@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { Tx } from '@earendil-works/pi-durable'
 import { defineEffect } from '../../lib/effect.ts'
-import { inBackground } from '../../lib/errors.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { onCommit } from '../../lib/commits.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -209,7 +209,10 @@ export default function pushExtension(host: ExtensionHost) {
         )
       )
         return
-      inBackground(committed(pushNewFailure))
+      rebuiltOnOpen(
+        'push.last-failure claims the tag in the commit; open and overview changes recheck it',
+        committed(pushNewFailure),
+      )
     })
   })
   const close = async () => {

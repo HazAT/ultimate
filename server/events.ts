@@ -4,6 +4,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
+import { inProcess } from '../lib/errors.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type { EventContext, EventData, EventRecord, EventToken } from '../shared/events.ts'
 import { Metadata } from './metadata.ts'
@@ -224,14 +225,17 @@ export function eventLog(
       return emit(tx, event, data)
     },
     notice(extension: string, message: string) {
-      Promise.resolve()
-        .then(() =>
-          harness().commit(
-            (tx) => emit(tx, NoticeEvent, { extension, message, level: 'warning' }),
-            context,
-          ),
-        )
-        .catch((error: unknown) => console.error('Recording a notice failed:', error))
+      inProcess(
+        'a notice is advisory and also printed',
+        Promise.resolve()
+          .then(() =>
+            harness().commit(
+              (tx) => emit(tx, NoticeEvent, { extension, message, level: 'warning' }),
+              context,
+            ),
+          )
+          .catch((error: unknown) => console.error('Recording a notice failed:', error)),
+      )
     },
     reactor<T extends EventToken>(
       name: string,

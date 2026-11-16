@@ -13,6 +13,7 @@ import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-wo
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { spawn } from '../../lib/spawn.ts'
+import { rebuiltOnOpen, inProcess } from '../../lib/errors.ts'
 import { ClaudeCodeEnv, ClaudeCodeExchanges } from './api.ts'
 import type { ClaudeCodeEnvService } from './api.ts'
 import { StatusAction } from './refs.ts'
@@ -77,11 +78,14 @@ export default function claudeCode(host: ExtensionHost) {
     host.onClose(async () => {
       state.closing = true
       if (state.active.size)
-        void Promise.allSettled(state.active)
-          .then(() => closeClaudeProcesses())
-          .catch((error: unknown) =>
-            host.notice(`Closing Claude processes failed: ${String(error)}`),
-          )
+        inProcess(
+          'Claude processes are owned by this process',
+          Promise.allSettled(state.active)
+            .then(() => closeClaudeProcesses())
+            .catch((error: unknown) =>
+              host.notice(`Closing Claude processes failed: ${String(error)}`),
+            ),
+        )
       else await closeClaudeProcesses()
     })
     return state
@@ -117,9 +121,12 @@ export default function claudeCode(host: ExtensionHost) {
     try {
       const settlementForCleanupOnly = response.result()
       shared.active.add(settlementForCleanupOnly)
-      void settlementForCleanupOnly.then(
-        () => shared.active.delete(settlementForCleanupOnly),
-        () => shared.active.delete(settlementForCleanupOnly),
+      inProcess(
+        'the active Claude request set belongs to this process',
+        settlementForCleanupOnly.then(
+          () => shared.active.delete(settlementForCleanupOnly),
+          () => shared.active.delete(settlementForCleanupOnly),
+        ),
       )
     } catch (error) {
       host.notice(`Claude Code request tracking failed, running it untracked: ${String(error)}`)
@@ -162,11 +169,14 @@ export default function claudeCode(host: ExtensionHost) {
   })
   host.modelRuntime.registerNativeProvider(provider)
   host.onOpen(async () => {
-    void getClaudeStatus(claudeCodeEnv())
-      .then((status) => discoverModelsAfterRegistration(host, status))
-      .catch((error: unknown) =>
-        host.notice(`Claude Code model discovery failed: ${String(error)}`),
-      )
+    rebuiltOnOpen(
+      'Claude Code model discovery runs again on the next open',
+      getClaudeStatus(claudeCodeEnv())
+        .then((status) => discoverModelsAfterRegistration(host, status))
+        .catch((error: unknown) =>
+          host.notice(`Claude Code model discovery failed: ${String(error)}`),
+        ),
+    )
   })
   return defineExtension({
     name: 'claude-code',

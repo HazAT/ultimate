@@ -3,7 +3,7 @@ import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from '../lib/lock.ts'
 import { debounce } from '../lib/timers.ts'
-import { meansNone } from '../lib/errors.ts'
+import { rebuiltOnOpen, meansNone } from '../lib/errors.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,
@@ -71,7 +71,10 @@ export function conversationIndex(home: string) {
   let serializedSnapshots = Promise.resolve()
   const publicIndexDebounceMs = 1000
   const schedule = debounce(publicIndexDebounceMs, () => {
-    void flush().catch((error: unknown) => console.error('Conversation index:', error))
+    rebuiltOnOpen(
+      'the next summary change rebuilds conversations.json',
+      flush().catch((error: unknown) => console.error('Conversation index:', error)),
+    )
   })
   const flush = () => {
     schedule.cancel()

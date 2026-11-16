@@ -34,6 +34,8 @@ interface Node {
   kind?: string
   declaration?: Node | null
   declarations?: Node[]
+  expression?: Node
+  operator?: string
   init?: Node | null
   typeArguments?: Node | null
   params?: Node[]
@@ -409,6 +411,28 @@ export default {
                 message:
                   'After a crash, replay runs a call again, so a call with effects would repeat them: spread ...readOnly for a tool that only reads, or ...safeToRerun(why a rerun does no harm), from lib/replay.ts.',
               })
+          },
+        }
+      },
+    },
+    'no-unowned-work': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const message =
+          'Work started and not awaited is lost on a crash and never retried: create it as a task in the commit that decides it (defineEffect from lib/effect.ts), or await it. Name the two exceptions from lib/errors.ts: rebuiltOnOpen(why, work) when open derives it again (a projection, a cache, a sweep), inProcess(why, work) when it belongs to this process only (a request, a stream, a child process, shutdown).'
+        const unowned = (node: Node | undefined): boolean => {
+          if (node?.type === 'UnaryExpression' && node.operator === 'void')
+            return node.argument?.type === 'CallExpression'
+          if (node?.type !== 'CallExpression') return false
+          if (node.callee?.type === 'Identifier' && node.callee.name === 'inBackground') return true
+          return (
+            node.callee?.type === 'MemberExpression' &&
+            ['catch', 'then', 'finally'].includes(String(propertyName(node.callee)))
+          )
+        }
+        return {
+          ExpressionStatement(node: Node) {
+            if (unowned(node.expression)) context.report({ node, message })
           },
         }
       },

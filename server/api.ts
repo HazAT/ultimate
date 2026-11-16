@@ -9,6 +9,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { onCommit } from '../lib/commits.ts'
+import { inProcess } from '../lib/errors.ts'
 import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
@@ -326,7 +327,10 @@ export async function createApi(
     }
     streams.add(stop)
     response.on('close', () => {
-      void stop().catch((error: unknown) => console.error('Stopping event stream failed:', error))
+      inProcess(
+        'the HTTP event stream closes with this process',
+        stop().catch((error: unknown) => console.error('Stopping event stream failed:', error)),
+      )
     })
     if (request.destroyed || response.destroyed) await stop()
   }

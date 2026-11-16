@@ -6,7 +6,7 @@ import { inExtensionTests } from '../shared/extension-api.ts'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { exec } from '../lib/exec.ts'
-import { ignoring, isMissing } from '../lib/errors.ts'
+import { inProcess, ignoring, isMissing } from '../lib/errors.ts'
 import { debounce } from '../lib/timers.ts'
 import { writeTextAtomically } from '../lib/json-file.ts'
 import { discoverExtensions } from '../lib/discovery.ts'
@@ -290,10 +290,13 @@ export async function createWeb(options: {
     if (file.includes(`${sep}node_modules${sep}`) || tests(file)) return
     if (inside(file, webRoot) || always.includes(file) || inputs.has(file)) return touched(file)
     if (roots.some((root) => inside(file, root)))
-      void realpath(file).then(
-        (real) =>
-          (inputs.has(real) || brokenRoots.some((root) => inside(real, root))) && touched(file),
-        () => touched(file),
+      inProcess(
+        'the web file watcher belongs to this process',
+        realpath(file).then(
+          (real) =>
+            (inputs.has(real) || brokenRoots.some((root) => inside(real, root))) && touched(file),
+          () => touched(file),
+        ),
       )
   }
   const onStructure = (file: string) => {

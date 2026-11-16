@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { deadline, every, within } from '../../lib/timers.ts'
-import { inBackground, settled } from '../../lib/errors.ts'
+import { inProcess, settled } from '../../lib/errors.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import type { ActionRef } from '../../shared/extension-api.ts'
 import { EndAction, HeardAction, LogAction, StartAction } from './refs.ts'
@@ -38,7 +38,7 @@ export async function startMicInGesture(options: LiveOptions): Promise<LiveSessi
   const relay = new Relay(Date.now())
   const started = Promise.withResolvers<void>()
   const closeAcknowledged = Promise.withResolvers<void>()
-  inBackground(settled(started.promise))
+  inProcess('a browser session ends with its page', settled(started.promise))
   let stopPolling: Cancel | undefined
   let cancelStartup: Cancel | undefined
   let seconds: number | undefined

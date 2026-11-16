@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { inProcess } from '../lib/errors.ts'
 import type { BuildInfo } from '../shared/protocol.ts'
 
 export type CoreReport =
@@ -40,19 +41,22 @@ export async function requestSwap(
       if (message.type !== 'swap-result' || message.requestId !== requestId) return
       process.off('message', listener)
       if (!message.ok) return resolve(message.error.slice(-4096))
-      void recordDurableReplayResult(message.generation).then(
-        () => {
-          process.send?.({ type: 'swap-ack', requestId, ok: true } satisfies ChildMessage)
-        },
-        (error) => {
-          process.send?.({
-            type: 'swap-ack',
-            requestId,
-            ok: false,
-            error: String(error),
-          } satisfies ChildMessage)
-          resolve(String(error))
-        },
+      inProcess(
+        'the swap acknowledgement belongs to this process and its supervisor channel',
+        recordDurableReplayResult(message.generation).then(
+          () => {
+            process.send?.({ type: 'swap-ack', requestId, ok: true } satisfies ChildMessage)
+          },
+          (error) => {
+            process.send?.({
+              type: 'swap-ack',
+              requestId,
+              ok: false,
+              error: String(error),
+            } satisfies ChildMessage)
+            resolve(String(error))
+          },
+        ),
       )
     }
     process.on('message', listener)

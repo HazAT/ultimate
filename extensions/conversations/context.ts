@@ -11,7 +11,7 @@ import {
 } from '../../lib/context-usage.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
-import { inBackground } from '../../lib/errors.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 
 export function contextBehavior(
   host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'> & {
@@ -125,7 +125,7 @@ export function contextBehavior(
           ids.add(change.conversationId)
       }
       for (const id of ids) {
-        inBackground(schedule(id))
+        rebuiltOnOpen('open reconciles every conversation context', schedule(id))
       }
     })
     backgroundSerialBackfill = (async () => {

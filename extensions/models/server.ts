@@ -30,7 +30,7 @@ import type { SaveFamilies } from './refs.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
-import { inBackground } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]
   ? MutableJson<U>[]
@@ -165,55 +165,63 @@ export const actions = {
     const { signal } = flow.controller
     const credentialSafeLoginRejection = (): 'cancel' | 'error' =>
       signal.aborted ? 'cancel' : 'error'
-    void host.modelRuntime
-      .login(provider, type, {
-        signal,
-        prompt: (prompt: AuthPrompt) =>
-          new Promise<string>((resolve, reject) => {
-            const signals = [signal, prompt.signal].filter((item): item is AbortSignal => !!item)
-            const cleanup = () => {
-              for (const item of signals) item.removeEventListener('abort', abort)
-              delete flow.answer
-              inBackground(queueLoginDocumentUpdate((state) => delete state.prompt))
-            }
-            const abort = () => {
-              cleanup()
-              reject(new Error('Login cancelled'))
-            }
-            flow.answer = (value) => {
-              cleanup()
-              resolve(value)
-            }
-            for (const item of signals) {
-              if (item.aborted) {
-                abort()
-                return
+    inProcess(
+      'the login flow belongs to this process; open cancels stranded flows',
+      host.modelRuntime
+        .login(provider, type, {
+          signal,
+          prompt: (prompt: AuthPrompt) =>
+            new Promise<string>((resolve, reject) => {
+              const signals = [signal, prompt.signal].filter((item): item is AbortSignal => !!item)
+              const cleanup = () => {
+                for (const item of signals) item.removeEventListener('abort', abort)
+                delete flow.answer
+                inProcess(
+                  'the login prompt belongs to this process; open cancels stranded flows',
+                  queueLoginDocumentUpdate((state) => delete state.prompt),
+                )
               }
-              item.addEventListener('abort', abort, { once: true })
-            }
-            const { signal: _signal, ...wire } = prompt
-            inBackground(
-              queueLoginDocumentUpdate((state) => {
-                state.prompt = withoutUndefined(wire)
-              }),
-            )
-          }),
-        notify: (event) =>
-          inBackground(
-            queueLoginDocumentUpdate((state) => state.events.push(withoutUndefined(event))),
-          ),
-      })
-      .then(() => (signal.aborted ? 'cancel' : 'complete'), credentialSafeLoginRejection)
-      .then(async (status) => {
-        live.delete(flowId)
-        if (status === 'complete') await invalidateLoginHealthBestEffort(host, provider)
-        return queueLoginDocumentUpdate((state) => {
-          state.status = status
-          delete state.prompt
-          if (status === 'error') state.error = 'Login failed'
+              const abort = () => {
+                cleanup()
+                reject(new Error('Login cancelled'))
+              }
+              flow.answer = (value) => {
+                cleanup()
+                resolve(value)
+              }
+              for (const item of signals) {
+                if (item.aborted) {
+                  abort()
+                  return
+                }
+                item.addEventListener('abort', abort, { once: true })
+              }
+              const { signal: _signal, ...wire } = prompt
+              inProcess(
+                'the login prompt belongs to this process; open cancels stranded flows',
+                queueLoginDocumentUpdate((state) => {
+                  state.prompt = withoutUndefined(wire)
+                }),
+              )
+            }),
+          notify: (event) =>
+            inProcess(
+              'login notifications belong to this process; open cancels stranded flows',
+              queueLoginDocumentUpdate((state) => state.events.push(withoutUndefined(event))),
+            ),
         })
-      })
-      .catch(() => host.notice('Login flow finalization failed'))
+        .then(() => (signal.aborted ? 'cancel' : 'complete'), credentialSafeLoginRejection)
+        .then(async (status) => {
+          live.delete(flowId)
+          if (status === 'complete') await invalidateLoginHealthBestEffort(host, provider)
+          return queueLoginDocumentUpdate((state) => {
+            state.status = status
+            delete state.prompt
+            if (status === 'error') state.error = 'Login failed'
+          })
+        })
+        .catch(() => host.notice('Login flow finalization failed')),
+    )
     return { flowId }
   }),
   answer: implementAction(AnswerAction, async (args, { host }) => {

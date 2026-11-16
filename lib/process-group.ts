@@ -6,7 +6,14 @@ import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { pace } from './timers.ts'
-import { ignoring, isAborted, isMissing, isNoProcess, isPermissionDenied } from './errors.ts'
+import {
+  inProcess,
+  ignoring,
+  isAborted,
+  isMissing,
+  isNoProcess,
+  isPermissionDenied,
+} from './errors.ts'
 
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
 
@@ -260,7 +267,10 @@ export async function runGroup(
       : stopGroup(child.pid, { pidFile: options.pidFile, leader: group, grace })
   const stopFailedWhileLeaderRunning = Promise.withResolvers<never>()
   const halt = () => {
-    stop().catch(stopFailedWhileLeaderRunning.reject)
+    inProcess(
+      'aborting stops a child owned by this process',
+      stop().catch(stopFailedWhileLeaderRunning.reject),
+    )
   }
   signal?.addEventListener('abort', halt, { once: true })
   try {

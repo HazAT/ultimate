@@ -25,7 +25,7 @@ import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
 import { safeToRerun } from '../../lib/replay.ts'
-import { errnoCode, ignoring, meansNone } from '../../lib/errors.ts'
+import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.ts'
 
 export async function playwrightChromiums(
   home: string,
@@ -413,11 +413,14 @@ export default function browserExtension(host: ExtensionHost) {
                 state.launched = undefined
                 state.browser = undefined
               }
-              owner
-                .then(killDisconnectedBrowserGroup)
-                .catch((error: unknown) =>
-                  host.notice(`Killing a disconnected browser failed: ${String(error)}`),
-                )
+              inProcess(
+                'the disconnected browser was launched by this process',
+                owner
+                  .then(killDisconnectedBrowserGroup)
+                  .catch((error: unknown) =>
+                    host.notice(`Killing a disconnected browser failed: ${String(error)}`),
+                  ),
+              )
             })
             return browser
           })
