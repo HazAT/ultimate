@@ -56,6 +56,16 @@ What the user picked and typed on a card lives in durable UI state, by message (
 surface for another, a reload or another window or device shows it again where they left it; it goes as soon as the
 message settles (answered, dismissed, or settled for them by @ultimate).
 
+## Answering what a card settled
+
+A card is settled the moment the user sends it — answered picks and all, or dismissed — whatever its note says. A
+typed answer that asks something back ("explain better", "what would that cost?") is a request, not a decision: the
+card is answered, so answer the request in the conversation and ask the decision again in a new card if it is still
+open. Never report that a card waits on the user without reading the open list: the `board.open` line that precedes
+the asker's next input, or the Inbox that shows every open card. A settled card reported as open is a misreading, not
+a delivery failure: in one project an agent repeated for a day that "question 13 is still open" after the user had
+answered the card with picks and a note asking it to explain better.
+
 ## Where open questions wait
 
 The Inbox (`extensions/inbox`) lists every message that waits on the user, oldest first, and shows this card under the
