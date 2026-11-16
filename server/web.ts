@@ -43,16 +43,11 @@ const types: Record<string, string> = {
   '.wasm': 'application/wasm',
 }
 
-/** The PNG's width and height, from its IHDR chunk; undefined when it is no PNG. */
 function pngSize(data: Buffer) {
   if (data.length < 24 || data.toString('latin1', 1, 4) !== 'PNG') return undefined
   return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) }
 }
 
-/**
- * The project's own name and icon for an installed app (`app.name`, `app.icon` in `.ultimate/settings.json`), each
- * undefined when unset or unusable, so the page and manifest stay stock.
- */
 export async function appIdentity(projectRoot: string, userHome: string) {
   const app = (await projectSettings(projectRoot, userHome)).app as
     | { name?: unknown; icon?: unknown }
@@ -61,7 +56,6 @@ export async function appIdentity(projectRoot: string, userHome: string) {
   let icon: { path: string; width: number; height: number } | undefined
   if (typeof app?.icon === 'string') {
     const path = resolve(projectRoot, app.icon)
-    // A missing icon leaves the stock icons.
     const data = await readFile(path).catch(ignoring(isMissing))
     const size = data && pngSize(data)
     if (size) icon = { path, ...size }
@@ -77,9 +71,6 @@ export async function webFacets(ultimateRoot: string, projectRoot: string, userH
 
 const escapeAttribute = (text: string) =>
   text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
-
-/** Paths that carry the project's app identity when it sets one. */
-const appPaths = ['/manifest.webmanifest', '/app-icon.png']
 
 export async function createWeb(options: {
   ultimateRoot: string
@@ -121,6 +112,7 @@ export async function createWeb(options: {
   let brokenRoots = manifest?.broken ?? []
   const retired = new Map(Object.entries(manifest?.retired ?? {}))
   let stale = !manifest || !(await fresh(manifest))
+  let identity = await appIdentity(projectRoot, userHome)
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
   let left: { file: string; error: string }[] = []
@@ -246,6 +238,7 @@ export async function createWeb(options: {
     next.retired = Object.fromEntries(retired)
     await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     manifest = next
+    identity = await appIdentity(projectRoot, userHome)
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
     const sourceSavedDuringBuild = await savedSince(result.inputs, buildStartedEpochMs)
@@ -355,15 +348,11 @@ export async function createWeb(options: {
         return
       }
       const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname)
-      const identity =
-        path === '/' || path === '/index.html' || !extname(path) || appPaths.includes(path)
-          ? await appIdentity(projectRoot, userHome)
-          : { name: undefined, icon: undefined }
-      if (path === '/manifest.webmanifest' && (identity.name || identity.icon)) {
+      const { name, icon } = identity
+      if (path === '/manifest.webmanifest' && (name || icon)) {
         const stock = JSON.parse(
           await readFile(join(folder, bundleForEntireRequest.id, 'manifest.webmanifest'), 'utf8'),
         )
-        const { icon } = identity
         response.writeHead(200, {
           'Content-Type': types['.webmanifest'],
           'Cache-Control': 'no-cache',
@@ -371,7 +360,7 @@ export async function createWeb(options: {
         response.end(
           JSON.stringify({
             ...stock,
-            ...(identity.name ? { name: identity.name, short_name: identity.name } : {}),
+            ...(name ? { name, short_name: name } : {}),
             ...(icon
               ? {
                   icons: [
@@ -387,9 +376,9 @@ export async function createWeb(options: {
         )
         return
       }
-      if (path === '/app-icon.png' && identity.icon) {
+      if (path === '/app-icon.png' && icon) {
         response.writeHead(200, { 'Content-Type': types['.png'], 'Cache-Control': 'no-cache' })
-        createReadStream(identity.icon.path)
+        createReadStream(icon.path)
           .on('error', () => response.destroy())
           .pipe(response)
         return
@@ -412,12 +401,12 @@ export async function createWeb(options: {
           '<head>',
           `<head><meta name="ultimate-web" content="${bundleForEntireRequest.id}">`,
         )
-        if (identity.name)
+        if (name)
           html = html.replace(
             /(<meta name="apple-mobile-web-app-title" content=")[^"]*"/,
-            `$1${escapeAttribute(identity.name)}"`,
+            `$1${escapeAttribute(name)}"`,
           )
-        if (identity.icon)
+        if (icon)
           html = html
             .replace(/(<link rel="apple-touch-icon" href=")[^"]*"/, '$1/app-icon.png"')
             .replace(

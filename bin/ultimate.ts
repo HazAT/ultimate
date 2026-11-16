@@ -67,13 +67,12 @@ const projectRoot = await realpath(positionals[0] ?? process.cwd()).catch((error
   process.exit(1)
 })
 const home = process.env.ULTIMATE_HOME ?? projectHome(projectRoot)
-/** The project's `.ultimate/settings.json` `port`, read alone so the supervisor stays free of the app graph. */
 function settingsPort() {
   let settings: { port?: unknown }
   try {
     settings = JSON.parse(readFileSync(join(projectRoot, '.ultimate/settings.json'), 'utf8'))
   } catch {
-    return undefined // No project settings, or unreadable: the core reports those itself.
+    return undefined
   }
   return settings?.port === undefined ? undefined : JSON.stringify(settings.port)
 }
