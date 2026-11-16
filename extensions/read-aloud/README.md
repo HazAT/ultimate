@@ -14,7 +14,8 @@ Read aloud: a speaker on each agent message's action row plays the whole answer 
 - **Sections:** the `speak` action (`{ text, section }`) splits the message into sections, a short first one so audio
   starts quickly, and returns one section's spoken text and MP3. The browser fetches the next section while one plays.
   The last 200 sections are cached in memory by text and section, so a replay is instant and free; a restart clears it.
-- **The player** is one per page: starting another message stops the current one. A strip above the composer shows
-  Preparing, Reading or Paused, the section, the spoken text (or the original), pause and stop. It keeps playing when
-  you switch conversations; its label opens the message's conversation. On phones the Media Session API gives
+- **The player** is one per page: starting another message stops the current one. A one-line strip above the composer
+  shows Preparing, Reading or Paused with a link to the message (`#conversation/entry`, which opens and scrolls to it),
+  the section, the speed, pause and stop. The speed cycles 1× to 2× and 0.75×, and is remembered
+  (`ext.read-aloud.rate`). It keeps playing when you switch conversations. On phones the Media Session API gives
   lock-screen pause and stop.

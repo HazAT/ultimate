@@ -21,6 +21,12 @@ let audio: HTMLAudioElement | undefined
 let utterance: SpeechSynthesisUtterance | undefined
 let fetching = new AbortController()
 let fetched = new Map<number, Promise<SpokenSection>>()
+let rate = 1
+
+export function setRate(next: number) {
+  rate = next
+  if (audio) audio.playbackRate = next
+}
 
 const set = (next: Reading | undefined) => {
   reading = next
@@ -102,11 +108,13 @@ async function play(text: string, index: number) {
     const bytes = Uint8Array.from(atob(spoken.audio), (c) => c.charCodeAt(0))
     const player = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' })))
     audio = player
+    player.playbackRate = rate
     player.addEventListener('ended', () => audio === player && next())
     await player.play().catch(failed)
   } else {
     const line = new SpeechSynthesisUtterance(spoken.spoken)
     utterance = line
+    line.rate = rate
     line.addEventListener('end', () => utterance === line && next())
     speechSynthesis.speak(line)
   }
