@@ -6,10 +6,12 @@ import { inExtensionTests } from '../shared/extension-api.ts'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { exec } from '../lib/exec.ts'
+import { ignoring, isMissing } from '../lib/errors.ts'
 import { debounce } from '../lib/timers.ts'
 import { writeTextAtomically } from '../lib/json-file.ts'
 import { discoverExtensions } from '../lib/discovery.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
+import { projectSettings } from '../lib/project-setup.ts'
 import { extensionSettingsFiles } from '../lib/extension-settings.ts'
 import type { Watch } from './extensions.ts'
 import { watchRoots } from './watch-roots.ts'
@@ -41,11 +43,34 @@ const types: Record<string, string> = {
   '.wasm': 'application/wasm',
 }
 
+function pngSize(data: Buffer) {
+  if (data.length < 24 || data.toString('latin1', 1, 4) !== 'PNG') return undefined
+  return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) }
+}
+
+export async function appIdentity(projectRoot: string, userHome: string) {
+  const app = (await projectSettings(projectRoot, userHome)).app as
+    | { name?: unknown; icon?: unknown }
+    | undefined
+  const name = typeof app?.name === 'string' && app.name.trim() ? app.name.trim() : undefined
+  let icon: { path: string; width: number; height: number } | undefined
+  if (typeof app?.icon === 'string') {
+    const path = resolve(projectRoot, app.icon)
+    const data = await readFile(path).catch(ignoring(isMissing))
+    const size = data && pngSize(data)
+    if (size) icon = { path, ...size }
+  }
+  return { name, icon }
+}
+
 export async function webFacets(ultimateRoot: string, projectRoot: string, userHome: string) {
   return (await discoverExtensions(ultimateRoot, projectRoot, userHome))
     .filter((entry) => entry.enabled && entry.files.includes('web.tsx'))
     .map((entry) => join(entry.path, 'web.tsx'))
 }
+
+const escapeAttribute = (text: string) =>
+  text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 
 export async function createWeb(options: {
   ultimateRoot: string
@@ -87,6 +112,7 @@ export async function createWeb(options: {
   let brokenRoots = manifest?.broken ?? []
   const retired = new Map(Object.entries(manifest?.retired ?? {}))
   let stale = !manifest || !(await fresh(manifest))
+  let identity = await appIdentity(projectRoot, userHome)
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
   let left: { file: string; error: string }[] = []
@@ -212,6 +238,7 @@ export async function createWeb(options: {
     next.retired = Object.fromEntries(retired)
     await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     manifest = next
+    identity = await appIdentity(projectRoot, userHome)
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
     const sourceSavedDuringBuild = await savedSince(result.inputs, buildStartedEpochMs)
@@ -321,6 +348,41 @@ export async function createWeb(options: {
         return
       }
       const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname)
+      const { name, icon } = identity
+      if (path === '/manifest.webmanifest' && (name || icon)) {
+        const stock = JSON.parse(
+          await readFile(join(folder, bundleForEntireRequest.id, 'manifest.webmanifest'), 'utf8'),
+        )
+        response.writeHead(200, {
+          'Content-Type': types['.webmanifest'],
+          'Cache-Control': 'no-cache',
+        })
+        response.end(
+          JSON.stringify({
+            ...stock,
+            ...(name ? { name, short_name: name } : {}),
+            ...(icon
+              ? {
+                  icons: [
+                    {
+                      src: '/app-icon.png',
+                      sizes: `${icon.width}x${icon.height}`,
+                      type: 'image/png',
+                    },
+                  ],
+                }
+              : {}),
+          }),
+        )
+        return
+      }
+      if (path === '/app-icon.png' && icon) {
+        response.writeHead(200, { 'Content-Type': types['.png'], 'Cache-Control': 'no-cache' })
+        createReadStream(icon.path)
+          .on('error', () => response.destroy())
+          .pipe(response)
+        return
+      }
       let found: string | undefined
       if (path !== '/' && path !== '/index.html')
         for (const id of [bundleForEntireRequest.id, ...retired.keys()]) {
@@ -333,12 +395,24 @@ export async function createWeb(options: {
           response.end()
           return
         }
-        const html = (
+        let html = (
           await readFile(join(folder, bundleForEntireRequest.id, 'index.html'), 'utf8')
         ).replace(
           '<head>',
           `<head><meta name="ultimate-web" content="${bundleForEntireRequest.id}">`,
         )
+        if (name)
+          html = html.replace(
+            /(<meta name="apple-mobile-web-app-title" content=")[^"]*"/,
+            `$1${escapeAttribute(name)}"`,
+          )
+        if (icon)
+          html = html
+            .replace(/(<link rel="apple-touch-icon" href=")[^"]*"/, '$1/app-icon.png"')
+            .replace(
+              /<link rel="icon" href="[^"]*" type="[^"]*"/,
+              '<link rel="icon" href="/app-icon.png" type="image/png"',
+            )
         response.writeHead(200, {
           'Content-Type': types['.html'],
           'Cache-Control': 'no-cache',
