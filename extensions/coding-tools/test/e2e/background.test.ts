@@ -27,7 +27,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await server.close()
   await sweepEarlierProcesses(join(directory, 'home'), () => false)
-  await until(() => started.splice(0).every((pgid) => !groupAlive(pgid)))
+  const groups = started.splice(0)
+  await until(() => groups.every((pgid) => !groupAlive(pgid)))
   await removeTemp(directory)
 })
 
