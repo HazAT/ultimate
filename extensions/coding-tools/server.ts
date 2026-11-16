@@ -1,8 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
@@ -24,6 +22,7 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
+import { getOrThrow } from '@earendil-works/pi-durable/env'
 import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -355,7 +354,10 @@ export default function codingTools(
         throw new Error(
           `An interruptible command must only wait, but this one changes things (${change}). Run the change in its own bash call, then wait in a separate interruptible one.`,
         )
-      const invocationLog = join(tmpdir(), `ultimate-commits-${randomUUID()}.log`)
+      if (!api.env) throw new Error('No execution environment is configured')
+      const invocationLog = getOrThrow(
+        await api.env.createTempFile({ prefix: 'ultimate-commits-', suffix: '.log' }, context),
+      )
       const call = createBashTool({
         prepare: (execution) => prepareBash(execution, api, invocationLog),
       })

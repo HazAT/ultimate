@@ -32,7 +32,7 @@ afterEach(async () => {
 })
 
 /** The extension's bash tool, run as one call of conversation 7 in `dir`. */
-async function bash(command: string, dir = cwd) {
+async function bash(command: string, dir = cwd, env = new NodeExecutionEnv({ cwd: dir })) {
   const extension = codingTools({
     home: cwd,
     need: (() => ({})) as never,
@@ -53,7 +53,7 @@ async function bash(command: string, dir = cwd) {
     conversationId: 7 as ConversationId,
     taskId: 'task-commit-events',
     callId: 'call',
-    env: new NodeExecutionEnv({ cwd: dir }),
+    env,
     output: (chunk: string | Uint8Array) => (output += chunk.toString()),
     outputWindow: undefined,
     retainedOutput: () => ({ text: output, truncated: false }),
@@ -246,8 +246,9 @@ it('records nothing when bash made no commit', async () => {
 
 it('never fails a commit when the log cannot be written', async () => {
   // A log path inside a missing directory makes every hook's append fail.
-  vi.stubEnv('TMPDIR', join(cwd, 'missing'))
-  const { result } = await bash('git commit -q --allow-empty -m kept && echo ok')
+  const env = new NodeExecutionEnv({ cwd })
+  env.createTempFile = async () => ({ ok: true, value: join(cwd, 'missing', 'commits.log') })
+  const { result } = await bash('git commit -q --allow-empty -m kept && echo ok', cwd, env)
   expect(result.isError).toBeFalsy()
   expect(await git('log', '-1', '--format=%s')).toBe('kept')
   expect(emitted).toEqual([])

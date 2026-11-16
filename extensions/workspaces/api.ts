@@ -62,4 +62,16 @@ export type BranchesService = {
 }
 /** What a landing asks about the branch it landed; messages provides it. `want` it. */
 export const Branches = defineApi<BranchesService>()('workspaces.branches')
+export type ConfinementService = {
+  /** Whether conversation `id`'s tools run confined in a sandbox. */
+  confined(id: ConversationId, ctx: Context): Promise<boolean>
+  /** Run shell `command` for conversation `id` inside its sandbox, in `cwd` with extra `env`; rejects with the command's output when it fails, times out or is aborted. */
+  exec(
+    id: ConversationId,
+    command: string,
+    options: { cwd: string; env: Record<string, string>; signal: AbortSignal; timeout: number },
+  ): Promise<void>
+}
+/** Where a conversation's tools run confined in a sandbox; the sandbox extension provides it. `want` it. */
+export const Confinement = defineApi<ConfinementService>()('workspaces.confinement')
 export const tier = 'core'
