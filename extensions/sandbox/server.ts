@@ -34,7 +34,7 @@ import { Profile } from '../subagents/api.ts'
 import { Confinement, WorkspacesApi } from '../workspaces/api.ts'
 import { Gate, type Policy, SandboxEnv } from './env.ts'
 import { probe } from './availability.ts'
-import { confinedExec, nodePrefix, prepareRun, type Run } from './layout.ts'
+import { confinedExec, nodeFolders, prepareRun, type Run } from './layout.ts'
 import { parseAllow, startProxy } from './proxy.ts'
 
 export type Role = { network: string[]; tools: string[] }
@@ -44,8 +44,6 @@ export const defaultTools = [
   'read',
   'write',
   'edit',
-  'web_search',
-  'web_fetch',
   'message',
   'note',
   'memory',
@@ -140,12 +138,12 @@ export default function sandbox(host: ExtensionHost) {
       throw new Error(
         'A sandboxed agent needs its own ready worktree (isolate: worktree); this conversation has none',
       )
-    return prepareRun(host.home, id, workspace)
+    return { run: await prepareRun(host.home, id, workspace), source: workspace.source }
   }
 
   const runConfined = async (
     id: ConversationId,
-    run: Run,
+    { run, source }: { run: Run; source: string },
     role: Role,
     spawner: ExecutionEnv,
     command: string | readonly string[],
@@ -159,7 +157,7 @@ export default function sandbox(host: ExtensionHost) {
       {
         program,
         ...(proxy ? { proxy: { socket: proxy.socket, bridge } } : {}),
-        inTurn: (operation) => inTurn(id, operation),
+        inTurn: (operation) => inTurn(id, () => workspaces.serialize(source, operation)),
       },
       spawner,
       command,
@@ -171,13 +169,14 @@ export default function sandbox(host: ExtensionHost) {
   const sandboxEnv = async (api: ToolExecutionApi, role: Role, context: Context) => {
     const id = api.conversationId
     await available()
-    const run = await runOf(id, context)
+    const confined = await runOf(id, context)
+    const { run } = confined
     const inner = api.env
     if (!inner) throw new Error('No execution environment is configured')
     let gate = gates.get(id)
     if (!gate) gates.set(id, (gate = new Gate()))
     const policy: Policy = {
-      read: ['/usr', nodePrefix()],
+      read: ['/usr', ...nodeFolders()],
       write: [run.worktree, run.home, run.tmp],
       readOnly: [join(run.worktree, '.git')],
     }
@@ -186,7 +185,7 @@ export default function sandbox(host: ExtensionHost) {
       policy,
       gate,
       (command, options, callContext) =>
-        runConfined(id, run, role, inner, command, options, callContext),
+        runConfined(id, confined, role, inner, command, options, callContext),
       run.tmp,
     )
   }
@@ -208,13 +207,13 @@ export default function sandbox(host: ExtensionHost) {
       const context = withAbortSignal(signal, BACKGROUND_CONTEXT)
       const role = await roleOf(id, host.harness(), context)
       if (!role) throw new Error(`Conversation ${id} is not sandboxed`)
-      const run = await runOf(id, context, ['preparing', 'ready'])
+      const confined = await runOf(id, context, ['preparing', 'ready'])
       let output = ''
       const result = await runConfined(
         id,
-        run,
+        confined,
         role,
-        new NodeExecutionEnv({ cwd: run.worktree }),
+        new NodeExecutionEnv({ cwd: confined.run.worktree }),
         command,
         {
           cwd,

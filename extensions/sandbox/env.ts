@@ -63,7 +63,7 @@ export class Gate {
     for (const resolve of waiting) resolve()
   }
   async exec<T>(run: () => Promise<T>) {
-    await this.#until(() => this.#files === 0)
+    await this.#until(() => this.#files === 0 && this.#execs === 0)
     this.#execs++
     try {
       return await run()

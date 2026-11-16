@@ -68,8 +68,16 @@ export async function prepareBash(
   api: Pick<ToolExecutionApi, 'conversationId'>,
   log?: string,
 ) {
-  const worktree = await git(execution.cwd, 'rev-parse', '--show-toplevel').catch(() => '')
-  if (!worktree.trim()) return
+  const [worktree, repository] = (
+    await git(
+      execution.cwd,
+      'rev-parse',
+      '--path-format=absolute',
+      '--show-toplevel',
+      '--git-common-dir',
+    ).catch(() => '')
+  ).split('\n')
+  if (!worktree?.trim() || !repository) return undefined
   execution.env.ULTIMATE_COMMIT_WORKTREE = worktree.trim()
   let count = Number(process.env.GIT_CONFIG_COUNT ?? 0)
   for (const [event, command] of Object.entries(nonBlockingGitHooks(api.conversationId))) {
@@ -81,7 +89,10 @@ export async function prepareBash(
   }
   execution.env.GIT_CONFIG_COUNT = String(count)
   if (log) execution.env.ULTIMATE_COMMIT_LOG = log
+  return repository
 }
+
+const objectId = /^[0-9a-f]{40}([0-9a-f]{24})?$/
 
 export function changes(command: string) {
   const joinedBashLines = command.replaceAll('\\\n', ' ')
@@ -193,7 +204,11 @@ type Made = {
   rewrittenFrom?: string
 }
 
-async function madeCommits(path: string, conversation: ConversationId) {
+async function madeCommits(
+  path: string,
+  conversation: ConversationId,
+  repository: string | undefined,
+) {
   const log = await readFile(path, 'utf8').catch(() => '')
   await rm(path, { force: true })
   const made = new Map<string, Made>()
@@ -201,8 +216,8 @@ async function madeCommits(path: string, conversation: ConversationId) {
   const rewrites: string[][] = []
   for (const line of log.split('\n')) {
     const [kind, sha, branch, toplevel, common, extra, reflog] = line.split('\t')
-    if (!sha || !common) continue
-    if (kind === 'rewrite') rewrites.push([sha, extra])
+    if (!repository || common !== repository || !objectId.test(sha ?? '')) continue
+    if (kind === 'rewrite') rewrites.push([sha, objectId.test(extra ?? '') ? extra : ''])
     else if (kind === 'merge' && reflog?.endsWith(': Fast-forward')) continue
     else if ((kind === 'commit' || kind === 'merge') && !made.has(sha)) {
       made.set(sha, { sha, ...(branch ? { branch } : {}), toplevel, common })
@@ -358,14 +373,17 @@ export default function codingTools(
       const invocationLog = getOrThrow(
         await api.env.createTempFile({ prefix: 'ultimate-commits-', suffix: '.log' }, context),
       )
+      let repository: string | undefined
       const call = createBashTool({
-        prepare: (execution) => prepareBash(execution, api, invocationLog),
+        prepare: async (execution) => {
+          repository = await prepareBash(execution, api, invocationLog)
+        },
       })
       const run = (command: Context) => call.execute(args, api, command)
       try {
         return await untilStopped(run, api, interruptible, context)
       } finally {
-        const advisoryCommits = await madeCommits(invocationLog, api.conversationId)
+        const advisoryCommits = await madeCommits(invocationLog, api.conversationId, repository)
         if (advisoryCommits.length)
           await api
             .commit(async (tx) => {

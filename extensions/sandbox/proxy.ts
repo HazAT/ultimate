@@ -1,7 +1,8 @@
 /* License — Copyright (c) 2025 Paperclip AI (MIT). Derived from Paperclip local-process-sandbox.ts. */
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import { connect, type Socket } from 'node:net'
+import { lookup } from 'node:dns/promises'
+import { BlockList, connect, isIP, type Socket } from 'node:net'
 
 const SOCKET_PATH_MAX_BYTES = 107
 const HOST_PATTERN = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i
@@ -17,6 +18,32 @@ export function parseAllow(entries: unknown): string[] {
       )
     return `${match[1].toLowerCase()}:${match[2] ?? '443'}`
   })
+}
+
+const nonPublic = new BlockList()
+for (const [network, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+] as const)
+  nonPublic.addSubnet(network, prefix, 'ipv4')
+for (const [network, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['::ffff:0:0', 96],
+  ['fc00::', 7],
+  ['fe80::', 10],
+] as const)
+  nonPublic.addSubnet(network, prefix, 'ipv6')
+
+async function publicAddress(host: string) {
+  if (isIP(host)) return host
+  const { address, family } = await lookup(host)
+  return nonPublic.check(address, family === 6 ? 'ipv6' : 'ipv4') ? undefined : address
 }
 
 export async function startProxy(
@@ -42,19 +69,29 @@ export async function startProxy(
       client.end(forbidden)
       return
     }
-    const upstream = connect(Number(port), host, () => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
-      if (head.length > 0) upstream.write(head)
-      upstream.pipe(client)
-      client.pipe(upstream)
-    })
-    const closeBoth = () => {
-      client.destroy()
-      upstream.destroy()
-    }
-    upstream.on('error', closeBoth)
-    client.on('error', closeBoth)
-    client.on('close', closeBoth)
+    client.on('error', () => client.destroy())
+    void publicAddress(host).then(
+      (address) => {
+        if (client.destroyed) return
+        if (!address) {
+          client.end(forbidden)
+          return
+        }
+        const upstream = connect(Number(port), address, () => {
+          client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+          if (head.length > 0) upstream.write(head)
+          upstream.pipe(client)
+          client.pipe(upstream)
+        })
+        const closeBoth = () => {
+          client.destroy()
+          upstream.destroy()
+        }
+        upstream.on('error', closeBoth)
+        client.on('close', closeBoth)
+      },
+      () => client.end(forbidden),
+    )
   })
   const sockets = new Set<Socket>()
   server.on('connection', (socket) => {

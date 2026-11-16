@@ -52,6 +52,13 @@ it('answers 403 for a port or host that is not allowed', async () => {
   }
 })
 
+it('answers 403 for an allowed name that resolves to a loopback address', async () => {
+  const { port, socketPath } = await setup((p) => [`localhost:${p}`])
+  const { received } = await send(socketPath, connectRequest(`localhost:${port}`))
+  await until(() => received().startsWith('HTTP/1.1 403'))
+  expect(received()).not.toContain('200')
+})
+
 it('answers 403 for a request that is not CONNECT', async () => {
   const { socketPath } = await setup(() => ['127.0.0.1'])
   const { received } = await send(

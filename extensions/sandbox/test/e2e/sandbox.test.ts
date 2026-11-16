@@ -295,6 +295,23 @@ h=$(git rev-parse HEAD); f=${s.common}/objects/\${h:0:2}/\${h:2}; rm -f $f; echo
   await git(s.repo, 'fsck', '--no-dangling')
 })
 
+it('never writes through links the sandbox planted in its shadow refs', async () => {
+  const s = await begin()
+  if (!s) return
+  const decoys = join(s.root, 'decoys')
+  await mkdir(decoys)
+  await writeFile(join(decoys, 'file'), 'decoy')
+  await s.sh(
+    `rm -rf ${s.common}/refs/heads/ultimate && ln -s ${decoys} ${s.common}/refs/heads/ultimate
+rm -rf ${s.common}/logs && mkdir ${s.common}/logs && ln -s ${decoys}/file ${s.common}/logs/HEAD`,
+  )
+  await git(s.wt, ...identity, 'commit', '-q', '--allow-empty', '-m', 'host moved the branch')
+  const { code } = await s.sh('git log --oneline -1')
+  expect(code).toBe(0)
+  expect(await readdir(decoys)).toEqual(['file'])
+  expect(await readFile(join(decoys, 'file'), 'utf8')).toBe('decoy')
+})
+
 const connectThrough = (target: string) =>
   `exec 3<>/dev/tcp/127.0.0.1/3128; printf 'CONNECT ${target} HTTP/1.1\\r\\nHost: ${target}\\r\\n\\r\\nping\\n' >&3; while read -r -t 5 line <&3; do echo "$line"; [ "$line" = ping ] && break; done`
 

@@ -9,6 +9,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
 import {
@@ -54,7 +55,14 @@ const systemFiles = [
 ]
 const mergedUsr = ['/bin', '/sbin', '/lib', '/lib64']
 
-export const nodePrefix = () => dirname(dirname(process.execPath))
+export function nodeFolders() {
+  const prefix = dirname(dirname(process.execPath))
+  if (inside(homedir(), prefix))
+    throw new Error(
+      `Sandbox: Node is installed in ${prefix}, which holds the home folder; install it in a folder of its own (nvm, /usr/local) to sandbox agents`,
+    )
+  return [join(prefix, 'bin'), join(prefix, 'lib')]
+}
 
 const inside = (path: string, root: string) => {
   const rel = relative(root, path)
@@ -98,7 +106,9 @@ export async function prepareRun(
       const value = await git(worktree, 'config', '--global', `user.${key}`).catch(meansNone)
       if (value) identity.push(`\t${key} = ${value}`)
     }
-    await writeFile(gitconfig, identity.length ? `[user]\n${identity.join('\n')}\n` : '')
+    await writeFile(gitconfig, identity.length ? `[user]\n${identity.join('\n')}\n` : '', {
+      flag: 'wx',
+    })
   }
   return run
 }
@@ -157,10 +167,27 @@ export async function confinedExec(
 
 const ownRef = (run: Run) => `refs/heads/${run.branch}`
 
+const credentialSections = /^(remote|credential|url|http)\./i
+
+async function copyConfigWithoutRemotes(run: Run) {
+  const source = await readFile(join(run.common, 'config'), 'utf8')
+  const copied = join(run.shadow, 'config.source')
+  if ((await readFile(copied, 'utf8').catch(ignoring(isMissing))) === source) return
+  const config = join(run.shadow, 'config')
+  await writeFile(config, source)
+  const names = (await git(run.worktree, 'config', '--file', config, '--name-only', '--list'))
+    .split('\n')
+    .filter((name) => credentialSections.test(name))
+  const sections = new Set(names.map((name) => name.slice(0, name.lastIndexOf('.'))))
+  for (const section of sections)
+    await git(run.worktree, 'config', '--file', config, '--remove-section', section)
+  await writeFile(copied, source)
+}
+
 export async function seedShadow(run: Run) {
   const { shadow, common } = run
   await writeFile(join(shadow, 'objects/info/alternates'), `${join(common, 'objects')}\n`)
-  await copyFile(join(common, 'config'), join(shadow, 'config'))
+  await copyConfigWithoutRemotes(run)
   await copyFile(join(common, 'HEAD'), join(shadow, 'HEAD'))
   const refs = await git(run.worktree, 'for-each-ref', '--format=%(objectname) %(refname)')
   await writeFile(
@@ -174,12 +201,14 @@ export async function seedShadow(run: Run) {
   const tip = await git(run.worktree, 'rev-parse', '--verify', ownRef(run))
   const imported = await readFile(join(shadow, 'imported'), 'utf8').catch(ignoring(isMissing))
   if (imported === tip) return
+  const wt = join(shadow, 'worktrees', basename(run.worktreeGitDir))
+  for (const agentWritten of [join(shadow, 'refs'), join(shadow, 'logs'), wt]) {
+    await rm(agentWritten, { recursive: true, force: true })
+    await mkdir(agentWritten, { recursive: true })
+  }
   const ref = join(shadow, ownRef(run))
   await mkdir(dirname(ref), { recursive: true })
-  await writeFile(ref, `${tip}\n`)
-  const wt = join(shadow, 'worktrees', basename(run.worktreeGitDir))
-  await rm(wt, { recursive: true, force: true })
-  await mkdir(wt, { recursive: true })
+  await writeFile(ref, `${tip}\n`, { flag: 'wx' })
   for (const file of ['index', 'commondir', 'gitdir'])
     await copyFile(join(run.worktreeGitDir, file), join(wt, file))
   await writeFile(join(wt, 'HEAD'), `ref: ${ownRef(run)}\n`)
@@ -221,7 +250,7 @@ async function systemMounts() {
     else args.push('--ro-bind', path, path)
   }
   args.push('--ro-bind', '/usr', '/usr')
-  for (const path of await existing([...systemFiles, nodePrefix()]))
+  for (const path of await existing([...systemFiles, ...nodeFolders()]))
     args.push('--ro-bind', path, path)
   return args
 }
@@ -314,7 +343,7 @@ export async function bwrapArgs(
     run.tmp,
   ]
   const env: Record<string, string> = {
-    PATH: `${join(nodePrefix(), 'bin')}:/usr/local/bin:/usr/bin:/bin`,
+    PATH: `${nodeFolders()[0]}:/usr/local/bin:/usr/bin:/bin`,
     LANG: 'C.UTF-8',
     ...options.env,
     HOME: run.home,
