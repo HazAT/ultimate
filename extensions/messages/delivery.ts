@@ -90,7 +90,7 @@ export function delivery(host: ExtensionHost) {
           m.from === 'user' && m.re !== undefined ? `Answer to message ${m.re}:\n` : ''
         const body = task.input.note
           ? `Note from ${task.input.fromLabel} (one-way update, no answer goes back):\n${m.text}${serves}`
-          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${answeredQuestionLabel}${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}${serves}`
+          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${answeredQuestionLabel}${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to answer ${task.input.fromLabel}; use it only for a card to the user or to attach images.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}${serves}`
         const content = replayStableImages.length
           ? [{ type: 'text' as const, text: body }, ...replayStableImages]
           : body
