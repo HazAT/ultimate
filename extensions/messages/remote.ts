@@ -125,7 +125,7 @@ export async function tell(
         target: { url: target.url, label: target.label },
         args: { key: remote.key, text: input.text, reply, from: self },
       },
-      { conversationId: from, ownership: { kind: 'conversation' }, background: true },
+      { conversationId: from, ownership: { kind: 'conversation' } },
     )
     return { message: message.id, posting }
   }, ctx)

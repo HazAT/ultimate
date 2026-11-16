@@ -2199,6 +2199,32 @@ it('posts a tell a crash cut off once, after the restart, and settles it deliver
     remote: { project: 'poe2-rust', id: 12 },
   })
 })
+it('stops an outstanding tell with its conversation and marks it failed', async () => {
+  const neverAnswers = gate()
+  const other = createServer(async (request, response) => {
+    for await (const chunk of request) void chunk
+    await neverAnswers.promise
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"result":1}')
+  })
+  await new Promise<void>((done) => other.listen(0, '127.0.0.1', done))
+  servers.push(other)
+  const f = await remoteFixture(`http://127.0.0.1:${(other.address() as AddressInfo).port}`)
+  const telling = f
+    .service()
+    .tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Stop me' }, context)
+  const outcome = telling.then(
+    () => 'told',
+    (error: Error) => error.message,
+  )
+  await until(async () => !!(await f.log())?.messages.some((m) => m.to === 'remote'))
+  await f.opened.root.abort(context)
+  expect(await outcome).not.toBe('told')
+  neverAnswers.release()
+  expect((await f.log())!.messages.find((m) => m.to === 'remote')).toMatchObject({
+    state: 'failed',
+    error: 'stopped',
+  })
+})
 it('refuses telling back an Ultimate whose question is open, and only @ultimate tells', async () => {
   const other = await otherUltimate(() => [200, { result: 1 }])
   const f = await remoteFixture(other.url)
