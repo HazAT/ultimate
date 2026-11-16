@@ -155,8 +155,14 @@ async function sendOneShotPingWithoutSession(
     !messages.some(
       (message) => message.role === 'user' && message.content === leadingConversationIdentity,
     )
-  )
-    messages = [{ role: 'user', content: leadingConversationIdentity, timestamp: 0 }, ...messages]
+  ) {
+    const place = messages[0]?.role === 'system' ? 1 : 0
+    messages = [
+      ...messages.slice(0, place),
+      { role: 'user', content: leadingConversationIdentity, timestamp: 0 },
+      ...messages.slice(place),
+    ]
+  }
   const at = Date.now()
   messages.push({ role: 'user', content: QUESTION, timestamp: at })
   if (!open(paused(), found.lastRequest, Date.now())) return

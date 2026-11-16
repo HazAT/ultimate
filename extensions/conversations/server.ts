@@ -66,10 +66,9 @@ const IdentityAtContextHead = defineDoc<{ head?: number }>({
 })
 
 async function identityNoteOncePerContextHead(tx: Tx, id: ConversationId) {
-  const head = (await tx.latestHeadMarker(id))?.id ?? 0
   const seen = await tx.doc(IdentityAtContextHead, id)
-  if (seen.head === head) return undefined
-  seen.head = head
+  if (seen.head !== undefined) return undefined
+  seen.head = (await tx.latestHeadMarker(id))?.id ?? 0
   return {
     entries: [
       {
@@ -349,18 +348,21 @@ export default (host: ExtensionHost) => {
         },
         beforeRequest: (request, api) => {
           const cacheStableIdentityPrefix = `You are conversation #${api.conversationId}.`
+          const { messages } = request
           if (
-            !request.messages.some(
+            messages.some(
               (message) => message.role === 'user' && message.content === cacheStableIdentityPrefix,
             )
           )
-            return {
-              messages: [
-                { role: 'user', content: cacheStableIdentityPrefix, timestamp: 0 },
-                ...request.messages,
-              ],
-            }
-          return undefined
+            return undefined
+          const at = messages[0]?.role === 'system' ? 1 : 0
+          return {
+            messages: [
+              ...messages.slice(0, at),
+              { role: 'user', content: cacheStableIdentityPrefix, timestamp: 0 },
+              ...messages.slice(at),
+            ],
+          }
         },
       }),
     ],
