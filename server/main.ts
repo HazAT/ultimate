@@ -312,9 +312,9 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
     const refuse = (signal: NodeJS.Signals) =>
       reportCore({
         type: 'log',
-        level: 'error',
+        level: 'warn',
         source: 'core',
-        text: `Ignored ${signal} sent to core pid ${process.pid}: the supervisor stops its core itself. Unless Ultimate is shutting down, a process outside it sent this (a kill by port or name?)`,
+        text: `Ignored ${signal} sent to core pid ${process.pid}: the supervisor stops its core itself. Either Ultimate is stopping through its service (the signal went to the whole group), or a process outside it killed by port or name`,
       })
     process.on('SIGINT', refuse)
     process.on('SIGTERM', refuse)
