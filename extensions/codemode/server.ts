@@ -71,7 +71,12 @@ type StructuredResult = ToolExecutionResult & { structuredContent?: unknown }
 
 function declarations(tools: readonly ToolRegistration[]): CodemodeTool[] {
   return tools
-    .filter((tool) => tool.name !== 'codemode' && tool.name !== 'restart')
+    .filter(
+      (tool) =>
+        tool.name !== 'codemode' &&
+        tool.name !== 'restart' &&
+        (tool.callers === undefined || tool.callers.includes('tools')),
+    )
     .map((tool: StructuredTool) => ({
       name: tool.name,
       description: tool.description,

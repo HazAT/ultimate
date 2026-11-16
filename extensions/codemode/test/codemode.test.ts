@@ -172,6 +172,47 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   expect(tool.description).toContain('declare const ultimate')
 })
 
+it('keeps model-only tools callable directly but out of script bindings and guidance', async () => {
+  const { server } = await fixture()
+  let executions = 0
+  server.host.registry.install(
+    defineExtension({
+      name: 'caller-test',
+      tools: [
+        defineTool({
+          name: 'model_only_probe',
+          description: 'A model-only test tool',
+          parameters: obj({}),
+          callers: ['model'],
+          execute: async () => {
+            executions++
+            return { output: [{ type: 'text', text: 'Called directly' }] }
+          },
+        }),
+      ],
+    }),
+  )
+  server.host.faux!.setResponses([
+    fauxAssistantMessage([fauxToolCall('model_only_probe', {})], { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Complete'),
+  ])
+  await server.root.submit({ type: 'input', content: 'Call the model-only tool' }, context)
+  await server.harness.waitForIdle(context)
+  expect(executions).toBe(1)
+  const result = await run(server, 'return await tools.model_only_probe({})')
+  expect(executions).toBe(1)
+  expect(result.data.isError).toBe(true)
+  expect(result.text).toContain('model_only_probe')
+  expect(result.data.details.calls).toEqual([])
+  const agent = await server.root.agent(context)
+  const section = server.host.registry.snapshot().extension('codemode')!.sections![0]
+  const guidance = await section.render(
+    { conversationId: server.root.id, agent } as Parameters<typeof section.render>[0],
+    context,
+  )
+  expect(guidance?.split('Available: ')[1].split(', ')).not.toContain('model_only_probe')
+})
+
 async function run(
   server: Awaited<ReturnType<typeof createServer>>,
   code: string,
