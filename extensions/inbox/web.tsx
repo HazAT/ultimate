@@ -498,7 +498,6 @@ function useInboxRow(): ReactNode {
   return <Waiting>{(items) => <InboxRow items={items} />}</Waiting>
 }
 
-/** The count on the title bar's Inbox tab, amber like the sidebar row's; none at zero. */
 function InboxBadge() {
   return (
     <Waiting>
