@@ -33,9 +33,9 @@ await page.addInitScript(() => {
     memoizedState: unknown
   }
   const w = window as unknown as Record<string, unknown>
-  const events: { ev: string; task: number; renders: number; owners: Record<string, number> }[] = []
-  let renders = 0
-  let owners: Record<string, number> = {}
+  type Measured = { ev: string; task: number; renders: number; owners: Record<string, number> }
+  const events: Measured[] = []
+  let current: Measured | undefined
   let on = false
   w.renders = { events, start: () => (on = true) }
   const nameOf = (type: unknown) => {
@@ -68,8 +68,10 @@ await page.addInitScript(() => {
           fiber.memoizedState !== fiber.alternate.memoizedState
         if (component && fiber.flags & PERFORMED_WORK && fresh) {
           below = owner ?? nameOf(fiber.type)
-          renders++
-          owners[below] = (owners[below] ?? 0) + 1
+          if (current) {
+            current.renders++
+            current.owners[below] = (current.owners[below] ?? 0) + 1
+          }
         } else if (component) below = undefined
         const reused = fiber.alternate !== null && fiber.child === fiber.alternate.child
         if (fiber.child && !reused) stack.push([fiber.child, below])
@@ -86,7 +88,8 @@ await page.addInitScript(() => {
     waiting.push(then)
     channel.port2.postMessage(0)
   }
-  // Listeners run in the order they were added, so these run before the store's and start each event's clock.
+  // Listeners run in the order they were added, so these run before the store's and start each event's clock. Commits
+  // count toward the latest event: React flushes a store change before the next server event is dispatched.
   const Native = window.EventSource
   window.EventSource = class extends Native {
     constructor(url: string | URL, init?: EventSourceInit) {
@@ -94,13 +97,18 @@ await page.addInitScript(() => {
       for (const name of ['view', 'ops', 'doc', 'docOps', 'conversations', 'tasks', 'ui', 'uiOps'])
         super.addEventListener(name, (event) => {
           const started = performance.now()
-          renders = 0
-          owners = {}
           const data = (event as MessageEvent<string>).data
           const kind = /"kind":"([^"]+)"/.exec(data.slice(0, 200))?.[1]
-          const ev = kind && name.startsWith('doc') ? `${name} ${kind}` : name
+          const measured: Measured = {
+            ev: kind && name.startsWith('doc') ? `${name} ${kind}` : name,
+            task: 0,
+            renders: 0,
+            owners: {},
+          }
+          current = measured
           afterNextTask(() => {
-            if (on) events.push({ ev, task: performance.now() - started, renders, owners })
+            measured.task = performance.now() - started
+            if (on) events.push(measured)
           })
         })
     }
