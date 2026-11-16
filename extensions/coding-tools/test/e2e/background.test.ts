@@ -13,9 +13,11 @@ import { removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 let home: string
 const ids = [7, 8, 9] as ConversationId[]
+let concluded: Set<ConversationId>
 
 beforeEach(async () => {
   home = await temp('ultimate-background-')
+  concluded = new Set()
 })
 afterEach(async () => {
   await stopConcluded(home, ids, Infinity)
@@ -25,6 +27,7 @@ afterEach(async () => {
 function tools() {
   const extension = codingTools({
     home,
+    need: (() => ({ concludedIn: async () => concluded })) as never,
     notice: () => {},
     emit: (async () => undefined) as unknown as ExtensionHost['emit'],
     onOpen: () => {},
@@ -37,6 +40,8 @@ function tools() {
     const api = {
       conversationId: conversation as ConversationId,
       env: new NodeExecutionEnv({ cwd: home }),
+      commit: (change: (tx: unknown) => unknown) =>
+        change({ conversation: async () => ({ ownership: { kind: 'ownerless' } }) }),
     } as unknown as ToolExecutionApi
     const result = await bash.execute({ command, background: true } as never, api, context)
     const text = (result.output as { text: string }[])[0].text
@@ -49,6 +54,15 @@ function tools() {
 }
 
 const files = async (id: number) => readdir(join(home, 'background', String(id)))
+
+it('stops a group whose start raced its conversation concluding', async () => {
+  const background = tools()
+  concluded.add(7 as ConversationId)
+  await expect(background('echo started > marker; exec sleep 300')).rejects.toThrow(
+    'This conversation is concluded',
+  )
+  expect(await files(7)).toEqual([expect.stringMatching(/\.log$/)])
+})
 
 it('starts a command in its own group, logs its output and stops by the returned group', async () => {
   const background = tools()

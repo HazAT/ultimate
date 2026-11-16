@@ -1,6 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { writeFileSync } from 'node:fs'
+import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMissing, inProcess } from '../../lib/errors.ts'
 import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
@@ -19,13 +20,15 @@ export async function startBackground(
   conversation: ConversationId,
   cwd: string,
   command: string,
+  signal?: AbortSignal,
 ) {
   const directory = conversationGroups(host.home, String(conversation))
   await mkdir(directory, { recursive: true })
+  signal?.throwIfAborted()
   const name = `${process.pid}-${Date.now()}-${randomUUID()}`
   const pidFile = join(directory, `${name}.pid`)
   const log = join(directory, `${name}.log`)
-  await writeFile(log, '')
+  writeFileSync(log, '')
   const group = spawnGroup('bash', ['-c', `exec </dev/null >>${quoted(log)} 2>&1\n${command}`], {
     cwd,
     pidFile,
@@ -40,7 +43,7 @@ export async function startBackground(
       .then(() => stopGroup(pid, { pidFile, leader: group }))
       .catch((error: unknown) => host.notice(`Background group ${pid}: ${String(error)}`)),
   )
-  return { pgid: pid, log }
+  return { pgid: pid, log, stop: () => stopGroup(pid, { pidFile, leader: group }) }
 }
 
 async function filesIn(directory: string) {

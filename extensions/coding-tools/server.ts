@@ -30,7 +30,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { CancelAction, CancelledDoc, Committed } from './refs.ts'
-import { Concluded } from '../conversations/api.ts'
+import { Concluded, ConversationsApi } from '../conversations/api.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { startBackground, stopConcluded, sweepEarlierProcesses } from './background.ts'
 
@@ -247,7 +247,7 @@ async function madeCommits(path: string, conversation: ConversationId) {
 }
 
 export default function codingTools(
-  host: Pick<ExtensionHost, 'emit' | 'home' | 'notice' | 'onOpen' | 'react'>,
+  host: Pick<ExtensionHost, 'emit' | 'home' | 'need' | 'notice' | 'onOpen' | 'react'>,
 ) {
   host.onOpen(() =>
     sweepEarlierProcesses(host.home).catch((error: unknown) =>
@@ -306,12 +306,26 @@ export default function codingTools(
     async execute({ interruptible, background, ...args }, api, context) {
       if (background) {
         if (!api.env) throw new Error('No execution environment is configured')
-        const { pgid, log } = await startBackground(
+        const { pgid, log, stop } = await startBackground(
           host,
           api.conversationId,
           api.env.cwd,
           args.command,
+          context.abortSignal,
         )
+        const conversations = host.need(ConversationsApi)
+        const concluded = await api.commit(async (tx) => {
+          const ended = await conversations.concludedIn(tx)
+          for (let id: ConversationId | undefined = api.conversationId; id !== undefined;) {
+            if (ended.has(id)) return true
+            id = (await tx.conversation(id))?.owner?.conversationId
+          }
+          return false
+        }, context)
+        if (concluded) {
+          await stop()
+          throw new Error('This conversation is concluded; its background processes are stopped')
+        }
         const output = `Started in the background as process group ${pgid}.\nOutput: ${log}\nStop it with: kill -- -${pgid}`
         return {
           output: [{ type: 'text', text: output }],

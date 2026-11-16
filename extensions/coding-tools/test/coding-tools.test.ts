@@ -12,7 +12,13 @@ import type { ExtensionHost } from '../../../server/extensions.ts'
 
 afterEach(() => vi.unstubAllEnvs())
 
-const inertHost = { home: '', notice: () => {}, onOpen: () => {}, react: () => {} }
+const inertHost = {
+  home: '',
+  need: (() => ({})) as ExtensionHost['need'],
+  notice: () => {},
+  onOpen: () => {},
+  react: () => {},
+}
 
 it('uses a 600-second default tripwire and leaves explicit timeouts unchanged', async () => {
   vi.stubEnv('ULTIMATE_BASH_TIMEOUT', undefined)
