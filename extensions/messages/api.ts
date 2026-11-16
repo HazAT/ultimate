@@ -124,5 +124,11 @@ export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
+export type WatchesService = {
+  /** Inside `tx`: whether an enabled automation wakes conversation `id` when it fires, so it will run again. */
+  watching(tx: Tx, id: ConversationId): Promise<boolean>
+}
+/** What a branch's report asks about the automations that will wake it; automations provides it. `want` it. */
+export const Watches = defineApi<WatchesService>()('messages.watches')
 
 export const tier = 'core'

@@ -11,7 +11,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Messages } from './api.ts'
+import { Messages, Watches } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { append, terminal } from './log.ts'
 import type { Message } from './api.ts'
@@ -75,6 +75,7 @@ async function concludedOrWorkUnderway(
       checkpoint?.phase === 'report' && checkpoint.conversationId === id
     if (landingReportStillPending) return true
   }
+  if (await host.want(Watches)?.watching(tx, id)) return true
   return working(tx, id)
 }
 

@@ -22,7 +22,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { LineageApi } from '../lineage/api.ts'
-import { Messages, MessagesApi } from './api.ts'
+import { Messages, MessagesApi, Watches } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
 import { CallerAction, SettleAction } from './refs.ts'
@@ -211,6 +211,7 @@ export default function messages(host: ExtensionHost) {
   host.need(LineageApi)
   host.need(SubagentsApi)
   host.need(WorkspacesApi)
+  host.want(Watches)
 
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),

@@ -9,7 +9,14 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { JsonObject, SubmissionId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  JsonObject,
+  SubmissionId,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
+import type { WatchesService } from '../../messages/api.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -222,6 +229,30 @@ it('fires a subscriber-only schedule without creating a run conversation', async
       'automation',
     )
   }
+})
+
+it('tells messages a subscriber is watched only while the automation is enabled', async () => {
+  const f = await fixture()
+  const [target, other] = await f.opened.harness.commit(async (tx) => {
+    const created = []
+    for (const _ of [1, 2]) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      created.push(child.id)
+    }
+    return created
+  }, context)
+  const watches = f.provided.get('messages.watches') as WatchesService
+  const watching = (id: ConversationId) =>
+    f.opened.harness.commit((tx) => watches.watching(tx, id), context)
+  const a = (await f.action('create', {
+    name: 'Wake',
+    schedule: 'every 1h',
+    subscribers: [target],
+  })) as Automation
+  expect([await watching(target), await watching(other)]).toEqual([true, false])
+  await f.action('pause', { id: a.id })
+  expect(await watching(target)).toBe(false)
 })
 
 it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {

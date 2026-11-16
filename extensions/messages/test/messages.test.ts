@@ -1556,6 +1556,26 @@ it("leaves a branch's final answer as a note while its work is under way", async
   ])
   expect(view.entries.filter((e) => e.id > note!.id && e.kind === 'pi.assistant')).toHaveLength(0)
 })
+it("leaves a branch's final answer as a note while an automation it subscribes to is armed", async () => {
+  // A branch waiting on a polling watcher reported each stop, its starter's answer woke it, and the two traded status
+  // messages until the watcher fired.
+  const f = await fixture()
+  const b = await branched(f)
+  f.provided.set('messages.watches', { watching: async (_tx: unknown, id: number) => id === b.id })
+  await b.later('Watching the deploy')
+  await until(async () => (await b.from()).length === 2)
+  const [, routed] = await b.from()
+  expect(routed).toMatchObject({ reply: false })
+  expect(routed.report).toBeUndefined()
+  const view = await f.opened.root.context(context)
+  const note = view.entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === routed.id,
+  )
+  expect([note?.data, note?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
+})
 it('leaves the final answer of a branch its landing concluded as a note, since the landing woke the starter', async () => {
   const f = await fixture()
   const b = await branched(f)
