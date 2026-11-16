@@ -129,6 +129,40 @@ it('marks the page as driven without a page error from a sandboxed frame', async
   }
 })
 
+// The call trace keeps the first 300 characters of a failed call: a page's console errors filled them, so the dream's
+// tool stats grouped 69 of 88 such failures by a console line, without the step that failed.
+it('names the failure before the console errors', async () => {
+  const directory = await temp('ultimate-browser-failure-')
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  try {
+    const result = await browser.execute(
+      {
+        url: 'data:text/html,<script>console.error("noise")</script>',
+        steps: [{ eval: 'Promise.reject(new Error("boom"))' }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBe(true)
+    const text = (result.output as { text: string }[])[0].text
+    expect(text.split('\n')[0]).toContain('boom')
+    expect(text).toContain('Console error: noise')
+  } finally {
+    for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
+
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
