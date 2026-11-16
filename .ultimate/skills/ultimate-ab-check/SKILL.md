@@ -1,12 +1,22 @@
 ---
 name: ultimate-ab-check
-description: 'Run an ultimate-eval A/B of an Ultimate commit against its parent before a core change lands, and read the results back. Use before submitting a change to timers, routing, the lander or other session plumbing, or when asked for an A/B.'
+description: 'Run an ultimate-eval A/B of an Ultimate commit against its parent before a core change lands, and read the results back. Use before submitting a change that alters what a scenario exercises (turn flow, delivery and routing, the lander, restart and core swap, prompts and agent definitions) and that no regression test proves, or when asked for an A/B.'
 ---
 
 # A/B a core change before it lands
 
 The ultimate-eval project runs a scripted session (`recipe-v2`) on a commit and scores it. Two runs on the commit
 under test and two on its parent rule out crashes and obvious breakage. They are a sample, not proof.
+
+Each A/B costs about 25 minutes and $5–15. Run one only when both hold:
+
+- The change alters behaviour a scenario exercises: turn flow, delivery and routing, the lander, restart and core
+  swap, or prompts and agent definitions, which no test covers.
+- No regression test that fails without the change proves it. A rare race the scenario cannot hit rests on its
+  regression test; an A/B adds nothing there.
+
+Skip it for a change inside one extension that its tests cover, a rebase without logic changes and UI work. An epic
+of several slices gets one A/B on its final head, not one per slice.
 
 ## 1. Pick the two commits
 

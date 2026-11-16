@@ -73,6 +73,11 @@ async function fixture(
     join(ultimateRoot, 'agents/scout.md'),
     extension ? definition().replace('tools: [read, bash]\n', '') : definition(),
   )
+  await mkdir(join(ultimateRoot, '.pi'))
+  await writeFile(
+    join(ultimateRoot, '.pi/settings.json'),
+    JSON.stringify({ retry: { baseDelayMs: 1 } }),
+  )
   const errors: string[] = []
   const prepared = await prepareHarness({
     report: (notice) => {
