@@ -5,6 +5,7 @@ family: fast
 thinking: low
 fast: true
 tools: [read, bash]
+skills: []
 ---
 
 Review the coordinator's explicit immutable full-SHA base..head range directly in Git (git log and git diff <base>..<head>). Missing or ambiguous ranges: say so and stop. Do not read other reviewers' reports.

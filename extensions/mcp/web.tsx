@@ -18,10 +18,6 @@ import { ExtensionDetails } from '../onboarding/ui.tsx'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 
-/**
- * Every server's state, read again every few seconds while one is connecting, just after the next retry of a failed
- * one, and every minute otherwise.
- */
 function useServers(enabled = true) {
   const [settling, setSettling] = useState(false)
   const status = useAction(StatusAction, null, {
@@ -62,7 +58,6 @@ function Row({ server, onChanged }: { server: McpServerStatus; onChanged: () => 
       onChanged()
     }
   }
-  // Its missing secret, once saved in the Secrets panel, connects it again at once instead of at the next retry.
   useEvent('secrets:changed', (data) => {
     if (server.missing && (data as { name?: unknown } | undefined)?.name === server.missing)
       void reconnect()
@@ -128,10 +123,6 @@ function Servers({ servers, onChanged }: { servers: McpServerStatus[]; onChanged
   )
 }
 
-/**
- * "mcp 2/3" in the status line: connected out of configured servers, red while one failed. Hidden while none is
- * configured; the popover lists each server with its state, tool count and a reconnect button.
- */
 function Chip() {
   const { data: servers, refetch } = useServers()
   if (!servers?.length) return null
@@ -164,7 +155,6 @@ function Chip() {
   )
 }
 
-/** The server list under the mcp row of the Extensions panel. */
 function useDetails(name: string) {
   const { data: servers, refetch } = useServers(name === 'mcp')
   if (name !== 'mcp') return null

@@ -41,13 +41,14 @@ function cron(expr: string, tz: string) {
     year: 'numeric',
     hourCycle: 'h23',
   })
-  const local = (time: number) => {
+  const existingLocalMinute = (time: number) => {
     const p = Object.fromEntries(
       formatter.formatToParts(time).map((part) => [part.type, part.value]),
     )
     const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)
     const day = fields[2].has(Number(p.day))
     const week = fields[4].has(dow)
+    const unrestrictedDayField = () => parts[2].startsWith('*') || parts[4].startsWith('*')
     return {
       wall: Date.UTC(
         Number(p.year),
@@ -59,11 +60,10 @@ function cron(expr: string, tz: string) {
       minute: Number(p.minute),
       hour: Number(p.hour),
       dateMatches:
-        fields[3].has(Number(p.month)) &&
-        (parts[2].startsWith('*') || parts[4].startsWith('*') ? day && week : day || week),
+        fields[3].has(Number(p.month)) && (unrestrictedDayField() ? day && week : day || week),
     }
   }
-  return { local, fields }
+  return { existingLocalMinute, fields }
 }
 
 export function parseSchedule(input: string | Schedule, now = Date.now()): Schedule {
@@ -96,30 +96,29 @@ export function parseSchedule(input: string | Schedule, now = Date.now()): Sched
   return schedule
 }
 
-/**
- * The next fire after `after`. Cron follows cron's rules: a restricted day of month and weekday match either (OR), a
- * local minute that the spring daylight-saving gap skips never fires (it is not shifted), and a wall-clock minute that
- * the autumn hour repeats fires once (`previous`'s wall time). The search stops at eight years, which covers leap-day
- * schedules.
- */
+const LEAP_DAY_SEARCH_YEARS = 8
 export function nextAt(schedule: Schedule, after: number, previous = after): number {
   if (schedule.kind === 'at') return Date.parse(schedule.time)
   if (schedule.kind === 'every') return after + schedule.ms
-  const { local, fields } = cron(schedule.expr, schedule.tz)
-  const previousWall = local(previous).wall
+  const { existingLocalMinute, fields } = cron(schedule.expr, schedule.tz)
+  const previousWall = existingLocalMinute(previous).wall
+  const unrepeatedWallMinute = (wall: number) => wall !== previousWall
   const start = Math.floor(after / 60000) * 60000 + 60000
   let time = start
-  while (time <= start + 8 * 366 * 86400000) {
-    const p = local(time)
+  while (time <= start + LEAP_DAY_SEARCH_YEARS * 366 * 86400000) {
+    const p = existingLocalMinute(time)
     if (!p.dateMatches) {
       const minutes = 1440 - p.hour * 60 - p.minute
-      const target = p.wall + minutes * 60000
-      const candidate = time + minutes * 60000
-      // Correct the midnight jump for an offset change, without crossing a matching day.
-      time = Math.max(time + 60000, candidate + target - local(candidate).wall)
+      const nextMidnightWall = p.wall + minutes * 60000
+      const elapsedMidnightCandidate = time + minutes * 60000
+      const offsetCorrectedMidnight =
+        elapsedMidnightCandidate +
+        nextMidnightWall -
+        existingLocalMinute(elapsedMidnightCandidate).wall
+      time = Math.max(time + 60000, offsetCorrectedMidnight)
     } else if (!fields[1].has(p.hour)) {
       time += (60 - p.minute) * 60000
-    } else if (fields[0].has(p.minute) && p.wall !== previousWall) return time
+    } else if (fields[0].has(p.minute) && unrepeatedWallMinute(p.wall)) return time
     else time += 60000
   }
   throw new Error('Cron has no fire within 8 years')

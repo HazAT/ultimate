@@ -8,22 +8,19 @@ export type ModelInfo = ModelsResponse['models'][number]
 export type ProviderInfo = ModelsResponse['providers'][number]
 export type ThinkingLevel = ModelInfo['thinkingLevels'][number]
 
-/** Dialog ids this extension's overlays read with `useDialog`. */
 export const dialogs = {
   picker: 'models.picker',
   login: 'models.login',
 } as const
-/** The thinking popover of conversation `id`'s toolbar: a side chat's has its own, apart from main's. */
-export const thinkingDialog = (id: number | undefined) => `models.thinking.${id}`
+export const thinkingDialog = (scopedConversationId: number | undefined) =>
+  `models.thinking.${scopedConversationId}`
 
-/**
- * The scoped (or shown) conversation's model, thinking and recorded family, or those of `target`, and its id to
- * configure.
- */
 export function useCurrentModel(target?: ConversationId) {
-  const own = useConversation()
-  const other = useStore(() => (target === undefined ? undefined : getConversation(target)))
-  const { id, agent, loading } = other ?? own
+  const scopedOrShownConversation = useConversation()
+  const targetConversation = useStore(() =>
+    target === undefined ? undefined : getConversation(target),
+  )
+  const { id, agent, loading } = targetConversation ?? scopedOrShownConversation
   const models = useModels()
   const family = useDocOf(id, FamilyDoc)?.name
   const ref = agent.model
@@ -41,21 +38,16 @@ export function useCurrentModel(target?: ConversationId) {
   }
 }
 
-/** Run conversation `id` on `model`, picked by id: it runs as no family now. */
 export async function selectModel(model: ModelInfo, id: ConversationId | undefined) {
   await api.configure({ model: { provider: model.provider, modelId: model.id } }, id)
   await api.action(SetFamilyAction, { family: null }, { conversationId: id })
   notePick()
 }
 
-/**
- * How many models or families were picked in the picker on this page. Get ready tells the user's pick from its own
- * suggestion by it: picking the model the conversation already runs changes nothing else.
- */
-let picks = 0
+let explicitPickerChoiceCount = 0
 const pickListeners = new Set<() => void>()
 export function notePick() {
-  picks++
+  explicitPickerChoiceCount++
   for (const listener of pickListeners) listener()
 }
 export function usePicks() {
@@ -66,15 +58,11 @@ export function usePicks() {
         pickListeners.delete(listener)
       }
     },
-    () => picks,
+    () => explicitPickerChoiceCount,
   )
 }
 
-/**
- * The conversation the picker configures: the one whose toolbar or shortcut opened it, which is a scoped conversation
- * (a side chat) rather than the shown one when opened inside its scope. Undefined targets the shown conversation.
- */
-let pickerTarget: ConversationId | undefined
+let conversationThatOpenedPicker: ConversationId | undefined
 const targetListeners = new Set<() => void>()
 export function usePickerTarget() {
   return useSyncExternalStore(
@@ -84,12 +72,12 @@ export function usePickerTarget() {
         targetListeners.delete(listener)
       }
     },
-    () => pickerTarget,
+    () => conversationThatOpenedPicker,
   )
 }
 
 function setPickerTarget(target: ConversationId | undefined) {
-  pickerTarget = target
+  conversationThatOpenedPicker = target
   for (const listener of targetListeners) listener()
 }
 export function openPicker(
@@ -98,21 +86,17 @@ export function openPicker(
   setPickerTarget(actions.conversationId)
   actions.open(dialogs.picker)
 }
-/** Back to the picker after a login, still configuring the conversation the login started from. */
 export function reopenPicker(actions: Pick<UltimateActions, 'open'>) {
   actions.open(dialogs.picker)
 }
 
-/** The supported level after `current` in Pi's order, wrapping around, as Pi's Shift+Tab does. */
 export function nextThinking(current: ThinkingLevel | undefined, model: ModelInfo) {
   const levels = model.thinkingLevels
   return levels[(levels.indexOf(current ?? 'off') + 1) % levels.length]
 }
 
-/** Which provider the login dialog should open on; set just before it opens. */
 let loginProvider: string | undefined
 const listeners = new Set<() => void>()
-/** `actions.conversationId` is the conversation a model picked after this login configures. */
 export function openLogin(
   actions: Pick<UltimateActions, 'open' | 'close'> & { conversationId?: ConversationId },
   provider?: string,
@@ -135,16 +119,14 @@ export function useLoginProvider() {
   )
 }
 
-/** 128k, 1M: a context window. */
 export function formatWindow(tokens: number) {
   if (tokens >= 1_000_000) return `${+(tokens / 1_000_000).toFixed(1)}M`
   return `${Math.round(tokens / 1000)}k`
 }
 
-/** Dollars per million tokens, compact: 0.1, 2, 12.5. */
-export const price = (value: number) => (value === 0 ? '0' : String(+value.toFixed(3)))
+export const price = (dollarsPerMillionTokens: number) =>
+  dollarsPerMillionTokens === 0 ? '0' : String(+dollarsPerMillionTokens.toFixed(3))
 
-/** How a provider is configured, for labels: `stored`, `env`, … */
 export function authLabel(provider: ProviderInfo | undefined) {
   if (!provider?.status.configured) return undefined
   const { source, label } = provider.status

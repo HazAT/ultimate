@@ -1,7 +1,3 @@
-/**
- * A prompt's title in one short line: its first meaningful line without Markdown markers, cut to `max` characters.
- * A one-word line such as `## Goal` or `Task:` is a section name, not a title, so it is skipped.
- */
 export function shortTitle(prompt: string, max = 60) {
   const lines = prompt
     .split('\n')
@@ -13,6 +9,7 @@ export function shortTitle(prompt: string, max = 60) {
         .trim(),
     )
     .filter(Boolean)
-  const text = lines.find((line) => /\s/.test(line)) ?? lines[0] ?? ''
+  const isTitleRatherThanSingleWordHeading = (line: string) => /\s/.test(line)
+  const text = lines.find(isTitleRatherThanSingleWordHeading) ?? lines[0] ?? ''
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
 }

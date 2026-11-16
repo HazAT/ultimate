@@ -27,7 +27,6 @@ import { within as withinDeadline } from '../../lib/timers.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { errnoCode, ignoring, meansNone } from '../../lib/errors.ts'
 
-/** Chromium executables Playwright may have installed under `home` for `platform`, newest first. */
 export async function playwrightChromiums(
   home: string,
   platform = process.platform,
@@ -39,7 +38,6 @@ export async function playwrightChromiums(
           join(home, 'Library/Caches/ms-playwright'),
           [
             `chrome-mac-${arch}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
-            // Older Playwright releases installed their own Chromium build.
             'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
           ],
         ]
@@ -55,7 +53,6 @@ export async function browserBinary() {
     process.env.ULTIMATE_CHROMIUM,
     '/usr/bin/chromium',
     '/usr/bin/google-chrome-stable',
-    // Before Google Chrome: on a managed Mac its policy can disallow remote debugging, and it then drops every page.
     ...(await playwrightChromiums(homedir())),
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter((path): path is string => !!path)
@@ -70,7 +67,6 @@ export async function browserBinary() {
   )
 }
 
-/** The PNG's absolute path: `path` against the conversation's cwd, else a new file in the home's screenshots. */
 export function screenshotFile(home: string, cwd: string, path?: string) {
   if (path === undefined) return join(home, 'screenshots', `${Date.now()}-${randomUUID()}.png`)
   if (!path.endsWith('.png'))
@@ -80,23 +76,18 @@ export function screenshotFile(home: string, cwd: string, path?: string) {
   return resolve(cwd, path)
 }
 
-/** Each page operation's limit unless a call passes timeoutMs; a call as a whole gets four of them plus its explicit waits. */
 const stepTimeoutMs = 30_000
-/** How long an `until` step waits on Ultimate's state unless it passes timeoutMs. */
 const untilTimeoutMs = 300_000
-/** How long closing a context, or the browser after it, may take before it counts as wedged. */
 const closeTimeoutMs = 5_000
 
 function timeout(ms: number) {
   return Object.assign(new Error(`timed out after ${ms / 1000}s`), { name: 'TimeoutError' })
 }
 
-/** `work`, unless `ms` pass first; a promise Playwright never settles (evaluate has no timeout) cannot hang the call. */
 function within<T>(ms: number, work: Promise<T>, error = timeout(ms)) {
   return withinDeadline(ms, work, () => error)
 }
 
-/** The browser's process, which leads its own group, and its start time, which tells it from a later one with its pid. */
 async function browserProcess(browser: Browser) {
   const cdp = await browser.newBrowserCDPSession()
   const { processInfo } = (await cdp.send('SystemInfo.getProcessInfo')) as {
@@ -110,11 +101,7 @@ async function browserProcess(browser: Browser) {
 
 const gone = (error: unknown) => ['ESRCH', 'EPERM'].includes(errnoCode(error) ?? '')
 
-/**
- * Kill a disconnected browser's process group. A browser can drop its connection and keep running (Chrome does when
- * its policy disallows remote debugging), and Playwright never closes a disconnected browser.
- */
-function killGroup(owner: { pid: number; start: string } | undefined) {
+function killDisconnectedBrowserGroup(owner: { pid: number; start: string } | undefined) {
   if (!owner || identify(owner.pid) !== owner.start) return
   const target = groupTarget(owner.pid)
   try {
@@ -124,15 +111,17 @@ function killGroup(owner: { pid: number; start: string } | undefined) {
   }
 }
 
-async function capture(page: Page, file: string, selector?: string, fullPage = false) {
-  // Chromium 155: DOMContentLoaded can precede the page's first compositor surface, and captureScreenshot then fails
-  // with "Unable to capture screenshot". Cross a rendering update first; the first rAF itself still runs before paint.
-  await page.evaluate(
+function waitForCompositorSurface(page: Page) {
+  return page.evaluate(
     () =>
       new Promise<void>((painted) =>
         requestAnimationFrame(() => requestAnimationFrame(() => painted())),
       ),
   )
+}
+
+async function capture(page: Page, file: string, selector?: string, fullPage = false) {
+  await waitForCompositorSurface(page)
   await mkdir(dirname(file), { recursive: true })
   const target = selector ? page.locator(selector) : page
   const png = await target.screenshot({
@@ -276,8 +265,7 @@ export default function browserExtension(host: ExtensionHost) {
                     await guard(page.waitForTimeout(step.wait), step.wait)
                   else await guard(page.locator(step.wait).waitFor())
                 } else if ('send' in step || 'until' in step) {
-                  // `window.ultimate` (web/src/sdk/test-hook.ts) appears once the page's SDK has loaded.
-                  const hook = () =>
+                  const waitForLoadedSdk = () =>
                     guard(
                       page
                         .waitForFunction(() => 'ultimate' in window)
@@ -287,7 +275,7 @@ export default function browserExtension(host: ExtensionHost) {
                           )
                         }),
                     )
-                  await hook()
+                  await waitForLoadedSdk()
                   if ('send' in step)
                     value = await guard(
                       page.evaluate(
@@ -299,8 +287,7 @@ export default function browserExtension(host: ExtensionHost) {
                   else {
                     const ms = step.timeoutMs ?? untilTimeoutMs
                     const end = Date.now() + ms
-                    // The hook times out first and says what was still busy; the guard only backs it up.
-                    const wait = () =>
+                    const waitWithoutResending = () =>
                       guard(
                         page.evaluate(
                           ([condition, conversation, timeoutMs]) =>
@@ -321,25 +308,23 @@ export default function browserExtension(host: ExtensionHost) {
                         ),
                         ms,
                       )
-                    // A steer queued meanwhile ends the call with what it has, as it ends an interruptible bash call.
                     const { promise: steered, resolve: steer } = Promise.withResolvers<'steered'>()
                     const stopSteer = await watchSteer(api, context, () => steer('steered'))
                     const started = Date.now()
-                    let outcome: Awaited<ReturnType<typeof wait>> | 'steered'
+                    let outcome: Awaited<ReturnType<typeof waitWithoutResending>> | 'steered'
                     try {
                       for (;;) {
                         try {
-                          outcome = await Promise.race([wait(), steered])
+                          outcome = await Promise.race([waitWithoutResending(), steered])
                           break
                         } catch (error) {
-                          // A reload (hot reload, server swap) destroys the wait, not the sent turn: the page keeps
-                          // its sent records in sessionStorage, so waiting again in the new page is a retry, never a
-                          // resend.
-                          if (!String(error).includes('Execution context was destroyed'))
-                            throw error
+                          const pageReloadDestroyedWait = String(error).includes(
+                            'Execution context was destroyed',
+                          )
+                          if (!pageReloadDestroyedWait) throw error
                           context.abortSignal?.throwIfAborted()
                           api.output('The page reloaded; waiting again\n')
-                          await hook()
+                          await waitForLoadedSdk()
                         }
                       }
                     } finally {
@@ -398,34 +383,30 @@ export default function browserExtension(host: ExtensionHost) {
     const outcomes: string[] = []
     let isolated: BrowserContext | undefined
     const stepMs = args.timeoutMs ?? stepTimeoutMs
-    // Launching the shared browser and opening this call's page are not steps: a short timeoutMs must not fail them
-    // (a cold launch under load took seconds, and a 1 s call failed before its first step).
-    const setupMs = Math.max(stepMs, stepTimeoutMs)
+    const coldLaunchAndPageSetupMs = Math.max(stepMs, stepTimeoutMs)
     const totalMs = 4 * stepMs + waits
     let deadline = Infinity
-    /** `work` within one step's limit (plus a wait it asks for) and what is left of the call's. */
     const guard = <T>(work: Promise<T>, extraMs = 0) => {
       const left = deadline - Date.now()
       return left < stepMs + extraMs
         ? within(left, work, timeout(totalMs))
         : within(stepMs + extraMs, work)
     }
-    const abort = () => void close(isolated)
+    const abort = () => void closeContextOrRelaunchBrowser(isolated)
     try {
       const png = screenshotFile(host.home, api.env?.cwd ?? host.projectRoot, args.path)
       context.abortSignal?.throwIfAborted()
       if (!state.launched) {
         const launched: Promise<Browser> = browserBinary()
           .then(async (executablePath) => {
+            const shortSingletonSocketEnvironment = { ...process.env, TMPDIR: undefined }
             const browser = await chromium.launch({
               executablePath,
               headless: true,
               chromiumSandbox: process.env.ULTIMATE_CHROMIUM_SANDBOX !== '0',
-              // Chromium's singleton socket needs a short system temp path. Playwright still puts the profile in our TMPDIR.
-              env: { ...process.env, TMPDIR: undefined },
+              env: shortSingletonSocketEnvironment,
             })
             if (state.launched === launched) state.browser = browser
-            // Looked up beside the call, which need not wait for it. It takes milliseconds; a policy drop comes seconds in.
             const owner = browserProcess(browser).catch(meansNone)
             browser.once('disconnected', () => {
               if (state.launched === launched) {
@@ -433,7 +414,7 @@ export default function browserExtension(host: ExtensionHost) {
                 state.browser = undefined
               }
               owner
-                .then(killGroup)
+                .then(killDisconnectedBrowserGroup)
                 .catch((error: unknown) =>
                   host.notice(`Killing a disconnected browser failed: ${String(error)}`),
                 )
@@ -446,17 +427,17 @@ export default function browserExtension(host: ExtensionHost) {
           })
         state.launched = launched
       }
-      const browser = await within(setupMs, state.launched)
+      const browser = await within(coldLaunchAndPageSetupMs, state.launched)
       context.abortSignal?.throwIfAborted()
       isolated = await within(
-        setupMs,
+        coldLaunchAndPageSetupMs,
         browser.newContext({
           viewport: { width: args.width ?? 1440, height: args.height ?? 900 },
           colorScheme: args.theme,
         }),
       )
       context.abortSignal?.addEventListener('abort', abort, { once: true })
-      const page = await within(setupMs, isolated.newPage())
+      const page = await within(coldLaunchAndPageSetupMs, isolated.newPage())
       deadline = Date.now() + totalMs
       page.setDefaultTimeout(stepMs)
       page.setDefaultNavigationTimeout(stepMs)
@@ -466,11 +447,8 @@ export default function browserExtension(host: ExtensionHost) {
       })
       page.on('pageerror', (error) => outcomes.push(`Page error: ${error.message}`))
       const url = new URL(args.url ?? '', host.system().process.url).href
-      // Any Ultimate page, this UI or a preview, gets `window.ultimate` for send/until steps.
       await guard(page.addInitScript(() => sessionStorage.setItem('ultimate.driven', '1')))
       if (new URL(url).origin === new URL(host.system().process.url).origin) {
-        // Own UI: this page is detached from the shared UI state (web/src/sdk/client.ts), so its `?conversation=`
-        // and clicks never move the user's tabs; the theme is this browser's preference.
         await guard(
           page.addInitScript((theme: string | undefined) => {
             sessionStorage.setItem('ultimate.detached', '1')
@@ -482,14 +460,16 @@ export default function browserExtension(host: ExtensionHost) {
       await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
       const result = await action(page, outcomes, png, guard)
       const title = await guard(page.title())
-      // Errors name source files and lines, as dev tools show them, not positions in the bundle.
       const maps = new Map()
-      // The page's own origin, after redirects: Chromium already reached it, and a preview's frames map too.
-      const read = fetchAssets(new URL(page.url()).origin)
+      const readFromRedirectedOrigin = fetchAssets(new URL(page.url()).origin)
       outcomes.splice(
         0,
         outcomes.length,
-        ...(await guard(Promise.all(outcomes.map((outcome) => sourceFrames(outcome, read, maps))))),
+        ...(await guard(
+          Promise.all(
+            outcomes.map((outcome) => sourceFrames(outcome, readFromRedirectedOrigin, maps)),
+          ),
+        )),
       )
       context.abortSignal?.throwIfAborted()
       return {
@@ -523,25 +503,22 @@ export default function browserExtension(host: ExtensionHost) {
       }
     } finally {
       context.abortSignal?.removeEventListener('abort', abort)
-      await close(isolated)
+      await closeContextOrRelaunchBrowser(isolated)
     }
   }
 
-  /** Closes a call's context within a bounded time; a context that won't close takes the shared browser with it, so the next call launches a fresh one. */
-  async function close(isolated: BrowserContext | undefined) {
+  async function closeContextOrRelaunchBrowser(isolated: BrowserContext | undefined) {
     if (!isolated) return
     try {
       await within(closeTimeoutMs, isolated.close())
     } catch (error) {
       const browser = isolated.browser()
-      // A browser that disconnected took the context with it, and its disconnect killed it.
       if (!browser?.isConnected()) return
       host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       if (state.browser === browser) {
         state.launched = undefined
         state.browser = undefined
       }
-      // Closing kills the process too; Playwright kills one that won't close within 30 s.
       await within(closeTimeoutMs, browser.close()).catch((reason: unknown) =>
         host.notice(`Closing the wedged browser failed: ${String(reason)}`),
       )

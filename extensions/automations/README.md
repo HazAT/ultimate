@@ -89,7 +89,7 @@ edits apply after landing.
 
 ## Service and browser API
 
-`AutomationsApi` (`api.ts`, token `automations`, used with `want`) offers `create(args)` (`subscribers` stand in for a
+`AutomationsApi` (`api.ts`, token `automations`, core tier: consumers `need` it) offers `create(args)` (`subscribers` stand in for a
 caller; `key` makes it safe to retry), `delete`, `resume`, `pause`, `run` and `status`, each returning the record with
 `alive`. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
 

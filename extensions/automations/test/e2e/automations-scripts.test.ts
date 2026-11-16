@@ -120,7 +120,7 @@ it('starts a prompt run from script FIRE with its payload', async () => {
 })
 
 it('delivers FIRE once, investigates exits only in the owning agent, recovers, and escalates through Messages', async () => {
-  const { root, userHome, home, options, app: initial } = await fixture()
+  const { userHome, home, options, app: initial } = await fixture()
   let app = initial
   const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
   const invoke = (action: string, args: JsonValue = null) =>
@@ -278,28 +278,6 @@ it('delivers FIRE once, investigates exits only in the owning agent, recovers, a
   expect(
     (await entries(caller.id, 'automations.fired')).map((e) => (e.data as { text: string }).text),
   ).toEqual(['done', 'recovered', 'tick', 'resumed'])
-
-  const disabled = (await invoke('create', {
-    name: 'Watch',
-    ask: 'Stop with the optional extension',
-  })) as Automation
-  await script(disabled.id, 'sleep 60')
-  const running = (await invoke('resume', { id: disabled.id })) as Automation
-  await mkdir(join(root, '.ultimate'), { recursive: true })
-  await writeFile(
-    join(root, '.ultimate/settings.json'),
-    JSON.stringify({ extensions: { disable: ['automations'] } }),
-  )
-  await until(() => app.extensions.info().some((e) => e.name === 'automations' && !e.enabled))
-  await until(() => {
-    try {
-      process.kill(running.script!.pid!, 0)
-      return false
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true
-      throw error
-    }
-  })
 })
 
 it('escalates on the third failure in a row, and when its watcher ends a turn without repairing', async () => {

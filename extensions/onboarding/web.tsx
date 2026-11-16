@@ -37,11 +37,20 @@ import { StartEntry, ChoiceEntry } from './entries.ts'
 
 function useIsolation() {
   const workspaces = useExtensions().some((extension) => extension.name === 'workspaces')
-  // A run may have set up Git: read again when one ends.
   const busy = useConversation((conversation) => conversation.busy)
-  const [runs, setRuns] = useState({ busy, ended: 0 })
-  if (busy !== runs.busy) setRuns({ busy, ended: runs.ended + (busy ? 0 : 1) })
-  const isolation = useAction(IsolationAction, null, { enabled: workspaces, on: runs.ended })
+  const [gitSetupRuns, setGitSetupRuns] = useState({
+    busy,
+    ended: 0,
+  })
+  if (busy !== gitSetupRuns.busy)
+    setGitSetupRuns({
+      busy,
+      ended: gitSetupRuns.ended + (busy ? 0 : 1),
+    })
+  const isolation = useAction(IsolationAction, null, {
+    enabled: workspaces,
+    on: gitSetupRuns.ended,
+  })
   useEvent('onboarding:git', () => {
     if (workspaces) void isolation.refetch()
   })
@@ -57,7 +66,6 @@ function Onboarding() {
   const status = useAction(StatusAction)
   const ui = useUltimate()
   const [finished, setFinished] = useState(false)
-  // Existing panel/start-page entry points now ask @ultimate too; no setup dialogs remain.
   const [projectOpen, setProjectOpen] = useDialog(projectDialog)
   const [gitOpen, setGitOpen] = useDialog(gitDialog)
   const [again, setAgain] = useDialog(firstRunDialog)
@@ -118,7 +126,6 @@ function SetupLink({
   const [error, setError] = useState<string>()
   const click = async () => {
     if (busy) return
-    // With onboarding off, the decision is the user's own: the Extensions panel shows it.
     if (off) return ui.openPanel('extensions')
     setBusy(true)
     try {
@@ -152,13 +159,11 @@ function SetupLink({
     </Tooltip>
   )
 }
-/** Dismissing Start here quiets the setup reminders too; ⌘K Get ready… and the Extensions panel still reach them. */
 const useDismissed = () => useDocOf(ROOT, StartsDoc)?.dismissed === true
 const useOff = () => useAction(StatusAction).data?.off === true
 function Undecided() {
   const project = useSystem()?.project
   const dismissed = useDismissed()
-  // With onboarding off nothing else asks, so an undecided `.ultimate/` keeps its reminder.
   const off = useOff()
   return (off || !dismissed) && project?.config && project.decision === null ? (
     <SetupLink card="project" off={off}>
@@ -242,7 +247,6 @@ function ChoiceCard({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** Whether @ultimate has said anything to the user since `entry`: text, or a message call. */
 const spokeSince = (transcript: readonly EntryRecord[], entry: EntryRecord) =>
   transcript.some((later) => {
     const message = later.model?.[0]
@@ -257,10 +261,6 @@ const spokeSince = (transcript: readonly EntryRecord[], entry: EntryRecord) =>
     )
   })
 
-/**
- * The start of onboarding or the walkthrough: while @ultimate prepares its first message, a card that says what is
- * happening; afterwards a quiet record of when it started.
- */
 function StartCard({
   entry,
   title,
@@ -269,7 +269,6 @@ function StartCard({
 }: {
   entry: EntryRecord
   title: string
-  /** What @ultimate is doing until its first message. */
   preparing: string
   instructions?: string
 }) {
@@ -310,12 +309,9 @@ function Instructions({ text }: { text: string }) {
 
 export default defineWebExtension({
   tools: { setup: attention(SetupCall) },
-  // Until onboarding has run, @ultimate's composer carries the card that starts it.
   composer: StartComposer,
   entries: {
     'onboarding.choice': ChoiceCard,
-    // Marked `attention` so the start stays in @ultimate's thread instead of folding into the stretch before its first
-    // message: it is all a newcomer sees while that first turn runs (#554687).
     'onboarding.start': attention(
       renderEntry(StartEntry, ({ entry }) => (
         <StartCard

@@ -1,10 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { useExtensionUiState, useUltimate } from '@/sdk'
 
-/** The spec on screen, in durable UI state: it survives reloads and follows every tab, as the surface does. */
 export const useSpec = () => useExtensionUiState<string>('spec', 'uncommitted')
 
-/** A line to scroll to and mark: `line` of `file`, on the new side unless `side` says old. */
 export type ReviewTarget = { file: string; line: number; side?: 'old' | 'new' }
 
 type Request = { spec: string; at?: ReviewTarget }
@@ -35,51 +33,43 @@ function fromAddress(): Request | undefined {
   }
 }
 
-// A review someone asked for and the link has not shown yet: the page's `?review=` first, then `openReview` calls.
-let requested = fromAddress()
-// The line the surface should scroll to, until it has.
-let target: ReviewTarget | undefined
+let pendingReviewRequest = fromAddress()
+let unreachedLineTarget: ReviewTarget | undefined
 
-/** Show the Review surface at `spec` (see `ReviewKind` in refs.ts), scrolled to `at` when given. */
 export function openReview(spec: string, at?: ReviewTarget) {
-  requested = { spec, ...(at && { at }) }
+  pendingReviewRequest = { spec, ...(at && { at }) }
   notify()
 }
 
-/** The line the surface was asked to show, until `reachedTarget`. */
-export const useTarget = () => useSyncExternalStore(subscribe, () => target)
+export const useTarget = () => useSyncExternalStore(subscribe, () => unreachedLineTarget)
 
-/** The surface scrolled to the target line, or found it cannot. */
 export function reachedTarget() {
-  target = undefined
+  unreachedLineTarget = undefined
   notify()
 }
 
-/**
- * Mounted at the root: shows a requested review, and keeps `?review=<spec>` in the address while Review is on screen,
- * so the address can be shared. It replaces the history entry: switching surfaces adds none.
- */
 export function ReviewLink() {
-  const wanted = useSyncExternalStore(subscribe, () => requested)
+  const wanted = useSyncExternalStore(subscribe, () => pendingReviewRequest)
   const [spec, setSpec] = useSpec()
   const { surface, showSurface } = useUltimate()
   useEffect(() => {
     if (wanted === undefined) return
-    requested = undefined
-    target = wanted.at
+    pendingReviewRequest = undefined
+    unreachedLineTarget = wanted.at
     setSpec(wanted.spec)
     showSurface('review')
     notify()
   }, [wanted, setSpec, showSurface])
   useEffect(() => {
-    if (requested !== undefined) return
+    if (pendingReviewRequest !== undefined) return
     const url = new URL(location.href)
     const shown = surface === 'review' ? spec : null
     if (url.searchParams.get('review') === shown) return
     if (shown === null) url.searchParams.delete('review')
     else url.searchParams.set('review', shown)
-    // A line belongs to the review it was asked with: a new spec or another surface drops it.
-    for (const name of ['file', 'line', 'side']) url.searchParams.delete(name)
+
+    const previousSpecLineParameters = ['file', 'line', 'side']
+    for (const name of previousSpecLineParameters) url.searchParams.delete(name)
     history.replaceState(history.state, '', url)
   }, [surface, spec])
   return null

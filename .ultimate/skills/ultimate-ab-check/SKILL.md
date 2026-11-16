@@ -12,7 +12,8 @@ under test and two on its parent rule out crashes and obvious breakage. They are
 
 - **Under test:** the committed head of the branch, as a full sha (`git rev-parse <sha>`). It must be reachable from
   `~/Projects/ultimate` (`git cat-file -t <sha>` there): worktree commits are.
-- **Baseline:** its parent on main. Earlier `recipe-v2` runs of the same baseline can count; name their run ids.
+- **Baseline:** its parent on main. Earlier runs of the same baseline count only when they ran on the same
+  scenario sha (the run's `scenario@<sha>` in `pnpm eval report`); otherwise run both sides fresh. Name the run ids.
 - A head that moves after the A/B (review fixes) keeps the A/B when the new commits do not touch what it exercised;
   say so in the report.
 
@@ -25,23 +26,20 @@ A coordinator sends @ultimate the two shas, a few lines on what changed, and wha
 const text = `Request from Ultimate's @ultimate (A/B before a core change lands). A/B on ~/Projects/ultimate:
 - Under test: <full sha> (<one line on the change>).
 - Baseline: <full sha> (main).
-- recipe-v2, default setup, --repeat 2 each.
-Watch most closely: <paths the change touches>. I'll read runs/ myself; no reply needed when you start.`
-await ultimate.tell({ project: 'ultimate-eval', text, reply: false })
-await tools.automation({
-  action: 'create',
-  name: 'Check A/B for #<branch>',
-  schedule: 'in 25m',
-  subscribers: ['@ultimate'],
-})
+- recipe-v2, default setup, --repeat 2 each. For a change to automations or message routing, add (or use instead)
+  `--scenario recipe-reminder`: it creates a reminder automation, checks it fires and reaches the user, and scores
+  unanswered and duplicate board messages (about 3 min and $0.50 a run).
+Reply with the run ids and their results when they are done.`
+await ultimate.tell({ project: 'ultimate-eval', text })
 ```
 
-`reply: false` because a "started" answer would use up the reply. The check-back automation is the guarantee: a run
-takes about 6 minutes, four in a row about 25. Then end the turn.
+Then end the turn. The reply is the wait: ultimate-eval's "started" answer arrives as a note, the sidebar shows
+`waits on ultimate-eval · run 2/4`, and the result wakes you once (four runs take about 25 minutes). If ultimate-eval
+cannot answer (not running, its work dropped), a failed reply wakes you with the cause.
 
 ## 3. Read the results
 
-When the check-back wakes you, list the newest runs and read each `result.json`:
+Check the reply against the run files: list the newest runs and read each `result.json`:
 
 ```sh
 cd ~/Projects/ultimate-eval/runs && ls -d 2026* | tail -6
@@ -49,10 +47,9 @@ for d in <run ids>; do echo "$d $(jq -c '{pass,status,min:.minutes,stuck:.failur
 ```
 
 A run folder without `result.json` is still running only while its `live.json` names a live `pid`
-(`kill -0 $(jq .pid $d/live.json)`): then set another check-back. Without one it was abandoned: report it as
-incomplete, never wait on it. `pnpm eval report` in
-`~/Projects/ultimate-eval` prints the passes/N, median minutes and cost matrix per commit. For a failure, `failure`
-says where it stood and `transcripts/` holds every conversation. Delete the check-back automation once it is read.
+(`kill -0 $(jq .pid $d/live.json)`). Without one it was abandoned: report it as incomplete, never wait on it.
+`pnpm eval report` in `~/Projects/ultimate-eval` prints the passes/N, median minutes and cost matrix per commit. For a
+failure, `failure` says where it stood and `transcripts/` holds every conversation.
 
 ## 4. Report
 

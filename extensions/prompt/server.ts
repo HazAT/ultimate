@@ -1,5 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import type { ConversationId, PromptInput, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
@@ -20,16 +21,16 @@ import { discoverAgents } from '../../lib/agents.ts'
 import { git } from '../../lib/git.ts'
 import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
-import { Standing } from '../subagents/api.ts'
+import { Profile, Standing } from '../subagents/api.ts'
 import type { BuildNote, Landing } from './refs.ts'
 
 export const order = -100
 
-/**
- * The build a conversation's last run started on and the clone's commit then (`head`); a fork starts from its parent's.
- * For the primary agent also the hashes of the instruction files it last saw (`files`, path → sha256 prefix).
- */
-const SeenBuild = defineDoc<{ id?: string; head?: string; files?: Record<string, string> }>({
+const LastRunBuildAndInstructionHashes = defineDoc<{
+  id?: string
+  head?: string
+  files?: Record<string, string>
+}>({
   kind: 'prompt.build',
   checkpointWhen: () => false,
   version: 1,
@@ -38,12 +39,8 @@ const SeenBuild = defineDoc<{ id?: string; head?: string; files?: Record<string,
   fork: 'current',
   initial: () => ({}),
 })
-export const docs = [SeenBuild]
+export const docs = [LastRunBuildAndInstructionHashes]
 
-/**
- * What changed since build `seen`: the changes of every later build in this process, or nothing when it is older, and
- * what landed meanwhile.
- */
 export function buildNote(
   build: ReturnType<ExtensionHost['build']>,
   seen: string,
@@ -61,11 +58,6 @@ export function buildNote(
   )
 }
 
-/**
- * The landings in the clone from commit `from` to `to`, newest first: one row per branch, named by its title, else by
- * its newest commit's subject. A commit names its conversation by trailer, a lander merge in its subject; a
- * subagent's commit counts for the branch that owns it. A commit made outside Ultimate is a row of its own.
- */
 export async function landings(
   cwd: string,
   from: string,
@@ -90,7 +82,6 @@ export async function landings(
       parseConversationId(
         Number(trailer?.trim()) || Number(/ from #(\d+) into /.exec(subject)?.[1]),
       ) || undefined
-    // An owned conversation (a worker, a designer) worked for its owner's branch.
     for (let owner = id && byId.get(id)?.parentConversationId; owner;) {
       id = owner
       owner = byId.get(owner)?.parentConversationId
@@ -107,19 +98,19 @@ export async function landings(
   return [...rows.values()]
 }
 
+const noLandingsFromUnavailableHistory = () => []
+
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16)
 
-/** Ultimate's own docs the primary agent reads on demand, by absolute path: `AGENTS.md`, `docs/*.md`, `agents/*.md`. */
 async function cloneDocs(ultimateRoot: string, files: Record<string, string>) {
-  const listed = async (folder: string) =>
-    // A missing folder lists nothing.
+  const markdownPathsOrNone = async (folder: string) =>
     (await readdir(join(ultimateRoot, folder)).catch(() => [] as string[]))
       .filter((name) => name.endsWith('.md'))
       .map((name) => join(ultimateRoot, folder, name))
   const paths = [
     join(ultimateRoot, 'AGENTS.md'),
-    ...(await listed('docs')),
-    ...(await listed('agents')),
+    ...(await markdownPathsOrNone('docs')),
+    ...(await markdownPathsOrNone('agents')),
   ]
   for (const path of paths) {
     const text = await readFile(path, 'utf8').catch(ignoring(isMissing))
@@ -127,10 +118,6 @@ async function cloneDocs(ultimateRoot: string, files: Record<string, string>) {
   }
 }
 
-/**
- * `path` as the agent knows it: relative to the project, or to the clone (`Ultimate/…` when the clone is another
- * folder), else with the home as `~`.
- */
 function shown(host: ExtensionHost, path: string) {
   const inProject = relative(host.projectRoot, path)
   if (!inProject.startsWith('..')) return inProject
@@ -139,11 +126,6 @@ function shown(host: ExtensionHost, path: string) {
   return path.startsWith(host.userHome) ? `~${path.slice(host.userHome.length)}` : path
 }
 
-/**
- * For the primary agent (@ultimate): re-apply its definition's instructions when they
- * differ from the conversation's, and name the instruction files that changed since its last run. Other agents keep
- * the instructions they started with.
- */
 async function instructionChanges(
   host: ExtensionHost,
   tx: Tx,
@@ -160,46 +142,44 @@ async function instructionChanges(
     host.modelRuntime,
   )
   const definition = definitions.find((candidate) => candidate.name === name)
-  // Messages deliveries refresh a standing agent; a typed input did not, so an updated definition waited for a message.
-  const reapplied =
+  const definitionDiffersFromConversation =
     definition !== undefined &&
     (await tx.doc(AgentDoc, conversationId)).instructions !== definition.instructions
-  if (reapplied) await configure(tx, conversationId, { instructions: definition.instructions })
-  // Keyed by absolute path, so the project's and the clone's AGENTS.md stay apart (and are one file when the clone is
-  // the project).
-  const files: Record<string, string> = {}
-  await cloneDocs(host.ultimateRoot, files)
+  if (definitionDiffersFromConversation)
+    await configure(tx, conversationId, { instructions: definition.instructions })
+  const hashesByAbsolutePath: Record<string, string> = {}
+  await cloneDocs(host.ultimateRoot, hashesByAbsolutePath)
   for (const file of loadProjectContextFiles({
     cwd: host.projectRoot,
     agentDir: join(host.userHome, '.ultimate'),
   }))
-    files[file.path] = digest(file.content)
-  // The file was just parsed; one removed since then hashes as empty and counts as changed.
+    hashesByAbsolutePath[file.path] = digest(file.content)
   const own = definition ? [definition.path, ...(definition.overlays ?? [])] : []
-  for (const path of own) files[path] = digest(await readFile(path, 'utf8').catch(() => ''))
+  const removedFileText = () => ''
+  for (const path of own)
+    hashesByAbsolutePath[path] = digest(await readFile(path, 'utf8').catch(removedFileText))
   const previous = seen.files
-  seen.files = files
-  // The first run records what it saw; afterwards every added, changed or removed file counts.
+  seen.files = hashesByAbsolutePath
   const changed = previous
-    ? [...new Set([...Object.keys(previous), ...Object.keys(files)])]
-        .filter((path) => previous[path] !== files[path])
+    ? [...new Set([...Object.keys(previous), ...Object.keys(hashesByAbsolutePath)])]
+        .filter((path) => previous[path] !== hashesByAbsolutePath[path])
         .toSorted()
     : []
-  // The definition's files (its own and any overlays) are named as instructions when they changed; a text re-applied
-  // here with no file changed since the last run (a Messages delivery applied it already) names the definition's own
-  // file. An overlay removed since the last run is found by its file name.
   const ownFile = `/agents/${name}.md`
   const touched = changed.filter((path) => own.includes(path) || path.endsWith(ownFile))
-  const instructions = (touched.length || !reapplied ? touched : own.slice(0, 1)).map((path) =>
-    path in files ? shown(host, path) : `${shown(host, path)} (removed)`,
+  const changedOrReappliedDefinitionPaths =
+    touched.length || !definitionDiffersFromConversation ? touched : own.slice(0, 1)
+  const instructions = changedOrReappliedDefinitionPaths.map((path) =>
+    path in hashesByAbsolutePath ? shown(host, path) : `${shown(host, path)} (removed)`,
   )
   const named = changed
     .filter((path) => !touched.includes(path))
-    .map((path) => (path in files ? shown(host, path) : `${shown(host, path)} (removed)`))
+    .map((path) =>
+      path in hashesByAbsolutePath ? shown(host, path) : `${shown(host, path)} (removed)`,
+    )
   return { instructions, docs: named }
 }
 
-/** The note's text: what changed, so the agent knows its instructions or Ultimate's docs moved. */
 export function instructionNote(changes: { instructions: string[]; docs: string[] }) {
   return [
     changes.instructions.length > 0 &&
@@ -211,17 +191,35 @@ export function instructionNote(changes: { instructions: string[]; docs: string[
     .join('\n')
 }
 
+async function definitionSkills(
+  host: ExtensionHost,
+  input: PromptInput,
+  context: Context,
+): Promise<string[] | undefined> {
+  const profile = await input.read.snapshot(Profile, input.conversationId, context)
+  if (profile?.adhoc) return undefined
+  const name =
+    profile?.definition ??
+    (await input.read.snapshot(host.metadata, input.conversationId, context))?.label
+  if (!name) return undefined
+  const { definitions } = await discoverAgents(
+    host.ultimateRoot,
+    host.projectRoot,
+    host.userHome,
+    host.modelRuntime,
+  )
+  return definitions.find((definition) => definition.name === name)?.skills
+}
+
 export default function prompt(host: ExtensionHost) {
   return defineExtension({
     name: 'prompt',
     hooks: [
       // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-      // The build is a note on the input that starts a run, not a system-prompt section: every hot reload changed that
-      // section, and a changed system prompt rewrites the whole prompt cache. A conversation's first run records it.
       hook(GenerationTask, {
-        beforeInput: async (_input, { tx, conversationId }) => {
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const build = host.build()
-          const seen = await tx.doc(SeenBuild, conversationId)
+          const seen = await tx.doc(LastRunBuildAndInstructionHashes, conversationId)
           const changes = await instructionChanges(host, tx, conversationId, seen)
           const previous = seen.id
           seen.id = build.id
@@ -235,10 +233,7 @@ export default function prompt(host: ExtensionHost) {
                 seen.head,
                 head,
                 host.conversations(),
-              ).catch(
-                // A seen commit no longer in the clone (history rewritten) names nothing.
-                () => [],
-              )
+              ).catch(noLandingsFromUnavailableHistory)
             if (head) seen.head = head
           }
           const text = [built && buildNote(build, previous, landed), instructionNote(changes)]
@@ -330,23 +325,26 @@ export default function prompt(host: ExtensionHost) {
           )
           .join('\n\n'),
       ),
-      section('skills', (input) => {
-        const skills = host.skills(input.env?.cwd ?? input.agent.cwd ?? host.projectRoot)
-        // As Pi's buildSystemPromptSections: name the tool the agent can load a skill with, and list none without one.
+      section('skills', async (input, context) => {
         const names = new Set((input.agent.tools ?? []).map((tool) => tool.name))
         const reader = (['read', 'bash'] as const).find((name) => names.has(name))
-        const listed = reader ? formatSkillsForPrompt(skills, reader).trim() : ''
+        if (!reader) return undefined
+        const skills = host.skills(input.env?.cwd ?? input.agent.cwd ?? host.projectRoot)
+        const allowed = await definitionSkills(host, input, context)
+        const listed = formatSkillsForPrompt(
+          allowed ? skills.filter((skill) => allowed.includes(skill.name)) : skills,
+          reader,
+        ).trim()
         return listed
           ? `${listed}\nWhen a task matches a listed skill, read it before you start; it carries the steps the project expects.`
           : undefined
       }),
-      // Empty, not undefined, when nothing is off: the slot keeps its place, so coming back patches only this section
-      // (Pi re-sends every section when one would land out of order, #573861).
       section(
         'building_blocks',
         () => {
           const off = host.extensions().filter((extension) => !extension.enabled)
-          if (!off.length) return ''
+          const emptySectionPreservingPromptOrder = ''
+          if (!off.length) return emptySectionPreservingPromptOrder
           return [
             '<building_blocks>',
             `Available but off building blocks live in ${host.ultimateRoot}/extensions/:`,

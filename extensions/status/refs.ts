@@ -6,6 +6,12 @@ export type Status = {
   /** When this answer was made, epoch ms. */
   at: number
   /**
+   * Optional project progress from the first enabled extension's `projectProgress {}` action that returns a valid result.
+   * A nonempty label, safe integer index from 0 through total, and positive safe integer total. Null, invalid
+   * results and errors are absent; extensions without progress need no action.
+   */
+  progress?: { label: string; index: number; total: number }
+  /**
    * The clone Ultimate runs from, from Update's last check (origin is fetched hourly, never per call). Absent while
    * Update is off, on a preview, or cannot read the clone (origin has no default branch).
    */

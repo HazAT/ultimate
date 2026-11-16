@@ -3,21 +3,15 @@ import type { CSSProperties } from 'react'
 import { cn } from '@/sdk'
 import type { GithubRepo } from '../workspaces/refs.ts'
 
-/**
- * The palette other projects draw from: muted cool hues from sage through teal to blue, one family of colour. Warm hues
- * are left out, so nothing reads as amber (waiting on the user) or red (failed), and so is violet: purple is Ultimate's.
- */
-const HUES = [145, 162, 179, 196, 213, 230, 247]
-/** Ultimate's own family takes the brand's hue, a little more saturated than the rest. */
-const BRAND = { hue: 300, chroma: 0.11 }
-const CHROMA = 0.06
-/** Shades a project takes next to others of its family: lightness steps, with a nudge of hue. */
-const SHADES = [
-  { l: 0, h: 0 },
-  { l: -0.1, h: 8 },
-  { l: 0.09, h: -8 },
-  { l: -0.17, h: 14 },
-  { l: 0.15, h: -14 },
+const UNRESERVED_COOL_HUES = [145, 162, 179, 196, 213, 230, 247]
+const ULTIMATE_BRAND_COLOUR = { hue: 300, chroma: 0.11 }
+const PROJECT_CHROMA = 0.06
+const SIBLING_LIGHTNESS_AND_HUE_OFFSETS = [
+  { lightnessOffset: 0, hueOffset: 0 },
+  { lightnessOffset: -0.1, hueOffset: 8 },
+  { lightnessOffset: 0.09, hueOffset: -8 },
+  { lightnessOffset: -0.17, hueOffset: 14 },
+  { lightnessOffset: 0.15, hueOffset: -14 },
 ]
 
 const hash = (text: string) => {
@@ -26,14 +20,8 @@ const hash = (text: string) => {
   return value
 }
 
-/** The family a name belongs to: its first word, so `ultimate`, `ultimate-eval` and `ultimate-fleet` share one. */
 export const stemOf = (name: string) => name.toLowerCase().split(/[-_.\s]+/)[0] ?? ''
 
-/**
- * A colour for a name (a project's folder; a machine's name works too), the same on every page: its family's hue and a
- * neighbouring shade of it, as oklch parts. The `ultimate` family is purple. The stem itself takes the base shade; a
- * sibling (`ultimate-eval`) the next by its place among the `family` given, sorted, so siblings never share one.
- */
 export function colourOf(name: string, family: readonly string[] = []) {
   const key = name.toLowerCase()
   const stem = stemOf(key)
@@ -42,32 +30,30 @@ export function colourOf(name: string, family: readonly string[] = []) {
     .toSorted()
   const place = siblings.indexOf(key)
   const shade =
-    SHADES[
+    SIBLING_LIGHTNESS_AND_HUE_OFFSETS[
       key === stem
         ? 0
-        : 1 + ((place >= 0 ? place : hash(key.slice(stem.length))) % (SHADES.length - 1))
+        : 1 +
+          ((place >= 0 ? place : hash(key.slice(stem.length))) %
+            (SIBLING_LIGHTNESS_AND_HUE_OFFSETS.length - 1))
     ]
   const brand = stem === 'ultimate'
   return {
-    hue: (brand ? BRAND.hue : HUES[hash(stem) % HUES.length]) + shade.h,
-    chroma: brand ? BRAND.chroma : CHROMA,
-    /** Added to the theme's base lightness. */
-    lightness: shade.l,
+    hue:
+      (brand
+        ? ULTIMATE_BRAND_COLOUR.hue
+        : UNRESERVED_COOL_HUES[hash(stem) % UNRESERVED_COOL_HUES.length]) + shade.hueOffset,
+    chroma: brand ? ULTIMATE_BRAND_COLOUR.chroma : PROJECT_CHROMA,
+    lightness: shade.lightnessOffset,
   }
 }
 
-/**
- * A project's swatch: a slim bar of its colour, no letters. The project rail stacks them into one quiet column; the
- * sidebar's header leads with the same one, so a project looks alike in both.
- */
 export function ProjectSwatch({
   folder,
   family,
   className,
 }: {
-  /** The project's folder name: `omarchy-config`. */
   folder: string
-  /** Every project's folder name shown beside it, so siblings of one stem get distinct shades. */
   family?: readonly string[]
   className?: string
 }) {
@@ -85,7 +71,6 @@ export function ProjectSwatch({
   )
 }
 
-/** GitHub's mark, which lucide does not draw. */
 export function GithubMark({ className }: { className?: string }) {
   return (
     <svg aria-hidden className={className} fill="currentColor" viewBox="0 0 16 16">
@@ -94,7 +79,6 @@ export function GithubMark({ className }: { className?: string }) {
   )
 }
 
-/** A repository's `owner/repo` with GitHub's mark and, when known, a lock for a private one. */
 export function RepoLabel({
   repo,
   className,

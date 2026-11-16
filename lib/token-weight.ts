@@ -1,23 +1,17 @@
 import { git } from './git.ts'
 import { meansNone } from './errors.ts'
 
-/**
- * Token weight: what the repository costs an agent that reads it. Estimated as bytes ÷ 4 from git blob sizes, so
- * nothing is read; against OpenAI's o200k tokenizer it is within 1% over the whole repository and about ±10–30% per file
- * (prose high, code close), measured in #529388. Pi's context estimate uses characters ÷ 3.5 instead.
- */
-export const tokensOf = (bytes: number) => Math.round(bytes / 4)
+const measuredBytesPerEstimatedToken = 4
+export const tokensOf = (bytes: number) => Math.round(bytes / measuredBytesPerEstimatedToken)
 
 export const areas = ['core', 'extensions', 'tests', 'docs', 'skills', 'agents', 'other'] as const
 export type Area = (typeof areas)[number]
 
-/** The lockfile is generated and never read; images, fonts and sounds are not text. */
-const excluded = (path: string) =>
+const generatedOrNonText = (path: string) =>
   path === 'pnpm-lock.yaml' || /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|mp3|wav|ogg|svg)$/i.test(path)
 
-/** The area a tracked file weighs in, or undefined when it does not count. */
 export function areaOf(path: string): Area | undefined {
-  if (excluded(path)) return undefined
+  if (generatedOrNonText(path)) return undefined
   if (/(^|\/)(test|tests|e2e)\/|\.test\.tsx?$/.test(path)) return 'tests'
   if (path.startsWith('agents/')) return 'agents'
   if (/(^|\/)skills\//.test(path)) return 'skills'
@@ -27,21 +21,19 @@ export function areaOf(path: string): Area | undefined {
   return 'other'
 }
 
-/** Every counted file at `rev` with its size in bytes. */
 export async function filesAt(cwd: string, rev: string) {
   const out = await git({ cwd, maxBuffer: 16 * 1024 * 1024 }, 'ls-tree', '-r', '-l', rev)
   const files: { path: string; area: Area; bytes: number }[] = []
   for (const line of out.split('\n')) {
-    // `<mode> blob <sha> <size>\t<path>`; submodules have size `-`.
-    const [meta, path] = line.split('\t')
-    const bytes = Number(meta?.split(/\s+/)[3])
+    const [blobMetadata, path] = line.split('\t')
+    const bytes = Number(blobMetadata?.split(/\s+/)[3])
     const area = path && areaOf(path)
-    if (area && Number.isFinite(bytes)) files.push({ path, area, bytes })
+    const numericSizeExcludesSubmodules = Number.isFinite(bytes)
+    if (area && numericSizeExcludesSubmodules) files.push({ path, area, bytes })
   }
   return files
 }
 
-/** Lines and estimated tokens `base..sha` adds and removes, over counted files only. Lists every file at both revisions. */
 export async function weightDelta(cwd: string, base: string, sha: string) {
   const [before, after, numstat] = await Promise.all([
     filesAt(cwd, base),
@@ -52,19 +44,15 @@ export async function weightDelta(cwd: string, base: string, sha: string) {
   let added = 0
   let removed = 0
   for (const line of numstat.split('\n')) {
-    // Binary files count `-` lines.
     const [plus, minus, path] = line.split('\t')
     if (!path || !areaOf(path)) continue
-    added += Number(plus) || 0
-    removed += Number(minus) || 0
+    const addedTextLinesOrBinaryZero = Number(plus) || 0
+    const removedTextLinesOrBinaryZero = Number(minus) || 0
+    added += addedTextLinesOrBinaryZero
+    removed += removedTextLinesOrBinaryZero
   }
   return { added, removed, tokens: tokensOf(total(after)) - tokensOf(total(before)) }
 }
 
-/**
- * `weightDelta` for a landing card, or undefined when it cannot be taken. The weight is decoration, so a repository too
- * large to list (a monorepo whose tree listing passes `filesAt`'s buffer: 2.3 million files here) leaves it out and the
- * landing goes ahead, instead of failing on it.
- */
 export const landingWeight = (cwd: string, base: string, sha: string) =>
   weightDelta(cwd, base, sha).catch(meansNone)
