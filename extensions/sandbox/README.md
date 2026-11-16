@@ -36,7 +36,7 @@ nothing it starts outlives the call. Paths are the same inside and out:
 
 - read-only: `/usr` (and the `/bin`, `/sbin`, `/lib`, `/lib64` links into it), a few `/etc` files (certificates,
   resolver, passwd, group, locale), the `bin` and `lib` folders of the Node install that runs Ultimate (a Node
-  installed in a folder that holds the home folder, such as `~/.local`, is refused);
+  installed under a prefix that holds the home folder, such as `/home` or `/`, is refused);
 - read-write: the worktree, except its `.git` pointer file, which is mounted read-only on top; a private `HOME` and
   `TMPDIR` under `<home>/sandbox/<conversation>/`, kept across calls. `HOME` holds a `.gitconfig` with the host's
   `user.name` and `user.email` only.
@@ -65,10 +65,10 @@ After every call the host fetches only the workspace branch back (`git fetch` wi
 every new object and refuses collisions) and, when its tip moved, resets the real worktree's index to it, in the
 workspace source's write queue (`WorkspacesApi.serialize`). The bash calls of one conversation run one at a time.
 `coding-tools` reads the commit log a sandboxed call wrote, so it keeps only lines naming the call's own repository
-(found by the host) and full object ids. A fetch that
-fails is reported at the end of the call's output; the real repository keeps its last good tip. Stashes and other refs
-stay in the shadow. The shadow lives in `<home>/sandbox/<conversation>/git`; leftovers of conversations without a ready
-workspace are removed when the extension opens.
+(found by the host) and full object ids. A fetch that fails is reported at the end of the call's output; the real
+repository keeps its last good tip. Stashes and other refs stay in the shadow. The shadow lives in
+`<home>/sandbox/<conversation>/git`; leftovers of conversations without a workspace are removed when the extension
+opens.
 
 ## Network
 

@@ -217,8 +217,9 @@ async function madeCommits(
   for (const line of log.split('\n')) {
     const [kind, sha, branch, toplevel, common, extra, reflog] = line.split('\t')
     if (!repository || common !== repository || !objectId.test(sha ?? '')) continue
-    if (kind === 'rewrite') rewrites.push([sha, objectId.test(extra ?? '') ? extra : ''])
-    else if (kind === 'merge' && reflog?.endsWith(': Fast-forward')) continue
+    if (kind === 'rewrite') {
+      if (objectId.test(extra ?? '')) rewrites.push([sha, extra])
+    } else if (kind === 'merge' && reflog?.endsWith(': Fast-forward')) continue
     else if ((kind === 'commit' || kind === 'merge') && !made.has(sha)) {
       made.set(sha, { sha, ...(branch ? { branch } : {}), toplevel, common })
       if (kind === 'merge') merges.set(sha, extra ?? '')
