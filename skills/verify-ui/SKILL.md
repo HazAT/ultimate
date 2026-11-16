@@ -23,7 +23,7 @@ Never claim a UI change works without an image of it.
   `[...document.querySelectorAll('[data-entry-id]')].length`. Statements or `await` go in an async IIFE:
   `(async () => { const r = await fetch('/api/x'); return r.status })()`. A bare `const x = …; return x` fails.
 - Scope selectors to the card or panel under test: `[data-entry-id="42"] button:has-text("Retry")`, not
-  `button:has-text("Retry")`, which clicks the first match anywhere on the page.
+  `button:has-text("Retry")`, which fails when it matches several.
 - Wait on Ultimate's state, never a guessed time: `{send: 'prompt'}` submits without the composer, then
   `{until: 'idle'}` returns when that turn is done, `{until: 'quiet'}` when nothing runs (branches and subagents
   included), `{until: {entry: 'pi.tool-result'}}` or `{until: {event: 'workspaces.landed', where: {…}}}` when that
