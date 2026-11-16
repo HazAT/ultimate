@@ -49,6 +49,7 @@ type CheckHost = Pick<
   | 'userHome'
   | 'modelRuntime'
   | 'projectSettings'
+  | 'projectSetup'
   | 'extensions'
   | 'need'
   | 'want'
@@ -65,7 +66,7 @@ const configuredNonOAuthApiKey = (host: Pick<CheckHost, 'modelRuntime'>, provide
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
 
-function loginArea(host: CheckHost): SetupIssue | undefined {
+function loginArea(host: AreaHost): SetupIssue | undefined {
   if (loggedIn(host)) return undefined
   return {
     area: 'Login',
@@ -76,7 +77,7 @@ function loginArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
   const fix = { label: 'Choose', command: 'conversations.summary-model' }
@@ -109,7 +110,7 @@ async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Summary model', status: 'ok', summary: using }
 }
 
-async function agentsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function agentsArea(host: AreaHost): Promise<SetupIssue[]> {
   const { definitions, errors, replaced } = await discoverAgents(
     host.ultimateRoot,
     host.projectRoot,
@@ -159,7 +160,7 @@ const shortPath = (host: Pick<CheckHost, 'projectRoot' | 'userHome'>, path: stri
       ? `~${path.slice(host.userHome.length)}`
       : path
 
-async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function providersArea(host: AreaHost): Promise<SetupIssue | undefined> {
   const providers = await host.want(HealthApi)?.providers()
   if (!providers?.length) return undefined
   const failing = providers.filter((provider) => provider.state === 'failing')
@@ -186,7 +187,7 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
   const set = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
   const chosen = new Map<string, string[]>()
   const optional = new Map<string, string[]>()
@@ -223,7 +224,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
   return issues
 }
 
-function extensionsArea(host: CheckHost): SetupIssue | undefined {
+function extensionsArea(host: AreaHost): SetupIssue | undefined {
   const broken = host
     .extensions()
     .filter((extension) => extension.enabled && extension.server?.error)
@@ -237,7 +238,7 @@ function extensionsArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function cloudArea(host: AreaHost): Promise<SetupIssue | undefined> {
   const invalidSettingsAlreadyReported = () => ({})
   const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(
     invalidSettingsAlreadyReported,
@@ -264,7 +265,7 @@ async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Cloud backup', status: 'ok', summary: 'joined' }
 }
 
-function tailscaleArea(host: CheckHost): SetupIssue | undefined {
+function tailscaleArea(host: AreaHost): SetupIssue | undefined {
   const service = host.want(TailscaleApi)
   if (!service) return undefined
   const { state } = service.status()
@@ -273,10 +274,27 @@ function tailscaleArea(host: CheckHost): SetupIssue | undefined {
     : { area: 'Tailscale', status: 'info', summary: `${state}: no direct links from other devices` }
 }
 
-async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function projectArea(
+  _host: AreaHost,
+  { settings }: AreaInputs,
+): Promise<SetupIssue | undefined> {
+  if (await settings) return undefined
+  return {
+    area: 'Project setup',
+    status: 'warn',
+    summary: "undecided: this project's .ultimate/ is not loaded",
+    impact:
+      'Its extensions, agents, skills and settings (worktree setup, lander checks) stay off until you choose to use it or keep global.',
+    fix: { label: 'Decide', command: 'onboarding.extensions' },
+  }
+}
+
+async function landerArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const lander = (await host.projectSettings()).lander as { checks?: unknown } | undefined
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const lander = settings.lander as { checks?: unknown } | undefined
   if (Array.isArray(lander?.checks) && lander.checks.length)
     return { area: 'Lander checks', status: 'ok', summary: `${lander.checks.length} configured` }
   return {
@@ -298,11 +316,12 @@ const INSTALL_MANIFESTS = [
   'mix.exs',
 ]
 
-async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function worktreeArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const commands = ((await host.projectSettings()).isolates as { worktree?: { setup?: unknown } })
-    ?.worktree?.setup
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const commands = (settings.isolates as { worktree?: { setup?: unknown } })?.worktree?.setup
   if (Array.isArray(commands) && commands.length)
     return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
@@ -327,7 +346,11 @@ const snapshots =
   (doc, id) =>
     host.harness().snapshot(doc, id, BACKGROUND_CONTEXT)
 
-async function memoryArea(host: CheckHost, read: ReadCurrentDoc): Promise<SetupIssue | undefined> {
+type AreaHost = Omit<CheckHost, 'projectSettings' | 'projectSetup'>
+
+type AreaInputs = { read: ReadCurrentDoc; settings: Promise<JsonObject | undefined> }
+
+async function memoryArea(host: AreaHost, { read }: AreaInputs): Promise<SetupIssue | undefined> {
   const rootsDoc = host.doc('lineage.roots')
   const memoryDoc = host.doc('lineage.memory')
   const tallyDoc = host.doc('lineage.tally')
@@ -355,17 +378,17 @@ async function memoryArea(host: CheckHost, read: ReadCurrentDoc): Promise<SetupI
 
 type SetupAreaResult = SetupIssue | SetupIssue[] | undefined
 type SetupAreaCheck = (
-  host: CheckHost,
-  read: ReadCurrentDoc,
+  host: AreaHost,
+  inputs: AreaInputs,
 ) => SetupAreaResult | Promise<SetupAreaResult>
 
 function checkAreaWithDeferredThrowHandling(
   area: SetupAreaCheck,
-  host: CheckHost,
-  read: ReadCurrentDoc,
+  host: AreaHost,
+  inputs: AreaInputs,
 ) {
   return Promise.resolve()
-    .then(() => area(host, read))
+    .then(() => area(host, inputs))
     .catch((error: unknown): SetupIssue => ({
       area: 'Setup check',
       status: 'info',
@@ -377,6 +400,11 @@ export async function check(
   host: CheckHost,
   read: ReadCurrentDoc = snapshots(host),
 ): Promise<SetupIssue[]> {
+  const settings = host
+    .projectSetup()
+    .then(({ config, decision }) =>
+      config && decision === null ? undefined : host.projectSettings(),
+    )
   const areas = await Promise.all(
     (
       [
@@ -386,13 +414,14 @@ export async function check(
         providersArea,
         secretsArea,
         extensionsArea,
+        projectArea,
         cloudArea,
         tailscaleArea,
         landerArea,
         worktreeArea,
         memoryArea,
       ] as SetupAreaCheck[]
-    ).map((area) => checkAreaWithDeferredThrowHandling(area, host, read)),
+    ).map((area) => checkAreaWithDeferredThrowHandling(area, host, { read, settings })),
   )
   const warningsBeforeInformationBeforeOk = { warn: 0, info: 1, ok: 2 }
   return areas

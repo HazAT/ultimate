@@ -10,6 +10,17 @@ export const offered: readonly { name: string; needs?: string }[] = [
   { name: 'phase', needs: 'classify' },
 ]
 
+export function settledChoice(
+  card: string,
+  answer: string | undefined,
+  decision: boolean | null | undefined,
+) {
+  if (answer) return answer
+  if (card === 'project' && typeof decision === 'boolean')
+    return decision ? 'Using project setup' : 'Keeping global setup'
+  return undefined
+}
+
 export function switchScope(projectSetupChosen: boolean, chosen?: 'project' | 'user') {
   const useProjectSettings = projectSetupChosen && chosen === 'project'
   return useProjectSettings ? 'project' : 'user'

@@ -20,6 +20,7 @@ import {
 } from '@/sdk'
 import type { EntryRecord, ToolCallView } from '@/sdk'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { settledChoice } from './choices.tsx'
 import { FirstRun, GitCard, ProjectCard, Recommended } from './pages.tsx'
 import { IsolationAction } from '../workspaces/ui.tsx'
 import { StartComposer } from './survey.tsx'
@@ -183,11 +184,12 @@ function SetupCall({ call }: { call: ToolCallView }) {
   const conversationId = useConversation((conversation) => conversation.id)
   const status = useAction(StatusAction)
   const isolation = useIsolation()
+  const decision = useSystem()?.project?.decision
   const card = typeof call.args.card === 'string' ? call.args.card : ''
   const entry = transcript
     .filter((candidate) => ChoiceEntry.is(candidate))
     .find((candidate) => candidate.data.toolCallId === call.id)
-  const settled = entry?.data.summary
+  const settled = settledChoice(card, entry?.data.summary, decision)
   const done = async (payload: {
     extensions?: Record<string, boolean>
     local?: boolean
