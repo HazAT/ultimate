@@ -345,8 +345,7 @@ function globals(
             ...(reply === undefined ? {} : { reply }),
             ...(machine ? { machine } : {}),
           },
-          context,
-          signal,
+          withAbortSignal(signal, context),
         )
       },
     },

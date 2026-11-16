@@ -8,6 +8,7 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction, selfAddress } from '../../lib/remote.ts'
+import { defineEffect, effectResult } from '../../lib/effect.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
@@ -69,7 +70,6 @@ export async function tell(
   from: ConversationId,
   input: { project: string; machine?: string; text: string; reply?: boolean },
   ctx: Context,
-  signal?: AbortSignal,
 ) {
   const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
   if (standing?.ultimate !== from)
@@ -95,7 +95,7 @@ export async function tell(
     machine: target.machine ?? self.machine,
     key: randomUUID(),
   }
-  const loggedBeforePostingId = await host.harness().commit(async (tx) => {
+  const logged = await host.harness().commit(async (tx) => {
     const message = await append(tx, {
       from,
       to: 'remote',
@@ -118,43 +118,50 @@ export async function tell(
       reply,
       steer: true,
     })
-    return message.id
+    const posting = await tx.createTask(
+      Tell,
+      {
+        message: message.id,
+        target: { url: target.url, label: target.label },
+        args: { key: remote.key, text: input.text, reply, from: self },
+      },
+      { conversationId: from, ownership: { kind: 'conversation' }, background: true },
+    )
+    return { message: message.id, posting }
   }, ctx)
-  const updateLoggedMessage = (change: (stored: Message) => void) =>
-    host.harness().commit(async (tx) => {
-      const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-        (m) => m.id === loggedBeforePostingId,
-      )
-      if (stored) change(stored)
-    }, ctx)
-  let delivered: number
-  try {
-    delivered = (await postAction(
-      target,
-      'messages',
-      'remote',
-      { key: remote.key, text: input.text, reply, from: self },
-      signal,
-    )) as number
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    await updateLoggedMessage((stored) => {
-      stored.state = 'failed'
-      stored.error = message
-    })
-    await host.harness().commit(async (tx) => {
-      delete (await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[remote.key]
-    }, ctx)
-    throw error
-  }
-  await updateLoggedMessage((stored) => {
-    stored.remote = { ...stored.remote!, id: delivered }
+  const delivered = await effectResult(host.harness(), logged.posting, ctx)
+  return { message: logged.message, delivered }
+}
 
+export const Tell = defineEffect<
+  {
+    message: number
+    target: { url: string; label: string }
+    args: { key: string; text: string; reply: boolean; from: { project: string; machine: string } }
+  },
+  number
+>(
+  'messages.tell',
+  async ({ target, args }, { signal }) =>
+    (await postAction(target, 'messages', 'remote', args, signal)) as number,
+  async (tx, { message, args }, outcome) => {
+    const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+      (m) => m.id === message,
+    )
+    if (!outcome.ok) {
+      if (stored) {
+        stored.state = 'failed'
+        stored.error = outcome.error
+      }
+      delete (await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[args.key]
+      return
+    }
+    if (!stored) return
+    stored.remote = { ...stored.remote!, id: outcome.value }
     const replyHasNotArrivedFirst = stored.state === 'sent'
     if (replyHasNotArrivedFirst) stored.state = 'delivered'
-  })
-  return { message: loggedBeforePostingId, delivered }
-}
+  },
+)
 
 export async function branchesAwaitingRemoteReply(tx: Tx, key: string) {
   const { told } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)

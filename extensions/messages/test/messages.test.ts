@@ -2163,6 +2163,42 @@ it('takes a late answer after the log dropped its message, and keys named like o
   expect(typeof id).toBe('number')
   expect((await f.log())!.messages.find((m) => m.id === id)).toMatchObject({ from: 'remote' })
 })
+it('posts a tell a crash cut off once, after the restart, and settles it delivered', async () => {
+  // Before the post was a task, a crash between logging and posting left the message `sent` with nothing to post it.
+  const keys: string[] = []
+  const firstPostHangs = gate()
+  const other = createServer(async (request, response) => {
+    let raw = ''
+    for await (const chunk of request) raw += String(chunk)
+    keys.push((JSON.parse(raw) as { args: { key: string } }).args.key)
+    if (keys.length === 1) await firstPostHangs.promise
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"result":12}')
+  })
+  await new Promise<void>((done) => other.listen(0, '127.0.0.1', done))
+  servers.push(other)
+  const f = await remoteFixture(`http://127.0.0.1:${(other.address() as AddressInfo).port}`)
+  const telling = f
+    .service()
+    .tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Crash me' }, context)
+  const outcome = telling.then(
+    () => 'told',
+    () => 'cut off',
+  )
+  await until(() => keys.length === 1)
+  await f.opened.close()
+  expect(await outcome).toBe('cut off')
+  await f.open()
+  f.opened.harness.resume()
+  await until(async () =>
+    (await f.log())!.messages.some((m) => m.to === 'remote' && m.state === 'delivered'),
+  )
+  firstPostHangs.release()
+  expect(keys).toHaveLength(2)
+  expect(keys[1]).toBe(keys[0])
+  expect((await f.log())!.messages.find((m) => m.to === 'remote')).toMatchObject({
+    remote: { project: 'poe2-rust', id: 12 },
+  })
+})
 it('refuses telling back an Ultimate whose question is open, and only @ultimate tells', async () => {
   const other = await otherUltimate(() => [200, { result: 1 }])
   const f = await remoteFixture(other.url)
