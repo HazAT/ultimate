@@ -504,6 +504,18 @@ function useInboxRow(): ReactNode {
   return <Waiting>{(items) => <InboxRow items={items} />}</Waiting>
 }
 
+function InboxBadge() {
+  return (
+    <Waiting>
+      {(items) =>
+        items.length > 0 && (
+          <span className={cn('font-mono text-[11px]', amber)}>{items.length}</span>
+        )
+      }
+    </Waiting>
+  )
+}
+
 function InboxRow({ items }: { items: Entry[] }) {
   const actions = useUltimate()
   const now = useNow(60_000)
@@ -549,6 +561,7 @@ export default defineWebExtension({
       description: 'Everything that waits on you, oldest first, answered in place',
       order: 10,
       component: Inbox,
+      badge: InboxBadge,
     },
   ],
   commands: [
