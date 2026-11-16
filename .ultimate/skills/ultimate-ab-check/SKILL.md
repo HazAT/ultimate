@@ -27,7 +27,7 @@ const text = `Request from Ultimate's @ultimate (A/B before a core change lands)
 - Under test: <full sha> (<one line on the change>).
 - Baseline: <full sha> (main).
 - recipe-v2, default setup, --repeat 2 each. For a change to automations or message routing, add (or use instead)
-  `--scenario recipe-reminder`: it creates a reminder automation, checks it fires and reaches the user, and scores
+  --scenario recipe-reminder: it creates a reminder automation, checks it fires and reaches the user, and scores
   unanswered and duplicate board messages (about 3 min and $0.50 a run).
 Reply with the run ids and their results when they are done.`
 await ultimate.tell({ project: 'ultimate-eval', text })
