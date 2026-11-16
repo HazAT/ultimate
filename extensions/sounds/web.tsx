@@ -337,7 +337,7 @@ function Control() {
               </label>
               <div className="px-2 pt-0.5 pb-1 text-[11px] leading-4 text-muted-foreground">
                 Speaks questions, failures and landings after their sound, also while the tab is
-                hidden. Branch titles go to OpenAI to be spoken.
+                hidden. OpenAI receives branch titles when that voice is used.
               </div>
             </>
           )}
