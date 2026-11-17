@@ -59,6 +59,7 @@ export async function status(
   const first = open[0]
   return {
     at: now,
+    generation: host.system().process.generation,
     ...(progress ? { progress } : {}),
     ...(clone?.head
       ? {
