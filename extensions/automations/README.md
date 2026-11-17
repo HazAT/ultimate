@@ -38,7 +38,8 @@ Each automation has one or both:
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
-escalating with `Fired more than 6 times in an hour; paused`.
+escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
+one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
 
 An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
 model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
