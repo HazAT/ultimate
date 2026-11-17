@@ -14,6 +14,10 @@ A `recall.memories` entry right after the input: one user-role message with the 
 
 While a message is checked, a band of light runs around its bubble's border (`userBubble` contribution), then fades. Recalled memories fly in under the bubble as chips; a chip opens the Memory surface on that memory. Nothing shows when no memory applies.
 
+## Memory search
+
+Recall also provides `lineage.memory-search`, which the `memory` tool's `query` uses: one classify `choice` over the root's memories with its own question (a coding agent searching its memory with a topic or situation), returning up to five memories at probability ≥ 0.15. The query text and every memory's one-line summary go to TypeSafe. Against 45 hand-written queries over 27 live memories it scored precision 0.97–1.00; recall was 0.97 on topic queries and 0.69 on situation queries, with no false picks on queries no memory covers. Recall's own question reached only 0.25 recall on situation queries. Broad queries spread probability across options and come back partial, so the tool asks for one topic per query.
+
 ## Tuning
 
 The question and threshold were tuned once against 55 labelled messages from three chapters (the user's prompts, branch reports, casual lines such as "Good night!") and the project's live memories: precision 0.77, recall 0.62, quiet on 16 of 18 messages that called for no memory. Per-memory yes/no questions over-fired on habits that hold for every message; a single choice with `none` did not. Classify answers vary by up to 0.13 between calls, so borderline messages can flip; each input is asked once.
