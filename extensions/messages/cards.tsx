@@ -20,6 +20,7 @@ import { Shimmer } from '@/components/ai/shimmer'
 import { ToolImage } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
+  AllProvided,
   api,
   Card,
   cn,
@@ -64,12 +65,17 @@ import { callerOf } from './caller.ts'
 import { MessagesDoc } from './refs.ts'
 import { MessageEntry, ReplyEntry } from '../entries/ui.tsx'
 import type { Message, Remote } from './refs.ts'
-import { MessageAnswers } from './points.tsx'
+import { MessageAnswers, MessageExtras } from './points.tsx'
 
 const Answers = ({ message }: { message: Message }) => (
-  <Provided input={message} point={MessageAnswers}>
-    {(answers) => answers}
-  </Provided>
+  <>
+    <AllProvided input={message} point={MessageExtras}>
+      {(extras) => extras}
+    </AllProvided>
+    <Provided input={message} point={MessageAnswers}>
+      {(answers) => answers}
+    </Provided>
+  </>
 )
 
 const settledLabel = (question: Message, answer: Message) =>

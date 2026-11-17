@@ -79,6 +79,8 @@ export function useProjectRepo() {
 
 export const Review = definePoint<string, (() => void) | undefined>('workspaces.review')
 
+export const LandingExtras = definePoint<ConversationId, ReactNode>('workspaces.landing-extras')
+
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
     className={cn(

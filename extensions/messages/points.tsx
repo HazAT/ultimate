@@ -6,3 +6,5 @@ import type { WaitFacts } from '../../lib/waits.ts'
 export const WaitTimers = definePoint<null, WaitFacts['automations']>('messages.wait-timers')
 
 export const MessageAnswers = definePoint<Message, ReactNode>('messages.answers')
+
+export const MessageExtras = definePoint<Message, ReactNode>('messages.extras')

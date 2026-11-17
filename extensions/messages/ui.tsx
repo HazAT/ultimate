@@ -21,5 +21,8 @@ export { useRemoteProgress } from './progress.tsx'
 export { useStarters, useUnderway } from './started.tsx'
 export { accentOf } from './accent.tsx'
 export { Address, Body, Bubble, MessageImages, useAccentOf } from './cards.tsx'
-/** Enabled timers with resolved conversation subscribers, provided by automations. */
-export { MessageAnswers, WaitTimers } from './points.tsx'
+/**
+ * Enabled timers with resolved conversation subscribers, provided by automations; `MessageExtras` adds to a message's
+ * card and the Inbox above its answer (reel's chip), from every provider.
+ */
+export { MessageAnswers, MessageExtras, WaitTimers } from './points.tsx'
