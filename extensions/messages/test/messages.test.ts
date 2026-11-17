@@ -1029,6 +1029,40 @@ it('delivers one answer to several messages once, and closes each', async () => 
   expect(log.filter((m) => m.from === f.recipient.id)).toHaveLength(1)
   expect(await replies(f)).toHaveLength(1)
 })
+it('fails every message that shares an answer the run never gave', async () => {
+  const f = await fixture()
+  await f.recipient.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  for (const text of ['First\nHOLD', 'Second\nHOLD', 'Third NOANSWER'])
+    await f.send(String(f.recipient.id), text, { reply: true, steer: true })
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(InboxDoc, f.recipient.id, context))!.items.length === 3,
+  )
+  f.hold.release()
+  await until(async () =>
+    (await f.log())!.messages.every(
+      (m) => m.from !== 1 || m.state === 'failed' || m.state === 'answered',
+    ),
+  )
+  await f.opened.harness.waitForIdle(context)
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      (t) => t.record.kind !== 'board.delivery',
+    ),
+  )
+  const log = (await f.log())!.messages
+  expect(log.filter((m) => m.from === 1).map((m) => m.state)).toEqual([
+    'failed',
+    'failed',
+    'failed',
+  ])
+  expect(log.filter((m) => m.from === f.recipient.id).map((m) => m.state)).toEqual([
+    'failed',
+    'failed',
+    'failed',
+  ])
+})
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)
