@@ -254,7 +254,7 @@ export function LandingCard({
             </p>
           )}
           {children}
-          {submission && sha && tone !== 'failed' && (
+          {submission && tone !== 'failed' && (
             <Provided input={{ conversation: from, submission }} point={LandedNote}>
               {(note) => note}
             </Provided>

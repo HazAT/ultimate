@@ -175,27 +175,27 @@ function keepConfirmations(before: string[], after: string[], met: number[]) {
 
 export default (host: ExtensionHost) => {
   host.implement(PlanApi, {
-    openCriteria: async (id, caller) => {
-      const plan = await host.harness().snapshot(Plan, id, caller)
-      const epic = plan && currentEpic(plan.epics)
-      if (!epic || epic.status === 'done') return undefined
-      const progress = (await host.harness().snapshot(Progress, id, caller))?.epics[epic.key]
-      const estimates = progress?.estimates ?? {}
-      const criteria = (criteriaOfBody(epic.body) ?? []).flatMap((text, index) =>
-        confirmed(epic, index + 1)
-          ? []
-          : [
-              {
-                n: index + 1,
-                text,
-                ...(Object.hasOwn(estimates, text) ? { estimate: estimates[text].state } : {}),
-              },
-            ],
-      )
-      return criteria.length
-        ? { epic: epic.key, revision: progress?.revision ?? 0, criteria }
-        : undefined
-    },
+    openCriteria: (id, caller) =>
+      host.harness().commit(async (tx) => {
+        const epic = currentEpic((await tx.doc(Plan, id)).epics)
+        if (!epic || epic.status === 'done') return undefined
+        const progress = (await tx.doc(Progress, id)).epics[epic.key]
+        const estimates = progress?.estimates ?? {}
+        const criteria = (criteriaOfBody(epic.body) ?? []).flatMap((text, index) =>
+          confirmed(epic, index + 1)
+            ? []
+            : [
+                {
+                  n: index + 1,
+                  text,
+                  ...(Object.hasOwn(estimates, text) ? { estimate: estimates[text].state } : {}),
+                },
+              ],
+        )
+        return criteria.length
+          ? { epic: epic.key, revision: progress?.revision ?? 0, criteria }
+          : undefined
+      }, caller),
     estimate: async (tx, id, key, revision, estimates) => {
       const epic = (await tx.doc(Plan, id)).epics[key]
       const current = (await tx.doc(Progress, id)).epics[key]?.revision ?? 0
@@ -387,9 +387,9 @@ export default (host: ExtensionHost) => {
                 if (!task && args.body !== undefined) {
                   const before = criteriaOfBody(item.body) ?? []
                   const after = criteriaOfBody(args.body) ?? []
-                  if (args.met === undefined && item.met)
-                    item.met = keepConfirmations(before, after, item.met)
                   if (before.join('\n') !== after.join('\n')) {
+                    if (args.met === undefined && item.met)
+                      item.met = keepConfirmations(before, after, item.met)
                     const progress = await tx.doc(Progress, coordinator)
                     const entry = progress.epics[item.key]
                     progress.epics[item.key] = { ...entry, revision: (entry?.revision ?? 0) + 1 }

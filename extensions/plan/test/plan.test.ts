@@ -449,11 +449,17 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
     expect(await estimates()).toEqual({})
     await call({ action: 'update', key: 'E1', body: body(['A', 'B', 'C']) })
     expect(await met()).toEqual([1, 3])
+    await call({ action: 'update', key: 'E1', body: body(['A', 'B', 'A']), met: [3] })
+    await call({ action: 'update', key: 'E1', body: `${body(['A', 'B', 'A'])}\nRisks: none.` })
+    expect(await met()).toEqual([3])
+    await call({ action: 'update', key: 'E1', body: body(['A', 'B', 'C']), met: [1, 3] })
 
     // An answer to the criteria as they were before an edit is dropped, even when the text came back.
     await estimate(0, { B: { state: 'looks_done', at: 9 } })
     expect(await estimates()).toEqual({})
-    await estimate(2, { B: { state: 'in_progress' } })
+    const revision = (await service.openCriteria(id, context))!.revision
+    expect(revision).toBe(4)
+    await estimate(revision, { B: { state: 'in_progress' } })
     expect(await estimates()).toEqual({ B: { state: 'in_progress' } })
 
     await call({ action: 'update', key: 'E1', met: [1, 2, 3] })
