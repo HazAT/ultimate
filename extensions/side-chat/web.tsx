@@ -518,7 +518,7 @@ function PinnedQuestion({
   return (
     <section
       aria-label="The question"
-      className="mx-3 mt-2 flex max-h-[45%] shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/60"
+      className="mx-3 mt-2 flex max-h-[60%] shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/60"
       data-pinned-question={id}
     >
       <button

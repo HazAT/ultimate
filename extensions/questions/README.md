@@ -44,7 +44,9 @@ shows beside the options for the hovered or chosen one. Recommended options (@ul
 a note field is always there: whatever it holds goes after the answer lines, or on its own (“Send note”), and never
 changes a pick. **Accept picks** chooses every pick still open; Send sends what is answered (“Send 2 of 5”). Sending
 opens a 3 s window with Undo before the answer goes out, then the card settles into the summary of what was sent, the
-note on its own line. Dismiss closes the message without an answer. A message without questions gets a one-line answer
+note on its own line. Dismiss closes the message without an answer. Beside it, the `questions.card-actions` point
+(`CardActions`) takes another extension's control: side-chat's **Talk it through**. A card in a layer marked
+`data-receded` (a transcript behind a side chat's sheet) takes no keys. A message without questions gets a one-line answer
 field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
 for Something else) chooses, ↑/↓ moves between questions, Enter takes the open question's pick or goes to the next,
 and sends from the last one; ⇧Enter accepts every pick and sends; `/` focuses the note field, where Enter sends and

@@ -1,4 +1,4 @@
-Side chats are temporary, ownerless copies of the standing @ultimate conversation. The user opens one to explore a tangent, then discards it or sends a summary back without waking main. A side chat keeps its fixed `Side chat` title: `open` turns its automatic summaries off (`setAutomaticSummaries` on the conversations service), so no intent, reply or spawn trigger asks the summary model; only Summarize & inject does.
+Side chats are temporary, ownerless copies of the standing @ultimate conversation, or of the conversation that asked an open question (see [Question side chats](#question-side-chats)). The user opens one to explore a tangent, then discards it or sends a summary back without waking main. A side chat keeps its fixed `Side chat` title: `open` turns its automatic summaries off (`setAutomaticSummaries` on the conversations service), so no intent, reply or spawn trigger asks the summary model; only Summarize & inject does.
 
 ## UI (`web.tsx`)
 
@@ -21,6 +21,27 @@ Side chats are temporary, ownerless copies of the standing @ultimate conversatio
 All three actions are user-only (`userActions`); agents cannot call them. Inputs and tools in an ended/ending copy are refused server-side.
 
 `SideChatSummary` describes `sidechat.summary` entry data: `{side, at, from, to, questions?, text}`. `side` and `from` are the copy, `to` is main, and `at` is the fork entry. Questions, if any, currently remain in the summary text. Model content begins `Side chat #N (forked at HH:MM) summary:` (UTC). First the durable task memoizes the model answer, then submits a standard `type: 'write'` with requestId `sidechat:summary:<side>`, preserving main's inbox/reset order without starting a run. Finally it sets `ended`, concludes and completes the task in one commit. A crash after write admission but before conclusion reuses the model answer and the deduplicated write, then finishes conclusion. A busy main may not place the summary until its next boundary.
+
+## Question side chats
+
+- **Open:** a question card's **Talk it through** calls `open {message}`. It forks the asker (a branch or @ultimate) at the tool result of the `message` call that asked: a nested codemode call forks at its script's result. It returns the side chat already open for that message, if there is one, so there is one per card. A closed message is refused.
+- **Where it shows:**
+  - On the agent surface the sheet opens over the asker's transcript; `Stage` and the composer chips work over any conversation with open side chats, not only @ultimate.
+  - In the Inbox the reading pane becomes the side chat (inbox's `QuestionPane` point).
+  - The card's button reads **Side chat** once one is open.
+- **Card pinned on top:** the question's card is pinned and foldable. The cards share their drafts (questions' durable card state), so picks made on either side show on both.
+  - Its Send reads **Summarize & send**: it injects first, then answers. A failed summary sends nothing.
+  - **Summarize only** sends the summary without answering.
+  - Discard always works, since nothing can have effects.
+- **Read-only:** `beforeTool` blocks every tool except read, bash, memory, web search and fetch, screenshot and browser. Codemode is blocked too, because its nested calls skip tool hooks.
+  - `actingAs` maps such a side chat to itself, not to the asker, so it borrows no identity.
+  - Bash is only reminded, not sandboxed.
+- **Reminder and summary:** the hidden reminder says the chat is read-only and that the user answers on the card. The summary prompt asks for what the user leaned towards and why, and never invents an answer. The asker reads the summary just before the answer.
+- **Documents:**
+  - `SideChatDoc` gains `question` and `tokens`: the asker's context at the fork, shown in the sheet header as the cost of the first turn.
+  - `SideChatsDoc` sits on the asker.
+  - `QuestionSidesDoc` (`sidechat.questions`, on conversation 1) lists every question side chat, so a card or the Inbox finds its own with one subscription.
+- **Lineage:** lineage skips its catch-up note for any side chat, so a branch's copy is not flooded with the tally. Side chats stay out of the sidebar's lists through `Unlisted`.
 
 ## Safety and attribution
 
