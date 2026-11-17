@@ -82,6 +82,17 @@ export type LineageService = {
 }
 export { Branched, Rooted } from './refs.ts'
 
+export type MemorySearchService = {
+  /** The slugs of `memories` that `query` is about, best first, at most five; throws when no search is possible. */
+  search(
+    query: string,
+    memories: Record<string, MemoryItem>,
+    signal: AbortSignal,
+  ): Promise<string[]>
+}
+/** The extension point the `memory` tool's `query` searches through; recall provides it with classify. */
+export const MemorySearch = defineApi<MemorySearchService>()('lineage.memory-search')
+
 /** Trees, branches and notes; core, so `need` it. */
 export const LineageApi = defineApi<LineageService>()('lineage')
 export const tier = 'core'

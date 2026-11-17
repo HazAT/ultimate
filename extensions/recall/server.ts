@@ -14,7 +14,7 @@ import { isInput } from '../../lib/entries.ts'
 import { ClassifyApi } from '../classify/api.ts'
 import type { ClassifyQuestion } from '../classify/api.ts'
 import { ContextUsageDoc } from '../conversations/api.ts'
-import { LineageApi } from '../lineage/api.ts'
+import { LineageApi, MemorySearch } from '../lineage/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import { Standing } from '../subagents/api.ts'
 import { RecallDoc } from './refs.ts'
@@ -28,6 +28,8 @@ const memoryStillFreshInPrompt = (percent: number) => percent < FROM_PERCENT
 const RECALLED_MEMORY_FRESH_WINDOW_SHARE = 0.3
 export const CALIBRATED_RECALL_PROBABILITY = 0.25
 const TOP = 3
+export const CALIBRATED_QUERY_PROBABILITY = 0.15
+const QUERY_TOP = 5
 
 export const Recall = defineDoc<RecallState>({
   kind: RecallDoc.kind,
@@ -49,6 +51,15 @@ export function recallQuestion(memories: Record<string, MemoryItem>): ClassifyQu
   }
   for (const [slug, item] of Object.entries(memories)) criteria[slug] = item.line
   return { type: 'choice', instructions: INSTRUCTIONS, criteria }
+}
+
+const QUERY_INSTRUCTIONS =
+  'A coding agent searches its project memory with `query`: a topic, a question or the situation it is in. Which memory is about what the query asks, so the agent would act differently with it? Pick none when no memory is about it.'
+
+export function queryQuestion(memories: Record<string, MemoryItem>): ClassifyQuestion {
+  const criteria: Record<string, string> = { none: 'No memory is about this query.' }
+  for (const [slug, item] of Object.entries(memories)) criteria[slug] = item.line
+  return { type: 'choice', instructions: QUERY_INSTRUCTIONS, criteria }
 }
 
 const textOf = (entry: EntryRecord) =>
@@ -94,6 +105,23 @@ export function recallText(picked: { slug: string; item: MemoryItem }[]) {
 export default function recall(host: ExtensionHost) {
   host.want(ClassifyApi)
   host.need(LineageApi)
+  host.implement(MemorySearch, {
+    async search(query, memories, signal) {
+      const classify = host.want(ClassifyApi)
+      if (!classify) throw new Error('the classify extension is off')
+      const result = await classify.ask(
+        { state: { query }, questions: { memory: queryQuestion(memories) } },
+        signal,
+      )
+      const answer = result.answers.memory
+      if (answer.type !== 'choice') return []
+      return Object.entries(answer.probabilities)
+        .filter(([slug, p]) => Object.hasOwn(memories, slug) && p >= CALIBRATED_QUERY_PROBABILITY)
+        .toSorted((a, b) => b[1] - a[1])
+        .slice(0, QUERY_TOP)
+        .map(([slug]) => slug)
+    },
+  })
   return defineExtension({
     name: 'recall',
     hooks: [
