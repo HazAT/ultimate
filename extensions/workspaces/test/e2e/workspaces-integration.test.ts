@@ -1645,7 +1645,7 @@ it.concurrent('reports a local landing whose push retry conflicts as landed loca
   const [report] = await submitted(f, id)
   const landed = await git(f.projectRoot, 'rev-parse', 'main')
   expect(report).toContain(`landed locally as ${landed.slice(0, 7)} on main.`)
-  expect(report).toContain('Push failed: origin/main conflicts with local main in:')
+  expect(report).toContain('Push failed: origin/main conflicts with local main:')
   expect(report).not.toContain('was not landed')
   expect(
     await git(f.projectRoot, 'merge-base', '--is-ancestor', tip, landed).then(() => true),
