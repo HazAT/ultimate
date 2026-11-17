@@ -96,12 +96,7 @@ export async function cleanPreview(home: string) {
       for (const branch of branchesWithoutCheckouts.split('\n').filter(Boolean))
         await git(common, '--git-dir', common, 'branch', '-D', '--', branch)
     }
-    await rm(home, { recursive: true, force: true }).catch(async (error: NodeJS.ErrnoException) => {
-      const blockedByReadOnlyDirectory = error.code === 'EACCES' || error.code === 'EPERM'
-      if (!blockedByReadOnlyDirectory) throw error
-      await makeOwnerWritable(home)
-      await rm(home, { recursive: true, force: true })
-    })
+    await rm(home, { recursive: true, force: true })
     return true
   } finally {
     for (const database of heldCleanupTransactions) database.close()
