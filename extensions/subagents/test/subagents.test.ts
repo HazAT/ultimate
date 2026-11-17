@@ -1085,6 +1085,31 @@ describe('turns without an answer', () => {
     await resumed.harness.waitForIdle(context)
     expect(await reports(resumed)).toHaveLength(1)
   })
+  it('keeps a child-side stop when the parent stops the child during the report, and reports the next answer', async () => {
+    const held = { ...gate(), entered: false }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    await until(async () => f.holding.has(child.conversationId))
+    const handle = (await f.opened.harness.conversation(child.conversationId, context))!
+    await handle.abort(context)
+    // The reporter has recorded the child-side stop and waits in its report phase when the parent stops the child.
+    await until(async () => held.entered)
+    expect((await call(f.opened, { action: 'stop', id: child.conversationId })).text).toBe(
+      `Stopped ${child.conversationId}.`,
+    )
+    expect(
+      Object.values(
+        (await f.opened.harness.snapshot(Subagents, f.opened.root.id, context))!.actions,
+      ).map((action) => action.status),
+    ).toEqual(['interrupted'])
+    held.release()
+    await (await handle.submit({ type: 'input', content: 'continue' }, context)).wait(context)
+    await until(async () => (await reports(f.opened)).length === 1)
+    expect((await reports(f.opened))[0].model?.[0]).toMatchObject({
+      content: `[subagent ${child.conversationId} (scout) answered] Returned model: faux/faux-1\nChild: continue`,
+    })
+  })
 })
 
 function stopCaptureGate(f: Awaited<ReturnType<typeof gatedFixture>>) {
