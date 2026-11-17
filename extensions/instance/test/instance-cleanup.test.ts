@@ -158,6 +158,14 @@ it.each([true, false])(
   },
 )
 
+// Regression: after a preview home was deleted by hand, every later stop failed with "unable to open database file",
+// so its conversation could not conclude.
+it('counts a home that is already gone as cleaned', async () => {
+  const { home } = await fixture()
+  expect(await cleanPreview(home)).toBe(true)
+  expect(await stat(home).catch(() => undefined)).toBeUndefined()
+  expect(await cleanPreview(home)).toBe(true)
+})
 it('cleans a home whose checkout points at a repository that no longer exists', async () => {
   const { root, home } = await fixture()
   const gone = join(root, 'gone')
