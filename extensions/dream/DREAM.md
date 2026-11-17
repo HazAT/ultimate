@@ -9,9 +9,12 @@ itself.
 
 A dream is ordinary work: one branch, its answer, the user's decisions, ordinary branches for what they approve. There
 is no session to track. Dream's actions, called with codemode `ultimate.action('dream', name, args)`: `prepare
-{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). The trace keeps only about the last
-7 days, so `stats` and `ultimate.trace` see only that window, and `stats` counts only tool calls; older failures and
-model errors are found in conversation entries.
+{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). `stats` counts tool calls over the
+whole retained trace: about the last 7 days, or the newest 200,000 calls, whichever ends first. `debug trace` and
+`ultimate.trace` do not read that window whole: they return the newest rows only (the newest 100 by default for
+`ultimate.trace`, 50 for `debug trace`, at most 1000, and `debug trace` cuts its text at about 160 rows), so on a busy
+project a query can cover hours rather than days. For older failures and model errors, read conversation entries and
+`watchdog.failure` cards.
 
 ## For @ultimate
 
