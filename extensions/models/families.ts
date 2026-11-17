@@ -183,7 +183,7 @@ export async function setDefault(host: ExtensionHost, name: string) {
       ...effective,
       [DEFAULT_FAMILY]: { ...effective[DEFAULT_FAMILY], model: name, thinking: thinkingLevel },
     },
-    mergeFamilies(layers.project).families,
+    mergeFamilies(layers.user, layers.project).families,
   )
   const assign =
     layers.from === 'project'
@@ -198,12 +198,15 @@ export async function setDefault(host: ExtensionHost, name: string) {
 }
 
 export async function saveFamilies(host: ExtensionHost, args: SaveFamilies) {
-  const { project } = await readFamilyLayers(
+  const layers = await readFamilyLayers(
     host.userHome,
     host.projectRoot,
     await host.projectSettings(),
   )
-  const families = familyOverridesOnly(args.families, mergeFamilies(project).families)
+  const families = familyOverridesOnly(
+    args.families,
+    mergeFamilies(layers.user, layers.project).families,
+  )
   const value = { families, assign: args.assign }
   parseFamilies(value)
   for (const user of Object.keys(args.assign))
