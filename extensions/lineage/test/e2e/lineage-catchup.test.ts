@@ -10,6 +10,7 @@ import { afterEach, beforeAll, expect, it } from 'vitest'
 import { abstract, leaveNote } from '../../server.ts'
 import { Tally } from '../../api.ts'
 import { Seen, tallyText } from '../../catchup.ts'
+import { Standing } from '../../../subagents/api.ts'
 import { context } from '../../../../server/harness.ts'
 import {
   branchProbe,
@@ -198,6 +199,18 @@ it('does not catch up when a note and new commits arrive in the middle of a run'
         entry.kind === 'lineage.note' && (entry.data as { source?: string }).source === 'main',
     ),
   ).toHaveLength(1)
+})
+
+it('gives @ultimate no commit catch-up: its landing cards already name each landing', async () => {
+  const f = await catchupFixture()
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ROOT_CONVERSATION_ID
+  }, context)
+  repoGit(f.projectRoot, 'commit', '--allow-empty', '-m', 'Landed meanwhile')
+  await ask(f.server, ROOT_CONVERSATION_ID, 'continue work')
+  expect(
+    (await f.server.root.context(context)).entries.filter((entry) => entry.kind === 'lineage.note'),
+  ).toEqual([])
 })
 
 it('keeps a catch-up exactly once when reopened during the first request', async () => {

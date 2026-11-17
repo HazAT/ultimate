@@ -1124,7 +1124,13 @@ it.concurrent('notes a clean landing without a branch run, concludes and release
       (entry) => entry.kind === 'workspaces.lander-report',
     )
     expect(reports).toHaveLength(1)
-    expect(JSON.stringify(reports[0].model)).toContain(`#${id} is concluded.`)
+    const sha = (reports[0].data as { outcome: { sha: string } }).outcome.sha.slice(0, 7)
+    expect(reports[0].model?.[0]?.content).toMatch(
+      new RegExp(`^#${id} .*landed as ${sha} on main\nDiverged: None\n#${id} is concluded[.]$`),
+    )
+    expect(
+      JSON.stringify(entries.find((e) => e.kind === 'workspaces.lander-report')!.model),
+    ).toContain('Commits:')
   }
   await checkReports()
   await f.reopen()

@@ -183,7 +183,8 @@ lander's sidebar row shows the feature it lands or landed last.
      commit the submitter is concluded unless work is still under way: messages' `underway` (a run or queued input, a
      busy subagent, a reply-enabled message of its own still open, a pending notify or subagent report), through the
      `workspaces.branches` extension point messages provides. Then the conversation that started the branch
-     (`starter`, from the same extension point) wakes with the same card, saying whether the branch is concluded or
+     (`starter`, from the same extension point) wakes with the same card, its text cut to one line (branch, sha,
+     pushed, `needs restart`, flaky checks) plus the divergence, saying whether the branch is concluded or
      still has work under way (which then reports when it stops, as any branch does). Last, a concluded branch's
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.

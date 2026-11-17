@@ -97,6 +97,15 @@ export const log = (
     },
   })
 }
+export const starterLine = (branch: ConversationId, outcome: WorkspaceIndex['results'][string]) =>
+  [
+    `#${branch}${outcome.subject?.title ? ` ${outcome.subject.title}` : ''} ${outcome.commits?.length ? `landed as ${outcome.sha!.slice(0, 7)} on ${outcome.target}` : `had nothing new to land on ${outcome.target}`}`,
+    ...(outcome.pushed ? [`pushed`] : []),
+    ...(outcome.reason ? [outcome.reason] : []),
+    ...(outcome.needsRestart ? ['needs restart'] : []),
+    ...(outcome.flaky?.length ? [`flaky: ${outcome.flaky.join(', ')}`] : []),
+  ].join(' · ')
+
 type Host = Pick<
   ExtensionHost,
   'home' | 'ultimateRoot' | 'harness' | 'projectSettings' | 'doc' | 'metadata' | 'notice' | 'emit'
@@ -277,7 +286,6 @@ type CommittedDeliveryDecision = {
   phase: 'deliver'
   id: string
   conversationId: ConversationId
-  text: string
   outcome: WorkspaceIndex['results'][string]
   concluded: boolean
   starter?: ConversationId
@@ -814,7 +822,6 @@ export function createLander(
               phase: 'deliver',
               id,
               conversationId,
-              text,
               outcome,
               concluded: concludedInThisCommit,
               ...(starter !== undefined && starter !== branch ? { starter } : {}),
@@ -826,13 +833,12 @@ export function createLander(
         const {
           id,
           conversationId,
-          text,
           outcome,
           concluded: conclusionCommitted,
           starter,
         } = task.state.checkpoint
         const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
-        const content = `${text}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
+        const content = `${starterLine(conversationId, outcome)}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
             await host.harness().conversation(starter, context)
