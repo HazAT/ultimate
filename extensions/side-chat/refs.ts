@@ -1,6 +1,7 @@
 /** Side chats: temporary copies of @ultimate or of a question's asker, their lifecycle actions and passive summaries. Browser-safe. */
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
+import type { Reply } from '../questions/refs.ts'
 
 export type SideChat = {
   of: ConversationId
@@ -64,11 +65,7 @@ export const DiscardAction = actionRef<{ id: ConversationId }, { id: Conversatio
 export const InjectAction = actionRef<
   {
     id: ConversationId
-    answer?: {
-      answers?: { question: string; answer: string | string[] }[]
-      note?: string
-      text?: string
-    }
+    answer?: Reply
   },
   { id: ConversationId }
 >('side-chat', 'inject')

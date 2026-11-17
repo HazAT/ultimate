@@ -1,19 +1,32 @@
 import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
-import type { ConversationId, Cursor, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Cursor,
+  EntryId,
+  JsonObject,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import {
   defineDoc,
+  AgentDoc,
   defineExtension,
   defineTask,
+  defineTool,
   GenerationTask,
   hook,
   ROOT_CONVERSATION_ID,
   ToolTask,
 } from '@earendil-works/pi-durable'
+import { arr, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { UiState } from '../../shared/ui-state.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import type { Device } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { openQuestion } from '../../lib/message-state.ts'
-import { checkReply, replyText } from '../../lib/question-answers.ts'
+import { checkReply, draftOf, replyText } from '../../lib/question-answers.ts'
 import type { Reply } from '../../lib/question-answers.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
@@ -138,9 +151,10 @@ async function end(
   id: ConversationId,
   mode: 'discarded' | 'injected',
   answer?: Reply,
+  device?: Device,
 ) {
   const summaries = host.need(ConversationsApi)
-  if (answer) checkReply(answer)
+  if (answer !== undefined) checkReply(answer)
   const model = mode === 'injected' ? await summaries.summaryModel() : undefined
   if (mode === 'injected' && !model)
     throw new Error(
@@ -161,12 +175,20 @@ async function end(
       delete ending.mode
       delete ending.task
     }
-    if (mode === 'injected' && ending.mode === mode && ending.task !== undefined) return ending.task
+    if (mode === 'injected' && ending.mode === mode && ending.task !== undefined) {
+      const running = (await tx.task(ending.task))?.input as { reply?: unknown } | undefined
+      const sameRequest = (answer === undefined) === (running?.reply === undefined)
+      if (!sameRequest)
+        throw new Error(
+          `Side chat #${id} is already ending ${running?.reply === undefined ? 'without' : 'with'} an answer`,
+        )
+      return ending.task
+    }
     if (side.ended || ending.mode) throw new Error(`Side chat #${id} is already ended or ending`)
     if (mode === 'discarded' && side.effects)
       throw new Error(`Side chat #${id} has effects; inject its summary instead`)
     let reply: { message: number; text: string } | undefined
-    if (answer) {
+    if (answer !== undefined) {
       if (side.question === undefined) throw new Error(`Side chat #${id} talks no question through`)
       const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
         (candidate) => candidate.id === side.question,
@@ -178,7 +200,11 @@ async function end(
     ending.mode = mode
     ending.task = await tx.createTask(
       endTask(host),
-      { side: id, ...(model ? { model } : {}), ...(reply ? { reply } : {}) },
+      {
+        side: id,
+        ...(model ? { model } : {}),
+        ...(reply ? { reply: { ...reply, ...(device ? { device } : {}) } } : {}),
+      },
       {
         conversationId: side.of,
         ownership: { kind: 'conversation' },
@@ -221,7 +247,11 @@ const Start = defineTask<{ side: ConversationId; text: string }, { phase: 'submi
 export function endTask(host: ExtensionHost) {
   const summaries = host.need(ConversationsApi)
   return defineTask<
-    { side: ConversationId; model?: SummaryModel; reply?: { message: number; text: string } },
+    {
+      side: ConversationId
+      model?: SummaryModel
+      reply?: { message: number; text: string; device?: Device }
+    },
     { phase: 'stop' } | { phase: 'summarize' },
     null
   >({
@@ -338,19 +368,24 @@ export function endTask(host: ExtensionHost) {
             ctx,
           )
           const reply = task.input.reply
-          const answeredElsewhereMeanwhile =
-            reply &&
-            !(await host.harness().commit(async (tx) => {
-              const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-                (candidate) => candidate.id === reply.message,
+          const stillOpen = (message: number) =>
+            host.harness().commit(async (tx) => {
+              const found = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+                (candidate) => candidate.id === message,
               )
-              return message !== undefined && openQuestion(message)
-            }, ctx))
-          if (reply && !answeredElsewhereMeanwhile)
-            await host.need(MessagesApi).answer(reply.message, reply.text, ctx, undefined, {
-              taskId: task.id,
-              callId: 'answer',
-            })
+              return found !== undefined && openQuestion(found)
+            }, ctx)
+          if (reply && (await stillOpen(reply.message)))
+            await host
+              .need(MessagesApi)
+              .answer(reply.message, reply.text, ctx, reply.device, {
+                taskId: task.id,
+                callId: 'answer',
+              })
+              .catch(async (error: unknown) => {
+                const answeredElsewhereBeforeAdmission = !(await stillOpen(reply.message))
+                if (!answeredElsewhereBeforeAdmission) throw error
+              })
         }
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Side, id)
@@ -432,6 +467,12 @@ async function openOnQuestion(host: ExtensionHost, messageId: number) {
       question: messageId,
       ...(tokens === undefined ? {} : { tokens }),
     })
+    const agent = await tx.doc(AgentDoc, fork.id)
+    if (Array.isArray(agent.tools)) agent.tools = [...agent.tools, 'draft_answers']
+    const loaded = agent.modelTools
+    agent.modelTools = Array.isArray(loaded)
+      ? [...loaded, 'draft_answers']
+      : { ...loaded, add: [...(loaded?.add ?? []), 'draft_answers'] }
     Object.assign(await tx.doc(host.metadata, fork.id), {
       title: 'Side chat',
       label: 'side-chat',
@@ -448,6 +489,68 @@ async function openOnQuestion(host: ExtensionHost, messageId: number) {
   }, context)
   return { id }
 }
+
+const CARDS_KEY = 'ext.questions.cards'
+
+const draftAnswersTool = (host: ExtensionHost) =>
+  defineTool({
+    name: 'draft_answers',
+    deferred: true,
+    description:
+      'Fill in answers on the open question\'s card the user sees beside this side chat, as a draft: use it when they say what to pick ("take your picks", "b for the first"). It never sends: the user reviews and sends from the card. `answers` names each question by its text or number and its answer by option label, letter or typed text (a list for several); `note` fills the card\'s note.',
+    parameters: obj({
+      answers: arr(
+        obj({
+          question: str({ minLength: 1 }),
+          answer: union([str({ minLength: 1 }), arr(str({ minLength: 1 }), { minItems: 1 })]),
+        }),
+      ),
+      note: opt(str()),
+    }),
+    ...safeToRerun('It sets the same draft values again.'),
+    async execute({ answers, note }, api, ctx) {
+      const filled = await host.harness().commit(async (tx) => {
+        const side = await tx.doc(Side, api.conversationId)
+        if (side.question === undefined) throw new Error('Only a question side chat drafts answers')
+        const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+          (candidate) => candidate.id === side.question,
+        )
+        if (!message || !openQuestion(message))
+          throw new Error('The question is no longer open; nothing to fill in')
+        const questions = message.questions ?? []
+        const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)
+        const cards = (ui[CARDS_KEY] ?? {}) as Record<string, JsonObject>
+        const card = `message:${message.id}`
+        const previous = cards[card] ?? {}
+        const drafts = { ...((previous.drafts ?? {}) as JsonObject) }
+        const lines: string[] = []
+        for (const { question, answer } of answers) {
+          const index = questions.findIndex(
+            (candidate, i) =>
+              candidate.text === question ||
+              candidate.ref === question ||
+              String(i + 1) === question,
+          )
+          if (index < 0) throw new Error(`No question "${question}" on the card`)
+          drafts[index] = draftOf(questions[index], answer)
+          lines.push(`${questions[index].ref ?? index + 1}: ${[answer].flat().join(', ')}`)
+        }
+        ui[CARDS_KEY] = {
+          ...cards,
+          [card]: { ...previous, drafts, ...(note === undefined ? {} : { note }) },
+        }
+        return lines
+      }, ctx)
+      return {
+        output: [
+          {
+            type: 'text',
+            text: `Filled in on the card, not sent: ${filled.join('; ')}${note ? '; note set' : ''}. The user reviews and sends it.`,
+          },
+        ],
+      }
+    },
+  })
 
 export const actions = {
   open: implementAction(OpenAction, async (args, { host, conversationId }) => {
@@ -490,27 +593,24 @@ export const actions = {
     return { id }
   }),
   discard: implementAction(DiscardAction, (args, { host }) => end(host, sideId(args), 'discarded')),
-  inject: implementAction(InjectAction, (args, { host }) =>
-    end(
-      host,
-      sideId(args),
-      'injected',
-      args && typeof args === 'object' && 'answer' in args ? (args.answer as Reply) : undefined,
-    ),
-  ),
+  inject: implementAction(InjectAction, (args, { host, device }) => {
+    const answer = args && typeof args === 'object' && 'answer' in args ? args.answer : undefined
+    if (answer !== undefined && (answer === null || typeof answer !== 'object'))
+      throw new Error('answer must be {answers?, note?} or {text}')
+    return end(host, sideId(args), 'injected', answer, device)
+  }),
 }
 
 const readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks = [
+  'draft_answers',
   'read',
   'bash',
   'memory',
   'web_search',
   'web_fetch',
-  'screenshot',
 ]
-const readOnlyCall = (name: string, args: Record<string, unknown>) =>
-  readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(name) &&
-  !(name === 'screenshot' && args.path !== undefined)
+const readOnlyCall = (name: string) =>
+  readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(name)
 
 export function tracksEffect(name: string, args: Record<string, unknown>) {
   if (name === 'todo') return args.action === 'add' || args.action === 'done'
@@ -531,8 +631,8 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
 export function questionReminder(side: ConversationId, asker: number, message: number) {
   return [
     `You are in a side chat (#${side}): a read-only copy of #${asker}, forked right after it asked the user message ${message}. #${asker} itself waits for the answer and does not see this chat.`,
-    'The user wants to talk the question through before answering: explain what is going on, what each option means and costs, and why you recommend what you do. Look things up when it helps: read, bash for reading (git log, rg), memory, web search, screenshots without a path.',
-    `Change nothing: every other tool is blocked (codemode too), and bash must not write files or start anything. You do not answer the question: the user answers it on its card, which they see beside this chat.`,
+    'The user wants to talk the question through before answering: explain what is going on, what each option means and costs, and why you recommend what you do. Look things up when it helps: read, bash for reading (git log, rg), memory, web search and fetch.',
+    `Change nothing: every other tool is blocked (codemode too), and bash must not write files or start anything. You do not answer the question: the user answers it on its card, which they see beside this chat. When they tell you what to pick ("take your picks", "b for the first"), fill the card in with draft_answers; it never sends.`,
     `When they are done, they choose Discard, or Summarize, which sends #${asker} a summary of this talk, together with their answer if they send one.`,
   ].join('\n')
 }
@@ -550,6 +650,7 @@ export default (host: ExtensionHost) =>
   defineExtension({
     name: 'side-chat',
     tasks: [Start, endTask(host)],
+    tools: [draftAnswersTool(host)],
     hooks: [
       hook(GenerationTask, {
         beforeInput: async (_input, { tx, conversationId }) => {
@@ -585,7 +686,7 @@ export default (host: ExtensionHost) =>
             if (side.of === undefined) return undefined
             if (side.ended || (await tx.doc(Ending, api.conversationId)).mode)
               return { block: 'This side chat has ended' }
-            if (side.question !== undefined && !readOnlyCall(call.name, call.arguments))
+            if (side.question !== undefined && !readOnlyCall(call.name))
               return {
                 block: `This side chat is read-only: ${call.name} is blocked. Answer in the chat; the user decides on the card.`,
               }

@@ -64,7 +64,13 @@ async function fixture() {
     ).data.result.some(({ name }: { name: string }) => name === 'Dream after a pause'),
   )
   const hold = Promise.withResolvers<void>()
-  const gate = { afterTool: false, entered: false, summaryFailure: undefined as string | undefined }
+  const gate = {
+    afterTool: false,
+    entered: false,
+    summaryFailure: undefined as string | undefined,
+    holdSummary: false,
+    summaryHeld: false,
+  }
   const requests: { system: string; text: string; messages: string }[] = []
   const summaries: string[] = []
   const route: FauxResponseFactory = async (transcript, options) => {
@@ -85,6 +91,10 @@ async function fixture() {
     requests.push({ system, text, messages: JSON.stringify(transcript.messages) })
     if (system.includes('Summarize this temporary side chat')) {
       summaries.push(text)
+      if (gate.holdSummary) {
+        gate.summaryHeld = true
+        await hold.promise
+      }
       if (gate.summaryFailure)
         return fauxAssistantMessage(gate.summaryFailure, {
           stopReason: 'error',
@@ -731,6 +741,80 @@ describe('side chats', () => {
     expect((await f.action('open', { message: message.id })).data.error).toMatch(
       /no longer waits on you/,
     )
+  })
+
+  it('drafts answers on the card without sending, only in a question side chat', async () => {
+    const f = await fixture()
+    await f.call(f.main, 'message', {
+      to: 'user',
+      text: 'Pick for me',
+      questions: [
+        {
+          text: 'Colour?',
+          kind: 'choice',
+          options: [
+            { label: 'Violet', key: 'a', recommended: true },
+            { label: 'Teal', key: 'b' },
+          ],
+        },
+        { text: 'Why?', kind: 'text' },
+      ],
+    })
+    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
+    const message = board.messages.find((item) => item.text === 'Pick for me')!
+    const side = (await f.action('open', { message: message.id })).data.result.id
+    const offered = (await (await f.server.harness.conversation(side, context))!.agent(context))
+      .tools
+    expect(offered.map((tool) => tool.name)).toContain('draft_answers')
+    await f.call(side, 'draft_answers', {
+      answers: [
+        { question: '1', answer: 'b' },
+        { question: 'Why?', answer: 'calmer' },
+      ],
+      note: 'from the side chat',
+    })
+    const cards = (await f.server.host.uiState(context))['ext.questions.cards'] as Record<
+      string,
+      unknown
+    >
+    expect(cards[`message:${message.id}`]).toEqual({
+      drafts: { 0: { chosen: [1] }, 1: { chosen: [], text: 'calmer' } },
+      note: 'from the side chat',
+    })
+    const after = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
+    expect(after.messages.find((item) => item.id === message.id)!.state).toBe('delivered')
+    const mainTools = (await (await f.server.harness.conversation(f.main, context))!.agent(context))
+      .tools
+    expect(mainTools.map((tool) => tool.name)).not.toContain('draft_answers')
+  })
+
+  it('refuses a send that conflicts with a summary already under way', async () => {
+    const f = await fixture()
+    await f.call(f.main, 'message', {
+      to: 'user',
+      text: 'Conflict',
+      questions: [{ text: 'Which?', kind: 'choice', options: [{ label: 'a' }, { label: 'b' }] }],
+    })
+    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
+    const message = board.messages.find((item) => item.text === 'Conflict')!
+    const side = (await f.action('open', { message: message.id })).data.result.id
+    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
+    try {
+      f.gate.holdSummary = true
+      const summaryOnly = f.action('inject', { id: side })
+      await until(() => f.gate.summaryHeld)
+      const send = await f.action('inject', { id: side, answer: { text: 'b' } })
+      expect(send.data.error).toMatch(/already ending without an answer/)
+      f.hold.resolve()
+      expect((await summaryOnly).status).toBe(200)
+      const log = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
+      expect(log.messages.find((item) => item.id === message.id)!.state).toBe('delivered')
+    } finally {
+      await writeFile(
+        join(ultimateRoot, '.ultimate/settings.json'),
+        JSON.stringify({ summaryModel: 'unavailable/test' }),
+      )
+    }
   })
 
   it('refuses an answer with the summary once the question is closed, and leaves the side chat open', async () => {

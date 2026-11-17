@@ -422,12 +422,14 @@ function SidePane({
       )}
       {question !== undefined && (
         <PinnedQuestion
-          answerWith={(answer) =>
-            api.action(InjectAction, { id: side, answer }).catch((failure: unknown) => {
-              throw new Error(
-                `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/\w+: /, '')}`,
-              )
-            })
+          answerWith={(answer, keepalive) =>
+            api
+              .action(InjectAction, { id: side, answer }, { keepalive })
+              .catch((failure: unknown) => {
+                throw new Error(
+                  `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/\w+: /, '')}`,
+                )
+              })
           }
           keys={front && !phone}
           message={question}
@@ -514,7 +516,7 @@ function PinnedQuestion({
 }: {
   message: number
   keys: boolean
-  answerWith: (answer: Reply) => Promise<unknown>
+  answerWith: (answer: Reply, keepalive?: boolean) => Promise<unknown>
 }) {
   const message = useDocOf(ROOT, MessagesDoc)?.messages.find((item) => item.id === id)
   const [folded, setFolded] = useState(false)

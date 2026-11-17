@@ -35,7 +35,10 @@ All three actions are user-only (`userActions`); agents cannot call them. Inputs
   - Its Send reads **Summarize & send**: `inject {id, answer}`. One commit checks that the question is still open and creates the ending task. The task writes the summary, rechecks the question, then answers it with a receipt, so a crash or a reload sends the answer once. A failed summary sends nothing; a closed question is refused before anything is written.
   - **Summarize only** sends the summary without answering.
   - Discard always works, since nothing can have effects.
-- **Read-only:** `beforeTool` blocks every tool except read, bash, memory, web search and fetch, and screenshot without a `path`. Browser is blocked, since it can send prompts. Codemode is blocked too, because its nested calls skip tool hooks.
+- **Read-only:** `beforeTool` blocks every tool except read, bash, memory, web search and fetch, and `draft_answers`.
+  - Browser and screenshot are blocked: they load pages that can act. Codemode is blocked too, because its nested calls skip tool hooks.
+  - `draft_answers {answers, note?}` (deferred; the fork enables and loads it) fills in the card's durable draft (`ext.questions.cards` in the UI state) when the user says what to pick. It never sends: the user reviews the draft on the pinned card and sends it.
+- **Ending with an answer:** `inject {id, answer}` while a summary without an answer is under way, or the other way round, is refused rather than joined. If the question is answered elsewhere between the recheck and the send, the task still concludes: the summary stands and no second answer goes out. The task records the device the answer came from.
   - `actingAs` maps such a side chat to itself, not to the asker, so it borrows no identity.
   - Bash is only reminded, not sandboxed.
 - **Reminder and summary:** the hidden reminder says the chat is read-only and that the user answers on the card. The summary prompt asks for what the user leaned towards and why, and never invents an answer. The asker reads the summary just before the answer.
