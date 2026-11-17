@@ -22,7 +22,8 @@ produce a notice. To skip onboarding on a machine whose user knows Ultimate, set
 `~/.ultimate/settings.json` (user settings only): no Get ready, no Start here, no setup cards and no "set up git"
 reminder, while the Extensions panel and ⌘K Get ready… stay available and an undecided project setup keeps its
 status-line reminder. Model families (⌘K Model families…, `extensions/models/README.md`) are kept per project in
-`~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; a
+`~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; `modelFamilies` in
+`~/.ultimate/settings.json` (same shape) sits under both, the user's default for every project on the machine; a
 project's `.ultimate/settings.json` `modelFamilies` is the team's default: it applies over that start, and a person's own families for the project apply over it. `summaryModel` (`"provider/id[:thinking]"`; project over user; without it the
 summaries family's model, by default the tiny family's `openai-codex/gpt-6-luna:low`)
 pins the model for automatic titles, summaries, reply summaries and tree abstracts. Set it in either file or with
