@@ -7,7 +7,7 @@ import {
   MemoryStorage,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { EntryRecord, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
+import type { EntryId, EntryRecord, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
 import { context } from '../../../server/harness.ts'
@@ -118,7 +118,8 @@ async function fixture(service?: ClassifyService, plan?: PlanService) {
   }
   const round = async () => {
     await handOver()
-    await hooks.afterTools(1 as never, [], api, context)
+    const last = (await root.entries({ order: 'descending' }, 1, undefined, context)).items[0]
+    await hooks.afterTools(last?.id ?? (1 as EntryId), [], api, context)
   }
   const snapshot = () => harness.snapshot(Phases, ROOT_CONVERSATION_ID, context)
   const yieldRun = () => hooks.onYield({} as never, api, context)
@@ -288,6 +289,13 @@ it('asks about each open criterion and raises only confident estimates, with the
     })
   }, context)
   await f.round()
+  const last = (await f.root.entries({ order: 'descending' }, 1, undefined, context)).items[0]
+  await f.harness.commit(async (tx) => {
+    await tx.appendEntry(f.root.id, {
+      kind: 'pi.user',
+      model: [{ role: 'user', content: 'Later input', timestamp: 2 }],
+    })
+  }, context)
   await until(() => estimate.mock.calls.length === 1)
   const { questions } = ask.mock.calls[0][0]
   expect(Object.keys(questions)).toEqual(['phase', 'criterion1', 'criterion3'])
@@ -296,7 +304,6 @@ it('asks about each open criterion and raises only confident estimates, with the
     estimate: 'in_progress',
   })
   const [, conversation, epic, estimates] = estimate.mock.calls[0]
-  const last = (await f.root.entries({ order: 'descending' }, 1, undefined, context)).items[0]
   expect([conversation, epic, estimates]).toEqual([
     f.root.id,
     'E1',

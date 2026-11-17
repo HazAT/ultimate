@@ -915,16 +915,17 @@ function useConversationTask(id: number | undefined) {
 
 function useLandedNote({ conversation, sha }: { conversation: ConversationId; sha: string }) {
   const progress = useDocOf(conversation, ProgressDoc)?.epics ?? {}
-  const landed = Object.entries(progress).find(([, epic]) => epic.landed?.sha === sha)
+  const landed = Object.entries(progress).find(([, epic]) => epic.landed?.[sha])
   if (!landed) return undefined
-  const [key, { landed: counts }] = landed
+  const [key, epic] = landed
+  const counts = epic.landed![sha]
   return (
     <p className="text-muted-foreground tabular-nums">
       Criteria{' '}
-      <span className={counts!.confirmed === counts!.total ? 'text-success' : ''}>
-        {counts!.confirmed}/{counts!.total} confirmed
+      <span className={counts.confirmed === counts.total ? 'text-success' : ''}>
+        {counts.confirmed}/{counts.total} confirmed
       </span>
-      {counts!.estimated > 0 && ` · ${counts!.estimated} estimated`}
+      {counts.estimated > 0 && ` · ${counts.estimated} estimated`}
       <span className="text-muted-foreground/60"> · {key}</span>
     </p>
   )

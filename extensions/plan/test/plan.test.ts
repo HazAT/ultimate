@@ -436,16 +436,24 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
       (tx) => landed(tx, { data: { conversationId: id, sha: 'abc1234' } }),
       context,
     )
-    expect((await opened.harness.snapshot(Progress, id, context))?.epics.E1?.landed).toEqual({
-      sha: 'abc1234',
-      total: 3,
-      confirmed: 2,
-      estimated: 1,
-    })
+    await call({ action: 'add', epic: 'E1', title: 'T', role: 'worker', description: 'D' })
+    expect((await service.openCriteria(id, context))?.criteria).toHaveLength(1)
 
-    await call({ action: 'update', key: 'E1', body: body(['A', 'B changed', 'C']) })
-    await estimate({})
+    // Confirmations follow their criterion's text through a body edit; estimates of changed text go at once.
+    await call({ action: 'update', key: 'E1', body: body(['C', 'B changed', 'A']) })
+    expect((await opened.harness.snapshot(Plan, id, context))?.epics.E1.met).toEqual([1, 3])
     expect(await estimates()).toEqual({ C: { state: 'in_progress' } })
+    await call({ action: 'update', key: 'E1', body: body(['C', 'B', 'A']) })
+    expect(await estimates()).toEqual({ C: { state: 'in_progress' } })
+
+    await opened.harness.commit(
+      (tx) => landed(tx, { data: { conversationId: id, sha: 'def5678' } }),
+      context,
+    )
+    expect((await opened.harness.snapshot(Progress, id, context))?.epics.E1?.landed).toEqual({
+      abc1234: { total: 3, confirmed: 2, estimated: 1 },
+      def5678: { total: 3, confirmed: 2, estimated: 0 },
+    })
 
     await call({ action: 'update', key: 'E1', status: 'done' })
     expect(await service.openCriteria(id, context)).toBeUndefined()

@@ -18,7 +18,7 @@ import { SubmissionLanded } from '../workspaces/api.ts'
 import { PlanApi } from './api.ts'
 import { confirmed, criteriaCounts, criteriaOfBody, currentEpic, raise } from './progress.ts'
 import { PlanDoc, ProgressDoc, TaskIndexDoc } from './refs.ts'
-import type { EpicProgress } from './refs.ts'
+import type { EpicProgress, Estimate } from './refs.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export type Task = {
@@ -149,12 +149,27 @@ async function answeredSinceFork(tx: Tx, id: ConversationId, at: EntryId) {
   return false
 }
 
+async function raiseEstimates(
+  tx: Tx,
+  id: ConversationId,
+  epic: { key: string; body: string },
+  estimates: Record<string, Estimate>,
+) {
+  const progress = await tx.doc(Progress, id)
+  const entry = progress.epics[epic.key]
+  if (!entry && Object.keys(estimates).length === 0) return
+  progress.epics[epic.key] = {
+    ...entry,
+    estimates: raise(criteriaOfBody(epic.body) ?? [], entry?.estimates ?? {}, estimates),
+  }
+}
+
 export default (host: ExtensionHost) => {
   host.implement(PlanApi, {
     openCriteria: async (id, caller) => {
       const plan = await host.harness().snapshot(Plan, id, caller)
       const epic = plan && currentEpic(plan.epics)
-      if (!epic || epic.status === 'done' || Object.keys(epic.tasks).length > 0) return undefined
+      if (!epic || epic.status === 'done') return undefined
       const estimates =
         (await host.harness().snapshot(Progress, id, caller))?.epics[epic.key]?.estimates ?? {}
       const criteria = (criteriaOfBody(epic.body) ?? []).flatMap((text, index) =>
@@ -172,26 +187,25 @@ export default (host: ExtensionHost) => {
     },
     estimate: async (tx, id, key, estimates) => {
       const epic = (await tx.doc(Plan, id)).epics[key]
-      if (!epic) return
-      const progress = await tx.doc(Progress, id)
-      const entry = progress.epics[key]
-      progress.epics[key] = {
-        ...entry,
-        estimates: raise(criteriaOfBody(epic.body) ?? [], entry?.estimates ?? {}, estimates),
-      }
+      if (epic) await raiseEstimates(tx, id, epic, estimates)
     },
   })
-  host.react('criteria-at-landing', [SubmissionLanded], async (tx, { data }) => {
-    const id = data.conversationId
-    if (!(await tx.conversation(id))) return
-    const epic = currentEpic((await tx.doc(Plan, id)).epics)
-    if (!epic || Object.keys(epic.tasks).length > 0) return
-    const progress = await tx.doc(Progress, id)
-    const entry = progress.epics[epic.key]
-    const counts = criteriaCounts(epic, entry?.estimates)
-    if (counts.total > 0)
-      progress.epics[epic.key] = { ...entry, landed: { sha: data.sha, ...counts } }
-  })
+  host.react(
+    'criteria-at-landing',
+    [SubmissionLanded],
+    async (tx, { data }) => {
+      const id = data.conversationId
+      if (!(await tx.conversation(id))) return
+      const epic = currentEpic((await tx.doc(Plan, id)).epics)
+      if (!epic) return
+      const progress = await tx.doc(Progress, id)
+      const entry = progress.epics[epic.key]
+      const counts = criteriaCounts(epic, entry?.estimates)
+      if (counts.total > 0)
+        progress.epics[epic.key] = { ...entry, landed: { ...entry?.landed, [data.sha]: counts } }
+    },
+    { from: 'now' },
+  )
   return defineExtension({
     name: 'plan',
     hooks: [
@@ -354,8 +368,20 @@ export default (host: ExtensionHost) => {
                   const outside = args.met.find((n) => n > total)
                   if (outside !== undefined)
                     throw new Error(`${item.key} has ${total} acceptance criteria, not ${outside}`)
-                  item.met = [...new Set(args.met)].toSorted((a, b) => a - b)
                 }
+                if (!task && args.body !== undefined) {
+                  const before = criteriaOfBody(item.body) ?? []
+                  const after = criteriaOfBody(args.body) ?? []
+                  if (args.met === undefined && item.met) {
+                    const kept = new Set(item.met.map((n) => before[n - 1]))
+                    item.met = after.flatMap((criterion, index) =>
+                      kept.has(criterion) ? [index + 1] : [],
+                    )
+                  }
+                  await raiseEstimates(tx, coordinator, { ...item, body: args.body }, {})
+                }
+                if (!task && args.met !== undefined)
+                  item.met = [...new Set(args.met)].toSorted((a, b) => a - b)
                 if (args.status !== undefined) item.status = args.status as typeof item.status
                 if (args.title !== undefined) item.title = args.title
                 if (args.verdict !== undefined) item.verdict = args.verdict

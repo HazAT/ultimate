@@ -40,12 +40,9 @@ export function raise(
   return raised
 }
 
-export function progressLabel(epic: Progress & { body: string }) {
+export function progressLabel(epic: Progress) {
   const total = Object.keys(epic.tasks).length
-  if (total > 0) return `${finished(epic.tasks)}/${total} done`
-  const status = epic.status.replace('_', ' ')
-  const criteria = criteriaOfBody(epic.body)?.length
-  return criteria ? `${status} · ${criteria} criteri${criteria === 1 ? 'on' : 'a'}` : status
+  return total > 0 ? `${finished(epic.tasks)}/${total} done` : epic.status.replace('_', ' ')
 }
 
 export const finished = (tasks: Record<string, { status: string }>) =>

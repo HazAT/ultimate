@@ -7,7 +7,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryRecord, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Cursor, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ClassifyApi } from '../classify/api.ts'
 import type { ClassifyQuestion, ClassifyResult } from '../classify/api.ts'
@@ -97,7 +97,7 @@ export default function phase(
 ) {
   host.want(ClassifyApi)
   host.want(PlanApi)
-  const ClassifyTask = defineTask<{ run: number }, { phase: 'classify' }, null>({
+  const ClassifyTask = defineTask<{ run: number; at?: number }, { phase: 'classify' }, null>({
     name: 'phase.classify',
     version: 1,
     initial: () => ({ phase: 'classify' }),
@@ -128,7 +128,15 @@ export default function phase(
             let cursor: Cursor | undefined
             let reachedCurrentRequestInput = false
             do {
-              const page = await conversation.entries({ order: 'descending' }, 64, cursor, context)
+              const page = await conversation.entries(
+                {
+                  order: 'descending',
+                  ...(task.input.at ? { maxEntryId: task.input.at as EntryId } : {}),
+                },
+                64,
+                cursor,
+                context,
+              )
               for (const entry of page.items) {
                 entries.push(entry)
                 reachedCurrentRequestInput = isInput(entry)
@@ -137,7 +145,7 @@ export default function phase(
               cursor = page.next
             } while (cursor !== undefined && !reachedCurrentRequestInput)
             entries.reverse()
-            const at = entries.at(-1)?.id ?? 0
+            const at = task.input.at ?? entries.at(-1)?.id ?? 0
             const result = await service.ask(
               {
                 state: phaseState(entries, [
@@ -213,7 +221,7 @@ export default function phase(
             }
           }, context)
         },
-        afterTools: async (_assistant, _results, api, context) => {
+        afterTools: async (assistant, results, api, context) => {
           if (!host.want(ClassifyApi)) return
           await host.harness().commit(async (tx) => {
             const run = await firstRunInput(tx, api.conversationId)
@@ -222,7 +230,7 @@ export default function phase(
               return
             const pending = await tx.createTask(
               ClassifyTask,
-              { run },
+              { run, at: Math.max(assistant, ...results) },
               {
                 ownership: { kind: 'conversation' },
                 conversationId: api.conversationId,
