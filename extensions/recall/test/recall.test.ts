@@ -17,7 +17,8 @@ import recall, { Recall } from '../server.ts'
 import { ClassifyApi } from '../../classify/api.ts'
 import type { ClassifyService } from '../../classify/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
-import type { LineageService } from '../../lineage/api.ts'
+import { MemorySearch } from '../../lineage/api.ts'
+import type { LineageService, MemorySearchService } from '../../lineage/api.ts'
 import { Standing } from '../../subagents/api.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -68,6 +69,7 @@ async function launch(probabilities: Record<string, number>, percent = 40) {
       harness: () => harness,
       want: ((api: unknown) => (api === ClassifyApi ? { ask } : undefined)) as never,
       need: (() => lineage) as never,
+      implement: () => {},
     } as never),
   )
   const storage = new MemoryStorage()
@@ -120,4 +122,39 @@ it('recalls a memory after the input, already in the first request and at the sa
     memories: [{ slug: 'night-watch', line: memories['night-watch'].line, confidence: 0.84 }],
   })
   expect(await f.state()).toEqual({ last: input.id })
+})
+
+it('answers a memory query with the memories at or above the query threshold, best first', async () => {
+  let search!: MemorySearchService
+  const ask = vi.fn<ClassifyService['ask']>(async () => ({
+    model: 'fake',
+    answers: {
+      memory: {
+        type: 'choice',
+        choice: 'night-watch',
+        confidence: 0.6,
+        probabilities: {
+          'tmp-quota-not-flaky': 0.15,
+          'night-watch': 0.55,
+          'below-cutoff': 0.14,
+          NONE: 0.16,
+        },
+      },
+    },
+    usage: { inputTokens: 0 },
+  }))
+  recall({
+    want: ((api: unknown) => (api === ClassifyApi ? { ask } : undefined)) as never,
+    need: (() => ({})) as never,
+    implement: ((api: unknown, service: MemorySearchService) => {
+      if (api === MemorySearch) search = service
+    }) as never,
+  } as never)
+  const belowCutoff = { ...memories['night-watch'], line: 'Barely related' }
+  const all = { ...memories, 'below-cutoff': belowCutoff }
+  expect(await search.search('going to sleep', all, AbortSignal.timeout(1000))).toEqual([
+    'night-watch',
+    'tmp-quota-not-flaky',
+  ])
+  expect(ask.mock.calls[0][0].state).toEqual({ query: 'going to sleep' })
 })

@@ -141,16 +141,34 @@ export function RememberCall({ call, core }: { call: ToolCallView; core: ReactNo
 export function MemoryCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
   if (failed(call)) return core
-  const slug = words(call.args.read)
+  const read = call.args.read
+  const slugs = (Array.isArray(read) ? read : [read]).map(words).filter(Boolean)
+  const query = words(call.args.query)
   return (
     <Tool>
       <ToolHeader
-        action={slug && <MemoryChip className="shrink-0" slug={slug} />}
+        action={
+          slugs.length > 0 && (
+            <span className="flex min-w-0 gap-1">
+              {slugs.map((slug) => (
+                <MemoryChip className="shrink-0" key={slug} slug={slug} />
+              ))}
+            </span>
+          )
+        }
         icon={BookOpenIcon}
         meta={duration}
         name=""
         state={call.status}
-        title={slug ? 'Read memory' : 'Read the memory index'}
+        title={
+          query
+            ? `Search memory: ${query}`
+            : slugs.length > 1
+              ? 'Read memories'
+              : slugs.length
+                ? 'Read memory'
+                : 'Read the memory index'
+        }
       />
       <ToolContent>
         <ToolOutput output={call.output} />
