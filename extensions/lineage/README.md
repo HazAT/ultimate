@@ -61,8 +61,11 @@ of at most 120 characters, `body` at most 2000, `source` a `#<conversation>/<ent
   `remember {root?, ops}` tool is the standing `ultimate` agent's only (a branch could find it with `tool_search`); it
   defaults to the caller's tree root, else the project's only root. User-only `forget {root, slug}` deletes one;
   `LineageApi.remember` serves other extensions.
-- **Reading.** `memory {read?, root?}`, offered to every agent, returns the index, one
-  `slug [kind] — line (updated YYYY-MM-DD)` per memory, or with `read` one memory's body and source.
+- **Reading.** `memory {read?, query?, root?}`, offered to every agent, returns the index, one
+  `slug [kind] — line (updated YYYY-MM-DD)` per memory; with `read` (one slug or several) those memories' bodies and
+  sources, an unknown slug answering with the index; with `query`, a topic or situation in plain words, the memories
+  about it in full. `query` searches through the `lineage.memory-search` point, which recall provides with classify;
+  without it, or when the search fails, `query` returns the index.
 - **Brief.** A branch from a root with memories starts from a brief instead of the tally: `<project_memory root="#R">`
   with the index, the root's last 10 landings and where to read the full tally. The inherited tally stays in storage;
   `lineage.branch` records `brief: true`.

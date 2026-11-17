@@ -14,7 +14,7 @@ import { isInput } from '../../lib/entries.ts'
 import { ClassifyApi } from '../classify/api.ts'
 import type { ClassifyQuestion } from '../classify/api.ts'
 import { ContextUsageDoc } from '../conversations/api.ts'
-import { LineageApi } from '../lineage/api.ts'
+import { LineageApi, MemorySearch } from '../lineage/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import { Standing } from '../subagents/api.ts'
 import { RecallDoc } from './refs.ts'
@@ -28,6 +28,8 @@ const memoryStillFreshInPrompt = (percent: number) => percent < FROM_PERCENT
 const RECALLED_MEMORY_FRESH_WINDOW_SHARE = 0.3
 export const CALIBRATED_RECALL_PROBABILITY = 0.25
 const TOP = 3
+export const CALIBRATED_QUERY_PROBABILITY = 0.15
+const QUERY_TOP = 5
 
 export const Recall = defineDoc<RecallState>({
   kind: RecallDoc.kind,
@@ -41,15 +43,28 @@ export const Recall = defineDoc<RecallState>({
 export const docs = [Recall]
 
 const INSTRUCTIONS =
-  '@ultimate, a coding agent, just received `message` from `from`. Judge what the sender intends and what @ultimate must do next, not which words or topics appear; messages are often casual or indirect. Which project memory tells @ultimate how to handle exactly this situation, so that without recalling it @ultimate would likely act differently? When a branch reports to @ultimate, the memories about how @ultimate handles such reports (what to relay, what to do after a landing) are triggered by what the report contains; a memory about the feature the branch built usually is not. Standing habits that hold for every message are not triggered by an ordinary message. Pick none when nothing is specifically triggered.'
+  '@ultimate, a coding agent, just received `message` from `from`. Judge what the sender intends and what @ultimate must do next, not which words or topics appear; messages are often casual or indirect. Which project memory tells @ultimate how to handle exactly this situation, so that without recalling it @ultimate would likely act differently? When a branch reports to @ultimate, the memories about how @ultimate handles such reports (what to relay, what to do after a landing) are triggered by what the report contains; a memory about the feature the branch built usually is not. Standing habits that hold for every message are not triggered by an ordinary message. Pick NONE when nothing is specifically triggered.'
 
-export function recallQuestion(memories: Record<string, MemoryItem>): ClassifyQuestion {
-  const criteria: Record<string, string> = {
-    none: 'No memory is specifically triggered by this message.',
-  }
+const QUERY_INSTRUCTIONS =
+  'A coding agent searches its project memory with `query`: a topic, a question or the situation it is in. Which memory is about what the query asks, so the agent would act differently with it? Pick NONE when no memory is about it.'
+
+const NO_MEMORY_KEY_OUTSIDE_SLUG_SYNTAX = 'NONE'
+
+function memoryChoice(
+  instructions: string,
+  noMemory: string,
+  memories: Record<string, MemoryItem>,
+): ClassifyQuestion {
+  const criteria: Record<string, string> = { [NO_MEMORY_KEY_OUTSIDE_SLUG_SYNTAX]: noMemory }
   for (const [slug, item] of Object.entries(memories)) criteria[slug] = item.line
-  return { type: 'choice', instructions: INSTRUCTIONS, criteria }
+  return { type: 'choice', instructions, criteria }
 }
+
+export const recallQuestion = (memories: Record<string, MemoryItem>) =>
+  memoryChoice(INSTRUCTIONS, 'No memory is specifically triggered by this message.', memories)
+
+export const queryQuestion = (memories: Record<string, MemoryItem>) =>
+  memoryChoice(QUERY_INSTRUCTIONS, 'No memory is about this query.', memories)
 
 const textOf = (entry: EntryRecord) =>
   (entry.model ?? [])
@@ -94,6 +109,23 @@ export function recallText(picked: { slug: string; item: MemoryItem }[]) {
 export default function recall(host: ExtensionHost) {
   host.want(ClassifyApi)
   host.need(LineageApi)
+  host.implement(MemorySearch, {
+    async search(query, memories, signal) {
+      const classify = host.want(ClassifyApi)
+      if (!classify) throw new Error('the classify extension is off')
+      const result = await classify.ask(
+        { state: { query }, questions: { memory: queryQuestion(memories) } },
+        signal,
+      )
+      const answer = result.answers.memory
+      if (answer.type !== 'choice') throw new Error(`classify answered ${answer.type}, not choice`)
+      return Object.entries(answer.probabilities)
+        .filter(([slug, p]) => Object.hasOwn(memories, slug) && p >= CALIBRATED_QUERY_PROBABILITY)
+        .toSorted((a, b) => b[1] - a[1])
+        .slice(0, QUERY_TOP)
+        .map(([slug]) => slug)
+    },
+  })
   return defineExtension({
     name: 'recall',
     hooks: [
