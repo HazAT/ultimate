@@ -294,7 +294,7 @@ function createReporter() {
         const action = Object.values(state.actions).find(
           (candidate) => candidate.reporter === task.id,
         )!
-        action.status = 'unanswered'
+        action.status ??= 'unanswered'
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, context),
   })

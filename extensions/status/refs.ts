@@ -6,6 +6,11 @@ export type Status = {
   /** When this answer was made, epoch ms. */
   at: number
   /**
+   * The generation this host serves, from `ULTIMATE_GENERATION`: the supervisor bumps it on every core swap, so a
+   * caller that asked for a restart sees the new generation once the new core answers.
+   */
+  generation: number
+  /**
    * Optional project progress from the first enabled extension's `projectProgress {}` action that returns a valid result.
    * A nonempty label, safe integer index from 0 through total, and positive safe integer total. Null, invalid
    * results and errors are absent; extensions without progress need no action.
