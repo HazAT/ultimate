@@ -36,6 +36,9 @@ it('resolves answers as the card renders them, and refuses what it cannot show',
     options: [{ label: 'Here' }, { label: 'There' }],
   }
   expect(draftFor(unkeyed, '2')).toEqual({ chosen: [1] })
+  expect(draftFor({ text: 'Rate', kind: 'scale', scale: { min: 0, max: 5 } }, '2')).toEqual({
+    chosen: [2],
+  })
   expect(() => draftFor({ text: 'Rate', kind: 'scale', scale: { min: 1, max: 3 } }, '7')).toThrow(
     'takes one of: 1, 2, 3',
   )

@@ -202,7 +202,6 @@ async function end(
       throw new Error(`Side chat #${id} has effects; inject its summary instead`)
     let reply: { message: number; text: string } | undefined
     if (answer !== undefined) {
-      if (side.question === undefined) throw new Error(`Side chat #${id} talks no question through`)
       if (!message || !openQuestion(message))
         throw new Error(`Message ${side.question} no longer waits on you; nothing was sent`)
       reply = { message: message.id, text: replyTextWanted! }

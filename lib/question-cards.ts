@@ -73,13 +73,9 @@ export function keyOf(question: CardQuestion, index: number) {
 }
 
 export function questionIndex(questions: readonly CardQuestion[], named: string) {
-  const matches = [
-    ...new Set(
-      questions.flatMap((question, index) =>
-        question.text === named || position(question, index) === named ? [index] : [],
-      ),
-    ),
-  ]
+  const matches = questions.flatMap((question, index) =>
+    question.text === named || position(question, index) === named ? [index] : [],
+  )
   if (matches.length > 1) throw new Error(`Question "${named}" is ambiguous on the card`)
   if (matches.length === 0) throw new Error(`No question "${named}" on the card`)
   return matches[0]
@@ -87,7 +83,12 @@ export function questionIndex(questions: readonly CardQuestion[], named: string)
 
 function choiceNamed(question: CardQuestion, value: string) {
   const wanted = value.trim().toLowerCase()
-  return choices(question).findIndex(
+  const list = choices(question)
+  const byLabel = list.findIndex(
+    (choice) => !choice.custom && choice.label.toLowerCase() === wanted,
+  )
+  if (byLabel >= 0 || question.kind === 'scale') return byLabel
+  return list.findIndex(
     (choice, index) =>
       !choice.custom &&
       (choice.label.toLowerCase() === wanted || keyOf(question, index) === wanted),
