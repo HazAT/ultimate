@@ -25,9 +25,20 @@ export const PromptInputTextarea = ({
   const ref = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
     const element = ref.current
-    if (!element) return
-    element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`
+    if (!element) return undefined
+    const fit = () => {
+      element.style.height = 'auto'
+      element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`
+    }
+    fit()
+    let fittedWidth = element.clientWidth
+    const refitWhenWidthChanges = new ResizeObserver(() => {
+      if (element.clientWidth === fittedWidth) return
+      fittedWidth = element.clientWidth
+      fit()
+    })
+    refitWhenWidthChanges.observe(element)
+    return () => refitWhenWidthChanges.disconnect()
   }, [value, maxHeight])
   return (
     <textarea
