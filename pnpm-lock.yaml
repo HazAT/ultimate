@@ -9,7 +9,7 @@ overrides:
 
 patchedDependencies:
   '@earendil-works/chord@1.5.2': 0a84e0316a4ce02b090b6c94540148771592890bc6f0869d75243fa34e5d3f25
-  '@earendil-works/pi-claude-code@0.1.0': bd3825e7cab2a13a494c87f2c6658f445f3978c0b5de2857273fb36ade3ff78e
+  '@earendil-works/pi-claude-code@0.1.0': a0f330729d4aec7e0229544035396b87a80f9c34ee91b89ed006b16fea191d86
   '@earendil-works/pi-durable@1.5.2': da103834f55ff797bdc07bc967b4a51ab697f056657fb7c9db6a7d16577d839e
 
 importers:
@@ -24,7 +24,7 @@ importers:
         version: 1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)
       '@earendil-works/pi-claude-code':
         specifier: github:earendil-works/pi-claude-code#70abb65186592ca788b29b3db22c3160d629c41f
-        version: https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/70abb65186592ca788b29b3db22c3160d629c41f(patch_hash=bd3825e7cab2a13a494c87f2c6658f445f3978c0b5de2857273fb36ade3ff78e)(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4))
+        version: https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/70abb65186592ca788b29b3db22c3160d629c41f(patch_hash=a0f330729d4aec7e0229544035396b87a80f9c34ee91b89ed006b16fea191d86)(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4))
       '@earendil-works/pi-codemode':
         specifier: 1.5.2
         version: 1.5.2
@@ -4002,7 +4002,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-claude-code@https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/70abb65186592ca788b29b3db22c3160d629c41f(patch_hash=bd3825e7cab2a13a494c87f2c6658f445f3978c0b5de2857273fb36ade3ff78e)(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4))':
+  '@earendil-works/pi-claude-code@https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/70abb65186592ca788b29b3db22c3160d629c41f(patch_hash=a0f330729d4aec7e0229544035396b87a80f9c34ee91b89ed006b16fea191d86)(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4))':
     dependencies:
       '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)
       '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)
