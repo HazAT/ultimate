@@ -18,7 +18,7 @@ import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
 import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
-import { exec as run } from '../lib/exec.ts'
+import { runGit } from '../lib/git.ts'
 import { deadline } from '../lib/timers.ts'
 import { rebuiltOnOpen } from '../lib/errors.ts'
 import type { Cancel } from '../lib/timers.ts'
@@ -80,7 +80,7 @@ export async function createSystem(
     if (git) {
       const command = async (args: string[]) => {
         try {
-          return (await run('git', args, { cwd: host.ultimateRoot })).stdout.trim()
+          return (await runGit(host.ultimateRoot, args)).stdout.trim()
         } catch {
           return ''
         }

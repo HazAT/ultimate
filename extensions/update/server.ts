@@ -12,6 +12,7 @@ import { rebuiltOnOpen, ignoring, isMissing, meansNone, settled } from '../../li
 import { deadline, every, pace } from '../../lib/timers.ts'
 import { compareUrl } from '../../lib/compare.ts'
 import { exec } from '../../lib/exec.ts'
+import { runGit } from '../../lib/git.ts'
 import { fastForward, Refusal } from '../../lib/fast-forward.ts'
 import type { Git } from '../../lib/fast-forward.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
@@ -40,7 +41,7 @@ export const gitIn =
     try {
       const nonInteractiveGitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       return (
-        await exec('git', args, { cwd: root, env: nonInteractiveGitEnv, timeout: 120_000 })
+        await runGit(root, args, { env: nonInteractiveGitEnv, timeout: 120_000 })
       ).stdout.trim()
     } catch (error) {
       const { stderr = '' } = error as { stderr?: string }
