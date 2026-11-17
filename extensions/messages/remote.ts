@@ -149,11 +149,12 @@ export const Tell = defineEffect<
       (m) => m.id === message,
     )
     if (!outcome.ok) {
-      if (stored) {
+      if (stored?.state === 'sent') {
         stored.state = 'failed'
         stored.error = outcome.error
       }
-      delete (await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[args.key]
+      const { told } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)
+      if (told[args.key]?.answer === undefined) delete told[args.key]
       return
     }
     if (!stored) return
