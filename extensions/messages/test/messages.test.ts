@@ -2159,6 +2159,39 @@ it("returns another Ultimate's answer as a reply once, and refuses a reply to a 
     actions.remoteReply({ key: oneWay, text: 'Thanks', failed: false }, f.action()),
   ).rejects.toThrow('No message from this Ultimate that expects a reply has that key')
 })
+it('keeps an answer that arrived before the post to another Ultimate failed', async () => {
+  // The other Ultimate takes the message and answers it, then the connection drops before its response arrives.
+  let f!: Awaited<ReturnType<typeof remoteFixture>>
+  let answered: number | undefined
+  const server = createServer(async (request) => {
+    let raw = ''
+    for await (const chunk of request) raw += String(chunk)
+    const { key } = (JSON.parse(raw) as { args: { key: string } }).args
+    answered = await actions.remoteReply(
+      { key, text: 'Yes, landed abc.', failed: false },
+      f.action(),
+    )
+    request.socket.destroy()
+  })
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
+  servers.push(server)
+  f = await remoteFixture(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+  await expect(
+    f
+      .service()
+      .tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Did the landing work?' }, context),
+  ).rejects.toThrow('poe2-rust on this machine did not answer')
+  const told = (await f.log())!.messages.find((m) => m.to === 'remote')!
+  expect(told.state).toBe('answered')
+  expect(told.error).toBeUndefined()
+  // The answer is still known by its key: a repeated answer returns it instead of being refused.
+  const key = told.remote!.key
+  expect(
+    await actions.remoteReply({ key, text: 'Yes, landed abc.', failed: false }, f.action()),
+  ).toBe(answered)
+  await until(async () => (await replies(f)).length === 1)
+  await f.opened.root.waitForIdle(context)
+})
 it('takes a late answer after the log dropped its message, and keys named like object properties', async () => {
   const other = await otherUltimate(() => [200, { result: 3 }])
   const f = await remoteFixture(other.url)
