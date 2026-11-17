@@ -1,3 +1,4 @@
+import { plainText } from '@/components/ai/mentions'
 import { waiting } from '../questions/ui.tsx'
 import type { Message } from '../messages/refs.ts'
 import type { InboxItem } from './ui.tsx'
@@ -43,10 +44,10 @@ export const previewUrl = (text: string) =>
 export function lead(text: string) {
   const trimmed = text.trimStart()
   const bold = /^\*\*(.+?)\*\*[:.]?\s*/.exec(trimmed)
-  if (bold) return { title: bold[1].trim(), body: trimmed.slice(bold[0].length) }
+  if (bold) return { title: plainText(bold[1]).trim(), body: trimmed.slice(bold[0].length) }
   const [first = '', ...rest] = trimmed.split('\n')
   return {
-    title: first
+    title: plainText(first)
       .replace(/^[#>\-*\s]+/, '')
       .replace(/[*_`]/g, '')
       .trim(),

@@ -19,6 +19,7 @@ vi.mock('@/sdk', () => ({
 vi.mock('../../../messages/ui.tsx', () => ({ MessagesDoc: { kind: 'board' } }))
 vi.mock('@/components/ai/message', () => ({
   MessageResponse: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
+  InlineText: ({ text }: { text: string }) => text,
 }))
 
 const { MessageQuestions } = await import('../../card.tsx')

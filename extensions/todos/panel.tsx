@@ -2,6 +2,8 @@ import { ROOT } from '@/sdk'
 import { CheckIcon, ChevronRightIcon, InboxIcon, PlayIcon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { InlineText } from '@/components/ai/message'
+import { plainText } from '@/components/ai/mentions'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api, cn, errorMessage, events, formatAgo, useDocOf, useNow, useUltimate } from '@/sdk'
 import { Waiting } from '../inbox/ui.tsx'
@@ -152,7 +154,7 @@ function TodoRow({
     <li className="group/todo flex items-start rounded hover:bg-muted/50" data-todo={todo.id}>
       <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 py-1.5 pl-2">
         <Checkbox
-          aria-label={todo.done ? `Reopen: ${todo.text}` : `Done: ${todo.text}`}
+          aria-label={`${todo.done ? 'Reopen' : 'Done'}: ${plainText(todo.text)}`}
           checked={!!todo.done}
           className={cn(
             'mt-0.5',
@@ -167,7 +169,7 @@ function TodoRow({
             todo.done && 'text-muted-foreground line-through decoration-muted-foreground/50',
           )}
         >
-          {todo.text}
+          <InlineText text={todo.text} />
         </span>
         <time
           className="shrink-0 pt-px font-mono text-[11px] text-muted-foreground/70"
@@ -180,7 +182,7 @@ function TodoRow({
       </label>
       {start && !todo.done ? (
         <button
-          aria-label={`${label}: ${todo.text}`}
+          aria-label={`${label}: ${plainText(todo.text)}`}
           className="mt-1 mr-2 ml-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 group-hover/todo:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           data-todo-start
           onClick={() => start(todo)}

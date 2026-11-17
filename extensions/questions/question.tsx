@@ -1,7 +1,8 @@
 import { CheckIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { MessageResponse } from '@/components/ai/message'
+import { InlineText, MessageResponse } from '@/components/ai/message'
+import { plainText } from '@/components/ai/mentions'
 import { cn } from '@/sdk'
 import type { Question } from '../messages/refs.ts'
 import { answerOf, choices, keyOf, position } from './state.tsx'
@@ -105,10 +106,12 @@ function Option({
         <Mark hint={hint} chosen={chosen} multi={multi} />
         <span className="min-w-0 flex-1 pt-px">
           <span className={choice.custom && !chosen ? 'text-muted-foreground' : 'text-foreground'}>
-            {choice.label}
+            {plainText(choice.label)}
           </span>
           {choice.detail && (
-            <span className="mt-0.5 block text-xs text-muted-foreground">{choice.detail}</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {plainText(choice.detail)}
+            </span>
           )}
         </span>
         {choice.recommended && (
@@ -180,6 +183,31 @@ export function brief(question: Question, index: number, draft: Draft | undefine
           .flatMap((i) => (list[i]?.key && !list[i].custom ? [list[i].key] : []))
           .join(',')
   return { tag: `${position(question, index)}${keys}`, words: answerOf(question, draft) }
+}
+
+const headerClass =
+  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+
+function Header({
+  current,
+  onOpen,
+  children,
+}: {
+  current: boolean
+  onOpen: () => void
+  children: ReactNode
+}) {
+  if (current) return <div className={headerClass}>{children}</div>
+  return (
+    <button
+      type="button"
+      aria-expanded={false}
+      onClick={onOpen}
+      className={cn(headerClass, 'cursor-pointer hover:bg-muted/40')}
+    >
+      {children}
+    </button>
+  )
 }
 
 const previewPinnedToOptionsHeight =
@@ -272,17 +300,8 @@ export function QuestionItem({
         current ? 'border-border/80 bg-background/50' : 'border-transparent',
       )}
     >
-      <legend className="sr-only">{question.text}</legend>
-      <button
-        type="button"
-        tabIndex={current ? -1 : 0}
-        aria-expanded={current}
-        onClick={onOpen}
-        className={cn(
-          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-          current ? 'cursor-default' : 'cursor-pointer hover:bg-muted/40',
-        )}
-      >
+      <legend className="sr-only">{plainText(question.text)}</legend>
+      <Header current={current} onOpen={onOpen}>
         <span
           className={cn(
             'flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] transition-colors duration-200',
@@ -301,7 +320,7 @@ export function QuestionItem({
             current ? 'flex-1 text-foreground' : 'shrink truncate text-foreground/85',
           )}
         >
-          {question.text}
+          {current ? <InlineText text={question.text} /> : plainText(question.text)}
         </span>
         {!current && (
           <span
@@ -314,7 +333,7 @@ export function QuestionItem({
               <>
                 <span className="shrink-0 text-brand">{answer.tag}</span>
                 <span className="truncate font-sans text-xs text-foreground/80">
-                  {answer.words}
+                  {plainText(answer.words)}
                 </span>
               </>
             ) : (
@@ -325,7 +344,7 @@ export function QuestionItem({
         {current && multi && (
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">pick any</span>
         )}
-      </button>
+      </Header>
       <div
         className={cn(
           'grid transition-[grid-template-rows] duration-200 ease-out',
