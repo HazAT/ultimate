@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -155,6 +155,25 @@ it("keeps a preview's ~/.ultimate private while sharing the rest of the home", a
   expect(await readFile(join(copy, '.ultimate/skills/leak/SKILL.md'), 'utf8')).toBe('x')
   await expect(readFile(join(user, '.ultimate/skills/leak/SKILL.md'))).rejects.toThrow('ENOENT')
   expect(await readFile(join(HOME!, '.pi/agent/auth.json'), 'utf8')).toBe('{"login":true}')
+})
+
+// Regression: skills linked into a read-only store were copied read-only, and the preview's cleanup failed on them.
+it('copies linked read-only skills into the preview as owner-writable files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ultimate-preview-readonly-'))
+  homes.push(root)
+  const [store, user, copy] = ['store', 'user', 'preview'].map((name) => join(root, name))
+  await mkdir(join(store, 'locked'), { recursive: true })
+  await writeFile(join(store, 'locked/SKILL.md'), 'x')
+  await chmod(join(store, 'locked/SKILL.md'), 0o444)
+  await chmod(join(store, 'locked'), 0o555)
+  await mkdir(join(user, '.ultimate/skills'), { recursive: true })
+  await symlink(join(store, 'locked'), join(user, '.ultimate/skills/locked'))
+
+  await seedUserHome(user, copy)
+  await rm(join(copy, '.ultimate/skills/locked'), { recursive: true })
+
+  expect(await readFile(join(store, 'locked/SKILL.md'), 'utf8')).toBe('x')
+  await chmod(join(store, 'locked'), 0o755)
 })
 
 it('remembers stopped previews across restarts, one per port, the last 50', async () => {

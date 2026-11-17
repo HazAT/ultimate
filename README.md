@@ -142,7 +142,8 @@ Supervisor changes require a **manual stop and restart with `pnpm start`**; a co
 
 `ultimate [dir] [--port N] [--no-open]` starts Ultimate for a project (default: the current directory) and opens it
 as its own chromeless window in a Chrome-family browser (`http://ultimate.localhost:<port>`), or a tab when there is
-none. Running it again for a running project opens another window instead. Ultimate's own source stays in the clone;
+none. On macOS, when that origin is installed as a Chrome app, the window opens as that app, with its own Dock and ⌘-Tab
+entry. Running it again for a running project opens another window instead. Ultimate's own source stays in the clone;
 the tools and the conversation work in your project.
 
 - **`.ultimate/` in your project** tailors it: `extensions/`, `agents/`, `skills/`, and an optional `settings.json`

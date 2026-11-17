@@ -7,6 +7,7 @@ One compact, read-only summary of this Ultimate for dashboards that poll several
 ```json
 {
   "at": 1793112000000,
+  "generation": 3,
   "head": {
     "sha": "15af9c1e0d…",
     "branch": "main",
@@ -44,6 +45,7 @@ Projects can optionally expose progress by adding a read-only `projectProgress` 
 
 Each field comes from the API of the extension that owns it, never from its documents:
 
+- `generation`: the generation this host serves, from `ULTIMATE_GENERATION`. The supervisor bumps it on every core swap, so a caller that asked an instance to restart sees the number rise once the new core answers, where its port answered throughout the swap. `generation` is 1 until the first swap.
 - `progress`: the optional project progress above; absent when no provider returns a valid result.
 - `head`: Update's state from its last check (`UpdateApi.state()`): HEAD of the clone Ultimate runs from, and `behind`/`ahead` against origin as of `fetchedAt`. Origin is fetched in the background at most hourly, never per call. `error` is the last fetch's failure. Absent while Update is off, on a preview, or when Update cannot read the clone (origin has no default branch); the rest of the status still answers.
 - `failures`: the failed runs Watchdog reported since `since` (`WatchdogApi.failures()`), newest first. Watchdog keeps the last 20, including @ultimate's own. Absent while Watchdog is off.

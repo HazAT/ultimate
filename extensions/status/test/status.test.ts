@@ -41,6 +41,7 @@ const host = (off: string[] = []) =>
     want: (api: { name: string }) => (off.includes(api.name) ? undefined : services[api.name]),
     need: (api: { name: string }) => services[api.name],
     conversations: () => [{ busy: true }, { busy: false }, { busy: true }],
+    system: () => ({ process: { generation: 3 } }),
     extensions: () => [
       {
         name: 'status',
@@ -69,6 +70,7 @@ const extensions = [
 it('summarizes the clone, failures, providers, questions and busy conversations from their owners', async () => {
   expect(await status(host(), 940, 1000, signal)).toEqual({
     at: 1000,
+    generation: 3,
     head: { sha: 'abc123', branch: 'main', behind: 3, ahead: 1, fetchedAt: 900 },
     failures: [{ conversation: 7, title: 'Fix', at: 950, error: 'boom', retried: true }],
     providers: [
@@ -85,6 +87,7 @@ it('summarizes the clone, failures, providers, questions and busy conversations 
 it('leaves out what an extension that is off owns', async () => {
   expect(await status(host(['update', 'watchdog', 'health']), 0, 1000, signal)).toEqual({
     at: 1000,
+    generation: 3,
     questions: { count: 2, first: { text: 'Ship it?', conversation: 9, message: 4 } },
     busy: 2,
     extensions,

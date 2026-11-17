@@ -1,12 +1,23 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { readdir, rm, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { chmod, lstat, readdir, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { alive as storageOwnerAlive, readOwner as readStorageOwner } from '../../lib/lock.ts'
 import { git } from '../../lib/git.ts'
 import { sqliteCode } from '../../lib/errors.ts'
 
+export async function makeOwnerWritable(path: string) {
+  const entry = await lstat(path)
+  if (entry.isSymbolicLink()) return
+  if (!(entry.mode & 0o200)) await chmod(path, entry.mode | 0o200)
+  if (entry.isDirectory())
+    for (const name of await readdir(path)) await makeOwnerWritable(join(path, name))
+}
+
 export async function cleanPreview(home: string) {
+  const homeDeletedByHand = !existsSync(home)
+  if (homeDeletedByHand) return true
   const heldCleanupTransactions: DatabaseSync[] = []
   try {
     for (const name of ['ultimate.lock', 'storage.lock']) {
