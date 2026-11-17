@@ -1109,7 +1109,7 @@ export default function subagents(
                 const { model: ran } = await tx.doc(AgentDoc, child.id)
                 runs[String(child.id)] = {
                   ...(ran ? { model: ran.modelId } : {}),
-                  ...(args.agent ? {} : { adhoc: true as const }),
+                  ...(args.agent ? { agent: definition.name } : { adhoc: true as const }),
                 }
                 state.agents[String(child.id)] = {
                   conversationId,

@@ -92,10 +92,10 @@ export const Started = defineEvent<{
 }>('subagents.started')
 
 /**
- * What a `subagent start` child was started on: its model id (`gpt-6-astra`) and whether it was made on the fly, without
- * a definition (`adhoc`).
+ * What a `subagent start` child was started on: its model id (`gpt-6-astra`) and either the named definition (`agent`)
+ * or whether it was made on the fly (`adhoc`).
  */
-export type Run = { model?: string; adhoc?: true }
+export type Run = { model?: string; agent?: string; adhoc?: true }
 /** `{ [conversationId]: Run }` of the children `subagent start` made, on conversation 1. */
 export const RunsDoc = docRef<Record<string, Run>>('subagents.runs')
 

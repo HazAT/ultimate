@@ -15,6 +15,7 @@ import {
   cn,
   defineWebExtension,
   keepLast,
+  provide,
   shortenPath,
   useAction,
   useConversations,
@@ -23,6 +24,7 @@ import {
   useToolDuration,
 } from '@/sdk'
 import type { ToolCallView } from '@/sdk'
+import { PreviewUp } from '../sidebar/ui.tsx'
 import { at, label } from './links.ts'
 import { ListAction } from './refs.ts'
 import type { Preview } from './refs.ts'
@@ -350,6 +352,11 @@ function Embedded() {
 }
 
 export default defineWebExtension({
+  provides: [
+    provide(PreviewUp, (id) =>
+      (usePreviews() ?? []).some((preview) => preview.running && preview.conversationId === id),
+    ),
+  ],
   tools: { instance: InstanceCall },
   link: PreviewLink,
   slots: { 'titlebar.left': canFrameLoopbackPreviews ? [Switcher] : [], overlay: [Poll, Embedded] },
