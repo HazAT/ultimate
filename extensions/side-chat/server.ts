@@ -13,8 +13,10 @@ import {
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { openQuestion } from '../../lib/message-state.ts'
+import { checkReply, replyText } from '../../lib/question-answers.ts'
+import type { Reply } from '../../lib/question-answers.ts'
 import { ConversationsApi } from '../conversations/api.ts'
-import { Messages } from '../messages/api.ts'
+import { Messages, MessagesApi } from '../messages/api.ts'
 import { Standing } from '../subagents/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
@@ -131,8 +133,14 @@ function sideId(args: unknown): ConversationId {
   return parseConversationId(id)
 }
 
-async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 'injected') {
+async function end(
+  host: ExtensionHost,
+  id: ConversationId,
+  mode: 'discarded' | 'injected',
+  answer?: Reply,
+) {
   const summaries = host.need(ConversationsApi)
+  if (answer) checkReply(answer)
   const model = mode === 'injected' ? await summaries.summaryModel() : undefined
   if (mode === 'injected' && !model)
     throw new Error(
@@ -157,10 +165,20 @@ async function end(host: ExtensionHost, id: ConversationId, mode: 'discarded' | 
     if (side.ended || ending.mode) throw new Error(`Side chat #${id} is already ended or ending`)
     if (mode === 'discarded' && side.effects)
       throw new Error(`Side chat #${id} has effects; inject its summary instead`)
+    let reply: { message: number; text: string } | undefined
+    if (answer) {
+      if (side.question === undefined) throw new Error(`Side chat #${id} talks no question through`)
+      const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+        (candidate) => candidate.id === side.question,
+      )
+      if (!message || !openQuestion(message))
+        throw new Error(`Message ${side.question} no longer waits on you; nothing was sent`)
+      reply = { message: message.id, text: replyText(answer, message.questions ?? []) }
+    }
     ending.mode = mode
     ending.task = await tx.createTask(
       endTask(host),
-      { side: id, ...(model ? { model } : {}) },
+      { side: id, ...(model ? { model } : {}), ...(reply ? { reply } : {}) },
       {
         conversationId: side.of,
         ownership: { kind: 'conversation' },
@@ -203,7 +221,7 @@ const Start = defineTask<{ side: ConversationId; text: string }, { phase: 'submi
 export function endTask(host: ExtensionHost) {
   const summaries = host.need(ConversationsApi)
   return defineTask<
-    { side: ConversationId; model?: SummaryModel },
+    { side: ConversationId; model?: SummaryModel; reply?: { message: number; text: string } },
     { phase: 'stop' } | { phase: 'summarize' },
     null
   >({
@@ -319,6 +337,20 @@ export function endTask(host: ExtensionHost) {
             },
             ctx,
           )
+          const reply = task.input.reply
+          const answeredElsewhereMeanwhile =
+            reply &&
+            !(await host.harness().commit(async (tx) => {
+              const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+                (candidate) => candidate.id === reply.message,
+              )
+              return message !== undefined && openQuestion(message)
+            }, ctx))
+          if (reply && !answeredElsewhereMeanwhile)
+            await host.need(MessagesApi).answer(reply.message, reply.text, ctx, undefined, {
+              taskId: task.id,
+              callId: 'answer',
+            })
         }
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Side, id)
@@ -371,22 +403,26 @@ function contextTokensOf(entry: { model?: readonly unknown[] } | undefined) {
 
 async function openOnQuestion(host: ExtensionHost, messageId: number) {
   const id = await host.harness().commit(async (tx) => {
-    const already = (await tx.doc(QuestionSides, ROOT_CONVERSATION_ID)).sides.find(
-      (side) => side.question === messageId && side.ended === undefined,
-    )
-    if (already) return already.id
     const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
       (candidate) => candidate.id === messageId,
     )
     if (!message) throw new Error(`No message ${messageId}`)
     if (!openQuestion(message)) throw new Error(`Message ${messageId} no longer waits on you`)
+    const already = (await tx.doc(QuestionSides, ROOT_CONVERSATION_ID)).sides.find(
+      (side) => side.question === messageId && side.ended === undefined,
+    )
+    if (already) return already.id
     if (typeof message.from !== 'number' || message.call === undefined)
       throw new Error(`Message ${messageId} has no conversation to fork`)
     const asker = message.from
     const caller = await questionCallEntry(tx, asker, message.call)
     if (!caller)
       throw new Error(`#${asker} no longer shows the turn that asked message ${messageId}`)
-    const at = await answerIncludingClosingToolResults(tx, asker, caller.id)
+    const at = await answerIncludingClosingToolResults(tx, asker, caller.id).catch(() => {
+      throw new Error(
+        `#${asker} is still finishing the tool round that asked; try again in a moment`,
+      )
+    })
     const fork = await tx.forkConversation(asker, at, { ownership: { kind: 'ownerless' } })
     const tokens = contextTokensOf(caller)
     Object.assign(await tx.doc(Side, fork.id), {
@@ -407,7 +443,6 @@ async function openOnQuestion(host: ExtensionHost, messageId: number) {
       id: fork.id,
       of: asker,
       question: messageId,
-      openedAt,
     })
     return fork.id
   }, context)
@@ -455,7 +490,14 @@ export const actions = {
     return { id }
   }),
   discard: implementAction(DiscardAction, (args, { host }) => end(host, sideId(args), 'discarded')),
-  inject: implementAction(InjectAction, (args, { host }) => end(host, sideId(args), 'injected')),
+  inject: implementAction(InjectAction, (args, { host }) =>
+    end(
+      host,
+      sideId(args),
+      'injected',
+      args && typeof args === 'object' && 'answer' in args ? (args.answer as Reply) : undefined,
+    ),
+  ),
 }
 
 const readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks = [
@@ -465,8 +507,10 @@ const readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks = [
   'web_search',
   'web_fetch',
   'screenshot',
-  'browser',
 ]
+const readOnlyCall = (name: string, args: Record<string, unknown>) =>
+  readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(name) &&
+  !(name === 'screenshot' && args.path !== undefined)
 
 export function tracksEffect(name: string, args: Record<string, unknown>) {
   if (name === 'todo') return args.action === 'add' || args.action === 'done'
@@ -487,7 +531,7 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
 export function questionReminder(side: ConversationId, asker: number, message: number) {
   return [
     `You are in a side chat (#${side}): a read-only copy of #${asker}, forked right after it asked the user message ${message}. #${asker} itself waits for the answer and does not see this chat.`,
-    'The user wants to talk the question through before answering: explain what is going on, what each option means and costs, and why you recommend what you do. Look things up when it helps: read, bash for reading (git log, rg), memory, web search, screenshots.',
+    'The user wants to talk the question through before answering: explain what is going on, what each option means and costs, and why you recommend what you do. Look things up when it helps: read, bash for reading (git log, rg), memory, web search, screenshots without a path.',
     `Change nothing: every other tool is blocked (codemode too), and bash must not write files or start anything. You do not answer the question: the user answers it on its card, which they see beside this chat.`,
     `When they are done, they choose Discard, or Summarize, which sends #${asker} a summary of this talk, together with their answer if they send one.`,
   ].join('\n')
@@ -541,10 +585,7 @@ export default (host: ExtensionHost) =>
             if (side.of === undefined) return undefined
             if (side.ended || (await tx.doc(Ending, api.conversationId)).mode)
               return { block: 'This side chat has ended' }
-            if (
-              side.question !== undefined &&
-              !readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(call.name)
-            )
+            if (side.question !== undefined && !readOnlyCall(call.name, call.arguments))
               return {
                 block: `This side chat is read-only: ${call.name} is blocked. Answer in the chat; the user decides on the card.`,
               }

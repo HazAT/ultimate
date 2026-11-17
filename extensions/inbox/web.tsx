@@ -452,39 +452,40 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
   const ownPane = item && (
     <Reading entry={item} key={item.key} now={now} onBack={() => setOpen(false)} phone={phone} />
   )
-  const reading = item?.message ? (
-    <Provided
-      input={{ message: item.message, phone, back: () => phone && setOpen(true) }}
-      point={QuestionPane}
-    >
-      {(takeover) => takeover ?? ownPane}
-    </Provided>
-  ) : (
-    ownPane
-  )
   return (
-    <div className="flex min-h-0 flex-1">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        {!(phone && open && item) && <Header>{title}</Header>}
-        {!items.length ? (
-          <Zero messages={messages} now={now} />
-        ) : phone ? (
-          open && item ? (
-            reading
-          ) : (
-            <List items={items} now={now} onSelect={select} phone selected={undefined} />
-          )
-        ) : (
-          <div className="flex min-h-0 flex-1">
-            <div className="flex w-[24rem] shrink-0 flex-col border-r border-border/70">
-              <List items={items} now={now} onSelect={select} phone={false} selected={selected} />
-            </div>
-            {reading}
-          </div>
-        )}
-      </main>
-    </div>
+    <Provided input={{ message: item?.message, phone }} point={QuestionPane}>
+      {(takeover) => (
+        <div className="flex min-h-0 flex-1">
+          <Sidebar />
+          <main className="flex min-w-0 flex-1 flex-col">
+            {!(phone && ((open && item) || takeover)) && <Header>{title}</Header>}
+            {!items.length && !takeover ? (
+              <Zero messages={messages} now={now} />
+            ) : phone ? (
+              (takeover ??
+              (open && item ? (
+                ownPane
+              ) : (
+                <List items={items} now={now} onSelect={select} phone selected={undefined} />
+              )))
+            ) : (
+              <div className="flex min-h-0 flex-1">
+                <div className="flex w-[24rem] shrink-0 flex-col border-r border-border/70">
+                  <List
+                    items={items}
+                    now={now}
+                    onSelect={select}
+                    phone={false}
+                    selected={selected}
+                  />
+                </div>
+                {takeover ?? ownPane}
+              </div>
+            )}
+          </main>
+        </div>
+      )}
+    </Provided>
   )
 }
 

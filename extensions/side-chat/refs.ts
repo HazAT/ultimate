@@ -25,7 +25,6 @@ export type QuestionSide = {
   id: ConversationId
   of: ConversationId
   question: number
-  openedAt: number
   ended?: 'discarded' | 'injected'
 }
 export type SideChatSummary = {
@@ -57,8 +56,19 @@ export const DiscardAction = actionRef<{ id: ConversationId }, { id: Conversatio
   'side-chat',
   'discard',
 )
-/** `{id}` → `{id}`: abort, summarize into main without waking it, and conclude. Requires summaryModel. User-only. */
-export const InjectAction = actionRef<{ id: ConversationId }, { id: ConversationId }>(
-  'side-chat',
-  'inject',
-)
+/**
+ * `{id, answer?}` → `{id}`: abort, summarize into main without waking it, and conclude. With `answer` (a question
+ * side chat, `{answers?, note?}` or `{text}` as for questions' answer), the same durable task then answers the open
+ * question; it is refused up front when the question is no longer open. Requires summaryModel. User-only.
+ */
+export const InjectAction = actionRef<
+  {
+    id: ConversationId
+    answer?: {
+      answers?: { question: string; answer: string | string[] }[]
+      note?: string
+      text?: string
+    }
+  },
+  { id: ConversationId }
+>('side-chat', 'inject')

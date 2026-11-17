@@ -62,6 +62,7 @@ import {
 } from './refs.ts'
 import { SideChatSummaryEntry } from './entries.ts'
 import type { SideChatIndex } from './refs.ts'
+import type { Reply } from '../questions/refs.ts'
 import { useSideChatFront as useFront } from './ui.tsx'
 
 let forkOnEnterInThisTab = false
@@ -303,9 +304,12 @@ function Stage() {
       layer.style.opacity = inFront ? (phone ? '0.45' : still ? '0.5' : '0.62') : ''
       layer.style.filter = inFront ? 'saturate(0.7)' : ''
       layer.toggleAttribute('data-receded', inFront)
+      const transcriptLayer = !!layer.querySelector('[data-ui="transcript"]')
+      if (transcriptLayer) layer.inert = inFront
     }
     return () => {
       for (const layer of layers) {
+        layer.inert = false
         layer.removeAttribute('data-receded')
         layer.style.transform = ''
         layer.style.opacity = ''
@@ -373,7 +377,7 @@ function SidePane({
   phone,
   onPark,
 }: {
-  side: number
+  side: ConversationId
   index?: SideChatIndex
   front: boolean
   phone: boolean
@@ -418,11 +422,13 @@ function SidePane({
       )}
       {question !== undefined && (
         <PinnedQuestion
-          inject={async () => {
-            await sideEndings.end(side, 'inject', () => api.action(InjectAction, { id: side }))
-            const failed = sideEndings.get(side).error
-            if (failed) throw new Error(`The summary failed, so nothing was sent: ${failed}`)
-          }}
+          answerWith={(answer) =>
+            api.action(InjectAction, { id: side, answer }).catch((failure: unknown) => {
+              throw new Error(
+                `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/\w+: /, '')}`,
+              )
+            })
+          }
           keys={front && !phone}
           message={question}
         />
@@ -504,16 +510,20 @@ function SidePane({
 function PinnedQuestion({
   message: id,
   keys,
-  inject,
+  answerWith,
 }: {
   message: number
   keys: boolean
-  inject: () => Promise<void>
+  answerWith: (answer: Reply) => Promise<unknown>
 }) {
   const message = useDocOf(ROOT, MessagesDoc)?.messages.find((item) => item.id === id)
   const [folded, setFolded] = useState(false)
   if (!message) return null
   const waits = message.state === 'delivered'
+  const settled =
+    message.state === 'dismissed'
+      ? 'dismissed · the asker knows'
+      : 'answered · the asker has your answer'
   const lead = message.text.split('\n').find((line) => line.trim()) ?? ''
   return (
     <section
@@ -529,7 +539,7 @@ function PinnedQuestion({
       >
         <MessageCircleQuestionIcon className="size-3.5 shrink-0 text-brand" />
         <span className="min-w-0 flex-1 truncate">
-          {waits ? lead.replace(/\*\*/g, '') : 'answered · the asker has your answer'}
+          {waits ? lead.replace(/\*\*/g, '') : settled}
         </span>
         <ChevronDownIcon
           className={cn('size-3.5 shrink-0 transition-transform', folded && '-rotate-90')}
@@ -538,7 +548,7 @@ function PinnedQuestion({
       {!folded && waits && (
         <div className="min-h-0 overflow-y-auto">
           <MessageQuestions
-            beforeSend={inject}
+            answerWith={answerWith}
             keys={keys}
             message={message}
             sendLabel="Summarize & send"
@@ -564,6 +574,7 @@ function useTalkItThrough(message: QuestionMessage): ReactNode {
   return (
     <Button
       className="text-muted-foreground"
+      type="button"
       data-talk-it-through={message.id}
       disabled={opening}
       onClick={async () => {
@@ -591,19 +602,16 @@ function useTalkItThrough(message: QuestionMessage): ReactNode {
 }
 
 function useInboxSideChat({
-  message,
   phone,
-  back,
 }: {
-  message: QuestionMessage
+  message: QuestionMessage | undefined
   phone: boolean
-  back: () => void
 }): ReactNode | undefined {
   const sides = useDocOf(ROOT, QuestionSidesDoc)?.sides
   const [front, setFront] = useFront()
-  const side = openQuestionSide(sides, message.id)
+  const side = sides?.find((item) => item.id === front && item.ended === undefined)
   const index = useDocOf(side?.of, SideChatsDoc) ?? undefined
-  if (!side || front !== side.id) return undefined
+  if (!side) return undefined
   return (
     <section
       aria-label="Side chat"
@@ -611,16 +619,7 @@ function useInboxSideChat({
       data-side-chat={side.id}
     >
       <ConversationScope id={side.id}>
-        <SidePane
-          front
-          index={index}
-          onPark={() => {
-            setFront(null)
-            back()
-          }}
-          phone={phone}
-          side={side.id}
-        />
+        <SidePane front index={index} onPark={() => setFront(null)} phone={phone} side={side.id} />
       </ConversationScope>
     </section>
   )

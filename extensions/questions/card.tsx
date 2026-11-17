@@ -17,6 +17,7 @@ import {
   useViewport,
 } from '@/sdk'
 import { CardActions } from './points.tsx'
+import type { Reply } from './refs.ts'
 import type { Question } from '../messages/refs.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { keyCard, openQuestions, waitsOnUser } from './open.tsx'
@@ -67,40 +68,33 @@ export function MessageQuestions({
   keys,
   className,
   withActions = true,
-  beforeSend,
+  answerWith,
   sendLabel,
 }: {
   message: Message
   keys?: boolean
   className?: string
   withActions?: boolean
-  beforeSend?: () => Promise<unknown>
+  answerWith?: (answer: Reply, keepalive?: boolean) => Promise<unknown>
   sendLabel?: string
 }) {
   const questions = openQuestions(message)
   const card = `message:${message.id}`
   const shown = useKeys(card)
   if (!waitsOnUser(message)) return null
-  const first = async () => {
-    if (beforeSend) await beforeSend()
-  }
+  const answer = (reply: Reply, keepalive?: boolean) =>
+    answerWith
+      ? answerWith(reply, keepalive)
+      : api.action(AnswerAction, { messageId: message.id, ...reply }, { keepalive })
   return (
     <Card
       card={card}
       questions={questions}
       keys={questions.length > 0 && (keys ?? shown)}
-      submit={async (answers, note, keepalive) => {
-        await first()
-        return api.action(
-          AnswerAction,
-          { messageId: message.id, answers, ...(note ? { note } : {}) },
-          { keepalive },
-        )
-      }}
-      reply={async (text) => {
-        await first()
-        return api.action(AnswerAction, { messageId: message.id, text })
-      }}
+      submit={(answers, note, keepalive) =>
+        answer({ answers, ...(note ? { note } : {}) }, keepalive)
+      }
+      reply={(text) => answer({ text })}
       actions={
         withActions ? (
           <Provided input={message} point={CardActions}>

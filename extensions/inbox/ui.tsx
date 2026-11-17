@@ -32,11 +32,12 @@ export type InboxItem = {
 export const InboxItems = definePoint<null, InboxItem[]>('inbox.items')
 
 /**
- * The reading pane of a question, taken over by another extension (`side-chat` shows the question's side chat in it
- * while it is in front); undefined keeps the Inbox's own pane. `back` leaves the takeover for the Inbox's pane.
+ * The reading pane, taken over by another extension while it shows something about a question: `side-chat` shows the
+ * question's side chat while it is in front, and keeps it after the question is answered elsewhere. `message` is the
+ * selected question, if any; undefined keeps the Inbox's own pane.
  */
 export const QuestionPane = definePoint<
-  { message: Message; phone: boolean; back: () => void },
+  { message: Message | undefined; phone: boolean },
   ReactNode | undefined
 >('inbox.question-pane')
 

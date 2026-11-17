@@ -6,6 +6,8 @@ import { actionRef } from '../../shared/extension-api.ts'
 
 /** One answered question: the question's text and the chosen or typed answer, a multiple choice's as a list. */
 export type Answer = { question: string; answer: string | string[] }
+/** What answers a message: answers to its questions with an optional note, or free text. */
+export type Reply = { answers?: Answer[]; note?: string; text?: string }
 
 /**
  * `{ messageId, answers?, note? }` or `{ messageId, text }` → `{ id }`: answer open message `messageId` with a reply
