@@ -26,6 +26,7 @@ import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/
 import { Metadata } from './metadata.ts'
 import { EVENT_LOG_LABEL, emit } from './events.ts'
 import { UserInputEvent } from '../shared/events.ts'
+import type { Device } from '../shared/events.ts'
 import { admit, deviceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
@@ -125,6 +126,7 @@ async function runAction(
   extensions: Extensions,
   [, name, key]: RegExpExecArray,
   data: Record<string, unknown>,
+  device: Device,
 ) {
   if (request.headers['sec-fetch-site'] !== 'same-origin' && !request.headers.origin)
     throw new HttpError(403, 'Extension actions require a browser request')
@@ -146,7 +148,7 @@ async function runAction(
       controller.signal,
       id === undefined ? undefined : parseConversationId(id),
       'ui',
-      deviceOf(request.headers),
+      device,
     )
     reply(response, 200, { result })
   } catch (error) {
@@ -421,10 +423,12 @@ export async function createApi(
       if (!url.pathname.startsWith('/api/')) return false
       const json = (status: number, data: unknown) => reply(response, status, data)
       try {
-        if (
-          !(await admit(request, new URL(system.current().process.url).port || '80', access.rules))
+        const identity = await admit(
+          request,
+          new URL(system.current().process.url).port || '80',
+          access.rules,
         )
-          throw new HttpError(403, 'Forbidden')
+        if (!identity) throw new HttpError(403, 'Forbidden')
         if (request.method === 'GET' && url.pathname === '/api/events') {
           await stream(request, response)
           return true
@@ -500,7 +504,14 @@ export async function createApi(
         const mediaBodyLimitBytes = 12 * 1024 * 1024
         const data = await body(request, mayCarryMedia ? mediaBodyLimitBytes : undefined)
         if (action) {
-          await runAction(request, response, extensions, action, data)
+          await runAction(
+            request,
+            response,
+            extensions,
+            action,
+            data,
+            deviceOf(request.headers['user-agent'], identity),
+          )
           return true
         }
         if (url.pathname === '/api/ui') {
@@ -649,7 +660,7 @@ export async function createApi(
                       ? { submission: submission.id }
                       : { entry: inputAlreadyCommitted.entry }),
                     length,
-                    ...deviceOf(request.headers),
+                    ...deviceOf(request.headers['user-agent'], identity),
                   }),
                 context,
               )
