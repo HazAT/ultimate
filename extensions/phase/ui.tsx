@@ -1,13 +1,15 @@
 /** Phase's components for other extensions: a conversation's live phase and its label. */
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { useConversations, useDocOf, useExtensions } from '@/sdk'
 import { PhasesDoc } from './refs.ts'
 import { subagentsBusy } from './subtree.tsx'
 import type { Phase } from './types.ts'
 
 export type DisplayPhase = Phase | 'waiting'
-export function usePhase(conversationId: number | undefined): DisplayPhase | undefined {
+export function usePhase(conversationId: ConversationId | undefined): DisplayPhase | undefined {
   const conversations = useConversations()
-  const phases = useDocOf(1, PhasesDoc)
+  const phases = useDocOf(ROOT, PhasesDoc)
   const enabled = useExtensions().some(
     (extension) => extension.name === 'phase' && extension.extension,
   )

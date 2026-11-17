@@ -18,7 +18,6 @@ export function Shortcut({ keys }: { keys: string }) {
   return (
     <span className="flex items-center gap-1">
       {formatKeys(keys).map((chord, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Chord positions in a fixed shortcut sequence.
         <KbdGroup key={index}>
           {chord.map((key) => (
             <Kbd key={key}>{key}</Kbd>
@@ -29,15 +28,13 @@ export function Shortcut({ keys }: { keys: string }) {
   )
 }
 
-/** Every command, core and extension, searchable; `mod+k`. */
 export function CommandPalette() {
   const open = useStore((state) => state.ui.paletteOpen)
   const commands = useCommands()
   const context = currentContext()
-  // The palette itself and a switch to the shown surface would do nothing here.
-  const hidden = new Set(['ultimate.palette', `ultimate.surface.${context.surface}`])
+  const noOpCommands = new Set(['ultimate.palette', `ultimate.surface.${context.surface}`])
   const visible = open
-    ? commands.filter((command) => !hidden.has(command.id) && applies(command, context))
+    ? commands.filter((command) => !noOpCommands.has(command.id) && applies(command, context))
     : []
   const groups = Map.groupBy(visible, (command) => command.group ?? command.extension)
   return (

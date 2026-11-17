@@ -54,6 +54,17 @@ link: ({ href, children, core }) =>
   href.startsWith('https://docs.example.com/') ? <a href={href}>{children}</a> : core
 ```
 
+## Inline code renderers
+
+`inlineCode` renders the inline code spans in Markdown that `MessageResponse` shows; fenced blocks never reach it. It
+receives `{ code, core }`, where `code` is the span's text and `core` starts as the default `<code>`. They compose like
+link renderers: return `core` for spans you leave alone. For example, an extension can make file paths clickable:
+
+```tsx
+inlineCode: ({ code, core }) =>
+  code.startsWith('src/') ? <button onClick={() => open(code)}>{core}</button> : core
+```
+
 ## Code block renderers
 
 `codeBlocks` renders the fenced code blocks of one language in Markdown that `MessageResponse` shows, keyed by the
@@ -70,7 +81,7 @@ codeBlocks: {
 ## Message actions
 
 `messageActions` contributes components to the hover action row on stored user and assistant messages, between the
-copy-message and copy-reference buttons. Each receives `{ entry }`, follows discovery order (then array order), and
+copy-message and copy-reference buttons. Each receives `{ entry, text }` (`text` is what Copy message copies), follows discovery order (then array order), and
 runs in its own error boundary. Return `null` for messages you do not act on. Keep buttons compact and give them an
 accessible label and a tooltip.
 
@@ -154,6 +165,9 @@ as fallback. These renderers can use `useTranscript()` for the shown conversatio
 Lineage uses this to show a root's read-only History banner, with the way back to @ultimate, instead of a composer.
 To send what the composer submits elsewhere, wrap `core` in `<ComposerRedirect to={{ placeholder, send }}>` (from `@/sdk`):
 while `to` is set, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
-sending states (side-chat forks @ultimate this way). Only the shown conversation's composer takes typing shortcuts
+sending states (side-chat forks @ultimate this way). A redirect also sets aside images, `composer.actions` and steer
+and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
+`provide(ComposerPlaceholder, ({ conversation, busy }) => (conversation === mine ? 'Ask the coach…' : undefined))`.
+Only the shown conversation's composer takes typing shortcuts
 (Escape, Shift+Tab); a scoped one does not.
 `switchConversation(id, { replace: true })` takes the current history entry instead of adding one, as a redirect does.

@@ -1,13 +1,22 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import { ROOT } from '@/sdk'
+import { every } from '../../lib/timers.ts'
 import { BellIcon, BellOffIcon, SendIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { api, cn, defineWebExtension, errorMessage, events, useDocOf, useUltimate } from '@/sdk'
 import { isOpen, MessagesDoc } from '../messages/ui.tsx'
-import { KeyAction, PresentAction, SubscribeAction, TestAction, UnsubscribeAction } from './refs.ts'
+import {
+  ClosedDoc,
+  KeyAction,
+  PresentAction,
+  SubscribeAction,
+  TestAction,
+  UnsubscribeAction,
+} from './refs.ts'
 import type { Subscription } from './refs.ts'
 
-/** This browser's service worker and push subscription, once known; `error` says why the last step failed. */
 type Here = {
   registration?: ServiceWorkerRegistration
   subscription?: PushSubscription
@@ -33,23 +42,24 @@ const json = (subscription: PushSubscription): Subscription => ({
   ...(subscription.toJSON() as Omit<Subscription, 'origin'>),
   origin: location.origin,
 })
-/** A base64url key as the bytes `pushManager.subscribe` takes. */
 const bytes = (key: string) =>
   Uint8Array.from(atob(key.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0))
 
+const hasPushSupport =
+  'serviceWorker' in navigator &&
+  'Notification' in window &&
+  'pushManager' in ServiceWorkerRegistration.prototype &&
+  'getNotifications' in ServiceWorkerRegistration.prototype
+
 let launched = false
-/**
- * The service worker (registering it again is a no-op beside the share extension's); a subscribed browser sends its
- * subscription again, in case the server lost it.
- */
 function launch() {
-  if (launched || !('serviceWorker' in navigator)) return
+  if (launched || !hasPushSupport) return
   launched = true
   navigator.serviceWorker
     .register('/sw.js')
     .then(async (registration) => {
       update({ registration })
-      const subscription = await registration.pushManager?.getSubscription()
+      const subscription = await registration.pushManager.getSubscription()
       if (!subscription || Notification.permission !== 'granted') return
       update({ subscription })
       await api.action(SubscribeAction, { subscription: json(subscription) })
@@ -57,13 +67,8 @@ function launch() {
     .catch(failed)
 }
 
-/** How often a shown page says so; the server skips a browser seen in the last 15 s. */
-const presentMs = 10_000
+const VISIBLE_PAGE_HEARTBEAT_MS = 10_000
 
-/**
- * Renders nothing: registers the service worker, reports while a subscribed page is on screen, closes the
- * notifications of questions answered elsewhere and opens what a tapped notification names.
- */
 function Pusher() {
   const { registration, subscription } = useHere()
   const { showSurface, switchConversation } = useUltimate()
@@ -74,7 +79,6 @@ function Pusher() {
     const report = (visible: boolean) => {
       api
         .action(PresentAction, { endpoint, visible }, { keepalive: !visible })
-        // A missed report costs one push too many or too few; the next one corrects it.
         .catch((error: unknown) => console.warn('Push presence', error))
     }
     const tick = () => {
@@ -83,37 +87,58 @@ function Pusher() {
     const changed = () => report(document.visibilityState === 'visible')
     const hide = () => report(false)
     tick()
-    const timer = setInterval(tick, presentMs)
+    const stopReporting = every(VISIBLE_PAGE_HEARTBEAT_MS, tick)
     document.addEventListener('visibilitychange', changed)
     window.addEventListener('pagehide', hide)
     return () => {
-      clearInterval(timer)
+      stopReporting()
       document.removeEventListener('visibilitychange', changed)
       window.removeEventListener('pagehide', hide)
     }
   }, [endpoint])
-  // A question answered on its card or another device takes its notification with it.
-  const log = useDocOf(1, MessagesDoc)
-  const settled = log?.messages
-    .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
-    .map((m) => `message:${m.id}`)
-    .join(' ')
+  const log = useDocOf(ROOT, MessagesDoc)
+  const closed = useDocOf(ROOT, ClosedDoc)?.tags ?? []
+  const settled = [
+    ...(log?.messages ?? [])
+      .filter((m) => m.to === 'user' && m.reply && !isOpen(m))
+      .map((m) => `message:${m.id}`),
+    ...closed,
+  ].join('\n')
   useEffect(() => {
-    if (!settled || !registration) return
-    const tags = new Set(settled.split(' '))
-    registration
-      .getNotifications()
-      .then((shown) => {
-        for (const notification of shown) if (tags.has(notification.tag)) notification.close()
-      })
-      .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    if (!settled || !registration) return undefined
+    const tags = new Set(settled.split('\n'))
+    let scanIsCurrent = true
+    const scan = () => {
+      registration
+        .getNotifications()
+        .then((shown) => {
+          if (!scanIsCurrent) return
+          for (const notification of shown) if (tags.has(notification.tag)) notification.close()
+        })
+        .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    }
+    const rescanShownPush = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === 'ultimate:shown') scan()
+    }
+    scan()
+    navigator.serviceWorker.addEventListener('message', rescanShownPush)
+    return () => {
+      scanIsCurrent = false
+      navigator.serviceWorker.removeEventListener('message', rescanShownPush)
+    }
   }, [settled, registration])
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return undefined
+    if (!hasPushSupport) return undefined
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
-      const id = Number(url.searchParams.get('conversation'))
+      const key = url.searchParams.get('inbox')
+      if (key) {
+        events.emit('inbox:open', { key })
+        showSurface('inbox')
+        return
+      }
+      const id = parseConversationId(Number(url.searchParams.get('conversation')))
       if (!Number.isSafeInteger(id) || id <= 0) return
       const message = Number(url.searchParams.get('message'))
       if (url.searchParams.has('message') && Number.isSafeInteger(message))
@@ -127,9 +152,8 @@ function Pusher() {
   return null
 }
 
-/** Why this browser cannot get pushes, or nothing. */
 function blocked() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window))
+  if (!hasPushSupport)
     return "This browser can't receive push notifications; install Ultimate as an app first."
   if (Notification.permission === 'denied')
     return 'Notifications are blocked for this app; allow them in its settings.'
@@ -154,7 +178,6 @@ async function turnOff(subscription: PushSubscription) {
 
 const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[12px]'
 
-/** The status line's bell: notifications on this device, a test push, and why they cannot be on. */
 function Bell() {
   const { registration, subscription, error } = useHere()
   const [test, setTest] = useState<string>()

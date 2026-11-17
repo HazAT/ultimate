@@ -1,18 +1,16 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent'
 import { useEffect, useRef } from 'react'
 
-// Pi upstream: @earendil-works/pi-coding-agent@1.5.0 src/core/event-bus.ts — adapted: Pi's bus uses node:events; use browser-safe sets. Drop when Pi ships a browser-safe bus.
+// Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/core/event-bus.ts — adapted: Pi's bus uses node:events; use browser-safe sets. Drop when Pi ships a browser-safe bus.
 const channels = new Map<string, Set<(data: unknown) => Promise<void>>>()
 export const events: EventBus = {
   emit: (channel, data) => {
-    // oxlint-disable-next-line unicorn/no-useless-spread, typescript/no-floating-promises -- snapshot listeners; on wraps each handler with a catch that logs failures.
-    for (const handler of [...(channels.get(channel) ?? [])]) void handler(data)
+    for (const handler of Array.from(channels.get(channel) ?? [])) void handler(data)
   },
   on: (channel, handler) => {
     const safe = async (data: unknown) => {
       try {
-        // oxlint-disable-next-line typescript/await-thenable -- Pi's void-returning type also permits async handlers
-        await handler(data)
+        await Promise.resolve(handler(data))
       } catch (error) {
         console.error(`Event handler error (${channel}):`, error)
       }

@@ -12,7 +12,7 @@ Actions (contracts in `refs.ts`):
 - `navigated { surface, conversation? }` → `{ recorded }` (user-only): records a `ui.navigated` event with the browser's device label, unless it repeats the last one. The facet's overlay calls it when the surface on screen, or Agent's open conversation, has stayed for a second and differs from what that tab last reported; clicks, scrolls and panels are not reported.
 - `polls` → `{ polls }`: the poll counter from `host.trace.polls()`, the successful action and service calls the trace counted instead of writing because they repeated one written within the last minute, `{ name, count, since }` most first.
 
-The **System** surface (⌘K "Open System", or "System ↗" in the Activity panel) shows both. **Agent Lanes** on top:
+The **System** surface (⌘K "Open System", or "System ↗" in the Activity panel) shows both. Other extensions add tabs beside **Agents** through the `system.tab` point in `ui.tsx` (Wire does); the open tab is kept in UI state `ext.system.tab`. **Agent Lanes** on top:
 one row per lane with its agent's mark, model and state (running, waits on you, awaiting @ultimate, done, failed, idle: the sidebar's conversation state) and its runs as blocks on a
 30 m / 2 h / 24 h timeline, labelled by their main tool, with calls as ticks (failed ones red). Lanes form a tree:
 children indented under the lane that started them, with a dotted guide, in the order they started; a parent with more

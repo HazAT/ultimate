@@ -46,12 +46,13 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 - `emit(tx, event, data)`, `react(name, events, handler)`, `eventLog`: durable events; see [events](events.md).
 - `trace`: the recorded calls (services, actions, reactor runs, tools); see [tracing](introspection.md#tracing).
 - `access.allow({ origin, verify })`: register an HTTP origin with an identity verifier; returns a disposer and is automatically removed when the facet unloads or reloads. HTTP, API, and websocket upgrades use the same admission rules.
-- `notice(message)`: publish a warning notice and retain it in this facet's system diagnostics for later clients, until unload/reload.
+- `notice(message, { untilSecretSet? })`: publish a warning notice and retain it in this facet's system diagnostics for later clients, until unload/reload. With `untilSecretSet: 'NAME'` the diagnostic is gone as soon as that secret is stored.
 - `resource(key, create)`, `onOpen(callback)`, `onRelease(callback)`, `onClose(cleanup)`: shared reload-stable resources, async work each
   time the harness opens (at once if it is open; the server serves once it settles), async work each time before it closes while the process stays (a core swap; drop commit subscriptions there), and async cleanup. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
 - `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.
+- `onBeforeLoad(callback)`: run and await `callback()` before each extension reload, web build and restart, so none reads a checkout or packages still being written (`update` waits for git and installs owed packages there). When it throws, a reload or build goes on with a notice and a restart is refused with the message; facet-scoped.
 
 ## Lifecycle
 

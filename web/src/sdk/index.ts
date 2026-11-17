@@ -4,9 +4,11 @@
  */
 export {
   attention,
+  ComposerPlaceholder,
   ConversationKind,
   defineWebExtension,
   definePoint,
+  EmptyTranscript,
   ErrorReport,
   FileUpload,
   MessageReference,
@@ -14,6 +16,8 @@ export {
   provide,
   RunStart,
 } from './types.ts'
+export { ROOT } from './api.ts'
+export { renderEntry } from './entry-renderer.tsx'
 export { events, useEvent } from './events.ts'
 export { resumed } from './resume.ts'
 export type {
@@ -30,6 +34,7 @@ export type {
   DocumentProps,
   EntryRenderer,
   InboxRenderer,
+  InlineCodeRenderer,
   LinkRenderer,
   PanelContribution,
   Point,
@@ -54,9 +59,17 @@ export {
   StatusLine,
 } from '../app/primitives.tsx'
 /** The title bar's project chip, for an extension that replaces it in `titlebar.project` with a menu. */
-export { ProjectChip, projectTitle, Wordmark } from '../app/titlebar.tsx'
+export {
+  prettyName,
+  ProjectChip,
+  projectHeading,
+  projectTitle,
+  Wordmark,
+} from '../app/titlebar.tsx'
 /** Isolates another extension's component you render, such as a document renderer: it throws into an error card. */
 export { ExtensionBoundary } from '../app/boundary.tsx'
+/** The transcript's and composer's reading column classes, for a card that sits in that column. */
+export { column } from '../app/layout.ts'
 /** The transcript's card: a bordered section with the brand accent on its left edge. */
 export { Card } from '../app/card.tsx'
 /** A card that folds to one quiet line in compact mode, and whether one is open; the reader's choice survives reloads. */
@@ -68,8 +81,8 @@ export { MessageActions } from '../app/message-actions.tsx'
 /** A turn of the user's as the transcript shows a typed one; `text` gives the words a delivered message carries. */
 export { UserText, UserView } from '../app/user-turn.tsx'
 export { useTranscriptScroll } from '../app/transcript.tsx'
-/** Renders with the value another extension provides for your point; see `definePoint`. */
-export { AllProvided, Provided } from '../app/boundary.tsx'
+/** Renders with the values other extensions provide for your point, or through them (`Rendered`); see `definePoint`. */
+export { AllProvided, Provided, Rendered } from '../app/boundary.tsx'
 export { ConversationScope } from './conversation-scope.tsx'
 /** Sends what the composer inside it submits somewhere else, such as a new side chat; see `composer` renderers. */
 export { Composer, ComposerRedirect, fillComposer, insertIntoComposer } from '../app/composer.tsx'
@@ -80,6 +93,7 @@ export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'
 /** Typed refs for a project extension's own documents and actions; built-ins keep theirs in `refs.ts`. */
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
+export { keepLast } from '../../../lib/errors.ts'
 export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
 export {
   getConversation,
@@ -158,7 +172,7 @@ export type {
   ToolSlot,
   UsageState,
 } from '@earendil-works/pi-durable'
-export type { JsonValue } from '@earendil-works/chord'
+export type { JsonValue } from '@earendil-works/chord/json'
 export type {
   AssistantMessage,
   AuthEvent,

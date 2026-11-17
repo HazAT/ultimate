@@ -1,8 +1,3 @@
-/**
- * The `questions` an agent passes with a message to the user: the `message` tool's schema for them, and the checks
- * the schema cannot express. Rejected questions come back to the agent as the tool's error, so a card never shows a
- * question it cannot answer.
- */
 import { arr, bool, int, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -24,7 +19,7 @@ const optionSchema = obj({
   recommended: opt(bool({ description: 'Your pick.' })),
   preview: opt(str({ description: 'Markdown shown beside the option.' })),
 })
-/** The `questions` parameter of the `message` tool. */
+
 export const questionsParameter = arr(
   obj({
     text: str({ minLength: 1 }),
@@ -47,12 +42,6 @@ export const questionsParameter = arr(
   },
 )
 
-/**
- * The questions as the message stores them, or the reason they cannot be asked: text and labels must not be blank, a
- * choice needs two options with distinct labels and keys (a multi answer joins its labels with ", ", so they hold
- * none), a scale an ascending range of at most 10 steps, and the questions and their numbers must be distinct. Fields
- * that do not apply to a kind are dropped.
- */
 export function checkQuestions(questions: Question[]): Question[] {
   if (!questions.length) throw new Error('questions must name at least one question')
   const refs = new Set<string>()
@@ -90,10 +79,6 @@ export function checkQuestions(questions: Question[]): Question[] {
       if (new Set(keys).size !== keys.length) throw new Error(`${where} repeats an option key`)
       if (options.some((o) => /^(something else|other)[.…]*$/i.test(o.label)))
         throw new Error(`${where}: the card offers "Something else…" itself; leave that option out`)
-      if (question.kind === 'multi' && options.some((o) => o.label.includes(', ')))
-        throw new Error(
-          `${where}: a multi answer joins its labels with ", ", so its labels hold no ", "`,
-        )
       kept.options = options
     } else if (question.kind === 'scale') {
       const scale = question.scale
@@ -114,7 +99,7 @@ export function checkQuestions(questions: Question[]): Question[] {
 }
 
 export { openQuestion }
-/** A message in one line: its questions by number, else its first line that asks something, else its first line, clipped. */
+
 export const gist = (message: Pick<Message, 'text' | 'questions'>) => {
   const lines = message.questions?.length
     ? [`questions ${message.questions.map((q, i) => `${q.ref ?? i + 1}. ${q.text}`).join('; ')}`]
@@ -125,15 +110,12 @@ export const gist = (message: Pick<Message, 'text' | 'questions'>) => {
   const line = lines.find((candidate) => candidate.includes('?')) ?? lines[0] ?? ''
   return line.length > 100 ? `${line.slice(0, 99)}…` : line
 }
-/**
- * The input that starts a run of the conversation that asked the user questions goes in after a line naming those still
- * open, so the agent treats them as unanswered. A per-input entry, not a system-prompt section, keeps the prompt cached.
- */
+
 export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, now: number) {
-  // @ultimate sees every open question to the user, since it settles those the user decides in its chat.
-  const primary = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
+  const canSettleEveryOpenQuestion =
+    (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
   const open = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.filter(
-    (m) => openQuestion(m) && (primary || m.from === conversationId),
+    (m) => openQuestion(m) && (canSettleEveryOpenQuestion || m.from === conversationId),
   )
   if (!open.length) return undefined
   const asker = (m: Message) => (m.from === conversationId ? '' : ` from #${m.from}`)
@@ -144,14 +126,11 @@ export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, 
     )
     .join(
       '\n',
-    )}${primary ? `\nWhen the user decides one in your chat, settle it with ultimate.action('messages', 'settle', { messageId, text }).` : ''}`
-  return {
-    entries: [
-      {
-        kind: 'board.open',
-        data: { ids: open.map((m) => m.id) },
-        model: [{ role: 'user' as const, content: text, timestamp: now }],
-      },
-    ],
+    )}${canSettleEveryOpenQuestion ? `\nWhen the user decides one in your chat, settle it with ultimate.action('messages', 'settle', { messageId, text }).` : ''}`
+  const perInputCacheReminder = {
+    kind: 'board.open',
+    data: { ids: open.map((m) => m.id) },
+    model: [{ role: 'user' as const, content: text, timestamp: now }],
   }
+  return { entries: [perInputCacheReminder] }
 }

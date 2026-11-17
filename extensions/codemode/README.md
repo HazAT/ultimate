@@ -30,7 +30,7 @@ Only inside codemode (not standalone model tools):
 - `ultimate.action(extension, action, args?)` — the one write: call an extension action on behalf of this conversation, with the sandbox abort signal; omitted args become null. Returns its JSON result or throws its error. Discover actions with `ultimate.extensions()` and read their args in the extension README.
 - `ultimate.conversations()` — all stored conversations with their owner, and for listed ones title, label, cwd,
   busy, inputAt and concluded.
-- `ultimate.entries(conversationId, { kinds?, limit?, before? })` — newest-first fork-aware history, including entries before resets/compactions; `before` is an exclusive entry ID.
+- `ultimate.entries(conversationId, { kinds?, limit?, before?, full? })` — newest-first fork-aware history, including entries before resets/compactions; `before` is an exclusive entry ID. Entries are compact, `{ id, kind, at?, role?, tool?, text?, tools?: { name, args }[], stopReason?, error?, data? }`: message text whole whether stored as a string or blocks, tool results over 1000 characters kept at their start and end (where an exit code is), tool arguments cut to 200 characters and non-`pi.*` `data` to 500 as JSON, no thinking, usage or provider diagnostics (1000 raw entries of a busy conversation were 7.5 MB, its text 30 KB). `stopReason` appears only when it is not `stop` or `toolUse`. `full: true` returns the stored records.
 - `ultimate.search(text, { conversationId?, kinds?, limit?, full? })` — case-sensitive substring over stored entry JSON, including pre-reset/pre-compaction history. `kinds` keeps only those entry kinds. Hits are compact, `{ conversation, id, kind, at?, excerpt }` with about 200 characters of the entry's JSON around the match, so wide audits and cross-project reads stay small; `full: true` returns whole entries, or read one hit with `ultimate.entries(conversation, { before: id + 1, limit: 1 })`.
 - `ultimate.taskGraph()` — live tasks and ownership graph.
 
@@ -38,7 +38,7 @@ Only inside codemode (not standalone model tools):
 
 `conversations`, `entries` and `search` also take `{ chapter: '<name>' }`. Omitted or the active chapter's name reads
 live storage as usual; another listed chapter reads its database read-only, without starting tasks. Entries keep the
-same `kind`/`data`/`model` records and fork-aware order as live history. Closed conversations include their stored
+same compact form (or, with `full`, the same `kind`/`data`/`model` records) and fork-aware order as live history. Closed conversations include their stored
 identity/owner and metadata title, label and input time when present, not live activity. Unknown names list the
 available chapters. `chapter` and `project` cannot be combined. Cross-chapter links are written `<chapter>#123`.
 

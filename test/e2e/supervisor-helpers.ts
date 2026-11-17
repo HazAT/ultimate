@@ -54,14 +54,18 @@ export const children: ChildProcess[] = []
 export const homes: string[] = []
 const streams: { close(): Promise<void> }[] = []
 afterEach(async () => {
-  for (const stream of streams.splice(0)) await stream.close()
-  for (const child of children.splice(0)) {
+  // Every list before the first await, so a hook past its timeout cannot stop or delete the next test's.
+  const closing = streams.splice(0)
+  const stopping = children.splice(0)
+  const taken = homes.splice(0)
+  for (const stream of closing) await stream.close()
+  for (const child of stopping) {
     if (child.exitCode !== null || child.signalCode !== null) continue
     const exited = once(child, 'exit')
     child.kill('SIGTERM')
     await exited
   }
-  for (const home of homes.splice(0)) await removeTemp(home)
+  for (const home of taken) await removeTemp(home)
 })
 export const copies = new Map<string, string>()
 export async function launch(home: string) {

@@ -1,35 +1,26 @@
-/**
- * Model families: named roles (default, review, fast, tiny, design, and any the user adds) that each pick one model and
- * thinking level. Agents and features that call a model run on a family rather than a model, so changing a family's
- * model moves everything assigned to it. Pure and browser-safe: types, built-in defaults, parsing and merging of the
- * `modelFamilies` setting, and labels. Reading the settings files is `families-settings.ts`.
- */
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 
 export type ModelRef = { provider: string; modelId: string }
 
-/** One family as settings hold it: `model` is `provider/id`; the default family's model is Pi's default model. */
-export type FamilySpec = { model?: string; thinking?: ModelThinkingLevel; color?: string }
+export type FamilySpec = {
+  model?: string
+  thinking?: ModelThinkingLevel
+  color?: string
+}
 
-/** One settings layer's `modelFamilies`: its families, feature assignments and, on the project's, `enforce`. */
 export type FamiliesLayer = {
   families: Record<string, FamilySpec>
   assign: Record<string, string>
   enforce?: true
 }
 
-/** The `modelFamilies` setting, merged over the built-in defaults. */
 export type Families = {
-  /** `suggested` is the project's model for the family, when the person's choice comes first. */
   families: Record<string, FamilySpec & { color: string; suggested?: string }>
-  /** Which family each feature runs on (`summaries`, `preview`); an agent's family is in its definition. */
   assign: Record<string, string>
 }
 
-/** The family a conversation, definition or feature falls back to. Its model is Pi's default model. */
 export const DEFAULT_FAMILY = 'default'
 
-/** Colors a family may take, as names; `familyColor` gives each one's CSS color. */
 export const FAMILY_COLORS = {
   sky: '#38bdf8',
   violet: '#a78bfa',
@@ -45,16 +36,18 @@ export const FAMILY_COLORS = {
 } as const
 export type FamilyColor = keyof typeof FAMILY_COLORS
 
-/** The built-in families, in display order. */
 export const BUILTIN_FAMILIES: Record<string, FamilySpec & { color: FamilyColor }> = {
   default: { color: 'sky' },
-  review: { model: 'openai-codex/gpt-6-astra', thinking: 'high', color: 'violet' },
+  review: {
+    model: 'openai-codex/gpt-6-astra',
+    thinking: 'high',
+    color: 'violet',
+  },
   fast: { model: 'openai-codex/gpt-6.1-sol', color: 'amber' },
   tiny: { model: 'openai-codex/gpt-6-luna', thinking: 'low', color: 'emerald' },
   design: { model: 'claude-code/claude-opus-5-5', color: 'pink' },
 }
 
-/** Feature users: what each runs when no setting pins a model, and how the Agents panel names it. */
 export const FEATURES = {
   summaries: {
     family: 'tiny',
@@ -69,7 +62,9 @@ export const FEATURES = {
 } as const
 export type Feature = keyof typeof FEATURES
 
-/** The assignment key of an agent definition. */
+export const RECOMMENDED_MODELS = ['claude-code/claude-opus-5-5', 'openai-codex/gpt-6-astra']
+export const RECOMMENDED_THINKING: ModelThinkingLevel = 'high'
+
 export const agentUser = (name: string) => `agent/${name}`
 
 const levels = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
@@ -78,7 +73,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export const isFamilyName = (name: string) => /^[a-z][a-z0-9-]{0,23}$/.test(name)
 const isRef = (value: string) => /^[^/\s]+\/\S+$/.test(value)
 
-/** One settings layer's `modelFamilies`, checked; throws naming the first invalid field. */
 export function parseFamilies(value: unknown): FamiliesLayer {
   if (value === undefined) return { families: {}, assign: {} }
   if (!isObject(value)) throw new Error('modelFamilies must be an object')
@@ -119,40 +113,22 @@ export function parseFamilies(value: unknown): FamiliesLayer {
   return { families, assign, ...(value.enforce ? { enforce: true } : {}) }
 }
 
-/**
- * The built-in families, the person's own (or most recent), then the project's team settings. The project owns which
- * families exist, their colors, thinking levels and feature assignments; a model it names is a suggestion
- * (`suggested`), the person's choice comes first, and `enforce: true` pins it over the person's instead.
- */
-export function mergeFamilies(
-  base: FamiliesLayer = parseFamilies(undefined),
-  project: FamiliesLayer = parseFamilies(undefined),
-): Families {
+export function mergeFamilies(...layers: FamiliesLayer[]): Families {
   const families: Families['families'] = structuredClone(BUILTIN_FAMILIES)
   const assign: Record<string, string> = {}
   const palette = Object.keys(FAMILY_COLORS)
-  for (const [name, spec] of Object.entries(base.families)) {
-    const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
-    families[name] = { ...families[name], ...spec, color: spec.color ?? color }
-  }
-  Object.assign(assign, base.assign)
-  for (const [name, spec] of Object.entries(project.families)) {
-    const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
-    families[name] = {
-      ...families[name],
-      ...(spec.thinking ? { thinking: spec.thinking } : {}),
-      color: spec.color ?? color,
-      ...(spec.model && !project.enforce ? { suggested: spec.model } : {}),
+  for (const layer of layers) {
+    for (const [name, spec] of Object.entries(layer.families)) {
+      const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
+      families[name] = {
+        ...families[name],
+        ...spec,
+        color: spec.color ?? color,
+      }
     }
+    Object.assign(assign, layer.assign)
   }
-  Object.assign(assign, project.assign)
-  // The family's model: the person's choice, else the project's (pinned under `enforce`), else the built-in's.
-  for (const [name, spec] of Object.entries(project.families)) {
-    if (!spec.model) continue
-    const model = project.enforce ? spec.model : (base.families[name]?.model ?? spec.model)
-    families[name] = { ...families[name], model }
-  }
-  return { families, assign }
+  return { families, assign, ...(value.enforce ? { enforce: true } : {}) }
 }
 
 export const refOf = (value: string | undefined): ModelRef | undefined => {
@@ -163,32 +139,45 @@ export const refOf = (value: string | undefined): ModelRef | undefined => {
 }
 export const refName = (ref: ModelRef) => `${ref.provider}/${ref.modelId}`
 
-/** "fast" → "Fast", "my-local" → "My local"; the default family is shown as "Ultimate". */
 export const familyTitle = (name: string) =>
   name === DEFAULT_FAMILY
     ? 'Ultimate'
     : name.charAt(0).toUpperCase() + name.slice(1).replaceAll('-', ' ')
 
-/** The CSS color of a family color name; an unknown name is slate. */
 export const familyColor = (color: string | undefined) =>
   color && Object.hasOwn(FAMILY_COLORS, color)
     ? FAMILY_COLORS[color as FamilyColor]
     : FAMILY_COLORS.slate
 
-/**
- * What a definition runs on given the families: its own model pin, else its `family`, else the default family; its own
- * thinking level wins over its family's. `model` undefined means the default family: the parent's model.
- */
 export function definitionRuns(
-  definition: { model?: ModelRef; thinking?: ModelThinkingLevel; family?: string },
+  definition: {
+    model?: ModelRef
+    thinking?: ModelThinkingLevel
+    family?: string
+  },
   config: Families,
-): { family?: string; model?: ModelRef; thinking?: ModelThinkingLevel; via: 'pin' | 'family' } {
+): {
+  family?: string
+  model?: ModelRef
+  thinking?: ModelThinkingLevel
+  via: 'pin' | 'family'
+} {
   if (definition.model)
-    return { model: definition.model, thinking: definition.thinking, via: 'pin' }
+    return {
+      model: definition.model,
+      thinking: definition.thinking,
+      via: 'pin',
+    }
   const wanted = definition.family ?? DEFAULT_FAMILY
   const family = Object.hasOwn(config.families, wanted) ? wanted : DEFAULT_FAMILY
   const spec = config.families[family]
-  const model = family === DEFAULT_FAMILY ? undefined : refOf(spec.model)
+  const defaultFamilyInheritsParentModel = family === DEFAULT_FAMILY
+  const model = defaultFamilyInheritsParentModel ? undefined : refOf(spec.model)
   const thinking = definition.thinking ?? spec.thinking
-  return { family, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), via: 'family' }
+  return {
+    family,
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    via: 'family',
+  }
 }

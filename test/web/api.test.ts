@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
 import { ActionError, createApi } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
@@ -27,7 +28,7 @@ describe('extension actions', () => {
       args: { folder: 'drafts' },
       conversationId: 1,
     })
-    await api.action(ref('notes', 'list'), null, { conversationId: 7 })
+    await api.action(ref('notes', 'list'), null, { conversationId: 7 as ConversationId })
     expect(JSON.parse(fetch.mock.calls[1][1]?.body as string)).toEqual({
       args: null,
       conversationId: 7,

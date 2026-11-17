@@ -1,15 +1,14 @@
 import { RefreshCwIcon, TerminalIcon } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { defineWebExtension, refreshModels, useAction } from '@/sdk'
+import { defineWebExtension, keepLast, refreshModels, useAction } from '@/sdk'
 import { StatusAction } from './refs.ts'
 
 function ClaudeCodePanel() {
   const { data, error, loading, refetch } = useAction(StatusAction, null, {
-    onError: () => {},
+    onError: keepLast,
   })
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
     if (data) void refreshModels()
   }, [data])
   const title = loading
@@ -77,7 +76,6 @@ export default defineWebExtension({
       icon: TerminalIcon,
       component: ClaudeCodePanel,
       order: 10,
-      // Opened from ⌘K and the model picker.
       tab: false,
     },
   ],

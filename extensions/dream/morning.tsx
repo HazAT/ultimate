@@ -1,8 +1,4 @@
-/**
- * `dream.chapter`: the morning card in @ultimate's conversation of a new chapter. Where we came from, what came along,
- * and the check that Ultimate really woke up: a side chat that asks it what it knows. Summarize & inject marks the
- * check done; Discard is the "something's off" path, and leads back to the chapter we came from.
- */
+import { ROOT } from '@/sdk'
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -29,17 +25,9 @@ import { OpenAction, SideChatsDoc, useSideChatFront } from '../side-chat/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { BusyBlocker, chapterLabel, Refusal, switchChapter, useBusyElsewhere } from './chapters.tsx'
 import type { Seed } from './types.ts'
+import { ChapterStarted } from './entries.ts'
+import type { ChapterEntry } from './refs.ts'
 
-/** `dream.chapter` entry data; `learned` and `carried` came later, so older entries lack them. */
-export type ChapterEntry = {
-  from: { name: string; number: number }
-  number: number
-  name: string
-  learned?: string[]
-  carried?: Seed['counts']
-}
-
-/** The first input of the wake-up side chat: the four things a colleague back from leave should know. */
 export const AWAKE_PROMPT = [
   "Check that you're awake in this new chapter. Answer from what you actually know now, briefly, one short section each:",
   '1. What is this project?',
@@ -49,7 +37,6 @@ export const AWAKE_PROMPT = [
   "Say plainly when you don't know something rather than guessing.",
 ].join('\n')
 
-/** The side chat that checked each chapter, by chapter name: the card follows it to its ending. */
 const useChecks = () => useUiState<Record<string, number>>('ext.dream.awake', {})
 
 const nouns: Record<keyof Seed['counts'], [string, string]> = {
@@ -61,7 +48,8 @@ const nouns: Record<keyof Seed['counts'], [string, string]> = {
 }
 
 export function MorningCard({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as ChapterEntry
+  if (!ChapterStarted.is(entry)) return null
+  const data = entry.data
   const at = entry.model?.[0]?.timestamp
   return (
     <Card data-dream-morning={data.name}>
@@ -95,7 +83,6 @@ export function MorningCard({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** "Carried 12 memories · 3 to-dos · 2 automations": only what there was. */
 function Carried({ counts }: { counts: Seed['counts'] }) {
   const parts = (Object.keys(nouns) as (keyof Seed['counts'])[])
     .filter((kind) => counts[kind] > 0)
@@ -108,9 +95,8 @@ function Carried({ counts }: { counts: Seed['counts'] }) {
   )
 }
 
-/** The check that I woke up well, followed to its side chat's ending; Discard leads back to the chapter before. */
 function Awake({ data }: { data: ChapterEntry }) {
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   const index = useDocOf(ultimate, SideChatsDoc) ?? undefined
   const conversations = useConversations()
   const [, setFront] = useSideChatFront()
@@ -214,7 +200,6 @@ function Awake({ data }: { data: ChapterEntry }) {
   )
 }
 
-/** After a discarded check: the way back to the chapter we came from, or another try. */
 function Off({
   data,
   onAgain,

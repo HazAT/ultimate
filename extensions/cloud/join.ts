@@ -1,7 +1,7 @@
-/** Joining this machine to the user's cloud backups: the Join card's `cloud.join` and `cloud.joinState` actions. */
 import { hostname } from 'node:os'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { httpBase } from '../../lib/cloud.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { JoinResult, JoinState } from './refs.ts'
@@ -11,16 +11,11 @@ export const SNAPSHOT_KEY = 'ULTIMATE_CLOUD_SNAPSHOT_KEY'
 const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
-/**
- * `wss://<host>` for a `wss://` or `https://` cloud URL, whatever its path; a loopback `ws://` or `http://` URL stays
- * `ws://`, for a local Worker (`wrangler dev`). Undefined for anything else.
- */
 export function cloudUrl(input: string) {
   let url: URL
   try {
     url = new URL(input.trim())
   } catch {
-    // Not a URL at all: the caller names the expected form.
     return undefined
   }
   if (url.username || url.password) return undefined
@@ -33,15 +28,9 @@ export function cloudUrl(input: string) {
 export interface JoinDeps {
   fetch: typeof fetch
   setSecret(name: string, value: string): Promise<unknown>
-  /** Merge `cloud.url` and `cloud.machine` into the user's settings, keeping every other key. */
   saveCloud(cloud: { url: string; machine: string }): Promise<void>
 }
 
-/**
- * Check the cloud's `GET /sync/register` with `token`; only when it answers 200 store both secrets, then `cloud.url`
- * and `cloud.machine`. Returns the cloud's project names, or the step that failed and why. Errors never carry the
- * token or the snapshot key.
- */
 export async function join(
   deps: JoinDeps,
   input: { url?: unknown; machine?: unknown; token?: unknown; snapshotKey?: unknown },
@@ -69,7 +58,6 @@ export async function join(
       ...(response.status === 200 ? { register: await response.json() } : {}),
     }
   } catch {
-    // A network error, a timeout or a body that is not JSON: the cloud is not there as expected.
     return check(`Cannot reach ${host}`)
   }
   if (answer.status === 401) return check('The cloud refused the token')
@@ -84,21 +72,20 @@ export async function join(
     await deps.setSecret(TOKEN, token)
     await deps.setSecret(SNAPSHOT_KEY, snapshotKey)
   } catch (error) {
-    return { ok: false, step: 'secrets', error: message(error) }
+    return { ok: false, step: 'secrets', error: secretStoreOrSettingsFileError(error) }
   }
   try {
     await deps.saveCloud({ url, machine })
   } catch (error) {
-    return { ok: false, step: 'settings', error: message(error) }
+    return { ok: false, step: 'settings', error: secretStoreOrSettingsFileError(error) }
   }
   return { ok: true, url, host, machine, projects }
 }
 
 const check = (error: string): JoinResult => ({ ok: false, step: 'check', error })
-// Secret store and settings errors name files and permissions, never values.
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+const secretStoreOrSettingsFileError = (error: unknown) =>
+  error instanceof Error ? error.message : String(error)
 
-/** Merge `cloud.url` and `cloud.machine` into `~/.ultimate/settings.json`. */
 export const saveCloud = (userHome: string) => (cloud: { url: string; machine: string }) =>
   updateSettings(userSettingsPath(userHome), (settings) => {
     const current = settings.cloud
@@ -108,9 +95,7 @@ export const saveCloud = (userHome: string) => (cloud: { url: string; machine: s
     }
   })
 
-/** Whether this machine has joined: `cloud.url` and both secrets set; `cloud.machine` or the hostname otherwise. */
 export async function joinState(userHome: string): Promise<JoinState> {
-  // Invalid settings or a broken secret store read as unset; the settings loader and Secrets panel report them.
   const settings = await readSettings(userSettingsPath(userHome)).catch((): JsonObject => ({}))
   const stored = await secretMetadata(userHome).catch(() => [])
   const cloud =
@@ -122,12 +107,13 @@ export async function joinState(userHome: string): Promise<JoinState> {
   const missing = [TOKEN, SNAPSHOT_KEY].filter(
     (name) => !stored.some((secret) => secret.name === name),
   )
-  let host: string | undefined
-  try {
-    host = url ? new URL(url).host : undefined
-  } catch {
-    // A malformed cloud.url counts as not joined; the card offers to set it again.
-  }
+  const host = (() => {
+    try {
+      return url ? new URL(url).host : undefined
+    } catch (error) {
+      return meansNone(error)
+    }
+  })()
   return {
     ...(url && host && !missing.length ? { joined: { url, host, machine } } : {}),
     ...(url ? { url } : {}),

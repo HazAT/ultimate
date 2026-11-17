@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BuildInfo } from '../shared/protocol.ts'
+import { inExtensionTests } from '../shared/extension-api.ts'
 
 function files(root: string, path: string): string[] {
   if (!existsSync(join(root, path))) return []
@@ -35,7 +36,10 @@ export function createBuild(root: string) {
   return {
     current: () => value,
     extension(name: string, path = join(root, 'extensions', name)) {
-      extensions[name] = hash(path, files(path, '.'))
+      extensions[name] = hash(
+        path,
+        files(path, '.').filter((file) => !inExtensionTests(`${name}${file.slice(1)}`)),
+      )
     },
     remove(name: string) {
       delete extensions[name]
@@ -44,13 +48,12 @@ export function createBuild(root: string) {
       const sorted = Object.fromEntries(
         Object.entries(extensions).toSorted(([a], [b]) => a.localeCompare(b)),
       )
-      // lib/ reloads with the extensions that import it, so it is hashed on each refresh like them.
-      const lib = hash(root, files(root, 'lib'))
+      const reloadedLibraryHash = hash(root, files(root, 'lib'))
       const id = createHash('sha256')
         .update(
           JSON.stringify([
             core,
-            lib,
+            reloadedLibraryHash,
             sorted,
             enablement.toSorted(([a], [b]) => a.localeCompare(b)),
           ]),
@@ -61,7 +64,7 @@ export function createBuild(root: string) {
       const changed: string[] = []
       if (previous) {
         if (previous.core !== core) changed.push('core')
-        if (previous.lib !== lib) changed.push('lib')
+        if (previous.lib !== reloadedLibraryHash) changed.push('lib')
         for (const name of [
           ...new Set([...Object.keys(previous.extensions), ...Object.keys(sorted)]),
         ].toSorted())
@@ -73,7 +76,7 @@ export function createBuild(root: string) {
       value = {
         ...entry,
         core,
-        lib,
+        lib: reloadedLibraryHash,
         extensions: sorted,
         history: [...history],
       }

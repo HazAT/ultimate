@@ -1,4 +1,7 @@
-import type { JsonValue } from '@earendil-works/chord'
+import { parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
@@ -28,6 +31,7 @@ function eventRow(event: EventRecord): SystemRow {
   }
 }
 function callRow(call: CallRow): SystemRow {
+  const argsWithoutNullPlaceholder = call.args === 'null' ? undefined : call.args
   return {
     id: call.id,
     source: 'call',
@@ -39,27 +43,24 @@ function callRow(call: CallRow): SystemRow {
     ok: call.ok,
     ms: call.ms,
     ...(call.error === undefined ? {} : { error: call.error }),
-    // An action called without arguments stores `null`, which says nothing.
+
     summary: cut(
-      [`${call.caller} → ${call.callee}`, call.args === 'null' ? undefined : call.args]
-        .filter(Boolean)
-        .join('  '),
+      [`${call.caller} → ${call.callee}`, argsWithoutNullPlaceholder].filter(Boolean).join('  '),
     ),
   }
 }
 
-/** Where a page stopped in each source: an event id and a trace position, exclusive; 0 when nothing is left. */
-type Cursor = { e: number; c: number }
-const encode = (cursor: Cursor) => `${cursor.e}.${cursor.c}`
-function decode(text: unknown, name: string): Cursor | undefined {
+type ExclusiveSourceCursor = { e: number; c: number }
+const encode = (cursor: ExclusiveSourceCursor) => `${cursor.e}.${cursor.c}`
+function decode(text: unknown, name: string): ExclusiveSourceCursor | undefined {
   if (text === undefined) return undefined
   const match = typeof text === 'string' ? /^(\d+)\.(\d+)$/.exec(text) : null
   if (!match) throw new Error(`Invalid ${name} cursor: ${JSON.stringify(text)}`)
   return { e: Number(match[1]), c: Number(match[2]) }
 }
 
-/** A row ready to merge: its source position and the time it sorts by (a call's by when it finished). */
-type Item = { row: SystemRow; position: number; time: number }
+type EventOrCallFinishedEpochMs = number
+type Item = { row: SystemRow; position: number; time: EventOrCallFinishedEpochMs }
 
 function strings(value: unknown, name: string) {
   if (value === undefined) return undefined
@@ -83,13 +84,14 @@ function filterOf(args: Record<string, unknown>): SystemFilter {
   return {
     ...(sources ? { sources } : {}),
     ...(kinds ? { kinds } : {}),
-    ...(conversation === undefined ? {} : { conversation: conversation as number }),
+    ...(conversation === undefined
+      ? {}
+      : { conversation: parseConversationId(Number(conversation)) }),
     ...(errors ? { errors } : {}),
     ...(text ? { text } : {}),
   }
 }
 
-/** At most `limit` matching events after (ascending) or before (descending) event id `from`. */
 async function events(
   host: ExtensionHost,
   filter: SystemFilter,
@@ -100,7 +102,7 @@ async function events(
   const tokens = filter.kinds?.map((name) => defineEvent(name))
   const text = filter.text?.toLowerCase()
   const found: Item[] = []
-  let position = from
+  let position = parseEntryId(from)
   for (;;) {
     const page = await host.eventLog.recent({
       ...(tokens ? { events: tokens } : {}),
@@ -123,7 +125,6 @@ async function events(
   }
 }
 
-/** At most `limit` matching calls after (ascending) or before (descending) trace position `from`. */
 function calls(
   host: ExtensionHost,
   filter: SystemFilter,
@@ -149,14 +150,15 @@ function calls(
   }
 }
 
-/** Newest first; equal times by id, so the order is total. */
-const newer = (a: Item, b: Item) => b.time - a.time || (a.row.id < b.row.id ? 1 : -1)
+const newestFinishedTimeThenId = (a: Item, b: Item) =>
+  b.time - a.time || (a.row.id < b.row.id ? 1 : -1)
 
-/**
- * Up to `limit` items of two lists, each in its source's order, taking the head that comes first by `first`: each
- * source gives a prefix of its list, so a cursor per source (its last item taken) resumes without gaps or repeats.
- */
-function merge(a: Item[], b: Item[], limit: number, first: (x: Item, y: Item) => number) {
+function mergeOrderedPrefixes(
+  a: Item[],
+  b: Item[],
+  limit: number,
+  first: (x: Item, y: Item) => number,
+) {
   const taken: Item[] = []
   let i = 0
   let j = 0
@@ -165,12 +167,10 @@ function merge(a: Item[], b: Item[], limit: number, first: (x: Item, y: Item) =>
   return { taken, a: i, b: j }
 }
 
-/**
- * Where a source resumes after `took` of its `found` items: its last item taken, `from` if none, `end` once all are
- * taken. Each source reads one item past the limit, so all taken means nothing further matched.
- */
-const resume = (found: Item[], took: number, from: number, end: number) =>
-  took === found.length ? end : took ? found[took - 1].position : from
+const cursorAfterTakenSourcePrefix = (found: Item[], took: number, from: number, end: number) => {
+  const sourceExhaustedIncludingLookahead = took === found.length
+  return sourceExhaustedIncludingLookahead ? end : took ? found[took - 1].position : from
+}
 
 async function stream(host: ExtensionHost, args: Record<string, unknown>) {
   const filter = filterOf(args)
@@ -182,35 +182,58 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
   if (before && after) throw new Error('Give before or after, not both')
   const wantEvents = (!filter.sources || filter.sources.includes('event')) && !filter.errors
   const wantCalls = !filter.sources || filter.sources.includes('call')
-  // The newest event id, read first so a live follower never skips one appended meanwhile.
-  const latest = (await host.eventLog.recent({ limit: 1 }))[0]?.id ?? 0
+  const sourceLimitWithLookahead = limit + 1
+
+  const latestEventIdBeforePageRead = (await host.eventLog.recent({ limit: 1 }))[0]?.id ?? 0
 
   if (after) {
-    // The oldest rows since the cursor, so a follower that falls behind catches up page by page.
-    const fromEvents = wantEvents ? await events(host, filter, after.e, true, limit + 1) : []
-    const fromCalls = wantCalls ? calls(host, filter, after.c, true, limit + 1) : undefined
+    const fromEvents = wantEvents
+      ? await events(host, filter, after.e, true, sourceLimitWithLookahead)
+      : []
+    const fromCalls = wantCalls
+      ? calls(host, filter, after.c, true, sourceLimitWithLookahead)
+      : undefined
     const end = fromCalls?.last ?? host.trace.page({ limit: 1 }).last
-    const merged = merge(fromEvents, fromCalls?.found ?? [], limit, (x, y) => newer(y, x))
-    // An event appended after `latest` was read may be among those found.
-    const newest = Math.max(after.e, latest, fromEvents.at(-1)?.position ?? 0)
+    const merged = mergeOrderedPrefixes(fromEvents, fromCalls?.found ?? [], limit, (x, y) =>
+      newestFinishedTimeThenId(y, x),
+    )
+
+    const newest = Math.max(after.e, latestEventIdBeforePageRead, fromEvents.at(-1)?.position ?? 0)
     const head = {
-      e: resume(fromEvents, merged.a, after.e, newest),
-      c: resume(fromCalls?.found ?? [], merged.b, after.c, Math.max(after.c, end)),
+      e: cursorAfterTakenSourcePrefix(fromEvents, merged.a, after.e, newest),
+      c: cursorAfterTakenSourcePrefix(
+        fromCalls?.found ?? [],
+        merged.b,
+        after.c,
+        Math.max(after.c, end),
+      ),
     }
     return { rows: merged.taken.map((item) => item.row).toReversed(), head: encode(head) }
   }
 
-  const start = before ?? { e: latest + 1, c: Number.MAX_SAFE_INTEGER }
+  const start = before ?? { e: latestEventIdBeforePageRead + 1, c: Number.MAX_SAFE_INTEGER }
   const fromEvents =
-    wantEvents && start.e > 0 ? await events(host, filter, start.e, false, limit + 1) : []
+    wantEvents && start.e > 0
+      ? await events(host, filter, start.e, false, sourceLimitWithLookahead)
+      : []
   const fromCalls =
-    wantCalls && start.c > 0 ? calls(host, filter, start.c, false, limit + 1) : undefined
-  const merged = merge(fromEvents, fromCalls?.found ?? [], limit, newer)
+    wantCalls && start.c > 0
+      ? calls(host, filter, start.c, false, sourceLimitWithLookahead)
+      : undefined
+  const merged = mergeOrderedPrefixes(
+    fromEvents,
+    fromCalls?.found ?? [],
+    limit,
+    newestFinishedTimeThenId,
+  )
   const next = {
-    e: resume(fromEvents, merged.a, start.e, 0),
-    c: resume(fromCalls?.found ?? [], merged.b, start.c, 0),
+    e: cursorAfterTakenSourcePrefix(fromEvents, merged.a, start.e, 0),
+    c: cursorAfterTakenSourcePrefix(fromCalls?.found ?? [], merged.b, start.c, 0),
   }
-  const head = { e: latest, c: fromCalls?.last ?? host.trace.page({ limit: 1 }).last }
+  const head = {
+    e: latestEventIdBeforePageRead,
+    c: fromCalls?.last ?? host.trace.page({ limit: 1 }).last,
+  }
   return {
     rows: merged.taken.map((item) => item.row),
     ...(next.e || next.c ? { next: encode(next) } : {}),
@@ -218,10 +241,9 @@ async function stream(host: ExtensionHost, args: Record<string, unknown>) {
   }
 }
 
-/** Every event emitted in trace `trace`, oldest first. */
 async function traceEvents(host: ExtensionHost, trace: string) {
   const found: SystemRow[] = []
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       ...(before === undefined ? {} : { before }),
@@ -239,25 +261,19 @@ const node = (call: CallTree): SystemCall => ({
   children: call.children.map(node),
 })
 
-const QUIET = 20_000
-const LANES = 40
-const CALLS = 200
+const RUN_QUIET_GAP_MS = 20_000
+const MAX_LANES_WITH_PARENTS = 40
+const MAX_CALLS_PER_RUN = 200
 
-/** What a `subagents.started` event says about a conversation, and the work that emitted it. */
 type Fact = Omit<Lane, 'conversation' | 'runs' | 'spawn'> & {
   at: string
   context?: EventRecord['context']
 }
 
-/**
- * Agent facts by conversation, from `subagents.started` events (newest wins). The parent is the conversation whose
- * work emitted the event (the `subagent` or `branch` call that started it), else the event's own: a branch names the
- * root it forked from, not who asked for it. A standing agent has none.
- */
-async function started(host: ExtensionHost) {
+async function newestSpawnFactsByConversation(host: ExtensionHost) {
   const Started = defineEvent<Record<string, JsonValue>>('subagents.started')
   const facts = new Map<number, Fact>()
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       events: [Started],
@@ -274,7 +290,7 @@ async function started(host: ExtensionHost) {
           : caller !== undefined && caller !== data.id
             ? caller
             : typeof data.parent === 'number'
-              ? data.parent
+              ? parseConversationId(data.parent)
               : undefined
       facts.set(data.id, {
         at,
@@ -290,12 +306,12 @@ async function started(host: ExtensionHost) {
   }
 }
 
-type Sent = { from: number; to: number }
-/** `board.sent` events between two conversations emitted in `[since, until)`, oldest first. */
+type Sent = { from: ConversationId; to: ConversationId }
+
 async function messages(host: ExtensionHost, since: number, until: number) {
   const Sent = defineEvent<Record<string, JsonValue>>('board.sent')
   const found: EventRecord<Sent>[] = []
-  let before: number | undefined
+  let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
       events: [Sent],
@@ -313,18 +329,13 @@ async function messages(host: ExtensionHost, since: number, until: number) {
   }
 }
 
-/** Tool calls that start others: the nearest one before a child's start stands for its spawn when no event says. */
-const SPAWNING = new Set(['subagent', 'branch', 'message'])
+const POSSIBLE_SPAWNING_TOOLS = new Set(['subagent', 'branch', 'message'])
 
-/**
- * The tool call of conversation `conversation` that call `id` of trace `trace` ran in: the call itself or its nearest
- * tool ancestor. `calls` are the window's tool and model calls by id; the rest of a trace is read once into `trees`.
- */
 function ownToolCall(
   host: ExtensionHost,
   byId: Map<string, CallRow>,
   trees: Map<string, Map<string, CallRow>>,
-  conversation: number,
+  conversation: ConversationId,
   id: string,
   trace: string | undefined,
 ) {
@@ -341,7 +352,6 @@ function ownToolCall(
   return undefined
 }
 
-/** Conversations with a live foreground task. */
 async function busy(host: ExtensionHost) {
   const graph = await host.harness().watchTaskGraph(BACKGROUND_CONTEXT)
   await graph.stop()
@@ -359,7 +369,6 @@ function time(value: unknown, name: string) {
   return parsed
 }
 
-/** The lanes of `args`'s window as of `clock`; exported for tests, which set the clock. */
 export async function lanes(
   host: ExtensionHost,
   args: Record<string, unknown>,
@@ -368,8 +377,8 @@ export async function lanes(
   const until = time(args.until, 'until') ?? clock
   const since = time(args.since, 'since') ?? until - 30 * 60_000
   if (since >= until) throw new Error('Expected since before until')
-  // Each conversation's tool and model calls in the window, by start time.
-  const byConversation = new Map<number, CallRow[]>()
+
+  const byConversation = new Map<ConversationId, CallRow[]>()
   let after = 0
   for (;;) {
     const { rows } = host.trace.page({ after, since, until, kinds: ['tool', 'model'], limit: 1000 })
@@ -383,15 +392,17 @@ export async function lanes(
     after = rows.at(-1)!.seq
   }
   const live = until >= clock ? await busy(host) : new Set<number>()
-  const facts = byConversation.size ? await started(host) : new Map<number, Fact>()
-  // Conversations without an event fall back to their owner or the conversation they branched from.
-  const owners = new Map<number, number>()
+  const facts = byConversation.size
+    ? await newestSpawnFactsByConversation(host)
+    : new Map<number, Fact>()
+
+  const owners = new Map<ConversationId, ConversationId>()
   if (byConversation.size)
     for (const summary of host.conversations()) {
       const owner = summary.parentConversationId ?? summary.branchOf?.conversationId
       if (owner !== undefined) owners.set(summary.id, owner)
     }
-  const parentOf = (conversation: number) =>
+  const parentOf = (conversation: ConversationId) =>
     facts.get(conversation)?.parent ?? owners.get(conversation)
   const all = [...byConversation].map(([conversation, found]) => {
     found.sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
@@ -399,20 +410,20 @@ export async function lanes(
     for (const call of found) {
       const start = Date.parse(call.at)
       const run = runs.at(-1)
-      if (run && start - run.end <= QUIET) {
+      if (run && start - run.end <= RUN_QUIET_GAP_MS) {
         run.calls.push(call)
         run.end = Math.max(run.end, start + call.ms)
       } else runs.push({ start, end: start + call.ms, calls: [call] })
     }
     const last = runs.at(-1)!
-    const open = until >= clock && (clock - last.end < QUIET || live.has(conversation))
+    const open = until >= clock && (clock - last.end < RUN_QUIET_GAP_MS || live.has(conversation))
     const lane: Lane = {
       conversation,
       runs: runs.map((run) => ({
         start: new Date(run.start).toISOString(),
         ...(open && run === last ? {} : { end: new Date(run.end).toISOString() }),
         ok: run.calls.every((call) => call.ok),
-        calls: run.calls.slice(0, CALLS).map((call) => ({
+        calls: run.calls.slice(0, MAX_CALLS_PER_RUN).map((call) => ({
           at: call.at,
           ms: call.ms,
           kind: call.kind,
@@ -420,36 +431,41 @@ export async function lanes(
           ok: call.ok,
           trace: call.trace,
         })),
-        ...(run.calls.length > CALLS ? { more: run.calls.length - CALLS } : {}),
+        ...(run.calls.length > MAX_CALLS_PER_RUN
+          ? { more: run.calls.length - MAX_CALLS_PER_RUN }
+          : {}),
       })),
     }
     return { lane, active: open ? Number.POSITIVE_INFINITY : last.end }
   })
   all.sort((a, b) => b.active - a.active || b.lane.conversation - a.lane.conversation)
-  // The most recently active lanes, each with its parent so its subtree hangs where it belongs: a parent that worked
-  // brings its lane along, one that did not is a lane without runs. One hop up from each lane that worked, never the
-  // whole ancestry: an active lane already listed as another's parent still brings its own parent.
+
   const worked = new Map(all.map((item) => [item.lane.conversation, item.lane]))
   const listed = new Map<number, Lane>()
   for (const { lane } of all) {
-    const add = listed.has(lane.conversation) ? [] : [lane]
+    const laneAndImmediateParent = listed.has(lane.conversation) ? [] : [lane]
     const parent = parentOf(lane.conversation)
     if (parent !== undefined && parent !== lane.conversation && !listed.has(parent))
-      add.push(worked.get(parent) ?? { conversation: parent, runs: [] })
-    if (add.length > 0 && listed.size + add.length <= LANES)
-      for (const item of add) listed.set(item.conversation, item)
+      laneAndImmediateParent.push(worked.get(parent) ?? { conversation: parent, runs: [] })
+    if (
+      laneAndImmediateParent.length > 0 &&
+      listed.size + laneAndImmediateParent.length <= MAX_LANES_WITH_PARENTS
+    )
+      for (const item of laneAndImmediateParent) listed.set(item.conversation, item)
   }
   const more = all.filter((item) => !listed.has(item.lane.conversation)).length
   const byId = new Map<string, CallRow>()
   for (const found of byConversation.values()) for (const call of found) byId.set(call.id, call)
   const trees = new Map<string, Map<string, CallRow>>()
-  const toolCall = (conversation: number, id: string, trace: string | undefined) =>
+  const toolCall = (conversation: ConversationId, id: string, trace: string | undefined) =>
     ownToolCall(host, byId, trees, conversation, id, trace)
   const lanesOut = [...listed.values()].map((lane): Lane => {
     const fact = facts.get(lane.conversation)
     const parent = parentOf(lane.conversation)
     const spawn =
-      parent !== undefined && listed.has(parent) ? spawnOf(lane, parent, fact) : undefined
+      parent !== undefined && listed.has(parent)
+        ? recordedOrInferredSpawn(lane, parent, fact)
+        : undefined
     return {
       conversation: lane.conversation,
       ...(fact?.agent === undefined ? {} : { agent: fact.agent }),
@@ -484,11 +500,11 @@ export async function lanes(
     ...(more ? { more } : {}),
   }
 
-  /**
-   * Where `lane` started in `parent`'s lane: the call its event names, else the parent's last spawning tool call before
-   * the lane was created (its event) or first worked.
-   */
-  function spawnOf(lane: Lane, parent: number, fact: Fact | undefined): LaneSpawn | undefined {
+  function recordedOrInferredSpawn(
+    lane: Lane,
+    parent: ConversationId,
+    fact: Fact | undefined,
+  ): LaneSpawn | undefined {
     const context = fact?.context
     if (context?.parentCall !== undefined && context.conversationId === parent) {
       const call = toolCall(parent, context.parentCall, context.traceId)
@@ -502,7 +518,7 @@ export async function lanes(
       ?.findLast(
         (candidate) =>
           candidate.kind === 'tool' &&
-          SPAWNING.has(candidate.name) &&
+          POSSIBLE_SPAWNING_TOOLS.has(candidate.name) &&
           Date.parse(candidate.at) <= bound,
       )
     return call && { call: call.id, at: call.at, inferred: true }
@@ -512,13 +528,8 @@ export async function lanes(
 const record = (args: unknown): Record<string, unknown> =>
   args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
 
-/**
- * The surface polls these every few seconds with moving cursors, so no two calls repeat: the trace counts their
- * successful calls instead of writing them (`polls()`); failures are written.
- */
 export const pollActions = ['stream', 'lanes', 'tree', 'polls']
 
-/** The view the last `ui.navigated` recorded, `<surface>:<conversation>`, so repeats are dropped. */
 const LastView = defineDoc<{ key?: string }>({
   kind: 'system.last-view',
   checkpointWhen: () => false,
@@ -529,11 +540,9 @@ const LastView = defineDoc<{ key?: string }>({
   initial: () => ({}),
 })
 
-/** Only the browser reports where the user is; an agent calling it would make up navigation. */
 export const userActions = ['navigated']
 
 export const actions = {
-  /** Record a `ui.navigated` event, unless it repeats the last one: other tabs and reloads report the same view. */
   navigated: implementAction(NavigatedAction, async (args, { host, device }) => {
     const { surface, conversation } = record(args)
     if (typeof surface !== 'string' || !surface || surface.length > 64)
@@ -542,12 +551,14 @@ export const actions = {
       throw new Error('Expected conversation to be an integer')
     const data = {
       surface,
-      ...(conversation === undefined ? {} : { conversation: conversation as number }),
+      ...(conversation === undefined
+        ? {}
+        : { conversation: parseConversationId(Number(conversation)) }),
       ...device,
     }
     const key = `${surface}:${data.conversation ?? ''}`
-    // Compared and recorded in one commit, so two tabs reporting the same view record it once.
-    return host.harness().commit(async (tx) => {
+
+    return host.harness().commit(async function recordNavigationOnceAtomically(tx) {
       const last = await tx.doc(LastView, ROOT_CONVERSATION_ID)
       if (last.key === key) return { recorded: false }
       last.key = key

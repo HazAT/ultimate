@@ -1,89 +1,88 @@
-import type { Context } from '@earendil-works/chord'
-import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { defineEntry, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { formatAgo } from '../../lib/ago.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { git, isolatable } from '../../lib/git.ts'
+import { meansNone } from '../../lib/errors.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import { checkReview, reviewText } from './comments.ts'
-import type { ReviewComments } from './comments.ts'
 import { reviewDiff } from './diff.ts'
 import { DiffAction, RangesAction, RecipientAction, SendAction } from './refs.ts'
+import { ReviewCommentsEntry } from './entries.ts'
 import type { ReviewRange } from './refs.ts'
-
-/** A review the user sent: the input its recipient reads as `reviewText`; card.tsx renders it. */
-export const ReviewCommentsEntry = defineEntry<ReviewComments>('review.comments')
 
 const index = (host: ExtensionHost, ctx: Context) =>
   host.harness().snapshot(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID, ctx)
 
-/** Conversation `id`'s worktree while it is ready, else the project's checkout (also once it was released). */
-async function where(host: ExtensionHost, id: unknown) {
-  if (id === undefined) return host.projectRoot
-  if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1)
+function conversationOf(value: unknown): ConversationId | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
     throw new Error('conversation must be a conversation id')
-  const workspace = (await index(host, context))?.items[String(id)]
-  return workspace?.state === 'ready' ? workspace.path : host.projectRoot
+  return parseConversationId(value)
 }
 
-/** The branch `branch` lands on: its worktree's target, else the project checkout's branch. */
-async function target(host: ExtensionHost, branch: string) {
+async function sourceCheckout(host: ExtensionHost, conversation?: ConversationId) {
+  if (conversation === undefined) return host.projectRoot
+  const workspace = (await index(host, context))?.items[String(conversation)]
+  if (workspace?.state === 'ready') return workspace.path
+  if (workspace?.source) return workspace.source
+  const agent = await host.harness().snapshot(AgentDoc, conversation, context)
+  return agent?.cwd || host.projectRoot
+}
+
+async function target(host: ExtensionHost, branch: string, cwd: string) {
   const items = Object.values((await index(host, context))?.items ?? {})
   const owned = items.find((item) => item.branch === branch)
   if (owned) return owned.target
-  const checkout = await isolatable(host.projectRoot)
-  if ('reason' in checkout) throw new Error(checkout.reason)
-  return checkout.target
+  const project = await isolatable(host.projectRoot)
+  if (!('reason' in project)) return project.target
+
+  const on = await git(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => '')
+  if (on) return on
+  throw new Error(project.reason)
 }
 
-/**
- * What a `branch:<name>` spec shows once its ref is gone (it landed and its worktree was removed): its latest landing as
- * `<base>...<tip>`, the commits it submitted against the target they landed on. That is the diff the branch showed just
- * before it landed, so draft comments keep their lines. `uncommitted` when no landing is known; else the spec itself.
- */
-async function resolve(host: ExtensionHost, cwd: string, spec: string) {
+async function resolveLandedBranch(host: ExtensionHost, cwd: string, spec: string) {
   if (!spec.startsWith('branch:')) return spec
   const branch = spec.slice('branch:'.length)
-  const present = await git(
+  const existingBranchRef = await git(
     cwd,
     'rev-parse',
     '--verify',
     '--quiet',
     '--end-of-options',
     `refs/heads/${branch}`,
-  ).catch(
-    // `--quiet` exits 1 for an unknown ref: the branch is gone.
-    () => '',
-  )
-  if (present) return spec
+  ).catch(() => '')
+  if (existingBranchRef) return spec
   const doc = await index(host, context)
   const owner = Object.entries(doc?.items ?? {}).find(([, item]) => item.branch === branch)?.[0]
   const landed = Object.values(doc?.results ?? {}).findLast(
     (result) => result.outcome === 'landed' && String(result.conversationId) === owner,
   )
   if (landed?.base) return `${landed.base}...${landed.tip}`
-  // Past the index's latest outcomes, the landing event: what the target gained, merged with what landed meanwhile.
+
   const [event] = await host.eventLog
     .recent({ events: [SubmissionLanded], limit: 200 })
     .then((landings) => landings.filter(({ data }) => String(data.conversationId) === owner))
   return event ? `${event.data.base}...${event.data.sha}` : 'uncommitted'
 }
 
-/** A git or landing time in seconds, as the range list shows it. */
-const ago = (seconds: number) => formatAgo(seconds * 1000)
+const agoFromEpochSeconds = (seconds: number) => formatAgo(seconds * 1000)
 
-async function ranges(host: ExtensionHost): Promise<ReviewRange[]> {
-  const cwd = host.projectRoot
+async function ranges(host: ExtensionHost, conversation?: ConversationId): Promise<ReviewRange[]> {
+  const cwd = await sourceCheckout(host, conversation)
   const items = Object.entries((await index(host, context))?.items ?? {})
   const titles = new Map(host.conversations().map((item) => [item.id, item.title]))
-  const owner = new Map(
+  const liveWorktreeOwners = new Map(
     items
       .filter(([, item]) => item.state !== 'removed')
-      .map(([id, item]) => [item.branch, Number(id)]),
+      .map(([id, item]) => [item.branch, parseConversationId(Number(id))]),
   )
   const [branches, commits, landings] = await Promise.all([
     git(
@@ -93,14 +92,8 @@ async function ranges(host: ExtensionHost): Promise<ReviewRange[]> {
       '--count=20',
       '--format=%(refname:short)%09%(committerdate:unix)',
       'refs/heads/ultimate/',
-    ).catch(
-      // No repository: the selector offers free entry only.
-      () => '',
-    ),
-    git(cwd, 'log', '-n', '15', '--format=%H%x09%ct%x09%s').catch(
-      // No commit yet: nothing to list.
-      () => '',
-    ),
+    ).catch(() => ''),
+    git(cwd, 'log', '-n', '15', '--format=%H%x09%ct%x09%s').catch(() => ''),
     host.eventLog.recent({ events: [SubmissionLanded], limit: 10 }),
   ])
   const list: ReviewRange[] = [
@@ -108,14 +101,14 @@ async function ranges(host: ExtensionHost): Promise<ReviewRange[]> {
   ]
   for (const line of branches.split('\n').filter(Boolean)) {
     const [branch, at] = line.split('\t') as [string, string]
-    const id = owner.get(branch)
-    // Only branches of a live worktree: a landed and removed one has nothing left to review.
+    const id = liveWorktreeOwners.get(branch)
+
     if (id === undefined) continue
     list.push({
       spec: `branch:${branch}`,
       group: 'Branches',
       label: titles.get(id) ?? `#${id}`,
-      detail: `#${id} · ${ago(Number(at))}`,
+      detail: `#${id} · ${agoFromEpochSeconds(Number(at))}`,
       conversation: id,
     })
   }
@@ -124,7 +117,7 @@ async function ranges(host: ExtensionHost): Promise<ReviewRange[]> {
       spec: `${data.base}...${data.sha}`,
       group: 'Landings',
       label: data.feature ? `${data.feature} · ${data.title}` : data.title || data.sha.slice(0, 7),
-      detail: `${data.sha.slice(0, 7)} · ${data.commitCount} commit${data.commitCount === 1 ? '' : 's'} · ${ago(Date.parse(at) / 1000)}`,
+      detail: `${data.sha.slice(0, 7)} · ${data.commitCount} commit${data.commitCount === 1 ? '' : 's'} · ${agoFromEpochSeconds(Date.parse(at) / 1000)}`,
       conversation: data.conversationId,
     })
   for (const line of commits.split('\n').filter(Boolean)) {
@@ -133,59 +126,60 @@ async function ranges(host: ExtensionHost): Promise<ReviewRange[]> {
       spec: sha,
       group: 'Commits',
       label: subject,
-      detail: `${sha.slice(0, 7)} · ${ago(Number(at))}`,
+      detail: `${sha.slice(0, 7)} · ${agoFromEpochSeconds(Number(at))}`,
     })
   }
   return list
 }
 
-/** The conversation of an `uncommitted:<id>` spec, else undefined. */
 const worktreeOf = (spec: string) => {
   const id = /^uncommitted:([1-9]\d*)$/.exec(spec.trim())?.[1]
-  return id === undefined ? undefined : Number(id)
+  return id === undefined ? undefined : parseConversationId(Number(id))
 }
 
-const known = (host: ExtensionHost, id: number) =>
+const known = (host: ExtensionHost, id: ConversationId) =>
   host.conversations().some((conversation) => conversation.id === id)
 
-/** Who a review of `spec` goes to unless the user picks another: see `RecipientAction`. */
-async function recipient(host: ExtensionHost, spec: string): Promise<number> {
+async function recipient(host: ExtensionHost, spec: string, cwd: string): Promise<ConversationId> {
   const owner = async () => {
     const worktree = worktreeOf(spec)
     if (worktree !== undefined) return worktree
     if (spec.startsWith('branch:')) {
       const branch = spec.slice('branch:'.length)
       const items = Object.entries((await index(host, context))?.items ?? {})
-      return Number(items.find(([, item]) => item.branch === branch)?.[0]) || undefined
+      const id = Number(items.find(([, item]) => item.branch === branch)?.[0])
+      return id ? parseConversationId(id) : undefined
     }
     const range = /^[^.]+\.\.\.([^.]+)$/.exec(spec)
+    let head = spec
     if (range) {
       const landings = await host.eventLog.recent({ events: [SubmissionLanded], limit: 200 })
       const sha = await git(
-        host.projectRoot,
+        cwd,
         'rev-parse',
         '--verify',
         '--quiet',
         '--end-of-options',
         `${range[1]}^{commit}`,
       )
-      return landings.find(({ data }) => data.sha === sha)?.data.conversationId
+      const landed = landings.find(({ data }) => data.sha === sha)?.data.conversationId
+      if (landed !== undefined) return landed
+
+      head = range[1]
     }
     if (spec === 'uncommitted' || spec.startsWith('-')) return undefined
     const trailer = await git(
-      host.projectRoot,
+      cwd,
       'log',
       '-1',
       '--format=%(trailers:key=Ultimate-Conversation,valueonly)',
       '--end-of-options',
-      spec,
+      head,
     )
-    return Number(trailer.split('\n')[0]) || undefined
+    const id = Number(trailer.split('\n')[0])
+    return id ? parseConversationId(id) : undefined
   }
-  const found = await owner().catch(
-    // An unknown ref or a missing repository has no owner: the review goes to the primary agent.
-    () => undefined,
-  )
+  const found = await owner().catch(meansNone)
   if (found !== undefined && known(host, found)) return found
   return host.need(SubagentsApi).standing('ultimate', context)
 }
@@ -196,33 +190,41 @@ export const actions = {
   diff: implementAction(DiffAction, async (args, { host, signal }) => {
     const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
-    // `uncommitted:<id>` names a worktree's uncommitted changes: the same diff, run in that checkout.
+
     const worktree = worktreeOf(input.spec)
-    const cwd = await where(host, worktree ?? input.conversation)
+    const cwd = await sourceCheckout(host, worktree ?? conversationOf(input.conversation))
     const shown =
-      worktree === undefined ? await resolve(host, cwd, input.spec.trim()) : 'uncommitted'
+      worktree === undefined
+        ? await resolveLandedBranch(host, cwd, input.spec.trim())
+        : 'uncommitted'
     const diff = await reviewDiff(cwd, shown, {
-      target: (branch) => target(host, branch),
+      target: (branch) => target(host, branch, cwd),
       signal,
     })
     if (worktree !== undefined)
       return { ...diff, spec: input.spec, title: `Uncommitted changes in #${worktree}` }
-    // A landed branch keeps its spec on screen, and so its drafts; one gone without a landing moves on to `shown`.
-    return shown === 'uncommitted' ? diff : { ...diff, spec: input.spec }
+
+    const branchGoneWithoutLanding = shown === 'uncommitted'
+    return branchGoneWithoutLanding ? diff : { ...diff, spec: input.spec }
   }),
-  ranges: implementAction(RangesAction, (_args, { host }) => ranges(host)),
+  ranges: implementAction(RangesAction, (args, { host }) => {
+    const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+    return ranges(host, conversationOf(input.conversation))
+  }),
   recipient: implementAction(RecipientAction, async (args, { host }) => {
-    const spec = args && typeof args === 'object' && !Array.isArray(args) ? args.spec : undefined
-    if (typeof spec !== 'string') throw new Error('Expected { spec }')
-    return { conversation: await recipient(host, spec) }
+    const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+    if (typeof input.spec !== 'string') throw new Error('Expected { spec }')
+    const cwd = await sourceCheckout(host, conversationOf(input.conversation))
+    return { conversation: await recipient(host, input.spec, cwd) }
   }),
   send: implementAction(SendAction, async (args, { host, device }) => {
-    const id =
+    const value =
       args && typeof args === 'object' && !Array.isArray(args) ? args.conversation : undefined
-    if (typeof id !== 'number' || !Number.isSafeInteger(id) || !known(host, id))
+    const id = typeof value === 'number' ? parseConversationId(value) : undefined
+    if (id === undefined || !Number.isSafeInteger(id) || !known(host, id))
       throw new Error('conversation must be an existing conversation id')
     const review = checkReview(args)
-    const conversation = await host.harness().conversation(id as ConversationId, context)
+    const conversation = await host.harness().conversation(id, context)
     if (!conversation) throw new Error(`No conversation #${id}`)
     const content = reviewText(review)
     const submission = await conversation.submit(
@@ -230,21 +232,21 @@ export const actions = {
         type: 'input',
         content,
         entry: { kind: ReviewCommentsEntry.kind, data: review },
-        // A review is the user's input: it steers a busy recipient as a message typed into it would.
+
         whenBusy: 'steer',
       },
       context,
     )
-    // In a commit of its own right after the input's, which Pi admits with no hook: a crash in between loses it.
-    const admitted = await submission.status(context)
+
+    const admittedInput = await submission.status(context)
     await host.harness().commit(
       (tx) =>
         host.emit(tx, UserInputEvent, {
           conversation: id,
           kind: 'review',
-          ...(admitted.entry === undefined
+          ...(admittedInput.entry === undefined
             ? { submission: submission.id }
-            : { entry: admitted.entry }),
+            : { entry: admittedInput.entry }),
           length: content.length,
           ...device,
         }),

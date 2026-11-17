@@ -1,7 +1,8 @@
+import { offsetEntryId } from '../../lib/ids.ts'
+import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { AgentDoc } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId } from '@earendil-works/pi-durable'
 import {
   contextUsage,
   estimateAfterHead,
@@ -10,8 +11,8 @@ import {
 } from '../../lib/context-usage.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 
-/** Keep one server-side context measure, including recovery of an interrupted projection on open. */
 export function contextBehavior(
   host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'> & {
     modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getModel'>
@@ -19,7 +20,7 @@ export function contextBehavior(
 ) {
   let stop: (() => void) | undefined
   let closed = false
-  let backfill: Promise<void> | undefined
+  let backgroundSerialBackfill: Promise<void> | undefined
   const pending = new Map<ConversationId, Promise<void>>()
 
   const reconcile = async (id: ConversationId) => {
@@ -28,33 +29,31 @@ export function contextBehavior(
     const conversation = await harness.conversation(id, context)
     if (!conversation) return
     const view = await conversation.context(context)
-    // A fork's inherited responses do not measure its own requests; its document starts initial.
-    const own = view.entries.filter((entry) => entry.conversationId === id)
-    const latest = own.reduce(
+    const ownRequestEntries = view.entries.filter((entry) => entry.conversationId === id)
+    const latest = ownRequestEntries.reduce(
       (at, entry) =>
         entry.kind === 'pi.assistant' || entry.kind === 'pi.compaction' || entry.kind === 'pi.reset'
           ? Math.max(at, entry.id)
           : at,
       0,
     )
-    const source = lastAssistant(own)
+    const source = lastAssistant(ownRequestEntries)
     const saved = await harness.snapshot(ContextUsageDoc, id, context)
     const current = saved?.entry === latest && saved.at !== 0
     let tokens = current ? saved.tokens : source.message ? promptTokens(source.message.usage) : 0
     if (!current && source.stale && view.head) {
-      // Generation restates the system prompt and tools in effect before the head as its next request's baseline.
       const before = (
         await conversation.entries(
-          { maxEntryId: (view.head.id - 1) as EntryId },
+          { maxEntryId: offsetEntryId(view.head.id, -1) },
           1,
           undefined,
           context,
         )
       ).items[0]
-      const previous = before
+      const promptBaselineBeforeHead = before
         ? (await conversation.context(context, { at: before.id })).messages
         : []
-      tokens = estimateAfterHead(previous, view.messages)
+      tokens = estimateAfterHead(promptBaselineBeforeHead, view.messages)
     }
     if (closed) return
     await harness.commit(async (tx) => {
@@ -110,7 +109,6 @@ export function contextBehavior(
   host.onOpen(async () => {
     closed = false
     stop?.()
-    // Not a reactor: context follows Pi's own assistant/head entries and agent document, not domain events.
     stop = onCommit(host.harness(), (publication) => {
       const ids = new Set<ConversationId>()
       for (const change of publication.changes) {
@@ -127,12 +125,10 @@ export function contextBehavior(
           ids.add(change.conversationId)
       }
       for (const id of ids) {
-        // oxlint-disable-next-line typescript/no-floating-promises -- schedule reports failures through host.notice.
-        void schedule(id)
+        rebuiltOnOpen('open reconciles every conversation context', schedule(id))
       }
     })
-    // Bounded pages and one conversation at a time; do not hold up opening the harness.
-    backfill = (async () => {
+    backgroundSerialBackfill = (async () => {
       let cursor: Cursor | undefined
       do {
         if (closed) return
@@ -153,7 +149,7 @@ export function contextBehavior(
     closed = true
     stop?.()
     stop = undefined
-    await backfill
+    await backgroundSerialBackfill
     await Promise.all(pending.values())
   })
 }

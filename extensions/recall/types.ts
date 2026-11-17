@@ -1,10 +1,7 @@
-/** The kind of the entry that carries recalled memories, placed right after the input they apply to. */
-export const RECALL_ENTRY = 'recall.memories'
+import { defineEntry } from '@earendil-works/pi-durable'
 
-/**
- * A `recall.memories` entry's data: `input`, the message it answers (the user's prompt, or a branch's report), the root
- * the memories are from, and what was recalled.
- */
+export const RecalledEntry = defineEntry<Recalled>('recall.memories')
+
 export type Recalled = {
   input: number
   root: number

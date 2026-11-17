@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/tools/bash.ts and src/tools/edit.ts — internal bash exit_code diagnostic message drives exitOf and untyped details.patch/details.diff drive Edit. Drop when Pi exports structured bash outcomes and structured diff rows for rendering.
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/tools/bash.ts and src/tools/edit.ts — internal bash exit_code diagnostic message drives exitOf and untyped details.patch/details.diff drive Edit. Drop when Pi exports structured bash outcomes and structured diff rows for rendering.
 import { XIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnsiOutput } from '@/components/ai/ansi-output'
@@ -30,7 +30,6 @@ import { CancelAction } from './refs.ts'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
-/** A path relative to the conversation's cwd, else with `~`. */
 function usePath(path: string) {
   const cwd = useConversation((conversation) => conversation.agent.cwd)
   const defaultCwd = useStore((state) => state.system?.execution.defaultCwd)
@@ -44,7 +43,6 @@ function lineCount(value: string) {
 }
 const lines = (count: number) => `${count} line${count === 1 ? '' : 's'}`
 
-/** The skill a read loads: the folder name of a `SKILL.md`, the convention Pi's skill list points agents at. */
 export function skillOf(path: string) {
   const parts = path.split('/')
   return parts.at(-1) === 'SKILL.md' && parts.length > 1 ? parts.at(-2) : undefined
@@ -62,9 +60,11 @@ function Read({ call }: { call: ToolCallView }) {
   const failed = call.status === 'error'
   const count = call.status === 'done' ? lineCount(call.output) : 0
   const image = call.images[0]
-  // The image itself says what Pi's bare "Read image file [type]." note does; keep only notes that add something.
   const diagnostics = image
-    ? call.diagnostics.filter((d) => !/^Read image file \[[^\]]+\]\.$/.test(d.message))
+    ? call.diagnostics.filter((d) => {
+        const redundantImageNote = /^Read image file \[[^\]]+\]\.$/.test(d.message)
+        return !redundantImageNote
+      })
     : call.diagnostics
   return (
     <Tool defaultOpen={failed || !!image}>
@@ -115,7 +115,6 @@ function Read({ call }: { call: ToolCallView }) {
   )
 }
 
-/** Keeps a growing body scrolled to its end while `following`, as a running bash call does. */
 function useFollow<T extends HTMLElement>(following: boolean, content: unknown) {
   const ref = useRef<T>(null)
   useEffect(() => {
@@ -125,7 +124,6 @@ function useFollow<T extends HTMLElement>(following: boolean, content: unknown) 
   return ref
 }
 
-/** A file call's title: its path, or a shimmering verb until the model has written the path. */
 function FileTitle({ path, verb }: { path: string; verb: string }) {
   const shown = usePath(path)
   return path ? shown : <Shimmer>{`${verb}…`}</Shimmer>
@@ -137,11 +135,9 @@ function Write({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const failed = call.status === 'error'
   const streaming = call.status === 'streaming'
-  // Open while it streams in, so the file appears as it is written, and it stays open rather than jump shut when
-  // the write lands; a write first seen finished starts closed.
-  const [watched] = useState(streaming)
+  const [streamedOnMount] = useState(streaming)
   const [toggled, setToggled] = useState<boolean>()
-  const open = toggled ?? (watched || streaming || failed)
+  const open = toggled ?? (streamedOnMount || streaming || failed)
   const scroller = useFollow<HTMLDivElement>(streaming, content)
   return (
     <Tool onOpenChange={setToggled} open={open}>
@@ -197,8 +193,8 @@ function Edit({ call }: { call: ToolCallView }) {
     : details.diff
       ? parseDisplayDiff(details.diff)
       : editRows(edits)
-  // Counts only once the model has written the whole call: mid-stream they would still change.
-  const { added, removed } = countChanges(streaming ? [] : rows)
+  const finalEditRows = streaming ? [] : rows
+  const { added, removed } = countChanges(finalEditRows)
   const failed = call.status === 'error'
   const scroller = useFollow<HTMLDivElement>(streaming, rows.length)
   return (
@@ -248,14 +244,12 @@ function exitOf(call: ToolCallView): { label: string; ok: boolean } | undefined 
 
 const separators: Record<string, string> = { '&&': '&&', '||': '||', ';': '·' }
 
-/** The file a heredoc writes, by name: `cat > src/a.ts <<EOF` writes `a.ts`. */
 const written = (step: BashStep) =>
   step.heredocs
     .find((heredoc) => heredoc.file && !heredoc.file.startsWith('heredoc.'))
     ?.file?.split('/')
     .at(-1)
 
-/** The header line: each step's programs joined by pipe arrows, steps by their operators, repeats folded. */
 function BashSummary({ steps }: { steps: BashStep[] }) {
   const runs: { step: BashStep; count: number }[] = []
   for (const step of steps) {
@@ -271,7 +265,6 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
   return (
     <>
       {runs.map(({ step, count }, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Ordered command runs can repeat the same programs.
         <span key={index}>
           {index > 0 && (
             <span className="px-1.5 text-muted-foreground/50">
@@ -281,7 +274,6 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
           {step.programs.map((name, position) => {
             const [program, ...rest] = name.split(' ')
             return (
-              // oxlint-disable-next-line react/no-array-index-key -- Pipeline positions; programs can repeat.
               <span key={position}>
                 {position > 0 && <span className="px-1 text-brand/70">→</span>}
                 <span className="text-foreground/90">{program}</span>
@@ -299,7 +291,6 @@ function BashSummary({ steps }: { steps: BashStep[] }) {
   )
 }
 
-/** Cancel a running bash call: its command is killed and the model gets the output so far. */
 function CancelCall({ callId }: { callId: string }) {
   const conversationId = useConversation((conversation) => conversation.id)
   const [sent, setSent] = useState(false)
@@ -389,7 +380,6 @@ function Bash({ call }: { call: ToolCallView }) {
               </div>
             )}
             {display.steps.map((step, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Command steps are positional and may repeat.
               <div className="flex gap-2" key={index}>
                 <span className="w-4 shrink-0 pt-px text-muted-foreground/50">
                   {step.operator ?? (display.directory ? '&&' : '$')}
@@ -401,7 +391,6 @@ function Bash({ call }: { call: ToolCallView }) {
                     language="bash"
                   />
                   {step.heredocs.map((heredoc, position) => (
-                    // oxlint-disable-next-line react/no-array-index-key -- Heredoc positions; delimiters and files may repeat.
                     <div className="border-l-2 border-border/80" key={position}>
                       <CodeBlock
                         className="rounded-none border-none"
@@ -441,7 +430,6 @@ function Bash({ call }: { call: ToolCallView }) {
   )
 }
 
-/** A file tool as a step line: its verb and path. */
 const fileLine = (verb: string) =>
   function FileLine({ call }: { call: ToolCallView }) {
     return (
@@ -451,7 +439,6 @@ const fileLine = (verb: string) =>
     )
   }
 
-/** A read as a step line; a skill's `SKILL.md` names the skill it loads. */
 function ReadLine({ call }: { call: ToolCallView }) {
   const path = text(call.args.path)
   const shown = usePath(path)
@@ -467,7 +454,6 @@ function ReadLine({ call }: { call: ToolCallView }) {
   )
 }
 
-/** A bash call as a step line: its programs, as its header shows them. */
 function BashLine({ call }: { call: ToolCallView }) {
   const command = text(call.args.command)
   const display = useMemo(() => formatBashCommand(command), [command])

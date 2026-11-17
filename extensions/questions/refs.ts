@@ -4,8 +4,8 @@
  */
 import { actionRef } from '../../shared/extension-api.ts'
 
-/** One answered question: the question's text and the chosen or typed answer (several choices joined by ", "). */
-export type Answer = { question: string; answer: string }
+/** One answered question: the question's text and the chosen or typed answer, a multiple choice's as a list. */
+export type Answer = { question: string; answer: string | string[] }
 
 /**
  * `{ messageId, answers?, note? }` or `{ messageId, text }` → `{ id }`: answer open message `messageId` with a reply

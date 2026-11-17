@@ -1,28 +1,33 @@
-/** Browser WebRTC lifecycle, independent of React and the shell. Never holds an API key. */
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { deadline, every, within } from '../../lib/timers.ts'
+import { inProcess, settled } from '../../lib/errors.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import type { ActionRef } from '../../shared/extension-api.ts'
 import { EndAction, HeardAction, LogAction, StartAction } from './refs.ts'
 import { Relay } from './relay.ts'
 import type { LiveEvent, RelayOut } from './relay.ts'
 
 export type LiveOptions = {
-  /** Pass the shell's api.action (or a typed wrapper). */
   action: <A, R>(ref: ActionRef<A, R>, args: A) => Promise<R>
   onEvent: (event: LiveEvent) => void
   onError: (error: Error) => void
 }
 export type LiveSession = {
-  conversation: number
+  conversation: ConversationId
   analyser: AnalyserNode
   relay: Relay
   send: (event: Record<string, unknown>) => void
   mute: () => void
   unmute: () => void
   speak: (text: string) => void
-  /** Send session.close, await session.closed, record EndAction and release all media resources. */
   close: () => Promise<void>
 }
 
-export async function startLive(options: LiveOptions): Promise<LiveSession> {
+function openPreOfferChannel(peer: RTCPeerConnection) {
+  return peer.createDataChannel('oai-events')
+}
+
+export async function startMicInGesture(options: LiveOptions): Promise<LiveSession> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   const pc = new RTCPeerConnection()
   const audio = new Audio()
@@ -32,26 +37,23 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   audioContext.createMediaStreamSource(stream).connect(analyser)
   const relay = new Relay(Date.now())
   const started = Promise.withResolvers<void>()
-  const closed = Promise.withResolvers<void>()
-  // Rejections can arrive while the SDP action is still in flight.
-  void started.promise.catch(() => {
-    /* Observed below after SDP exchange. */
-  })
-  let timer: ReturnType<typeof setInterval> | undefined
-  let startupTimer: ReturnType<typeof setTimeout> | undefined
+  const closeAcknowledged = Promise.withResolvers<void>()
+  inProcess('a browser session ends with its page', settled(started.promise))
+  let stopPolling: Cancel | undefined
+  let cancelStartup: Cancel | undefined
   let seconds: number | undefined
   let didStart = false
   let didClose = false
   let releasing = false
   let closePromise: Promise<void> | undefined
-  let pending = Promise.resolve()
-  let conversation: number | undefined
+  let orderedLineDelivery = Promise.resolve()
+  let conversation: ConversationId | undefined
   const errorOf = (error: unknown) => (error instanceof Error ? error : new Error(String(error)))
-  const cleanup = async () => {
+  const releaseMicrophoneAndPeer = async () => {
     if (releasing) return
     releasing = true
-    clearInterval(timer)
-    clearTimeout(startupTimer)
+    stopPolling?.()
+    cancelStartup?.()
     stream.getTracks().forEach((track) => track.stop())
     pc.close()
     audio.pause()
@@ -62,10 +64,9 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     if (channel.readyState !== 'open') throw new Error('Live voice data channel is not open')
     channel.send(JSON.stringify(event))
   }
-  const accept = (outs: RelayOut[]) => {
+  const deliverFinishedLinesInOrder = (outs: RelayOut[]) => {
     for (const out of outs) {
-      // Preserve the order of finished lines.
-      pending = pending
+      orderedLineDelivery = orderedLineDelivery
         .then(async () => {
           if ('log' in out) {
             await options.action(LogAction, out.log)
@@ -83,8 +84,8 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     void audio.play().catch((error: unknown) => options.onError(errorOf(error)))
   })
   stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-  // OpenAI requires the data channel to exist before createOffer(). WebRTC sends no session.start.
-  const channel = pc.createDataChannel('oai-events')
+
+  const channel = openPreOfferChannel(pc)
   channel.addEventListener('message', (message) => {
     try {
       const event = JSON.parse(String(message.data)) as LiveEvent
@@ -95,7 +96,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
       if (event.type === 'session.usage.updated') seconds = event.usage?.seconds
       if (event.type === 'session.closed') {
         didClose = true
-        closed.resolve()
+        closeAcknowledged.resolve()
         if (!didStart) started.reject(new Error('Live voice closed before session.started'))
       }
       if (event.type === 'error') {
@@ -103,7 +104,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
         started.reject(error)
         options.onError(error)
       }
-      accept(relay.event(event, Date.now()))
+      deliverFinishedLinesInOrder(relay.event(event, Date.now()))
       options.onEvent(event)
       if (event.type === 'session.closed' && conversation !== undefined)
         void close().catch((error: unknown) => options.onError(errorOf(error)))
@@ -122,26 +123,19 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   const close = (): Promise<void> => {
     if (closePromise) return closePromise
     closePromise = (async () => {
-      clearInterval(timer)
-      let deadline: ReturnType<typeof setTimeout> | undefined
+      stopPolling?.()
       try {
         if (!didClose) {
           send({ type: 'session.close' })
-          await Promise.race([
-            closed.promise,
-            new Promise<never>((_, reject) => {
-              deadline = setTimeout(
-                () => reject(new Error('Live voice did not confirm session.closed')),
-                5000,
-              )
-            }),
-          ])
+          await within(
+            5000,
+            closeAcknowledged.promise,
+            () => new Error('Live voice did not confirm session.closed'),
+          )
         }
       } finally {
-        clearTimeout(deadline)
-        // Always release the microphone, even if the peer disappears before confirming close.
-        await cleanup()
-        await pending
+        await releaseMicrophoneAndPeer()
+        await orderedLineDelivery
         if (conversation !== undefined)
           await options.action(EndAction, seconds === undefined ? {} : { seconds })
       }
@@ -149,9 +143,8 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     return closePromise
   }
   try {
-    startupTimer = setTimeout(
-      () => started.reject(new Error('Timed out waiting for session.started')),
-      30_000,
+    cancelStartup = deadline(30_000, () =>
+      started.reject(new Error('Timed out waiting for session.started')),
     )
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -159,9 +152,9 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
     conversation = answer.conversation
     await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp })
     await started.promise
-    clearTimeout(startupTimer)
+    cancelStartup?.()
     await audioContext.resume()
-    timer = setInterval(() => accept(relay.tick(Date.now())), 100)
+    stopPolling = every(100, () => deliverFinishedLinesInOrder(relay.tick(Date.now())))
     return {
       conversation: answer.conversation,
       analyser,
@@ -193,7 +186,7 @@ export async function startLive(options: LiveOptions): Promise<LiveSession> {
   } catch (error) {
     if (conversation !== undefined)
       await close().catch((cause: unknown) => options.onError(errorOf(cause)))
-    else await cleanup()
+    else await releaseMicrophoneAndPeer()
     throw error
   }
 }

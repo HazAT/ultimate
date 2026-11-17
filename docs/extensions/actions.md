@@ -8,7 +8,7 @@ the UI calls them through a typed ref, JSON in and JSON out.
 
 ```ts
 // server.ts
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
 
@@ -43,8 +43,8 @@ An action is `(args, ctx)`; `ctx` has:
 | `host`                                    | The extension host: `projectRoot`, `ultimateRoot`, `system()`, `uiState(context)`, `harness()`, and more (see `AGENTS.md`).                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 The `ActionContext` import is type-only. The path above is right for `.ultimate/extensions/<name>/` in Ultimate's clone
-(built-ins use `../../server/actions.ts`); in another project nothing type-checks it and the import is erased, so it
-runs either way. A project extension keeps its refs in `web.tsx`, from `@/sdk`; built-ins keep them in `refs.ts` and
+(built-ins use `../../server/actions.ts`); in another project the path does not resolve and the import is erased, so it
+runs either way (`scripts/check-extension.ts` reports it there; type `ctx` by hand or leave the import out). A project extension keeps its refs in `web.tsx`, from `@/sdk`; built-ins keep them in `refs.ts` and
 check their handlers against them with `implementAction` (see [contracts](contracts.md#the-browser-side-refsts-and-uitsx)).
 
 - **Arguments are untrusted, from the browser or an agent**: make actions safe to call from an agent and validate args before they reach a command line. `exec` takes an argument list,
@@ -60,10 +60,13 @@ check their handlers against them with `implementAction` (see [contracts](contra
 
 Call actions from the UI in one of two ways:
 
-- `useAction(ref, args?, { enabled?, onError? })` reads. It calls on mount and again whenever the action or `args`
-  (compared as JSON) change, unless `enabled` is false; a newer call aborts the older one. It returns
-  `{ data, error, loading, refetch }`: `data` stays while a refetch runs and resets when the args change; `refetch()`
-  calls again, also when not `enabled`. A failure shows as a notice unless you pass `onError`.
+- `useAction(ref, args?, { enabled?, onError?, on?, every?, focus? })` reads. It calls on mount and again whenever
+  the action or `args` (compared as JSON) change, when `on` changes (a document, an event id, a busy flag: anything
+  that means the answer may be stale), every `every` ms, on window focus with `focus`, and after the server restarts;
+  never while `enabled` is false. Every component reading the same action and args shares one call and one result,
+  so a remount shows the last answer at once while it asks again. It returns `{ data, error, loading, refetch }`:
+  `data` stays while a refetch runs; `refetch()` calls again, also when not `enabled`. A failure shows as a notice
+  unless a reader passes `onError`. Pass the signal as `on` rather than calling `refetch()` from an effect.
 - `api.action(ref, args?, { conversationId?, signal?, keepalive? })` acts, once: a click that saves,
   closes, or labels something; `keepalive` lets a call sent on `pagehide` outlive the page. It returns a promise of
   the result; afterwards, `refetch()` what changed. A rejection (an `ActionError` with `extension`, `action`,

@@ -61,7 +61,7 @@ The worker can only be as good as its brief. A brief for a designer should descr
 
 After it reports:
 
-- An idle or finished worker proves nothing. Read its diff, check its citations, and read its last full test run in its transcript (`ultimate.entries(id)`): a recorded exit code is evidence, a claim in prose is not. After landing it, run only `pnpm check` and the tests covering what you changed yourself; the lander runs everything on the merged result.
+- An idle or finished worker proves nothing. Read its diff, check its citations, and read its last full test run in its transcript (`ultimate.entries(id)`): a recorded exit code is evidence, a claim in prose is not. After landing it, run only the project's checks (`pnpm check` in Ultimate) and the tests covering what you changed yourself; the lander runs everything on the merged result.
 - A `watchdog.failure` card names a child's failed run and last step; temporary errors already got one retry. Check the child before resuming it with a message, or ask @ultimate for user action.
 - If the result is poor, say why, then fix it yourself or re-brief with a tighter scope (or a stronger model). Don't accept it as is.
 - You alone declare the work complete.
@@ -73,6 +73,8 @@ Never end a run with work left unless a child, the lander or a reply will wake y
 For review, start one `reviewer` with the immutable `base..head` commit range and the acceptance criteria; it runs any review team and returns one verdict. Verify its findings yourself. The lander runs every check on the merged result. Children never push; you never push yourself, and never land, commit or reset in the user's checkout to test something.
 
 ## Talking to @ultimate and the user
+
+A request that needs @ultimate to act (relay, decide, start something) is sent with `reply: true`; a one-way message to it is a note it reads only later.
 
 You ask the user your own decisions, in your conversation, after @ultimate has weighed in. Your assessment or `Decisions:` block goes to @ultimate first; it answers with one of: "ask the user" with its picks (mark exactly those `recommended`), "decided: …" (it decided in the user's place: go on), or "hold" (it asks the user itself, together with other branches). To ask, send one reply-expected `message {to: 'user', text, questions}`: the text explains, the questions decide, numbered with `ref` and lettered with `key`, reasoning in `detail`; the card adds "Something else…" and a note field itself. Then end your turn; the user's answer wakes you, and @ultimate reads it too. A preview approval is asked the same way, with the screenshots as `images`.
 

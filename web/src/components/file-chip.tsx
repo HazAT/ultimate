@@ -13,7 +13,6 @@ import {
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 
-/** The icon for a file by its MIME type and name: what kind of thing it is, at a glance. */
 function icon(name: string, mimeType: string) {
   const extension = /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase() ?? ''
   if (mimeType.startsWith('image/')) return FileImageIcon
@@ -36,17 +35,12 @@ function icon(name: string, mimeType: string) {
   return FileIcon
 }
 
-/** A short type label: the file's extension in capitals (`PDF`, `ZIP`), else its MIME subtype. */
 export function typeLabel(name: string, mimeType: string) {
   const extension = /\.([^.]{1,6})$/.exec(name)?.[1]
   if (extension) return extension.toUpperCase()
   return (mimeType.split('/')[1] ?? 'file').toUpperCase().slice(0, 8)
 }
 
-/**
- * A file attachment, in the same bordered box as an attached image: a type icon, the name, and a centred note
- * (`1.2 MB · PDF`, `Uploading…`). `children` goes on top, such as the composer's remove button.
- */
 export function FileChip({
   name,
   mimeType,

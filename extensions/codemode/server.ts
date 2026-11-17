@@ -1,5 +1,16 @@
+import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import type {
+  ConversationId,
+  Cursor,
+  JsonObject,
+  ToolExecutionApi,
+  ToolRegistration,
+  ToolExecutionResult,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
-import type { Context, JsonValue } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { obj, str } from '@earendil-works/pi-schema'
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {
@@ -20,17 +31,6 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type {
-  ConversationId,
-  Cursor,
-  EntryId,
-  EntryRecord,
-  JsonObject,
-  ToolExecutionApi,
-  ToolRegistration,
-  ToolExecutionResult,
-  Tx,
-} from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { shortTitle } from '../../lib/title.ts'
@@ -40,8 +40,8 @@ import type { ActionContext } from '../../server/actions.ts'
 import { READS, readProject } from './projects.ts'
 import { REMOTE_BYTES } from '../../lib/remote.ts'
 import type { Read } from './projects.ts'
-import { closedChapter, id, limit, readChapter, searchHit } from './chapters.ts'
-import type { HistoryRead, SearchOptions } from './chapters.ts'
+import { closedChapter, compactEntry, id, limit, readChapter, searchHit } from './chapters.ts'
+import type { EntriesOptions, HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
@@ -61,8 +61,7 @@ export const Store = defineDoc({
   history: 'rewindable',
   initial: (): JsonObject => ({}),
 })
-/** The summaries a conversation keeps: older calls fall back to their script header. */
-const KEPT = 1000
+const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
 export const docs = [Store, SummaryDoc, PendingDoc]
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -72,7 +71,10 @@ type StructuredResult = ToolExecutionResult & { structuredContent?: unknown }
 
 function declarations(tools: readonly ToolRegistration[]): CodemodeTool[] {
   return tools
-    .filter((tool) => tool.name !== 'codemode' && tool.name !== 'restart')
+    .filter(
+      (tool) =>
+        tool.name !== 'restart' && (tool.callers === undefined || tool.callers.includes('tools')),
+    )
     .map((tool: StructuredTool) => ({
       name: tool.name,
       description: tool.description,
@@ -84,7 +86,6 @@ function declarations(tools: readonly ToolRegistration[]): CodemodeTool[] {
     }))
 }
 
-/** The history reads codemode offers, on this project's storage; `codemode.read` serves them to other projects. */
 function localReads(host: ExtensionHost, context: Context) {
   const conversations = () =>
     host.harness().commit(async (tx) => {
@@ -97,13 +98,10 @@ function localReads(host: ExtensionHost, context: Context) {
       } while (cursor)
       return items
     }, context)
-  const entries = async (
-    conversation: unknown,
-    options: { kinds?: string[]; limit?: number; before?: number } = {},
-  ) => {
+  const entries = async (conversation: unknown, options: EntriesOptions = {}) => {
     const found = await host.harness().conversation(id(conversation), context)
     if (!found) throw new Error('Unknown conversation')
-    const items: EntryRecord[] = []
+    const items: unknown[] = []
     let cursor: Cursor | undefined
     const count = limit(options.limit)
     do {
@@ -111,14 +109,15 @@ function localReads(host: ExtensionHost, context: Context) {
         options.before === undefined
           ? {}
           : {
-              maxEntryId: (options.before - 1) as EntryId,
+              maxEntryId: offsetEntryId(options.before, -1),
             },
         100,
         cursor,
         context,
       )
       for (const entry of page.items) {
-        if (!options.kinds || options.kinds.includes(entry.kind)) items.push(entry)
+        if (!options.kinds || options.kinds.includes(entry.kind))
+          items.push(options.full ? entry : compactEntry(entry))
         if (items.length === count) return items
       }
       cursor = page.next
@@ -149,10 +148,6 @@ function localReads(host: ExtensionHost, context: Context) {
     }
     return matches
   }
-  /**
-   * Every conversation with its summary (title, label, cwd, busy, latest input) and whether it is concluded.
-   * Titles are shortened: old subagent titles hold whole prompts and would push the listing past the read limit.
-   */
   const listed = async () => {
     const summaries = new Map(host.conversations().map((summary) => [summary.id, summary]))
     const concluded = (await host.uiState(context))['ext.conversations.concluded']
@@ -181,7 +176,7 @@ function localReads(host: ExtensionHost, context: Context) {
   return {
     conversations: history('conversations', 0, () => listed()),
     entries: history('entries', 1, ([conversation, options]) =>
-      entries(conversation, options as Parameters<typeof entries>[1]),
+      entries(conversation, options as EntriesOptions),
     ),
     search: history('search', 1, ([text, options]) => search(text, options as SearchOptions)),
     trace: ([query]) => host.trace.query(query ?? {}),
@@ -207,11 +202,6 @@ function globals(
   record?: (name: string, args: unknown[]) => (status: string) => void,
 ): CodemodeTool[] {
   const reads = localReads(host, context)
-  /**
-   * Read `op` here, or in the project its last argument's `project` names (the option `options` at `at`), through
-   * that project's running instance.
-   */
-  /** A read's `machine` option: which machine's instance of the project answers when it runs on several. */
   const remoteMachine = (machine: unknown) => {
     if (machine !== undefined && (typeof machine !== 'string' || !machine))
       throw new Error('machine must be nonempty')
@@ -225,7 +215,6 @@ function globals(
       const project =
         options && typeof options === 'object' && 'project' in options ? options.project : undefined
       if (project !== undefined) {
-        // Checked here: `project` is stripped below, so the chapter read never sees the pair.
         if (
           options &&
           typeof options === 'object' &&
@@ -236,7 +225,6 @@ function globals(
         if (typeof project !== 'string' || !project) throw new Error('project must be nonempty')
         const { project: _project, machine, ...rest } = options as Record<string, unknown>
         args[at] = rest
-        // The call's own signal ends with the script, its timeout or the conversation's abort.
         const remote = await readProject(
           host,
           { project, machine: remoteMachine(machine) },
@@ -357,8 +345,7 @@ function globals(
             ...(reply === undefined ? {} : { reply }),
             ...(machine ? { machine } : {}),
           },
-          context,
-          signal,
+          withAbortSignal(signal, context),
         )
       },
     },
@@ -373,9 +360,9 @@ function globals(
     {
       name: 'entries',
       description:
-        'Newest-first fork-aware stored history, including before resets and compactions. before is an exclusive entry ID.',
+        'Newest-first fork-aware stored history, including before resets and compactions. before is an exclusive entry ID. Entries are compact: message text whole, tool results kept at start and end, args and data cut, no thinking; full returns stored entries.',
       signature:
-        '(conversationId: number, options?: { kinds?: string[]; limit?: number; before?: number; project?: string; machine?: string; chapter?: string }): Promise<unknown[]>',
+        '(conversationId: number, options?: { kinds?: string[]; limit?: number; before?: number; full?: boolean; project?: string; machine?: string; chapter?: string }): Promise<{ id: number; kind: string; at?: string; role?: string; tool?: string; text?: string; tools?: { name: string; args: string }[]; stopReason?: string; error?: string | true; data?: string }[]>',
       execute: read('entries', 1),
     },
     {
@@ -417,7 +404,6 @@ function globals(
         'Read an exported extension document or pi.agent, pi.inbox, pi.live or pi.usage by kind; defaults to this conversation, or to conversation 1 in another project.',
       signature:
         '(kind: string, conversationId?: number, options?: { project?: string; machine?: string }): Promise<unknown>',
-      // Another project has no conversation of yours to default to: it reads conversation 1 unless one is named.
       execute: async (values, { signal }) => {
         const [kind, conversation, options] = values as [unknown, unknown, unknown]
         const project =
@@ -440,7 +426,6 @@ function globals(
     name: `ultimate.${helper.name}`,
     spread: true,
     outputSchema: {},
-    // Each helper call joins the script's call log, so its summary sees what it read and changed.
     execute: async (args, options) => {
       const settle = record?.(`ultimate.${helper.name}`, args as unknown[])
       try {
@@ -456,10 +441,6 @@ function globals(
 }
 
 export const actions = {
-  /**
-   * `{ op, args }`: another project's codemode asks this one for `ultimate.<op>(...args)` (`conversations`, `entries`,
-   * `search`, `trace`, `traceTree`), read-only. Answers more than 1 MiB of JSON with an error asking for a smaller limit.
-   */
   async read(input: JsonValue, { host, signal }: ActionContext) {
     const { op, args } = (input ?? {}) as { op?: unknown; args?: unknown }
     if (!READS.includes(op as Read)) throw new Error(`op must be one of ${READS.join(', ')}`)
@@ -475,9 +456,12 @@ export const actions = {
 }
 
 export default function codemode(host: ExtensionHost) {
-  const globalDeclarations = globals(host, 1 as ConversationId, BACKGROUND_CONTEXT)
+  const globalDeclarations = globals(host, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT).filter(
+    (global) => global.name !== 'ultimate.tell',
+  )
   const codemodeTool = defineTool({
     name: 'codemode',
+    callers: ['model'],
     replay: 'unsafe',
     description:
       'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context. Nested tool hooks do not run. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
@@ -489,12 +473,11 @@ export default function codemode(host: ExtensionHost) {
         args: unknown
         status: string
         ms: number
-        conversationId?: number
+        conversationId?: ConversationId
         background?: boolean
       }[] = []
       const subagentAnswers = new Set<number>()
-      /** Stream a settled call as `✓ <name> <args> <ms>ms`, the line the card parses while the script runs. */
-      const log = (name: string, call: (typeof calls)[number]) => {
+      const streamSettledCall = (name: string, call: (typeof calls)[number]) => {
         if (!context.abortSignal?.aborted)
           api.output(
             `${call.status === 'ok' ? '✓' : '✗'} ${name} ${(JSON.stringify(call.args) ?? '').slice(0, 200)} ${call.ms}ms\n`,
@@ -507,10 +490,11 @@ export default function codemode(host: ExtensionHost) {
         return (status: string) => {
           call.status = status
           call.ms = Math.round(performance.now() - started)
-          log(name, call)
+          streamSettledCall(name, call)
         }
       }
       const controller = new AbortController()
+      const terminateSandboxBeforeYield = () => controller.abort()
       const sandboxContext = withAbortSignal(controller.signal, context)
       let yielded = false
       const agent = await api.agent(context)
@@ -571,12 +555,10 @@ export default function codemode(host: ExtensionHost) {
             if (resolved.name === 'subagent' && details?.yielded === true) {
               call.status = 'yielded'
               if (typeof details.conversationId === 'number')
-                call.conversationId = details.conversationId
+                call.conversationId = parseConversationId(details.conversationId)
               if (typeof details.background === 'boolean') call.background = details.background
               yielded = true
-              // Abort synchronously: pi-codemode clears pending replies and terminates the VM,
-              // so neither a resolved value nor a catch/finally can resume the script.
-              controller.abort()
+              terminateSandboxBeforeYield()
               return undefined
             }
             const text =
@@ -602,7 +584,7 @@ export default function codemode(host: ExtensionHost) {
           } finally {
             active = false
             call.ms = Math.round(performance.now() - started)
-            log(`tools.${call.name}`, call)
+            streamSettledCall(`tools.${call.name}`, call)
           }
         },
       }))
@@ -672,15 +654,20 @@ export default function codemode(host: ExtensionHost) {
             output: content,
             details: { calls, yielded: true, pendingSubagents } as JsonObject,
           }
-        await summarize(api, context, calls, result.ok ? undefined : result.error.message)
+        await labelOnceBeforeToolSettlement(
+          api,
+          context,
+          calls,
+          result.ok ? undefined : result.error.message,
+        )
         if (result.ok) {
           if (result.storeWrites.delete.length || Object.keys(result.storeWrites.set).length) {
-            // Pi Durable has no result transaction, so this commits separately: a crash can retain writes while reporting the call interrupted.
-            await api.commit(async (tx) => {
+            const storeCommitBeforeSettlement = api.commit(async (tx) => {
               const store = await tx.doc(Store, api.conversationId)
               for (const key of result.storeWrites.delete) delete store[key]
               Object.assign(store, result.storeWrites.set)
             }, context)
+            await storeCommitBeforeSettlement
           }
           return {
             output: content,
@@ -696,7 +683,7 @@ export default function codemode(host: ExtensionHost) {
         return { output: content, isError: true, details: { calls, error } as JsonObject }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        await summarize(api, context, calls, message)
+        await labelOnceBeforeToolSettlement(api, context, calls, message)
         return {
           output: [{ type: 'text', text: `Script failed\n${message}` }],
           isError: true,
@@ -705,18 +692,18 @@ export default function codemode(host: ExtensionHost) {
       }
     },
   })
-  /**
-   * Give call `api.callId` its one line: a fixed label for a trivial script, written now, or a background task that asks
-   * the summary model. Created in its own commit before the result; the call does not rerun, and a call that already
-   * has a line or a pending task gets no second one.
-   */
-  const summarize = (api: ToolExecutionApi, context: Context, calls: Call[], error?: string) =>
+  const labelOnceBeforeToolSettlement = (
+    api: ToolExecutionApi,
+    context: Context,
+    calls: Call[],
+    error?: string,
+  ) =>
     api.commit(async (tx) => {
       const doc = await tx.doc(SummaryDoc, api.conversationId)
       const pending = await tx.doc(PendingDoc, api.conversationId)
       if (doc.calls[api.callId] || pending.calls.includes(api.callId)) return
       const fixed = fixedLine(calls, error)
-      if (fixed) return keep(tx, api.conversationId, api.callId, fixed)
+      if (fixed) return recordSummaryLineAndEvent(tx, api.conversationId, api.callId, fixed)
       pending.calls.push(api.callId)
       await tx.createTask(
         Summary,
@@ -737,15 +724,14 @@ export default function codemode(host: ExtensionHost) {
         const conversations = host.need(ConversationsApi)
         let response = await runtime.memo<ResponseReceipt>('response', ctx)
         let model = await runtime.memo<SummaryModel>('model', ctx)
-        // Marked before asking: a restart between the request and its saved response does not ask again.
-        const asked = await runtime.memo<boolean>('asked', ctx)
+        const requestMarkedBeforeSend = await runtime.memo<boolean>('asked', ctx)
         let summary: CallSummary | undefined
         try {
           if (!model) {
             const chosen = await conversations.summaryModel()
             if (chosen) model = await runtime.memo('model', chosen, ctx)
           }
-          if (model && (response || !asked)) {
+          if (model && (response || !requestMarkedBeforeSend)) {
             if (!response) await runtime.memo('asked', true, ctx)
             response = await conversations.askSummaryModel(
               runtime.models,
@@ -758,7 +744,6 @@ export default function codemode(host: ExtensionHost) {
           }
         } catch (error) {
           if (runtime.signal.aborted) throw error
-          // The line is optional: without one the card keeps its script header.
         }
         await runtime.commit(async (tx) => {
           await conversations.accountResponse(tx, runtime.conversationId, response)
@@ -776,18 +761,22 @@ export default function codemode(host: ExtensionHost) {
       }, ctx)
     },
   })
-  /** End call `call`'s summary task in `tx`: keep its line when there is one, and drop it from the pending ones. */
   async function settle(tx: Tx, conversation: ConversationId, call: string, summary?: CallSummary) {
     const pending = await tx.doc(PendingDoc, conversation)
     pending.calls = pending.calls.filter((open) => open !== call)
-    if (summary) await keep(tx, conversation, call, summary)
+    if (summary) await recordSummaryLineAndEvent(tx, conversation, call, summary)
   }
-  /** Store call `call`'s line and record it as an event, in `tx`. */
-  async function keep(tx: Tx, conversation: ConversationId, call: string, summary: CallSummary) {
+  async function recordSummaryLineAndEvent(
+    tx: Tx,
+    conversation: ConversationId,
+    call: string,
+    summary: CallSummary,
+  ) {
     const doc = await tx.doc(SummaryDoc, conversation)
     doc.calls[call] = summary
     const ids = Object.keys(doc.calls)
-    for (const old of ids.slice(0, Math.max(0, ids.length - KEPT))) delete doc.calls[old]
+    for (const old of ids.slice(0, Math.max(0, ids.length - KEPT_SUMMARY_LIMIT)))
+      delete doc.calls[old]
     await host.emit(tx, Summarized, {
       conversation,
       call,
@@ -806,7 +795,7 @@ export default function codemode(host: ExtensionHost) {
             (agent.tools.some((tool) => tool.name === 'restart')
               ? ' Call restart only at top level.'
               : '') +
-            ' Only text(), images and return values enter context; filter to concise findings.' +
+            ' Only text(), image() and return values enter context; filter to concise findings. The sandbox has no setTimeout or setInterval: wait with a bash sleep.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action. ' +
             'tools.<name>(args) uses the top-level tool schemas and rules (same arguments and results). Available: ' +
             declarations(agent.tools)

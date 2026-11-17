@@ -9,7 +9,7 @@ agent, and the agent docked on the right. It needs nothing but `git`. Put the th
 `server.ts`, the data:
 
 ```ts
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
 

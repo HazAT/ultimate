@@ -1,12 +1,12 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { exec } from '../lib/exec.ts'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { Device } from '../shared/events.ts'
 import type { ExtensionHost } from './extensions.ts'
 
 export interface ActionContext {
   host: ExtensionHost
-  conversationId?: number
-  /** The browser that asked, for a call from the UI; agents' calls have none. */
+  conversationId?: ConversationId
   device?: Device
   signal: AbortSignal
   exec(

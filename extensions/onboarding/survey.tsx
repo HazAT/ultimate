@@ -1,17 +1,28 @@
+import { ROOT } from '@/sdk'
 import { CompassIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { api, errorMessage, useAction, useConversation, useDocOf, useSystem } from '@/sdk'
-import { column, MemoryDoc, useRoots } from '../lineage/ui.tsx'
+import {
+  api,
+  column,
+  errorMessage,
+  useAction,
+  useConversation,
+  useDialog,
+  useDocOf,
+  useModels,
+  useSystem,
+} from '@/sdk'
+import { MemoryDoc, useRoots } from '../lineage/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { onboarded } from './onboarded.ts'
+import { firstRunDialog } from './parts.tsx'
 import { DismissAction, StartAction, StartsDoc, StatusAction } from './refs.ts'
 
-/** Above @ultimate's composer until onboarding has run for the project: one click starts it. */
 export function StartComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   if (id === undefined || id !== ultimate) return core
   return (
     <>
@@ -23,10 +34,16 @@ export function StartComposer({ core, dock }: { core: ReactNode; dock?: boolean 
 
 function StartHere({ dock }: { dock?: boolean }) {
   const root = useRoots()?.[0]
-  const starts = useDocOf(1, StartsDoc)
-  const memories = useDocOf(root ?? 1, MemoryDoc)
+  const starts = useDocOf(ROOT, StartsDoc)
+  const memories = useDocOf(root ?? ROOT, MemoryDoc)
   const project = useSystem()?.project.name
   const status = useAction(StatusAction).data
+  const models = useModels()
+  const agent = useConversation((conversation) => conversation.agent.model)
+  const runnableUltimateModel = models?.models.some(
+    (model) => model.provider === agent?.provider && model.id === agent.modelId && model.available,
+  )
+  const [, openGetReady] = useDialog(firstRunDialog)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string>()
   if (root === undefined || starts === undefined || memories === undefined || !status) return null
@@ -62,7 +79,11 @@ function StartHere({ dock }: { dock?: boolean }) {
         <div className="ml-auto flex items-center gap-1">
           <Button
             disabled={sending}
-            onClick={() => void run(() => api.action(StartAction, { root }))}
+            onClick={() =>
+              runnableUltimateModel
+                ? void run(() => api.action(StartAction, { root }))
+                : openGetReady(true)
+            }
           >
             {sending ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <CompassIcon />}
             Set up with @ultimate

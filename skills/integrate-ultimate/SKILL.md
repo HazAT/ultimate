@@ -145,7 +145,7 @@ settings apply live; nothing needs a restart.
 
 - **Configuration, written directly:** `.ultimate/settings.json`; `.ultimate/README.md`, a short explainer that onboarding shows; agent definitions; skills with their small helper scripts.
 - **Extensions go to a coordinator branch** (as @ultimate, start one per picked extension with the user's words; a coordinator builds it): one folder per extension in `.ultimate/extensions/<name>/` (`server.ts`, `web.tsx`, `README.md`). Follow `extensions/README.md` in the Ultimate clone.
-  - Extensions outside the clone import what built-ins import (`@/sdk`, `@/components/…`, clone packages), and nothing type-checks them.
+  - Extensions outside the clone import what built-ins import (`@/sdk`, `@/components/…`, clone packages). Type-check them with `node <clone>/scripts/check-extension.ts` from the project; never copy one into the clone to check it.
   - Keep the project's own tooling (type check, lint, format) from scanning `.ultimate/`.
   - A worktree's `.ultimate/` does not reach the running host. Preview it with `instance start`: a clean instance (every agent on `instance.model`) that runs the worktree as its project and loads its `.ultimate/extensions`.
 - **Verify against the real project**, not a copy of Ultimate: the preview above, or a temporary `HOME` with the project trusted (`~/.ultimate/trust.json`) and onboarding done, then `node <clone>/bin/ultimate.ts <project> --port <free> --no-open`.

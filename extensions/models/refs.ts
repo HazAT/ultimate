@@ -31,19 +31,42 @@ export const AnswerAction = actionRef<{ flowId: string; value: string }, null>('
 export const CancelAction = actionRef<{ flowId: string }, null>('models', 'cancel')
 /** `{ provider }` → null: remove the provider's stored credential, which Pi shares. */
 export const LogoutAction = actionRef<{ provider: string }, null>('models', 'logout')
+/**
+ * null → `{ errors }`: fetch every provider's model catalog from pi.dev now, as `pi update --models` does, so a model
+ * released after the installed Pi shows up without an npm release. `errors` maps each provider whose fetch failed to
+ * its message.
+ */
+export const RefreshCatalogAction = actionRef<null, { errors: Record<string, string> }>(
+  'models',
+  'refreshCatalog',
+)
 
 /**
  * A `models.fallback` entry: the conversation's model (`provider/id`) had no login here, so its next run switched to
  * `to`: the same model on another provider, its definition's pin or the default model. Without `to` nothing could
  * replace it (or only a pay-per-token login could replace a subscription), so it kept its model and needs the user.
  */
-export type Fallback = { from: string; to?: string; reason: 'same' | 'pin' | 'default' | 'none' }
+export type Fallback = {
+  from: string
+  to?: string
+  reason: 'same' | 'pin' | 'default' | 'none'
+}
 
 /**
  * A login or logout of model provider `provider` completed through Ultimate; react to it to drop what you knew about
  * that provider's credentials (health resets its record to unknown).
  */
 export const LoginChanged = defineEvent<{ provider: string }>('models.login-changed')
+
+/**
+ * The family a conversation runs as, on that conversation: the one its definition or the `branch` call named when it
+ * started, or the one picked for it in the model picker; null when nothing named one. Two families can share a model, so
+ * the model alone never says which. The label shows it with the model the conversation actually runs (a preview runs
+ * every family on one model).
+ */
+export const FamilyDoc = docRef<{ name: string | null }>('models.family')
+/** `{ family }` → null: record the family the calling conversation now runs as (null: none, a model picked by id). */
+export const SetFamilyAction = actionRef<{ family: string | null }, null>('models', 'setFamily')
 
 /** One model family as the Agents panel shows it. */
 export type FamilyView = {
@@ -62,7 +85,7 @@ export type FamilyView = {
   suggested?: string
   /** The project pins its model (`enforce: true`), over the person's choice. */
   enforced?: true
-  /** The project sets its color or thinking, which win over the person's. */
+  /** A value from the project's settings is in effect for it: one the person's own families for the project don't set. */
   project?: true
 }
 
@@ -111,3 +134,9 @@ export type SaveFamilies = {
  * use them; open ones keep their model.
  */
 export const SaveFamiliesAction = actionRef<SaveFamilies, null>('models', 'saveFamilies')
+
+/**
+ * `{ model }` (`provider/id`) → null: make it the default family's model, at the recommended thinking level, and run
+ * the calling conversation on that family. Get ready's Continue calls it, so the first branch starts on the choice.
+ */
+export const SetDefaultAction = actionRef<{ model: string }, null>('models', 'setDefault')

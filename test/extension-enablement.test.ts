@@ -1,19 +1,18 @@
 import { removeTemp } from './helpers.ts'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterAll, expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { fauxServer, sourceCopy, temp, until, attach } from './helpers.ts'
 import { context } from '../server/harness.ts'
-import { compareExtensions, discoverExtensions } from '../server/discovery.ts'
+import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
 import { defaultOff } from '../shared/extension-api.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { createRegistry, toolRenderers } from '../web/src/sdk/registry.ts'
 
 const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
-// Tests run concurrently, each on its own server; close them all once the file is done.
-afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.close()
   for (const home of homes.splice(0)) await removeTemp(home)
 })
 async function fixture(settings?: string) {
@@ -34,7 +33,7 @@ async function fixture(settings?: string) {
   servers.push(server)
   return { home, projectRoot, server }
 }
-it.concurrent('orders facets by source so a project bash tool and renderer win regardless of folder name', async () => {
+it('orders facets by source so a project bash tool and renderer win regardless of folder name', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')
@@ -112,7 +111,7 @@ export default (host) => {
   host.onOpen(async () => {})
   return defineExtension({ name: 'service-test' })
 }`
-it.concurrent('keeps the provider on a failed reload, replaces it on reload and drops it on disable', async () => {
+it('keeps the provider on a failed reload, replaces it on reload and drops it on disable', async () => {
   const { home, projectRoot, server } = await fixture()
   const folder = join(projectRoot, '.ultimate/extensions/service-test')
   await mkdir(folder, { recursive: true })
@@ -158,7 +157,7 @@ it.concurrent('keeps the provider on a failed reload, replaces it on reload and 
   ).toBeNull()
 })
 
-it.concurrent('keeps the replacement provider available while the old cleanup is pending', async () => {
+it('keeps the replacement provider available while the old cleanup is pending', async () => {
   const { projectRoot, server } = await fixture()
   const folder = join(projectRoot, '.ultimate/extensions/service-test')
   await mkdir(folder, { recursive: true })
@@ -196,7 +195,7 @@ it.concurrent('keeps the replacement provider available while the old cleanup is
   expect(await lookup()).toEqual({ detail: 'replacement' })
 })
 
-it.concurrent('refuses a tool name another extension of the same layer already provides', async () => {
+it('refuses a tool name another extension of the same layer already provides', async () => {
   const { home, projectRoot, server } = await fixture('{}')
   const facet = (name: string, version = '') => `
     import { obj } from '@earendil-works/pi-schema'
@@ -240,26 +239,26 @@ const tools = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
   (await server.root.agent(context)).tools.map((tool) => tool.name).toSorted()
 const web = async (server: Awaited<ReturnType<typeof fauxServer>>) => server.web.facets()
 
-it.concurrent('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
+it('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
   const { home, projectRoot, server } = await fixture()
   const config = join(projectRoot, '.ultimate')
   const settings = join(config, 'settings.json')
   const initialBuild = server.host.build().id
   const promptLoaded = server.extensions.info().find((entry) => entry.name === 'prompt')
     ?.server?.loadedAt
-  expect(server.host.build().extensions.automations).toBeDefined()
+  expect(server.host.build().extensions.browser).toBeDefined()
   await mkdir(config)
-  await writeFile(settings, JSON.stringify({ extensions: { disable: ['automations'] } }))
-  await until(async () => !(await tools(server)).includes('automation'))
-  await until(async () => !(await web(server)).some((path) => path.includes('/automations/')))
+  await writeFile(settings, JSON.stringify({ extensions: { disable: ['browser'] } }))
+  await until(async () => !(await tools(server)).includes('browser'))
+  await until(async () => !(await web(server)).some((path) => path.includes('/browser/')))
   await until(() => server.host.build().id !== initialBuild)
-  expect(server.host.build().extensions.automations).toBeUndefined()
+  expect(server.host.build().extensions.browser).toBeUndefined()
   expect(server.extensions.info().find((entry) => entry.name === 'prompt')?.server?.loadedAt).toBe(
     promptLoaded,
   )
   await rm(settings)
-  await until(async () => (await tools(server)).includes('automation'))
-  await until(async () => (await web(server)).some((path) => path.includes('/automations/')))
+  await until(async () => (await tools(server)).includes('browser'))
+  await until(async () => (await web(server)).some((path) => path.includes('/browser/')))
   await until(() => server.host.build().id === initialBuild)
   const folder = join(config, 'extensions/local')
   await mkdir(folder, { recursive: true })
@@ -271,7 +270,7 @@ it.concurrent('layers settings live, installs and uninstalls tools and web facet
   await mkdir(join(home, '.ultimate'), { recursive: true })
   await writeFile(
     join(home, '.ultimate/settings.json'),
-    JSON.stringify({ extensions: { disable: ['info', 'automations'] } }),
+    JSON.stringify({ extensions: { disable: ['info', 'browser'] } }),
   )
   await until(
     () => server.extensions.info().find((entry) => entry.name === 'info')?.enabled === false,
@@ -280,11 +279,11 @@ it.concurrent('layers settings live, installs and uninstalls tools and web facet
   try {
     await writeFile(
       settings,
-      JSON.stringify({ extensions: { enable: ['automations', 'unknown'], disable: ['local'] } }),
+      JSON.stringify({ extensions: { enable: ['browser', 'unknown'], disable: ['local'] } }),
     )
     await until(
       async () =>
-        (await tools(server)).includes('automation') &&
+        (await tools(server)).includes('browser') &&
         !server.extensions.info().find((entry) => entry.name === 'local')?.enabled,
     )
     expect(server.extensions.info().find((entry) => entry.name === 'local')?.server).toBeUndefined()
@@ -319,14 +318,14 @@ it.concurrent('layers settings live, installs and uninstalls tools and web facet
   }
 })
 
-it.concurrent('retains valid enablement through invalid edits and delivers startup diagnostics to later clients', async () => {
-  const valid = { extensions: { enable: ['unknown-startup'], disable: ['automations'] } }
+it('retains valid enablement through invalid edits and delivers startup diagnostics to later clients', async () => {
+  const valid = { extensions: { enable: ['unknown-startup'], disable: ['browser'] } }
   const { home, server } = await fixture(JSON.stringify(valid))
   const settings = join(home, '.ultimate/settings.json')
   const connection = await attach(server)
   try {
     expect(connection.system().extensionDiagnostics).toEqual(['Unknown extension: unknown-startup'])
-    expect(await tools(server)).not.toContain('automation')
+    expect(await tools(server)).not.toContain('browser')
     const build = server.host.build().id
     const loadedAt = server.extensions.info().find((entry) => entry.name === 'plan')
       ?.server?.loadedAt
@@ -342,8 +341,8 @@ it.concurrent('retains valid enablement through invalid edits and delivers start
           .current()
           .extensionDiagnostics.some((message) => message.startsWith(settings + ':')),
       )
-      expect(await tools(server)).not.toContain('automation')
-      expect((await web(server)).some((path) => path.includes('/automations/'))).toBe(false)
+      expect(await tools(server)).not.toContain('browser')
+      expect((await web(server)).some((path) => path.includes('/browser/'))).toBe(false)
       expect(server.host.build().id).toBe(build)
       expect(
         server.extensions.info().find((entry) => entry.name === 'plan')?.server?.loadedAt,
@@ -367,7 +366,7 @@ it.concurrent('retains valid enablement through invalid edits and delivers start
     server.vite.watcher.emit('change', settings)
     await until(
       async () =>
-        (await tools(server)).includes('automation') && !(await tools(server)).includes('plan'),
+        (await tools(server)).includes('browser') && !(await tools(server)).includes('plan'),
     )
     // Registry changes happen before the refreshed system snapshot is published.
     await until(() => server.system.current().extensionDiagnostics.length === 0)
@@ -377,16 +376,16 @@ it.concurrent('retains valid enablement through invalid edits and delivers start
   }
 })
 
-it.concurrent('keeps a core-tier extension enabled over extensions.disable, with a diagnostic', async () => {
+it('keeps a core-tier extension enabled over extensions.disable, with a diagnostic', async () => {
   const { home, server } = await fixture(
-    JSON.stringify({ extensions: { disable: ['subagents', 'automations'] } }),
+    JSON.stringify({ extensions: { disable: ['subagents', 'browser'] } }),
   )
   const info = (name: string) => server.extensions.info().find((entry) => entry.name === name)
   expect(info('subagents')).toMatchObject({ enabled: true, core: true })
   expect(info('subagents')?.server?.error).toBeUndefined()
   expect(await tools(server)).toContain('subagent')
-  expect(info('automations')).toMatchObject({ enabled: false })
-  expect(info('automations')?.core).toBeUndefined()
+  expect(info('browser')).toMatchObject({ enabled: false })
+  expect(info('browser')?.core).toBeUndefined()
   expect(server.system.current().extensionDiagnostics).toEqual([
     'subagents is core and stays enabled; extensions.disable ignores it',
   ])
@@ -418,7 +417,7 @@ async function discoverCoreClaims(claims: ['user' | 'project', string][]) {
   return (name: string) => discovered.find((entry) => entry.name === name)
 }
 
-it.concurrent('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
+it('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
   const find = await discoverCoreClaims([
     ['user', 'user-core-claim'],
     ['project', 'project-core-claim'],
@@ -427,7 +426,7 @@ it.concurrent('lets extensions.disable turn off a user or project extension that
   expect(find('project-core-claim')).toMatchObject({ source: 'project', enabled: false })
 })
 
-it.concurrent('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
+it('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
   const find = await discoverCoreClaims([
     ['user', 'subagents'],
     ['project', 'lineage'],
@@ -436,7 +435,7 @@ it.concurrent('keeps a user or project replacement of a core built-in core, over
   expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
 })
 
-it.concurrent('enables every built-in by default except the default-off ones', async () => {
+it('enables every built-in by default except the default-off ones', async () => {
   const home = await temp()
   homes.push(home)
   const root = await sourceCopy(home)
@@ -463,7 +462,7 @@ it.concurrent('enables every built-in by default except the default-off ones', a
   ).toEqual([...defaultOff].toSorted())
 })
 
-it.concurrent('turns a default-off built-in on from user or project settings', async () => {
+it('turns a default-off built-in on from user or project settings', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')
@@ -487,7 +486,7 @@ it.concurrent('turns a default-off built-in on from user or project settings', a
   expect(discovered.settings.layers.get('health')).toBe('project')
 })
 
-it.concurrent('turns the updater on by default, and keeps it off for a user who disabled it', async () => {
+it('turns the updater on by default, and keeps it off for a user who disabled it', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')

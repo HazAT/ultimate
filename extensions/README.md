@@ -29,6 +29,8 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
   facets that import them.
 - `README.md`: what it does; the first paragraph is shown in the UI, so open with a sentence, not a heading.
   Required; read on change.
+- `test/`: its tests, which are not part of the extension: saving one reloads nothing, its classes stay out of the
+  stylesheet, and its imports are free of the import rules and stay out of the dependency graph. See [Tests](#tests).
 
 Files ending in `.ts` belong to the server facet, files ending in `.tsx` to the web facet: split a large `web.tsx` into
 more `.tsx` files in the same folder (see `coding-tools/diff.tsx`). The folder name is the extension name; a
@@ -70,6 +72,23 @@ No restart, no reload.
   (`isInput`) and `agents.ts` (agent definitions and their discovery). Import them freely; they reload with the
   extensions that import them. `lib/` holds no state and imports no extension or `web/` code; only `agents.ts` reads
   the core project trust decision at runtime.
+
+## Tests
+
+A built-in extension keeps its own tests in `extensions/<name>/test/`:
+
+- `test/*.test.ts`: fast tests, in-process on scripted model responses; no real waits, no spawned processes.
+- `test/web/*.test.ts`: fast tests of its browser code (type-checked with the web project).
+- `test/e2e/*.test.ts`: tests that spawn processes or drive a browser.
+
+`pnpm test extensions/<name>/` runs one extension's fast tests and `pnpm test:e2e extensions/<name>/` its e2e tests;
+`pnpm test` and `pnpm test:e2e` run every extension's with the core's. Tests import the shared helpers and fixtures
+from the top-level `test/` (`helpers.ts` with `fauxServer`, `temp` and `until`), and may import the core and other
+extensions directly to set them up. A test that exercises several extensions as one flow, with none of them its
+subject, stays in the top-level `test/` with the core's tests.
+
+In a user or project extension the `test/` folder is ignored the same way (no reload, no stylesheet classes), but
+Ultimate's `pnpm test` does not run it: run those tests with the runner of the repository that holds them.
 
 ## Topics
 

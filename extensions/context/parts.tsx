@@ -1,4 +1,3 @@
-/** The pieces of the context breakdown: its header card, its rows and the diff of a prompt change. */
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai'
 import { createPatch } from 'diff'
 import { ChevronRightIcon } from 'lucide-react'
@@ -8,11 +7,16 @@ import { ToolImage } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   cn,
+  fillComposer,
   formatTokens,
+  keepLast,
+  plural,
   useAction,
   useConversation,
   useConversationSummary,
   useSystem,
+  useTranscript,
+  useUltimate,
 } from '@/sdk'
 import { Diff, parsePatch } from '../coding-tools/ui.tsx'
 import { AgentMark } from '../conversations/ui.tsx'
@@ -25,20 +29,17 @@ export const signed = (delta: number) =>
 const percent = (part: number, total: number) =>
   total > 0 ? `${Math.max(part > 0 ? 1 : 0, Math.round((part / total) * 100))}%` : ''
 
-/** The parts of the budget, in request order, with their tint in the bar and legend. */
 const tones = {
   prompt: 'bg-brand/70',
   tools: 'bg-brand/35',
   injected: 'bg-muted-foreground/45',
 } as const
 
-/** Who the shown conversation is: a standing agent's @name, or its label (the definition it runs, or `branch`). */
 function useIdentity() {
   const id = useConversation((conversation) => conversation.id)
   const summary = useConversationSummary(id)
   const standing = summary?.title?.startsWith('@') ? summary.title.slice(1) : undefined
   const label = summary?.label
-  // A standing agent runs the definition of its name; a branch the coordinator's.
   const definition = standing ?? (label && label !== 'agent' ? label : undefined)
   return {
     name: standing ? `@${standing}` : (label ?? 'agent'),
@@ -47,7 +48,6 @@ function useIdentity() {
   }
 }
 
-/** A thin bar of the budget's parts, each as wide as its share. */
 function BudgetBar({ breakdown, className }: { breakdown: Breakdown; className?: string }) {
   const { tokens } = breakdown
   return (
@@ -69,7 +69,6 @@ function BudgetBar({ breakdown, className }: { breakdown: Breakdown; className?:
   )
 }
 
-/** One part's heading inside the expanded breakdown: its swatch, name, count, tokens and share of the total. */
 function PartHeading({
   tone,
   title,
@@ -96,7 +95,6 @@ function PartHeading({
   )
 }
 
-/** A row that opens to its full text: a section, a tool, an injected message. */
 function Row({
   name,
   hint,
@@ -109,9 +107,7 @@ function Row({
   name: ReactNode
   hint?: string
   tokens: number
-  /** Scales the row's bar; none without it. */
   total?: number
-  /** Shown instead of the tokens, such as a diff's delta. */
   sign?: ReactNode
   tone?: string
   children: ReactNode
@@ -162,15 +158,13 @@ function ToolBody({ tool }: { tool: Tool }) {
   )
 }
 
-/** A section's text without the `<key>` tags Pi Durable wraps it in, which its name already says. */
-const unwrap = (section: { key: string; text: string }) => {
+const unwrapSectionTags = (section: { key: string; text: string }) => {
   const open = `<${section.key}>\n`
   const close = `\n</${section.key}>`
   return section.text.startsWith(open) && section.text.endsWith(close)
     ? section.text.slice(open.length, -close.length)
     : section.text
 }
-/** A section's first line of prose, as the row's hint. */
 const firstLine = (text: string) =>
   text
     .split('\n')
@@ -183,10 +177,8 @@ function Injected({ content }: { content: string | readonly (TextContent | Image
     <div className="flex flex-col gap-2">
       {blocks.map((block, index) =>
         block.type === 'text' ? (
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed injected content blocks are positional.
           <Text key={index} text={block.text} />
         ) : (
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed injected content blocks are positional.
           <ToolImage alt={`Injected image ${index + 1}`} image={block} key={index} />
         ),
       )}
@@ -194,7 +186,104 @@ function Injected({ content }: { content: string | readonly (TextContent | Image
   )
 }
 
-/** The agent, its definition and the model the context ran on. */
+const unescapeXml = (text: string) =>
+  text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+
+export function promptSkills(sections: readonly Section[]) {
+  const text = sections.find((section) => section.key === 'skills')?.text ?? ''
+  return [...text.matchAll(/<skill>([\s\S]*?)<\/skill>/g)].map(([, body]) => {
+    const field = (tag: string) =>
+      unescapeXml(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(body)?.[1] ?? '')
+    return { name: field('name'), description: field('description'), path: field('location') }
+  })
+}
+
+function useReadPaths() {
+  const entries = useTranscript()
+  return useMemo(
+    () =>
+      new Set(
+        entries.flatMap((entry) =>
+          (entry.model ?? []).flatMap((message) =>
+            message.role === 'assistant'
+              ? message.content.flatMap((block) =>
+                  block.type === 'toolCall' &&
+                  block.name === 'read' &&
+                  typeof block.arguments.path === 'string'
+                    ? [block.arguments.path]
+                    : [],
+                )
+              : [],
+          ),
+        ),
+      ),
+    [entries],
+  )
+}
+
+function SkillPills({
+  breakdown,
+  allowed,
+}: {
+  breakdown: Breakdown
+  allowed: readonly string[] | undefined
+}) {
+  const actions = useUltimate()
+  const read = useReadPaths()
+  const skills = promptSkills(breakdown.prompt?.sections ?? [])
+  const unknown = (allowed ?? []).filter((name) => !skills.some((skill) => skill.name === name))
+  if (!skills.length && !allowed) return null
+  return (
+    <>
+      <span className="text-muted-foreground/70">skills</span>
+      <span className="flex min-w-0 flex-col gap-1" data-ui="agent-skills">
+        <span className="flex flex-wrap gap-1">
+          {skills.map((skill) => (
+            <button
+              className={cn(
+                'cursor-pointer rounded-sm border px-1.5 text-[11px] leading-5 transition-colors hover:bg-accent/60',
+                read.has(skill.path)
+                  ? 'border-brand/40 bg-brand/10 text-brand'
+                  : 'border-border/80 text-foreground/80',
+              )}
+              key={skill.name}
+              onClick={() => {
+                if (actions.conversationId === undefined) return
+                fillComposer(actions.conversationId, `/skill:${skill.name} `)
+                actions.focusComposer()
+              }}
+              title={`${skill.description}\n${skill.path}\n\nClick to run /skill:${skill.name}`}
+              type="button"
+            >
+              {skill.name}
+            </button>
+          ))}
+          {unknown.map((name) => (
+            <span
+              className="rounded-sm border border-dashed border-error/50 px-1.5 text-[11px] leading-5 text-error/90 line-through decoration-error/50"
+              key={name}
+              title={`No skill named ${name}: the definition lists it, but no skill folder provides it`}
+            >
+              {name}
+            </span>
+          ))}
+        </span>
+        <span className="font-sans text-[11.5px] leading-snug text-muted-foreground/70">
+          {allowed
+            ? `Limited by its definition to ${plural(allowed.length, 'skill')}.`
+            : 'All project skills.'}{' '}
+          Highlighted ones were read here; click one to run it.
+        </span>
+      </span>
+    </>
+  )
+}
+
 function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const identity = useIdentity()
   const agent = useConversation((conversation) => conversation.agent)
@@ -202,8 +291,7 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
   const shown = useAction(
     DefinitionAction,
     { name: identity.definition ?? '' },
-    // A label that names no definition, such as `branch`, simply has none to show.
-    { enabled: !!identity.definition, onError: () => {} },
+    { enabled: !!identity.definition, onError: keepLast },
   )
   const definition = shown.data?.definition
   const model = modelLine(breakdown.model, agent)
@@ -244,15 +332,11 @@ function AgentPart({ breakdown }: { breakdown: Breakdown }) {
           </span>
         </>
       )}
+      <SkillPills allowed={definition?.skills} breakdown={breakdown} />
     </div>
   )
 }
 
-/**
- * What the model saw before the first input of a context: one quiet line with the agent, its model and the budget,
- * opening to the agent, the system prompt by section, the tools and the injected context, each with its tokens. The
- * pinned prompt adds a `notice` to its line, `changes` above its parts, and its own look through `className`s.
- */
 export function Header({
   breakdown,
   notice,
@@ -271,6 +355,7 @@ export function Header({
   const { tokens, prompt } = breakdown
   const sections = prompt?.sections ?? []
   const tools = prompt?.tools ?? []
+  const skills = promptSkills(sections).length
   const largest = Math.max(1, ...sections.map((s) => s.tokens), ...tools.map((t) => t.tokens))
   const model = breakdown.model?.model
   return (
@@ -287,7 +372,7 @@ export function Header({
       <CollapsibleTrigger className="flex h-8 w-full cursor-pointer items-center gap-2 px-2.5 text-left text-muted-foreground transition-colors hover:bg-accent/40">
         <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/context:rotate-90" />
         <AgentMark name={identity.mark} size="sm" />
-        <span className="shrink-0 text-foreground/90">{identity.name}</span>
+        <span className="truncate text-foreground/90">{identity.name}</span>
         {model && (
           <span className="min-w-0 flex-1 truncate">
             · {model}
@@ -297,7 +382,7 @@ export function Header({
         <span className="ml-auto flex min-w-0 items-center gap-2.5 pl-2">
           {notice}
           <span className={cn('shrink-0 max-sm:hidden', notice && 'max-lg:hidden')}>
-            {sections.length} sections · {tools.length} tools
+            {sections.length} sections · {tools.length} tools · {plural(skills, 'skill')}
             {breakdown.injected && ` · ${breakdown.injected.label.split(' · ')[0]}`}
           </span>
           <BudgetBar breakdown={breakdown} className="w-20 min-w-6 shrink-[100] max-sm:w-12" />
@@ -320,14 +405,14 @@ export function Header({
             />
             {sections.map((section: Section) => (
               <Row
-                hint={firstLine(unwrap(section))}
+                hint={firstLine(unwrapSectionTags(section))}
                 key={section.key}
                 name={section.key}
                 tokens={section.tokens}
                 tone={tones.prompt}
                 total={largest}
               >
-                <Text text={unwrap(section)} />
+                <Text text={unwrapSectionTags(section)} />
               </Row>
             ))}
             <PartHeading
@@ -378,7 +463,6 @@ export function Header({
   )
 }
 
-/** A changed section's text as a line diff, three lines of context around each change. */
 function SectionDiff({ before, after }: { before: string; after: string }) {
   const rows = useMemo(
     () => parsePatch(createPatch('section', before, after, '', '', { context: 3 })),
@@ -387,10 +471,6 @@ function SectionDiff({ before, after }: { before: string; after: string }) {
   return <Diff className="max-h-96 rounded-sm text-[11.5px]" rows={rows} />
 }
 
-/**
- * The section and tool changes of a prompt patch, or since the prompt last acknowledged: each opens to its line diff,
- * or its new (or removed) text.
- */
 export function DiffBody({ diff }: { diff: PromptDiff }) {
   const marks = { added: '+', changed: '~', removed: '−' } as const
   const tone = { added: 'text-success', changed: 'text-brand', removed: 'text-error' } as const
@@ -411,11 +491,11 @@ export function DiffBody({ diff }: { diff: PromptDiff }) {
           tokens={section.delta}
         >
           {section.before === undefined ? (
-            <Text text={unwrap(section)} />
+            <Text text={unwrapSectionTags(section)} />
           ) : (
             <SectionDiff
-              after={unwrap(section)}
-              before={unwrap({ key: section.key, text: section.before })}
+              after={unwrapSectionTags(section)}
+              before={unwrapSectionTags({ key: section.key, text: section.before })}
             />
           )}
         </Row>

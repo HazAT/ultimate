@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronRightIcon, DatabaseIcon } from 'lucide-react'
 import { CodeBlock } from '@/components/ai/code-block'
 import { Tool, ToolContent, ToolHeader, ToolImages, ToolSection } from '@/components/ai/tool'
@@ -11,7 +12,6 @@ import type { CallSummary } from './refs.ts'
 interface NestedCall {
   name: string
   args: unknown
-  /** `running`, `ok`, `error`, `cancelled`. */
   status: string
   ms?: number
 }
@@ -21,7 +21,6 @@ interface Details {
   error?: string
 }
 
-/** Nested calls while the script runs, from the `✓ tools.read {…} 12ms` and `✓ ultimate.entries […] 3ms` lines it streams. */
 function streamedCalls(output: string): NestedCall[] {
   return output.split('\n').flatMap((line) => {
     const match = /^([✓✗]) (?:tools\.)?(\S+) (.*) (\d+)ms$/.exec(line)
@@ -49,7 +48,6 @@ function CallLog({ calls, running }: { calls: readonly NestedCall[]; running: bo
     <ToolSection label={`Calls · ${calls.length}`}>
       <div className="flex flex-col">
         {calls.map((call, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Calls append to the script log and may repeat.
           <div className="flex min-w-0 items-center gap-2 leading-[1.7]" key={index}>
             <span
               className={cn(
@@ -96,7 +94,6 @@ function CallLog({ calls, running }: { calls: readonly NestedCall[]; running: bo
   )
 }
 
-/** The script's text output: the result's text blocks between the status line and the returned value. */
 function outputOf(call: ToolCallView, details: Details) {
   const texts = (call.result?.content ?? []).flatMap((block) =>
     block.type === 'text' ? [block.text] : [],
@@ -108,19 +105,16 @@ function outputOf(call: ToolCallView, details: Details) {
   return body.join('\n').trim()
 }
 
-/** The script's first line of code, the header until its summary arrives. */
 const firstLine = (code: string) =>
   code
     .split('\n')
     .find((line) => line.trim() && !line.startsWith('// @options'))
     ?.trim() ?? ''
 
-/** The one-line summary of call `id`, once the summary model or a fixed label wrote it. */
 function useSummary(id: string): CallSummary | undefined {
   return useDoc(SummariesDoc)?.calls[id]
 }
 
-/** A summary as text: an effect leads with an accent marker. */
 function SummaryText({ summary }: { summary: CallSummary }) {
   return (
     <span className="text-foreground/90" title={summary.line}>
@@ -134,7 +128,6 @@ function SummaryText({ summary }: { summary: CallSummary }) {
   )
 }
 
-/** A codemode call as one step line: its summary, else its first line of code. */
 function CodemodeLine({ call }: { call: ToolCallView }) {
   const summary = useSummary(call.id)
   if (summary) return <SummaryText summary={summary} />
@@ -242,7 +235,6 @@ function CodemodeCall({ call }: { call: ToolCallView }) {
   )
 }
 
-/** The Documents tab's view of `codemode.store`: what scripts saved with `store(key, value)`. */
 function StoreDocument({ value }: DocumentProps) {
   if (Object.keys(value).length > 0) return <JsonTree className="px-2" open={1} value={value} />
   return (
@@ -254,8 +246,7 @@ function StoreDocument({ value }: DocumentProps) {
   )
 }
 
-/** The reference another conversation can follow to message `id` of `conversation`: its read in codemode. */
-const messageReference = ({ conversation, id }: { conversation: number; id: number }) =>
+const messageReference = ({ conversation, id }: { conversation: ConversationId; id: number }) =>
   `Ultimate conversation #${conversation}, message #${id}. Read it in codemode with ultimate.entries(${conversation}, { before: ${id + 1}, limit: 1 }).`
 
 export default defineWebExtension({

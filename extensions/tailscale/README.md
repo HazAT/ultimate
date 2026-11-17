@@ -1,4 +1,4 @@
-Expose Ultimate over Tailscale HTTPS, admitting only explicitly allowed Tailscale logins. This built-in is off by default, manages its own Serve mappings, and never enables Funnel.
+Reach Ultimate from your phone and other devices over Tailscale (needs Tailscale on this machine). It serves Ultimate over Tailscale HTTPS, admitting only explicitly allowed Tailscale logins. This built-in is off by default, manages its own Serve mappings, and never enables Funnel.
 
 ## Settings
 

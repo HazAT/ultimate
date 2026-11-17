@@ -1,0 +1,465 @@
+diff --git a/dist/env/node.d.ts b/dist/env/node.d.ts
+index 7dc4337e83009a92045cb0b1ae4fd6a71aa86abe..7c14065c10e5a216b0f84b7cbb84681e055f5ffc 100644
+--- a/dist/env/node.d.ts
++++ b/dist/env/node.d.ts
+@@ -9,11 +9,14 @@ export declare class NodeExecutionEnv implements ExecutionEnv {
+     private shellEnv?;
+     private watchOptions;
+     private activeChildPids;
++    private spawn;
+     constructor(options: {
+         cwd: string;
+         shellPath?: string;
+         shellEnv?: NodeJS.ProcessEnv;
+         watch?: NodeWatchOptions;
++        /** Starts the commands `exec` runs; defaults to `child_process.spawn`. */
++        spawn?: typeof import("node:child_process").spawn;
+     });
+     watch(targets: readonly WatchTarget[], onChange: (change: FileChange) => void, context: Context): Promise<Result<FileWatcher, FileError>>;
+     absolutePath(path: string, _context: Context): Promise<Result<string, FileError>>;
+diff --git a/dist/env/node.js b/dist/env/node.js
+index 120ff2015d81eb795a090eae897910a58768373f..379ed6defc0eb0a840cae7e84f68324cd8d7b3de 100644
+--- a/dist/env/node.js
++++ b/dist/env/node.js
+@@ -556,8 +556,10 @@ export class NodeExecutionEnv {
+     shellEnv;
+     watchOptions;
+     activeChildPids = new Set();
++    spawn;
+     constructor(options) {
+         this.cwd = options.cwd;
++        this.spawn = options.spawn ?? spawn;
+         this.shellPath = options.shellPath;
+         this.shellEnv = options.shellEnv;
+         this.watchOptions = options.watch ?? {};
+@@ -637,6 +639,9 @@ export class NodeExecutionEnv {
+             const onAbort = () => {
+                 if (child?.pid)
+                     killProcessTree(child.pid);
++                // An injected spawn may learn the pid only at its "spawn" event.
++                else
++                    child?.once("spawn", onAbort);
+             };
+             const failCallback = (error) => {
+                 if (callbackError !== undefined)
+@@ -739,7 +744,7 @@ export class NodeExecutionEnv {
+                 });
+             };
+             try {
+-                child = spawn(program, args, {
++                child = this.spawn(program, args, {
+                     cwd,
+                     detached: process.platform !== "win32",
+                     env: getShellEnv(this.shellEnv, options?.env, options?.inheritEnv),
+@@ -748,6 +753,8 @@ export class NodeExecutionEnv {
+                 });
+                 if (child.pid)
+                     this.activeChildPids.add(child.pid);
++                else
++                    child.once("spawn", () => !settled && this.activeChildPids.add(child.pid));
+                 if (stdinCommand !== undefined) {
+                     child.stdin?.on("error", () => { });
+                     child.stdin?.end(stdinCommand);
+diff --git a/dist/harness/compaction.js b/dist/harness/compaction.js
+index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43ef7a7827 100644
+--- a/dist/harness/compaction.js
++++ b/dist/harness/compaction.js
+@@ -94,7 +94,8 @@ export const CompactionTask = defineTask({
+                 model: ref,
+                 thinkingLevel: agent.thinkingLevel,
+                 streamOptions: settings.stream,
+-                maxTokens: Math.min(Math.floor(0.8 * policy.reserveTokens), model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY),
++                // The model's output limit, as Pi's coding agent since #9512: reasoning shares the cap, which 0.8 × reserveTokens left too small.
++                maxTokens: model.maxTokens > 0 ? model.maxTokens : Math.floor(0.8 * policy.reserveTokens),
+                 tail: view.entries.reduce((tail, entry) => (entry.id > tail ? entry.id : tail), firstKept),
+                 firstKept,
+             };
+diff --git a/dist/harness/generation.js b/dist/harness/generation.js
+index 27e60bb9b479b5600a7314f13bba25177a5e47d9..aad8eb4f123cfeb1f4a21f6acabd7db2ad27355f 100644
+--- a/dist/harness/generation.js
++++ b/dist/harness/generation.js
+@@ -458,7 +458,7 @@ async function prepareFailure(tx, runtime) {
+     const policy = settings.afterFailedRun;
+     if (policy !== "continue")
+         return { policy };
+-    return { policy, boundary: await prepareBoundary(tx, runtime.conversationId, settings) };
++    return { policy, boundary: await prepareBoundary(tx, runtime.conversationId, settings, "final", runtime.now()) };
+ }
+ /**
+  * End a failed run, settling its inputs with `settlement`, and do with the inputs queued behind it what
+@@ -670,7 +670,7 @@ async function answer(runtime, message, context) {
+     const conversationId = runtime.conversationId;
+     await runtime.commit(async (tx) => {
+         // Queue modes are read on the Session line, when the boundary is decided.
+-        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, "final", runtime.now());
+         const live = await tx.doc(LiveDoc, conversationId);
+         const entry = await appendAssistant(tx, conversationId, message);
+         const result = { status: "terminal", outcome: { status: "completed", result: { entryId: entry.id } } };
+@@ -764,7 +764,7 @@ function prepareRunEndTasks(runtime, requests, prepared) {
+ async function endAnsweredRun(runtime, answer, context) {
+     const conversationId = runtime.conversationId;
+     await runtime.commit(async (tx) => {
+-        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, "final", runtime.now());
+         const live = await tx.doc(LiveDoc, conversationId);
+         const { users, first } = await applyBoundary(tx, boundary, "final", runtime.now());
+         endRun(tx, live, runtime.taskId, { status: "done", answer });
+@@ -870,7 +870,7 @@ async function finishToolRound(runtime, assistant, tools, context) {
+     const maxTurns = (await runtime.agent(context)).maxTurns;
+     const afterRun = terminate && (await asksAfterRun(runtime, context));
+     await runtime.commit(async (tx) => {
+-        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, terminate || handoff !== undefined ? "final" : "postTools", runtime.now());
+         if (added.length > 0)
+             await addTools(tx, conversationId, added);
+         const live = await tx.doc(LiveDoc, conversationId);
+diff --git a/dist/harness/harness.js b/dist/harness/harness.js
+index e286f00f872ebec79367a594938040c6a37a879f..44979b05c2bcf30580841797175c099c8c621462 100644
+--- a/dist/harness/harness.js
++++ b/dist/harness/harness.js
+@@ -5,7 +5,7 @@ import { ResetEntry } from "../entries.js";
+ import { contained, SessionImpl } from "../session/session.js";
+ import { hostTimers } from "../timers.js";
+ import { ROOT_CONVERSATION_ID } from "../types.js";
+-import { AgentDoc, configure, createAgent, resolveAgent, resolveSettings } from "./agent.js";
++import { AgentDoc, agentHooks, configure, createAgent, resolveAgent, resolveSettings } from "./agent.js";
+ import { createCompaction } from "./compaction.js";
+ import { readContext } from "./context.js";
+ import { InboxDoc, withdrawQueuedInputs } from "./inbox.js";
+@@ -157,6 +157,15 @@ class HarnessImpl extends SessionImpl {
+             create: (target, createOptions, context) => this.#create(target, createOptions, context),
+         };
+     }
++    async beforeInput(tx, conversationId, input, context) {
++        const agent = resolveAgent(await tx.doc(AgentDoc, conversationId), this.#options.registry.snapshot(), resolveSettings(this.#hostSettings()), (error, extension) => this.#report(error, { kind: "extension_error", conversationId, extension }, context));
++        const entries = [];
++        for (const { handlers } of agentHooks(agent, "pi.generation")) {
++            const result = await handlers.beforeInput?.(input, { conversationId, tx }, context);
++            entries.push(...(result?.entries ?? []));
++        }
++        return entries;
++    }
+     /** Resolve a conversation's committed `pi.agent` against `snapshot`, or the current one, and the current settings. */
+     async resolveAgent(id, snapshot, context) {
+         const registry = snapshot ?? this.#options.registry.snapshot();
+@@ -179,6 +188,12 @@ class HarnessImpl extends SessionImpl {
+         this.assertUsable();
+         this.#tasks.resume();
+     }
++    hold() {
++        this.#tasks.hold();
++    }
++    release() {
++        this.#tasks.release();
++    }
+     wake() {
+         this.assertUsable();
+         return this.#tasks.wake();
+diff --git a/dist/harness/inbox.d.ts b/dist/harness/inbox.d.ts
+index 59d3598da52544b00f7a4abd306d82b26b749103..c6973dd434243c13b980b2ea75001af9382137fd 100644
+--- a/dist/harness/inbox.d.ts
++++ b/dist/harness/inbox.d.ts
+@@ -24,6 +24,7 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
+ export type QueueModes = Pick<Settings, "steeringMode" | "followUpMode">;
+ /** What a boundary reads before the commit's first table write, and the newest head it has seen so far. */
+ export type Boundary = {
++    readonly entries: readonly EntryDraft[];
+     readonly conversationId: ConversationId;
+     readonly inbox: Draft<InboxState>;
+     readonly steeringMode: QueueMode;
+@@ -44,7 +45,7 @@ export type BoundaryResult = {
+  * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
+  * boundary at the start of their commit.
+  */
+-export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes): Promise<Boundary>;
++export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes, at: "postTools" | "final", now: number, incoming?: EntryDraft): Promise<Boundary>;
+ /**
+  * Place the queued items a boundary selects (spec §6): every write, the first or all steers, and at `final` the first
+  * or all follow-ups. A selected reset turns a `postTools` boundary into `final`. Writes are placed first and user
+@@ -54,6 +55,7 @@ export declare function prepareBoundary(tx: Tx, conversationId: ConversationId,
+  */
+ export declare function applyBoundary(tx: Tx, boundary: Boundary, at: "postTools" | "final", now: number): Promise<BoundaryResult>;
+ /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
++export declare function inputDraft(content: UserInput, entry: InputEntry | undefined, now: number): EntryDraft;
+ export declare function appendInput(tx: Tx, conversationId: ConversationId, content: UserInput, entry: InputEntry | undefined, now: number): Promise<EntryRecord>;
+ /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
+ export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
+diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
+index 415ef367aa3c964f00f6b11c376ba5a97fe8bb1d..fdfbfa7d7c4fd10a87fb5f2a9d33b7d23cff1074 100644
+--- a/dist/harness/inbox.js
++++ b/dist/harness/inbox.js
+@@ -14,10 +14,15 @@ export const InboxDoc = defineDoc({
+  * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
+  * boundary at the start of their commit.
+  */
+-export async function prepareBoundary(tx, conversationId, modes) {
++export async function prepareBoundary(tx, conversationId, modes, at, now, incoming) {
+     const head = (await tx.latestHeadMarker(conversationId))?.head;
+     const inbox = await tx.doc(InboxDoc, conversationId);
++    const first = inbox.items.find(item => item.mode === "steer" || item.mode === "followUp");
++    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
++    const entries = input !== undefined && (at === "final" || hasQueuedReset(inbox.items))
++        ? await tx.beforeInput(conversationId, input) : [];
+     return {
++        entries,
+         conversationId,
+         inbox,
+         steeringMode: modes.steeringMode,
+@@ -61,6 +66,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+     }
+     const placed = [];
+     for (const index of users) {
++        if (placed.length === 0)
++            for (const draft of boundary.entries)
++                await tx.appendEntry(conversationId, draft);
+         const item = items[index];
+         const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
+         tx.placeSubmission(item.id, entry.id);
+@@ -74,10 +82,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+ }
+ /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
+ export function appendInput(tx, conversationId, content, entry, now) {
++    return tx.appendEntry(conversationId, inputDraft(content, entry, now));
++}
++export function inputDraft(content, entry, now) {
+     const message = { role: "user", content, timestamp: now };
+-    if (entry === undefined)
+-        return tx.appendEntry(UserEntry, conversationId, { model: [message] });
+-    return tx.appendEntry(conversationId, { ...pickInputEntry(entry), model: [message] });
++    return { ...(entry === undefined ? { kind: UserEntry.kind } : pickInputEntry(entry)), input: true, model: [message] };
+ }
+ /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
+ export function pickInputEntry({ kind, data }) {
+diff --git a/dist/harness/scheduler.d.ts b/dist/harness/scheduler.d.ts
+index 83e2a94a53bdd0fbcaa8d2513c6b79cb10afebcc..ca961878e45a9336ca52b71a9a9c44654b7e36ce 100644
+--- a/dist/harness/scheduler.d.ts
++++ b/dist/harness/scheduler.d.ts
+@@ -108,6 +108,8 @@ export declare class TaskScheduler {
+      * Idempotent; the kick does nothing once closing.
+      */
+     resume(): void;
++    hold(): void;
++    release(): void;
+     /**
+      * Why a live task cannot run here, if it cannot: its definition is missing, too old, or failed to migrate. A running
+      * task, an abort-marked one, and one holding its outcome are never blocked.
+diff --git a/dist/harness/scheduler.js b/dist/harness/scheduler.js
+index df651a4f8f0769d10daee02292ea91380b158d5e..9096ca6c2b59a1cad3a1d61ae8819c768ff38326 100644
+--- a/dist/harness/scheduler.js
++++ b/dist/harness/scheduler.js
+@@ -185,6 +185,7 @@ export class TaskScheduler {
+     #cascadePending = false;
+     #unsubscribeRegistry = () => { };
+     #enabled = false;
++    #held = false;
+     #readOnly;
+     #closing = false;
+     #dirty = false;
+@@ -213,6 +214,14 @@ export class TaskScheduler {
+         this.#context = options.context;
+         this.#readOnly = options.readOnly === true;
+     }
++    /** Start no run invocation until `release()`; running invocations and abort handlers go on. Overrides `resume()`. */
++    hold() {
++        this.#held = true;
++    }
++    release() {
++        this.#held = false;
++        this.#kick();
++    }
+     /**
+      * Load live tasks and change surviving `running` tasks back to `pending`, counting the restart. Dispatches nothing;
+      * a task cut off `settings.restartLimit` times ends when it is next reserved. Read-only, it only loads them: a
+@@ -1774,6 +1783,8 @@ export class TaskScheduler {
+                 for (const record of plan.ready) {
+                     const id = record.id;
+                     const mode = record.abortRequested ? "abort" : "run";
++                    if (mode === "run" && this.#held)
++                        continue;
+                     // Work cut off `restartLimit` times in a row would run forever: an abort handler, or a phase of a kind that
+                     // does not end itself at the limit, ends the task `faulted` instead.
+                     // The settings are read only for a task that was cut off at all.
+@@ -2002,7 +2013,7 @@ export class TaskScheduler {
+         const tasks = [];
+         for (const record of this.#live.values())
+             tasks.push({ record, state: this.#inspectTask(record, snapshot) });
+-        const scheduling = this.#closing ? "closing" : this.#enabled ? "running" : "paused";
++        const scheduling = this.#closing ? "closing" : this.#enabled && !this.#held ? "running" : "paused";
+         return { scheduling, tasks };
+     }
+     #inspectTask(record, snapshot) {
+@@ -2180,6 +2191,11 @@ export class TaskScheduler {
+      * invocation continues.
+      */
+     #progress(tx, current, state, extension, context) {
++        // Held: park at this phase boundary, as a handover does; reservation starts it again after `release()`.
++        if (this.#held) {
++            tx.setTask(withState(current, { status: "pending", checkpoint: current.state.checkpoint }));
++            return false;
++        }
+         state.snapshot = this.#registry.snapshot();
+         const next = state.snapshot.task(current.kind);
+         if (next === state.task)
+diff --git a/dist/harness/submissions.js b/dist/harness/submissions.js
+index 512b2477c29b83c03a1c239ee427d928ce553caa..b86d5ac98c07f3af2ff5b64ebe987c6e2dc889d8 100644
+--- a/dist/harness/submissions.js
++++ b/dist/harness/submissions.js
+@@ -3,7 +3,7 @@ import { copyJson } from "@earendil-works/chord/json";
+ import { createTypedSpanStarter, NOOP_TELEMETRY_CONTEXT, } from "@earendil-works/pi-telemetry";
+ import { ConversationBusy, ConversationIdle, ReadAfterWrite } from "../errors.js";
+ import { startRun } from "./generation.js";
+-import { appendInput, applyBoundary, hasQueuedReset, InboxDoc, isDisplayOnly, isStale, pickInputEntry, prepareBoundary, removeInboxItem, } from "./inbox.js";
++import { appendInput, inputDraft, applyBoundary, hasQueuedReset, InboxDoc, isDisplayOnly, isStale, pickInputEntry, prepareBoundary, removeInboxItem, } from "./inbox.js";
+ import { LiveDoc } from "./live.js";
+ import { DURABLE_TELEMETRY_SCHEMA } from "./telemetry.js";
+ import { closedError, Waiters } from "./util.js";
+@@ -205,7 +205,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+         // Never queued: whether a run can continue depends on how the current one ends. Rejected before any write.
+         if (busy)
+             throw new ConversationBusy(conversationId);
+-        const boundary = await prepareBoundary(tx, conversationId, queueModes);
++        const boundary = await prepareBoundary(tx, conversationId, queueModes, "final", now);
+         const { id } = await tx.createSubmission({ ...fields, type: "continue", status: "placed" });
+         // Items an earlier failed run left queued (`afterFailedRun: "keep"`) are placed first and join the run. Its history
+         // starts with the failed run's, so `afterRun` hooks see what that run did.
+@@ -214,7 +214,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+         return { id, status: "placed" };
+     }
+     // A boundary reads the table, so it is prepared before the first table write; a busy one needs none.
+-    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes);
++    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes, "final", now, draft.type === "input" ? inputDraft(draft.content, draft.entry, now) : undefined);
+     if (boundary === undefined || boundary.inbox.items.length > 0) {
+         const { id } = await tx.createSubmission({
+             ...fields,
+@@ -253,6 +253,8 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+         const write = { ...fields, type: "write", status: "done", entry: entry.id };
+         return { id: (await tx.createSubmission(write)).id, status: "done" };
+     }
++    for (const before of boundary.entries)
++        await tx.appendEntry(conversationId, before);
+     const entry = await appendInput(tx, conversationId, draft.content, draft.entry, now);
+     const input = { ...fields, type: "input", status: "placed", entry: entry.id };
+     const { id } = await tx.createSubmission(input);
+diff --git a/dist/harness/types.d.ts b/dist/harness/types.d.ts
+index 7f4a0ba59df6d5870248c60c055dd188fdab51c4..37bcd2196d762f1c8c8e8e43ff1ec66ec525e5aa 100644
+--- a/dist/harness/types.d.ts
++++ b/dist/harness/types.d.ts
+@@ -833,6 +833,9 @@ export interface Harness extends Session {
+      * never do.
+      */
+     resume(): void;
++    /** Start no task run until `release()`, whatever `resume()` says; running invocations and abort handlers go on. */
++    hold(): void;
++    release(): void;
+     /**
+      * When this Session next needs a running process, from the scheduler's memory: `active` while some task can run now
+      * or is running, `at` for the earliest sleep. Answers also while scheduling is paused. A host that wakes the
+@@ -905,6 +908,8 @@ export interface HookApi extends DocumentReader {
+ export type HookResult<T> = T | undefined | Promise<T | undefined>;
+ /** Hooks of the built-in generation task. */
+ export interface GenerationHooks {
++    /** Before a new run’s first input is placed. Use only tx for storage access; effects commit with the input. */
++    beforeInput(input: EntryDraft, api: { readonly conversationId: ConversationId; readonly tx: Tx }, context: Context): HookResult<{ readonly entries?: readonly EntryDraft[] }>;
+     /** Before every request attempt, including recovery; the result is used for that request only. */
+     beforeRequest(request: {
+         readonly messages: readonly Message[];
+diff --git a/dist/session/session.d.ts b/dist/session/session.d.ts
+index c7843cd0c2e0a722f4aa3324d1c8cf58863a3f21..0f324c07762af0f49d64a6e752ec187247e91a64 100644
+--- a/dist/session/session.d.ts
++++ b/dist/session/session.d.ts
+@@ -1,7 +1,7 @@
+ import { type Context } from "@earendil-works/chord/context";
+ import type { JsonValue } from "@earendil-works/chord/json";
+ import { type WatchEnd } from "@earendil-works/chord/watch";
+-import type { CommitChange, CommitObservation, CommitObserver, CommitOptions, ConversationDocFamilyToken, ConversationDocToken, ConversationId, ConversationRecord, DocumentCommitChange, DocumentRecord, DocumentWatch, EntryId, JsonObject, Observation, Observer, ReportInfo, RewindableConversationDocFamilyToken, RewindableConversationDocToken, Seq, Session, SessionDocFamilyToken, SessionDocToken, SessionEnd, SetTimer, Storage, StorageWrite, TaskDocFamilyToken, TaskDocToken, TaskId, Tx } from "../types.ts";
++import type { CommitChange, CommitObservation, CommitObserver, CommitOptions, ConversationDocFamilyToken, ConversationDocToken, EntryDraft, ConversationId, ConversationRecord, DocumentCommitChange, DocumentRecord, DocumentWatch, EntryId, JsonObject, Observation, Observer, ReportInfo, RewindableConversationDocFamilyToken, RewindableConversationDocToken, Seq, Session, SessionDocFamilyToken, SessionDocToken, SessionEnd, SetTimer, Storage, StorageWrite, TaskDocFamilyToken, TaskDocToken, TaskId, Tx } from "../types.ts";
+ import { type HeadMarker } from "./conversation-tails.ts";
+ import { Transaction, type TransactionScope } from "./transaction.ts";
+ /**
+@@ -173,6 +173,7 @@ export declare class SessionImpl implements Session {
+      * listener. A plain Session drops them.
+      */
+     report(_error: unknown, _info?: ReportInfo, _context?: Context): void;
++    protected beforeInput(tx: Transaction, id: ConversationId, input: EntryDraft, context: Context): Promise<readonly EntryDraft[]>;
+     /**
+      * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
+      * plain Session stages nothing; a Harness stages its built-in documents.
+diff --git a/dist/session/session.js b/dist/session/session.js
+index 86978d80b597c7cd059f36ab23cd4fa115da55f5..91908faa121166a87af8bb1b4874b942f2492cd8 100644
+--- a/dist/session/session.js
++++ b/dist/session/session.js
+@@ -224,6 +224,7 @@ export class SessionImpl {
+                 if (this.#documents.get(id)?.record.id === recordId)
+                     this.#dropDocument(id);
+             },
++            beforeInput: (tx, id, input, context) => this.beforeInput(tx, id, input, context),
+             conversationCreated: (tx, record) => this.conversationCreated(tx, record),
+             taskDocuments: (taskId) => this.#taskDocuments.get(taskId)?.values(),
+             latestEntryId: (conversationId, context) => this.latestEntryId(conversationId, context),
+@@ -570,6 +571,9 @@ export class SessionImpl {
+      * listener. A plain Session drops them.
+      */
+     report(_error, _info = LISTENER, _context) { }
++    async beforeInput(_tx, _id, _input, _context) {
++        return [];
++    }
+     /**
+      * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
+      * plain Session stages nothing; a Harness stages its built-in documents.
+diff --git a/dist/session/transaction.d.ts b/dist/session/transaction.d.ts
+index b2f88d02e3f5d0380dba7b2cbdedb6898c8bf94e..5fd906014a59674445e5d7fe77d24a9f19189183 100644
+--- a/dist/session/transaction.d.ts
++++ b/dist/session/transaction.d.ts
+@@ -49,6 +49,7 @@ export interface TransactionHost {
+     install(document: LoadedDocument): void;
+     /** Remove a retired incarnation if it is still the cached occupant of its address. */
+     evict(addressId: string, recordId: DocumentId): void;
++    beforeInput(tx: Transaction, conversationId: ConversationId, input: EntryDraft, context: Context): Promise<readonly EntryDraft[]>;
+     /** Stage writes that belong to every newly created or forked conversation, in its creating transaction. */
+     conversationCreated(tx: Transaction, record: ConversationRecord): Promise<void>;
+     /** The newest entry ID visible from a conversation, known from the Session's commits. */
+@@ -113,6 +114,7 @@ export declare class Transaction implements Tx {
+     forkConversation(parentConversationId: ConversationId, at: EntryId, options: {
+         readonly ownership: ConversationOwnership;
+     }): Promise<ConversationRecord>;
++    beforeInput(conversationId: ConversationId, input: EntryDraft): Promise<readonly EntryDraft[]>;
+     appendEntry(conversationId: ConversationId, value: EntryDraft): Promise<EntryRecord>;
+     appendEntry<D extends JsonValue>(token: Entry<D>, conversationId: ConversationId, value: TypedEntryDraft<NoInfer<D>>): Promise<TypedEntry<D>>;
+     createTask<I, S extends {
+diff --git a/dist/session/transaction.js b/dist/session/transaction.js
+index 1ddb158ebf5569c20080d135cb5e9b89bbb07509..c2ada97639f65863ce4cfb2b4a9b373ae7536c89 100644
+--- a/dist/session/transaction.js
++++ b/dist/session/transaction.js
+@@ -167,6 +167,9 @@ export class Transaction {
+         this.#assertOpen();
+         return record;
+     }
++    beforeInput(conversationId, input) {
++        return this.#read("beforeInput", () => this.#host.beforeInput(this, conversationId, input, this.#context));
++    }
+     appendEntry(first, second, third) {
+         if (typeof first === "number")
+             return this.#appendEntry(first, second);
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 783d56468bdd1c4d2f07e1e58a38b9ae004c2e97..3faebea59537825b98443896226ff3b75b763fbf 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -411,6 +411,8 @@ export type ContextEdit = {
+ });
+ /** Immutable transcript event with separate model-facing and application-facing payloads. */
+ export type EntryRecord = {
++    /** Placed by the harness from an input submission, not a write. */
++    readonly input?: true;
+     readonly id: EntryId;
+     readonly conversationId: ConversationId;
+     /** Application-defined entry discriminator. */
+@@ -893,6 +895,8 @@ export type CommitPublication = {
+  * Session may freeze them (its caches and context ranges keep them), so mutating one can throw.
+  */
+ export interface Tx {
++    /** Prepare entries before a new run’s first input; called before table writes, in the placement transaction. */
++    beforeInput(conversationId: ConversationId, input: EntryDraft): Promise<readonly EntryDraft[]>;
+     conversation(id: ConversationId): Promise<ConversationRecord | undefined>;
+     entry(id: EntryId): Promise<EntryRecord | undefined>;
+     /** Undefined when the entry is absent or has another kind. */

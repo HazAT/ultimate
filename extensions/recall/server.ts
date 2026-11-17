@@ -19,15 +19,14 @@ import type { MemoryItem } from '../lineage/refs.ts'
 import { Standing } from '../subagents/api.ts'
 import { RecallDoc } from './refs.ts'
 import type { RecallState } from './refs.ts'
-import { RECALL_ENTRY } from './types.ts'
+import { RecalledEntry } from './types.ts'
+import { MessageEntry } from '../entries/api.ts'
 import type { Recalled } from './types.ts'
 
-/** Below this context fill a memory is still fresh in the prompt: nothing is recalled. */
 export const FROM_PERCENT = 20
-/** A memory recalled within the last this share of the context window, still in context, is not recalled again. */
-const AGAIN_AFTER = 0.3
-/** Tuned on 55 labelled messages from three chapters: precision 0.77, recall 0.62 (`extensions/recall/README.md`). */
-export const THRESHOLD = 0.25
+const memoryStillFreshInPrompt = (percent: number) => percent < FROM_PERCENT
+const RECALLED_MEMORY_FRESH_WINDOW_SHARE = 0.3
+export const CALIBRATED_RECALL_PROBABILITY = 0.25
 const TOP = 3
 
 export const Recall = defineDoc<RecallState>({
@@ -44,7 +43,6 @@ export const docs = [Recall]
 const INSTRUCTIONS =
   '@ultimate, a coding agent, just received `message` from `from`. Judge what the sender intends and what @ultimate must do next, not which words or topics appear; messages are often casual or indirect. Which project memory tells @ultimate how to handle exactly this situation, so that without recalling it @ultimate would likely act differently? When a branch reports to @ultimate, the memories about how @ultimate handles such reports (what to relay, what to do after a landing) are triggered by what the report contains; a memory about the feature the branch built usually is not. Standing habits that hold for every message are not triggered by an ordinary message. Pick none when nothing is specifically triggered.'
 
-/** One choice over every memory's line, plus `none`. */
 export function recallQuestion(memories: Record<string, MemoryItem>): ClassifyQuestion {
   const criteria: Record<string, string> = {
     none: 'No memory is specifically triggered by this message.',
@@ -64,30 +62,26 @@ const textOf = (entry: EntryRecord) =>
     )
     .join('\n')
 
-/** The message a run's input brings: the user's prompt or a branch's message. Undefined for any other input. */
 const messageOf = (input: EntryRecord) =>
   input.kind === 'pi.user' || input.kind === 'board.message' ? input : undefined
 
-/** The slugs recalled in the live context within the last `limit` tokens: a compacted recall has faded. */
 function recentlyRecalled(view: ContextView, limit: number) {
   const slugs = new Set<string>()
   let after = 0
   for (let index = view.entries.length - 1; index >= 0 && after < limit; index--) {
     const entry = view.entries[index]
-    if (entry.kind === RECALL_ENTRY)
-      for (const { slug } of (entry.data as Recalled).memories) slugs.add(slug)
+    if (RecalledEntry.is(entry)) for (const { slug } of entry.data.memories) slugs.add(slug)
     after += view.contributions[index].reduce((sum, m) => sum + estimateMessageTokens(m), 0)
   }
   return slugs
 }
 
-/** Who an input is from, in the classifier's words: the user, or the branch that messaged. */
 function senderOf(entry: EntryRecord) {
-  const from = (entry.data as { from?: unknown } | undefined)?.from
+  const data: { from?: unknown } | undefined = MessageEntry.is(entry) ? entry.data : undefined
+  const from = data?.from
   return typeof from === 'number' ? `a branch (#${from}) reporting to @ultimate` : 'the user'
 }
 
-/** The model text of a recall: the memories in full, after the message they apply to. */
 export function recallText(picked: { slug: string; item: MemoryItem }[]) {
   return [
     'Recalled from project memory for the message above. Act on each that applies, and say so in one line when it changes what you do:',
@@ -97,12 +91,6 @@ export function recallText(picked: { slug: string; item: MemoryItem }[]) {
   ].join('\n\n')
 }
 
-/**
- * Before each request of @ultimate's run: once per new input from the user or a branch, ask classify which memories
- * the message calls for, and place the picked ones, in full, as an entry after it. The entry lands after the request's
- * cutoff, so this request gets the same message appended; every later request reads it from storage at that
- * position, which keeps the prompt prefix cached.
- */
 export default function recall(host: ExtensionHost) {
   host.want(ClassifyApi)
   host.need(LineageApi)
@@ -116,22 +104,20 @@ export default function recall(host: ExtensionHost) {
           if (!classify) return undefined
           if ((await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate !== id)
             return undefined
-          // The live context: what compaction removed is gone from it, recalls included.
-          const view = await (await host.harness().conversation(id, ctx))!.context(ctx)
-          const input = view.entries.findLast(isInput)
+          const liveContextAfterCompaction = await (await host
+            .harness()
+            .conversation(id, ctx))!.context(ctx)
+          const input = liveContextAfterCompaction.entries.findLast(isInput)
           const message = input && messageOf(input)
           if (!input || !message) return undefined
           const state = await api.snapshot(Recall, id, ctx)
           if (state?.last !== undefined && state.last >= input.id) {
-            // A request resent after a restart has the cutoff it had before its recall was placed: add it again,
-            // only while the recall is the live context's newest entry, so it lands exactly where it is stored.
-            const placed = view.entries.at(-1)
-            if (
-              placed?.kind !== RECALL_ENTRY ||
-              (placed.data as Recalled).input !== message.id ||
-              request.messages.length >= view.messages.length
-            )
-              return undefined
+            const placed = liveContextAfterCompaction.entries.at(-1)
+            const recallNotAppendable =
+              !RecalledEntry.is(placed) ||
+              placed.data.input !== message.id ||
+              request.messages.length >= liveContextAfterCompaction.messages.length
+            if (recallNotAppendable) return undefined
             return { messages: [...request.messages, ...placed.model!] }
           }
           const usage = await api.snapshot(ContextUsageDoc, id, ctx)
@@ -143,7 +129,7 @@ export default function recall(host: ExtensionHost) {
           if (
             !tokens ||
             percent === undefined ||
-            percent < FROM_PERCENT ||
+            memoryStillFreshInPrompt(percent) ||
             !Object.keys(memories).length
           ) {
             await host.harness().commit(async (tx) => {
@@ -169,32 +155,41 @@ export default function recall(host: ExtensionHost) {
             const answer = result.answers.memory
             if (answer.type === 'choice') probabilities = answer.probabilities
           } catch (error) {
-            if (ctx.abortSignal?.aborted) {
-              // A stopped run never reaches the commit below: end the check, or the bubble keeps shimmering.
+            const advisoryFailureWithoutCancellation = !ctx.abortSignal?.aborted
+            if (!advisoryFailureWithoutCancellation) {
               await host.harness().commit(async (tx) => {
-                const doc = await tx.doc(Recall, id)
-                if (doc.pending === message.id) delete doc.pending
+                const cancelledRecall = await tx.doc(Recall, id)
+                if (cancelledRecall.pending === message.id) delete cancelledRecall.pending
               }, BACKGROUND_CONTEXT)
               throw error
             }
-            // Recall is advisory: a provider failure or timeout leaves the run as it was.
           }
           const window = usage?.window ?? tokens / (percent / 100)
-          const recent = recentlyRecalled(view, AGAIN_AFTER * window)
+          const recent = recentlyRecalled(
+            liveContextAfterCompaction,
+            RECALLED_MEMORY_FRESH_WINDOW_SHARE * window,
+          )
           const picked = Object.entries(probabilities)
             .filter(
-              ([slug, p]) => Object.hasOwn(memories, slug) && p >= THRESHOLD && !recent.has(slug),
+              ([slug, p]) =>
+                Object.hasOwn(memories, slug) &&
+                p >= CALIBRATED_RECALL_PROBABILITY &&
+                !recent.has(slug),
             )
             .toSorted((a, b) => b[1] - a[1])
             .slice(0, TOP)
             .map(([slug, confidence]) => ({ slug, item: memories[slug], confidence }))
-          let recalled: Message | undefined
+          let appendedBeyondRequestCutoff: Message | undefined
           await host.harness().commit(async (tx) => {
             const doc = await tx.doc(Recall, id)
             delete doc.pending
             doc.last = input.id
             if (!picked.length) return
-            recalled = { role: 'user', content: recallText(picked), timestamp: Date.now() }
+            appendedBeyondRequestCutoff = {
+              role: 'user',
+              content: recallText(picked),
+              timestamp: Date.now(),
+            }
             const data: Recalled = {
               input: message.id,
               root: found!.root,
@@ -204,9 +199,15 @@ export default function recall(host: ExtensionHost) {
                 confidence: Math.round(confidence * 100) / 100,
               })),
             }
-            await tx.appendEntry(id, { kind: RECALL_ENTRY, data, model: [recalled] })
+            await tx.appendEntry(id, {
+              kind: RecalledEntry.kind,
+              data,
+              model: [appendedBeyondRequestCutoff],
+            })
           }, ctx)
-          return recalled ? { messages: [...request.messages, recalled] } : undefined
+          return appendedBeyondRequestCutoff
+            ? { messages: [...request.messages, appendedBeyondRequestCutoff] }
+            : undefined
         },
       }),
     ],

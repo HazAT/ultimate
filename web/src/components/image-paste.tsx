@@ -10,9 +10,7 @@ import type { FileUpload } from '../sdk/types.ts'
 import { FileChip, typeLabel } from './file-chip.tsx'
 import { fitImage } from './image-resize.ts'
 
-/** An attached image; `note` says how it was resized and stays in the composer, never sent. */
 export type PastedImage = { data: string; mimeType: string; note?: string }
-/** A file the draft references by its path on the host; `path` is empty while it uploads. */
 export type DraftFile = AttachedFile & { id: string }
 type Upload = NonNullable<NonNullable<typeof FileUpload.value>>
 
@@ -29,7 +27,6 @@ export function useImagePaste({
   setFiles: (change: (files: DraftFile[]) => DraftFile[]) => void
   setError: (message: string | undefined) => void
   disabled: () => boolean
-  /** Where files that are not inline images go; without it only images attach. */
   upload?: Upload
 }) {
   const [reading, setReading] = useState(false)
@@ -57,7 +54,6 @@ export function useImagePaste({
     await add(files)
   }
 
-  /** Attach the files dropped on the editor; the page itself never navigates to a dropped file (`main.tsx`). */
   async function drop(event: DragEvent<HTMLElement> | globalThis.DragEvent) {
     const files = Array.from(event.dataTransfer?.files ?? []).filter(
       (file) => !!upload || file.type.startsWith('image/'),
@@ -65,7 +61,6 @@ export function useImagePaste({
     if (files.length) await add(files)
   }
 
-  /** Store `files` on the host, each shown uploading until its path is known. */
   function send(files: readonly File[], { upload: put, maxBytes }: Upload) {
     const fitting = files.filter((file) => file.size <= maxBytes)
     for (const file of fitting) {
@@ -125,9 +120,8 @@ export function useImagePaste({
   return { paste, drop, attach: add, reading, pending }
 }
 
-/** `file` fitted to the attachment limits, as base64. */
 async function read(file: File): Promise<PastedImage> {
-  const { blob, note } = await fitImage(file)
+  const { blob, note: composerOnlyResizeNote } = await fitImage(file)
   const data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.addEventListener('load', () =>
@@ -138,7 +132,11 @@ async function read(file: File): Promise<PastedImage> {
     reader.addEventListener('error', () => reject(new Error('Could not read pasted image')))
     reader.readAsDataURL(blob)
   })
-  return { data, mimeType: blob.type, ...(note && { note }) }
+  return {
+    data,
+    mimeType: blob.type,
+    ...(composerOnlyResizeNote && { note: composerOnlyResizeNote }),
+  }
 }
 
 const removeClass =
@@ -164,7 +162,6 @@ export function ImagePreviews({
       {images.map((image, index) => (
         <div
           className="relative w-38 rounded-md border border-border/80 bg-terminal p-1"
-          // oxlint-disable-next-line react/no-array-index-key -- Pasted images have no id and may repeat.
           key={index}
         >
           <ToolImage

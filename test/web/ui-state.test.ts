@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { createUiState } from '../../web/src/sdk/ui-state.ts'
 import { UI_REVISION } from '../../shared/protocol.ts'
 import type { UiUpdateRequest, UiUpdateResponse } from '../../shared/protocol.ts'

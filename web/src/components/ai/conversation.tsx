@@ -1,12 +1,9 @@
-// Adapted from vercel/ai-elements packages/elements/src/conversation.tsx (Apache-2.0, see LICENSE).
-// Changes: no `ai` message types or download button; instant initial scroll.
 import { cn } from 'cn'
 import { ArrowDownIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'
 import { Button } from '@/components/ui/button'
 
-/** A scroll container that follows new content while the reader is at the bottom. */
 export const Conversation = ({ className, ...props }: ComponentProps<typeof StickToBottom>) => (
   <StickToBottom
     className={cn('relative flex-1 overflow-y-hidden', className)}

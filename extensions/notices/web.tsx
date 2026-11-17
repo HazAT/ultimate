@@ -3,25 +3,28 @@ import { useState } from 'react'
 import { cn, defineWebExtension, useNotices, useNow } from '@/sdk'
 import type { Notice } from '@/sdk'
 
-/** How long a notice stays, by level; hovering keeps them. */
-const lifetime: Record<Notice['level'], number> = { info: 5000, warning: 9000, error: 15000 }
+const unhoveredLifetimeMs: Record<Notice['level'], number> = {
+  info: 5000,
+  warning: 9000,
+  error: 15000,
+}
 const icons = {
   info: [InfoIcon, 'text-muted-foreground'],
   warning: [TriangleAlertIcon, 'text-warning'],
   error: [CircleAlertIcon, 'text-error'],
 } as const
 
-/** Server and client notices as small toasts centred under the header, clear of the side panels. */
 function Toasts() {
   const notices = useNotices()
   const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set())
   const [hovered, setHovered] = useState(false)
-  const live = notices.some((notice) => Date.now() - notice.at < lifetime[notice.level])
+  const live = notices.some((notice) => Date.now() - notice.at < unhoveredLifetimeMs[notice.level])
   const now = useNow(500, live && !hovered)
   const shown = notices
     .filter(
       (notice) =>
-        !dismissed.has(notice.id) && (hovered || now - notice.at < lifetime[notice.level]),
+        !dismissed.has(notice.id) &&
+        (hovered || now - notice.at < unhoveredLifetimeMs[notice.level]),
     )
     .slice(-4)
   if (shown.length === 0) return null

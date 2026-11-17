@@ -1,12 +1,15 @@
-The Review surface: the project's local Git diffs, its files on the left and their changes on the right, rendered with `@pierre/diffs` in Ultimate's fonts and colours.
+The Review surface: the local Git diffs of a conversation's checkout, its files on the left and their changes on the right, rendered with `@pierre/diffs` in Ultimate's fonts and colours.
 
-What it shows is a **spec**:
+What it shows is a **spec**, read in the **checkout** of the conversation you are in: its ready worktree, else the
+repository that worktree branched from, else its own folder (`cwd`), else the project's checkout. A project root that is
+no repository of its own reviews the subfolder repository its conversations work in.
 
 - `uncommitted`: the work tree against `HEAD`, untracked files included (ignored ones not). `uncommitted:<id>` is the
-  same in conversation `id`'s worktree (the project checkout once it has none); its default recipient is `id`.
+  same in conversation `id`'s checkout; its default recipient is `id`.
 - `<sha>` (or any ref naming a commit): that commit against its first parent; a root commit against the empty tree.
 - `<a>...<b>`: what `b` changed since it forked from `a`, as a landing's `<base>...<sha>`.
-- `branch:<name>`: the branch against the target branch it lands on (its worktree's target, else the project checkout's branch).
+- `branch:<name>`: the branch against the target branch it lands on (its worktree's target, else the branch the
+  conversation's checkout is on).
 
 The header picks the spec (recent choices from `ranges`, or any spec typed in), sums `+N −M · K files`, switches split and
 unified, and links the range to DiffsHub when `origin` is on GitHub. On a phone the file list is a dropdown and the
@@ -15,7 +18,7 @@ diff is unified. The diff stack is virtualized; the viewer loads with the surfac
 **Comments.** Click a line number (shift-click or drag for a range, on either side) or the gutter `+` to open an
 inline composer; the range highlights as it grows, with a bar down its line numbers. **Add to review** keeps it as a
 draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.ts`) keyed by spec and by
-the conversation whose worktree the diff came from (`draftsKey`; a spec too long for a key is named by its SHA-256), so
+the conversation whose checkout the diff came from (`draftsKey`; a spec too long for a key is named by its SHA-256), so
 a reload and other tabs keep them. A draft holds only its lines and text; its excerpt (at most 40 lines and 8 KB) is
 read from the diff on screen when the review is sent. One spec's drafts may take 96 KB of the 256 KiB UI state: past
 that the composer stays open and says it is too long to keep, and a write the server refuses shows a notice. While any are pending, a footer reads
@@ -37,15 +40,18 @@ landing card, the Activity feed and a root's landed list open a landing's commit
 Actions (`refs.ts`):
 
 - `diff { spec, conversation? }` → `{ spec, kind, title, base?, head?, patch, files, truncated? }`. Runs in
-  `conversation`'s worktree while it has one, else the project checkout. Every ref is checked with
+  `conversation`'s checkout, else the project's, and says `No Git repository in <path>` when that folder is none. Every
+  ref is checked with
   `git rev-parse --verify` as a commit, and any part starting with `-` is refused. A file's patch over 400 KB is listed
   as `tooLarge` without hunks; past 8 MB in all, later files are too and the diff is `truncated` (caps count bytes).
   An untracked symlink shows as a new file whose one line is its target (one with a path git would quote or a
   multi-line target is listed as `symlink`, without hunks); a file that became a symlink or stopped
   being one is listed as `typeChanged`, without hunks.
-- `ranges` → recent specs: uncommitted, open `ultimate/*` branches with their conversation, the last ten landings
-  (`workspaces.landed` events) and the last fifteen commits; branches and landings carry their `conversation`.
-- `recipient { spec }` → `{ conversation }`: a `branch:` spec's worktree owner, a landing range's submitter (by its
-  tip in `workspaces.landed`), a commit's `Ultimate-Conversation` trailer, else the primary agent.
+- `ranges { conversation? }` → recent specs read in `conversation`'s checkout (the project's with none): uncommitted,
+  open `ultimate/*` branches with their conversation, the last ten landings (`workspaces.landed` events) and the last
+  fifteen commits; branches and landings carry their `conversation`.
+- `recipient { spec, conversation? }` → `{ conversation }`: a `branch:` spec's worktree owner, a landing range's
+  submitter (by its tip in `workspaces.landed`), a commit's `Ultimate-Conversation` trailer (read in `conversation`'s
+  checkout, else the project's), else the primary agent.
 - `send { conversation, spec, comments, note? }` (user only) → `{ conversation }`. At most 50 comments, each text up
   to 4,000 characters and excerpt up to 40 lines and 8 KB, to an existing conversation; it steers a busy one.

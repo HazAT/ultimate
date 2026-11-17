@@ -1,6 +1,9 @@
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon, GanttChartIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import {
+  AllProvided,
   api,
   cn,
   defineWebExtension,
@@ -13,15 +16,28 @@ import {
   useExtensionUiState,
   useConversations,
   useNow,
+  useUiState,
   useUltimate,
 } from '@/sdk'
-import { MessagesDoc, conversationState, emptyMessages } from '../messages/ui.tsx'
+import { SYSTEM_TAB_KEY, SystemTab } from './ui.tsx'
+import {
+  MessagesDoc,
+  conversationState,
+  conversationWait,
+  waitLabel,
+  useRemoteProgress,
+  useStarters,
+  useUnderway,
+  emptyMessages,
+} from '../messages/ui.tsx'
+import { useAutomations, timerWaits } from '../automations/ui.tsx'
 import { useConcludedSince, useOverview } from '../conversations/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { LaneTree } from './hierarchy.tsx'
 import { Axis, laneState } from './lanes.tsx'
 import { windows } from './layout.ts'
 import type { WindowName } from './layout.ts'
+import { every } from '../../lib/timers.ts'
 import { LanesAction } from './refs.ts'
 import type { Lane, LaneLink } from './refs.ts'
 import { NavigationReporter } from './navigation.tsx'
@@ -32,66 +48,82 @@ const subscribe = (listener: () => void) => {
   document.addEventListener('visibilitychange', listener)
   return () => document.removeEventListener('visibilitychange', listener)
 }
-/** Whether the System surface is on screen in a visible tab: polling runs only then. */
+
 function useLive() {
   const visible = useSyncExternalStore(subscribe, () => document.visibilityState === 'visible')
   return useUltimate().surface === 'system' && visible
 }
 
-/** Each lane's conversation state, the same the sidebar shows: only the primary agent can wait on you. */
 function useStates(parked: ReadonlySet<number>) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
   const conversations = useConversations()
-  const primary = useDocOf(1, StandingDoc)?.ultimate
+  const standing = useDocOf(ROOT, StandingDoc)
+  const primary = standing?.ultimate
+  const timers = timerWaits(useAutomations(5000).data, standing)
+  const starterOf = useStarters()
+  const underway = useUnderway()
+  const primaryWait =
+    primary === undefined
+      ? undefined
+      : conversationWait(
+          {
+            id: primary,
+            kind: 'primary',
+            runState: overview[primary]?.runState,
+            busy: underway(primary),
+          },
+          log,
+          timers,
+        )
+  const remote = useRemoteProgress(primaryWait?.on === 'remote' ? primaryWait.project : undefined)
   const concludedSince = useConcludedSince()
   return (lane: Lane) => {
     const id = lane.conversation
     const own = conversations.find((item) => item.id === id)
-    const state = conversationState(
-      {
-        id,
-        kind: id === primary ? 'primary' : own?.ownerTaskId !== undefined ? 'subagent' : 'other',
-        runState: overview[id]?.runState,
-        busy: own?.busy,
-        parked: parked.has(id),
-        primary,
-        concludedSince: concludedSince(id),
-      },
-      log,
-    )
-    return laneState(lane, state, overview[id] !== undefined)
+    const facts = {
+      id,
+      kind:
+        id === primary
+          ? ('primary' as const)
+          : own?.ownerTaskId !== undefined
+            ? ('subagent' as const)
+            : ('other' as const),
+      runState: overview[id]?.runState,
+      busy: own?.ownerTaskId !== undefined ? own.busy : underway(id),
+      parked: parked.has(id),
+      starter: starterOf(id),
+      concludedSince: concludedSince(id),
+    }
+    const state = conversationState(facts, log, timers)
+    return {
+      state: laneState(lane, state, overview[id] !== undefined),
+      label: waitLabel(conversationWait(facts, log, timers), primary, primaryWait, remote.data),
+    }
   }
 }
 
-/**
- * The lanes of the last `range` milliseconds, fetched again every 2 s while `live`; the previous result stays on
- * screen until the next arrives, so the timeline never blinks.
- */
 function useLanes(range: number, live: boolean) {
   const [state, setState] = useState<{ range: number; data?: LanesResult; error?: unknown }>({
     range,
   })
   useEffect(() => {
     const controller = new AbortController()
-    const load = () =>
-      api
-        .action(
-          LanesAction,
-          // Whole minutes, so repeated polls carry the same args and the trace counts them instead of writing each.
-          { since: new Date(Math.floor((Date.now() - range) / 60_000) * 60_000).toISOString() },
-          { signal: controller.signal },
-        )
+    const load = () => {
+      const minuteRoundedSince = new Date(
+        Math.floor((Date.now() - range) / 60_000) * 60_000,
+      ).toISOString()
+      return api
+        .action(LanesAction, { since: minuteRoundedSince }, { signal: controller.signal })
         .then((data) => setState({ range, data }))
         .catch((error: unknown) => {
-          // Aborted when the window changes or the surface hides; the next fetch owns the state.
           if (!controller.signal.aborted) setState((previous) => ({ ...previous, error }))
         })
-    // oxlint-disable-next-line typescript/no-floating-promises -- load catches fetch failures and stores them in the displayed error state.
+    }
     void load()
-    const timer = live ? setInterval(() => void load(), 2000) : undefined
+    const stop = live ? every(2000, () => void load()) : undefined
     return () => {
-      clearInterval(timer)
+      stop?.()
       controller.abort()
     }
   }, [range, live])
@@ -102,17 +134,67 @@ type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: numbe
 
 const dot = 'inline-block size-1.5 rounded-full'
 
-/** Agent Lanes on top, the stream of everything below; both live while on screen. */
 function System() {
+  const [tab, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
   return (
-    <Provided input={null} point={ParkedRuns}>
-      {(parked) => <Lanes parked={parked ?? noneParked} />}
-    </Provided>
+    <AllProvided input={null} point={SystemTab}>
+      {(provided) => {
+        const tabs = provided.filter((item) => item !== undefined)
+        const open = tabs.find((item) => item.id === tab)
+        const bar = tabs.length > 0 && (
+          <span className="flex items-center gap-0.5 font-mono text-[11px]" role="tablist">
+            {[{ id: 'agents', title: 'Agents' }, ...tabs].map((item) => (
+              <button
+                aria-selected={(open?.id ?? 'agents') === item.id}
+                className={cn(
+                  'h-6 cursor-pointer rounded-md px-2 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  (open?.id ?? 'agents') === item.id
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                role="tab"
+                type="button"
+              >
+                {item.title}
+              </button>
+            ))}
+          </span>
+        )
+        if (!open)
+          return (
+            <Provided input={null} point={ParkedRuns}>
+              {(parked) => <Lanes parked={parked ?? noneParked} tabs={bar} />}
+            </Provided>
+          )
+        const Tab = open.component
+        return (
+          <>
+            <Header>
+              <Title />
+              {bar}
+            </Header>
+            <Tab />
+            <StatusLine />
+          </>
+        )
+      }}
+    </AllProvided>
   )
 }
 const noneParked: ReadonlySet<number> = new Set()
 
-function Lanes({ parked }: { parked: ReadonlySet<number> }) {
+function Title() {
+  return (
+    <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+      <GanttChartIcon className="size-4 text-muted-foreground" />
+      System
+    </span>
+  )
+}
+
+function Lanes({ parked, tabs }: { parked: ReadonlySet<number>; tabs: ReactNode }) {
   const live = useLive()
   const [stored, setWindow] = useExtensionUiState<WindowName>('window', '30m')
   const window: WindowName = Object.hasOwn(windows, stored) ? (stored as WindowName) : '30m'
@@ -127,8 +209,10 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
   const lanes = useLanes(range, live)
   const stateOf = useStates(parked)
   const list = lanes.data?.lanes ?? []
-  const states = new Map(list.map((lane) => [lane.conversation, stateOf(lane)]))
-  // A parent listed only to hold its children's place did not work in the window: it is no agent at work.
+  const derived = list.map((lane) => [lane.conversation, stateOf(lane)] as const)
+  const states = new Map(derived.map(([id, value]) => [id, value.state]))
+  const labels = new Map(derived.map(([id, value]) => [id, value.label]))
+
   const worked = list.filter((lane) => lane.runs.length > 0)
   const running = worked.filter((lane) => states.get(lane.conversation) === 'running').length
   const waits = list.some((lane) => states.get(lane.conversation) === 'waits')
@@ -136,10 +220,8 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
   return (
     <>
       <Header>
-        <span className="flex items-center gap-2 text-[13px] font-medium">
-          <GanttChartIcon className="size-4 text-muted-foreground" />
-          System
-        </span>
+        <Title />
+        {tabs}
       </Header>
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <section className="mx-auto max-w-6xl px-3 py-3 md:px-5">
@@ -193,6 +275,7 @@ function Lanes({ parked }: { parked: ReadonlySet<number> }) {
                 </p>
               ) : (
                 <LaneTree
+                  labels={labels}
                   lanes={list}
                   links={lanes.data?.links ?? []}
                   now={now}

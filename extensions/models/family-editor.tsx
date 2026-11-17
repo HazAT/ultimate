@@ -1,8 +1,3 @@
-/**
- * Editing model families in place: a family's popover (model, thinking, color, removal), a new
- * family, and moving a feature to a family. Each saves this project's families at once through `SaveFamiliesAction`;
- * the Agents panel lists the families with who runs on each. An agent's family is its definition's, not saved here.
- */
 import { ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -35,15 +30,13 @@ const label = 'section-label'
 const control =
   'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50'
 
-/** The family as the person's own file holds it: only a model they chose, never the project's suggestion or pin. */
 const ownSpecOf = (family: FamilyView): Spec => ({
   ...(family.own ? { model: family.own } : {}),
   ...(family.thinking ? { thinking: family.thinking } : {}),
   color: family.color,
 })
 
-/** Save the families as `view` has them with `change` applied; feature assignments only, agents keep theirs in files. */
-async function save(
+async function saveFeatureAssignmentsAndFamilies(
   view: FamiliesView,
   change: Partial<Pick<SaveFamilies, 'families' | 'assign' | 'unpin'>>,
 ) {
@@ -58,10 +51,9 @@ async function save(
   await refreshFamilies()
 }
 
-/** Run feature `id` (Summaries, Previews) on `family`; a pin in the user's settings gives way to it. */
 export function moveFeature(view: FamiliesView, id: string, family: string) {
   const user = view.users.find((item) => item.id === id)
-  return save(view, {
+  return saveFeatureAssignmentsAndFamilies(view, {
     assign: {
       ...Object.fromEntries(
         Object.entries(view.assign).filter(([key]) => Object.hasOwn(FEATURES, key)),
@@ -72,10 +64,6 @@ export function moveFeature(view: FamiliesView, id: string, family: string) {
   })
 }
 
-/**
- * A family's settings in a popover over `children`: model, thinking and color as a draft, saved together. New
- * conversations take the change; open ones keep their model.
- */
 export function FamilyPopover({
   family,
   view,
@@ -106,9 +94,10 @@ function FamilyForm({
   close: () => void
 }) {
   const models = useModels()
-  // The draft edits what runs (the model in effect, which may be the project's suggestion); saving keeps only a model
-  // the person chose: an untouched one stays the project's suggestion (`own`), never the person's.
-  const initial: Spec = { ...ownSpecOf(family), ...(family.model ? { model: family.model } : {}) }
+  const initial: Spec = {
+    ...ownSpecOf(family),
+    ...(family.model ? { model: family.model } : {}),
+  }
   const [draft, setDraft] = useState(initial)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
@@ -116,8 +105,7 @@ function FamilyForm({
   const suggestion = family.suggested
   const info = models?.models.find((item) => `${item.provider}/${item.id}` === model)
   const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
-  // A built-in level can be changed but not cleared: settings keep only what differs from it.
-  const inherit = !BUILTIN_FAMILIES[family.name]?.thinking
+  const hasNoBuiltinThinking = !BUILTIN_FAMILIES[family.name]?.thinking
   const builtin = Object.hasOwn(BUILTIN_FAMILIES, family.name)
   const changed = JSON.stringify(draft) !== JSON.stringify(initial)
   const set = (change: Partial<Spec>) => {
@@ -130,16 +118,15 @@ function FamilyForm({
     else delete all[family.name]
     return all
   }
-  // The spec to save this family as: a model the person picked here, or the one they already chose.
   const edited = (spec: Spec): Spec => ({
     ...spec,
     model: spec.model === initial.model ? family.own : spec.model,
   })
-  async function apply(change: Parameters<typeof save>[1]) {
+  async function apply(change: Parameters<typeof saveFeatureAssignmentsAndFamilies>[1]) {
     setPending(true)
     setError(undefined)
     try {
-      await save(view, change)
+      await saveFeatureAssignmentsAndFamilies(view, change)
       close()
     } catch (failure) {
       setError(errorMessage(failure))
@@ -186,7 +173,12 @@ function FamilyForm({
               className="ml-auto h-5 shrink-0 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
               disabled={pending}
               onClick={() =>
-                void apply({ families: families({ ...ownSpecOf(family), model: suggestion }) })
+                void apply({
+                  families: families({
+                    ...ownSpecOf(family),
+                    model: suggestion,
+                  }),
+                })
               }
               size="xs"
               title="Run it on the model the project suggests; your choice stays your own"
@@ -229,7 +221,7 @@ function FamilyForm({
           }
           value={draft.thinking ?? ''}
         >
-          {inherit && (
+          {hasNoBuiltinThinking && (
             <option value="">
               {family.name === DEFAULT_FAMILY && family.followsThinking
                 ? `Pi's default · ${family.followsThinking}`
@@ -274,7 +266,6 @@ function FamilyForm({
   )
 }
 
-/** "+ Family": name a new family; it starts on no model of its own until its popover picks one. */
 export function AddFamily({ view }: { view: FamiliesView }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -291,7 +282,7 @@ export function AddFamily({ view }: { view: FamiliesView }) {
     if (!name || problem) return
     const colors = Object.keys(FAMILY_COLORS)
     try {
-      await save(view, {
+      await saveFeatureAssignmentsAndFamilies(view, {
         families: {
           ...Object.fromEntries(view.families.map((family) => [family.name, ownSpecOf(family)])),
           [name]: { color: colors[taken.length % colors.length] },
@@ -328,7 +319,6 @@ export function AddFamily({ view }: { view: FamiliesView }) {
             setError(undefined)
           }}
           onKeyDown={(event) => {
-            // oxlint-disable-next-line typescript/no-floating-promises -- add shows its own failure.
             if (event.key === 'Enter') void add()
           }}
           placeholder="local"
@@ -354,7 +344,6 @@ const short = (ref: string) => ref.slice(ref.indexOf('/') + 1)
 
 const LIMIT = 150
 
-/** A searchable model choice, as the model picker lists them: logged-in ones until you type. */
 function ModelSelect({
   value,
   placeholder = 'Pick a model',
@@ -364,10 +353,8 @@ function ModelSelect({
 }: {
   value: string | undefined
   placeholder?: string
-  /** While the project pins the family's model, nothing else can be picked. */
   disabled?: boolean
   onChange: (value: string) => void
-  /** Offered as the first row: go back to no model of its own. */
   onClear?: () => void
 }) {
   const models = useModels()

@@ -1,4 +1,6 @@
 /** Dream in the browser: the prepared next chapter, the sleep into it and the chapters. Browser-safe. */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import type { Seed } from './types.ts'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**
@@ -22,8 +24,8 @@ export type Sleep = {
  * prepares then), `dismissed` when they chose to stay in this chapter.
  */
 export type Dream = {
-  branch: number
-  requested: number
+  branch: ConversationId
+  requested: EntryId
   at: number
   asked?: number
   dismissed?: true
@@ -40,6 +42,15 @@ export const DreamDoc = docRef<{ prepared?: Prepared; sleep?: Sleep; dream?: Dre
  * built-in automation (`pause`: how long the user had been away, ms).
  */
 export type RequestedEntry = { automation?: { id: string; name: string; pause?: number } }
+
+/** The new chapter's first card, including what was carried over. */
+export type ChapterEntry = {
+  from: { name: string; number: number }
+  number: number
+  name: string
+  learned?: string[]
+  carried?: Seed['counts']
+}
 
 /** No arguments: ask @ultimate to dream now. User-only. */
 export const StartAction = actionRef<null, { requested: true }>('dream', 'start')

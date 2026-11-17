@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff, Virtualizer } from '@pierre/diffs/react'
 import type {
@@ -26,6 +27,7 @@ import {
   api,
   cn,
   errorMessage,
+  keepLast,
   useAction,
   useExtensionUiState,
   useStore,
@@ -34,6 +36,7 @@ import {
 } from '@/sdk'
 import { Address } from '../messages/ui.tsx'
 import { compareUrl } from '../../lib/compare.ts'
+import { deadline } from '../../lib/timers.ts'
 import { useGithubRepo } from '../workspaces/ui.tsx'
 import { Composer, DraftCard } from './comment.tsx'
 import { draftsKey } from './comments.ts'
@@ -50,10 +53,6 @@ import { DiffAction, RecipientAction, SendAction } from './refs.ts'
 import type { ReviewDiff, ReviewFile } from './refs.ts'
 import { Selector } from './selector.tsx'
 
-/**
- * Our theme for the viewer, inside its shadow root: our page's tokens inherit into it, so the code takes our mono
- * font, our background and our add/del colours in both themes, with the vitesse themes for syntax.
- */
 const themeCss = `
 :host {
   --diffs-font-family: var(--font-mono);
@@ -71,16 +70,14 @@ const themeCss = `
   --diffs-bg-selection-override: color-mix(in oklab, var(--brand) 22%, transparent);
   --diffs-bg-selection-number-override: color-mix(in oklab, var(--brand) 40%, transparent);
 }
-/* One continuous bar down the selected line numbers, while dragging and after. */
 [data-gutter] [data-selected-line] { box-shadow: inset 3px 0 0 var(--brand); color: var(--foreground); }
 [data-diffs-header] { border-bottom: 1px solid var(--border); font-size: 12.5px; }
 [data-annotation-content] { background: var(--background); }
 [data-utility-button] { background: var(--brand); color: var(--background); border-radius: 4px; }
 `
 
-/** A comment being written: new on `range`, or an edit of draft `id`. */
 type Writing = { file: string; range: SelectedLineRange; id?: string }
-/** What an annotation under a line holds: the composer, or a saved draft. */
+
 type Note = { composer: true } | { draft: Draft }
 
 const sideOf = (side: 'old' | 'new') => (side === 'old' ? 'deletions' : 'additions')
@@ -99,7 +96,6 @@ const status: Record<ReviewFile['status'], [string, string]> = {
   copied: ['C', 'text-brand'],
 }
 
-/** Files by their directory, directories in path order, files in diff order within each. */
 function byDirectory(files: ReviewFile[]) {
   const groups = Map.groupBy(files, (file) => {
     const slash = file.path.lastIndexOf('/')
@@ -160,7 +156,6 @@ function FileList({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
   )
 }
 
-/** The file list as a dropdown, on a phone. */
 function FileMenu({ files, onPick }: { files: ReviewFile[]; onPick: (path: string) => void }) {
   return (
     <DropdownMenu>
@@ -190,7 +185,6 @@ function FileMenu({ files, onPick }: { files: ReviewFile[]; onPick: (path: strin
   )
 }
 
-/** A file whose hunks were left out: binary, a type change, a new symlink, or too large to show. */
 function Placeholder({ file }: { file: ReviewFile }) {
   return (
     <div className="rounded-md border border-border/70 bg-card/40">
@@ -211,7 +205,6 @@ function Placeholder({ file }: { file: ReviewFile }) {
   )
 }
 
-/** One file's diff, with its draft comments under their lines and the composer under a selection. */
 function CommentedDiff({
   meta,
   options,
@@ -239,11 +232,12 @@ function CommentedDiff({
       lineNumber: lastLine(mine.range),
       metadata: { composer: true },
     })
-  // The range under the pointer while the user drags or shift-clicks: the viewer only proposes a controlled selection,
-  // so it shows as it grows only once it comes back in `selectedLines`.
-  const [dragging, setDragging] = useState<SelectedLineRange | null>(null)
+
+  const [controlledDragSelection, setControlledDragSelection] = useState<SelectedLineRange | null>(
+    null,
+  )
   const selected: SelectedLineRange | null =
-    dragging ??
+    controlledDragSelection ??
     (mine
       ? mine.range
       : marked
@@ -254,14 +248,14 @@ function CommentedDiff({
       ...options,
       enableLineSelection: true,
       enableGutterUtility: true,
-      onLineSelectionStart: setDragging,
-      onLineSelectionChange: setDragging,
+      onLineSelectionStart: setControlledDragSelection,
+      onLineSelectionChange: setControlledDragSelection,
       onLineSelectionEnd: (range) => {
-        setDragging(null)
-        // Clicking the one selected line again unselects it: the composer closes.
+        setControlledDragSelection(null)
+
         onWrite(range ? { file: meta.name, range } : undefined)
       },
-      // The gutter `+` is not a line selection to the viewer: it reports its line (or a range dragged from it) here.
+
       onGutterUtilityClick: (range) => onWrite({ file: meta.name, range }),
     }),
     [options, meta.name, onWrite],
@@ -321,7 +315,6 @@ function CommentedDiff({
   )
 }
 
-/** Each file's parsed diff, by path: what the viewer renders and what a sent comment quotes. */
 function parse(diff: ReviewDiff) {
   const byPath = new Map<string, FileDiffMetadata>()
   for (const patch of parsePatchFiles(diff.patch, `${diff.base}:${diff.head ?? 'work'}`))
@@ -365,8 +358,7 @@ function Diffs({
   )
   const pick = (path: string) =>
     document.getElementById(anchor(path))?.scrollIntoView({ block: 'start' })
-  // A link to a line scrolls to its file, then to the line once the file has rendered it.
-  // It stays the target until the line is on screen (or never renders): only then is it consumed.
+
   useEffect(() => {
     if (!target) return undefined
     if (!diff.files.some((file) => file.path === target.file)) {
@@ -375,19 +367,33 @@ function Diffs({
     }
     setMarked(target)
     pick(target.file)
-    let tries = 0
-    const timer = setInterval(() => {
-      const host = document.getElementById(anchor(target.file))?.querySelector('diffs-container')
-      const side = target.side === 'old' ? 'deletions' : 'additions'
+    const side = target.side === 'old' ? 'deletions' : 'additions'
+    const reach = () => {
+      const root = document
+        .getElementById(anchor(target.file))
+        ?.querySelector('diffs-container')?.shadowRoot
+      if (root) rendering.observe(root, { childList: true, subtree: true })
       const line =
-        host?.shadowRoot?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
-        host?.shadowRoot?.querySelector(`[data-line="${target.line}"]`)
-      if (!line && ++tries <= 40) return
-      clearInterval(timer)
-      line?.scrollIntoView({ block: 'center' })
+        root?.querySelector(`[data-${side}] [data-line="${target.line}"]`) ??
+        root?.querySelector(`[data-line="${target.line}"]`)
+      if (!line) return false
+      consumeRenderedOrExpiredTarget()
+      line.scrollIntoView({ block: 'center' })
+      return true
+    }
+    const consumeRenderedOrExpiredTarget = () => {
+      rendering.disconnect()
+      giveUp()
       reachedTarget()
-    }, 50)
-    return () => clearInterval(timer)
+    }
+    const rendering = new MutationObserver(reach)
+    const giveUp = deadline(2000, consumeRenderedOrExpiredTarget)
+    rendering.observe(document.body, { childList: true, subtree: true })
+    reach()
+    return () => {
+      rendering.disconnect()
+      giveUp()
+    }
   }, [target, diff])
   const byFile = Map.groupBy(drafts.comments, (draft) => draft.file)
   return (
@@ -432,14 +438,13 @@ function Diffs({
   )
 }
 
-/** Where the last review went, with a link to its conversation, or why it did not. */
 function Sent({
   sent,
   onOpen,
   onClose,
 }: {
-  sent: { conversation: number } | { error: string }
-  onOpen: (id: number) => void
+  sent: { conversation: ConversationId } | { error: string }
+  onOpen: (id: ConversationId) => void
   onClose: () => void
 }) {
   return (
@@ -476,51 +481,54 @@ function Sent({
   )
 }
 
-/** The Review surface: a spec's diff, its files on the left and their changes stacked on the right. */
 export default function ReviewSurface() {
   const [spec, setSpec] = useSpec()
   const [stored, setLayout] = useExtensionUiState('layout', 'split')
   const layout = stored === 'unified' ? 'unified' : 'split'
   const phone = useViewport() === 'phone'
-  // The diff runs in the project checkout: no conversation's worktree, so drafts are the project's for this spec.
-  const args: { spec: string; conversation?: number } = { spec }
-  const diff = useAction(DiffAction, args, { onError: () => undefined })
+  const { conversationId, switchConversation, showSurface } = useUltimate()
+
+  const args: { spec: string; conversation?: ConversationId } = {
+    spec,
+    conversation: conversationId,
+  }
+  const diff = useAction(DiffAction, args, { onError: keepLast })
   const github = useGithubRepo()
-  const [drafts, update] = useDrafts(draftsKey(spec, args.conversation))
-  const suggested = useAction(RecipientAction, { spec }, { onError: () => undefined })
+  const [drafts, update] = useDrafts(draftsKey(spec, conversationId))
+  const suggested = useAction(RecipientAction, args, { onError: keepLast })
   const to = drafts.to ?? suggested.data?.conversation
   const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState<{ conversation: number } | { error: string }>()
-  const { switchConversation, showSurface } = useUltimate()
+  const [sent, setSent] = useState<{ conversation: ConversationId } | { error: string }>()
   const data = diff.data?.spec === spec ? diff.data : undefined
-  // A branch gone without a landing shows another spec: follow it rather than ask for the deleted ref again.
-  const moved = diff.data && diff.data.spec !== spec ? diff.data.spec : undefined
+
+  const replacementSpecAfterBranchRemoval =
+    diff.data && diff.data.spec !== spec ? diff.data.spec : undefined
   useEffect(() => {
-    if (moved) setSpec(moved)
-  }, [moved, setSpec])
+    if (replacementSpecAfterBranchRemoval) setSpec(replacementSpecAfterBranchRemoval)
+  }, [replacementSpecAfterBranchRemoval, setSpec])
   const parsed = useMemo(() => (data ? parse(data) : new Map<string, FileDiffMetadata>()), [data])
   const send = async () => {
     if (to === undefined) return
     setSending(true)
     setSent(undefined)
-    // What goes out: drafts added or a note changed while it is on its way stay pending.
-    const ids = new Set(drafts.comments.map((draft) => draft.id))
-    const note = drafts.note
+
+    const submittedDraftIds = new Set(drafts.comments.map((draft) => draft.id))
+    const submittedNote = drafts.note
     try {
       const result = await api.action(SendAction, {
         conversation: to,
         spec,
-        // Drafts keep no excerpt: it is read now from the diff on screen.
+
         comments: drafts.comments.map(({ id: _id, ...comment }) => ({
           ...comment,
           excerpt: excerptFor(parsed.get(comment.file), comment),
         })),
-        ...(note.trim() && { note }),
+        ...(submittedNote.trim() && { note: submittedNote }),
       })
       update((all) => ({
         ...all,
-        comments: all.comments.filter((draft) => !ids.has(draft.id)),
-        note: all.note === note ? '' : all.note,
+        comments: all.comments.filter((draft) => !submittedDraftIds.has(draft.id)),
+        note: all.note === submittedNote ? '' : all.note,
       }))
       setSent(result)
     } catch (failure) {
@@ -555,8 +563,8 @@ export default function ReviewSurface() {
     }),
     { additions: 0, deletions: 0 },
   )
-  // A worktree branch is local until it lands, so only commits and ranges (landings) are on GitHub to compare.
-  const compare =
+
+  const publishedCommitOrRangeCompareUrl =
     github && data?.base && data.head && (data.kind === 'commit' || data.kind === 'range')
       ? compareUrl(github, data.base, data.head)
       : undefined
@@ -565,6 +573,7 @@ export default function ReviewSurface() {
       controls={
         <>
           <Selector
+            conversation={conversationId}
             onChange={(next) => {
               setSent(undefined)
               setSpec(next)
@@ -611,10 +620,10 @@ export default function ReviewSurface() {
           {(drafts.comments.length > 0 || drafts.to !== undefined) && (
             <Recipient onChange={(id) => update((all) => ({ ...all, to: id }))} value={to} />
           )}
-          {compare && (
+          {publishedCommitOrRangeCompareUrl && (
             <a
               className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[11.5px] text-muted-foreground hover:text-foreground hover:underline"
-              href={compare}
+              href={publishedCommitOrRangeCompareUrl}
               rel="noreferrer"
               target="_blank"
               title="Compare on DiffsHub"
@@ -632,6 +641,7 @@ export default function ReviewSurface() {
         ) : (
           <Diffs
             diff={data}
+            key={`${conversationId}:${data.spec}`}
             parsed={parsed}
             drafts={drafts}
             footer={footer}

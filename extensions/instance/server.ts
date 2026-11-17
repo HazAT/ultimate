@@ -1,3 +1,4 @@
+import type { ConversationId, ToolExecutionApi, JsonObject } from '@earendil-works/pi-durable'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   cp,
@@ -16,11 +17,9 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { setTimeout as sleep } from 'node:timers/promises'
-import type { Context } from '@earendil-works/chord'
-import { int, obj, opt, str } from '@earendil-works/pi-schema'
+import type { Context } from '@earendil-works/chord/context'
+import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import type { ConversationId, ToolExecutionApi } from '@earendil-works/pi-durable'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -28,33 +27,30 @@ import { Subagents } from '../subagents/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import type { WorkspaceService } from '../workspaces/api.ts'
-import { cleanPreview, sweepPreviews } from './cleanup.ts'
+import { cleanPreview, makeOwnerWritable, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
-import { spawnGroup, stopGroup } from '../../lib/process-group.ts'
+import { rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
+import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
+import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
-import type { JsonObject } from '@earendil-works/pi-durable'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.ts'
 
-/** Previews run every agent on the previews family's model unless `instance.model` names another or is `null`. */
 export const DEFAULT_PREVIEW_MODEL = BUILTIN_FAMILIES[FEATURES.preview.family].model!
 
-/**
- * The `instance.model` setting, project over user: the `provider/id` a preview runs every agent on, or none. Without
- * it, the model of the family previews are assigned to (`modelFamilies`, default `fast`).
- */
 export async function previewModelSetting(
   host: Pick<ExtensionHost, 'userHome' | 'projectSettings' | 'projectRoot'> &
     Partial<Pick<ExtensionHost, 'settings'>>,
 ): Promise<string | undefined> {
-  // Invalid settings JSON is reported where settings load; here it counts as unset.
-  const user: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
+  const userSettingsOrUnset: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(
+    () => ({}),
+  )
   const project = await host.projectSettings()
-  for (const settings of [project, user]) {
+  for (const settings of [project, userSettingsOrUnset]) {
     const instance = settings.instance
     if (instance && typeof instance === 'object' && !Array.isArray(instance))
       if (Object.hasOwn(instance, 'model')) {
@@ -72,8 +68,8 @@ export async function previewModelSetting(
   const family = Object.hasOwn(families.families, assigned) ? assigned : DEFAULT_FAMILY
   const own = families.families[family].model
   if (own) return own
-  // A default family without a model of its own runs Pi's default model.
-  if (family === DEFAULT_FAMILY) {
+  const unpinnedPiDefault = family === DEFAULT_FAMILY
+  if (unpinnedPiDefault) {
     const provider = host.settings?.getDefaultProvider()
     const id = host.settings?.getDefaultModel()
     return provider && id ? `${provider}/${id}` : DEFAULT_PREVIEW_MODEL
@@ -81,8 +77,7 @@ export async function previewModelSetting(
   return DEFAULT_PREVIEW_MODEL
 }
 
-/** What a preview's private user config starts as: copies, symlinks resolved, so its writes never reach the real files. */
-const COPIED = [
+const PRIVATE_CONFIG_COPIES = [
   'settings.json',
   'model-families.json',
   'trust.json',
@@ -92,13 +87,8 @@ const COPIED = [
   'agents',
   'skills',
 ]
-/**
- * Shared with the host through a link: user extensions are code the UI never writes (and some find their repository
- * through their real path), and the Tailscale registry is how every server on the machine picks a distinct port.
- */
-const LINKED = ['extensions', 'tailscale.json']
+const SHARED_CODE_AND_REGISTRY = ['extensions', 'tailscale.json']
 
-/** Seed `<to>/.ultimate` from the user's `<from>/.ultimate`; what the user has not got is left out. */
 export async function seedUserHome(from: string, to: string) {
   const source = join(from, '.ultimate')
   const target = join(to, '.ultimate')
@@ -106,58 +96,43 @@ export async function seedUserHome(from: string, to: string) {
   const missing = (error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   }
-  for (const name of COPIED)
+  for (const name of PRIVATE_CONFIG_COPIES)
     await cp(join(source, name), join(target, name), {
       recursive: true,
       dereference: true,
       errorOnExist: true,
       force: false,
     }).catch(missing)
-  // Linked even when missing: the first server to register creates the one registry every server shares.
-  for (const name of LINKED) await symlink(join(source, name), join(target, name))
+  await makeOwnerWritable(target)
+  for (const name of SHARED_CODE_AND_REGISTRY) await symlink(join(source, name), join(target, name))
 }
 
-/**
- * Make `to` a whole home: every entry of `from` but `.ultimate` is linked back, so logins, caches and dotfiles stay
- * shared while `~/.ultimate` is the private copy. Entries already there are kept, so it runs on every start.
- */
 export async function linkHome(from: string, to: string) {
   for (const name of await readdir(from)) {
     if (name === '.ultimate') continue
     await symlink(join(from, name), join(to, name)).catch((error: NodeJS.ErrnoException) => {
-      // Already linked, or a private copy the preview wrote over the link: keep it.
       if (error.code !== 'EEXIST') throw error
     })
   }
 }
 
-/** The branch a preview with this home lands on; it shares the prefix of the preview's workspace branches. */
 export const previewBranch = (home: string) =>
   `ultimate/${createHash('sha256').update(home).digest('hex').slice(0, 6)}-preview`
 
-/**
- * Git config for the previewed repository: every push goes to a transport that does not exist (`pushInsteadOf`, which
- * `--no-verify` cannot skip), and a reference-transaction hook refuses any change to a branch or tag outside the
- * preview's own `ultimate/<hash>-` branches.
- */
 export function guardConfig(branch: string) {
-  const own = ` refs/heads/${branch.slice(0, branch.lastIndexOf('-') + 1)}`
-  const refs = `[ "$1" != prepared ] || ! grep -E ' refs/(heads|tags)/' | grep -qvF '${own}' || { echo 'A preview moves only its own branches.' >&2; exit 1; } #`
+  const previewBranchPrefix = ` refs/heads/${branch.slice(0, branch.lastIndexOf('-') + 1)}`
+  const rejectNonPreviewRefTransaction = `[ "$1" != prepared ] || ! grep -E ' refs/(heads|tags)/' | grep -qvF '${previewBranchPrefix}' || { echo 'A preview moves only its own branches.' >&2; exit 1; } #`
   return [
     '[url "ultimate-preview-never-pushes://"]',
     '\tpushInsteadOf =',
     '[hook "ultimate-preview"]',
     '\tevent = reference-transaction',
-    `\tcommand = "${refs.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`,
+    `\tcommand = "${rejectNonPreviewRefTransaction.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`,
     '',
   ].join('\n')
 }
 
-/**
- * `GIT_CONFIG_*` variables after the parent's that include `config` for every git process in repository `common` (its
- * main checkout and every linked worktree), and in no other, such as the fixtures a check creates.
- */
-function includeIn(parent: NodeJS.ProcessEnv, common: string, config: string) {
+function includeGuardForRepositoryOnly(parent: NodeJS.ProcessEnv, common: string, config: string) {
   let count = Number(parent.GIT_CONFIG_COUNT ?? 0)
   const env: NodeJS.ProcessEnv = {}
   for (const pattern of [common, `${common}/`]) {
@@ -168,13 +143,6 @@ function includeIn(parent: NodeJS.ProcessEnv, common: string, config: string) {
   return env
 }
 
-/**
- * A preview keeps ordinary parent variables, but gets its own host identity, its own home (`HOME` and
- * `ULTIMATE_USER_HOME`, linked back by `linkHome` so `~` reaches its private `.ultimate` and the shared rest), no
- * inherited cloud settings, and `ULTIMATE_MODEL` only when `model` is set. In a git project (`git`: its real common
- * dir, the preview's branch and its `guardConfig`) it never pushes and moves only its own branches; its lander lands on
- * `ULTIMATE_PREVIEW_BRANCH`.
- */
 export function previewEnv(
   parent: NodeJS.ProcessEnv,
   options: {
@@ -217,12 +185,14 @@ export function previewEnv(
     ...(options.git
       ? {
           ULTIMATE_PREVIEW_BRANCH: options.git.branch,
-          ...includeIn(parent, options.git.common, options.git.config),
+          ...includeGuardForRepositoryOnly(parent, options.git.common, options.git.config),
         }
       : {}),
   }
   return env
 }
+
+type RetryableStopInFlight = Promise<void>
 
 interface Instance {
   id: string
@@ -230,12 +200,16 @@ interface Instance {
   home: string
   pid: number
   temporary: boolean
-  /** The conversation whose workspace it previews, or which started it in the shared checkout. */
-  conversationId?: number
+  conversationId?: ConversationId
   child: GroupProcess
   group: Group
+  pidFile: string
   output: string
+  stopping?: RetryableStopInFlight
 }
+
+const previewPids = (home: string) => join(home, 'preview-pids')
+const startedByThisProcess = (name: string) => name.startsWith(`${process.pid}-`)
 
 const info = ({ id, url, home, pid, conversationId }: Instance) => ({
   id,
@@ -245,7 +219,6 @@ const info = ({ id, url, home, pid, conversationId }: Instance) => ({
   conversationId,
 })
 const live = (item: Instance) => item.child.exitCode === null && item.child.signalCode === null
-/** The instances this process runs, shared by the tool and the actions; shutdown stops them all and remembers them. */
 function running(host: Pick<ExtensionHost, 'resource' | 'onClose' | 'home'>) {
   const instances: Map<string, Instance> = host.resource('instance', () => {
     host.onClose(async () => {
@@ -257,7 +230,6 @@ function running(host: Pick<ExtensionHost, 'resource' | 'onClose' | 'home'>) {
   })
   return instances
 }
-/** What `list` shows of a preview. */
 const listed = ({
   id,
   url,
@@ -265,7 +237,7 @@ const listed = ({
 }: {
   id: string
   url: string
-  conversationId: number
+  conversationId: ConversationId
 }) => ({
   id,
   url,
@@ -273,18 +245,14 @@ const listed = ({
 })
 type Listed = ReturnType<typeof listed>
 const portOf = (url: string) => new URL(url).port
-/**
- * Previews that no longer run, by port, so that links to them can say so: the last 50, kept in the home across
- * restarts, since a restart stops every preview.
- */
 export const stopped = (host: Pick<ExtensionHost, 'resource' | 'home'>) =>
   host.resource('instance.stopped', () => {
     const byPort = new Map<string, Listed>()
     try {
       const saved = JSON.parse(readFileSync(join(host.home, 'previews.json'), 'utf8')) as Listed[]
       for (const item of saved) byPort.set(portOf(item.url), item)
-    } catch {
-      // No previews stopped in this home yet, or an unreadable file: links to earlier ones stay ordinary links.
+    } catch (error) {
+      meansNone(error)
     }
     return byPort
   })
@@ -299,26 +267,32 @@ export function remember(
   for (const port of [...byPort.keys()].slice(0, -50)) byPort.delete(port)
   writeFileSync(join(host.home, 'previews.json'), JSON.stringify([...byPort.values()]))
 }
-async function stop(instances: Map<string, Instance>, id: string) {
+function stop(instances: Map<string, Instance>, id: string) {
   const instance = instances.get(id)
-  if (!instance) throw new Error(`Unknown instance: ${id}`)
-  // The whole group: the preview and whatever it started without a group of its own. Its unreaped leader proves the
-  // group is still ours; once it exited, the group stopped with it.
-  if (instance.child.pid !== undefined)
-    await stopGroup(instance.child.pid, { leader: instance.group, grace: 5000 })
+  if (!instance) return Promise.reject(new Error(`Unknown instance: ${id}`))
+  instance.stopping ??= stopInstance(instances, instance).catch((error: unknown) => {
+    instance.stopping = undefined
+    throw error
+  })
+  return instance.stopping
+}
+async function stopInstance(instances: Map<string, Instance>, instance: Instance) {
+  const unreapedGroupLeaderPid = instance.child.pid
+  if (unreapedGroupLeaderPid !== undefined)
+    await stopGroup(unreapedGroupLeaderPid, {
+      leader: instance.group,
+      grace: 5000,
+      pidFile: instance.pidFile,
+    })
   if (instance.temporary) {
     await unlink(join(instance.home, 'ultimate.lock')).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
     await cleanPreview(instance.home)
   }
-  instances.delete(id)
+  instances.delete(instance.id)
 }
 
-/**
- * Where the tailnet reaches each preview, by pid. A preview's own `tailscale` extension records its HTTPS port in
- * the user's registry under an owner token that starts with its pid; the host's tailscale status knows the DNS name.
- */
 async function tailnet(host: Pick<ExtensionHost, 'want' | 'userHome'>) {
   const published = host.want(TailscaleApi)?.status().url
   if (!published) return new Map<number, string>()
@@ -326,7 +300,6 @@ async function tailnet(host: Pick<ExtensionHost, 'want' | 'userHome'>) {
   try {
     registry = JSON.parse(await readFile(join(host.userHome, '.ultimate/tailscale.json'), 'utf8'))
   } catch {
-    // Missing or unreadable, the registry names no addresses; the previews themselves still list.
     return new Map<number, string>()
   }
   const { hostname } = new URL(published)
@@ -339,10 +312,6 @@ async function tailnet(host: Pick<ExtensionHost, 'want' | 'userHome'>) {
 }
 
 export const actions: Record<string, ExtensionAction> = {
-  /**
-   * The instances that served their UI, running or not since, for the title bar's switcher and preview links. A start
-   * that failed is not among them.
-   */
   list: implementAction(ListAction, async (_args, { host }) => {
     const addresses = await tailnet(host)
     return [
@@ -360,14 +329,6 @@ export const actions: Record<string, ExtensionAction> = {
   }),
 }
 
-/**
- * The workspace a preview of conversation `id` serves: its own, else the nearest owner's (a subagent without an isolate
- * works in its parent's worktree, at any depth); undefined means the host checkout.
- */
-/**
- * The previewed repository, the branch a preview lands on (created at the project's tip unless a reused home made it
- * already) and the guard config written into its home; none outside git or before a first commit.
- */
 async function previewGit(project: string, home: string) {
   const checkout = await isolatable(project)
   if ('reason' in checkout) return undefined
@@ -417,21 +378,26 @@ export default function instanceExtension(
     | 'metadata'
   >,
 ) {
-  // Tailscale is optional and resolved where it is called; declared here so the catalogue lists it. Workspaces is core.
   host.want(TailscaleApi)
   const workspaces = host.need(WorkspacesApi)
   const instances = running(host)
   const starts = host.resource('instance.starts', () => ({ pending: 0 }))
-  const ownSource = host.projectRoot === host.ultimateRoot
+  const projectIsUltimateSource = host.projectRoot === host.ultimateRoot
   host.onOpen(async () => {
-    void sweepPreviews(tmpdir(), host.notice).catch((error: unknown) => {
-      host.notice(`Preview sweep failed: ${String(error)}`)
+    await sweepPidFiles(previewPids(host.home), startedByThisProcess).catch((error: unknown) => {
+      host.notice(`Stopping previews a crash left running failed: ${String(error)}`)
     })
+    rebuiltOnOpen(
+      'every open sweeps preview directories again',
+      sweepPreviews(tmpdir(), host.notice).catch((error: unknown) => {
+        host.notice(`Preview sweep failed: ${String(error)}`)
+      }),
+    )
   })
   async function start(
-    args: { home?: string },
+    args: { home?: string; model?: string | null },
     context: Context,
-    prepare: () => Promise<{ cwd: string; project: string; conversationId?: number }>,
+    prepare: () => Promise<{ cwd: string; project: string; conversationId?: ConversationId }>,
     output: (text: string) => void = () => {},
   ) {
     let reserved = false
@@ -448,43 +414,55 @@ export default function instanceExtension(
         await mkdir(resolvePath(args.home), { recursive: true })
         home = await realpath(resolvePath(args.home))
       } else {
-        // Publish only after the parent's lease exists, so another host's sweep cannot race startup.
-        const staging = await mkdtemp(join(tmpdir(), '.ultimate-instance-'))
-        home = join(tmpdir(), basename(staging).slice(1))
+        const stagingBeforeStartupLease = await mkdtemp(join(tmpdir(), '.ultimate-instance-'))
+        home = join(tmpdir(), basename(stagingBeforeStartupLease).slice(1))
         try {
-          await writeFile(join(staging, 'ultimate.lock'), JSON.stringify({ pid: process.pid }))
-          await writeFile(join(staging, 'project.json'), JSON.stringify({ root: project }))
-          await rename(staging, home)
+          await writeFile(
+            join(stagingBeforeStartupLease, 'ultimate.lock'),
+            JSON.stringify({ pid: process.pid }),
+          )
+          await writeFile(
+            join(stagingBeforeStartupLease, 'project.json'),
+            JSON.stringify({ root: project }),
+          )
+          await rename(stagingBeforeStartupLease, home)
           pendingHome = home
         } catch (error) {
-          await rm(staging, { recursive: true, force: true })
+          await rm(stagingBeforeStartupLease, { recursive: true, force: true })
           throw error
         }
       }
       if (home === (await realpath(host.home)))
         throw new Error('A test instance cannot share the running server home')
+      for (const item of instances.values())
+        if (item.home === home) {
+          const stopBeforeRestartingSameHome = item.stopping
+          await stopBeforeRestartingSameHome?.catch(overshadowed)
+        }
       if ([...instances.values()].some((item) => item.home === home && live(item)))
         throw new Error('Home is already owned by an instance')
       context.abortSignal?.throwIfAborted()
-      // Explicit homes are retained even when their name matches the automatic sweep's prefix.
       if (args.home) await writeFile(join(home, 'instance-preserve'), '')
       const userHome = join(home, 'user')
-      // A restarted explicit home keeps the config its preview changed.
-      if (!existsSync(userHome)) await seedUserHome(host.userHome, userHome)
+      const reusedHomeAlreadyHasPrivateConfig = existsSync(userHome)
+      if (!reusedHomeAlreadyHasPrivateConfig) await seedUserHome(host.userHome, userHome)
       await linkHome(host.userHome, userHome)
       const env = previewEnv(process.env, {
         home,
         project,
         userHome,
         ownerPid: process.pid,
-        model: await previewModelSetting(host),
+        model:
+          args.model === undefined ? await previewModelSetting(host) : (args.model ?? undefined),
         git: await previewGit(project, home),
       })
-      // No pid file: a preview exits by itself once its owner is gone (ULTIMATE_INSTANCE_OWNER).
+      await mkdir(previewPids(host.home), { recursive: true })
+      const pidFile = join(previewPids(host.home), `${process.pid}-${randomUUID()}.pid`)
       const group = spawnGroup(process.execPath, ['server/main.ts'], {
         cwd,
         env,
         grace: 5000,
+        pidFile,
       })
       const { child } = group
       const id = randomUUID()
@@ -497,6 +475,7 @@ export default function instanceExtension(
         conversationId,
         child,
         group,
+        pidFile,
         output: '',
       }
       instances.set(id, item)
@@ -510,49 +489,36 @@ export default function instanceExtension(
           .join('\n')
           .slice(-100000)
       }
-      let stdout = ''
-      child.stdout?.on('data', (chunk: Buffer) => {
-        append(chunk)
-        stdout += chunk.toString()
-        const lines = stdout.split('\n')
-        stdout = lines.pop()!.slice(-10000)
-        for (const line of lines) {
-          const match = /^Ultimate: (http:\/\/127\.0\.0\.1:([1-9]\d*))\r?$/.exec(line)
-          if (match) item.url = match[1]
-        }
+      const notReady = () => new Error(`Instance did not become ready:\n${item.output}`)
+      const serving = new Promise<void>((resolve, reject) => {
+        let stdout = ''
+        child.stdout?.on('data', (chunk: Buffer) => {
+          append(chunk)
+          stdout += chunk.toString()
+          const lines = stdout.split('\n')
+          stdout = lines.pop()!.slice(-10000)
+          for (const line of lines) {
+            const match = /^Ultimate: (http:\/\/127\.0\.0\.1:([1-9]\d*))\r?$/.exec(line)
+            if (match) {
+              item.url = match[1]
+              resolve()
+            }
+          }
+        })
+        child.on('error', (error) => {
+          item.output += String(error)
+          reject(notReady())
+        })
+        child.on('exit', () => reject(notReady()))
+        const signal = context.abortSignal
+        if (signal?.aborted) reject(signal.reason)
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
       })
       child.stderr?.on('data', append)
-      let failed = false
-      child.on('error', (error) => {
-        failed = true
-        item.output += String(error)
-      })
       try {
         output(`Starting ${id}\n`)
-        const deadline = Date.now() + 60000
-        let ready = false
-        while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
-          context.abortSignal?.throwIfAborted()
-          if (failed) break
-          try {
-            const response = item.url
-              ? await fetch(`${item.url}/api/models`, {
-                  signal: context.abortSignal
-                    ? AbortSignal.any([context.abortSignal, AbortSignal.timeout(1000)])
-                    : AbortSignal.timeout(1000),
-                })
-              : undefined
-            if (response?.ok && !failed && child.exitCode === null && child.signalCode === null) {
-              ready = true
-              break
-            }
-          } catch {
-            /* server is still booting */
-          }
-          await sleep(250, undefined, { signal: context.abortSignal })
-        }
+        await within(60000, serving, notReady, context.abortSignal)
         context.abortSignal?.throwIfAborted()
-        if (!ready) throw new Error(`Instance did not become ready:\n${item.output}`)
         return info(item)
       } catch (error) {
         await stop(instances, id)
@@ -594,17 +560,13 @@ export default function instanceExtension(
       if (workspace.state !== 'ready')
         throw new Error('Preview requires an active, ready workspace')
       project = workspace.path
-      // In another project the workspace holds that project, so the host's Ultimate runs it.
-      if (ownSource) {
+      if (projectIsUltimateSource) {
         cwd = workspace.path
         for (const [path, directory, message] of [
           ['server/main.ts', false, 'Worktree is not Ultimate: missing server/main.ts'],
           ['node_modules', true, 'Worktree has no node_modules; run pnpm install first'],
         ] as const) {
-          const entry = await stat(join(cwd, path)).catch(
-            // An unreadable prerequisite fails the explicit preview validation below.
-            () => undefined,
-          )
+          const entry = await stat(join(cwd, path)).catch(meansNone)
           if (!entry || (directory ? !entry.isDirectory() : !entry.isFile()))
             throw new Error(message)
         }
@@ -613,12 +575,10 @@ export default function instanceExtension(
     return { cwd, project, conversationId }
   }
 
-  // Concluding a conversation stops the previews it started; previews outlive an ordinary stop of its run.
   host.implement(Previews, {
-    stop: async (ids) => {
-      const concluded = new Set(ids)
+    stop: async (concludedConversationIds) => {
+      const concluded = new Set(concludedConversationIds)
       const ended = []
-      // Deleting the visited entry while iterating a Map is safe.
       for (const item of instances.values()) {
         if (item.conversationId === undefined || !concluded.has(item.conversationId)) continue
         await stop(instances, item.id)
@@ -636,7 +596,7 @@ export default function instanceExtension(
         const runs = model
           ? `every agent on ${model} (the \`instance.model\` setting)`
           : 'the configured models (`instance.model` is null)'
-        return ownSource
+        return projectIsUltimateSource
           ? `Before restarting after core changes, start a second instance, check its API and UI using browser/screenshot, then stop it. An instance runs ${runs} and spends tokens; drive it with real prompts. Instances are temporary and process-local.`
           : `To check changes to this project's .ultimate/ extensions, agents or settings, start a second instance: it runs this Ultimate with your workspace as its project. Look at it with browser/screenshot, then stop it. It runs ${runs} and spends tokens. It does not run the project's own app.`
       }),
@@ -645,12 +605,13 @@ export default function instanceExtension(
       defineTool({
         name: 'instance',
         description:
-          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree.',
+          'Start, inspect logs, list or stop isolated standalone Ultimate test servers (maximum three). Defaults to the calling workspace; set subagent to preview an owned child worktree. model on start pins every agent to one provider/id, or null runs each on its own configured model; omitted, the instance.model setting applies.',
         parameters: obj({
           action: strEnum(['start', 'stop', 'logs', 'list']),
           id: opt(str()),
           home: opt(str()),
           subagent: opt(int({ minimum: 1 })),
+          model: opt(nullable(str({ pattern: '^[^/\\s]+/\\S+$' }))),
         }),
         async execute(args, api, context) {
           try {

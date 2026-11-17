@@ -4,7 +4,7 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { context } from '../server/harness.ts'
-import { UiState } from '../server/ui-state.ts'
+import { UiState } from '../shared/ui-state.ts'
 import { fauxServer, post, temp, until } from './helpers.ts'
 
 async function fixture() {

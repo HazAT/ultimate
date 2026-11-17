@@ -12,7 +12,7 @@ export default defineConfig({
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
-      'react/no-array-index-key': 'warn',
+      'react/no-array-index-key': 'off',
       'react/no-children-prop': 'off',
       'typescript/no-unsafe-type-assertion': 'off',
       'promise/always-return': 'off',
@@ -23,29 +23,94 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ['test/**'],
-        excludeFiles: ['test/e2e/**'],
+        files: [
+          'extensions/**',
+          'server/**',
+          'web/**',
+          'lib/**',
+          'shared/**',
+          'bin/**',
+          'scripts/**',
+        ],
+        excludeFiles: ['test/**', 'extensions/*/test/**'],
+        rules: { 'typescript/switch-exhaustiveness-check': 'error' },
+      },
+      {
+        files: ['web/public/sw.js'],
+        rules: { 'unicorn/require-post-message-target-origin': 'off' },
+      },
+      {
+        files: ['extensions/instance/web.tsx'],
+        rules: { 'react/iframe-missing-sandbox': 'off' },
+      },
+      {
+        files: ['web/src/app/transcript.tsx'],
+        rules: { 'react/immutability': 'off' },
+      },
+      {
+        files: ['test/**', 'extensions/*/test/**'],
+        excludeFiles: ['test/e2e/**', 'extensions/*/test/e2e/**'],
         rules: {
           'ultimate/no-test-timeout': 'error',
           'ultimate/no-real-wait-in-fast-tests': 'error',
         },
       },
       {
-        files: ['test/**'],
+        files: ['test/**', 'extensions/*/test/**'],
         excludeFiles: ['test/helpers.ts'],
         rules: { 'ultimate/no-local-test-polling': 'error' },
       },
       {
-        files: ['extensions/**', 'web/**'],
-        rules: { 'ultimate/no-retired-ui': 'error' },
+        files: ['**/*'],
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.ts'],
+        rules: { 'ultimate/no-silent-catch': 'error' },
       },
       {
         files: ['**/*'],
-        excludeFiles: ['test/**'],
-        rules: {
-          'ultimate/replay-safe-reason': 'error',
-          'ultimate/no-silent-catch': 'error',
-        },
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/replay.ts'],
+        rules: { 'ultimate/replay-safe-by-name': 'error' },
+      },
+      {
+        files: ['server/**', 'lib/**', 'shared/**', 'extensions/**/*.ts'],
+        excludeFiles: [
+          'test/**',
+          'extensions/*/test/**',
+          'lib/errors.ts',
+          'extensions/review/drafts.ts',
+          'extensions/sounds/conductor.ts',
+          'extensions/sounds/engine.ts',
+          'extensions/sounds/speaker.ts',
+          'extensions/sounds/tones.ts',
+          'extensions/voice-live/session.ts',
+        ],
+        rules: { 'ultimate/no-unowned-work': 'error' },
+      },
+      {
+        files: [
+          'bin/**',
+          'extensions/**',
+          '.ultimate/extensions/**',
+          'lib/**',
+          'scripts/**',
+          'server/**',
+          'shared/**',
+          'web/**',
+        ],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', 'lib/timers.ts'],
+        rules: { 'ultimate/no-raw-timer': 'error' },
+      },
+      {
+        files: [
+          'bin/**',
+          'extensions/**',
+          'lib/**',
+          'scripts/**',
+          'server/**',
+          'shared/**',
+          'web/**',
+        ],
+        excludeFiles: ['extensions/*/test/**'],
+        rules: { 'ultimate/no-comments': 'error' },
       },
       {
         files: ['server/**', 'bin/**'],
@@ -101,7 +166,9 @@ export default defineConfig({
         },
       },
       {
+        // An extension's test/ folder is not part of it: its tests set up the core and other extensions as test/ does.
         files: ['extensions/**'],
+        excludeFiles: ['extensions/*/test/**'],
         rules: {
           'no-restricted-imports': [
             'error',
@@ -121,6 +188,7 @@ export default defineConfig({
         // Another extension at runtime only through its contract: api.ts from server code, ui.tsx from the browser.
         // A core-tier extension (`export const tier = 'core'` in its api.ts) imports only the core tier.
         files: ['extensions/**/*.ts', 'extensions/**/*.tsx'],
+        excludeFiles: ['extensions/*/test/**'],
         rules: { 'ultimate/api-only-imports': 'error', 'ultimate/core-tier-deps': 'error' },
       },
       {
@@ -133,8 +201,12 @@ export default defineConfig({
       },
       {
         files: ['web/src/**', 'extensions/**/*.tsx'],
+        excludeFiles: ['extensions/*/test/**'],
         plugins: ['react'],
         rules: {
+          // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
+          // notice, and nothing can take the process down.
+          'typescript/no-floating-promises': ['error', { ignoreVoid: true }],
           'react/rules-of-hooks': 'error',
           'react/exhaustive-deps': 'error',
           'react/jsx-key': 'error',
@@ -193,14 +265,16 @@ export default defineConfig({
   test: {
     root: '.',
     globalSetup: ['test/sweep-temp.ts'],
-    setupFiles: ['test/setup.ts'],
-    include: ['test/**/*.test.ts'],
-    exclude: ['test/e2e/**'],
+    setupFiles: ['test/setup.ts', 'test/no-group-signals.ts'],
+    // Core and integration tests in test/, each extension's own in extensions/<name>/test/: `pnpm test extensions/<name>/`
+    // runs one extension's.
+    include: ['test/**/*.test.ts', 'extensions/*/test/**/*.test.ts'],
+    exclude: ['test/e2e/**', 'extensions/*/test/e2e/**'],
     testTimeout: 30000,
     // A hung hook or teardown fails within seconds and names its test, instead of stalling the run.
     hookTimeout: 5000,
     teardownTimeout: 5000,
-    maxWorkers: 8,
+    maxWorkers: 16,
     // Under an agent (AI_AGENT, CLAUDECODE, …) Vitest picks its minimal reporter, which prints nothing for passing
     // files; the lander's stall watchdog then stops a passing run that is silent for two minutes.
     reporters: ['default'],

@@ -1,7 +1,16 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a8bba6c62 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4f8379f70 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
+@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
+ import { createInterface } from "node:readline";
+ import { spawn, type ChildProcess } from "node:child_process";
+ import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+-import { TurnRelay } from "./turn-relay.ts";
++import { TurnRelay, type RelayExchange } from "./turn-relay.ts";
+ import { usageCreditsAllowed, usageCreditsChargeError, type RateLimitInfo } from "./billing.ts";
+ import { envFlagEnabled } from "./env.ts";
+ import type { DiscoveredClaudeModel } from "./model-catalog.ts";
 @@ -19,7 +19,7 @@ import type {
    NativeResult,
    NativeUsage,
@@ -62,11 +71,11 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
 +    payload = JSON.parse(result.stdout) as typeof payload;
 +  } catch {
 +    payload = undefined;
-   }
++  }
 +  if (typeof payload?.loggedIn !== "boolean") {
 +    const detail = `claude auth status gave no status (exit ${result.code}): ${result.stderr.trim().slice(0, 300)}`;
 +    return { available: true, loggedIn: false, subscription: false, unknown: true, command, detail };
-+  }
+   }
 +  const loggedIn = payload.loggedIn;
 +  const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
 +  return {
@@ -89,7 +98,28 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (!status.loggedIn) {
      readyStatusCache.delete(key);
      throw new Error(LOGIN_HINT);
-@@ -316,6 +328,13 @@ export async function discoverClaudeModels(
+@@ -226,6 +238,10 @@ export async function discoverClaudeModels(
+ ): Promise<DiscoveredClaudeModel[]> {
+   signal?.throwIfAborted();
+   const env = processEnvironment(envInput, {});
++  // Either switch makes Claude Code answer from its built-in model list instead of the account's current one, so a
++  // model released after that CLI build (Fable 5.2 on 2.1.321) never appears. Turns keep both.
++  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
++  delete env.DISABLE_TELEMETRY;
+   const command = await resolveClaudeExecutable(env);
+   if (!command) throw new Error(INSTALL_HINT);
+ 
+@@ -272,6 +288,9 @@ export async function discoverClaudeModels(
+   }, timeoutMs);
+ 
+   const requestId = `pi-models-${Date.now()}`;
++  // A probe that exits before taking its input fails these writes with EPIPE; its exit code reports the failure, and an
++  // unheard stream error would crash the host instead (Ultimate #547832, test/e2e/claude-code.test.ts).
++  child.stdin?.on("error", () => {});
+   child.stdin?.write(
+     `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
+   );
+@@ -316,6 +335,24 @@ export async function discoverClaudeModels(
    }
  }
  
@@ -100,10 +130,21 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
 +  launch = start;
 +}
 +
++export interface ExchangeTap {
++  (call: { sessionId?: string; model: string; exchange: RelayExchange }): void;
++}
++
++let tap: ExchangeTap | undefined;
++
++/** Hand every relayed request and its raw answer to `next` once the turn ends; undefined stops keeping them. */
++export function useExchangeTap(next: ExchangeTap | undefined): void {
++  tap = next;
++}
++
  function spawnCommand(
    command: string,
    args: string[],
-@@ -324,23 +343,31 @@ function spawnCommand(
+@@ -324,23 +361,31 @@ function spawnCommand(
    if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
      const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
      const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
@@ -141,7 +182,71 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -544,15 +571,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -350,6 +395,11 @@ export function killProcessTree(child: ChildProcess): void {
+     return;
+   }
+   try {
++    // Only an integer above 1 names a process group: kill(-1) signals every
++    // process of the user and kill(-0) the caller's own group. Any other pid
++    // ends the child alone, below (Ultimate #562356: a test's fake child with
++    // pid 1 ended a desktop session here).
++    if (!Number.isSafeInteger(child.pid) || child.pid <= 1) throw new Error(`Not a process group: ${child.pid}`);
+     process.kill(-child.pid, "SIGKILL");
+   } catch {
+     try {
+@@ -433,6 +483,11 @@ function processEnvironment(
+   Object.assign(env, {
+     ENABLE_TOOL_SEARCH: "false",
+     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
++    // Pi's prompts address agents as "@name". Without this, Claude Code
++    // 2.1.319 and newer read an "@" before an existing path as a file mention
++    // and put that file's content or folder listing into the request
++    // (Ultimate #566809; upstream sets it since 799943e).
++    CLAUDE_CODE_DISABLE_FILE_MENTIONS: "1",
+     CLAUDE_CODE_MAX_RETRIES: "0",
+     DISABLE_AUTO_COMPACT: "1",
+     DISABLE_COMPACT: "1",
+@@ -488,9 +543,23 @@ function requestMessages(body: Buffer | undefined): NativeRequestMessage[] | und
+   }
+ }
+ 
++/**
++ * Where the request's leading user messages end. Claude Code can put user
++ * messages of its own in front of the initial one: since 2.1.319 a mention of
++ * an existing path ("@notes.md") arrives as a "Called the Read tool" message
++ * ahead of it (Ultimate #566809). The last of the run is Pi's initial user
++ * message, and the initial system messages follow the run.
++ */
++function leadingUserEnd(messages: NativeRequestMessage[] | undefined): number {
++  let end = 0;
++  while (messages?.[end]?.role === "user") end += 1;
++  return end;
++}
++
+ function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unknown[]): unknown[] | undefined {
+   if (canonicalContent.length === 0) return undefined;
+-  const actual = requestMessages(body)?.[0];
++  const messages = requestMessages(body);
++  const actual = messages?.[leadingUserEnd(messages) - 1];
+   if (actual?.role !== "user" || !Array.isArray(actual.content) || actual.content.length < canonicalContent.length) {
+     return undefined;
+   }
+@@ -501,10 +570,11 @@ function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unk
+ 
+ function deriveInitialSystemMessages(body: Buffer | undefined): unknown[] | undefined {
+   const messages = requestMessages(body);
+-  if (messages?.[0]?.role !== "user") return undefined;
+-  let end = 1;
++  const start = leadingUserEnd(messages);
++  if (!messages || start === 0) return undefined;
++  let end = start;
+   while (messages[end]?.role === "system") end += 1;
+-  const systems = messages.slice(1, end);
++  const systems = messages.slice(start, end);
+ 
+   // A replayed history from an older carrier has the date reminder at the
+   // moving tail rather than in the initial environment reminder. Snapshot it
+@@ -544,15 +614,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -172,10 +277,22 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -642,6 +677,11 @@ export function rewriteInitialRequest(
+@@ -563,7 +641,7 @@ function removeRepeatedUserReminders(messages: NativeRequestMessage[], prefix: u
+   if (!reminder || !prefix) return;
+   const normalizedPrefix = JSON.stringify(prefix.map(withoutCacheControl));
+ 
+-  for (let index = 1; index < messages.length; index++) {
++  for (let index = leadingUserEnd(messages); index < messages.length; index++) {
+     const message = messages[index];
+     if (message?.role !== "user" || !Array.isArray(message.content)) continue;
+     const leading = message.content.slice(0, prefix.length).map(withoutCacheControl);
+@@ -641,16 +719,28 @@ export function rewriteInitialRequest(
+     system?: unknown;
    };
    let messages = payload.messages;
-   const first = messages?.[0];
+-  const first = messages?.[0];
++  const leadingEnd = leadingUserEnd(messages);
++  const first = messages?.[leadingEnd - 1];
 +  // Replaying a history whose first message starts with "/", Claude Code sends
 +  // that message as a bare string without its reminder blocks.
 +  if (first?.role === "user" && typeof first.content === "string") {
@@ -184,7 +301,24 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
    if (first?.role !== "user" || !Array.isArray(first.content)) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-@@ -666,9 +706,11 @@ export function rewriteInitialRequest(
+   if (prefix) first.content = [...structuredClone(prefix), ...structuredClone(canonicalContent)];
+ 
+   if (initialSystemMessages?.length && messages) {
+-    let systemEnd = 1;
++    // A system message must precede an assistant message or end the array, so
++    // the initial ones go after the whole leading user run, never inside it.
++    let systemEnd = leadingEnd;
+     while (messages[systemEnd]?.role === "system") systemEnd += 1;
+-    messages.splice(1, systemEnd - 1, ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]));
++    messages.splice(
++      leadingEnd,
++      systemEnd - leadingEnd,
++      ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]),
++    );
+ 
+     const initialText = initialSystemMessages
+       .map((message) => contentText((message as NativeRequestMessage).content))
+@@ -666,9 +756,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
@@ -197,28 +331,37 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +768,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -726,6 +818,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
 +/**
-+ * Claude Code ended a turn without its full response. Without stderr this is a
-+ * transient stream ending, worded to match pi-ai's retryable "ended without"
-+ * pattern; with stderr, Claude Code's reason decides.
++ * Claude Code ended a turn without its full response and without an error of
++ * its own: a transient stream ending, worded to match pi-ai's retryable "ended
++ * without" pattern. Stderr is detail only. Claude Code also prints warnings
++ * there (2.1.319: `[claude-code:unrecognized_model]` once per process), so its
++ * presence says nothing about why the turn ended (Ultimate #562356).
 + */
 +export function incompleteResponseError(stderr: string): Error {
 +  const detail = stderr.trim();
 +  return new Error(
-+    detail
-+      ? `Incomplete Claude Code response: assistant, message_stop and one result required (${detail.slice(-500)})`
-+      : "Incomplete Claude Code response: stream ended without assistant, message_stop and one result",
++    `Incomplete Claude Code response: stream ended without assistant, message_stop and one result${detail ? ` (stderr: ${detail.slice(-500)})` : ""}`,
 +  );
 +}
 +
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -976,11 +1032,7 @@ class ClaudeProcess {
+@@ -912,6 +1018,8 @@ class ClaudeProcess {
+         : undefined,
+       input.betas,
+     );
++    const observe = tap;
++    if (observe) this.relay.onExchange = (exchange) => observe({ sessionId: input.sessionId, model: input.model, exchange });
+ 
+     const abort = () => {
+       this.relay.abort();
+@@ -976,11 +1084,14 @@ class ClaudeProcess {
          message = assistants.at(-1);
        }
  
@@ -226,12 +369,18 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
 -        throw new Error(
 -          `Incomplete Claude Code response: assistant, message_stop and one result required${this.stderr ? ` (${this.stderr.trim().slice(-500)})` : ""}`,
 -        );
--      }
++      // Claude Code can refuse a turn itself, without a request: a synthetic
++      // assistant error and an is_error result, e.g. "Prompt is too long" from
++      // its own context check in a warm process. That is its reason, not an
++      // incomplete response (Ultimate #562356).
++      if (!this.relay.used && nativeError !== undefined && result.is_error) {
++        throw new Error(`Claude Code request failed: ${nativeError}`);
+       }
 +      if (!message || !sawMessageStop || !result) throw incompleteResponseError(this.stderr);
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1042,6 @@ class ClaudeProcess {
+@@ -990,13 +1101,6 @@ class ClaudeProcess {
          throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
        }
  
@@ -245,6 +394,36 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..84ea5dde00f9fa72c9c29d294325e25a
        const usage = message.usage ?? result.usage;
        if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
          throw new Error("Claude Code response did not include complete token usage");
+diff --git a/src/model-catalog.ts b/src/model-catalog.ts
+index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3d58dfacc 100644
+--- a/src/model-catalog.ts
++++ b/src/model-catalog.ts
+@@ -99,6 +99,14 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+   const thinkingLevelMap = supported?.length
+     ? (Object.fromEntries(supported.map((level) => [level, level])) as ClaudeCodeModel["thinkingLevelMap"])
+     : undefined;
++  // A model released after Pi's built-in list (Fable 5.2) takes the limits of its family's newest known model; Claude
++  // Code's discovery reports no window, and the 200k guess was wrong for Fable 5.2 (1M, 128k output per modelUsage).
++  const family = /^claude-[a-z]+-/u.exec(id)?.[0];
++  const sibling = family
++    ? Object.values(BUILTIN_ANTHROPIC_MODELS)
++        .filter((model) => model.id.startsWith(family))
++        .sort((a, b) => b.id.localeCompare(a.id, "en", { numeric: true }))[0]
++    : undefined;
+   return {
+     id,
+     name: `${info.displayName} (Claude Code)`,
+@@ -109,8 +117,8 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+     input: ["text", "image"],
+     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+-    contextWindow: /\b1M context\b/iu.test(info.description) ? 1_000_000 : 200_000,
+-    maxTokens: 64_000,
++    contextWindow: /\b1M context\b/iu.test(info.description) ? 1_000_000 : (sibling?.contextWindow ?? 200_000),
++    maxTokens: sibling?.maxTokens ?? 64_000,
+   };
+ }
+ 
 diff --git a/src/provider.ts b/src/provider.ts
 index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd527226d0eed53 100644
 --- a/src/provider.ts
@@ -537,10 +716,153 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
    };
  }
 diff --git a/src/turn-relay.ts b/src/turn-relay.ts
-index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..b3aa4007e5154b2d9cd21e8d2ad8fbc622f919c8 100644
+index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e2dc82a85 100644
 --- a/src/turn-relay.ts
 +++ b/src/turn-relay.ts
-@@ -323,7 +323,7 @@ export class TurnRelay {
+@@ -111,7 +111,51 @@ const STRIPPED_REQUEST_HEADERS = new Set([
+ 
+ const STRIPPED_RESPONSE_HEADERS = new Set(["connection", "transfer-encoding", "server", "date"]);
+ 
++const TRANSPORT_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"]);
++
++/** A socket or TLS failure (a corrupted record on a flaky network path), as opposed to an answer from the server. */
++function isTransportError(error: unknown): boolean {
++  const code = (error as NodeJS.ErrnoException | undefined)?.code ?? "";
++  return TRANSPORT_ERROR_CODES.has(code) || code.startsWith("ERR_SSL_") || /socket hang up|SSL routines/u.test(String(error));
++}
++
++/** Request headers never handed to an exchange tap: credentials and anything named like one. */
++const SECRET_HEADER = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key)$|token|secret|key/iu;
++
++function headerRecord(headers: http.OutgoingHttpHeaders | http.IncomingHttpHeaders): Record<string, string> {
++  const record: Record<string, string> = {};
++  for (const [name, value] of Object.entries(headers)) {
++    if (value === undefined) continue;
++    record[name] = SECRET_HEADER.test(name) ? "[redacted]" : Array.isArray(value) ? value.join(", ") : String(value);
++  }
++  return record;
++}
++
++/** One relayed request and its answer, as sent and received upstream; credentials redacted. */
++export interface RelayExchange {
++  url: string;
++  startedAt: number;
++  endedAt: number;
++  requestHeaders: Record<string, string>;
++  /** The body sent upstream, after the turn's transformRequest. */
++  requestBody: Buffer;
++  status?: number;
++  responseHeaders: Record<string, string>;
++  /** The response bytes as received (the SSE stream, or an error body), capped at RESPONSE_CAP. */
++  response: Buffer;
++  failure?: string;
++  /** The message assembled from the stream, when it got that far. */
++  message?: NativeMessage;
++}
++
++const RESPONSE_CAP = 32 * 1024 * 1024;
++
+ export class TurnRelay {
++  /** Backoff before each retry of a request that failed in transport before any response byte reached Claude Code. */
++  static transportRetryDelaysMs = [250, 1_000, 2_000];
++  /** Set after beginTurn to receive each of the turn's requests and its answer once its handler ends, also when aborted. */
++  onExchange?: (exchange: RelayExchange) => void;
++
+   capture: AnthropicCapture;
+   used = false;
+   denied = 0;
+@@ -177,6 +221,7 @@ export class TurnRelay {
+     this.errorBody = Buffer.alloc(0);
+     this.originalRequestBody = undefined;
+     this.requestBody = undefined;
++    this.onExchange = undefined;
+     this.transformRequest = transformRequest;
+     this.requestBetas = requestBetas;
+     this.cancelled = false;
+@@ -257,6 +302,13 @@ export class TurnRelay {
+     this.sockets.add(response);
+ 
+     let upstreamRequest: http.ClientRequest | undefined;
++    // Bound to this request: a later turn's callback never receives it.
++    const onExchange = this.onExchange;
++    const startedAt = Date.now();
++    let sentHeaders: http.OutgoingHttpHeaders = {};
++    let receivedHeaders: http.IncomingHttpHeaders = {};
++    const received: Buffer[] = [];
++    let receivedBytes = 0;
+     try {
+       let body = await this.readBody(request);
+       this.originalRequestBody = Buffer.from(body);
+@@ -282,26 +334,41 @@ export class TurnRelay {
+         ].join(",");
+       }
+ 
++      sentHeaders = headers;
+       const pathPrefix = this.upstream.pathname.replace(/\/$/u, "");
+       const transport = this.upstream.protocol === "https:" ? https : http;
+-      upstreamRequest = transport.request({
+-        protocol: this.upstream.protocol,
+-        hostname: this.upstream.hostname,
+-        port: this.upstream.port || undefined,
+-        method: "POST",
+-        path: `${pathPrefix}/v1/messages${requestUrl.search}`,
+-        headers,
+-        timeout: this.timeoutMs,
+-      });
+-      this.sockets.add(upstreamRequest);
+-
+-      const upstreamResponse = await new Promise<http.IncomingMessage>((resolve, reject) => {
+-        upstreamRequest!.once("response", resolve);
+-        upstreamRequest!.once("error", reject);
+-        upstreamRequest!.end(body);
+-      });
++      let upstreamResponse: http.IncomingMessage;
++      for (let attempt = 0; ; attempt += 1) {
++        upstreamRequest = transport.request({
++          protocol: this.upstream.protocol,
++          hostname: this.upstream.hostname,
++          port: this.upstream.port || undefined,
++          method: "POST",
++          path: `${pathPrefix}/v1/messages${requestUrl.search}`,
++          headers,
++          timeout: this.timeoutMs,
++        });
++        this.sockets.add(upstreamRequest);
++        try {
++          upstreamResponse = await new Promise<http.IncomingMessage>((resolve, reject) => {
++            upstreamRequest!.once("response", resolve);
++            upstreamRequest!.once("error", reject);
++            upstreamRequest!.end(body);
++          });
++          break;
++        } catch (error) {
++          // Nothing has reached Claude Code yet, so the same body can go again; an HTTP status never lands here.
++          const delay = TurnRelay.transportRetryDelaysMs[attempt];
++          if (this.cancelled || delay === undefined || !isTransportError(error)) throw error;
++          this.sockets.delete(upstreamRequest);
++          upstreamRequest.destroy();
++          await new Promise((resolve) => setTimeout(resolve, delay));
++          if (this.cancelled) throw error;
++        }
++      }
+       this.sockets.add(upstreamResponse);
+       this.status = upstreamResponse.statusCode;
++      receivedHeaders = upstreamResponse.headers;
+       this.requestId =
+         String(upstreamResponse.headers["request-id"] ?? upstreamResponse.headers["x-request-id"] ?? "") || undefined;
+ 
+@@ -314,6 +381,10 @@ export class TurnRelay {
+ 
+       for await (const rawChunk of upstreamResponse) {
+         const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
++        if (onExchange && receivedBytes < RESPONSE_CAP) {
++          received.push(chunk);
++          receivedBytes += chunk.length;
++        }
+         if (this.status === 200) this.capture.feed(chunk);
+         else if (this.errorBody.length < 65_536) {
+           this.errorBody = Buffer.concat([this.errorBody, chunk]).subarray(0, 65_536);
+@@ -323,10 +394,29 @@ export class TurnRelay {
        if (this.status === 200) this.capture.finish();
        response.end();
      } catch (error) {
@@ -549,3 +871,25 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..b3aa4007e5154b2d9cd21e8d2ad8fbc6
        if (!response.headersSent) response.writeHead(this.cancelled ? 499 : 502).end();
        else response.destroy();
      } finally {
++      if (onExchange && this.requestBody) {
++        const exchange: RelayExchange = {
++          url: `${this.upstream.origin}${this.upstream.pathname.replace(/\/$/u, "")}/v1/messages${requestUrl.search}`,
++          startedAt,
++          endedAt: Date.now(),
++          requestHeaders: headerRecord(sentHeaders),
++          requestBody: this.requestBody,
++          status: this.status,
++          responseHeaders: headerRecord(receivedHeaders),
++          response: Buffer.concat(received),
++          failure: this.failure,
++          message: this.capture.message,
++        };
++        try {
++          onExchange(exchange);
++        } catch {
++          // An observer must never fail the request it observes.
++        }
++      }
+       if (upstreamRequest) this.sockets.delete(upstreamRequest);
+       this.sockets.delete(request);
+       this.sockets.delete(response);

@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, isValidElement } from 'react'
 import type { EffectCallback, ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -140,7 +141,8 @@ const calls = () =>
   harness.fetch.mock.calls.flatMap(([url, init]) =>
     (url as string).endsWith('/configure') ? [[url as string, init?.body as string]] : [],
   )
-const inScope = (id: number, children: ReactNode) => h(ConversationScope, { id, children })
+const inScope = (id: number, children: ReactNode) =>
+  h(ConversationScope, { id: id as ConversationId, children })
 
 /** Renders `component`'s own output, for calling the handlers on it, inside whatever wraps `Capture`. */
 let captured: ReactElement | null = null
@@ -211,9 +213,9 @@ it('points the model and thinking controls inside a scope at the scoped conversa
 
   // Shift+Tab typed in the side chat cycles its level; typed in main, main's.
   const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
-  await cycle.run({ ...actions, surface: 'agent', conversationId: 17 })
+  await cycle.run({ ...actions, surface: 'agent', conversationId: 17 as ConversationId })
   expect(calls().at(-1)?.[0]).toBe('/api/conversations/17/configure')
-  await cycle.run({ ...actions, surface: 'agent', conversationId: 1 })
+  await cycle.run({ ...actions, surface: 'agent', conversationId: 1 as ConversationId })
   expect(calls().at(-1)).toEqual([
     '/api/conversations/1/configure',
     JSON.stringify({ thinkingLevel: 'low' }),

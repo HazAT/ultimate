@@ -3,7 +3,12 @@ Inline setup choices, the first-run prerequisites, and the Extensions panel that
 ## First run
 
 The first run has only **Get ready**: connect a provider and choose an available model. The model row recommends a
-1M+ context window for @ultimate, and names the chosen model's window when it is smaller. ⌘K **Get ready…** opens it
+1M+ context window for @ultimate, and names the chosen model's window when it is smaller. While no default model is
+configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.ts`: Opus 5.5 through Claude Code, then
+`openai-codex/gpt-6-astra`) with a login, else the first model with one, and links to Claude Code's setup while that is
+logged out. Continue saves the pre-selection, or a model picked in the dialog, as the default family's model with
+thinking high (the models extension's `setDefault`), so @ultimate, new conversations and branches start on it; a
+configured default is only replaced by a pick made in the dialog. ⌘K **Get ready…** opens it
 again whatever the recorded state, e.g. on a preview (which has its own copy of `onboarding.json`); its
 Continue starts onboarding once per root, as above. Continue waits for both, starts onboarding with @ultimate through `onDone`, then records `firstRunDone`;
 there is no second page. Escape or the close button records completion without changing settings. Closing returns
@@ -28,11 +33,16 @@ quiet `onboarding.start` input with `{ root, instructions?, facts }`: project na
 project setup, Git isolation reason (if any), root id and emptiness. Model text names the event, lists those facts
 and preserves the instructions. Request id `onboarding:<root>` ensures one input per root; repeated calls return
 `{ id }` without sending again: the root conversation's `onboarding.starts` document maps roots to that standing id.
+A start whose run failed before answering (`no_model`, or a `model_error` such as an expired login) has not begun:
+while @ultimate is idle, its newest run failed that way and nothing since the start was answered (a message typed
+meanwhile may have failed too), a repeated call continues it instead, checked and admitted in one commit, so two calls
+start one run. Once @ultimate answered anything after the start, onboarding is under way and a call sends nothing.
 
 Start here is a card above @ultimate's composer (`survey.tsx`, through the SDK's `composer` renderer) until
 onboarding has run for the project's root: `onboarding.starts` names the root, or the root carries memories (a new
 chapter's root, set up long ago; `onboarded.ts`). Its one button, **Set up with @ultimate**, calls `start { root }`,
-like Get ready's Continue; once that records the root, the card is gone for good. Its × calls the user-only
+like Get ready's Continue; once that records the root, the card is gone for good. While @ultimate's model has no
+login or is unavailable, the button opens Get ready instead, whose Continue then starts setup. Its × calls the user-only
 `dismiss`, which sets `dismissed` on `onboarding.starts` and hides the card for the project on every device; ⌘K
 **Get ready…** still starts setup. The History page (the root) takes
 no input.
@@ -63,8 +73,8 @@ The tool renderer shows a quiet, transcript-width card:
   see [settings](../../docs/settings.md)) start unchecked unless the user's settings enable them, each with one line
   on what it needs (a key, a service, a Worker).
   Core-tier extensions (`ExtensionInfo.core`, such as `subagents`, `messages`, `lineage`, `onboarding` and `documents`)
-  stay checked and disabled with "core, always on": the server keeps them enabled whatever the settings say. Dependencies are checked with their extension (`automations` needs
-  `subagents`, `phase` needs `classify`).
+  stay checked and disabled with "core, always on": the server keeps them enabled whatever the settings say. Dependencies are checked with their extension (`phase` needs
+  `classify`).
   Continue applies user-global choices with `applyFirstRun`. Both checked and unchecked choices are saved explicitly;
   project settings can still override user settings.
 - **Project:** "Use this project's setup?", chips showing its extensions, settings, agents and skills, and its

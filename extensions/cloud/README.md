@@ -1,4 +1,4 @@
-# Cloud
+Backs up your projects, encrypted, to a cloud server you run yourself (needs setup and two keys).
 
 Encrypted project backups in the user's cloud, inert until configured. A project runs on whichever machine the user
 starts it on; the cloud holds its backups and a register of which machine backed up what, and `pnpm restore` installs

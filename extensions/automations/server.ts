@@ -1,10 +1,12 @@
+import { parseConversationId, parseTaskId } from '../../lib/ids.ts'
+import type { TaskId, Tx, ConversationId } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { access, link, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { arr, bool, int, lit, map, num, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
@@ -17,18 +19,18 @@ import {
   ROOT_CONVERSATION_ID,
   section,
 } from '@earendil-works/pi-durable'
-import type { TaskId, Tx, ConversationId } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ActionContext } from '../../server/actions.ts'
 import { EVENT_FEED } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
+import { errnoCode, isMissing } from '../../lib/errors.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
 import { writeJson } from '../../lib/json-file.ts'
-import { SubagentsApi } from '../subagents/api.ts'
+import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { AutomationsApi } from './api.ts'
@@ -63,6 +65,7 @@ import type {
   Subscriber,
 } from './types.ts'
 import { isSlug, STANDING } from './types.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 export type { Automation, Run } from './types.ts'
 export { launchHandshake } from './supervisor.ts'
 type Ledger = { next: number; automations: Record<string, Automation> }
@@ -72,24 +75,19 @@ export const Automations = defineDoc<Ledger>({
   version: 3,
   scope: 'session',
   initial: () => ({ next: 1, automations: {} }),
-  // Version 1 also holds schedule records from before scripts and subscribers. Version 3: a project script discovery
-  // made with nobody to wake wakes @ultimate, as its manifest now says by default. Pi Durable stores the migrated
-  // value as a version 3 base on the ledger's next write.
   migrate: (value) => {
     const ledger = value as unknown as Ledger
     for (const a of Object.values(ledger.automations)) {
       a.subscribers ??= []
       if (a.fires === undefined) {
-        // Old records counted fires only as runs; the last run anchors the next interval, as it did then.
         a.fires = a.runs.length
-        const last = a.runs.at(-1)
-        if (last) a.lastFireAt = last.firedAt
+        const legacyIntervalAnchor = a.runs.at(-1)
+        if (legacyIntervalAnchor) a.lastFireAt = legacyIntervalAnchor.firedAt
       }
       if (a.scope === 'project' && !a.prompt && !a.subscribers.length) {
         a.subscribers = ['@ultimate']
         a.script!.to = '@ultimate'
       }
-      // The cooldown now counts from the condition's own fire; until the next one, from the last fire of any kind.
       if (a.condition && a.condition.firedAt === undefined && a.lastFireAt !== undefined)
         a.condition.firedAt = a.lastFireAt
     }
@@ -97,8 +95,7 @@ export const Automations = defineDoc<Ledger>({
   },
 })
 type Change = { result: JsonValue; abort?: TaskId; effect?: Effect }
-/** Per tool call, by call id: a codemode script's nested calls share its task, so the task alone does not name a call. */
-const Receipts = defineDoc<Record<string, Partial<Change>>>({
+const ReceiptsByToolCallId = defineDoc<Record<string, Partial<Change>>>({
   kind: 'ultimate.automation-receipts',
   checkpointWhen: () => false,
   version: 1,
@@ -106,7 +103,6 @@ const Receipts = defineDoc<Record<string, Partial<Change>>>({
   initial: () => ({}),
 })
 const json = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
-/** A fire must reach someone: a run, a subscriber, or both. Refuses a change that would leave neither. */
 function reachesSomeone(a: Automation) {
   if (!a.prompt && !a.subscribers.length)
     throw new Error('At least one of prompt or subscribers is required')
@@ -115,6 +111,7 @@ function required(v: unknown, field: string): string {
   if (typeof v !== 'string' || !v.trim()) throw new Error(`${field} is required`)
   return v.trim()
 }
+const SUBSCRIBERS_IN_CALL_ORDER = 'sequential'
 const operations = [
   'events',
   'list',
@@ -134,7 +131,7 @@ const operations = [
 function backend(host: ExtensionHost) {
   const schedule = scheduler(host, Automations, (...args) => scripts.deliver(...args))
   const scripts = supervisor(host, Automations, schedule.fire)
-  const trigger = triggers(host, Automations, schedule.fire, schedule.prepareFires)
+  const trigger = triggers(host, Automations, schedule.fire, schedule.scanRunsBeforeWrites)
   const {
     trusted,
     agentFor,
@@ -150,20 +147,18 @@ function backend(host: ExtensionHost) {
     tail,
     MANIFEST,
   } = scripts
-  /** A subscriber as stored: `#id` and numbers become the conversation id, `@name` stays the standing agent's name. */
   async function subscriber(value: unknown): Promise<Subscriber> {
     if (typeof value === 'number' || (typeof value === 'string' && /^#[1-9]\d*$/.test(value))) {
-      const id = typeof value === 'number' ? value : Number(value.slice(1))
+      const id = parseConversationId(typeof value === 'number' ? value : Number(value.slice(1)))
       if (
         !Number.isInteger(id) ||
         id < 1 ||
-        !(await host.harness().conversation(id as ConversationId, BACKGROUND_CONTEXT))
+        !(await host.harness().conversation(id, BACKGROUND_CONTEXT))
       )
         throw new Error(`Unknown subscriber #${id}`)
       return id
     }
     if (typeof value === 'string' && STANDING.test(value)) {
-      // Throws for a name that is no standing agent; stored by name, it follows the agent across chapters.
       await host
         .need(SubagentsApi)
         .standing(value.slice(1), BACKGROUND_CONTEXT)
@@ -174,7 +169,7 @@ function backend(host: ExtensionHost) {
     }
     throw new Error('subscribers must be #id or @name')
   }
-  async function prepareScript(args: Args, caller?: number): Promise<Prepared> {
+  async function prepareScript(args: Args, caller?: ConversationId): Promise<Prepared> {
     if (args.action === 'create') {
       if (!caller) throw new Error('create requires a caller conversation')
       if (args.scope !== 'project') {
@@ -185,8 +180,7 @@ function backend(host: ExtensionHost) {
         throw new Error("Choose this project's local setup before creating project automations")
       if (args.to !== undefined && !STANDING.test(args.to))
         throw new Error('A project automation wakes a standing agent: to must be @name')
-      // The caller becomes a subscriber; discovery configures the watcher from @ultimate.
-      if (!(await host.harness().conversation(caller as ConversationId, BACKGROUND_CONTEXT)))
+      if (!(await host.harness().conversation(caller, BACKGROUND_CONTEXT)))
         throw new Error(`Unknown caller #${caller}`)
       const slug =
         args.slug ??
@@ -208,12 +202,11 @@ function backend(host: ExtensionHost) {
         to: args.to ?? '@ultimate',
       }
       const path = join(projectDir(slug), MANIFEST)
-      const existing = await readFile(path, 'utf8').then(
+      const existingOrInvalidManifest = await readFile(path, 'utf8').then(
         (text) => {
           try {
             return manifest(JSON.parse(text)) ?? null
           } catch {
-            // An unreadable manifest is someone's broken automation, not ours to overwrite.
             return null
           }
         },
@@ -222,30 +215,31 @@ function backend(host: ExtensionHost) {
           return undefined
         },
       )
-      // An equal manifest is this create's own, published before a crash: it is adopted. A different one is another
-      // automation.
       const taken = () => new Error(`Automation ${slug} already exists; pass another slug`)
-      if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(committed))
-        throw taken()
-      if (existing === undefined) {
+      const manifestConflict =
+        existingOrInvalidManifest !== undefined &&
+        JSON.stringify(existingOrInvalidManifest) !== JSON.stringify(committed)
+      if (manifestConflict) throw taken()
+      if (existingOrInvalidManifest === undefined) {
         await mkdir(projectDir(slug), { recursive: true })
-        // Written whole to a temporary file, then linked into place: the link is atomic and exclusive, so a crash never
-        // leaves a partial manifest, and of two creates racing for one slug only one publishes.
-        const draft = `${path}.${process.pid}.${randomUUID()}`
-        await writeFile(draft, `${JSON.stringify(committedManifest(committed), null, 2)}\n`, {
-          flush: true,
-        })
+        const exclusiveManifestDraft = `${path}.${process.pid}.${randomUUID()}`
+        await writeFile(
+          exclusiveManifestDraft,
+          `${JSON.stringify(committedManifest(committed), null, 2)}\n`,
+          {
+            flush: true,
+          },
+        )
         try {
-          await link(draft, path)
+          await link(exclusiveManifestDraft, path)
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+          if (errnoCode(error) !== 'EEXIST') throw error
           const found = manifest(JSON.parse(await readFile(path, 'utf8')))
           if (JSON.stringify(found) !== JSON.stringify(committed)) throw taken()
         } finally {
-          await rm(draft, { force: true })
+          await rm(exclusiveManifestDraft, { force: true })
         }
       }
-      // Discovery alone makes project records: the create then takes the record it made.
       await discover()
       return { slug, manifest: committed }
     }
@@ -259,7 +253,6 @@ function backend(host: ExtensionHost) {
       [args.name, args.ask, args.once, args.secrets].some((value) => value !== undefined)
     ) {
       const script = sub.script!
-      // The record's own fields change with the update's commit; a discovery before then must not hide the old ask.
       prepared.previousAsk = script.ask
       await writeJson(
         join(projectDir(id), MANIFEST),
@@ -284,22 +277,46 @@ function backend(host: ExtensionHost) {
     if (args.action === 'escalate') required(args.reason, 'reason')
     if (args.action === 'subscribe' || args.action === 'unsubscribe') {
       if (args.to === undefined && !caller) throw new Error('Subscriber conversation is missing')
-      // Unsubscribing takes what is stored, even a conversation since removed.
-      if (args.action === 'unsubscribe' && args.to !== undefined) {
+      const unsubscribeStoredTarget = args.action === 'unsubscribe'
+      if (unsubscribeStoredTarget && args.to !== undefined) {
         if (!/^#[1-9]\d*$/.test(args.to) && !STANDING.test(args.to))
           throw new Error('to must be #id or @name')
-        prepared.subscriber = args.to.startsWith('#') ? Number(args.to.slice(1)) : args.to
+        prepared.subscriber = args.to.startsWith('#')
+          ? parseConversationId(Number(args.to.slice(1)))
+          : args.to
         return prepared
       }
       prepared.subscriber = await subscriber(args.to ?? caller)
     }
     return prepared
   }
+  async function owedAtCreation(tx: Tx, subscribers: Subscriber[], caller?: ConversationId) {
+    if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
+      return {}
+    const firesWakeCaller = subscribers.some((s) => s === caller || s === '@ultimate')
+    const { serves, branches } = await host.need(MessagesApi).owed(tx, caller, firesWakeCaller)
+    return {
+      ...(serves ? { serves: { ...serves, by: caller } } : {}),
+      ...(branches ? { branches: { ids: branches, by: caller } } : {}),
+    }
+  }
+  async function dropServedRequest(tx: Tx, a: Automation) {
+    if (!a.serves) return
+    const { by, ...serves } = a.serves
+    await host
+      .need(MessagesApi)
+      .dropped(
+        tx,
+        by,
+        serves,
+        `Automation ${a.id} "${a.name}", which worked on your message ${serves.message}, was deleted before it fired; no result will come from it.`,
+      )
+  }
   async function changeScript(
     tx: Tx,
     args: Args,
     prepared: Prepared,
-    caller?: number,
+    caller?: ConversationId,
   ): Promise<{ result: JsonValue; effect?: Effect }> {
     const state = await tx.doc(Automations)
     if (args.action === 'list')
@@ -318,40 +335,52 @@ function backend(host: ExtensionHost) {
         ...(args.thinking ? { thinking: args.thinking } : {}),
       }
       if (prepared.slug) {
-        // The record discovery made from this create's manifest; one already used belongs to someone else.
         const sub = state.automations[prepared.slug]
         if (!sub)
           throw new Error(`Automation ${prepared.slug} was not discovered; check its manifest`)
         const m = prepared.manifest!
-        const same =
+        const matchesThisCreatesManifest =
           sub.name === m.name &&
           sub.script!.ask === m.ask &&
           sub.script!.once === m.once &&
           sub.script!.to === m.to
-        if (!same || sub.script!.state !== 'stopped' || sub.script!.startedAt || sub.fires)
+        if (
+          !matchesThisCreatesManifest ||
+          sub.script!.state !== 'stopped' ||
+          sub.script!.startedAt ||
+          sub.fires
+        )
           throw new Error(`Automation ${prepared.slug} already exists; pass another slug`)
+        const subscribers = [
+          ...new Set([
+            ...sub.subscribers,
+            ...(prepared.subscribers ?? (args.prompt || !caller ? [] : [caller])),
+          ]),
+        ]
         Object.assign(sub, runProfile, {
           enabled: true,
           updatedAt: Date.now(),
-          subscribers: [
-            ...new Set([
-              ...sub.subscribers,
-              ...(prepared.subscribers ?? (args.prompt || !caller ? [] : [caller])),
-            ]),
-          ],
+          subscribers,
           ...(args.key ? { key: args.key } : {}),
+          ...(await owedAtCreation(tx, subscribers, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
         return { result: sub }
       }
       const id = `A${state.next++}`
+      const subscribers = prepared.subscribers?.length
+        ? prepared.subscribers
+        : args.prompt
+          ? []
+          : [caller!]
+      const owed = await owedAtCreation(tx, subscribers, caller)
       const conversationId = await agentConversation(
         tx,
         prepared,
         id,
         name,
-        (await tx.doc(AgentDoc, caller as ConversationId)).cwd ?? host.projectRoot,
+        (await tx.doc(AgentDoc, caller!)).cwd ?? host.projectRoot,
       )
       const now = Date.now()
       const sub: Automation = {
@@ -366,16 +395,13 @@ function backend(host: ExtensionHost) {
           state: 'writing',
           ...(args.secrets ? { secrets: args.secrets } : {}),
         },
-        subscribers: prepared.subscribers?.length
-          ? prepared.subscribers
-          : args.prompt
-            ? []
-            : [caller!],
+        subscribers,
         ...runProfile,
         createdAt: now,
         updatedAt: now,
         runs: [],
         fires: 0,
+        ...owed,
       }
       state.automations[id] = sub
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -394,14 +420,14 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'resume' || args.action === 'run') {
       sub.enabled = true
       sub.script!.state = 'running'
-      // Retain the old pid until launch so onOpen can sweep it if the process dies before the effect.
+      const crashSweepPid = () => sub.script!.pid
       delete sub.script!.error
       return {
         result: sub,
         effect: {
           id,
           action: 'resume',
-          ...(sub.script!.pid ? { previousPid: sub.script!.pid } : {}),
+          ...(crashSweepPid() ? { previousPid: crashSweepPid() } : {}),
         },
       }
     } else if (args.action === 'pause' || args.action === 'delete' || args.action === 'escalate') {
@@ -412,7 +438,10 @@ function backend(host: ExtensionHost) {
         sub.enabled = false
         if (sub.script!.state !== 'done') sub.script!.state = 'stopped'
       }
-      if (args.action === 'delete') delete state.automations[id]
+      if (args.action === 'delete') {
+        await dropServedRequest(tx, sub)
+        delete state.automations[id]
+      }
       return {
         result: args.action === 'delete' ? { id } : sub,
         effect: { id, action: 'pause', ...(pid ? { previousPid: pid } : {}) },
@@ -421,7 +450,7 @@ function backend(host: ExtensionHost) {
     return { result: sub }
   }
 
-  async function validate(args: Args, caller?: number) {
+  async function validate(args: Args, caller?: ConversationId) {
     if (!host.extensions().some((e) => e.name === 'subagents' && e.enabled))
       throw new Error('automations needs the subagents extension enabled')
     if (!operations.includes(args.action as (typeof operations)[number]))
@@ -479,9 +508,8 @@ function backend(host: ExtensionHost) {
         throw new Error(`Unknown of: ${c.of}`)
     }
     if (args.name !== undefined) required(args.name, 'name')
-    // An empty prompt on update removes the run action; create needs a real one.
-    if (args.prompt !== undefined && (args.action === 'create' || args.prompt !== ''))
-      required(args.prompt, 'prompt')
+    const removesPromptRun = () => args.action !== 'create' && args.prompt === ''
+    if (args.prompt !== undefined && !removesPromptRun()) required(args.prompt, 'prompt')
     if (args.once !== undefined && typeof args.once !== 'boolean')
       throw new Error('once must be boolean')
     if (
@@ -492,28 +520,26 @@ function backend(host: ExtensionHost) {
     args.secrets?.forEach(validateName)
     if (args.action === 'update') {
       const a = await scripts.status(required(args.id, 'id'))
-      // A schedule, event or condition may become another of these; a script stays a script.
-      const kinds = [args.schedule, args.event, args.condition].filter((v) => v !== undefined)
+      const nonScriptTriggers = [args.schedule, args.event, args.condition].filter(
+        (v) => v !== undefined,
+      )
       if (
         (args.ask !== undefined && !a.script) ||
-        (kinds.length > 0 && !!a.script) ||
-        kinds.length > 1
+        (nonScriptTriggers.length > 0 && !!a.script) ||
+        nonScriptTriggers.length > 1
       )
         throw new Error('Cannot change trigger kind')
       if (args.ask !== undefined) required(args.ask, 'ask')
     }
   }
-  async function prepare(args: Args, caller?: number): Promise<Prepared> {
-    // A key that already made an automation is answered from it before anything else runs: validation may make a
-    // standing agent's conversation, and preparation may publish a manifest. The transaction checks it is still there.
-    if (
+  async function prepare(args: Args, caller?: ConversationId): Promise<Prepared> {
+    const existingKeyedCreate =
       args.action === 'create' &&
       typeof args.key === 'string' &&
       Object.values(
         (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations ?? {},
       ).some((a) => a.key === args.key)
-    )
-      return { keyed: true }
+    if (existingKeyedCreate) return { keyed: true }
     await validate(args, caller)
     if (args.action === 'create') {
       const subscribers = args.subscribers?.length
@@ -544,15 +570,14 @@ function backend(host: ExtensionHost) {
     tx: Tx,
     args: Args,
     prepared: Awaited<ReturnType<typeof prepare>>,
-    caller?: number,
+    caller?: ConversationId,
   ): Promise<Change> {
     if (args.action === 'events') return { result: json(TRIGGER_EVENTS) }
     const state = await tx.doc(Automations)
     if (args.action === 'list') return changeScript(tx, args, prepared, caller)
     if (args.action === 'create' && args.key !== undefined) {
-      // A caller that lost its create's receipt (a crash, a retry) gets the automation it made, not a second one.
-      const made = Object.values(state.automations).find((a) => a.key === args.key)
-      if (made) return { result: json(made) }
+      const alreadyCreatedForKey = Object.values(state.automations).find((a) => a.key === args.key)
+      if (alreadyCreatedForKey) return { result: json(alreadyCreatedForKey) }
       if (prepared.keyed)
         throw new Error(`The automation for key ${args.key} was deleted meanwhile; create it again`)
     }
@@ -561,6 +586,11 @@ function backend(host: ExtensionHost) {
     const id = args.action === 'create' ? `A${state.next++}` : required(args.id, 'id')
     if (args.action === 'create') {
       const now = Date.now()
+      const subscribers = prepared.subscribers?.length
+        ? prepared.subscribers
+        : args.prompt
+          ? []
+          : [caller!]
       state.automations[id] = {
         id,
         name: required(args.name, 'name'),
@@ -571,11 +601,8 @@ function backend(host: ExtensionHost) {
         runs: [],
         fires: 0,
         ...(args.key ? { key: args.key } : {}),
-        subscribers: prepared.subscribers?.length
-          ? prepared.subscribers
-          : args.prompt
-            ? []
-            : [caller!],
+        subscribers,
+        ...(await owedAtCreation(tx, subscribers, caller)),
       }
     }
     const a = state.automations[id]
@@ -586,7 +613,7 @@ function backend(host: ExtensionHost) {
     if (args.action === 'abort') {
       const run = a.runs.find((r) => r.id === args.runId)
       if (!run || run.status !== 'running') throw new Error('runId must identify a running run')
-      return { result: { id: run.id }, abort: Number(run.id) as TaskId }
+      return { result: { id: run.id }, abort: parseTaskId(Number(run.id)) }
     }
     if (
       ['subscribe', 'unsubscribe'].includes(args.action) ||
@@ -603,10 +630,11 @@ function backend(host: ExtensionHost) {
       throw new Error('This one-shot time has passed; update the time first')
     const abort = a.scheduler
     const oldSchedule = a.schedule && { ...a.schedule }
-    const oldAsk = prepared.previousAsk ?? a.script?.ask
+    const preDiscoveryAsk = prepared.previousAsk ?? a.script?.ask
     delete a.scheduler
     if (args.action !== 'update') delete a.nextAt
     if (args.action === 'delete') {
+      await dropServedRequest(tx, a)
       delete state.automations[id]
       return { result: { id }, ...(abort ? { abort } : {}) }
     }
@@ -626,23 +654,25 @@ function backend(host: ExtensionHost) {
       if (args.event !== undefined) {
         delete a.schedule
         delete a.condition
-        a.event = { ...args.event, sinceEvent: a.event?.sinceEvent ?? (await newestEvent(tx)) }
+        a.event = {
+          ...args.event,
+          sinceEvent: a.event?.sinceEvent ?? (await eventActivationCursor(tx)),
+        }
       }
       if (args.condition !== undefined) {
         delete a.schedule
         delete a.event
-        const previousOf = a.condition?.of
+        const previousTarget = a.condition?.of
         a.condition = {
           ...a.condition,
           ...args.condition,
           cooldownMs: args.condition.cooldownMs ?? a.condition?.cooldownMs ?? 3600000,
           armed: a.condition?.armed ?? true,
         }
-        // Another target's input says nothing about this one: its pause counts afresh, from this update.
         if (!a.condition.idleFor) {
           delete a.condition.idleFor
           delete a.condition.inputAt
-        } else if (previousOf !== undefined && previousOf !== a.condition.of)
+        } else if (previousTarget !== undefined && previousTarget !== a.condition.of)
           a.condition.inputAt = Date.now()
       }
       if (a.script) {
@@ -656,8 +686,7 @@ function backend(host: ExtensionHost) {
       }
       if (args.model !== undefined) a.model = args.model
       if (args.thinking !== undefined) a.thinking = args.thinking
-      if (a.script && a.script.ask !== oldAsk) {
-        // The running script watches the old condition: stop it and have the watcher write run again, as at creation.
+      if (a.script && a.script.ask !== preDiscoveryAsk) {
         a.script.state = 'writing'
         delete a.script.error
         effect = {
@@ -669,7 +698,7 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'pause') a.enabled = false
     else if (args.action === 'resume') a.enabled = true
     else throw new Error(`Unknown action: ${args.action}`)
-    if (args.action === 'resume' && a.event) a.event.sinceEvent = await newestEvent(tx)
+    if (args.action === 'resume' && a.event) a.event.sinceEvent = await eventActivationCursor(tx)
     if (args.action === 'create' || args.action === 'resume')
       await trigger.evaluate(tx, a, prepared.target)
     a.updatedAt = Date.now()
@@ -693,7 +722,7 @@ function backend(host: ExtensionHost) {
     if (receipt.abort) await host.harness().abortTask(receipt.abort, BACKGROUND_CONTEXT)
     await scripts.apply(receipt.effect)
   }
-  async function operate(args: Args, caller?: number): Promise<JsonValue> {
+  async function operate(args: Args, caller?: ConversationId): Promise<JsonValue> {
     const prepared = await prepare(args, caller)
     const receipt = await host
       .harness()
@@ -703,11 +732,7 @@ function backend(host: ExtensionHost) {
       return json(await scripts.status(required(args.id, 'id')))
     return receipt.result
   }
-  /**
-   * The newest event committed before `tx`: an event trigger activated in `tx` handles only later ones. Read from the
-   * root's event feed, which every emit appends to in its own commit.
-   */
-  async function newestEvent(tx: Tx) {
+  async function eventActivationCursor(tx: Tx) {
     const feed = host.doc(EVENT_FEED)
     if (!feed) throw new Error('The event feed is not available')
     return (
@@ -783,7 +808,7 @@ export const actions = {
       const text = await readFile(path, 'utf8')
       return { path, text: text.length > 65536 ? `${text.slice(0, 65536)}\n…` : text }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path, text: '' }
+      if (isMissing(error)) return { path, text: '' }
       throw error
     }
   }),
@@ -832,9 +857,8 @@ export default function automations(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         onYield: async (answer, hookApi, ctx) => {
-          // Through the hook's reader: a Session read here would queue behind the generation that is yielding.
-          const ledger = await hookApi.snapshot(Automations, ctx)
-          const watched = Object.values(ledger?.automations ?? {}).some(
+          const yieldLedger = await hookApi.snapshot(Automations, ctx)
+          const watched = Object.values(yieldLedger?.automations ?? {}).some(
             (a) => a.script?.conversationId === hookApi.conversationId,
           )
           if (!watched) return undefined
@@ -845,25 +869,30 @@ export default function automations(host: ExtensionHost) {
       }),
     ],
     sections: [
-      section('automations', async ({ read }, context) => {
-        const state = await read.snapshot(Automations, context)
-        const lines = Object.values(state?.automations ?? {})
-          .filter((a) => a.enabled)
-          .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
-        // Always rendered: a section that disappears and reappears reorders the prompt, which rebuilds it whole.
-        return lines.length ? lines.join('\n') : 'None enabled.'
-      }),
+      section(
+        'automations',
+        async ({ read }, context) => {
+          const state = await read.snapshot(Automations, context)
+          const lines = Object.values(state?.automations ?? {})
+            .filter((a) => a.enabled)
+            .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
+          const orderedEmptySection = ''
+          return lines.length
+            ? `<automations>\n${lines.join('\n')}\n</automations>`
+            : orderedEmptySection
+        },
+        { tag: false },
+      ),
     ],
     tools: [
       defineTool({
         name: 'automation',
-        // Receipts deduplicate ledger changes; process effects reuse their committed pid on replay.
-        replay: 'safe',
-        // Calls in one round apply in the order written: a parallel unsubscribe could otherwise commit before the
-        // subscribe meant to replace it and be refused for leaving nobody to wake.
-        executionMode: 'sequential',
+        ...safeToRerun(
+          'Receipts deduplicate ledger changes; process effects reuse their committed pid on replay.',
+        ),
+        executionMode: SUBSCRIBERS_IN_CALL_ORDER,
         description:
-          'Automate background work with one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers). create {name,schedule?|ask?|event?|condition?,once?,secrets?,prompt?,agent?,model?,thinking?,subscribers?: (#id|@name)[],scope?,slug?,to?,key?}. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run. @name subscribers follow that standing agent across chapters. key makes create idempotent: a repeated key returns the automation it made. ask starts a watcher that writes a supervised script: stdout FIRE wakes subscribers and/or starts a prompt run; DONE then exit 0 stops recurring scripts. event {name,where?} watches domain events; events lists names and fields. condition {metric:"context",of:"@name"|"#id",above:1-99,cooldownMs?,idleFor?} watches context fill; idleFor (ms) waits until the user gave it no input for that long. Scripts spend tokens only on setup and repair; prompt runs spend tokens every fire. Schedules: cron "0 9 * * 1-5" Europe/Vienna, at 2026-12-01T09:00:00Z, in 30m, every 15m. IDs A<n>, or lowercase slugs for project scripts in <project>/.ultimate/automations/<slug>/; the to (@name, default @ultimate) in their automation.json is woken on every machine. Project scripts never start themselves. list; update; pause/resume; run (fire trigger now or relaunch script); runs; log {id,lines?}; abort {id,runId}; escalate {id,reason}; subscribe/unsubscribe {id,to?: "#id"|"@name"} (default caller); delete (keeps files and conversations). Without prompt or subscribers, caller subscribes. Optional agent selects an existing definition (isolates ignored), model {provider,modelId} and thinking override it; otherwise runs copy the root agent. Failures wake only the watcher; the third in a row, or a watcher ending its turn mid-repair, escalates: subscribers and @ultimate are notified.',
+          'Automate background work: one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers: #id|@name). create {name, trigger, prompt?, subscribers?, key?, …}; with neither action the caller subscribes. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run (a whole agent turn every fire). schedule: cron "0 9 * * 1-5" Europe/Vienna, at <ISO time>, in 30m, every 15m. ask: a watcher writes a supervised script that fires on stdout FIRE (tokens only for setup and repair); once defaults to true, so the first FIRE finishes it: pass once:false to keep watching. event {name,where?}: action events lists them. condition {metric:"context",of:"@name"|"#id",above}. list; these take {id}: update, pause, resume, run, runs, log, abort {runId}, escalate {reason}, subscribe/unsubscribe {to?}, delete. Details: extensions/automations/README.md in the Ultimate clone.',
         parameters: obj({
           action: strEnum(operations),
           id: opt(str()),
@@ -902,7 +931,13 @@ export default function automations(host: ExtensionHost) {
           lines: opt(int({ minimum: 1, maximum: 2000 })),
           reason: opt(str()),
         }),
-        execute: async (args, tool, context) => {
+        execute: async (rawArgs, tool, context) => {
+          const args: Args = {
+            ...rawArgs,
+            subscribers: rawArgs.subscribers?.map((id) =>
+              typeof id === 'number' ? parseConversationId(id) : id,
+            ),
+          }
           const cached = await tool.memo<{ output: { type: 'text'; text: string }[] }>(
             'result',
             context,
@@ -913,13 +948,14 @@ export default function automations(host: ExtensionHost) {
               ? await actingAs(host, tool.conversationId, context)
               : tool.conversationId
           let receipt = await tool.commit(
-            async (tx) => json((await tx.doc(Receipts, tool.taskId))[tool.callId] ?? {}),
+            async (tx) =>
+              json((await tx.doc(ReceiptsByToolCallId, tool.taskId))[tool.callId] ?? {}),
             context,
           )
           if (receipt.result === undefined) {
             const prepared = await api.prepare(args, caller)
             receipt = await tool.commit(async (tx) => {
-              const saved = await tx.doc(Receipts, tool.taskId)
+              const saved = await tx.doc(ReceiptsByToolCallId, tool.taskId)
               saved[tool.callId] ??= json(await api.change(tx, args, prepared, caller))
               return json(saved[tool.callId])
             }, context)

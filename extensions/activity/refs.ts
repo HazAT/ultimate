@@ -1,4 +1,5 @@
 /** Activity in the browser: a page of the durable event log, older than the live feed holds. Browser-safe. */
+import type { EntryId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 import type { EventRecord } from '../../shared/events.ts'
 
@@ -8,6 +9,6 @@ import type { EventRecord } from '../../shared/events.ts'
  * `next` pages back from the last one; it is absent once nothing older matches.
  */
 export const PageAction = actionRef<
-  { kinds: string[]; before?: number; since?: string; limit?: number },
-  { events: EventRecord[]; next?: number }
+  { kinds: string[]; before?: EntryId; since?: string; limit?: number },
+  { events: EventRecord[]; next?: EntryId }
 >('activity', 'page')

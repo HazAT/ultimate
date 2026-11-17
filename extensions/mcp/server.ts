@@ -1,7 +1,3 @@
-/**
- * MCP: connects the servers in `mcpServers` (user settings, and the project's once its setup is trusted) and offers
- * their tools through one `mcp` tool, so the prompt stays the same however many tools the servers have.
- */
 import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { map, obj, opt, str, unknown } from '@earendil-works/pi-schema'
@@ -19,21 +15,21 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 
 export const reloadOnSettings = true
 export const pollActions = ['status']
 
-/** A tool call may run long; progress notifications from the server renew it. */
-const CALL_TIMEOUT = 10 * 60_000
+const PROGRESS_RENEWED_CALL_TIMEOUT_MS = 10 * 60_000
 const FIRST_RETRY = 5_000
 const LAST_RETRY = 5 * 60_000
 
-/** One `mcpServers` entry, as Claude Desktop and Cursor write it. */
 type Entry =
   | { command: string; args: string[]; env: Record<string, string>; cwd?: string }
   | { url: string; headers: Record<string, string> }
@@ -43,11 +39,9 @@ type Server = Omit<McpServerStatus, 'tools'> & {
   client?: McpClient
   tools: Tool[]
   attempts: number
-  timer?: ReturnType<typeof setTimeout>
-  /** The connect or reconnect running now; the next one queues behind it. */
-  connecting?: Promise<void>
-  /** The secret values its config resolved, kept out of every error it shows. */
-  secrets: string[]
+  cancelRetry?: Cancel
+  connectionQueueTail?: Promise<void>
+  resolvedSecretsForRedaction: string[]
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -57,7 +51,6 @@ const strings = (value: unknown) =>
 const record = (value: unknown) =>
   isObject(value) && Object.values(value).every((v) => typeof v === 'string')
 
-/** The entry, or why it cannot be used. */
 function entryOf(value: unknown): Entry | string {
   if (!isObject(value)) return 'must be an object'
   if (typeof value.url === 'string') {
@@ -80,7 +73,6 @@ function entryOf(value: unknown): Entry | string {
 
 const SECRET = /\$\{([A-Z][A-Z0-9_]*)\}/g
 
-/** The secrets an entry names with `${NAME}`, in its url, headers, command args and env. */
 const placeholders = (entry: Entry) =>
   ('url' in entry
     ? [entry.url, ...Object.values(entry.headers)]
@@ -95,8 +87,7 @@ class MissingSecret extends Error {
   }
 }
 
-/** `${NAME}` in a value becomes the secret `NAME` from the Secrets panel, taken literally; `found` collects them. */
-async function expand(home: string, value: string, found: string[]) {
+async function expandLiteralSecrets(home: string, value: string, found: string[]) {
   const values = new Map<string, string>()
   for (const [, name] of value.matchAll(SECRET)) {
     const secret = await readSecret(home, name)
@@ -109,18 +100,19 @@ async function expand(home: string, value: string, found: string[]) {
 const expandAll = async (home: string, values: Record<string, string>, found: string[]) =>
   Object.fromEntries(
     await Promise.all(
-      Object.entries(values).map(async ([key, value]) => [key, await expand(home, value, found)]),
+      Object.entries(values).map(async ([key, value]) => [
+        key,
+        await expandLiteralSecrets(home, value, found),
+      ]),
     ),
   ) as Record<string, string>
 
-/** An error's message with the server's secrets masked: HTTP bodies and stderr may echo them. */
 const redact = (server: Server, error: unknown) =>
-  server.secrets.reduce(
+  server.resolvedSecretsForRedaction.reduce(
     (text, secret) => text.replaceAll(secret, '***'),
     error instanceof Error ? error.message : String(error),
   )
 
-/** User servers, then the project's (empty until its setup is trusted); a project entry replaces a user one by name. */
 async function configured(host: ExtensionHost) {
   const layers: [McpServerStatus['source'], JsonObject][] = [
     ['user', await readSettings(userSettingsPath(host.userHome))],
@@ -144,14 +136,13 @@ async function configured(host: ExtensionHost) {
           : { state: 'connecting', entry }),
         tools: [],
         attempts: 0,
-        secrets: [],
+        resolvedSecretsForRedaction: [],
       })
     }
   }
   return servers
 }
 
-/** Every `${NAME}` in the configured servers, declared so the Secrets panel lists it with its Add button. */
 export async function secrets(host: ExtensionHost) {
   const users = new Map<string, Set<string>>()
   for (const server of (await configured(host)).values())
@@ -171,6 +162,7 @@ const listing = (server: Server) =>
         `\n${tool.name}: ${tool.description?.trim() ?? tool.title ?? ''}\n  input: ${JSON.stringify(tool.inputSchema)}`,
     ),
   ].join('\n')
+const renewTimeoutOnProgress = () => {}
 const failure = (text: string) => ({ output: [{ type: 'text' as const, text }], isError: true })
 
 const views = new WeakMap<
@@ -199,55 +191,62 @@ export default async function mcp(host: ExtensionHost) {
     server.error = error
     const delay = Math.min(FIRST_RETRY * 2 ** server.attempts++, LAST_RETRY)
     server.retryAt = Date.now() + delay
-    server.timer = setTimeout(() => void begin(server), delay)
-    server.timer.unref?.()
+    server.cancelRetry = retryAfter(
+      delay,
+      () => rebuiltOnOpen('open reconnects every configured MCP server', begin(server)),
+      { unref: true },
+    )
   }
 
   async function connect(server: Server) {
-    clearTimeout(server.timer)
+    server.cancelRetry?.()
     delete server.retryAt
     delete server.error
     delete server.missing
     server.state = 'connecting'
     const entry = server.entry!
     const found: string[] = []
-    server.secrets = found
+    server.resolvedSecretsForRedaction = found
     const client = new McpClient({
       name: 'ultimate',
       version: '1.0.0',
       roots: [{ uri: pathToFileURL(host.projectRoot).href, name: basename(host.projectRoot) }],
     })
     server.client = client
-    // Once connected, a dropped connection fails the server and retries; closing it here does not.
     client.onClose(() => {
-      if (!closed && server.client === client && server.state === 'connected')
-        fail(server, 'Disconnected')
+      const activeConnectionDropped =
+        !closed && server.client === client && server.state === 'connected'
+      if (activeConnectionDropped) fail(server, 'Disconnected')
     })
     let stdio: StdioTransport | undefined
     try {
       const transport =
         'url' in entry
           ? new StreamableHttpTransport({
-              url: await expand(host.userHome, entry.url, found),
+              url: await expandLiteralSecrets(host.userHome, entry.url, found),
               headers: await expandAll(host.userHome, entry.headers, found),
             })
           : (stdio = new StdioTransport({
               command: entry.command,
-              args: await Promise.all(entry.args.map((arg) => expand(host.userHome, arg, found))),
+              args: await Promise.all(
+                entry.args.map((arg) => expandLiteralSecrets(host.userHome, arg, found)),
+              ),
               env: await expandAll(host.userHome, entry.env, found),
               cwd: entry.cwd ?? host.projectRoot,
             }))
       await client.connect(transport)
       client.onNotification('notifications/tools/list_changed', () => {
-        client
-          .listTools()
-          .then((tools) => {
-            if (server.client === client) server.tools = tools
-          })
-          // The list stays as it was; the next reconnect reads it again.
-          .catch((error: unknown) =>
-            console.warn(`MCP ${server.name}: tools/list: ${redact(server, error)}`),
-          )
+        rebuiltOnOpen(
+          'open reconnects MCP servers and lists their tools again',
+          client
+            .listTools()
+            .then((tools) => {
+              if (server.client === client) server.tools = tools
+            })
+            .catch((error: unknown) =>
+              console.warn(`MCP ${server.name}: tools/list: ${redact(server, error)}`),
+            ),
+        )
       })
       const tools = await client.listTools()
       if (closed || server.client !== client) return
@@ -270,32 +269,30 @@ export default async function mcp(host: ExtensionHost) {
     try {
       await client?.close()
     } catch (error) {
-      // Closing is best effort: the transport is gone either way, and the server shows its own state.
       console.warn('MCP close', error instanceof Error ? error.message : error)
     }
   }
 
-  /** Runs `work` after the server's current connect or reconnect, so only one client is ever being set up. */
-  function queue(server: Server, work: () => Promise<void>) {
-    const next = (server.connecting ?? Promise.resolve()).then(work)
-    server.connecting = next
-    // work never rejects (connect and close report into the server's state).
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    void next.finally(() => {
-      if (server.connecting === next) delete server.connecting
-    })
+  function queueSingleConnection(server: Server, work: () => Promise<void>) {
+    const next = (server.connectionQueueTail ?? Promise.resolve()).then(work)
+    server.connectionQueueTail = next
+    rebuiltOnOpen(
+      'open reconnects every configured MCP server with a fresh connection queue',
+      next.finally(() => {
+        if (server.connectionQueueTail === next) delete server.connectionQueueTail
+      }),
+    )
     return next
   }
 
   function begin(server: Server) {
     if (closed || !server.entry) return Promise.resolve()
-    return server.connecting ?? queue(server, () => connect(server))
+    return server.connectionQueueTail ?? queueSingleConnection(server, () => connect(server))
   }
 
-  /** Drops the server's client and connects again. */
   function restart(server: Server) {
     if (closed || !server.entry) return Promise.resolve()
-    return queue(server, async () => {
+    return queueSingleConnection(server, async () => {
       const previous = server.client
       server.client = undefined
       await close(previous)
@@ -327,13 +324,12 @@ export default async function mcp(host: ExtensionHost) {
   host.onOpen(async () => {
     if (started) return
     started = true
-    // Each server reports its own failure in its state, and connect() never rejects; none waits for another.
-    // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-    for (const server of servers.values()) void begin(server)
+    for (const server of servers.values())
+      rebuiltOnOpen('open reconnects every configured MCP server', begin(server))
   })
   host.onClose(async () => {
     closed = true
-    for (const server of servers.values()) clearTimeout(server.timer)
+    for (const server of servers.values()) server.cancelRetry?.()
     await Promise.all([...servers.values()].map((server) => close(server.client)))
   })
 
@@ -361,7 +357,7 @@ export default async function mcp(host: ExtensionHost) {
               const server = servers.get(name)
               if (!server)
                 return failure(`No MCP server named ${name}. Configured: ${names.join(', ')}`)
-              await server.connecting
+              await server.connectionQueueTail
               if (server.state !== 'connected' || !server.client)
                 return failure(
                   `MCP server ${name} is ${server.state}: ${server.error ?? 'not connected'}`,
@@ -371,22 +367,18 @@ export default async function mcp(host: ExtensionHost) {
               try {
                 const result = await client.callTool(tool, args ?? {}, {
                   signal: context.abortSignal,
-                  timeoutMs: CALL_TIMEOUT,
-                  // Asking for progress lets each notification renew the timeout.
-                  onProgress: () => {},
+                  timeoutMs: PROGRESS_RENEWED_CALL_TIMEOUT_MS,
+                  onProgress: renewTimeoutOnProgress,
                 })
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
-                // A JSON-RPC error, a timeout or a cancel leaves the connection usable. Anything else (an HTTP
-                // failure, an expired session, a closed transport) does: connect again, never resend the call.
-                const broken = !(
+                const brokenConnectionNoResend = !(
                   error instanceof McpError ||
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
                 )
-                // restart never rejects; the server's state shows how it went.
-                // oxlint-disable-next-line typescript/no-floating-promises -- see above.
-                if (broken && server.client === client) void restart(server)
+                if (brokenConnectionNoResend && server.client === client)
+                  rebuiltOnOpen('open reconnects every configured MCP server', restart(server))
                 return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
               }
             },
