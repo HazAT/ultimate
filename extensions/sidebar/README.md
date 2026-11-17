@@ -4,7 +4,10 @@ the core together, so it sits at the top of the core tier: it reads conversation
 messages, and shows what optional extensions provide through points (`conversations/ui.tsx`: a working phase, a plan task).
 Its UI state keeps the keys it had as part of conversations (`ext.conversations.*`).
 Rows under @ultimate's come from the `sidebar.under-ultimate` point (`ui.tsx`; side-chat fills it with open side
-chats). The conversations the `sidebar.unlisted` point names (side-chat names every side chat) are left out of every
+chats). Rows under a standing agent's row in the Agents group come from the `sidebar.under-agent` point, keyed by the
+agent's name (`lander`, or its definition's `name`, such as `shopify-lander`): an extension that owns work for that
+agent (its open pull requests, say) lists it there, below the lander's Landed section, and returns null for other
+agents; with no provider nothing is drawn. The conversations the `sidebar.unlisted` point names (side-chat names every side chat) are left out of every
 other list (`listed.ts`).
 
 Every standing agent's row leads with its mark (conversations' `AgentMark`): a small tinted tile with a glyph — a brand
@@ -49,7 +52,7 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
 - **Project**: its colour bar, name, path and repository, opening History; the chevron and the Memory row (or, folded, its
   brain count).
 - **@ultimate**, then the **Agents** group: the lander first, with its **Landed · N** section right under its row,
-  aligned with the other sections, then other standing agents.
+  aligned with the other sections, then other standing agents; each agent's `sidebar.under-agent` rows follow its row.
 - **Landed**: the latest landings of every root (lineage's `recent {id, types: ['landed'], limit: 20}`), newest
   first, all landings of one feature folded into one row: its feature tag (its title when it has none), `×N` when it
   landed more than once, the commits summed, and the age of the newest. Clicking the row opens the branch that landed

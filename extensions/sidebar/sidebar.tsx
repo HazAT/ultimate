@@ -60,7 +60,7 @@ import { LanderState } from './lander.tsx'
 import { StandingPhase, WaitingOnUser } from './ultimate.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 import { topLevelRows } from './listed.ts'
-import { UnderUltimate, Unlisted } from './ui.tsx'
+import { UnderAgent, UnderUltimate, Unlisted } from './ui.tsx'
 
 const useShownId = () => useStore((state) => state.view?.conversation.id ?? state.requested)
 
@@ -270,6 +270,12 @@ function Tree({
     }
     await setConclude(id, conclude)
   }
+  const agentName = (conversation: ConversationSummary) =>
+    conversation.label === 'lander'
+      ? 'lander'
+      : (Object.entries(standingIds ?? {}).find(([, id]) => id === conversation.id)?.[0] ??
+        conversation.title?.replace(/^@/, '') ??
+        `#${conversation.id}`)
   const standingRow = (conversation: ConversationSummary | undefined) => {
     const busy = conversation !== undefined && working.has(conversation.id)
     const latest = Math.max(conversation?.inputAt ?? 0, conversation?.answerAt ?? 0)
@@ -283,13 +289,7 @@ function Tree({
           item.state === 'landing' &&
           workspaceIndex.landerConversations[item.source] === conversation.id,
       )
-    const name = lander
-      ? 'lander'
-      : isUltimate
-        ? 'ultimate'
-        : (Object.entries(standingIds ?? {}).find(([, id]) => id === conversation.id)?.[0] ??
-          conversation.title?.replace(/^@/, '') ??
-          `#${conversation.id}`)
+    const name = isUltimate ? 'ultimate' : agentName(conversation)
     const facts = conversation && {
       id: conversation.id,
       kind: isUltimate ? ('primary' as const) : ('other' as const),
@@ -584,16 +584,15 @@ function Tree({
             className="mb-2 flex flex-col gap-0.5 border-b border-border/60 pb-2"
             role="group"
           >
-            {agents.map((conversation) =>
-              conversation.label === 'lander' ? (
-                <div key={conversation.id}>
-                  {tree(conversation)}
-                  <Landed landings={landings} now={now} />
-                </div>
-              ) : (
-                tree(conversation)
-              ),
-            )}
+            {agents.map((conversation) => (
+              <div key={conversation.id}>
+                {tree(conversation)}
+                {conversation.label === 'lander' && <Landed landings={landings} now={now} />}
+                <AllProvided input={agentName(conversation)} point={UnderAgent}>
+                  {(rows) => rows}
+                </AllProvided>
+              </div>
+            ))}
           </div>
         )}
         <Slot name="sidebar.top" />
