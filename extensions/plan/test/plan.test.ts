@@ -5,10 +5,11 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import { defineExtension, section } from '@earendil-works/pi-durable'
-import type { ConversationId, JsonObject } from '@earendil-works/pi-durable'
+import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { ExtensionHost } from '../../../server/extensions.ts'
-import planExtension, { Plan, TaskIndex } from '../server.ts'
+import planExtension, { Plan, Progress, TaskIndex } from '../server.ts'
+import type { PlanService } from '../api.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { temp, removeTemp } from '../../../test/helpers.ts'
@@ -23,6 +24,7 @@ it('shares the root ledger read-only with descendants, saves verdicts, and repla
   })
   const plan = planExtension({
     react: () => {},
+    implement: () => {},
     metadata: Metadata,
     onOpen: () => {},
   } as unknown as ExtensionHost)
@@ -265,6 +267,7 @@ it('indexes linked children with their task and renames them after it', async ()
   prepared.registry.install(
     planExtension({
       react: () => {},
+      implement: () => {},
       metadata: Metadata,
       harness: () => opened.harness,
       onOpen: (callback: () => Promise<void>) => openers.push(callback),
@@ -348,6 +351,111 @@ it('indexes linked children with their task and renames them after it', async ()
   }
 })
 
+it('confirms criteria with met, raises estimates only upward, drops changed criteria and records them at landing', async () => {
+  const directory = await temp('ultimate-plan-criteria-')
+  const prepared = await prepareHarness({
+    ultimateRoot: directory,
+    userHome: directory,
+    home: join(directory, 'home'),
+    faux: fauxProvider(),
+  })
+  let opened!: Awaited<ReturnType<typeof prepared.open>>
+  let service!: PlanService
+  let landed!: (
+    tx: Tx,
+    event: { data: { conversationId: ConversationId; sha: string } },
+  ) => Promise<void>
+  prepared.registry.install(
+    planExtension({
+      react: (_name: string, _tokens: unknown, handler: typeof landed) => {
+        landed = handler
+      },
+      implement: (_api: unknown, value: PlanService) => {
+        service = value
+      },
+      metadata: Metadata,
+      harness: () => opened.harness,
+      onOpen: () => {},
+    } as unknown as ExtensionHost),
+  )
+  opened = await prepared.open()
+  const failed: string[] = []
+  const call = async (args: JsonObject) => {
+    const conversation = (await opened.harness.conversation(opened.root.id, context))!
+    prepared.faux!.setResponses([
+      fauxAssistantMessage([fauxToolCall('plan', args)], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Complete'),
+    ])
+    await (
+      await conversation.submit({ type: 'input', content: 'Update plan' }, context)
+    ).wait(context)
+    await opened.harness.waitForIdle(context)
+    const results = await opened.root.entries({ order: 'descending' }, 4, undefined, context)
+    for (const entry of results.items)
+      for (const message of entry.model ?? [])
+        if (message.role === 'toolResult' && message.isError)
+          failed.push(
+            message.content.map((block) => (block.type === 'text' ? block.text : '')).join(''),
+          )
+  }
+  const id = opened.root.id
+  const body = (criteria: string[]) =>
+    `Request: r\nAcceptance criteria:\n${criteria.map((text, i) => `${i + 1}. ${text}`).join('\n')}`
+  const estimates = async () =>
+    (await opened.harness.snapshot(Progress, id, context))?.epics.E1?.estimates
+  try {
+    await call({ action: 'create', title: 'Criteria', body: body(['A', 'B', 'C']) })
+    expect(await service.openCriteria(id, context)).toEqual({
+      epic: 'E1',
+      criteria: [
+        { n: 1, text: 'A' },
+        { n: 2, text: 'B' },
+        { n: 3, text: 'C' },
+      ],
+    })
+
+    await call({ action: 'update', key: 'E1', met: [4] })
+    expect(failed.pop()).toContain('E1 has 3 acceptance criteria, not 4')
+    await call({ action: 'update', key: 'E1', met: [3, 1, 1] })
+    expect((await opened.harness.snapshot(Plan, id, context))?.epics.E1.met).toEqual([1, 3])
+
+    const estimate = (next: Record<string, { state: 'in_progress' | 'looks_done'; at?: number }>) =>
+      opened.harness.commit((tx) => service.estimate(tx, id, 'E1', next), context)
+    await estimate({ B: { state: 'looks_done', at: 7 } })
+    await estimate({ B: { state: 'in_progress' }, C: { state: 'in_progress' } })
+    expect(await estimates()).toEqual({
+      B: { state: 'looks_done', at: 7 },
+      C: { state: 'in_progress' },
+    })
+    expect(await service.openCriteria(id, context)).toEqual({
+      epic: 'E1',
+      criteria: [{ n: 2, text: 'B', estimate: 'looks_done' }],
+    })
+
+    await opened.harness.commit(
+      (tx) => landed(tx, { data: { conversationId: id, sha: 'abc1234' } }),
+      context,
+    )
+    expect((await opened.harness.snapshot(Progress, id, context))?.epics.E1?.landed).toEqual({
+      sha: 'abc1234',
+      total: 3,
+      confirmed: 2,
+      estimated: 1,
+    })
+
+    await call({ action: 'update', key: 'E1', body: body(['A', 'B changed', 'C']) })
+    await estimate({})
+    expect(await estimates()).toEqual({ C: { state: 'in_progress' } })
+
+    await call({ action: 'update', key: 'E1', status: 'done' })
+    expect(await service.openCriteria(id, context)).toBeUndefined()
+    expect(failed).toEqual([])
+  } finally {
+    await opened.close()
+    await removeTemp(directory)
+  }
+})
+
 // Pi removes and re-adds every section when one would land out of order, sending the whole system prompt again (40 times
 // in two days, #558178); the plan keeps an empty slot instead (#573861).
 it('patches only the plan section, in its declared place, when it appears, leaves and returns', async () => {
@@ -361,6 +469,7 @@ it('patches only the plan section, in its declared place, when it appears, leave
   prepared.registry.install(
     planExtension({
       react: () => {},
+      implement: () => {},
       metadata: Metadata,
       onOpen: () => {},
     } as unknown as ExtensionHost),

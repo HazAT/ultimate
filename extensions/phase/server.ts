@@ -10,7 +10,10 @@ import {
 import type { ConversationId, Cursor, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ClassifyApi } from '../classify/api.ts'
-import type { ClassifyQuestion, ClassifyAnswer } from '../classify/api.ts'
+import type { ClassifyQuestion, ClassifyResult } from '../classify/api.ts'
+import { PlanApi } from '../plan/api.ts'
+import type { OpenCriterion } from '../plan/api.ts'
+import type { Estimate } from '../plan/refs.ts'
 import { isInput } from '../../lib/entries.ts'
 import { phaseState } from './state.ts'
 import type { Phase, PhaseState } from './types.ts'
@@ -36,6 +39,21 @@ export const question = {
       'Finishing: committing, landing, submitting or pushing the work, or reporting results.',
   },
 } satisfies ClassifyQuestion
+export const criterionQuestion = (criterion: OpenCriterion) =>
+  ({
+    type: 'choice',
+    instructions: {
+      task: 'The agent works towards `criterion`, one acceptance criterion of its plan. Judge from `recentTools` and `agentSaid` how far that criterion is now; `estimate` is the earlier judgment, which work since cannot undo.',
+      criterion: criterion.text,
+      ...(criterion.estimate ? { estimate: criterion.estimate } : {}),
+    },
+    criteria: {
+      not_started: 'Nothing in the work so far addresses this criterion.',
+      in_progress: 'The agent is working on what this criterion asks, or did part of it.',
+      looks_done:
+        'The work this criterion asks for is done, and a check, test, review or screenshot showed it.',
+    },
+  }) satisfies ClassifyQuestion
 export type { Phase } from './types.ts'
 export const Phases = defineDoc<PhaseState>({
   kind: PhasesDoc.kind,
@@ -50,6 +68,25 @@ export const docs = [Phases]
 async function firstRunInput(tx: Tx, id: ConversationId) {
   return (await tx.doc(LiveDoc, id)).run?.inputs[0]
 }
+type Asked = {
+  open: { epic: string; criteria: OpenCriterion[] } | null
+  at: number
+  answers: ClassifyResult['answers']
+}
+export function estimatesOf(
+  criteria: readonly OpenCriterion[],
+  answers: ClassifyResult['answers'],
+  at: number,
+) {
+  const estimates: Record<string, Estimate> = {}
+  for (const criterion of criteria) {
+    const answer = answers[`criterion${criterion.n}`]
+    if (answer?.type !== 'choice' || answer.confidence < 0.7) continue
+    if (answer.choice === 'looks_done') estimates[criterion.text] = { state: 'looks_done', at }
+    if (answer.choice === 'in_progress') estimates[criterion.text] = { state: 'in_progress' }
+  }
+  return estimates
+}
 const terminal = {
   status: 'terminal' as const,
   outcome: { status: 'completed' as const, result: null },
@@ -59,6 +96,7 @@ export default function phase(
   host: Pick<ExtensionHost, 'want' | 'harness' | 'projectRoot' | 'conversations'>,
 ) {
   host.want(ClassifyApi)
+  host.want(PlanApi)
   const ClassifyTask = defineTask<{ run: number }, { phase: 'classify' }, null>({
     name: 'phase.classify',
     version: 1,
@@ -76,10 +114,12 @@ export default function phase(
     },
     phases: {
       classify: async (task, runtime, context) => {
-        let answer: ClassifyAnswer | undefined
+        let asked: Asked | undefined
         try {
-          answer = await runtime.memo<ClassifyAnswer>('answer', context)
-          if (!answer) {
+          asked = await runtime.memo<Asked>('asked', context)
+          if (!asked) {
+            const open =
+              (await host.want(PlanApi)?.openCriteria(runtime.conversationId, context)) ?? null
             const service = host.want(ClassifyApi)
             if (!service) throw new Error('Classify unavailable')
             const conversation = await host.harness().conversation(runtime.conversationId, context)
@@ -97,6 +137,7 @@ export default function phase(
               cursor = page.next
             } while (cursor !== undefined && !reachedCurrentRequestInput)
             entries.reverse()
+            const at = entries.at(-1)?.id ?? 0
             const result = await service.ask(
               {
                 state: phaseState(entries, [
@@ -104,17 +145,36 @@ export default function phase(
                     host.projectRoot,
                   host.projectRoot,
                 ]),
-                questions: { phase: question },
+                questions: {
+                  phase: question,
+                  ...Object.fromEntries(
+                    (open?.criteria ?? []).map((criterion) => [
+                      `criterion${criterion.n}`,
+                      criterionQuestion(criterion),
+                    ]),
+                  ),
+                },
               },
               AbortSignal.any([runtime.signal, AbortSignal.timeout(10_000)]),
             )
-            answer = await runtime.memo('answer', result.answers.phase, context)
+            asked = await runtime.memo<Asked>(
+              'asked',
+              { open, at, answers: result.answers },
+              context,
+            )
           }
         } catch (error) {
           const advisoryFailureWithoutCancellation = !runtime.signal.aborted
           if (!advisoryFailureWithoutCancellation) throw error
         }
+        const answer = asked?.answers.phase
         await runtime.commit(async (tx) => {
+          const plan = host.want(PlanApi)
+          if (plan && asked?.open) {
+            const estimates = estimatesOf(asked.open.criteria, asked.answers, asked.at)
+            if (Object.keys(estimates).length)
+              await plan.estimate(tx, runtime.conversationId, asked.open.epic, estimates)
+          }
           const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
           const row = state.conversations[runtime.conversationId]
           if (row?.pending === task.id) {

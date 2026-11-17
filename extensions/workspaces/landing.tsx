@@ -79,6 +79,11 @@ export function useProjectRepo() {
 
 export const Review = definePoint<string, (() => void) | undefined>('workspaces.review')
 
+export const LandedNote = definePoint<
+  { conversation: ConversationId; sha: string },
+  ReactNode | undefined
+>('workspaces.landed-note')
+
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
     className={cn(
@@ -247,6 +252,11 @@ export function LandingCard({
             </p>
           )}
           {children}
+          {sha && tone !== 'failed' && (
+            <Provided input={{ conversation: from, sha }} point={LandedNote}>
+              {(note) => note}
+            </Provided>
+          )}
         </div>
       </section>
     </Fold>

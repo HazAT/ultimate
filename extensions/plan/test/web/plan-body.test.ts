@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { criteriaOf, sectionsOf, verbatim } from '../../body.tsx'
-import { progressLabel } from '../../progress.tsx'
+import { criteriaOf, sectionsOf, verbatim } from '../../body.ts'
+import { progressLabel } from '../../progress.ts'
 
 const body = [
   'Request: pick 1a.',

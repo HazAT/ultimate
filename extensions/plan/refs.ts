@@ -17,15 +17,25 @@ export type Task = {
   verdict?: string
   notes: { at: string; text: string }[]
 }
-/** One epic with its tasks by key. */
+/** One epic with its tasks by key; `met` lists the 1-based acceptance criteria the coordinator confirmed. */
 export type Epic = {
   key: string
   title: string
   body: string
   status: string
   verdict?: string
+  met?: number[]
   tasks: Record<string, Task>
 }
+/**
+ * How far the work on one acceptance criterion looks, judged from the coordinator's recent tool calls; `at` is the entry
+ * of the tool round that made it look done. An estimate, never a confirmation.
+ */
+export type Estimate = { state: 'in_progress' | 'looks_done'; at?: number }
+/** Acceptance criteria when the coordinator's work landed as `sha`: `confirmed` and `estimated` of `total`. */
+export type Landed = { sha: string; total: number; confirmed: number; estimated: number }
+/** An epic's estimates by criterion text, and its criteria at the coordinator's latest landing. */
+export type EpicProgress = { estimates?: Record<string, Estimate>; landed?: Landed }
 /** A coordinator's plan. */
 export type Plan = { next: number; epics: Record<string, Epic> }
 /** The plan task a child conversation works on, and whose plan it is in. */
@@ -39,5 +49,7 @@ export type TaskLink = {
 
 /** A coordinator's epics and tasks, on the coordinator's conversation. */
 export const PlanDoc = docRef<Plan>('ultimate.plan')
+/** `{ epics: { [key]: EpicProgress } }` on the coordinator's conversation: estimates and landings, outside plan history. */
+export const ProgressDoc = docRef<{ epics: Record<string, EpicProgress> }>('ultimate.plan.progress')
 /** `{ children: { [conversationId]: TaskLink } }` on conversation 1: every linked child's plan task. */
 export const TaskIndexDoc = docRef<{ children: Record<string, TaskLink> }>('ultimate.plan.tasks')
