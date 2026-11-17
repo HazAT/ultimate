@@ -1,12 +1,5 @@
 import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
-import type {
-  ConversationId,
-  Cursor,
-  EntryId,
-  JsonObject,
-  TaskId,
-  Tx,
-} from '@earendil-works/pi-durable'
+import type { ConversationId, Cursor, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import {
   defineDoc,
@@ -26,7 +19,16 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Device } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { openQuestion } from '../../lib/message-state.ts'
-import { checkReply, draftOf, replyText } from '../../lib/question-answers.ts'
+import { checkReply, replyText } from '../../lib/question-answers.ts'
+import {
+  cardKey,
+  cardOf,
+  CARDS_KEY,
+  draftFor,
+  position,
+  questionIndex,
+} from '../../lib/question-cards.ts'
+import type { CardState } from '../../lib/question-cards.ts'
 import type { Reply } from '../../lib/question-answers.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
@@ -175,12 +177,21 @@ async function end(
       delete ending.mode
       delete ending.task
     }
+    const message =
+      side.question === undefined
+        ? undefined
+        : (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+            (candidate) => candidate.id === side.question,
+          )
+    const replyTextWanted =
+      answer === undefined || !message ? undefined : replyText(answer, message.questions ?? [])
     if (mode === 'injected' && ending.mode === mode && ending.task !== undefined) {
-      const running = (await tx.task(ending.task))?.input as { reply?: unknown } | undefined
-      const sameRequest = (answer === undefined) === (running?.reply === undefined)
-      if (!sameRequest)
+      const running = (await tx.task(ending.task))?.input as
+        | { reply?: { text: string } }
+        | undefined
+      if (running?.reply?.text !== replyTextWanted)
         throw new Error(
-          `Side chat #${id} is already ending ${running?.reply === undefined ? 'without' : 'with'} an answer`,
+          `Side chat #${id} is already ending ${running?.reply === undefined ? 'without an answer' : 'with another answer'}`,
         )
       return ending.task
     }
@@ -190,12 +201,9 @@ async function end(
     let reply: { message: number; text: string } | undefined
     if (answer !== undefined) {
       if (side.question === undefined) throw new Error(`Side chat #${id} talks no question through`)
-      const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-        (candidate) => candidate.id === side.question,
-      )
       if (!message || !openQuestion(message))
         throw new Error(`Message ${side.question} no longer waits on you; nothing was sent`)
-      reply = { message: message.id, text: replyText(answer, message.questions ?? []) }
+      reply = { message: message.id, text: replyTextWanted! }
     }
     ending.mode = mode
     ending.task = await tx.createTask(
@@ -490,26 +498,40 @@ async function openOnQuestion(host: ExtensionHost, messageId: number) {
   return { id }
 }
 
-const CARDS_KEY = 'ext.questions.cards'
+const DraftReceipts = defineDoc<{ calls: string[] }>({
+  kind: 'sidechat.draft-receipts',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'task',
+  initial: () => ({ calls: [] }),
+})
 
 const draftAnswersTool = (host: ExtensionHost) =>
   defineTool({
     name: 'draft_answers',
     deferred: true,
     description:
-      'Fill in answers on the open question\'s card the user sees beside this side chat, as a draft: use it when they say what to pick ("take your picks", "b for the first"). It never sends: the user reviews and sends from the card. `answers` names each question by its text or number and its answer by option label, letter or typed text (a list for several); `note` fills the card\'s note.',
+      'Fill in answers on the open question\'s card the user sees beside this side chat, as a draft: use it when they say what to pick ("take your picks", "b for the first"). It never sends: the user reviews and sends from the card. `answers` names each question by its text or its number as the card shows it, and its answer by option label, letter or typed text (a list for a multi); `note` fills the card\'s note. A card without questions takes `text` instead.',
     parameters: obj({
-      answers: arr(
-        obj({
-          question: str({ minLength: 1 }),
-          answer: union([str({ minLength: 1 }), arr(str({ minLength: 1 }), { minItems: 1 })]),
-        }),
+      answers: opt(
+        arr(
+          obj({
+            question: str({ minLength: 1 }),
+            answer: union([str({ minLength: 1 }), arr(str({ minLength: 1 }), { minItems: 1 })]),
+          }),
+        ),
       ),
       note: opt(str()),
+      text: opt(str({ minLength: 1 })),
     }),
-    ...safeToRerun('It sets the same draft values again.'),
-    async execute({ answers, note }, api, ctx) {
+    ...safeToRerun(
+      'A receipt committed with the draft makes a rerun of the same call write nothing, so it never undoes a later edit.',
+    ),
+    async execute({ answers = [], note, text }, api, ctx) {
       const filled = await host.harness().commit(async (tx) => {
+        const receipt = await tx.doc(DraftReceipts, api.taskId)
+        if (receipt.calls.includes(api.callId)) return ['already filled in']
+        receipt.calls.push(api.callId)
         const side = await tx.doc(Side, api.conversationId)
         if (side.question === undefined) throw new Error('Only a question side chat drafts answers')
         const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
@@ -518,27 +540,31 @@ const draftAnswersTool = (host: ExtensionHost) =>
         if (!message || !openQuestion(message))
           throw new Error('The question is no longer open; nothing to fill in')
         const questions = message.questions ?? []
+        if (questions.length ? text !== undefined : answers.length || note !== undefined)
+          throw new Error(
+            questions.length
+              ? 'This card has questions: fill them with answers (and note), not text'
+              : 'This card has no questions: fill its answer with text',
+          )
         const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)
-        const cards = (ui[CARDS_KEY] ?? {}) as Record<string, JsonObject>
-        const card = `message:${message.id}`
-        const previous = cards[card] ?? {}
-        const drafts = { ...((previous.drafts ?? {}) as JsonObject) }
+        const cards = (ui[CARDS_KEY] ?? {}) as Record<string, CardState>
+        const card = cardKey(message.id)
+        const previous = cardOf(cards, card)
+        const drafts = { ...previous.drafts }
         const lines: string[] = []
         for (const { question, answer } of answers) {
-          const index = questions.findIndex(
-            (candidate, i) =>
-              candidate.text === question ||
-              candidate.ref === question ||
-              String(i + 1) === question,
-          )
-          if (index < 0) throw new Error(`No question "${question}" on the card`)
-          drafts[index] = draftOf(questions[index], answer)
-          lines.push(`${questions[index].ref ?? index + 1}: ${[answer].flat().join(', ')}`)
+          const index = questionIndex(questions, question)
+          drafts[index] = draftFor(questions[index], answer)
+          lines.push(`${position(questions[index], index)}: ${[answer].flat().join(', ')}`)
         }
-        ui[CARDS_KEY] = {
-          ...cards,
-          [card]: { ...previous, drafts, ...(note === undefined ? {} : { note }) },
+        if (text !== undefined) lines.push(`answer: ${text}`)
+        const next: CardState = {
+          ...previous,
+          drafts,
+          ...(note === undefined ? {} : { note }),
+          ...(text === undefined ? {} : { text }),
         }
+        ui[CARDS_KEY] = { ...cards, [card]: next }
         return lines
       }, ctx)
       return {

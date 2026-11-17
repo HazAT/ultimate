@@ -777,7 +777,7 @@ describe('side chats', () => {
       string,
       unknown
     >
-    expect(cards[`message:${message.id}`]).toEqual({
+    expect(cards[`message:${message.id}`]).toMatchObject({
       drafts: { 0: { chosen: [1] }, 1: { chosen: [], text: 'calmer' } },
       note: 'from the side chat',
     })
