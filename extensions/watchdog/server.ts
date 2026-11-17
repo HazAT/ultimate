@@ -24,10 +24,16 @@ import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
 import type { Message } from '../messages/api.ts'
 import { Standing, Subagents } from '../subagents/api.ts'
+import { Roots, Tally } from '../lineage/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
 import { FailureEntry } from './entries.ts'
+
+async function isTally(tx: Tx, id: ConversationId) {
+  if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id)) return false
+  return (await tx.doc(Tally, id)).since !== undefined
+}
 
 const TEMPORARY_FAILURE_RETRY_DELAY_MS = 60_000
 export const FAILURE_LIMIT = 20
@@ -293,7 +299,10 @@ export default function watchdog(host: ExtensionHost) {
       if (task.state.status !== 'terminal' || task.state.outcome.status !== 'faulted') return
       const { message } = task.input as { message: Message }
       const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
-      const recipient = typeof message.from === 'number' ? message.from : ultimate
+      const recipient =
+        typeof message.from === 'number' && !(await isTally(tx, message.from))
+          ? message.from
+          : ultimate
       if (recipient === undefined)
         throw new Error('Watchdog needs @ultimate to report a faulted message delivery')
       const conversation = typeof message.to === 'number' ? message.to : recipient
@@ -361,7 +370,8 @@ export default function watchdog(host: ExtensionHost) {
         return
       const child = (await tx.conversation(task.conversationId))!
       const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
-      const recipient = child.owner?.conversationId ?? ultimate
+      const owner = child.owner?.conversationId
+      const recipient = owner !== undefined && !(await isTally(tx, owner)) ? owner : ultimate
       if (recipient === undefined)
         throw new Error('Watchdog needs @ultimate to report a failed run')
       if (task.state.status !== 'terminal' || task.state.outcome.status !== 'failed') return

@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { git } from '../lib/git.ts'
@@ -22,6 +22,11 @@ it('weighs a landing in lines and estimated tokens, leaving out the lockfile', a
     'pnpm-lock.yaml': 'z'.repeat(4000) + '\n',
   })
   expect(await weightDelta(repo, base, sha)).toEqual({ added: 2, removed: 1, tokens: 200 })
+  // Weighs only what changed: a deleted file takes its bytes away, an untouched one is not read.
+  await rm(join(repo, 'b.md'))
+  const deleted = await commit(repo, { 'c.ts': 'w'.repeat(39) + '\n' })
+  expect(await weightDelta(repo, sha, deleted)).toEqual({ added: 1, removed: 1, tokens: -90 })
+  expect(await weightDelta(repo, sha, sha)).toEqual({ added: 0, removed: 0, tokens: 0 })
   expect(
     [
       'server/main.ts',

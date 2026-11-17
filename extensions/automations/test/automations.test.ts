@@ -161,6 +161,7 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
     7000,
   )
   await f.action('pause', { id: a.id })
+  await until(async () => (await f.records())[0].runs.every((r) => r.status !== 'running'))
   const runs = (await f.records())[0].runs
   expect(new Set(runs.map((r) => r.conversationId)).size).toBe(runs.length)
   for (const run of runs) {
@@ -269,7 +270,7 @@ it('fires nothing while the host is paused and catches up once after Play', asyn
   await vi.advanceTimersByTimeAsync(5000)
   expect((await f.records())[0].runs).toEqual([])
   f.opened.harness.release()
-  await until(async () => (await f.records())[0].runs.some((r) => r.status === 'done'))
+  await waitFor(async () => (await f.records())[0].runs.some((r) => r.status === 'done'))
   await f.action('pause', { id: a.id })
   // One missed fire, not one per period the pause lasted.
   expect((await f.records())[0].runs.filter((r) => r.status !== 'skipped')).toHaveLength(1)
