@@ -42,7 +42,7 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
-import { Branch, Branched, LineageApi, Rooted, Roots } from './api.ts'
+import { Branch, Branched, LineageApi, Rooted, Roots, Tally } from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
@@ -51,7 +51,6 @@ import {
   ForgetAction,
   OpenEditorAction,
   RecentAction,
-  TallyDoc,
   LineageResetEntry,
   AbstractEntry,
   FinishedEntry,
@@ -94,16 +93,7 @@ export type TallyState = {
   briefTokens?: number
   since?: EntryId
 }
-const newTallyWithIsolatedAnchors = (): TallyState => ({ abstracts: {}, tokens: 0 })
-export const Tally = defineDoc<TallyState>({
-  kind: TallyDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: newTallyWithIsolatedAnchors,
-})
+export { Tally }
 
 export const docs = [Roots, Branch, Tally, Seen, Memory]
 export const userActions = ['rewind', 'forget', 'compact', 'openEditor']
@@ -1206,8 +1196,7 @@ async function treeOf(tx: Tx, id: ConversationId): Promise<Tree | undefined> {
 
 async function refuseTally(tx: Tx, id: ConversationId) {
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id)) return
-  const tally = await tx.doc(Tally, id)
-  if (tally.since !== undefined)
+  if ((await tx.doc(Tally, id)).since !== undefined)
     throw new Error(`#${id} is a tally and runs no turns; ask @ultimate to start a branch`)
 }
 

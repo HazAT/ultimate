@@ -1,5 +1,6 @@
 import type {
   ConversationId,
+  EntryId,
   EntryRecord,
   Task,
   ToolExecutionApi,
@@ -30,6 +31,7 @@ import watchdog, { diagnose } from '../server.ts'
 import type { WatchdogService } from '../api.ts'
 import { Messages } from '../../messages/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
+import { Roots, Tally } from '../../lineage/api.ts'
 import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
@@ -355,6 +357,27 @@ it('routes an owned child failure only to its parent', async () => {
   await until(async () => (await f.entries(parent)).length === 1)
   expect(await f.entries()).toHaveLength(0)
   expect(await f.entries(parent, 'subagents.report')).toHaveLength(0)
+})
+
+it('routes a failure owned by a tally, such as a scheduled run, to @ultimate', async () => {
+  const f = await fixture((transcript) =>
+    inputText(transcript) === 'fail' ? error() : fauxAssistantMessage('ok'),
+  )
+  const tally = await f.conversation('Project')
+  await f.harness.commit(async (tx) => {
+    ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.push(tally)
+    ;(await tx.doc(Tally, tally)).since = 1 as EntryId
+  }, context)
+  const run = await f.conversation('Chief of staff: planning', tally)
+  await (await f.submit(run, 'fail')).wait(context)
+  await until(async () => (await f.entries()).length === 1)
+  expect((await f.entries())[0].data).toMatchObject({
+    conversation: run,
+    title: 'Chief of staff: planning',
+  })
+  expect(await f.entries(tally)).toHaveLength(0)
+  await f.harness.waitForIdle(context)
+  expect((await f.tasks()).map((task) => task.state.status)).not.toContain('faulted')
 })
 
 it('ignores user Stop', async () => {
