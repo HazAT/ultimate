@@ -10,6 +10,7 @@ import {
   errorMessage,
   getConversation,
   getState,
+  refreshModels,
   useDialog,
   useTranscript,
   useUltimate,
@@ -22,6 +23,8 @@ import { ModelPicker } from './picker.tsx'
 import { nextThinking, openLogin, openPicker, thinkingDialog, useCurrentModel } from './state.tsx'
 import type { ThinkingLevel } from './state.tsx'
 import { switchAt } from './switches.ts'
+import { store } from '@/sdk/client'
+import { RefreshCatalogAction } from './refs.ts'
 import type { Fallback } from './refs.ts'
 import { FallbackEntry } from './entries.ts'
 
@@ -261,6 +264,27 @@ export default defineWebExtension({
           { thinkingLevel: nextThinking(thinking, model) },
           context.conversationId,
         )
+      },
+    },
+    {
+      id: 'model.catalog.refresh',
+      title: 'Refresh model catalog',
+      run: async () => {
+        try {
+          const { errors } = await api.action(RefreshCatalogAction, null)
+          await refreshModels()
+          const failed = Object.entries(errors)
+          store.notify(
+            failed.length
+              ? {
+                  level: 'warning',
+                  message: `Model catalog refreshed, except ${failed.map(([provider, message]) => `${provider} (${message})`).join(', ')}`,
+                }
+              : { level: 'info', message: 'Model catalog refreshed' },
+          )
+        } catch (error) {
+          store.notify({ level: 'error', message: errorMessage(error) })
+        }
       },
     },
     {

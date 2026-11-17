@@ -22,6 +22,7 @@ import {
   LoginAction,
   LoginDoc,
   LogoutAction,
+  RefreshCatalogAction,
   SaveFamiliesAction,
   SetDefaultAction,
   SetFamilyAction,
@@ -242,6 +243,12 @@ export const actions = {
     await host.modelRuntime.logout(provider)
     await invalidateLoginHealthBestEffort(host, provider)
     return null
+  }),
+  refreshCatalog: implementAction(RefreshCatalogAction, async (_args, { host, signal }) => {
+    const { errors } = await host.modelRuntime.refresh({ allowNetwork: true, force: true, signal })
+    return {
+      errors: Object.fromEntries([...errors].map(([provider, error]) => [provider, error.message])),
+    }
   }),
 }
 

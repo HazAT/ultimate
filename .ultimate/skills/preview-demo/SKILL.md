@@ -26,7 +26,7 @@ node .ultimate/skills/preview-demo/demo.ts stop
 ```
 
 - `--port N` (default 4797) runs several demos side by side. Each port keeps its files in `/tmp/ultimate-demo-<port>/`.
-- `--model provider/id` (default `openai-codex/gpt-6.1-sol`) picks the model every agent runs on.
+- `--model provider/id` (default `openai-codex/gpt-6.2-sol`) picks the model every agent runs on.
 - `project` only prints a fresh copy of the fixture as a git repository, to use somewhere else.
 
 A reset always makes a new project copy and a new home. Never reset the old copy with `git reset` and worktree
