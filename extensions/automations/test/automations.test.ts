@@ -161,6 +161,7 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
     7000,
   )
   await f.action('pause', { id: a.id })
+  await until(async () => (await f.records())[0].runs.every((r) => r.status !== 'running'))
   const runs = (await f.records())[0].runs
   expect(new Set(runs.map((r) => r.conversationId)).size).toBe(runs.length)
   for (const run of runs) {
