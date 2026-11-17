@@ -6,6 +6,7 @@ import type { Message } from '../../../messages/refs.ts'
 
 // questions' ui.tsx also exports its answer card, whose imports need the running app.
 vi.mock('../../../questions/card.tsx', () => ({ MessageQuestions: () => null }))
+vi.mock('../../../questions/points.tsx', () => ({ CardActions: {} }))
 
 const ask = (id: number, at: number, fields: Partial<Message> = {}): Message => ({
   id,

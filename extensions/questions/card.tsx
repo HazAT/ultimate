@@ -3,10 +3,20 @@ import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
-import { api, cn, errorMessage, useConversation, useDocOf, useUiState, useViewport } from '@/sdk'
+import {
+  api,
+  cn,
+  errorMessage,
+  Provided,
+  useConversation,
+  useDocOf,
+  useUiState,
+  useViewport,
+} from '@/sdk'
+import { CardActions } from './points.tsx'
 import type { Question } from '../messages/refs.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { keyCard, openQuestions, waitsOnUser } from './open.tsx'
@@ -56,28 +66,49 @@ export function MessageQuestions({
   message,
   keys,
   className,
+  withActions = true,
+  beforeSend,
+  sendLabel,
 }: {
   message: Message
   keys?: boolean
   className?: string
+  withActions?: boolean
+  beforeSend?: () => Promise<unknown>
+  sendLabel?: string
 }) {
   const questions = openQuestions(message)
   const card = `message:${message.id}`
   const shown = useKeys(card)
   if (!waitsOnUser(message)) return null
+  const first = async () => {
+    if (beforeSend) await beforeSend()
+  }
   return (
     <Card
       card={card}
       questions={questions}
       keys={questions.length > 0 && (keys ?? shown)}
-      submit={(answers, note, keepalive) =>
-        api.action(
+      submit={async (answers, note, keepalive) => {
+        await first()
+        return api.action(
           AnswerAction,
           { messageId: message.id, answers, ...(note ? { note } : {}) },
           { keepalive },
         )
+      }}
+      reply={async (text) => {
+        await first()
+        return api.action(AnswerAction, { messageId: message.id, text })
+      }}
+      actions={
+        withActions ? (
+          <Provided input={message} point={CardActions}>
+            {(node) => node}
+          </Provided>
+        ) : null
       }
-      reply={(text) => api.action(AnswerAction, { messageId: message.id, text })}
+      {...(sendLabel === undefined ? {} : { sendLabel })}
       dismiss={() => api.action(DismissAction, { messageId: message.id })}
       {...(className === undefined ? {} : { className })}
     />
@@ -228,6 +259,8 @@ function Card({
   submit,
   reply,
   dismiss,
+  actions,
+  sendLabel,
   className = 'border-t border-border/60',
 }: {
   card: string
@@ -236,6 +269,8 @@ function Card({
   submit: (answers: Answer[], note?: string, keepalive?: boolean) => Promise<unknown>
   reply: (text: string) => Promise<unknown>
   dismiss: () => Promise<unknown>
+  actions: ReactNode
+  sendLabel?: string
   className?: string
 }) {
   const [state, setState] = useDurableCard(card)
@@ -416,6 +451,7 @@ function Card({
       const target = event.target as HTMLElement | null
       if (
         event.defaultPrevented ||
+        root.current?.closest('[data-receded]') ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -477,6 +513,7 @@ function Card({
           onChange={(event) => setState((old) => ({ ...old, text: event.target.value }))}
           className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
         />
+        {actions}
         <Button
           variant="ghost"
           size="sm"
@@ -488,7 +525,7 @@ function Card({
           Dismiss
         </Button>
         <Button size="sm" type="submit" disabled={!text.trim() || busy}>
-          {busy ? 'Sending…' : 'Send'}
+          {busy ? 'Sending…' : (sendLabel ?? 'Send')}
         </Button>
         {error && (
           <p role="alert" className="w-full text-xs text-error">
@@ -619,6 +656,7 @@ function Card({
           </span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
+          {actions}
           <Button
             variant="ghost"
             size="sm"
@@ -645,11 +683,12 @@ function Card({
             disabled={(!ready.length && !note.trim()) || busy}
             onClick={() => send()}
           >
-            {!ready.length && note.trim()
-              ? 'Send note'
-              : unanswered && ready.length
-                ? `Send ${ready.length} of ${questions.length}`
-                : 'Send'}
+            {sendLabel ??
+              (!ready.length && note.trim()
+                ? 'Send note'
+                : unanswered && ready.length
+                  ? `Send ${ready.length} of ${questions.length}`
+                  : 'Send')}
           </Button>
         </span>
         {error && (

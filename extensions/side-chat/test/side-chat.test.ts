@@ -653,6 +653,75 @@ describe('side chats', () => {
     ).toHaveLength(1)
   })
 
+  it('forks the asker of an open question at its call, read-only, and injects a summary that starts no run', async () => {
+    const f = await fixture()
+    await f.call(f.main, 'message', {
+      to: 'user',
+      text: 'Pick one',
+      questions: [{ text: 'Which?', kind: 'choice', options: [{ label: 'a' }, { label: 'b' }] }],
+    })
+    const asked = (await entries(f.server, f.main)).at(-1)!
+    expect(asked.model?.[0].role).toBe('toolResult')
+    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
+    const message = board.messages.find((item) => item.text === 'Pick one')!
+    const opened = await f.action('open', { message: message.id })
+    expect([opened.status, opened.data.error]).toEqual([200, undefined])
+    const side = opened.data.result.id as ConversationId
+    expect(await f.server.harness.snapshot(Side, side, context)).toMatchObject({
+      of: f.main,
+      at: asked.id,
+      question: message.id,
+      effects: false,
+    })
+    expect((await f.action('open', { message: message.id })).data.result.id).toBe(side)
+
+    await f.call(side, 'note', { to: ROOT_CONVERSATION_ID, text: 'must not land' })
+    await f.call(side, 'codemode', { code: 'return 1' })
+    const blocked = JSON.stringify(await entries(f.server, side))
+    expect(blocked).toContain('This side chat is read-only: note is blocked')
+    expect(blocked).toContain('This side chat is read-only: codemode is blocked')
+    expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(false)
+    await f.call(side, 'memory', {})
+    expect(JSON.stringify(await entries(f.server, side))).not.toContain(
+      'read-only: memory is blocked',
+    )
+
+    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
+    try {
+      const runsBefore = f.requests.filter((request) => !request.system.includes('Summarize'))
+      expect((await f.action('inject', { id: side })).status).toBe(200)
+      const summary = (await entries(f.server, f.main)).find(
+        (entry) => entry.kind === 'sidechat.summary',
+      )!
+      expect(summary.data).toMatchObject({ side, question: message.id, to: f.main })
+      expect(JSON.stringify(summary.model)).toContain(
+        `talked your question (message ${message.id}) through`,
+      )
+      expect(f.summaries.at(-1)).toBeDefined()
+      expect(f.requests.filter((request) => !request.system.includes('Summarize'))).toEqual(
+        runsBefore,
+      )
+    } finally {
+      await writeFile(
+        join(ultimateRoot, '.ultimate/settings.json'),
+        JSON.stringify({ summaryModel: 'unavailable/test' }),
+      )
+    }
+    const reopened = await f.action('open', { message: message.id })
+    expect(reopened.data.result.id).not.toBe(side)
+    await post(f.server, '/api/extensions/questions/actions/answer', {
+      args: { messageId: message.id, text: 'a' },
+    })
+    expect((await f.action('open', { message: message.id })).data.result.id).toBe(
+      reopened.data.result.id,
+    )
+    const closed = await f.action('discard', { id: reopened.data.result.id })
+    expect(closed.status).toBe(200)
+    expect((await f.action('open', { message: message.id })).data.error).toMatch(
+      /no longer waits on you/,
+    )
+  })
+
   it('discards without writing main, concludes, refuses repeated end and later input, and refuses inject without summaryModel', async () => {
     const f = await fixture()
     const side = await f.open()

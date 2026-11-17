@@ -19,6 +19,7 @@ import {
   formatTime,
   Header,
   provide,
+  Provided,
   Sidebar,
   useEvent,
   useNow,
@@ -31,6 +32,7 @@ import type { Message } from '../messages/refs.ts'
 import { MessageQuestions } from '../questions/ui.tsx'
 import { UnderUltimate } from '../sidebar/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
+import { QuestionPane } from './ui.tsx'
 import { answeredToday, keyOf, lead, previewUrl, selection } from './items.tsx'
 import type { Entry } from './items.tsx'
 import { Waiting } from './ui.tsx'
@@ -447,8 +449,18 @@ function Surface({ items, messages }: { items: Entry[]; messages: readonly Messa
     </span>
   )
 
-  const reading = item && (
+  const ownPane = item && (
     <Reading entry={item} key={item.key} now={now} onBack={() => setOpen(false)} phone={phone} />
+  )
+  const reading = item?.message ? (
+    <Provided
+      input={{ message: item.message, phone, back: () => phone && setOpen(true) }}
+      point={QuestionPane}
+    >
+      {(takeover) => takeover ?? ownPane}
+    </Provided>
+  ) : (
+    ownPane
   )
   return (
     <div className="flex min-h-0 flex-1">
