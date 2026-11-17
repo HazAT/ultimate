@@ -48,8 +48,8 @@ command and its output.
 Under `CONTRIBUTING.md`: a clear-cut fix or improvement to the core merges; a feature stays open and unmerged as a
 reference, titled "Feature: …" with the `feature` label. Judge the code by AGENTS.md "Review quality".
 
-The user decides many of these in a row from the Inbox, so the report and the card's text read in this order, with
-the PR linked:
+The user decides many of these in a row from the Inbox, so the report and the card's text open with the PR's title in
+plain words (the Inbox row shows that first line as is), the link after it, then read in this order:
 
 1. **Intent:** what problem the contributor is solving and why, in their terms. When the PR text does not make it
    clear, say so rather than guess.
