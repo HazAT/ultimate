@@ -71,7 +71,7 @@ function drive(server: Awaited<ReturnType<typeof fauxServer>>) {
   }
 }
 
-it.concurrent('gates project resources until the local setup is chosen, and remembers the choice', async () => {
+it('gates project resources until the local setup is chosen, and remembers the choice', async () => {
   const { home, project, options } = await setupFixture()
   let server: Awaited<ReturnType<typeof fauxServer>> | undefined
   try {
@@ -151,7 +151,7 @@ it.concurrent('gates project resources until the local setup is chosen, and reme
   }
 })
 
-it.concurrent('applies extension choices live at project and user scope, keeping other settings', async () => {
+it('applies extension choices live at project and user scope, keeping other settings', async () => {
   const { home, projectFile, userFile, options } = await setupFixture(true)
   const server = await fauxServer(options)
   try {
@@ -207,7 +207,7 @@ it.concurrent('applies extension choices live at project and user scope, keeping
   }
 })
 
-it.concurrent('withdraws the local setup, adopts it into user settings, and remembers the first run', async () => {
+it('withdraws the local setup, adopts it into user settings, and remembers the first run', async () => {
   const { home, projectFile, userFile, options } = await setupFixture(true)
   await updateSettings(projectFile, (value) => {
     value.extensions = { ...(value.extensions as object), enable: ['splash'] }
@@ -260,7 +260,7 @@ it.concurrent('withdraws the local setup, adopts it into user settings, and reme
   }
 })
 
-it.concurrent('offers setup only to named definitions, refuses inapplicable cards, and deduplicates user-only choices', async () => {
+it('offers setup only to named definitions, refuses inapplicable cards, and deduplicates user-only choices', async () => {
   const home = await temp('ultimate-setup-cards-')
   const project = join(home, 'project')
   await mkdir(join(project, '.ultimate'), { recursive: true })
@@ -444,7 +444,7 @@ it.concurrent('offers setup only to named definitions, refuses inapplicable card
   }
 })
 
-it.concurrent('does not inherit a parent project choice', async () => {
+it('does not inherit a parent project choice', async () => {
   const home = await temp('ultimate-trust-')
   try {
     const project = join(home, 'parent/child')
@@ -456,7 +456,7 @@ it.concurrent('does not inherit a parent project choice', async () => {
   }
 })
 
-it.concurrent('shares one choice between a checkout and its linked worktrees', async () => {
+it('shares one choice between a checkout and its linked worktrees', async () => {
   const home = await temp('ultimate-trust-worktree-')
   try {
     const main = join(home, 'main')
@@ -492,7 +492,7 @@ it.concurrent('shares one choice between a checkout and its linked worktrees', a
   }
 })
 
-it.concurrent('boots with corrupt trust, discloses project replacements, and recovers after repair', async () => {
+it('boots with corrupt trust, discloses project replacements, and recovers after repair', async () => {
   const home = await temp('ultimate-corrupt-trust-')
   const project = join(home, 'project')
   await mkdir(join(project, '.ultimate/extensions/codemode'), { recursive: true })
