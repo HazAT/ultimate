@@ -513,6 +513,41 @@ it.each(floodTriggers)(
   },
 )
 
+it('counts only fires that start a run toward the hourly cap', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  const f = await fixture()
+  const a = (await f.action('create', {
+    name: 'Deploy',
+    prompt: 'Deploy',
+    schedule: 'every 1d',
+  })) as Automation
+  const busy = (status: 'running' | 'done') =>
+    f.harness.commit(async (tx) => {
+      const runs = (await tx.doc(Automations)).automations[a.id].runs
+      const run = runs.find((r) => r.id === 'busy')
+      if (run) run.status = status
+      else runs.push({ id: 'busy', firedAt: Date.now(), status })
+    }, context)
+  // A deploy still working: every fire beside it is skipped and starts nothing.
+  await busy('running')
+  for (let i = 0; i < 10; i++) await f.action('run', { id: a.id })
+  expect(await f.record(a.id)).toMatchObject({ fires: 10, enabled: true, recentFires: [] })
+  await busy('done')
+  const fireAndFinish = async () => {
+    await f.action('run', { id: a.id })
+    await until(async () => (await f.record(a.id)).runs.at(-1)!.status !== 'running')
+  }
+  for (let i = 0; i < 7; i++) await fireAndFinish()
+  const paused = await f.record(a.id)
+  expect(paused.enabled).toBe(false)
+  // The seventh real fire pauses instead of starting a run.
+  expect(paused.runs.filter((r) => r.status === 'done' && r.id !== 'busy')).toHaveLength(6)
+  expect(paused.runs.filter((r) => r.status === 'skipped')).toHaveLength(10)
+  expect(
+    (await f.host.eventLog.recent({ events: [defineEvent('automations.escalated')] }))[0].data,
+  ).toEqual({ id: a.id, reason: 'Fired more than 6 times in an hour; paused' })
+})
+
 it('lists ten event definitions and validates trigger inputs and kind changes', async () => {
   const f = await fixture()
   const events = (await f.action('events')) as {

@@ -499,7 +499,8 @@ function useSideRows(main: ConversationId | undefined): ReactNode {
   return (
     <div aria-label="Side chats" className="flex flex-col gap-px" role="group">
       {sides.map((item) => {
-        const inFront = item.id === front && actions.conversationId === main
+        const mainShown = actions.surface === 'agent' && actions.conversationId === main
+        const inFront = item.id === front && mainShown
         const working = conversations.find((conversation) => conversation.id === item.id)?.busy
         return (
           <button
@@ -513,8 +514,7 @@ function useSideRows(main: ConversationId | undefined): ReactNode {
             onClick={() => {
               if (inFront) return setFront(null)
               setFront(item.id)
-              if (actions.conversationId === main) return
-              void talkToUltimate(actions)
+              if (!mainShown) void talkToUltimate(actions)
             }}
             type="button"
           >

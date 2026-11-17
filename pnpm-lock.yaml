@@ -76,6 +76,9 @@ importers:
       log-update:
         specifier: 8.0.0
         version: 8.0.0
+      lovely-mermaid:
+        specifier: 0.3.3
+        version: 0.3.3
       lucide-react:
         specifier: 1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.0)
