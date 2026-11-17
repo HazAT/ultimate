@@ -913,12 +913,18 @@ function useConversationTask(id: number | undefined) {
   return task && { chip: <TaskChip task={task} />, title: task.title }
 }
 
-function useLandedNote({ conversation, sha }: { conversation: ConversationId; sha: string }) {
+function useLandedNote({
+  conversation,
+  submission,
+}: {
+  conversation: ConversationId
+  submission: string
+}) {
   const progress = useDocOf(conversation, ProgressDoc)?.epics ?? {}
-  const landed = Object.entries(progress).find(([, epic]) => epic.landed?.[sha])
+  const landed = Object.entries(progress).find(([, epic]) => epic.landed?.[submission])
   if (!landed) return undefined
   const [key, epic] = landed
-  const counts = epic.landed![sha]
+  const counts = epic.landed![submission]
   return (
     <p className="text-muted-foreground tabular-nums">
       Criteria{' '}

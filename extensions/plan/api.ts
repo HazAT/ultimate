@@ -12,21 +12,22 @@ export type OpenCriterion = { n: number; text: string; estimate?: Estimate['stat
 
 export type PlanService = {
   /**
-   * The unconfirmed acceptance criteria of conversation `id`'s newest open epic when it works that epic without tasks;
+   * The unconfirmed acceptance criteria of conversation `id`'s newest open epic and the `revision` of its criteria;
    * undefined when there are none.
    */
   openCriteria(
     id: ConversationId,
     caller: Context,
-  ): Promise<{ epic: string; criteria: OpenCriterion[] } | undefined>
+  ): Promise<{ epic: string; revision: number; criteria: OpenCriterion[] } | undefined>
   /**
-   * Inside `tx`, raise the estimates of epic `epic` on conversation `id`, keyed by criterion text: an estimate only moves
-   * up, and texts no longer among the epic's criteria are dropped.
+   * Inside `tx`, raise the estimates of epic `epic` on conversation `id`, keyed by criterion text, unless its criteria
+   * changed since `revision` (what `openCriteria` returned): an estimate only moves up.
    */
   estimate(
     tx: Tx,
     id: ConversationId,
     epic: string,
+    revision: number,
     estimates: Record<string, Estimate>,
   ): Promise<void>
 }

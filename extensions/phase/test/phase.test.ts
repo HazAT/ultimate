@@ -278,9 +278,19 @@ it('asks about each open criterion and raises only confident estimates, with the
     },
     usage: { inputTokens: 0 },
   })
+  let release!: () => void
+  const laterInputWritten = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const f = await fixture(
     { ask },
-    { openCriteria: async () => ({ epic: 'E1', criteria }), estimate },
+    {
+      openCriteria: async () => {
+        await laterInputWritten
+        return { epic: 'E1', revision: 3, criteria }
+      },
+      estimate,
+    },
   )
   await f.harness.commit(async (tx) => {
     await tx.appendEntry(f.root.id, {
@@ -296,17 +306,20 @@ it('asks about each open criterion and raises only confident estimates, with the
       model: [{ role: 'user', content: 'Later input', timestamp: 2 }],
     })
   }, context)
+  release()
   await until(() => estimate.mock.calls.length === 1)
-  const { questions } = ask.mock.calls[0][0]
+  const { questions, state } = ask.mock.calls[0][0]
+  expect(state).toMatchObject({ request: 'Build it' })
   expect(Object.keys(questions)).toEqual(['phase', 'criterion1', 'criterion3'])
   expect(questions.criterion3.instructions).toMatchObject({
     criterion: 'Preview approved.',
     estimate: 'in_progress',
   })
-  const [, conversation, epic, estimates] = estimate.mock.calls[0]
-  expect([conversation, epic, estimates]).toEqual([
+  const [, conversation, epic, revision, estimates] = estimate.mock.calls[0]
+  expect([conversation, epic, revision, estimates]).toEqual([
     f.root.id,
     'E1',
+    3,
     { 'Plan update records met criteria.': { state: 'looks_done', at: last.id } },
   ])
 })

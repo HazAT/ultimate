@@ -69,7 +69,7 @@ async function firstRunInput(tx: Tx, id: ConversationId) {
   return (await tx.doc(LiveDoc, id)).run?.inputs[0]
 }
 type Asked = {
-  open: { epic: string; criteria: OpenCriterion[] } | null
+  open: { epic: string; revision: number; criteria: OpenCriterion[] } | null
   at: number
   answers: ClassifyResult['answers']
 }
@@ -181,7 +181,13 @@ export default function phase(
           if (plan && asked?.open) {
             const estimates = estimatesOf(asked.open.criteria, asked.answers, asked.at)
             if (Object.keys(estimates).length)
-              await plan.estimate(tx, runtime.conversationId, asked.open.epic, estimates)
+              await plan.estimate(
+                tx,
+                runtime.conversationId,
+                asked.open.epic,
+                asked.open.revision,
+                estimates,
+              )
           }
           const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
           const row = state.conversations[runtime.conversationId]

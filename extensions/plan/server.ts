@@ -157,11 +157,20 @@ async function raiseEstimates(
 ) {
   const progress = await tx.doc(Progress, id)
   const entry = progress.epics[epic.key]
-  if (!entry && Object.keys(estimates).length === 0) return
   progress.epics[epic.key] = {
     ...entry,
     estimates: raise(criteriaOfBody(epic.body) ?? [], entry?.estimates ?? {}, estimates),
   }
+}
+
+function keepConfirmations(before: string[], after: string[], met: number[]) {
+  const kept = met.map((n) => before[n - 1])
+  return after.flatMap((criterion, index) => {
+    const match = kept.indexOf(criterion)
+    if (match < 0) return []
+    kept.splice(match, 1)
+    return [index + 1]
+  })
 }
 
 export default (host: ExtensionHost) => {
@@ -170,8 +179,8 @@ export default (host: ExtensionHost) => {
       const plan = await host.harness().snapshot(Plan, id, caller)
       const epic = plan && currentEpic(plan.epics)
       if (!epic || epic.status === 'done') return undefined
-      const estimates =
-        (await host.harness().snapshot(Progress, id, caller))?.epics[epic.key]?.estimates ?? {}
+      const progress = (await host.harness().snapshot(Progress, id, caller))?.epics[epic.key]
+      const estimates = progress?.estimates ?? {}
       const criteria = (criteriaOfBody(epic.body) ?? []).flatMap((text, index) =>
         confirmed(epic, index + 1)
           ? []
@@ -183,11 +192,14 @@ export default (host: ExtensionHost) => {
               },
             ],
       )
-      return criteria.length ? { epic: epic.key, criteria } : undefined
+      return criteria.length
+        ? { epic: epic.key, revision: progress?.revision ?? 0, criteria }
+        : undefined
     },
-    estimate: async (tx, id, key, estimates) => {
+    estimate: async (tx, id, key, revision, estimates) => {
       const epic = (await tx.doc(Plan, id)).epics[key]
-      if (epic) await raiseEstimates(tx, id, epic, estimates)
+      const current = (await tx.doc(Progress, id)).epics[key]?.revision ?? 0
+      if (epic && revision === current) await raiseEstimates(tx, id, epic, estimates)
     },
   })
   host.react(
@@ -202,7 +214,10 @@ export default (host: ExtensionHost) => {
       const entry = progress.epics[epic.key]
       const counts = criteriaCounts(epic, entry?.estimates)
       if (counts.total > 0)
-        progress.epics[epic.key] = { ...entry, landed: { ...entry?.landed, [data.sha]: counts } }
+        progress.epics[epic.key] = {
+          ...entry,
+          landed: { ...entry?.landed, [data.submission]: counts },
+        }
     },
     { from: 'now' },
   )
@@ -372,13 +387,14 @@ export default (host: ExtensionHost) => {
                 if (!task && args.body !== undefined) {
                   const before = criteriaOfBody(item.body) ?? []
                   const after = criteriaOfBody(args.body) ?? []
-                  if (args.met === undefined && item.met) {
-                    const kept = new Set(item.met.map((n) => before[n - 1]))
-                    item.met = after.flatMap((criterion, index) =>
-                      kept.has(criterion) ? [index + 1] : [],
-                    )
+                  if (args.met === undefined && item.met)
+                    item.met = keepConfirmations(before, after, item.met)
+                  if (before.join('\n') !== after.join('\n')) {
+                    const progress = await tx.doc(Progress, coordinator)
+                    const entry = progress.epics[item.key]
+                    progress.epics[item.key] = { ...entry, revision: (entry?.revision ?? 0) + 1 }
+                    await raiseEstimates(tx, coordinator, { ...item, body: args.body }, {})
                   }
-                  await raiseEstimates(tx, coordinator, { ...item, body: args.body }, {})
                 }
                 if (!task && args.met !== undefined)
                   item.met = [...new Set(args.met)].toSorted((a, b) => a - b)

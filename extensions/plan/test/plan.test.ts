@@ -363,7 +363,7 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
   let service!: PlanService
   let landed!: (
     tx: Tx,
-    event: { data: { conversationId: ConversationId; sha: string } },
+    event: { data: { conversationId: ConversationId; sha: string; submission: string } },
   ) => Promise<void>
   prepared.registry.install(
     planExtension({
@@ -407,6 +407,7 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
     await call({ action: 'create', title: 'Criteria', body: body(['A', 'B', 'C']) })
     expect(await service.openCriteria(id, context)).toEqual({
       epic: 'E1',
+      revision: 0,
       criteria: [
         { n: 1, text: 'A' },
         { n: 2, text: 'B' },
@@ -417,42 +418,49 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
     await call({ action: 'update', key: 'E1', met: [4] })
     expect(failed.pop()).toContain('E1 has 3 acceptance criteria, not 4')
     await call({ action: 'update', key: 'E1', met: [3, 1, 1] })
-    expect((await opened.harness.snapshot(Plan, id, context))?.epics.E1.met).toEqual([1, 3])
+    const met = async () => (await opened.harness.snapshot(Plan, id, context))?.epics.E1.met
+    expect(await met()).toEqual([1, 3])
 
-    const estimate = (next: Record<string, { state: 'in_progress' | 'looks_done'; at?: number }>) =>
-      opened.harness.commit((tx) => service.estimate(tx, id, 'E1', next), context)
-    await estimate({ B: { state: 'looks_done', at: 7 } })
-    await estimate({ B: { state: 'in_progress' }, C: { state: 'in_progress' } })
-    expect(await estimates()).toEqual({
-      B: { state: 'looks_done', at: 7 },
-      C: { state: 'in_progress' },
-    })
+    const estimate = (
+      revision: number,
+      next: Record<string, { state: 'in_progress' | 'looks_done'; at?: number }>,
+    ) => opened.harness.commit((tx) => service.estimate(tx, id, 'E1', revision, next), context)
+    await estimate(0, { B: { state: 'looks_done', at: 7 } })
+    await estimate(0, { B: { state: 'in_progress' } })
+    expect(await estimates()).toEqual({ B: { state: 'looks_done', at: 7 } })
     expect(await service.openCriteria(id, context)).toEqual({
       epic: 'E1',
+      revision: 0,
       criteria: [{ n: 2, text: 'B', estimate: 'looks_done' }],
     })
 
-    await opened.harness.commit(
-      (tx) => landed(tx, { data: { conversationId: id, sha: 'abc1234' } }),
-      context,
-    )
+    const land = (submission: string) =>
+      opened.harness.commit(
+        (tx) => landed(tx, { data: { conversationId: id, sha: 'abc1234', submission } }),
+        context,
+      )
+    await land('s1')
     await call({ action: 'add', epic: 'E1', title: 'T', role: 'worker', description: 'D' })
     expect((await service.openCriteria(id, context))?.criteria).toHaveLength(1)
 
-    // Confirmations follow their criterion's text through a body edit; estimates of changed text go at once.
-    await call({ action: 'update', key: 'E1', body: body(['C', 'B changed', 'A']) })
-    expect((await opened.harness.snapshot(Plan, id, context))?.epics.E1.met).toEqual([1, 3])
-    expect(await estimates()).toEqual({ C: { state: 'in_progress' } })
-    await call({ action: 'update', key: 'E1', body: body(['C', 'B', 'A']) })
-    expect(await estimates()).toEqual({ C: { state: 'in_progress' } })
+    // Confirmations follow their criterion's text, each at most once; estimates of changed text go at once.
+    await call({ action: 'update', key: 'E1', body: body(['B changed', 'C', 'A', 'A']) })
+    expect(await met()).toEqual([2, 3])
+    expect(await estimates()).toEqual({})
+    await call({ action: 'update', key: 'E1', body: body(['A', 'B', 'C']) })
+    expect(await met()).toEqual([1, 3])
 
-    await opened.harness.commit(
-      (tx) => landed(tx, { data: { conversationId: id, sha: 'def5678' } }),
-      context,
-    )
+    // An answer to the criteria as they were before an edit is dropped, even when the text came back.
+    await estimate(0, { B: { state: 'looks_done', at: 9 } })
+    expect(await estimates()).toEqual({})
+    await estimate(2, { B: { state: 'in_progress' } })
+    expect(await estimates()).toEqual({ B: { state: 'in_progress' } })
+
+    await call({ action: 'update', key: 'E1', met: [1, 2, 3] })
+    await land('s2')
     expect((await opened.harness.snapshot(Progress, id, context))?.epics.E1?.landed).toEqual({
-      abc1234: { total: 3, confirmed: 2, estimated: 1 },
-      def5678: { total: 3, confirmed: 2, estimated: 0 },
+      s1: { total: 3, confirmed: 2, estimated: 1 },
+      s2: { total: 3, confirmed: 3, estimated: 0 },
     })
 
     await call({ action: 'update', key: 'E1', status: 'done' })

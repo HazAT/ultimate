@@ -31,6 +31,7 @@ export type NoteData =
       at?: number
       divergence?: string
       sha: string
+      submission?: string
       base?: string
       target: string
       title?: string
