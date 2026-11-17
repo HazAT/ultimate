@@ -1,5 +1,3 @@
-// Adapted from vercel/ai-elements packages/elements/src/tool.tsx (Apache-2.0, see LICENSE).
-// Changes: Pi Durable call states instead of `ai` tool parts; a dense one-line header with title and meta.
 import { cn } from 'cn'
 import {
   CheckIcon,
@@ -24,6 +22,7 @@ export const Tool = ({ className, ...props }: ComponentProps<typeof Collapsible>
       'group/tool not-prose w-full overflow-hidden rounded-md border border-border/80 bg-card/50 font-mono text-[12px]',
       className,
     )}
+    data-ui="tool"
     {...props}
   />
 )
@@ -46,7 +45,6 @@ const icons = {
   interrupted: [MinusCircleIcon, 'text-warning'],
 } as const
 
-/** The call's state; `icon`, the tool's own, stands in for the check mark once it is done. */
 export const ToolStatusIcon = ({
   state,
   className,
@@ -63,21 +61,17 @@ export const ToolStatusIcon = ({
 export type ToolHeaderProps = Omit<ComponentProps<typeof CollapsibleTrigger>, 'title'> & {
   name: string
   state: ToolState
-  /** The tool's icon, shown in place of the check mark once the call is done. */
   icon?: LucideIcon
-  /** What the call works on: a path, a command. */
   title?: ReactNode
-  /** Right-aligned facts: duration, size, exit code. */
   meta?: ReactNode
-  /** A control after the toggle, such as a cancel button: outside the trigger, so it can be a real button. */
   action?: ReactNode
 }
 
-export const ToolHeader = ({ action, ...props }: ToolHeaderProps) =>
-  action ? (
+export const ToolHeader = ({ action: actionOutsideToggle, ...props }: ToolHeaderProps) =>
+  actionOutsideToggle ? (
     <div className="flex items-center pr-1.5">
       <ToolTrigger {...props} />
-      {action}
+      {actionOutsideToggle}
     </div>
   ) : (
     <ToolTrigger {...props} />
@@ -169,7 +163,6 @@ export const ToolDiagnostics = ({
                 ? 'text-warning'
                 : 'text-muted-foreground',
           )}
-          // oxlint-disable-next-line react/no-array-index-key -- Result diagnostics have no id and may repeat.
           key={index}
         >
           {diagnostic.message}
@@ -178,7 +171,6 @@ export const ToolDiagnostics = ({
     </ToolSection>
   ) : null
 
-/** An image of a tool result as a thumbnail; a click opens it full size. */
 export const ToolImage = ({
   image,
   className,
@@ -213,7 +205,6 @@ export const ToolImage = ({
   )
 }
 
-/** The images of a tool result, such as screenshots. */
 export const ToolImages = ({
   images,
   ...props
@@ -222,7 +213,6 @@ export const ToolImages = ({
     <ToolSection label={images.length > 1 ? `${images.length} images` : 'Image'} {...props}>
       <div className="flex flex-wrap gap-2">
         {images.map((image, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Fixed result images may contain duplicates.
           <ToolImage image={image} key={index} />
         ))}
       </div>

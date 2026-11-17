@@ -44,7 +44,7 @@ Before designing, answer for yourself: Who uses this? What are they trying to ge
 
 You can't judge a design you haven't seen. After each meaningful change:
 
-1. Render it and take a screenshot: your coordinator runs a preview of your worktree and gives you its URL (it hot-reloads as you save; ask for one if you have none). Drive it into the state you need with real prompts or the `browser` tool, capture it with the `screenshot` tool and look at the image it returns. Leave out `path`: screenshots then save outside your worktree, where they cannot block landing; the result names the file. Pass `path` only for a screenshot you commit.
+1. Render it and take a screenshot: your coordinator runs a preview of your worktree and gives you its URL (it switches to your change about 2 s after you save; ask for one if you have none). Drive it into the state you need with real prompts or the `browser` tool, capture it with the `screenshot` tool and look at the image it returns. Leave out `path`: screenshots then save outside your worktree, where they cannot block landing; the result names the file. Pass `path` only for a screenshot you commit.
 
    For transcript UI, check on the real-model preview: scroll back through a long conversation, watch a reply stream live, fold and unfold groups (tool calls, update groups), and look at phone width (390 px).
 

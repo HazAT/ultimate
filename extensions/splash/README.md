@@ -19,9 +19,9 @@ app comes up once the page is ready.
 - **Reduced motion** (`prefers-reduced-motion`) or no WebGL2: the solid wordmark, no lightning, then a quick fade.
 - **Never stuck**: not ready after 8 s, the core reveals the app anyway, and a small notice names the extensions still
   loading (`useReady().pending`) and those that failed (`useReady().failed`), until they load or it is dismissed.
-- **Once per page load**: mounted when the page is already ready (a very warm start, a hot reload), it shows nothing,
-  and hot reloads after ready never bring it back.
-- **Fresh starts only**: a reload of a rendered page (a core restart, a Vite full reload, F5) shows the previous
+- **Once per page load**: mounted when the page is already ready (a very warm start), it shows nothing,
+  and nothing after ready brings it back.
+- **Fresh starts only**: a reload of a rendered page (a core restart, a switch to a new web bundle, F5) shows the previous
   page's view until the app is back (`resumed` from `@/sdk`), so the splash stays away.
 - **Rehearsal**: `?splash` holds the splash on screen, automated browsers included, and a click replays it;
   `?splash=first` plays the first run's version. For polishing it on a preview instance.

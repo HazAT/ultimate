@@ -1,16 +1,11 @@
-// Adapted from vercel/ai-elements packages/elements/src/code-block.tsx (Apache-2.0, see LICENSE).
-// Changes: highlights through Streamdown's shared Shiki plugin, adds `startLine` and `languageFromPath`, drops the
-// language selector, header, and copy button.
 import { createCodePlugin } from '@streamdown/code'
 import type { HighlightOptions, HighlightResult } from '@streamdown/code'
 import { cn } from 'cn'
 import type { CSSProperties, HTMLAttributes, Ref } from 'react'
 import { memo, useEffect, useState } from 'react'
 
-/** One highlighter for Streamdown and every code block. */
 export const codePlugin = createCodePlugin({ themes: ['vitesse-light', 'vitesse-dark'] })
 const themes = codePlugin.getThemes()
-/** A Shiki language id such as `ts` or `bash`. */
 export type BundledLanguage = HighlightOptions['language']
 
 const extensions: Record<string, string> = {
@@ -29,7 +24,6 @@ const extensions: Record<string, string> = {
   h: 'c',
   hpp: 'cpp',
 }
-/** A Shiki language for a file path, `text` when unknown. */
 export function languageFromPath(path: string): BundledLanguage {
   const name = path.split('/').at(-1)?.toLowerCase() ?? ''
   if (name === 'dockerfile') return 'dockerfile'
@@ -45,8 +39,7 @@ type Line = HighlightResult['tokens'][number]
 const plain = (code: string): Line[] =>
   code.split('\n').map((content) => (content ? [{ content, offset: 0, color: 'inherit' }] : []))
 
-/** Keep the last same-language highlight visible while its replacement is being tokenized. */
-function useTokens(code: string, language: BundledLanguage): Line[] {
+function useLastSameLanguageTokens(code: string, language: BundledLanguage): Line[] {
   const [result, setResult] = useState<{ language: string; tokens: Line[] }>()
   useEffect(() => {
     let cancelled = false
@@ -66,9 +59,7 @@ export type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string
   language: BundledLanguage
   showLineNumbers?: boolean
-  /** Number of the first line, for excerpts. */
   startLine?: number
-  /** The code is still arriving: a soft cursor ends its last line. */
   caret?: boolean
   ref?: Ref<HTMLDivElement>
 }
@@ -82,7 +73,7 @@ const CodeBlockContent = memo(
     caret = false,
     className,
   }: Omit<CodeBlockProps, keyof HTMLAttributes<HTMLDivElement>> & { className?: string }) => {
-    const tokens = useTokens(code.replace(/\n$/, ''), language)
+    const tokens = useLastSameLanguageTokens(code.replace(/\n$/, ''), language)
     const width = String(startLine + tokens.length - 1).length
     return (
       <pre
@@ -93,7 +84,6 @@ const CodeBlockContent = memo(
       >
         <code className="grid">
           {tokens.map((line, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Code lines are positional and may repeat.
             <span className="flex" key={index}>
               {showLineNumbers && (
                 <span
@@ -108,7 +98,6 @@ const CodeBlockContent = memo(
                   ? ' '
                   : line.map((token, i) => (
                       <span
-                        // oxlint-disable-next-line react/no-array-index-key -- Token positions within a highlighted line.
                         key={i}
                         style={{
                           color: token.color,

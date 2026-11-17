@@ -52,20 +52,23 @@ and sends from the last one; ⇧Enter accepts every pick and sends; `/` focuses 
 conversation's newest open card takes these keys; they leave alone input/textarea editing and keys pressed in another
 card, on another control or in the panel, whose cards take no global keys.
 
+What the user picked and typed on a card lives in durable UI state, by message (`ext.questions.cards`), so leaving a
+surface for another, a reload or another window or device shows it again where they left it; it goes as soon as the
+message settles (answered, dismissed, or settled for them by @ultimate).
+
 ## Where open questions wait
 
-The To-dos tab lists every message that waits on the user at its top, newest first, named by its first question; a
-row opens the asking conversation at the message, where this card answers or dismisses it. ⌘K “Show open
-questions" opens the tab; meanwhile @ultimate's mark is amber, and an asking branch's row says `waits on you`.
+The Inbox (`extensions/inbox`) lists every message that waits on the user, oldest first, and shows this card under the
+selected one, so it is answered or dismissed there; the To-dos tab keeps one `Inbox · N` row that opens it. ⌘K “Show
+open questions" opens the To-dos tab; meanwhile @ultimate's mark is amber, and an asking branch's row says `waits on you`.
 
 ## Actions
 
 Both are user-only.
 
-- `answer { messageId, answers: [{ question, answer }], note? }` validates against the message's questions, refusing
+- `answer { messageId, answers: [{ question, answer }], note? }`, a multi answer as its list of labels, validates against the message's questions, refusing
   unknown or duplicate answers, and posts a normal user reply to the sender with `re: messageId`, one paragraph per
-  answer in the message's own numbering: `1a. Topic: option` for an option, `2a,c. Topic: a, c` for several (a multi
-  answer joins its labels with ", "), `3: text` for typed text or a rating (`Topic: answer` when the message numbered
+  answer in the message's own numbering: `1a. Topic: option` for an option, `2a,c. Topic: a, c` for several, `3: text` for typed text or a rating (`Topic: answer` when the message numbered
   nothing), then `Note: …`; with no answers the note alone is the reply. Returns `{ id }`. `answer { messageId, text }`
   posts `text` instead, for a message with or without questions. Messages admission atomically verifies that the
   original remains open, so concurrent answers produce exactly one reply; normal Messages delivery wakes the sender.

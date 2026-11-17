@@ -1,0 +1,572 @@
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  GitBranchIcon,
+  InboxIcon,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
+import { Kbd } from '@/components/ui/kbd'
+import {
+  cn,
+  column,
+  defineWebExtension,
+  events,
+  formatAgo,
+  formatTime,
+  Header,
+  provide,
+  Sidebar,
+  useEvent,
+  useNow,
+  useUltimate,
+  useViewport,
+} from '@/sdk'
+import { FeatureTag, useOverview, useStandingName } from '../conversations/ui.tsx'
+import { Body, MessageImages, stateTone } from '../messages/ui.tsx'
+import type { Message } from '../messages/refs.ts'
+import { MessageQuestions } from '../questions/ui.tsx'
+import { UnderUltimate } from '../sidebar/ui.tsx'
+import { talkToUltimate } from '../subagents/ui.tsx'
+import { answeredToday, keyOf, lead, previewUrl, selection } from './items.tsx'
+import type { Entry } from './items.tsx'
+import { Waiting } from './ui.tsx'
+
+const SURFACE = 'inbox'
+const WAIT_WARNING_AFTER_MS = 60 * 60_000
+const amber = stateTone.waits
+
+const conversationOf = (entry: Entry) =>
+  entry.message
+    ? typeof entry.message.from === 'number'
+      ? entry.message.from
+      : undefined
+    : entry.item.conversation
+
+function Asker({ id }: { id: Message['from'] }) {
+  const overview = useOverview()
+  const agent = useStandingName(typeof id === 'number' ? id : undefined)
+  if (typeof id !== 'number') return <span className="font-mono text-[10.5px]">{id}</span>
+  const feature = agent ? undefined : overview[id]?.feature
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground/70">
+      {feature && <FeatureTag className="max-w-40 shrink" feature={feature} />}
+      {agent && <span className="shrink-0 text-foreground/80">{agent}</span>}
+      <span className="shrink-0">#{id}</span>
+    </span>
+  )
+}
+
+function Waited({ at, now }: { at: number; now: number }) {
+  return (
+    <time
+      className={cn(
+        'shrink-0 font-mono text-[11px] tabular-nums',
+        now - at > WAIT_WARNING_AFTER_MS ? amber : 'text-muted-foreground',
+      )}
+      dateTime={new Date(at).toISOString()}
+      title={`Asked ${new Date(at).toLocaleString()}`}
+    >
+      {formatAgo(at, now)}
+    </time>
+  )
+}
+
+const tagOf = (entry: Entry) =>
+  entry.item ? entry.item.tag : previewUrl(entry.message.text) ? 'preview' : 'question'
+
+const KindTag = ({ entry }: { entry: Entry }) => (
+  <span className="shrink-0 rounded border border-border/70 px-1 font-mono text-[10px] leading-4 text-muted-foreground">
+    {tagOf(entry)}
+  </span>
+)
+
+const titleOf = (entry: Entry) => (entry.item ? entry.item.title : lead(entry.message.text).title)
+
+function From({ entry }: { entry: Entry }) {
+  if (entry.message) return <Asker id={entry.message.from} />
+  return entry.item.conversation === undefined ? null : <Asker id={entry.item.conversation} />
+}
+
+const blurRowToReleaseAnswerKeys = (row: HTMLButtonElement) => row.blur()
+
+function Row({
+  entry,
+  now,
+  selected,
+  onSelect,
+}: {
+  entry: Entry
+  now: number
+  selected: boolean
+  onSelect: () => void
+}) {
+  const questions = entry.message?.questions
+  const gist = entry.item ? entry.item.gist : questions?.[0]?.text
+  const more = (questions?.length ?? 0) > 1 ? ` +${questions!.length - 1}` : ''
+  return (
+    <button
+      aria-current={selected ? 'true' : undefined}
+      className={cn(
+        'flex w-full cursor-pointer flex-col gap-1 rounded-md px-3 py-2.5 text-left outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring',
+        selected && 'bg-accent/60 hover:bg-accent/60',
+      )}
+      data-inbox-row={entry.message?.id ?? entry.key}
+      onClick={(event) => {
+        blurRowToReleaseAnswerKeys(event.currentTarget)
+        onSelect()
+      }}
+      type="button"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <From entry={entry} />
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          <KindTag entry={entry} />
+          <Waited at={entry.at} now={now} />
+        </span>
+      </span>
+      <span className="truncate text-[13px] font-medium text-foreground">{titleOf(entry)}</span>
+      {gist && (
+        <span className="truncate text-[12px] text-muted-foreground">
+          {gist}
+          {more && <span className="font-mono text-[11px]">{more}</span>}
+        </span>
+      )}
+    </button>
+  )
+}
+
+const Key = ({ children }: { children: string }) => (
+  <Kbd className="h-4 min-w-4 rounded-[3px] px-1 font-mono text-[10px]">{children}</Kbd>
+)
+
+function List({
+  items,
+  now,
+  selected,
+  onSelect,
+  phone,
+}: {
+  items: Entry[]
+  now: number
+  selected: string | undefined
+  onSelect: (key: string) => void
+  phone: boolean
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <span className="section-label">
+          Waiting on you · <span className={amber}>{items.length}</span>
+        </span>
+        <span className="section-label">oldest first</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" data-inbox-list>
+        {items.map((entry) => (
+          <Row
+            entry={entry}
+            key={entry.key}
+            now={now}
+            onSelect={() => onSelect(entry.key)}
+            selected={entry.key === selected}
+          />
+        ))}
+      </div>
+      {!phone && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/70 px-5 py-2 font-mono text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Key>j</Key>
+            <Key>k</Key> next
+          </span>
+          <span className="flex items-center gap-1">
+            <Key>⇧↵</Key> accept picks
+          </span>
+          <span className="flex items-center gap-1">
+            <Key>⇧O</Key> open branch
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function useOpenBranch() {
+  const { showSurface, switchConversation } = useUltimate()
+  return (entry: Entry) => {
+    const conversation = conversationOf(entry)
+    if (conversation === undefined) return
+    if (entry.message) events.emit('messages:open', { conversation, message: entry.message.id })
+    showSurface('agent')
+    switchConversation(conversation)
+  }
+}
+
+const positionedReadingScroller = 'relative min-h-0 flex-1 overflow-y-auto'
+
+function Reading({
+  entry,
+  now,
+  phone,
+  onBack,
+}: {
+  entry: Entry
+  now: number
+  phone: boolean
+  onBack: () => void
+}) {
+  const openBranch = useOpenBranch()
+  const item = entry.message
+  const { body } = item ? lead(item.text) : { body: '' }
+  const preview = item && previewUrl(item.text)
+  const conversation = conversationOf(entry)
+  const top = (
+    <>
+      <header className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
+        <From entry={entry} />
+        {conversation !== undefined && <span>·</span>}
+        <KindTag entry={entry} />
+        <span className="ml-auto flex items-center gap-1">
+          waited <Waited at={entry.at} now={now} />
+        </span>
+      </header>
+      <h2 className="mt-3 text-[17px] leading-7 font-semibold tracking-[-0.01em]">
+        {titleOf(entry)}
+      </h2>
+      {body && (
+        <div className="mt-1 [&>div]:px-0 [&>div]:py-0 [&>div]:text-[15px] [&>div]:leading-6">
+          <Body text={body} />
+        </div>
+      )}
+      {item?.images && typeof item.from === 'number' && (
+        <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-card/60 [&>div]:border-t-0">
+          <MessageImages conversation={item.from} entry={item.images.entry} />
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {preview && (
+          <Button asChild size="sm" variant="outline">
+            <a href={preview} rel="noreferrer" target="_blank">
+              <ExternalLinkIcon className="size-3.5" />
+              Open preview
+            </a>
+          </Button>
+        )}
+        {conversation !== undefined && (
+          <Button
+            className="text-muted-foreground"
+            onClick={() => openBranch(entry)}
+            size="sm"
+            variant="ghost"
+          >
+            <GitBranchIcon className="size-3.5" />
+            Open in branch #{conversation}
+          </Button>
+        )}
+      </div>
+    </>
+  )
+
+  const answer = item ? (
+    <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
+      <MessageQuestions key={item.id} keys={!phone} message={item} />
+    </div>
+  ) : (
+    entry.item.pane
+  )
+  const id = item?.id ?? entry.key
+  if (phone)
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-inbox-item={id}>
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-2">
+          <Button aria-label="Back to the Inbox" onClick={onBack} size="icon" variant="ghost">
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+          <span className="section-label">Inbox</span>
+        </div>
+        <div
+          className={cn(
+            positionedReadingScroller,
+            'px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
+          )}
+        >
+          {top}
+          <div className="mt-5">{answer}</div>
+        </div>
+      </div>
+    )
+  return (
+    <div className={positionedReadingScroller} data-inbox-item={id}>
+      <div className={cn(column(), 'pt-8 pb-12')}>
+        {top}
+        <div className="mt-6">{answer}</div>
+      </div>
+    </div>
+  )
+}
+
+function Zero({ messages, now }: { messages: readonly Message[]; now: number }) {
+  const actions = useUltimate()
+  const today = answeredToday(messages, now)
+  return (
+    <div className="flex min-h-0 flex-1 overflow-y-auto" data-inbox-zero>
+      <div className="m-auto flex w-full max-w-md flex-col items-center px-6 py-12 text-center">
+        <span className="flex size-10 items-center justify-center rounded-full bg-muted/60">
+          <CheckIcon className="size-5 text-muted-foreground" />
+        </span>
+        <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">Nothing waits on you</h2>
+        <p className="mt-1 text-[14px] text-muted-foreground">Every branch has what it needs.</p>
+        <Button className="mt-6" onClick={() => void talkToUltimate(actions)}>
+          Back to @ultimate
+        </Button>
+        {today.length > 0 && (
+          <div className="mt-10 w-full text-left">
+            <div className="section-label px-1 pb-2">Answered today · {today.length}</div>
+            {today.map(({ message, at }) => (
+              <div className="flex min-w-0 items-center gap-2 px-1 py-1.5" key={message.id}>
+                <CheckIcon className="size-3 shrink-0 text-muted-foreground/70" />
+                <span className="max-w-44 shrink-0">
+                  <Asker id={message.from} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+                  {lead(message.text).title}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+                  {formatTime(at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+let linkedKeyAwaitingSurfaceMount: string | undefined
+let keyShownBeforeSurfaceUnmount: string | undefined
+
+function Inbox() {
+  return <Waiting>{(items, messages) => <Surface items={items} messages={messages} />}</Waiting>
+}
+
+function Surface({ items, messages }: { items: Entry[]; messages: readonly Message[] }) {
+  const phone = useViewport() === 'phone'
+  const now = useNow(60_000)
+  const openBranch = useOpenBranch()
+
+  const [anchoredSelection, setAnchoredSelection] = useState(
+    () => keyShownBeforeSurfaceUnmount ?? null,
+  )
+
+  const [linkedKeyAwaitingItemLoad, setLinkedKeyAwaitingItemLoad] = useState(
+    () => linkedKeyAwaitingSurfaceMount,
+  )
+  const [indexAfterSelectedItemLeaves, setIndexAfterSelectedItemLeaves] = useState(0)
+
+  const [open, setOpen] = useState(() => linkedKeyAwaitingSurfaceMount !== undefined)
+  useEffect(() => {
+    linkedKeyAwaitingSurfaceMount = undefined
+  }, [])
+  const selected = selection(
+    items,
+    linkedKeyAwaitingItemLoad ?? anchoredSelection,
+    indexAfterSelectedItemLeaves,
+  )
+  const at = items.findIndex((candidate) => candidate.key === selected)
+  const item = items[at]
+  useEffect(() => {
+    if (selected !== undefined) keyShownBeforeSurfaceUnmount = selected
+  }, [selected])
+
+  useEffect(() => {
+    if (at >= 0) setIndexAfterSelectedItemLeaves(at)
+    if (linkedKeyAwaitingItemLoad !== undefined) {
+      if (selected === linkedKeyAwaitingItemLoad) {
+        setAnchoredSelection(linkedKeyAwaitingItemLoad)
+        setLinkedKeyAwaitingItemLoad(undefined)
+      }
+    } else if (selected !== undefined && selected !== anchoredSelection)
+      setAnchoredSelection(selected)
+  }, [at, selected, anchoredSelection, linkedKeyAwaitingItemLoad])
+  const select = (key: string) => {
+    setLinkedKeyAwaitingItemLoad(key)
+    setOpen(true)
+  }
+  useEvent('inbox:show', (key) => {
+    linkedKeyAwaitingSurfaceMount = undefined
+    select(key as string)
+  })
+
+  const keys = useRef({ items, at, item, openBranch })
+  keys.current = { items, at, item, openBranch }
+  useEffect(() => {
+    if (phone) return undefined
+    const openDialogMenuOrPickerOwnsKeys = () =>
+      document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+      )
+    const key = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        target?.closest('input, textarea, select, [contenteditable="true"]') ||
+        openDialogMenuOrPickerOwnsKeys()
+      )
+        return
+      const current = keys.current
+      if (event.key === 'O' && current.item) {
+        event.preventDefault()
+        current.openBranch(current.item)
+      } else if ((event.key === 'j' || event.key === 'k') && current.items.length) {
+        event.preventDefault()
+        const step = event.key === 'j' ? 1 : -1
+        const next = Math.max(0, Math.min(current.items.length - 1, current.at + step))
+        setLinkedKeyAwaitingItemLoad(current.items[next].key)
+      }
+    }
+
+    const captureBeforeAnswerCardChoices = true
+    window.addEventListener('keydown', key, captureBeforeAnswerCardChoices)
+    return () => window.removeEventListener('keydown', key, captureBeforeAnswerCardChoices)
+  }, [phone])
+
+  const title = (
+    <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+      <InboxIcon className="size-4 text-muted-foreground" />
+      Inbox
+      {items.length > 0 && (
+        <span className={cn('font-mono text-[11px]', amber)}>{items.length}</span>
+      )}
+    </span>
+  )
+
+  const reading = item && (
+    <Reading entry={item} key={item.key} now={now} onBack={() => setOpen(false)} phone={phone} />
+  )
+  return (
+    <div className="flex min-h-0 flex-1">
+      <Sidebar />
+      <main className="flex min-w-0 flex-1 flex-col">
+        {!(phone && open && item) && <Header>{title}</Header>}
+        {!items.length ? (
+          <Zero messages={messages} now={now} />
+        ) : phone ? (
+          open && item ? (
+            reading
+          ) : (
+            <List items={items} now={now} onSelect={select} phone selected={undefined} />
+          )
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <div className="flex w-[24rem] shrink-0 flex-col border-r border-border/70">
+              <List items={items} now={now} onSelect={select} phone={false} selected={selected} />
+            </div>
+            {reading}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function show(key: string | undefined, showSurface: (id: string) => void) {
+  if (key !== undefined) {
+    linkedKeyAwaitingSurfaceMount = key
+    events.emit('inbox:show', key)
+  }
+  showSurface(SURFACE)
+}
+
+function InboxLink() {
+  const { showSurface } = useUltimate()
+  useEvent('inbox:open', (value) => {
+    const { key, message } = value as { key?: string; message?: number }
+    show(keyOf(key ?? message), showSurface)
+  })
+  useEffect(() => {
+    const url = new URL(location.href)
+    if (!url.searchParams.has('inbox')) return
+    const key = keyOf(url.searchParams.get('inbox'))
+    url.searchParams.delete('inbox')
+    history.replaceState(history.state, '', url)
+    show(key, showSurface)
+  }, [showSurface])
+  return null
+}
+
+function useInboxRow(): ReactNode {
+  return <Waiting>{(items) => <InboxRow items={items} />}</Waiting>
+}
+
+function InboxBadge() {
+  return (
+    <Waiting>
+      {(items) =>
+        items.length > 0 && (
+          <span className={cn('font-mono text-[11px]', amber)}>{items.length}</span>
+        )
+      }
+    </Waiting>
+  )
+}
+
+function InboxRow({ items }: { items: Entry[] }) {
+  const actions = useUltimate()
+  const now = useNow(60_000)
+  const active = actions.surface === SURFACE
+  const oldest = items[0]
+  return (
+    <button
+      aria-current={active ? 'true' : undefined}
+      className={cn(
+        'mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring',
+        active && 'bg-sidebar-accent',
+      )}
+      data-inbox-sidebar
+      onClick={() => actions.showSurface(SURFACE)}
+      type="button"
+    >
+      <InboxIcon className={cn('size-3 shrink-0', oldest ? amber : 'text-muted-foreground')} />
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate font-mono text-[10.5px]',
+          oldest ? amber : 'text-foreground/70',
+        )}
+      >
+        Inbox{oldest && ` · ${items.length}`}
+      </span>
+      {oldest && (
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          oldest {formatAgo(oldest.at, now)}
+        </span>
+      )}
+      <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/60" />
+    </button>
+  )
+}
+
+export default defineWebExtension({
+  slots: { overlay: [InboxLink] },
+  surfaces: [
+    {
+      id: SURFACE,
+      title: 'Inbox',
+      icon: InboxIcon,
+      description: 'Everything that waits on you, oldest first, answered in place',
+      order: 10,
+      component: Inbox,
+      badge: InboxBadge,
+    },
+  ],
+  commands: [
+    { id: 'inbox.open', title: 'Open Inbox', run: (context) => context.showSurface(SURFACE) },
+  ],
+  provides: [provide(UnderUltimate, useInboxRow)],
+})

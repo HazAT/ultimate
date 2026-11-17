@@ -1,8 +1,3 @@
-/**
- * Editing model families in place: a family's popover (model, thinking, color, removal), a new
- * family, and moving a feature to a family. Each saves this project's families at once through `SaveFamiliesAction`;
- * the Agents panel lists the families with who runs on each. An agent's family is its definition's, not saved here.
- */
 import { ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -41,8 +36,7 @@ const specOf = (family: FamilyView): Spec => ({
   color: family.color,
 })
 
-/** Save the families as `view` has them with `change` applied; feature assignments only, agents keep theirs in files. */
-async function save(
+async function saveFeatureAssignmentsAndFamilies(
   view: FamiliesView,
   change: Partial<Pick<SaveFamilies, 'families' | 'assign' | 'unpin'>>,
 ) {
@@ -57,10 +51,9 @@ async function save(
   await refreshFamilies()
 }
 
-/** Run feature `id` (Summaries, Previews) on `family`; a pin in the user's settings gives way to it. */
 export function moveFeature(view: FamiliesView, id: string, family: string) {
   const user = view.users.find((item) => item.id === id)
-  return save(view, {
+  return saveFeatureAssignmentsAndFamilies(view, {
     assign: {
       ...Object.fromEntries(
         Object.entries(view.assign).filter(([key]) => Object.hasOwn(FEATURES, key)),
@@ -71,10 +64,6 @@ export function moveFeature(view: FamiliesView, id: string, family: string) {
   })
 }
 
-/**
- * A family's settings in a popover over `children`: model, thinking and color as a draft, saved together. New
- * conversations take the change; open ones keep their model.
- */
 export function FamilyPopover({
   family,
   view,
@@ -112,8 +101,7 @@ function FamilyForm({
   const model = draft.model ?? family.follows
   const info = models?.models.find((item) => `${item.provider}/${item.id}` === model)
   const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
-  // A built-in level can be changed but not cleared: settings keep only what differs from it.
-  const inherit = !BUILTIN_FAMILIES[family.name]?.thinking
+  const hasNoBuiltinThinking = !BUILTIN_FAMILIES[family.name]?.thinking
   const builtin = Object.hasOwn(BUILTIN_FAMILIES, family.name)
   const changed = JSON.stringify(draft) !== JSON.stringify(initial)
   const set = (change: Partial<Spec>) => {
@@ -126,11 +114,11 @@ function FamilyForm({
     else delete all[family.name]
     return all
   }
-  async function apply(change: Parameters<typeof save>[1]) {
+  async function apply(change: Parameters<typeof saveFeatureAssignmentsAndFamilies>[1]) {
     setPending(true)
     setError(undefined)
     try {
-      await save(view, change)
+      await saveFeatureAssignmentsAndFamilies(view, change)
       close()
     } catch (failure) {
       setError(errorMessage(failure))
@@ -193,7 +181,7 @@ function FamilyForm({
           }
           value={draft.thinking ?? ''}
         >
-          {inherit && (
+          {hasNoBuiltinThinking && (
             <option value="">
               {family.name === DEFAULT_FAMILY && family.followsThinking
                 ? `Pi's default · ${family.followsThinking}`
@@ -238,7 +226,6 @@ function FamilyForm({
   )
 }
 
-/** "+ Family": name a new family; it starts on no model of its own until its popover picks one. */
 export function AddFamily({ view }: { view: FamiliesView }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -255,7 +242,7 @@ export function AddFamily({ view }: { view: FamiliesView }) {
     if (!name || problem) return
     const colors = Object.keys(FAMILY_COLORS)
     try {
-      await save(view, {
+      await saveFeatureAssignmentsAndFamilies(view, {
         families: {
           ...Object.fromEntries(view.families.map((family) => [family.name, specOf(family)])),
           [name]: { color: colors[taken.length % colors.length] },
@@ -292,7 +279,6 @@ export function AddFamily({ view }: { view: FamiliesView }) {
             setError(undefined)
           }}
           onKeyDown={(event) => {
-            // oxlint-disable-next-line typescript/no-floating-promises -- add shows its own failure.
             if (event.key === 'Enter') void add()
           }}
           placeholder="local"
@@ -318,7 +304,6 @@ const short = (ref: string) => ref.slice(ref.indexOf('/') + 1)
 
 const LIMIT = 150
 
-/** A searchable model choice, as the model picker lists them: logged-in ones until you type. */
 function ModelSelect({
   value,
   placeholder = 'Pick a model',
@@ -328,7 +313,6 @@ function ModelSelect({
   value: string | undefined
   placeholder?: string
   onChange: (value: string) => void
-  /** Offered as the first row: go back to no model of its own. */
   onClear?: () => void
 }) {
   const models = useModels()

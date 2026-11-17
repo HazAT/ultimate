@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { useConversations, useDocOf } from '@/sdk'
 import type { ConversationSummary } from '@/sdk'
 import { WorkspacesDoc } from './refs.ts'
@@ -14,11 +15,9 @@ const none: WorkspaceIndex = {
 export function useWorkspaces() {
   return useWorkspaceIndex().items
 }
-/** The whole root index: queue, lander conversations and recent outcomes. */
 export function useWorkspaceIndex() {
-  return useDocOf(1, WorkspacesDoc) ?? none
+  return useDocOf(ROOT, WorkspacesDoc) ?? none
 }
-/** Submissions waiting for or being processed by a lander, oldest first. */
 export function useLanderQueue() {
   return useWorkspaceIndex().queue
 }

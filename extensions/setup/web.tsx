@@ -1,11 +1,11 @@
 import { TriangleAlertIcon } from 'lucide-react'
-import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   cn,
   defineWebExtension,
   events,
+  keepLast,
   useAction,
   useCommands,
   useEvent,
@@ -21,7 +21,6 @@ import type { SetupIssue } from './refs.ts'
 const mark = { warn: '⚠', info: '·', ok: '✓' } as const
 const tone = { warn: 'text-warning', info: 'text-muted-foreground', ok: 'text-success' } as const
 
-/** The fix button of a row: runs its command, or opens the Secrets panel at its secret. */
 function Fix({ fix }: { fix: NonNullable<SetupIssue['fix']> }) {
   const ui = useUltimate()
   const commands = useCommands()
@@ -65,34 +64,20 @@ function Row({ issue }: { issue: SetupIssue }) {
   )
 }
 
-/**
- * "⚠ N setup issues" while something on this machine isn't set up; nothing otherwise. Read on mount, every minute,
- * after a secret, login or provider health changes and when an extension is enabled, disabled or fails to load.
- */
 function Setup() {
   const system = useSystem()
-  const { data, refetch } = useAction(
-    CheckAction,
-    null,
-    // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {} },
-  )
-  const signature = JSON.stringify(
-    system?.extensions.map((extension) => [
-      extension.name,
-      extension.enabled,
-      extension.server?.error,
-    ]),
-  )
-  useEffect(() => void refetch(), [signature, refetch])
-  useEffect(() => {
-    const timer = setInterval(() => void refetch(), 60_000)
-    return () => clearInterval(timer)
-  }, [refetch])
-  useEvent('secrets:changed', () => void refetch())
-  // A login or provider health change re-checks at once; the minute poll covers the file-backed areas.
+  const signature = system?.extensions.map((extension) => [
+    extension.name,
+    extension.enabled,
+    extension.server?.error,
+  ])
   const latest = useEvents({ events: [LoginChanged, HealthChanged], limit: 1 })?.[0]?.id
-  useEffect(() => void refetch(), [latest, refetch])
+  const { data, refetch } = useAction(CheckAction, null, {
+    onError: keepLast,
+    on: [signature, latest],
+    every: 60_000,
+  })
+  useEvent('secrets:changed', () => void refetch())
   const warnings = data?.filter((issue) => issue.status === 'warn') ?? []
   if (!warnings.length) return null
   return (
@@ -118,7 +103,6 @@ function Setup() {
         </div>
         <ul className="max-h-[60vh] overflow-y-auto px-3 py-1.5 text-[11.5px] leading-[1.5]">
           {data!.map((issue, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Check results have no id; areas and failures may repeat.
             <Row issue={issue} key={`${issue.area}-${index}`} />
           ))}
         </ul>
@@ -127,9 +111,9 @@ function Setup() {
   )
 }
 
+const ModelOnlySetupChangeNote = () => null
+
 export default defineWebExtension({
-  // Shown only while something needs setting up, so it stays on a phone's line too.
   slots: { 'statusline.right': [{ component: Setup, phone: true }] },
-  // The agent's note about setup changes; the user sees setup in the status line.
-  entries: { 'setup.note': () => null },
+  entries: { 'setup.note': ModelOnlySetupChangeNote },
 })

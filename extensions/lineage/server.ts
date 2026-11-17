@@ -1,7 +1,23 @@
-import type { Context, JsonValue } from '@earendil-works/chord'
+import { parseConversationId } from '../../lib/ids.ts'
+import type {
+  CompactionResult,
+  ConversationId,
+  ConversationRecord,
+  Cursor,
+  EntryId,
+  EntryRecord,
+  JsonObject,
+  ModelRef,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
+import { isMissing, meansNone } from '../../lib/errors.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, bool, int, lit, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import type { Message, Models, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { estimateMessageTokens, estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import {
@@ -19,18 +35,6 @@ import {
   section,
   UsageDoc,
 } from '@earendil-works/pi-durable'
-import type {
-  CompactionResult,
-  ConversationId,
-  ConversationRecord,
-  Cursor,
-  EntryId,
-  EntryRecord,
-  JsonObject,
-  ModelRef,
-  TaskId,
-  Tx,
-} from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import type { ActionInput } from '../../lib/actions.ts'
@@ -38,22 +42,31 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
-import { Branch, Branched, LineageApi, Rooted, Roots } from './api.ts'
+import { Branch, Branched, LineageApi, MemorySearch, Rooted, Roots, Tally } from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
-import { CompactAction, ForgetAction, OpenEditorAction, RecentAction, TallyDoc } from './refs.ts'
+import {
+  CompactAction,
+  ForgetAction,
+  OpenEditorAction,
+  RecentAction,
+  LineageResetEntry,
+  AbstractEntry,
+  FinishedEntry,
+} from './refs.ts'
+import type { MemoryItem } from './refs.ts'
+import { BranchedEntry } from './entries.ts'
+import { NoteEntry } from '../entries/api.ts'
 import {
   applyMemoryOps,
   BODY_CHARS,
   LINE_CHARS,
-  Memorized,
   Memory,
   memoryBrief,
   MEMORY_RULES,
   MEMORY_SLUG,
   memoryIndex,
-  memorizeTask,
   memoryText,
 } from './memory.ts'
 import { catchup, Seen, seedSeen, watchSeen } from './catchup.ts'
@@ -61,49 +74,29 @@ import { rewindActions, rewindTask } from './rewind.ts'
 import type { Tree } from './catchup.ts'
 import type { RootEvent } from './types.ts'
 import { compareUrl } from '../../lib/compare.ts'
-import { hasLogin, hostDefaultModel } from '../../lib/agents.ts'
+import { hasLogin, hostDefault } from '../../lib/agents.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 
 export type BranchImage = { data: string; mimeType: string }
 
-/** A conversation's liquid abstract: its `anchor` entry keeps its place in the tally and shows the latest text. */
 export type OpenAbstract = {
-  anchor: number
-  at: number
+  anchor: EntryId
+  at: EntryId
   text: string
   title?: string
   feature?: string
 }
 export type TallyState = {
-  /** Each conversation's open abstract, until a landing freezes it. */
   abstracts: Record<string, OpenAbstract>
-  /** Estimated tokens of the root's model-visible context. */
   tokens: number
-  /** Estimated tokens of the memory brief a branch starts from instead; absent while the root has no memories. */
   briefTokens?: number
-  /** The entry this root became a tally at; absent while a root is still an ordinary conversation. */
-  since?: number
+  since?: EntryId
 }
-/**
- * A root's tally bookkeeping. Forks start from the initial value: a branch inherits the tally's entries, but it is no
- * tally itself, and copying the map would let its own abstracts omit entries of another conversation.
- */
-export const Tally = defineDoc<TallyState>({
-  kind: TallyDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({ abstracts: {}, tokens: 0 }),
-})
-
 export const docs = [Roots, Branch, Tally, Seen, Memory]
-/** Going back sets a conversation's path aside, and forgetting drops a memory: only the user decides those. */
 export const userActions = ['rewind', 'forget', 'compact', 'openEditor']
 
-/** Starts `editor` on `folder`, detached, once it has spawned; rejects when it is not on PATH. */
 const launch = (editor: string, folder: string) =>
   new Promise<void>((resolve, reject) => {
     const child = spawn(editor, [folder], { detached: true, stdio: 'ignore' })
@@ -115,8 +108,11 @@ const launch = (editor: string, folder: string) =>
   })
 
 const ASK_TOKENS = 8192
+const TRANSCRIPT_TOOL_RESULT_CHARS = 2000
+const STARTER_TITLE_CHARS = 60
+const PROMPT_DERIVED_TITLE_CHARS = 80
+const REPLAY_STABLE_PROMPT_REQUEST_ID = 'lineage:prompt'
 
-/** A first input: the prompt, with the images pasted with it. */
 function promptContent(prompt: string, images: readonly BranchImage[] = []) {
   return images.length
     ? [
@@ -131,11 +127,10 @@ function contentText(content: Message['content']) {
     ? content
     : content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
 }
-/** One message as transcript text; tool results are capped, thinking is left out. */
-function line(message: Message) {
+function transcriptLineWithoutThinking(message: Message) {
   if (message.role === 'user') return `[User]: ${contentText(message.content)}`
   if (message.role === 'toolResult')
-    return `[Tool result]: ${contentText(message.content).slice(0, 2000)}`
+    return `[Tool result]: ${contentText(message.content).slice(0, TRANSCRIPT_TOOL_RESULT_CHARS)}`
   if (message.role !== 'assistant') return ''
   const said = message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
   const calls = message.content.flatMap((part) =>
@@ -146,28 +141,27 @@ function line(message: Message) {
     ...(calls.length ? [`[Assistant tool calls]: ${calls.join('; ')}`] : []),
   ].join('\n\n')
 }
-/**
- * The source context as text tagged with its entry ids, oldest entries dropped until it fits `budget` tokens. Each
- * block is `#<conversation>/<entry>` followed by that entry's messages.
- */
 export function sourceText(
-  conversation: number,
-  entries: readonly { id: number }[],
+  conversation: ConversationId,
+  entries: readonly { id: EntryId }[],
   contributions: readonly (readonly Message[])[],
-  budget: number,
+  tokenBudget: number,
 ) {
-  const blocks = entries
+  const oldestFirstBlocks = entries
     .map((entry, index) => {
-      const body = contributions[index].map(line).filter(Boolean).join('\n\n')
+      const body = contributions[index]
+        .map(transcriptLineWithoutThinking)
+        .filter(Boolean)
+        .join('\n\n')
       return body ? `#${conversation}/${entry.id}\n${body}` : ''
     })
     .filter(Boolean)
-  let total = blocks.reduce((sum, block) => sum + estimateTextTokens(block), 0)
-  while (blocks.length > 1 && total > budget) total -= estimateTextTokens(blocks.shift()!)
-  return blocks.join('\n\n')
+  let total = oldestFirstBlocks.reduce((sum, block) => sum + estimateTextTokens(block), 0)
+  while (oldestFirstBlocks.length > 1 && total > tokenBudget)
+    total -= estimateTextTokens(oldestFirstBlocks.shift()!)
+  return oldestFirstBlocks.join('\n\n')
 }
 
-/** Ask `model` once with a system prompt and one user message; returns the text, or throws on a failed answer. */
 async function ask(
   models: Models,
   tx: (change: (tx: Tx) => Promise<void>) => Promise<void>,
@@ -206,13 +200,18 @@ async function ask(
 }
 
 export async function rootsOf(host: Pick<ExtensionHost, 'harness'>, ctx: Context) {
-  return ((await host.harness().snapshot(Roots, ROOT_CONVERSATION_ID, ctx))?.roots ?? [
-    ROOT_CONVERSATION_ID,
-  ]) as ConversationId[]
+  return (
+    (await host.harness().snapshot(Roots, ROOT_CONVERSATION_ID, ctx))?.roots ?? [
+      ROOT_CONVERSATION_ID,
+    ]
+  )
 }
 
-/** Up from `record` through owners (subagents) and fork sources (branches) to the first of `roots`. */
-async function climb(tx: Tx, record: ConversationRecord | undefined, roots: readonly number[]) {
+async function climbOwnersThenForkSources(
+  tx: Tx,
+  record: ConversationRecord | undefined,
+  roots: readonly ConversationId[],
+) {
   while (record && !roots.includes(record.id)) {
     const up = record.owner?.conversationId ?? record.parent?.conversationId
     record = up === undefined ? undefined : await tx.conversation(up)
@@ -220,50 +219,50 @@ async function climb(tx: Tx, record: ConversationRecord | undefined, roots: read
   return record?.id
 }
 
-/** The root of `id`'s tree: up through owners (subagents) and fork sources (branches); undefined outside any tree. */
-export async function rootOf(host: Pick<ExtensionHost, 'harness'>, id: number, ctx: Context) {
+export async function rootOf(
+  host: Pick<ExtensionHost, 'harness'>,
+  id: ConversationId,
+  ctx: Context,
+) {
   const roots = await rootsOf(host, ctx)
   return host
     .harness()
-    .commit(async (tx) => climb(tx, await tx.conversation(id as ConversationId), roots), ctx)
+    .commit(async (tx) => climbOwnersThenForkSources(tx, await tx.conversation(id), roots), ctx)
 }
 
-/** The root a top-level conversation's tally lives in; undefined for roots, owned conversations and outside trees. */
-async function tallyRoot(tx: Tx, id: ConversationId, roots: readonly number[]) {
+async function unownedRootBeforeWrites(
+  tx: Tx,
+  id: ConversationId,
+  roots: readonly ConversationId[],
+) {
   const record = await tx.conversation(id)
   if (!record || record.owner || roots.includes(id)) return undefined
-  return climb(tx, record, roots)
+  return climbOwnersThenForkSources(tx, record, roots)
 }
 
-/** The root and intent of a branch that writes abstracts into its tree's tally; undefined where none is written. */
-export async function branchOf(host: Pick<ExtensionHost, 'harness'>, id: number, ctx: Context) {
+export async function branchOf(
+  host: Pick<ExtensionHost, 'harness'>,
+  id: ConversationId,
+  ctx: Context,
+) {
   const roots = await rootsOf(host, ctx)
-  const root = await host.harness().commit((tx) => tallyRoot(tx, id as ConversationId, roots), ctx)
+  const root = await host.harness().commit((tx) => unownedRootBeforeWrites(tx, id, roots), ctx)
   if (root === undefined) return undefined
-  const intent = (await host.harness().snapshot(Branch, id as ConversationId, ctx))?.branch?.intent
-  return { root: root as number, ...(intent ? { intent } : {}) }
+  const intent = (await host.harness().snapshot(Branch, id, ctx))?.branch?.intent
+  return { root, ...(intent ? { intent } : {}) }
 }
 
-export type AbstractInput = { text: string; at: number; title?: string; feature?: string }
-/**
- * Write `id`'s abstract into its tree's root in the caller's transaction, before that transaction's first table write
- * (it reads conversation records). An abstract is liquid until its conversation lands: while one is open, a carrier
- * entry without model messages replaces the open anchor's text in place, so the tally never reorders. Otherwise it
- * appends a model-visible abstract that becomes the anchor. A no-op where `branchOf` is undefined.
- */
-export async function abstract(tx: Tx, id: number, input: AbstractInput) {
+export type AbstractInput = { text: string; at: EntryId; title?: string; feature?: string }
+export async function abstract(tx: Tx, id: ConversationId, input: AbstractInput) {
   const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-  const root = await tallyRoot(tx, id as ConversationId, roots)
+  const root = await unownedRootBeforeWrites(tx, id, roots)
   if (root === undefined) return
   const tally = await tx.doc(Tally, root)
   const open = tally.abstracts[String(id)] as OpenAbstract | undefined
-  // An anchor a compaction or genesis replaced is out of the context: an edit of it would change nothing.
   const marker = open && (await tx.latestHeadMarker(root))
-  // A running compaction may replace the anchor too, after this commit: the update opens a new anchor below its range
-  // and omits the old one, which then either went into the summary or stays and is hidden.
   const compacting = !!open && (await liveTask(tx, root, CompactionTask.definition.name))
-  const anchor =
-    open && !compacting && (!marker || open.anchor >= marker.head) ? open.anchor : undefined
+  const reusableUncompactedAnchor = open && !compacting && (!marker || open.anchor >= marker.head)
+  const anchor = reusableUncompactedAnchor ? open.anchor : undefined
   const { text, at, title, feature } = input
   const state = { at, text, ...(title ? { title } : {}), ...(feature ? { feature } : {}) }
   const data = { conversation: id, ...state }
@@ -278,65 +277,51 @@ export async function abstract(tx: Tx, id: number, input: AbstractInput) {
     root,
     anchor === undefined
       ? {
-          kind: 'lineage.abstract',
+          kind: AbstractEntry.kind,
           data,
           model,
-          ...(compacting
-            ? { edits: [{ target: open.anchor as EntryId, action: 'omit' as const }] }
-            : {}),
+          ...(compacting ? { edits: [{ target: open.anchor, action: 'omit' as const }] } : {}),
         }
       : {
-          kind: 'lineage.abstract',
+          kind: AbstractEntry.kind,
           data: { ...data, anchor },
-          edits: [{ target: anchor as EntryId, action: 'replace', messages: model }],
+          edits: [{ target: anchor, action: 'replace', messages: model }],
         },
   )
   tally.abstracts[String(id)] = { anchor: anchor ?? entry.id, ...state }
 }
 
-/**
- * The last tally entry a fork of `from` at `at` has in its context: the newest root entry it inherits, or the position
- * the newest catch-up it inherits advanced to. Undefined when it inherits neither.
- */
 async function inheritedTally(tx: Tx, from: ConversationId, at: EntryId, root: ConversationId) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries({ conversationId: from, maxEntryId: at }, 100, cursor)
     for (const entry of page.items) {
-      if (entry.conversationId === root) return entry.id as number
-      const data = entry.data as
-        | { source?: string; tally?: number; lineage?: { brief?: { tally?: number | null } } }
-        | undefined
-      // A memory brief stands in for the tally up to the tip it covers.
-      if (entry.kind === 'pi.reset' && data?.lineage?.brief)
-        return data.lineage.brief.tally ?? undefined
-      if (entry.kind === 'lineage.note' && data?.source === 'main' && data.tally !== undefined)
-        return data.tally
+      if (entry.conversationId === root) return entry.id
+      if (LineageResetEntry.is(entry) && entry.data?.lineage?.brief)
+        return entry.data.lineage.brief.tally ?? undefined
+      if (NoteEntry.is(entry)) {
+        const data: { source?: string; tally?: EntryId } | undefined = entry.data
+        if (data?.source === 'main' && data.tally !== undefined) return data.tally
+      }
     }
     cursor = page.next
   } while (cursor)
   return undefined
 }
 
-/** Whether a task of `kind` is live in conversation `id`. */
 async function liveTask(tx: Tx, id: ConversationId, kind: string) {
   for (const status of ['pending', 'running', 'waiting', 'completing'] as const)
     if ((await tx.scanTasks({ conversationId: id, kind, status }, 1)).items.length) return true
   return false
 }
 
-/**
- * Keep each tally's token counts at its model-visible context and its memory brief. Every entry a tally gets (prompt
- * nodes, abstracts, notes, a compaction, a reset) changes the first, and a landing or memory change the brief, so both
- * are recounted after each commit that appends an entry or changes the root's memory.
- */
 function watchTally(host: ExtensionHost, ctx: Context) {
-  let roots = new Set<number>()
+  let roots = new Set<ConversationId>()
   const dirty = new Set<ConversationId>()
-  let pending = Promise.resolve()
+  let serializedTokenRecounts = Promise.resolve()
   let unsubscribe: (() => void) | undefined
-  const recount = () => {
-    pending = pending
+  const recountContextAndMemoryBriefTokens = () => {
+    serializedTokenRecounts = serializedTokenRecounts
       .then(async () => {
         for (const id of dirty) {
           dirty.delete(id)
@@ -359,12 +344,13 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   }
   host.onOpen(async () => {
     roots = new Set(await rootsOf(host, ctx))
-    // Not a reactor: any entry a root gets (Pi's own resets and compactions too) changes its count, no domain event.
     unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes)
         if (change.type === 'document' && change.record.kind === Roots.definition.kind)
           roots = new Set(
-            change.kind === 'change' ? ((change.value as { roots?: number[] }).roots ?? []) : [],
+            change.kind === 'change'
+              ? ((change.value as { roots?: ConversationId[] }).roots ?? [])
+              : [],
           )
       const before = dirty.size
       for (const change of publication.changes)
@@ -377,23 +363,19 @@ function watchTally(host: ExtensionHost, ctx: Context) {
           roots.has(change.conversationId)
         )
           dirty.add(change.conversationId)
-      if (dirty.size > before) recount()
+      if (dirty.size > before) recountContextAndMemoryBriefTokens()
     })
-    for (const id of roots) dirty.add(id as ConversationId)
-    recount()
+    for (const id of roots) dirty.add(id)
+    recountContextAndMemoryBriefTokens()
   })
   host.onClose(async () => {
     unsubscribe?.()
-    await pending
+    await serializedTokenRecounts
   })
 }
 
 function lineage(host: ExtensionHost) {
-  /**
-   * Delivers a new branch's prompt as its first input; created with the branch, so a crash cannot leave it without
-   * one. It is no background task, so waiting for the branch to go idle waits for its prompt and the run it starts.
-   */
-  const Prompt = defineTask<
+  const PromptCreatedWithBranch = defineTask<
     { id: ConversationId; prompt: string; images?: BranchImage[] },
     { phase: 'deliver' },
     null
@@ -404,9 +386,12 @@ function lineage(host: ExtensionHost) {
     phases: {
       deliver: async (task, runtime, ctx) => {
         const { id, prompt, images } = task.input
-        // The stable request id makes a rerun after a crash find the input it already submitted.
         await (await host.harness().conversation(id, ctx))!.submit(
-          { type: 'input', content: promptContent(prompt, images), requestId: 'lineage:prompt' },
+          {
+            type: 'input',
+            content: promptContent(prompt, images),
+            requestId: REPLAY_STABLE_PROMPT_REQUEST_ID,
+          },
           ctx,
         )
         await runtime.commit(
@@ -420,7 +405,7 @@ function lineage(host: ExtensionHost) {
   })
   const Notify = defineTask<
     { target: ConversationId; wake: boolean },
-    { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: number },
+    { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: EntryId | 0 },
     null
   >({
     name: 'lineage.notify',
@@ -430,27 +415,25 @@ function lineage(host: ExtensionHost) {
       wait: async (task, runtime, ctx) => {
         const { target } = task.input
         let said = ''
-        let answerId = 0
+        let answerId: EntryId | 0 = 0
         for (;;) {
-          // Subscribed before reading, so an entry the target writes after the read still ends the wait below.
-          const written = Promise.withResolvers<void>()
-          // Not a reactor: a short wait inside this task for any entry of the target, a Pi record.
+          const targetEntryWrittenAfterSubscription = Promise.withResolvers<void>()
           const unsubscribe = onCommit(host.harness(), (publication) => {
             if (
               publication.changes.some(
                 (change) => change.type === 'entry' && change.value.conversationId === target,
               )
             )
-              written.resolve()
+              targetEntryWrittenAfterSubscription.resolve()
           })
           try {
             await (await runtime.conversation(target, ctx))?.waitForIdle(ctx)
-            // A fork inherits its source's entries; only an answer written in the target itself counts as its own.
             const view = await runtime.context(target, ctx)
             said = ''
             answerId = 0
             for (let index = view.entries.length - 1; index >= 0 && !said; index--) {
-              if (view.entries[index].conversationId !== target) continue
+              const inheritedAnswer = view.entries[index].conversationId !== target
+              if (inheritedAnswer) continue
               const answer = view.contributions[index].findLast(
                 (message) => message.role === 'assistant' && contentText(message.content).trim(),
               )
@@ -459,11 +442,20 @@ function lineage(host: ExtensionHost) {
                 answerId = view.entries[index].id
               }
             }
-            const delivered = (await host.harness().snapshot(Notified, runtime.conversationId, ctx))
+            const caller = runtime.conversationId
+            const lastNotifiedAnswer = (await host.harness().snapshot(Notified, caller, ctx))
               ?.answers[target]
-            // This caller already has that answer: wait for the target to write again, then for its next idle.
-            if (delivered === undefined || answerId > delivered) break
-            await awaitWithContext(written.promise, ctx)
+            const boardByKind = host.doc('board')
+            const log =
+              boardByKind && (await host.harness().snapshot(boardByKind, ROOT_CONVERSATION_ID, ctx))
+            const answerAlreadyReplied = (
+              log?.messages as { from: unknown; to: unknown; answer?: EntryId }[] | undefined
+            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            const callerHasNotReceivedAnswer =
+              !answerAlreadyReplied &&
+              (lastNotifiedAnswer === undefined || answerId > lastNotifiedAnswer)
+            if (callerHasNotReceivedAnswer) break
+            await awaitWithContext(targetEntryWrittenAfterSubscription.promise, ctx)
           } finally {
             unsubscribe()
           }
@@ -491,44 +483,41 @@ function lineage(host: ExtensionHost) {
         const { title, text, answer } = task.state.checkpoint as {
           title?: string
           text: string
-          answer: number
+          answer: EntryId | 0
         }
-        // Keyed by the answer, so a task that replaced one aborted between submit and record finds its delivery.
-        const requestId = answer
+        const answerKeyedRequestId = answer
           ? `lineage:notify:${target}:answer:${answer}`
           : `lineage:notify:${target}:${task.id}`
         const caller = runtime.conversationId
-        // A delivery found here (follow-up or note: a re-arm may switch `wake`) only lacks its record. This task may
-        // have delivered under its own id before answer-keyed ids, and a restart resumes it here.
-        const ownId = `lineage:notify:${target}:${task.id}`
-        const delivered = await host
+        const legacyTaskKeyedRequestId = `lineage:notify:${target}:${task.id}`
+        const deliveryMissingOnlyReceipt = await host
           .harness()
           .commit(
             async (tx) =>
-              (await tx.submissionByRequest(caller, requestId)) ??
-              (await tx.submissionByRequest(caller, ownId)),
+              (await tx.submissionByRequest(caller, answerKeyedRequestId)) ??
+              (await tx.submissionByRequest(caller, legacyTaskKeyedRequestId)),
             ctx,
           )
-        if (!delivered && wake)
+        if (!deliveryMissingOnlyReceipt && wake)
           await (await runtime.conversation(caller, ctx))!.submit(
             {
               type: 'input',
               content: finishedText(target, title, text),
               whenBusy: 'followUp',
-              requestId,
+              requestId: answerKeyedRequestId,
               entry: {
-                kind: 'lineage.finished',
+                kind: FinishedEntry.kind,
                 data: { from: target, text, ...(title ? { title } : {}) },
               },
             },
             ctx,
           )
-        else if (!delivered)
+        else if (!deliveryMissingOnlyReceipt)
           await leaveNote(host, caller, text, {
             from: target,
             source: 'finished',
             ...(title ? { data: { title } } : {}),
-            requestId,
+            requestId: answerKeyedRequestId,
           })
         await runtime.commit(async (tx) => {
           ;(await tx.doc(Notified, caller)).answers[target] = answer
@@ -539,8 +528,7 @@ function lineage(host: ExtensionHost) {
     abort: (_task, runtime, ctx) =>
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
-  /** Delivers a landing note to a root that is no tally, which may be running a turn; its request id writes it once. */
-  const LandingNote = defineTask<
+  const ReplaySafeNonTallyLandingNote = defineTask<
     { to: ConversationId; text: string; source: NoteSource },
     { phase: 'deliver' },
     null
@@ -561,11 +549,11 @@ function lineage(host: ExtensionHost) {
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
   const done = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
-  /**
-   * Wakes @ultimate once its manual compaction `compaction` placed a summary: one follow-up input, queued behind a
-   * running turn and the summary itself. Created by the compaction's own hook, so no crash between them loses it.
-   */
-  const Woken = defineTask<{ id: ConversationId; compaction: TaskId }, { phase: 'deliver' }, null>({
+  const WakeAfterPlacedManualCompaction = defineTask<
+    { id: ConversationId; compaction: TaskId },
+    { phase: 'deliver' },
+    null
+  >({
     name: 'lineage.woken',
     version: 1,
     initial: () => ({ phase: 'deliver' }),
@@ -575,21 +563,21 @@ function lineage(host: ExtensionHost) {
         const settled = await runtime.waitForTask(compaction as TaskId<CompactionResult>, ctx)
         const result =
           settled.state.outcome.status === 'completed' ? settled.state.outcome.result : {}
-        // A summary written while @ultimate runs waits for its next boundary, or goes stale when another replaced it.
-        const written =
+        const summaryPlacement =
           result.submissionId &&
           (await (await host.harness().submission(result.submissionId, ctx))?.wait(ctx))
-        const placed = result.entryId !== undefined || (written && written.status === 'done')
-        // Keyed by the compaction, so a rerun after a crash finds the input it already submitted.
+        const summaryPlacedBeforeWake =
+          result.entryId !== undefined || (summaryPlacement && summaryPlacement.status === 'done')
+        const compactionKeyedRequestId = `lineage:woken:${compaction}`
         const ultimate =
           (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate === id
-        if (placed)
+        if (summaryPlacedBeforeWake)
           await (await host.harness().conversation(id, ctx))!.submit(
             {
               type: 'input',
               content: ultimate ? WOKEN_TEXT : WOKEN_OTHER_TEXT,
               whenBusy: 'followUp',
-              requestId: `lineage:woken:${compaction}`,
+              requestId: compactionKeyedRequestId,
               entry: { kind: 'lineage.woken', data: {} },
             },
             ctx,
@@ -600,27 +588,29 @@ function lineage(host: ExtensionHost) {
     abort: (_task, runtime, ctx) =>
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
-  return { Notify, Prompt, LandingNote, Woken }
+  return {
+    Notify,
+    PromptCreatedWithBranch,
+    ReplaySafeNonTallyLandingNote,
+    WakeAfterPlacedManualCompaction,
+  }
 }
 
 const WOKEN_TEXT =
   'Your context was just compacted. Read the summary above and your project memory, then check what is open: unanswered questions, running branches and to-dos. Tell the user in one or two lines that you are back and what is open.'
-/** The wake-up of any other conversation that compacted itself with the tool. */
 const WOKEN_OTHER_TEXT =
   'Your context was just compacted. Read the summary above, then continue where you left off.'
 
-/** The note a landing leaves in its submitter's tree root: what landed, how it diverged, and the card's data. */
 function landingNote(landing: LandedData) {
   const more = landing.commitCount - landing.commits.length
-  const text = [
-    // The submit-time summary is often stale and the tally carries the abstract: the card shows it, the model does not.
+  const modelTextWithoutStaleSubmitSummary = [
     `Landed ${landing.sha.slice(0, 7)} on ${landing.target} from #${landing.conversationId}/${landing.at} ${landing.title}${landing.feature ? ` (${landing.feature})` : ''}:`,
     `Diverged: ${landing.divergence}`,
     ...landing.commits.map((commit) => commit.subject),
     ...(more ? [`and ${more} more`] : []),
     `Changed: ${landing.paths.join(', ')}`,
   ].join('\n')
-  const data = {
+  const cardDataIncludingSubmitSummary = {
     at: landing.at,
     divergence: landing.divergence,
     sha: landing.sha,
@@ -635,14 +625,10 @@ function landingNote(landing: LandedData) {
     ...(landing.feature ? { feature: landing.feature } : {}),
     ...(landing.pushed ? { pushed: landing.pushed } : {}),
   }
-  return { text, data }
+  return { text: modelTextWithoutStaleSubmitSummary, data: cardDataIncludingSubmitSummary }
 }
 
-/**
- * Per target, the answer entry a notify last delivered to this conversation (`0`: it had none), so a re-armed notify
- * waits for a newer one instead of repeating it. A fork keeps it with the deliveries it inherits.
- */
-export const Notified = defineDoc<{ answers: Record<string, number> }>({
+export const Notified = defineDoc<{ answers: Record<string, EntryId | 0> }>({
   kind: 'lineage.notified',
   checkpointWhen: () => false,
   version: 1,
@@ -652,7 +638,6 @@ export const Notified = defineDoc<{ answers: Record<string, number> }>({
   initial: () => ({ answers: {} }),
 })
 
-/** Created with the notify task: replay finishes cancellations and provenance without creating another task. */
 const NotifyReceipts = defineDoc<{ calls: Record<string, TaskId[]> }>({
   kind: 'lineage.notify-receipts',
   checkpointWhen: () => false,
@@ -661,14 +646,12 @@ const NotifyReceipts = defineDoc<{ calls: Record<string, TaskId[]> }>({
   initial: () => ({ calls: {} }),
 })
 
-/** How much of the finished conversation's last answer a notify delivers. */
 const FINISHED_CHARS = 1500
-const finishedText = (id: number, title: string | undefined, text: string) =>
+const finishedText = (id: ConversationId, title: string | undefined, text: string) =>
   `#${id} finished${title ? ` · ${title}` : ''}\n\nIts last answer:\n${text}`
 
 type PromptInput = {
   prompt: string
-  /** One short line naming the branch until its summary renames it; without it, the prompt's first 80 characters. */
   title?: string
   images?: BranchImage[]
   isolated?: boolean
@@ -676,15 +659,14 @@ type PromptInput = {
   thinkingLevel?: ModelThinkingLevel
 }
 export type BranchInput = PromptInput & {
-  from: number
-  at?: number
+  from: ConversationId
+  at?: EntryId
   deliver?: false
-  by?: number
+  by?: ConversationId
   receipt?: { taskId: TaskId; callId: string }
 }
 
-/** Per manual compaction of @ultimate, keyed by its task: the wake-up task its hook created, so a replay creates none. */
-const WokenReceipt = defineDocFamily<{ task?: number }, null>({
+const WokenReceipt = defineDocFamily<{ task?: TaskId }, null>({
   kind: 'lineage.woken-receipt',
   checkpointWhen: () => false,
   version: 1,
@@ -695,7 +677,7 @@ const WokenReceipt = defineDocFamily<{ task?: number }, null>({
   initial: () => ({}),
 })
 
-export const BranchReceipts = defineDoc<{ branches: Record<string, number> }>({
+export const BranchReceipts = defineDoc<{ branches: Record<string, ConversationId> }>({
   kind: 'lineage.branch-receipts',
   checkpointWhen: () => false,
   version: 1,
@@ -703,79 +685,62 @@ export const BranchReceipts = defineDoc<{ branches: Record<string, number> }>({
   initial: () => ({ branches: {} }),
 })
 
-/** The project checkout's tip, where new branches start, shared or isolated. */
-function head(host: ExtensionHost) {
-  return host
-    .need(WorkspacesApi)
-    .git(host.projectRoot, 'rev-parse', 'HEAD')
-    .catch(
-      // A project without a Git HEAD can start conversations without a commit baseline.
-      () => undefined,
-    )
+function projectCheckoutTip(host: ExtensionHost) {
+  return host.need(WorkspacesApi).git(host.projectRoot, 'rev-parse', 'HEAD').catch(meansNone)
 }
 
-/** `text` on one line of at most `max` characters, whitespace collapsed. */
 function oneLine(text: string, max: number) {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
-/**
- * A branch's intent in one line: its title until its summary names it, and what its tree's tally reads. The title its
- * starter gave (at most 60 characters), else the prompt's first 80.
- */
 function intentLine(prompt: string, title?: string) {
-  const given = title === undefined ? '' : oneLine(title, 60)
-  return given || oneLine(prompt, 80)
+  const given = title === undefined ? '' : oneLine(title, STARTER_TITLE_CHARS)
+  return given || oneLine(prompt, PROMPT_DERIVED_TITLE_CHARS)
 }
 
-/**
- * The one line the tree root's model reads about a new branch: who started it, where, and its intent. The prompt
- * itself stays the branch's own first input, so later branches never inherit it.
- */
-function branchedText(branch: number, from: number, at: number, intent: string, caller?: string) {
+function tallyIntentWithoutBranchPrompt(
+  branch: ConversationId,
+  from: ConversationId,
+  at: EntryId,
+  intent: string,
+  caller?: string,
+) {
   return `#${branch} started${caller ? ` by ${caller}` : ''} from #${from}/${at}: ${intent}`
 }
 
-/**
- * Fork `from` at `at` (default: its latest entry) into a branch whose first input is the prompt. The tree's root gets
- * the prompt node after the fork point, so the branch reads its prompt once, as its own input.
- */
 export async function startBranch(host: ExtensionHost, input: BranchInput, ctx: Context) {
   if (!input.prompt.trim()) throw new Error('A branch needs a prompt')
-  const from = input.from as ConversationId
-  const main = await head(host)
+  const from = input.from
+  const main = await projectCheckoutTip(host)
   const roots = await rootsOf(host, ctx)
-  // A first branch needs a stored entry to fork from. An empty root becomes a tally at that entry: its history builds
-  // up from branches and landings, while branches start from its memory.
   if (input.at === undefined)
     await host.harness().commit(async (tx) => {
       if (!(await tx.conversation(from))) throw new Error(`No conversation #${from}`)
       if ((await tx.scanEntries({ conversationId: from }, 1)).items.length) return
-      const entry = await tx.appendEntry(from, { kind: 'pi.reset', head: 'self' })
-      if (roots.includes(from)) (await tx.doc(Tally, from)).since = entry.id
+      const forkableEntry = await tx.appendEntry(from, { kind: 'pi.reset', head: 'self' })
+      if (roots.includes(from)) (await tx.doc(Tally, from)).since = forkableEntry.id
     }, ctx)
   const id = await host.harness().commit((tx) => forkBranch(host, tx, input, main, roots), ctx)
   host.harness().resume()
   return { id }
 }
 
-/** `startBranch` inside the caller's transaction, before its first table write; `main` is the checkout's tip. */
 async function forkBranch(
   host: ExtensionHost,
   tx: Tx,
   input: BranchInput,
   main: string | undefined,
-  roots: readonly number[],
+  roots: readonly ConversationId[],
 ) {
   const receipts = input.receipt ? await tx.doc(BranchReceipts, input.receipt.taskId) : undefined
   if (input.receipt && receipts?.branches[input.receipt.callId] !== undefined)
-    return receipts.branches[input.receipt.callId] as ConversationId
+    return receipts.branches[input.receipt.callId]
   const prompt = input.prompt.trim()
-  const from = input.from as ConversationId
-  const { Prompt } = lineage(host)
+  const from = input.from
+  const { PromptCreatedWithBranch } = lineage(host)
   if (!(await tx.conversation(from))) throw new Error(`No conversation #${from}`)
-  let at = input.at as EntryId | undefined
+  let at = input.at
   if (at === undefined) {
     at = (await tx.scanEntries({ conversationId: from }, 1)).items[0]?.id
     if (at === undefined) throw new Error(`Conversation #${from} has no entries to branch from`)
@@ -784,13 +749,11 @@ async function forkBranch(
       .length
   )
     throw new Error(`Entry ${at} is not in conversation #${from}`)
-  // Table reads precede the transaction's first table write, the fork.
-  const root = await climb(tx, await tx.conversation(from), roots)
-  // A branch of a root with memories starts from their brief instead of the tally; a fork of another branch keeps that
-  // branch's context.
-  const brief = root !== undefined && root === from ? await memoryBrief(tx, root) : undefined
-  const tally = brief
-    ? brief.tip
+  const root = await climbOwnersThenForkSources(tx, await tx.conversation(from), roots)
+  const rootMemoryBriefBeforeFork =
+    root !== undefined && root === from ? await memoryBrief(tx, root) : undefined
+  const inheritedTallyTipBeforeFork = rootMemoryBriefBeforeFork
+    ? rootMemoryBriefBeforeFork.tip
     : root === undefined
       ? undefined
       : await inheritedTally(tx, from, at, root)
@@ -801,48 +764,42 @@ async function forkBranch(
     caller = `#${input.by}${name ? ` (@${name})` : ''}`
   }
   const fork = await tx.forkConversation(from, at, { ownership: { kind: 'ownerless' } })
-  // Without a model given, the fork keeps its source's as of `at` while that has a login here, else the default.
-  const source = (await tx.doc(AgentDoc, fork.id)).model
+  const inheritedModelAtForkPoint = (await tx.doc(AgentDoc, fork.id)).model
   const model =
     input.model ??
-    (hasLogin(host.modelRuntime.getAvailableSnapshot(), source)
+    (hasLogin(host.modelRuntime.getAvailableSnapshot(), inheritedModelAtForkPoint)
       ? undefined
-      : await hostDefaultModel(host))
+      : (await hostDefault(host)).model)
   await configure(tx, fork.id, {
     cwd: host.projectRoot,
     ...(model ? { model } : {}),
     ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
   })
-  // A branch gets ordinary tools whatever its source ran with.
-  const agent = await tx.doc(AgentDoc, fork.id)
-  delete agent.tools
-  delete agent.modelTools
+  const branchWithOrdinaryTools = await tx.doc(AgentDoc, fork.id)
+  delete branchWithOrdinaryTools.tools
+  delete branchWithOrdinaryTools.modelTools
   if (input.isolated) await host.need(WorkspacesApi).create(tx, fork.id, host.projectRoot)
   if (main) await seedSeen(tx, fork.id, main, Date.now())
-  // The branch knows its tally as far as its context reaches; its own prompt node, appended below, is no news to it.
-  if (tally !== undefined) (await tx.doc(Seen, fork.id)).tally = tally
+  if (inheritedTallyTipBeforeFork !== undefined)
+    (await tx.doc(Seen, fork.id)).tally = inheritedTallyTipBeforeFork
   ;(await tx.doc(Branch, fork.id)).branch = {
     from,
     at,
     intent: prompt,
-    ...(brief ? { brief: true } : {}),
+    ...(rootMemoryBriefBeforeFork ? { brief: true } : {}),
   }
-  // The reset starts the branch's model context here, before its prompt: the tally it forked stays in storage.
-  if (brief)
+  if (rootMemoryBriefBeforeFork)
     await tx.appendEntry(fork.id, {
       kind: 'pi.reset',
       head: 'self',
-      // The tally tip the brief covers: a fork of this branch inherits it, not the root entry this branch forked at.
-      data: { lineage: { brief: { tally: brief.tip ?? null } } },
-      model: [{ role: 'user', content: brief.text, timestamp: Date.now() }],
+      data: { lineage: { brief: { tally: rootMemoryBriefBeforeFork.tip ?? null } } },
+      model: [{ role: 'user', content: rootMemoryBriefBeforeFork.text, timestamp: Date.now() }],
     })
-  // Until the summary names it, a branch is called by the title its starter gave, else its intent, not by the first
-  // message it inherited.
-  const intent = intentLine(prompt, input.title)
+  const titleUntilSummary = intentLine(prompt, input.title)
   const metadata = await tx.doc(host.metadata, fork.id)
-  metadata.title = intent
-  // The prompt is its first input, placed right after this commit: it sorts as asked for now.
-  metadata.inputAt = Date.now()
+  metadata.title = titleUntilSummary
+  const firstPromptInputAt = Date.now()
+  metadata.inputAt = firstPromptInputAt
   await host.emit(tx, Branched, {
     id: fork.id,
     from,
@@ -855,31 +812,42 @@ async function forkBranch(
     agent: 'branch',
     kind: 'branch',
     parent: from,
-    ...(agent.model ? { model: `${agent.model.provider}/${agent.model.modelId}` } : {}),
-    ...(agent.thinkingLevel ? { thinking: agent.thinkingLevel } : {}),
+    ...(branchWithOrdinaryTools.model
+      ? {
+          model: `${branchWithOrdinaryTools.model.provider}/${branchWithOrdinaryTools.model.modelId}`,
+        }
+      : {}),
+    ...(branchWithOrdinaryTools.thinkingLevel
+      ? { thinking: branchWithOrdinaryTools.thinkingLevel }
+      : {}),
   })
   const images = input.images?.length ?? 0
-  const marker = { branch: fork.id, at, intent, ...(images ? { images } : {}) }
+  const displayOnlyBranchMarker = {
+    branch: fork.id,
+    at,
+    intent: titleUntilSummary,
+    ...(images ? { images } : {}),
+  }
   if (root !== undefined)
     await tx.appendEntry(root, {
-      kind: 'lineage.branched',
+      kind: BranchedEntry.kind,
       data: {
-        ...marker,
+        ...displayOnlyBranchMarker,
         ...(root === from ? {} : { from }),
       },
       model: [
         {
           role: 'user',
-          content: branchedText(fork.id, from, at, intent, caller),
+          content: tallyIntentWithoutBranchPrompt(fork.id, from, at, titleUntilSummary, caller),
           timestamp: Date.now(),
         },
       ],
     })
-  // A source inside the tree keeps a display-only marker; its model never sees it.
-  if (root !== from) await tx.appendEntry(from, { kind: 'lineage.branched', data: marker })
+  if (root !== from)
+    await tx.appendEntry(from, { kind: BranchedEntry.kind, data: displayOnlyBranchMarker })
   if (input.deliver !== false)
     await tx.createTask(
-      Prompt,
+      PromptCreatedWithBranch,
       { id: fork.id, prompt, ...(images ? { images: input.images } : {}) },
       { conversationId: fork.id, ownership: { kind: 'conversation' }, background: false },
     )
@@ -888,13 +856,12 @@ async function forkBranch(
 }
 
 type NoteSource = {
-  from?: number
+  from?: ConversationId
   source?: 'lander' | 'finished'
   data?: JsonObject
   requestId?: string
 }
 
-/** A note's entry data and the text its reader's model sees. */
 function note(text: string, source?: NoteSource) {
   const from = source?.from
   const data = {
@@ -912,31 +879,25 @@ function note(text: string, source?: NoteSource) {
   return { data, content }
 }
 
-/**
- * Place landing note `text` from submitter `source.from` in `target` inside `tx`, when `target` is a tally; false when it
- * is none. Placed with the check for an open abstract in one transaction, so none can open in between: the submitter's
- * open abstract freezes into the note, and its anchor leaves the context. A note placed for `requestId` before counts.
- */
-async function placeLanding(
+async function freezeAndLandAtomically(
   tx: Tx,
   target: ConversationId,
   text: string,
-  source: NoteSource & { from: number },
+  source: NoteSource & { from: ConversationId },
 ) {
   const tally = await tx.doc(Tally, target)
   if (tally.since === undefined) return false
   const { from, requestId } = source
-  // A rerun after a crash finds the landing it wrote; a newer anchor stays open.
-  if (requestId && (await tx.submissionByRequest(target, requestId))) return true
+  const landingAlreadyPlaced = requestId && (await tx.submissionByRequest(target, requestId))
+  if (landingAlreadyPlaced) return true
   const { data, content } = note(text, source)
-  // A tally runs no turns, so the write is placed at once, as an idle conversation's would be.
   const open = tally.abstracts[String(from)] as OpenAbstract | undefined
   const model = { role: 'user' as const, content, timestamp: Date.now() }
   let entry
   if (open) {
     const { anchor, ...state } = open
     entry = await tx.appendEntry(target, {
-      kind: 'lineage.note',
+      kind: NoteEntry.kind,
       data: { ...data, abstract: state },
       model: [
         {
@@ -944,10 +905,10 @@ async function placeLanding(
           content: `${content}\n\nState at landing (abstract as of #${from}/${state.at}):\n${state.text}`,
         },
       ],
-      edits: [{ target: anchor as EntryId, action: 'omit' }],
+      edits: [{ target: anchor, action: 'omit' }],
     })
     delete tally.abstracts[String(from)]
-  } else entry = await tx.appendEntry(target, { kind: 'lineage.note', data, model: [model] })
+  } else entry = await tx.appendEntry(target, { kind: NoteEntry.kind, data, model: [model] })
   await tx.createSubmission({
     conversationId: target,
     ...(requestId ? { requestId } : {}),
@@ -958,18 +919,15 @@ async function placeLanding(
   return true
 }
 
-/**
- * Leave a note in `to` (a conversation id, or the root of `source.from`'s tree) without waking it. A landing in a tally
- * freezes its submitter's open abstract: the note carries that state, and the anchor leaves the context with it.
- */
 export async function leaveNote(
   host: Pick<ExtensionHost, 'harness'>,
-  to: number | 'root',
+  to: ConversationId | 'root',
   text: string,
   source?: NoteSource,
 ) {
-  let target = to as ConversationId
-  if (to === 'root') {
+  let target: ConversationId
+  if (to !== 'root') target = to
+  else {
     if (source?.from === undefined) throw new Error('A note to the root needs its source')
     const root = await rootOf(host, source.from, context)
     if (root === undefined) throw new Error(`#${source.from} has no root`)
@@ -983,7 +941,7 @@ export async function leaveNote(
     from !== undefined &&
     (await host
       .harness()
-      .commit((tx) => placeLanding(tx, target, text, { ...source, from }), context))
+      .commit((tx) => freezeAndLandAtomically(tx, target, text, { ...source, from }), context))
   )
     return target
   const { data, content } = note(text, source)
@@ -993,7 +951,7 @@ export async function leaveNote(
       type: 'write',
       ...(requestId ? { requestId } : {}),
       entry: {
-        kind: 'lineage.note',
+        kind: NoteEntry.kind,
         data,
         model: [{ role: 'user', content, timestamp: Date.now() }],
       },
@@ -1006,21 +964,19 @@ export async function leaveNote(
 const ZOOM =
   'Zoom out when you need to: read any conversation, a root or a sibling, with codemode `ultimate.entries(id)` and `ultimate.search(text)`. Leave a `note` for a conversation your work affects.'
 
-/** Whether each conversation is owned (a subagent, a lander), read once: ownership never changes after creation. */
-const owned = new Map<ConversationId, boolean>()
+const immutableOwnershipCache = new Map<ConversationId, boolean>()
 
-/** The lineage section for one conversation; undefined for roots, which never request, and owned conversations. */
 export async function lineageSection(
   host: Pick<ExtensionHost, 'harness'>,
   id: ConversationId,
   ctx: Context,
 ) {
-  if (!owned.has(id)) {
+  if (!immutableOwnershipCache.has(id)) {
     const record = await host.harness().commit((tx) => tx.conversation(id), ctx)
     if (!record) return undefined
-    owned.set(id, !!record.owner)
+    immutableOwnershipCache.set(id, !!record.owner)
   }
-  if (owned.get(id)) return undefined
+  if (immutableOwnershipCache.get(id)) return undefined
   const root = await rootOf(host, id, ctx)
   if (id === root) return undefined
   const rooted = root === undefined ? '' : `Root: #${root}.\n`
@@ -1040,26 +996,24 @@ function compactFocus(root: boolean, intent?: string) {
     : `This is a branch${intent ? ` started for: ${intent}` : ''}. Keep its intent and progress toward it: decisions, changed files, verification, what remains. Drop what the intent no longer needs.`
 }
 
-function conversationArg(args: ActionInput<{ id: number }> | JsonValue) {
+function conversationArg(args: ActionInput<{ id: ConversationId }> | JsonValue) {
   const value = args && typeof args === 'object' && !Array.isArray(args) ? args.id : undefined
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
     throw new Error('Expected a conversation id')
-  return value as ConversationId
+  return parseConversationId(value)
 }
 
-/** Starts a manual compaction of root tally `root` in the caller's transaction; refuses anything else. */
-async function compactTally(tx: Tx, root: number, instructions?: string) {
+async function compactTally(tx: Tx, root: ConversationId, instructions?: string) {
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(root))
     throw new Error(`#${root} is not a listed root`)
-  const id = root as ConversationId
+  const id = root
   if ((await tx.doc(Tally, id)).since === undefined) throw new Error(`#${root} is not a tally`)
   return admitCompaction(tx, id, instructions)
 }
 
-/** What `entry` of a root tells its sidebar row: a landing, note, branch, compaction or the context's start. */
 function rootEvent(entry: EntryRecord): RootEvent | undefined {
   const at = entry.model?.[0]?.timestamp
-  const base = { entry: entry.id as number, ...(at === undefined ? {} : { at }) }
+  const base = { entry: entry.id, ...(at === undefined ? {} : { at }) }
   const data = (entry.data ?? {}) as {
     lineage?: { tally?: true }
     branch?: unknown
@@ -1080,11 +1034,11 @@ function rootEvent(entry: EntryRecord): RootEvent | undefined {
     return {
       ...base,
       type: 'branched',
-      branch: data.branch,
+      branch: parseConversationId(data.branch),
       intent: typeof data.intent === 'string' ? data.intent : '',
     }
   if (entry.kind !== 'lineage.note' || data.source === 'main') return undefined
-  const from = typeof data.from === 'number' ? data.from : undefined
+  const from = typeof data.from === 'number' ? parseConversationId(data.from) : undefined
   if (data.source === 'lander' && typeof data.sha === 'string') {
     const listed = Array.isArray(data.commits) ? data.commits.length : 0
     return {
@@ -1106,10 +1060,6 @@ function rootEvent(entry: EntryRecord): RootEvent | undefined {
   }
 }
 
-/**
- * Each landing's DiffsHub compare URL, `base...sha`, when the project's `origin` is on GitHub. A landing from before notes
- * recorded their base takes the landing before it, which is where the lander's serial queue left the target.
- */
 async function withCompare(
   projectRoot: string,
   events: RootEvent[],
@@ -1120,7 +1070,6 @@ async function withCompare(
   return remote ? compareLinks(remote, events, older) : events
 }
 
-/** `withCompare` for a known `github.com/<owner>/<repo>`. */
 export function compareLinks(
   remote: string,
   events: RootEvent[],
@@ -1129,14 +1078,16 @@ export function compareLinks(
   const landings = events.filter((event) => event.type === 'landed')
   return events.map((event) => {
     if (event.type !== 'landed') return event
-    const base = event.base ?? landings[landings.indexOf(event) + 1]?.sha ?? older
-    return base ? { ...event, compare: compareUrl(remote, base, event.sha) } : event
+    const baseBeforeLandingNotesRecordedIt =
+      event.base ?? landings[landings.indexOf(event) + 1]?.sha ?? older
+    return baseBeforeLandingNotesRecordedIt
+      ? { ...event, compare: compareUrl(remote, baseBeforeLandingNotesRecordedIt, event.sha) }
+      : event
   })
 }
 
 export const actions = {
   ...rewindActions,
-  /** The roots, and with `{ id }` that conversation's tree root and its branch state when it is a branch. */
   async info(args: JsonValue, { host }: ActionContext) {
     const roots = await rootsOf(host, context)
     if (args === null || args === undefined) return { roots }
@@ -1145,10 +1096,6 @@ export const actions = {
     const branch = (await host.harness().snapshot(Branch, id, context))?.branch
     return { roots, ...(root === undefined ? {} : { root }), ...(branch ? { branch } : {}) }
   },
-  /**
-   * `{id, limit?, types?}`: the newest landings, notes, branches and compactions in root `id`, newest first (default
-   * 3), only of `types` when given. A landing on a GitHub `origin` links its compare range.
-   */
   recent: implementAction(RecentAction, async (args, { host }) => {
     const id = conversationArg(args)
     const types = (args as { types?: unknown }).types
@@ -1166,7 +1113,6 @@ export const actions = {
       if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id))
         throw new Error(`#${id} is not a listed root`)
       const events: RootEvent[] = []
-      // The landing before the oldest listed one: the base of a landing from before notes recorded it.
       let older: string | undefined
       let cursor: Cursor | undefined
       scan: do {
@@ -1189,7 +1135,6 @@ export const actions = {
     }, context)
     return withCompare(host.projectRoot, scanned.events, scanned.older)
   }),
-  /** `{id, instructions?}`: compact root tally `id`, for the history footer and the palette. */
   compact: implementAction(CompactAction, async (args, { host }) => {
     const id = conversationArg(args)
     const instructions = (args as { instructions?: unknown }).instructions
@@ -1199,7 +1144,6 @@ export const actions = {
     host.harness().resume()
     return { taskId }
   }),
-  /** Remove a root that never became a tally from `lineage.roots`, never the last; its tree's conversations leave every tree. */
   async unlist(args: JsonValue, { host }: ActionContext) {
     const id = conversationArg(args)
     const roots = await host.harness().commit(async (tx) => {
@@ -1214,39 +1158,41 @@ export const actions = {
     }, context)
     return { roots }
   },
-  /** Open the project folder in Zed on this machine: `zeditor` (Arch's name), else `zed`. User-only. */
   openEditor: implementAction(OpenEditorAction, async (_args, { host }) => {
     for (const editor of ['zeditor', 'zed'])
       try {
         await launch(editor, host.projectRoot)
         return { editor }
       } catch (error) {
-        // Not on PATH: try the next name; anything else is a real failure.
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        if (!isMissing(error)) throw error
       }
     throw new Error('Zed is not installed on this machine (no zeditor or zed on PATH)')
   }),
-  /** `{root, slug}`: delete one memory of root `root`. User-only. */
   forget: implementAction(ForgetAction, async (args, { host }) => {
     const { root, slug } = (args ?? {}) as { root?: unknown; slug?: unknown }
     if (typeof root !== 'number' || !Number.isSafeInteger(root) || root < 1)
       throw new Error('root must be a positive integer')
     const summary = await host
       .harness()
-      .commit((tx) => applyMemoryOps(tx, root, [{ op: 'delete', slug }]), context)
+      .commit(
+        (tx) => applyMemoryOps(tx, parseConversationId(root), [{ op: 'delete', slug }]),
+        context,
+      )
     return { summary }
   }),
 }
 
-/** The tally `id` catches up on: its tree root's, once that root is a tally. */
 async function treeOf(tx: Tx, id: ConversationId): Promise<Tree | undefined> {
-  const root = await tallyRoot(tx, id, (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots)
+  const root = await unownedRootBeforeWrites(
+    tx,
+    id,
+    (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots,
+  )
   if (root === undefined) return undefined
   const { since, abstracts } = await tx.doc(Tally, root)
   return since === undefined ? undefined : { root, since, abstracts }
 }
 
-/** A tally runs no turns: an input placed in one is refused with its transaction. */
 async function refuseTally(tx: Tx, id: ConversationId) {
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id)) return
   const tally = await tx.doc(Tally, id)
@@ -1255,11 +1201,11 @@ async function refuseTally(tx: Tx, id: ConversationId) {
 }
 
 export default function lineageExtension(host: ExtensionHost) {
-  /**
-   * The listed root whose memory a tool call reads or writes: `root` when given, else the caller's tree root, else
-   * (for a standing agent, in no tree) the project's only root.
-   */
-  const memoryRoot = async (caller: ConversationId, root: number | undefined, ctx: Context) => {
+  const memoryRoot = async (
+    caller: ConversationId,
+    root: ConversationId | undefined,
+    ctx: Context,
+  ) => {
     const roots = await rootsOf(host, ctx)
     const id =
       root ?? (await rootOf(host, caller, ctx)) ?? (roots.length === 1 ? roots[0] : undefined)
@@ -1269,14 +1215,33 @@ export default function lineageExtension(host: ExtensionHost) {
           ? `#${caller} is in no tree and the project has no root yet`
           : `#${caller} is in no tree and the project has several roots; name one of ${roots.map((r) => `#${r}`).join(', ')}`,
       )
-    if (!roots.includes(id as ConversationId)) throw new Error(`#${id} is not a listed root`)
+    if (!roots.includes(id)) throw new Error(`#${id} is not a listed root`)
     return id
   }
-  /**
-   * The memory brief @ultimate's compaction summary ends with: of its tree's root, else of the only listed root, as
-   * `branch` defaults. Undefined for anyone else and while that root has no memories.
-   */
-  const standingBrief = async (id: ConversationId, ctx: Context) => {
+  host.want(MemorySearch)
+  const searchMemories = async (
+    query: string,
+    memories: Record<string, MemoryItem>,
+    ctx: Context,
+  ): Promise<string[] | undefined> => {
+    const search = host.want(MemorySearch)
+    if (!search) return undefined
+    try {
+      const slugs = await search.search(
+        query,
+        memories,
+        AbortSignal.any([
+          ...(ctx.abortSignal ? [ctx.abortSignal] : []),
+          AbortSignal.timeout(10_000),
+        ]),
+      )
+      return slugs.filter((slug) => Object.hasOwn(memories, slug))
+    } catch (error) {
+      if (ctx.abortSignal?.aborted) throw error
+      return undefined
+    }
+  }
+  const ultimateCompactionMemoryBrief = async (id: ConversationId, ctx: Context) => {
     const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
     if (standing?.ultimate !== id) return undefined
     const roots = await rootsOf(host, ctx)
@@ -1284,7 +1249,6 @@ export default function lineageExtension(host: ExtensionHost) {
     if (root === undefined) return undefined
     return host.harness().commit((tx) => memoryBrief(tx, root), ctx)
   }
-  // Core, always on; resolved where it is called, declared here so the catalogue lists it.
   host.need(WorkspacesApi)
   host.implement(LineageApi, {
     branch: (input, ctx) => startBranch(host, input, ctx),
@@ -1311,29 +1275,28 @@ export default function lineageExtension(host: ExtensionHost) {
       return { root, memories: doc?.memories ?? {} }
     },
   })
-  // What summaries need to know of a conversation's tree, through conversations' extension point.
   host.implement(Trees, {
     rootOf: (id, ctx) => rootOf(host, id, ctx),
     branchOf: (id, ctx) => branchOf(host, id, ctx),
     abstract,
   })
   const conversations = host.need(ConversationsApi)
-  // A new branch or root is called by its given title or its intent until its summary names it: lineage titled it so,
-  // and marking that title generated lets the summary replace it.
   host.react('named', [Branched, Rooted], async (tx, { data }) => {
-    const id = data.id as ConversationId
+    const id = data.id
     if (!(await tx.conversation(id))) return
-    // Only a branch carries a given title; a root is named by its intent.
     const { title } = data as { title?: string }
     await conversations.generatedTitle(tx, id, intentLine(data.intent, title))
   })
-  const { Notify, Prompt, LandingNote, Woken } = lineage(host)
-  // Every landing notes its submitter's tree root once: a tally in this reactor's transaction, any other root through
-  // a delivery task created in it. The submitter's own root and conversations outside any tree get none.
+  const {
+    Notify,
+    PromptCreatedWithBranch,
+    ReplaySafeNonTallyLandingNote,
+    WakeAfterPlacedManualCompaction,
+  } = lineage(host)
   host.react('landing-notes', [SubmissionLanded], async (tx, { data: landing }) => {
     const from = landing.conversationId
     const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-    const root = await climb(tx, await tx.conversation(from as ConversationId), roots)
+    const root = await climbOwnersThenForkSources(tx, await tx.conversation(from), roots)
     if (root === undefined || root === from) return
     const { text, data } = landingNote(landing)
     const source = {
@@ -1342,49 +1305,24 @@ export default function lineageExtension(host: ExtensionHost) {
       requestId: `lander-root:${landing.submission}`,
       data,
     }
-    if (await placeLanding(tx, root, text, source)) return
+    if (await freezeAndLandAtomically(tx, root, text, source)) return
     await tx.createTask(
-      LandingNote,
+      ReplaySafeNonTallyLandingNote,
       { to: root, text, source },
       { conversationId: root, ownership: { kind: 'conversation' }, background: true },
     )
   })
-  const Memorize = memorizeTask(
-    host,
-    async (tx, root, from) => (await tx.doc(Tally, root)).abstracts[String(from)]?.text,
-  )
-  // Every landing in a tree distils its root's memory once, in a background task of the root that picks the summary
-  // model. A receipt per submission, kept for good, makes a repeated event a no-op.
-  // A fresh install starts at the newest event: landings before it are history, not something to distil now.
-  host.react(
-    'memorize',
-    [SubmissionLanded],
-    async (tx, { data: landing }) => {
-      const from = landing.conversationId
-      const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
-      const root = await climb(tx, await tx.conversation(from as ConversationId), roots)
-      if (root === undefined || root === from) return
-      const receipt = await tx.doc(Memorized, root, landing.submission, null)
-      if (receipt.task !== undefined) return
-      receipt.task = await tx.createTask(
-        Memorize,
-        {
-          root,
-          submission: landing.submission,
-          from,
-          at: landing.at,
-          note: landingNote(landing).text,
-        },
-        { conversationId: root, ownership: { kind: 'conversation' }, background: true },
-      )
-    },
-    { from: 'now' },
-  )
   watchSeen(host, context)
   watchTally(host, context)
   return defineExtension({
     name: 'lineage',
-    tasks: [Notify, Prompt, LandingNote, Woken, Memorize, rewindTask(host)],
+    tasks: [
+      Notify,
+      PromptCreatedWithBranch,
+      ReplaySafeNonTallyLandingNote,
+      WakeAfterPlacedManualCompaction,
+      rewindTask(host),
+    ],
     sections: [section('lineage', (input, ctx) => lineageSection(host, input.conversationId, ctx))],
     hooks: [
       hook(GenerationTask, {
@@ -1399,15 +1337,20 @@ export default function lineageExtension(host: ExtensionHost) {
             .harness()
             .commit((tx) => tx.conversation(api.conversationId), ctx)
           if (!record || record.owner) return undefined
-          // A manual compaction of @ultimate ends with a wake-up; an automatic one continues the run it interrupted.
-          if (compaction.reason === 'manual')
+          const manualCompactionNeedsWake = compaction.reason === 'manual'
+          if (manualCompactionNeedsWake)
             await host.harness().commit(async (tx) => {
               const id = api.conversationId
               if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== id) return
-              const receipt = await tx.doc(WokenReceipt, id, String(api.taskId), null)
-              if (receipt.task !== undefined) return
-              receipt.task = await tx.createTask(
-                Woken,
+              const wakeReceiptKeyedByCompaction = await tx.doc(
+                WokenReceipt,
+                id,
+                String(api.taskId),
+                null,
+              )
+              if (wakeReceiptKeyedByCompaction.task !== undefined) return
+              wakeReceiptKeyedByCompaction.task = await tx.createTask(
+                WakeAfterPlacedManualCompaction,
                 { id, compaction: api.taskId },
                 { conversationId: id, ownership: { kind: 'conversation' }, background: true },
               )
@@ -1420,27 +1363,32 @@ export default function lineageExtension(host: ExtensionHost) {
             if (!agent.model) return undefined
             const root = (await rootsOf(host, ctx)).includes(api.conversationId)
             const intent = (await api.snapshot(Branch, api.conversationId, ctx))?.branch?.intent
-            // The model's view of the replaced entries, with edits applied: an omitted abstract stays omitted. Entries
-            // marked `transient` (a voice session's brief, placed afresh each time) stay out of the summary.
-            const replaced = new Set(
+            const nonTransientEntryIdsToCompact = new Set(
               compaction.entries
-                .filter((entry) => !(entry.data as { transient?: unknown } | undefined)?.transient)
+                .filter((entry) => {
+                  const data = entry.data
+                  return !(
+                    data &&
+                    typeof data === 'object' &&
+                    'transient' in data &&
+                    data.transient
+                  )
+                })
                 .map((entry) => entry.id),
             )
             const view = await (await host
               .harness()
               .conversation(api.conversationId, ctx))!.context(ctx)
-            const kept = view.entries.flatMap((entry, index) =>
-              replaced.has(entry.id) ? [index] : [],
+            const modelVisibleCompactionIndexes = view.entries.flatMap((entry, index) =>
+              nonTransientEntryIdsToCompact.has(entry.id) ? [index] : [],
             )
             const source = sourceText(
               api.conversationId,
-              kept.map((index) => view.entries[index]),
-              kept.map((index) => view.contributions[index]),
+              modelVisibleCompactionIndexes.map((index) => view.entries[index]),
+              modelVisibleCompactionIndexes.map((index) => view.contributions[index]),
               Number.POSITIVE_INFINITY,
             )
-            // @ultimate is in no tree: its summary ends with the project memory a branch starts from.
-            const brief = await standingBrief(api.conversationId, ctx)
+            const brief = await ultimateCompactionMemoryBrief(api.conversationId, ctx)
             const answer = await ask(
               api.models,
               (change) => host.harness().commit(change, ctx),
@@ -1472,7 +1420,12 @@ export default function lineageExtension(host: ExtensionHost) {
         }),
         async execute({ to, text }, api, ctx) {
           const from = await actingAs(host, api.conversationId, ctx)
-          const target = await leaveNote(host, to, text, { from })
+          const target = await leaveNote(
+            host,
+            typeof to === 'number' ? parseConversationId(to) : to,
+            text,
+            { from },
+          )
           return { output: [{ type: 'text', text: `Left a note in #${target}.` }] }
         },
       }),
@@ -1484,10 +1437,11 @@ export default function lineageExtension(host: ExtensionHost) {
           id: int({ minimum: 1 }),
           wake: opt(bool()),
         }),
-        // The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.
-        replay: 'safe',
+        ...safeToRerun(
+          'The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.',
+        ),
         async execute({ id, wake = true }, api, ctx) {
-          const target = id as ConversationId
+          const target = parseConversationId(id)
           const from = await actingAs(host, api.conversationId, ctx)
           if (target === from) throw new Error('A conversation cannot notify on itself')
           const replaced = await api.commit(async (tx) => {
@@ -1505,7 +1459,7 @@ export default function lineageExtension(host: ExtensionHost) {
               for (const task of page.items)
                 if (
                   task.state.status !== 'terminal' &&
-                  (task.input as { target: number }).target === target
+                  (task.input as { target: ConversationId }).target === target
                 )
                   pending.push(task.id)
               cursor = page.next
@@ -1548,12 +1502,9 @@ export default function lineageExtension(host: ExtensionHost) {
         parameters: obj({ instructions: opt(str()) }),
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
-          // The compaction and its wake-up commit together, so no crash leaves one without the other. @ultimate's own
-          // hook wakes it after any manual compaction; anyone else is woken here.
-          const taskId = await host.harness().commit(async (tx) => {
-            // A subagent's report is its run's answer: a wake-up after the compaction would start a run whose answer
-            // never reaches its parent. Its automatic compaction continues the run instead.
-            if ((await tx.conversation(id))?.owner)
+          const compactionWithWake = async (tx: Tx) => {
+            const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
+            if (subagentWouldLoseWakeReport)
               throw new Error(
                 'A subagent does not compact itself: its automatic compaction continues the run. Finish and report instead.',
               )
@@ -1563,61 +1514,78 @@ export default function lineageExtension(host: ExtensionHost) {
             const created = await admitCompaction(tx, id, instructions)
             if (!ultimate)
               (await tx.doc(WokenReceipt, id, String(created), null)).task = await tx.createTask(
-                Woken,
+                WakeAfterPlacedManualCompaction,
                 { id, compaction: created },
                 { conversationId: id, ownership: { kind: 'conversation' }, background: true },
               )
             return created
-          }, ctx)
+          }
+          const taskId = await host.harness().commit(compactionWithWake, ctx)
           return { output: [{ type: 'text', text: JSON.stringify({ taskId }) }] }
         },
       }),
       defineTool({
         name: 'memory',
         description:
-          "Read your project's memory, kept in your tree's root: without `read`, the index (one line per memory); with `read: slug`, that memory in full with its source. Outside a tree it reads the project's only root; `root` reads another root's.",
+          "Read your project's memory, kept in your tree's root: without arguments, the index (one line per memory); with `read`, one slug or several, those memories in full with their source; with `query`, one topic or situation in plain words, the memories about it in full (none when nothing applies). Outside a tree it reads the project's only root; `root` reads another root's.",
         parameters: obj({
-          read: opt(str({ minLength: 1 })),
+          read: opt(union([str({ minLength: 1 }), arr(str({ minLength: 1 }), { minItems: 1 })])),
+          query: opt(str({ minLength: 1 })),
           root: opt(int({ minimum: 1 })),
         }),
-        async execute({ read, root }, api, ctx) {
-          const id = await memoryRoot(api.conversationId, root, ctx)
-          const { memories } = (await host
-            .harness()
-            .snapshot(Memory, id as ConversationId, ctx)) ?? { memories: {} }
-          if (read !== undefined) {
-            const item = Object.hasOwn(memories, read) ? memories[read] : undefined
-            if (!item) throw new Error(`#${id} has no memory ${read}`)
-            return { output: [{ type: 'text', text: memoryText(read, item) }] }
-          }
+        async execute({ read, query, root }, api, ctx) {
+          const id = await memoryRoot(
+            api.conversationId,
+            root === undefined ? undefined : parseConversationId(root),
+            ctx,
+          )
+          const { memories } = (await host.harness().snapshot(Memory, id, ctx)) ?? { memories: {} }
           const index = memoryIndex(memories)
-          return {
-            output: [
-              {
-                type: 'text',
-                text: index.length
-                  ? `#${id}'s memory (${index.length}):\n${index.join('\n')}`
-                  : `#${id} has no memories yet.`,
-              },
-            ],
+          const indexText = index.length
+            ? `#${id}'s memory (${index.length}):\n${index.join('\n')}`
+            : `#${id} has no memories yet.`
+          const inFull = (slugs: string[]) =>
+            slugs.map((slug) => memoryText(slug, memories[slug])).join('\n\n---\n\n')
+          const parts: string[] = []
+          if (read !== undefined) {
+            const slugs = [...new Set(typeof read === 'string' ? [read] : read)]
+            const known = slugs.filter((slug) => Object.hasOwn(memories, slug))
+            const unknown = slugs.filter((slug) => !Object.hasOwn(memories, slug))
+            if (known.length) parts.push(inFull(known))
+            if (unknown.length)
+              parts.push(`#${id} has no memory ${unknown.join(', ')}. ${indexText}`)
           }
+          if (query !== undefined) {
+            const found = index.length ? await searchMemories(query, memories, ctx) : undefined
+            parts.push(
+              !index.length
+                ? indexText
+                : !found
+                  ? `Memory search is unavailable (it needs the classify extension and TYPESAFE_API_KEY); the index instead:\n${indexText}`
+                  : found.length
+                    ? inFull(found)
+                    : `No memory in #${id} is about this.`,
+            )
+          }
+          if (!parts.length) parts.push(indexText)
+          return { output: [{ type: 'text', text: parts.join('\n\n') }] }
         },
       }),
       defineTool({
         name: 'remember',
         deferred: true,
-        description: `Change a root's project memory in one atomic batch. Limits, checked before anything is written: ${MEMORY_RULES}. One op over a limit refuses the whole batch, so count a line's characters before you send it and keep detail in the body. Ops are {op:'add', slug, kind: 'decision'|'fact'|'lesson', line, body, source?}, {op:'update', slug, kind?, line?, body?, source?} and {op:'delete', slug}; source is \`#<conversation>/<entry>\`. \`root\` defaults to your tree's root, or outside a tree to the project's only root.`,
+        description: `Change a root's project memory in one atomic batch. Memory is for what a future branch would get wrong without it: the user's way of working, standing decisions with their reason, lessons from real incidents; never what code, docs, git or your prompt show, one-off outcomes or tabled ideas. Limits, checked before anything is written: ${MEMORY_RULES}. One op over a limit refuses the whole batch, so count a line's characters before you send it and keep detail in the body. Ops are {op:'add', slug, kind: 'decision'|'fact'|'lesson', line, body, source?}, {op:'update', slug, kind?, line?, body?, source?} and {op:'delete', slug}; source is \`#<conversation>/<entry>\`. \`root\` defaults to your tree's root, or outside a tree to the project's only root.`,
         parameters: obj({
           root: opt(int({ minimum: 1 })),
           ops: arr(
             obj({
-              op: oneOf(['add', 'update', 'delete']),
+              op: strEnum(['add', 'update', 'delete']),
               slug: str({
                 pattern: MEMORY_SLUG.source,
                 maxLength: 48,
                 description: 'kebab-case, at most 48 characters',
               }),
-              kind: opt(oneOf(['decision', 'fact', 'lesson'])),
+              kind: opt(strEnum(['decision', 'fact', 'lesson'])),
               line: opt(
                 str({
                   maxLength: LINE_CHARS,
@@ -1635,15 +1603,18 @@ export default function lineageExtension(host: ExtensionHost) {
             { minItems: 1 },
           ),
         }),
-        // Not replay-safe (the default): an interrupted call is never rerun, so a batch commits at most once.
         async execute({ root, ops }, api, ctx) {
-          // Deferred only hides it: a branch can still find it with tool_search, so the caller is checked here.
           const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-          if (standing?.ultimate !== api.conversationId)
+          const callerMayWriteProjectMemory = standing?.ultimate === api.conversationId
+          if (!callerMayWriteProjectMemory)
             throw new Error(
               'Only @ultimate writes project memory; tell @ultimate what to remember (message, reply: false).',
             )
-          const id = await memoryRoot(api.conversationId, root, ctx)
+          const id = await memoryRoot(
+            api.conversationId,
+            root === undefined ? undefined : parseConversationId(root),
+            ctx,
+          )
           const summary = await api.commit((tx) => applyMemoryOps(tx, id, ops), ctx)
           return { output: [{ type: 'text', text: summary }] }
         },

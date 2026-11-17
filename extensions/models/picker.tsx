@@ -28,11 +28,13 @@ import {
   thinkingOf,
   useFamilies,
 } from './families.tsx'
+import { SetFamilyAction } from './refs.ts'
 import type { FamilyView } from './refs.ts'
 import {
   authLabel,
   dialogs,
   formatWindow,
+  notePick,
   openLogin,
   price,
   selectModel,
@@ -43,8 +45,7 @@ import type { ModelInfo, ProviderInfo } from './state.tsx'
 
 const LIMIT = 150
 
-/** Every term of the query appears in the model's provider, id, or name. */
-function matches(model: ModelInfo, terms: readonly string[]) {
+function matchesEveryQueryTerm(model: ModelInfo, terms: readonly string[]) {
   const haystack = `${model.provider}/${model.id} ${model.name}`.toLowerCase()
   return terms.every((term) => haystack.includes(term))
 }
@@ -98,14 +99,21 @@ export function ModelRow({
   )
 }
 
-/** Searchable models of every provider, grouped; picking one configures the conversation that opened it. */
 export function ModelPicker() {
   const [open, setOpen] = useDialog(dialogs.picker)
   const actions = useUltimate()
-  const { id, ref, thinking, models, loading } = useCurrentModel(usePickerTarget())
+  const {
+    id,
+    ref,
+    thinking,
+    family: recorded,
+    models,
+    loading,
+  } = useCurrentModel(usePickerTarget())
   const families = useFamilies()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string>()
+  const [readerHighlightedValue, setReaderHighlightedValue] = useState<string>()
   const providers = useMemo(
     () => new Map((models?.providers ?? []).map((provider) => [provider.id, provider])),
     [models],
@@ -113,27 +121,24 @@ export function ModelPicker() {
   const groups = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
     const all = models?.models ?? []
-    // Without a query: what can run now. With one: everything that matches, runnable and direct matches first
-    // (`claude-opus-4-8` before a reseller's `eu.anthropic.claude-opus-4-8`). A Claude model Claude Code also offers
-    // lists it before the paid Anthropic API even while logged out, so Enter never picks the paid one by accident.
-    const claude = new Set(
+    const claudeCodeModelIds = new Set(
       all.filter((model) => model.provider === 'claude-code').map((model) => model.id),
     )
-    const twin = (model: ModelInfo) => claude.has(model.id)
-    const rank = (model: ModelInfo) =>
+    const alsoOfferedByClaudeCode = (model: ModelInfo) => claudeCodeModelIds.has(model.id)
+    const runnableSubscriptionFirstRank = (model: ModelInfo) =>
       (model.available || (model.provider === 'claude-code' && terms.length) ? 0 : 2) +
-      (model.provider === 'anthropic' && twin(model) ? 0.5 : 0) +
+      (model.provider === 'anthropic' && alsoOfferedByClaudeCode(model) ? 0.5 : 0) +
       (terms.length && !model.id.toLowerCase().startsWith(terms[0]) ? 1 : 0)
     const found = (
       terms.length
-        ? all.filter((model) => matches(model, terms))
+        ? all.filter((model) => matchesEveryQueryTerm(model, terms))
         : all.filter((model) => model.available)
     )
-      .toSorted((a, b) => rank(a) - rank(b))
+      .toSorted((a, b) => runnableSubscriptionFirstRank(a) - runnableSubscriptionFirstRank(b))
       .slice(0, LIMIT)
     return [...Map.groupBy(found, (model) => model.provider)]
   }, [models, query])
-  const current = familyOf(families, ref, thinking)
+  const current = familyOf(families, ref, thinking, recorded)
   const shownFamilies = (families?.families ?? []).filter((family) => {
     const haystack = `${family.name} ${runsOn(family) ?? ''} ${thinkingOf(family) ?? ''}`
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
@@ -159,7 +164,6 @@ export function ModelPicker() {
     )
   }
 
-  /** A family's model and thinking level for this conversation; a model without a login opens its login first. */
   function chooseFamily(family: FamilyView) {
     const name = runsOn(family)!
     const [provider, modelId] = [name.slice(0, name.indexOf('/')), modelIdOf(name)]
@@ -170,8 +174,12 @@ export function ModelPicker() {
     const level = thinkingOf(family)
     api
       .configure({ model: { provider, modelId }, ...(level ? { thinkingLevel: level } : {}) }, id)
+      .then(() => api.action(SetFamilyAction, { family: family.name }, { conversationId: id }))
       .then(
-        () => setOpen(false),
+        () => {
+          notePick()
+          setOpen(false)
+        },
         (failure: unknown) => setError(errorMessage(failure)),
       )
   }
@@ -183,6 +191,7 @@ export function ModelPicker() {
         if (!next) {
           setQuery('')
           setError(undefined)
+          setReaderHighlightedValue(undefined)
         }
       }}
       open={open}
@@ -198,8 +207,16 @@ export function ModelPicker() {
         </DialogDescription>
         <Command
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:section-label"
-          defaultValue={ref ? `${ref.provider}/${ref.modelId}` : undefined}
+          onValueChange={setReaderHighlightedValue}
           shouldFilter={false}
+          value={
+            readerHighlightedValue ??
+            (current && shownFamilies.includes(current)
+              ? `family/${current.name}`
+              : ref
+                ? `${ref.provider}/${ref.modelId}`
+                : undefined)
+          }
         >
           <CommandInput
             className="text-[13px]"

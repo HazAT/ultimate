@@ -14,9 +14,12 @@ import { StartedEvent } from '../shared/events.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ChildMessage, SupervisorMessage } from './supervisor-protocol.ts'
 
-import { alive } from './lock.ts'
+import { alive } from '../lib/lock.ts'
+import { inProcess } from '../lib/errors.ts'
+import { every } from '../lib/timers.ts'
 import { realpath } from 'node:fs/promises'
 import { extensionModules } from './vite-extensions.ts'
+import { createWeb } from './web.ts'
 import { admit, createAccess } from './request-security.ts'
 import { writeProject } from './project.ts'
 import { reportCore } from './supervisor-protocol.ts'
@@ -24,6 +27,9 @@ import { viteLogger } from './vite-logger.ts'
 import type { Notice } from '../shared/protocol.ts'
 
 const send = (message: ChildMessage) => process.send?.(message)
+
+const loopbackPreviewFrameAncestors =
+  "frame-ancestors 'self' http://127.0.0.1:* http://localhost:* http://*.localhost:*"
 
 export interface ServerOptions extends HostOptions {
   port?: number
@@ -52,61 +58,54 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     report: notice,
   })
   let system: Awaited<ReturnType<typeof createSystem>> | undefined
-  // Remote origins (Tailscale's HTTPS URL) usually register after startup and can go away: say each change once.
-  let remote: string[] = []
+  let reportedRemoteOrigins: string[] = []
   const access = createAccess(() => {
     const origins = access.origins()
     for (const origin of origins)
-      if (!remote.includes(origin)) console.log(`Ultimate: ${origin} (remote)`)
-    for (const origin of remote)
+      if (!reportedRemoteOrigins.includes(origin)) console.log(`Ultimate: ${origin} (remote)`)
+    for (const origin of reportedRemoteOrigins)
       if (!origins.includes(origin)) console.log(`Ultimate: ${origin} (remote) is no longer served`)
-    remote = origins
-    // The supervisor's dashboard keeps the current ones on screen; the log lines above are the history.
+    reportedRemoteOrigins = origins
     reportCore({ type: 'access', origins })
     void system
       ?.changed()
       .catch((error: unknown) => console.error('Publishing access changes failed:', error))
   })
   let api: Awaited<ReturnType<typeof createApi>> | undefined
+  let web: Awaited<ReturnType<typeof createWeb>> | undefined
   const http = createHttpServer((request, response) => {
-    void (async () => {
-      const port =
-        new URL(
-          options.publicUrl ??
-            `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
-        ).port || '80'
-      if (!(await admit(request, port, access.rules))) {
-        response.writeHead(403)
-        response.end('Forbidden')
-        return
-      }
-      if (!api) {
-        response.writeHead(503)
-        response.end('Preparing')
-        return
-      }
-      if (await api.handle(request, response)) return
-      vite.middlewares(request, response)
-    })().catch(() => {
-      if (!response.headersSent) response.writeHead(500)
-      response.end('Internal server error')
-    })
+    inProcess(
+      'a request handler: the HTTP response dies with the process',
+      (async () => {
+        const port =
+          new URL(
+            options.publicUrl ??
+              `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
+          ).port || '80'
+        if (!(await admit(request, port, access.rules))) {
+          response.writeHead(403)
+          response.end('Forbidden')
+          return
+        }
+        if (!api) {
+          response.writeHead(503)
+          response.end('Preparing')
+          return
+        }
+        response.setHeader('Content-Security-Policy', loopbackPreviewFrameAncestors)
+        if (await api.handle(request, response)) return
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          response.writeHead(405)
+          response.end()
+          return
+        }
+        await web!.handle(request, response)
+      })().catch(() => {
+        if (!response.headersSent) response.writeHead(500)
+        response.end('Internal server error')
+      }),
+    )
   })
-  const hmr = createHttpServer()
-  http.on('upgrade', (request, socket, head) => {
-    const port =
-      new URL(
-        options.publicUrl ??
-          `http://127.0.0.1:${(http.address() as import('node:net').AddressInfo).port}`,
-      ).port || '80'
-    void admit(request, port, access.rules)
-      .then((allowed) => {
-        if (allowed) hmr.emit('upgrade', request, socket, head)
-        else socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-      })
-      .catch(() => socket.destroy())
-  })
-  // A vite.config.ts change restarts Vite with a new watcher; listeners move to each new one.
   const restarted = new Set<(watcher: ViteDevServer['watcher']) => void>()
   reportCore({ type: 'web', state: 'preparing' })
   const vite = await createViteServer({
@@ -114,16 +113,9 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     clearScreen: false,
     configFile: resolvePath(ultimateRoot, 'vite.config.ts'),
     root: resolvePath(ultimateRoot, 'web'),
-    server: {
-      middlewareMode: true,
-      allowedHosts: true,
-      hmr: { server: hmr },
-      fs: {
-        allow: [ultimateRoot, projectRoot, resolvePath(host.userHome, '.ultimate')],
-      },
-    },
-    appType: 'spa',
-    // One dependency cache per state home, so tests and instances never re-optimize the live instance's page.
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: 'custom',
+    optimizeDeps: { noDiscovery: true, include: [] },
     cacheDir: resolvePath(host.home, 'vite'),
     resolve: { alias: { '@': resolvePath(ultimateRoot, 'web/src') } },
     plugins: [
@@ -136,6 +128,13 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       },
     ],
   })
+  const restartViteOnConfigChangeWithoutHmr = (file: string) => {
+    if (file === vite.config.configFile)
+      inProcess(
+        'the Vite server belongs to this process',
+        vite.restart().catch((error: unknown) => console.error('Restarting Vite failed:', error)),
+      )
+  }
   const watch: Watch = (attach) => {
     let detach = attach(vite.watcher)
     const move = (watcher: ViteDevServer['watcher']) => {
@@ -148,14 +147,16 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       detach()
     }
   }
+  watch((watcher) => {
+    watcher.on('change', restartViteOnConfigChangeWithoutHmr)
+    return () => watcher.off('change', restartViteOnConfigChangeWithoutHmr)
+  })
   let opened: OpenHost | undefined
   const processInfo: { activationError?: string } = {}
-  // go and release each finish before the next starts.
-  let switching = Promise.resolve()
+  let settledGoOrRelease = Promise.resolve()
   const serial = <T>(task: () => Promise<T>) => {
-    const next = switching.then(task)
-    // The caller gets the failure; the queue only waits for the task to settle.
-    switching = next.then(
+    const next = settledGoOrRelease.then(task)
+    settledGoOrRelease = next.then(
       () => undefined,
       () => undefined,
     )
@@ -179,7 +180,19 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     },
     watch,
     (message) => notice({ level: 'warning', message }),
+    () => web!.rebuild(),
   )
+  web = await createWeb({
+    ultimateRoot,
+    projectRoot,
+    userHome: host.userHome,
+    home: host.home,
+    watch,
+    before: () => extensions.prepareLoadBestEffort(),
+    pages: () => api?.pages() ?? 0,
+    changed: () => void system?.changed(),
+    notice: (message) => notice({ level: 'error', message }),
+  })
   await new Promise<void>((resolve, reject) => {
     http.once('error', reject)
     http.listen(options.port ?? Number(process.env.ULTIMATE_PORT ?? 4747), '127.0.0.1', () => {
@@ -199,9 +212,9 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     (message) => notice({ level: 'error', message }),
     processInfo,
     access.origins,
+    () => web.info(),
   )
-  /** Serve the opened harness: the `onOpen` callbacks, then the API. */
-  const serve = async (harness: OpenHost) => {
+  const openExtensionsThenServeApi = async (harness: OpenHost) => {
     opened = harness
     await harness.harness.commit(
       (tx) =>
@@ -225,6 +238,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     events,
     url,
     port: address.port,
+    web,
     release: () =>
       serial(async () => {
         if (opened) await extensions.released()
@@ -235,12 +249,11 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         opened = undefined
         reportCore({ type: 'web', state: 'stopped' })
       }),
-    /** Open storage and serve. */
     go: (activationError?: string) =>
       serial(async () => {
         processInfo.activationError = activationError
         await writeProject(host.home, host.projectRoot)
-        const served = await serve(await host.open(false))
+        const served = await openExtensionsThenServeApi(await host.open(false))
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
@@ -248,14 +261,17 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       const stopped = new Promise<void>((resolve, reject) =>
         http.close((error) => (error ? reject(error) : resolve())),
       )
+      if (opened) await extensions.released()
       await api?.close()
+      await opened?.close()
+      opened = undefined
       await extensions.close()
+      await web?.close()
       await system?.close()
       await vite.close()
       reportCore({ type: 'web', state: 'stopped' })
       http.closeAllConnections()
       await stopped
-      await opened?.close()
     },
   }
 }
@@ -269,48 +285,63 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
   if (process.env.ULTIMATE_INSTANCE_OWNER) {
     const owner = Number(process.env.ULTIMATE_INSTANCE_OWNER)
     if (!Number.isSafeInteger(owner) || owner < 1) throw new Error('Invalid instance owner')
-    setInterval(() => {
-      if (!alive(owner)) process.exit(0)
-    }, 500).unref()
-  }
-  let server: Awaited<ReturnType<typeof prepareServer>> | undefined
-  let closing: Promise<void> | undefined
-  // Every caller waits for the one close: under systemd the child gets SIGTERM and then the supervisor's `exit`, and
-  // exiting on the second while the first still tears down (the Tailscale mapping) would cut it short.
-  const close = () => (closing ??= Promise.resolve(server?.close()))
-  const shutdown = () => {
-    void close().then(
-      () => process.exit(0),
-      (error: unknown) => {
-        console.error('Server shutdown failed:', error)
-        process.exit(1)
+    every(
+      500,
+      () => {
+        if (!alive(owner)) process.exit(0)
       },
+      { unref: true },
     )
   }
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
+  let server: Awaited<ReturnType<typeof prepareServer>> | undefined
+  let sharedTeardown: Promise<void> | undefined
+  const close = () => (sharedTeardown ??= Promise.resolve(server?.close()))
+  const shutdown = () => {
+    inProcess(
+      'shutdown only closes this process',
+      close().then(
+        () => process.exit(0),
+        (error: unknown) => {
+          console.error('Server shutdown failed:', error)
+          process.exit(1)
+        },
+      ),
+    )
+  }
   if (process.env.ULTIMATE_SUPERVISED === '1' && process.send) {
+    const refuse = (signal: NodeJS.Signals) =>
+      reportCore({
+        type: 'log',
+        level: 'warn',
+        source: 'core',
+        text: `Ignored ${signal} sent to core pid ${process.pid}: the supervisor stops its core itself. Either Ultimate is stopping through its service (the signal went to the whole group), or a process outside it killed by port or name`,
+      })
+    process.on('SIGINT', refuse)
+    process.on('SIGTERM', refuse)
     try {
       server = await prepareServer({ port: 0, publicUrl: process.env.ULTIMATE_PUBLIC_URL })
       process.on('message', (message: SupervisorMessage) => {
-        void (async () => {
-          if (message.type === 'go' || message.type === 'reacquire') {
-            await server!.go(message.type === 'reacquire' ? message.error : undefined)
-            send({ type: 'ready' })
-          }
-          if (message.type === 'release') {
-            await server!.release()
-            send({ type: 'released' })
-          }
-          if (message.type === 'exit') {
-            await close()
-            process.exit(0)
-          }
-        })().catch((error) => {
-          send({ type: 'failed', error: String(error) })
-          console.error(error)
-          process.exit(1)
-        })
+        inProcess(
+          'the supervisor message controls this process lifecycle',
+          (async () => {
+            if (message.type === 'go' || message.type === 'reacquire') {
+              await server!.go(message.type === 'reacquire' ? message.error : undefined)
+              send({ type: 'ready' })
+            }
+            if (message.type === 'release') {
+              await server!.release()
+              send({ type: 'released' })
+            }
+            if (message.type === 'exit') {
+              await close()
+              process.exit(0)
+            }
+          })().catch((error) => {
+            send({ type: 'failed', error: String(error) })
+            console.error(error)
+            process.exit(1)
+          }),
+        )
       })
       process.on('disconnect', shutdown)
       send({ type: 'prepared', port: server.port })
@@ -320,6 +351,8 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
       process.exit(1)
     }
   } else {
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
     server = await prepareServer()
     await server.go()
     console.log(`Ultimate: ${server.url}`)

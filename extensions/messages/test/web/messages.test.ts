@@ -1,0 +1,671 @@
+import type { EntryRecord, EntryId, ConversationId } from '@earendil-works/pi-durable'
+import { describe, expect, it, vi } from 'vitest'
+import { accentOf } from '../../accent.tsx'
+import { callerOf } from '../../caller.ts'
+import {
+  answerTo,
+  answeredMessages,
+  backgroundRow,
+  conversationState,
+  conversationWait,
+  waitLabel,
+  counterparts,
+  landed,
+  landedSha,
+  stateWord,
+  messageStatus,
+  offscreen,
+  openMessages,
+  outgoingState,
+  scriptMessaged,
+  sentBy,
+  sentStatus,
+  threadRow,
+  ultimateCompact,
+  waitingOnUser,
+} from '../../data.tsx'
+import type { Message } from '../../refs.ts'
+import { questionsOf } from '../../waiting.tsx'
+
+vi.mock('@/sdk', () => ({ events: { emit: vi.fn<() => void>() } }))
+vi.mock('../../../lineage/ui.tsx', async () => import('../../../lineage/refs.ts'))
+vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))
+vi.mock('../../../subagents/ui.tsx', async () => import('../../../subagents/refs.ts'))
+
+const response = (id: number, calls: string[]) =>
+  ({
+    id,
+    conversationId: 7,
+    kind: 'pi.assistant',
+    model: [
+      {
+        role: 'assistant',
+        content: calls.map((call) => ({ type: 'toolCall', id: call, name: 'message' })),
+      },
+    ],
+  }) as unknown as EntryRecord
+
+describe('offscreen', () => {
+  it('points each way at the nearest question out of view, counting those that way, never at those in view', () => {
+    expect(
+      offscreen([
+        { key: 1, place: 'above' },
+        { key: 2, place: 'above' },
+        { key: 3, place: 'visible' },
+        { key: 4, place: 'below' },
+        { key: 5, place: 'below' },
+      ]),
+    ).toEqual({ up: { count: 2, nearest: 2 }, down: { count: 2, nearest: 4 } })
+    expect(offscreen([{ key: 1, place: 'visible' }])).toEqual({ up: undefined, down: undefined })
+  })
+})
+
+it('keeps inherited branch questions out of a side chat, but still tracks its own questions', () => {
+  const branchQuestion: Message = {
+    id: 1,
+    from: 4 as ConversationId,
+    to: 'user',
+    text: 'Approve?',
+    at: 0,
+    reply: true,
+    state: 'delivered',
+  }
+  const pointer = {
+    id: 10,
+    conversationId: 2,
+    kind: 'board.asked',
+    data: { message: branchQuestion.id },
+  } as unknown as EntryRecord
+  expect(questionsOf(2, [branchQuestion], [pointer]).map((q) => q.key)).toEqual(['p10'])
+  expect(questionsOf(7, [branchQuestion], [pointer])).toEqual([])
+
+  const ownQuestion = { ...branchQuestion, id: 2, from: 7 as ConversationId, call: 'ask/message' }
+  const ownResponse = response(11, ['ask'])
+  expect(
+    questionsOf(7, [branchQuestion, ownQuestion], [pointer, ownResponse]).map((q) => ({
+      key: q.key,
+      entry: q.entry,
+      card: q.card,
+    })),
+  ).toEqual([{ key: 'm2', entry: 11, card: '[data-message-outgoing="2"]' }])
+})
+
+describe('callerOf', () => {
+  const entries = [response(1, ['a']), response(2, ['b', 'c'])]
+  it('finds the response whose tool call sent a message, so go back returns there', () => {
+    expect(callerOf(entries, 'c')?.id).toBe(2)
+    expect(callerOf(entries, 'a')?.id).toBe(1)
+  })
+  it('finds nothing for a call outside the loaded entries', () => {
+    expect(callerOf(entries, 'z')).toBeUndefined()
+  })
+})
+
+describe('messages answer labels', () => {
+  const request = {
+    id: 1,
+    from: 'user' as const,
+    to: 2 as ConversationId,
+    text: 'Question',
+    at: 0,
+    reply: true,
+    state: 'answered' as const,
+    answer: 10 as EntryId,
+  }
+  it('selects a reply-enabled request for the answering entry', () => {
+    expect(answeredMessages([request], 2 as ConversationId, 10)).toEqual([request])
+  })
+  it('includes one-way deliveries without requiring the answered state', () => {
+    const oneWay = {
+      ...request,
+      from: 4 as ConversationId,
+      reply: false,
+      state: 'delivered' as const,
+    }
+    expect(answeredMessages([oneWay], 2 as ConversationId, 10)).toEqual([oneWay])
+  })
+  it('ignores other answers, conversations and requests with no answer', () => {
+    expect(
+      answeredMessages(
+        [
+          { ...request, answer: 11 as EntryId },
+          { ...request, to: 3 as ConversationId },
+          { ...request, answer: undefined },
+        ],
+        2 as ConversationId,
+        10,
+      ),
+    ).toEqual([])
+  })
+  it('keeps every matching request in log order, excluding outgoing replies', () => {
+    const second = { ...request, id: 2, from: 4 as ConversationId, reply: false }
+    expect(
+      answeredMessages(
+        [request, second, { ...request, id: 3, to: 'user' }],
+        2 as ConversationId,
+        10,
+      ),
+    ).toEqual([request, second])
+  })
+})
+
+describe('compact messages', () => {
+  const base = { text: '', at: 0, reply: true, state: 'delivered' as const }
+  // #2 is @ultimate, #4 a branch it started.
+  const messages: Message[] = [
+    { ...base, id: 1, from: 2 as ConversationId, to: 'user' }, // @ultimate asks the user
+    { ...base, id: 2, from: 'user', to: 2 as ConversationId }, // the user asks @ultimate
+    { ...base, id: 3, from: 2 as ConversationId, to: 4 as ConversationId }, // @ultimate asks the branch
+    { ...base, id: 4, from: 2 as ConversationId, to: 4 as ConversationId, state: 'answered' },
+    { ...base, id: 5, from: 4 as ConversationId, to: 2 as ConversationId, reply: false, re: 4 }, // the branch's answer
+    { ...base, id: 6, from: 2 as ConversationId, to: 'user', reply: false }, // one-way update
+    { ...base, id: 7, from: 'user', to: 4 as ConversationId, state: 'sent' },
+    { ...base, id: 8, from: 2 as ConversationId, to: 4 as ConversationId, state: 'failed' },
+  ]
+  it('says who waits: open questions to the user apart from other open requests', () => {
+    expect(messages.map(messageStatus)).toEqual([
+      'yours',
+      'waiting',
+      'waiting',
+      'answered',
+      'reply',
+      'one-way',
+      'waiting',
+      'failed',
+    ])
+    expect(messageStatus({ ...messages[5], state: 'sent' })).toBe('sending')
+  })
+  it('counts only open reply-enabled questions to the user', () => {
+    // #1 is open; the one-way update, the answered and sending ones and those to others do not wait on the user.
+    expect(
+      waitingOnUser({
+        messages: [
+          ...messages,
+          { ...base, id: 9, from: 2 as ConversationId, to: 'user', state: 'answered' },
+          { ...base, id: 10, from: 2 as ConversationId, to: 'user', state: 'sent' },
+          { ...base, id: 11, from: 2 as ConversationId, to: 'user', state: 'dismissed' },
+        ],
+        next: 12,
+      }),
+    ).toBe(1)
+    expect(waitingOnUser({ messages: [], next: 1 })).toBe(0)
+  })
+})
+
+describe('sender accents', () => {
+  it('gives the user the brand colour and conversations a palette colour, the same one every time', () => {
+    expect(accentOf('user')).toEqual({
+      fill: 'bg-brand/5',
+      edge: 'border-brand/20',
+      name: 'text-brand',
+    })
+    expect(accentOf(97078)).toBe(accentOf(97078))
+    const conversations = [2, 3, 4, 5, 6, 7].map(accentOf)
+    expect(new Set(conversations).size).toBe(6)
+    expect(conversations.map((accent) => accent.name)).not.toContain('text-brand')
+  })
+  it('gives @ultimate a fixed purple apart from the palette and the remote violet', () => {
+    const ultimate = accentOf('ultimate')
+    expect(ultimate.name).toBe('text-purple-700 dark:text-purple-300')
+    expect([2, 3, 4, 5, 6, 7].map(accentOf)).not.toContain(ultimate)
+    expect(accentOf('remote')).not.toBe(ultimate)
+  })
+})
+
+describe('@ultimate compact mode', () => {
+  const standing = { ultimate: 7, lander: 8 }
+  it("is @ultimate's conversation by the standing agents' index, whatever its title or label", () => {
+    expect(ultimateCompact({ id: 7 }, standing)).toBe(true)
+    // A rename or relabel changes nothing: the summary's title and label are not read.
+    expect(
+      ultimateCompact({ id: 7, title: 'Renamed', label: 'x' } as { id: number }, standing),
+    ).toBe(true)
+  })
+  it('excludes other standing agents and conversations titled @ultimate, and waits for the index', () => {
+    expect(ultimateCompact({ id: 8 }, standing)).toBe(false)
+    expect(
+      ultimateCompact({ id: 9, title: '@ultimate', label: 'agent' } as { id: number }, standing),
+    ).toBe(false)
+    expect(ultimateCompact({ id: 7 }, undefined)).toBe(false)
+  })
+})
+
+/** A compact row of @ultimate (#7): an entry of `kind` with its data, model message and shown calls. */
+const row = (kind: string, data?: object, model?: object, calls: object[] = []) => ({
+  entry: {
+    id: 30,
+    conversationId: 7,
+    kind,
+    ...(data ? { data } : {}),
+    ...(model ? { model: [model] } : {}),
+  } as unknown as EntryRecord,
+  calls: calls as { id: string; name: string; arguments: unknown }[],
+})
+const said = (stopReason: string) => ({ role: 'assistant', stopReason, content: [] })
+
+it.each([row('lineage.note').entry, row('workspaces.lander-report', { id: 'submission' }).entry])(
+  'does not mark $kind without landing data as landed',
+  (entry) => {
+    expect(landed(entry)).toBe(false)
+    expect(landedSha(entry)).toBeUndefined()
+  },
+)
+
+describe("background in @ultimate's compact transcript", () => {
+  const base = { text: 'Ship it?', at: 100, state: 'answered' as const }
+  const log: Message[] = [
+    {
+      ...base,
+      id: 1,
+      from: 4 as ConversationId,
+      to: 7 as ConversationId,
+      reply: true,
+      answer: 30 as EntryId,
+    },
+    { ...base, id: 2, from: 7 as ConversationId, to: 'user', reply: true, call: 'ask' },
+    { ...base, id: 3, from: 'user', to: 7 as ConversationId, reply: false, re: 2 },
+    {
+      ...base,
+      id: 4,
+      from: 7 as ConversationId,
+      to: 5 as ConversationId,
+      reply: true,
+      call: 'tell',
+    },
+  ]
+  const messagesLog = { messages: log, next: 5 }
+
+  it('is what agents say to each other, never what you and @ultimate say', () => {
+    expect(backgroundRow(row('board.message', { from: 4 }), messagesLog)).toBe(true)
+    expect(backgroundRow(row('board.reply', { from: 'remote' }), messagesLog)).toBe(true)
+    expect(backgroundRow(row('board.message', { from: 'user' }), messagesLog)).toBe(false)
+    expect(backgroundRow(row('lineage.note', { from: 4 }), messagesLog)).toBe(true)
+    expect(backgroundRow(row('pi.user'), messagesLog)).toBe(false)
+    expect(backgroundRow(row('some.new-kind'), messagesLog)).toBe(false)
+    expect(backgroundRow(row('board.wake'), messagesLog)).toBe('hidden')
+  })
+
+  it('keeps landings in the compact transcript, and a report of a failed landing in the background', () => {
+    expect(backgroundRow(row('lineage.note', { from: 4, source: 'lander' }), messagesLog)).toBe(
+      false,
+    )
+    expect(
+      backgroundRow(
+        row('workspaces.lander-report', { outcome: { outcome: 'landed' } }),
+        messagesLog,
+      ),
+    ).toBe(false)
+    expect(
+      backgroundRow(
+        row('workspaces.lander-report', { outcome: { outcome: 'failed' } }),
+        messagesLog,
+      ),
+    ).toBe(true)
+    expect(backgroundRow(row('lineage.note', { from: 4, source: 'main' }), messagesLog)).toBe(true)
+  })
+
+  it('takes in branches and messages to agents, but not a message to you or an answer to you', () => {
+    const branch = { id: 'b', name: 'branch', arguments: {} }
+    const toAgent = { id: 'tell', name: 'message', arguments: { to: '#5' } }
+    const toUser = { id: 'ask', name: 'message', arguments: { to: 'user' } }
+    expect(
+      backgroundRow(
+        row('pi.assistant', undefined, said('toolUse'), [branch, toAgent]),
+        messagesLog,
+      ),
+    ).toBe(true)
+    expect(
+      backgroundRow(
+        row('pi.assistant', undefined, said('toolUse'), [toAgent, toUser]),
+        messagesLog,
+      ),
+    ).toBe(false)
+    // The answer went back to #4, which asked.
+    expect(backgroundRow(row('pi.assistant', undefined, said('stop')), messagesLog)).toBe(true)
+    expect(
+      backgroundRow(row('pi.assistant', undefined, said('stop')), { messages: [], next: 1 }),
+    ).toBe(false)
+  })
+
+  it('reads as the thread only what you and @ultimate say to each other', () => {
+    const toUser = { id: 'ask', name: 'message', arguments: { to: 'user' } }
+    const toAgent = { id: 'tell', name: 'message', arguments: { to: '#5' } }
+    const empty = { messages: [], next: 1 }
+    expect(threadRow(row('pi.user'), messagesLog)).toBe(true)
+    expect(threadRow(row('board.message', { from: 'user' }), messagesLog)).toBe(true)
+    expect(threadRow(row('pi.assistant', undefined, said('toolUse'), [toUser]), messagesLog)).toBe(
+      true,
+    )
+    expect(threadRow(row('pi.assistant', undefined, said('stop')), empty)).toBe(true)
+    // An answer that went back to the agent that asked, a message to an agent, a landing, a reload.
+    expect(threadRow(row('pi.assistant', undefined, said('stop')), messagesLog)).toBe(false)
+    expect(threadRow(row('pi.assistant', undefined, said('toolUse'), [toAgent]), messagesLog)).toBe(
+      false,
+    )
+    expect(threadRow(row('lineage.note', { source: 'lander' }), messagesLog)).toBe(false)
+    expect(threadRow(row('prompt.build'), messagesLog)).toBe(false)
+  })
+
+  it('folds a final answer routed down to branches, naming them', () => {
+    // @ultimate's weigh-in to #477200's decisions rendered as a message to the user, above the branch's question card.
+    const routed = {
+      messages: [
+        {
+          ...base,
+          id: 1,
+          from: 8 as ConversationId,
+          to: 7 as ConversationId,
+          reply: false,
+          report: true as const,
+        },
+        {
+          ...base,
+          id: 2,
+          from: 7 as ConversationId,
+          to: 8 as ConversationId,
+          reply: false,
+          routed: 30 as EntryId,
+        },
+        {
+          ...base,
+          id: 3,
+          from: 7 as ConversationId,
+          to: 9 as ConversationId,
+          reply: false,
+          routed: 30 as EntryId,
+        },
+        {
+          ...base,
+          id: 4,
+          from: 7 as ConversationId,
+          to: 6 as ConversationId,
+          reply: false,
+          routed: 29 as EntryId,
+        },
+      ],
+      next: 5,
+    }
+    const answer = row('pi.assistant', undefined, said('stop'))
+    expect(backgroundRow(answer, routed)).toBe(true)
+    expect(threadRow(answer, routed)).toBe(false)
+    expect(counterparts(answer, routed)).toEqual([8, 9])
+  })
+
+  it('names who each row was with', () => {
+    const toAgent = { id: 'tell', name: 'message', arguments: { to: '#5' } }
+    expect(counterparts(row('board.reply', { from: 4 }), messagesLog)).toEqual([4])
+    expect(counterparts(row('lineage.note', { source: 'lander' }), messagesLog)).toEqual(['lander'])
+    expect(counterparts(row('workspaces.lander-report'), messagesLog)).toEqual(['lander'])
+    expect(
+      counterparts(row('pi.assistant', undefined, said('toolUse'), [toAgent]), messagesLog),
+    ).toEqual([5])
+    expect(counterparts(row('pi.assistant', undefined, said('stop')), messagesLog)).toEqual([4])
+  })
+
+  it('pairs a question with your answer', () => {
+    expect(answerTo(log, log[1])?.id).toBe(3)
+    expect(answerTo(log, log[3])).toBeUndefined()
+  })
+})
+
+const script = (id: string) => ({ id, name: 'codemode' })
+describe('messages a codemode script sent', () => {
+  const base = {
+    from: 2 as ConversationId,
+    to: 'user' as const,
+    text: 'Ship it?',
+    at: 100,
+    reply: true,
+  }
+  // Identical texts from two scripts and a direct call, in different states, plus a message to a branch and one from
+  // before the log recorded calls.
+  const log: Message[] = [
+    { ...base, id: 1, state: 'answered', call: 'a/1' },
+    { ...base, id: 2, state: 'delivered', call: 'b/1' },
+    { ...base, id: 3, state: 'delivered', call: 'a/3', reply: false },
+    { ...base, id: 4, state: 'delivered', call: 'a' },
+    { ...base, id: 5, state: 'sent', to: 4 as ConversationId, call: 'a/4' },
+    { ...base, id: 6, state: 'delivered', call: 'ab/1' },
+    { ...base, id: 7, state: 'delivered' },
+  ]
+  it('binds each identical text to the call that sent it, in the order sent', () => {
+    expect(sentBy(log, 'a').map((m) => [m.id, messageStatus(m)])).toEqual([
+      [1, 'answered'],
+      [3, 'one-way'],
+      [4, 'yours'],
+    ])
+    expect(sentBy(log, 'b').map((m) => [m.id, messageStatus(m)])).toEqual([[2, 'yours']])
+    expect(sentBy(log, 'c')).toEqual([])
+  })
+  it('keeps a script visible from the log alone, with or without a result', () => {
+    expect(scriptMessaged(script('b'), { messages: log, next: 8 })).toBe(true)
+    expect(scriptMessaged(script('c'), { messages: log, next: 8 })).toBe(false)
+    expect(scriptMessaged({ id: 'b', name: 'bash' }, { messages: log, next: 8 })).toBe(false)
+    expect(scriptMessaged(script('b'), undefined)).toBe(false)
+  })
+})
+
+describe('a sent message the log no longer holds', () => {
+  const message: Message = {
+    id: 1,
+    from: 2 as ConversationId,
+    to: 'user',
+    text: 'Ship it?',
+    at: 0,
+    reply: true,
+    state: 'delivered',
+  }
+  it('reads as sending only while its call runs, then shows no state', () => {
+    expect(sentStatus(undefined, true)).toBe('sending')
+    expect(sentStatus(undefined, false)).toBeUndefined()
+    expect(sentStatus(message, false)).toBe('yours')
+    expect(outgoingState(undefined, true, true)).toBe('sending')
+    expect(outgoingState(undefined, true, false)).toBeUndefined()
+    expect(outgoingState(message, true, false)).toBe('awaiting your reply')
+    expect(outgoingState({ ...message, reply: false }, true, false)).toBe('delivered')
+  })
+})
+
+/** A log of reply-expected questions from conversation 2 to the user, each overridable. */
+const messagesLog = (...messages: Partial<Message>[]) => ({
+  messages: messages.map((message, index) => ({
+    id: index + 1,
+    from: 2 as ConversationId,
+    to: 'user' as const,
+    text: 'Question',
+    at: 0,
+    reply: true,
+    state: 'delivered' as const,
+    ...message,
+  })),
+  next: messages.length + 1,
+})
+
+describe('conversation state', () => {
+  const primary = { id: 2, kind: 'primary' as const }
+  const toUser = messagesLog({ from: 2 as ConversationId, to: 'user' })
+
+  it('is paused, not working, while a pause parks its run', () => {
+    expect(conversationState({ ...primary, busy: true, parked: true }, toUser)).toBe('paused')
+    expect(
+      conversationState({ ...primary, runState: 'working', parked: true }, messagesLog()),
+    ).toBe('paused')
+  })
+
+  it('is working while it runs or has input queued, before anything else', () => {
+    expect(conversationState({ ...primary, busy: true }, messagesLog())).toBe('working')
+    expect(conversationState({ ...primary, runState: 'working' }, messagesLog())).toBe('working')
+    expect(conversationState({ ...primary, runState: 'queued' }, messagesLog())).toBe('working')
+  })
+
+  it('waits on the user over working while any question to the user is open for the primary agent', () => {
+    // The bug: @ultimate's row and phone button said `working` and hid the questions branches had asked the user.
+    const asked = messagesLog(
+      { from: 5 as ConversationId, to: 'user' },
+      { from: 6 as ConversationId, to: 'user' },
+    )
+    const state = conversationState({ ...primary, busy: true }, asked)
+    expect(stateWord(state, waitingOnUser(asked))).toBe('2 waiting on you')
+    // A branch's question to @ultimate waits on it, not on the user.
+    expect(
+      conversationState(
+        { ...primary, busy: true },
+        messagesLog({ from: 5 as ConversationId, to: 2 as ConversationId }),
+      ),
+    ).toBe('working')
+  })
+
+  it('waits for the primary agent with an open question to the user', () => {
+    expect(conversationState({ ...primary, runState: 'answered' }, toUser)).toBe('waits')
+    expect(conversationState({ ...primary, runState: 'answered' }, messagesLog())).toBe('idle')
+    expect(
+      conversationState({ ...primary, runState: 'answered' }, messagesLog({ state: 'answered' })),
+    ).toBe('idle')
+  })
+
+  it('waits for a non-subagent question of its own, never for a subagent or an unrelated conversation', () => {
+    expect(conversationState({ id: 2, kind: 'other', runState: 'answered' }, toUser)).toBe('waits')
+    expect(conversationState({ id: 2, kind: 'subagent', runState: 'answered' }, toUser)).not.toBe(
+      'waits',
+    )
+    expect(conversationState({ id: 3, kind: 'other', runState: 'answered' }, toUser)).not.toBe(
+      'waits',
+    )
+  })
+
+  it('waits on the user over working while a branch has its own question open', () => {
+    // The bug: a branch whose worker ran showed `working` and hid the question it had asked the user.
+    const branch = { id: 2, kind: 'other' as const }
+    expect(conversationState({ ...branch, busy: true }, toUser)).toBe('waits')
+    expect(conversationState({ ...branch, runState: 'working' }, toUser)).toBe('waits')
+    expect(conversationState({ ...branch, busy: true }, messagesLog())).toBe('working')
+  })
+
+  it('awaits the primary agent while its reply-expected message to it is open', () => {
+    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
+    for (const state of ['sent', 'delivered'] as const)
+      expect(
+        conversationState(
+          branch,
+          messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId, state }),
+        ),
+      ).toBe('awaiting')
+    expect(
+      conversationState(
+        branch,
+        messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId, state: 'answered' }),
+      ),
+    ).toBe('idle')
+    expect(
+      conversationState(
+        branch,
+        messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId, reply: false }),
+      ),
+    ).toBe('idle')
+    // Waiting on a worker is visible too.
+    expect(
+      conversationState(
+        branch,
+        messagesLog({ from: 5 as ConversationId, to: 9 as ConversationId }),
+      ),
+    ).toBe('awaiting')
+    // A subagent's question goes to its parent, which answers it in its own run: it never shows as awaiting.
+    expect(
+      conversationState(
+        { ...branch, kind: 'subagent' },
+        messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId }),
+      ),
+    ).toBe('done')
+  })
+
+  it('waits on its starter until concluded, but a resumed branch waits again', () => {
+    const branch = { id: 5, kind: 'other' as const, starter: 3 }
+    const log = messagesLog({
+      from: 5 as ConversationId,
+      to: 3 as ConversationId,
+      reply: false,
+      report: true,
+    })
+    expect(conversationState(branch, log)).toBe('awaiting')
+    expect(conversationState({ ...branch, concludedSince: Infinity }, log)).toBe('idle')
+    expect(conversationState({ ...branch, concludedSince: 200 }, log)).toBe('awaiting')
+    expect(conversationState({ id: 5, kind: 'other' }, log)).toBe('idle')
+    expect(conversationState({ ...branch, runState: 'error' }, log)).toBe('failed')
+  })
+
+  it('owes branches it started only when they wait on it, without duplicating their messages', () => {
+    const messages = messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId }).messages
+    const branch = { id: 5, starter: 3 }
+    const open = (facts = branch, log = messages) => openMessages(log, 3, [facts])
+    expect(open().owed.map((b) => b.id)).toEqual([5])
+    expect(open().requests).toEqual([])
+    expect(open(branch, []).owed.map((b) => b.id)).toEqual([5])
+    expect(openMessages(messages, 3, [{ ...branch, concluded: true }]).owed).toEqual([])
+    expect(openMessages(messages, 3, [{ ...branch, working: true }]).owed).toEqual([])
+    expect(openMessages(messages, 3, [{ ...branch, working: true }]).requests).toHaveLength(1)
+    expect(
+      openMessages(messagesLog({ from: 5 as ConversationId, to: 'user' }).messages, 3, [branch])
+        .owed,
+    ).toEqual([])
+  })
+
+  it('awaits remote replies and timers, not just the primary', () => {
+    const remote = messagesLog({
+      from: 2 as ConversationId,
+      to: 'remote',
+      remote: { project: 'ultimate-eval', machine: 'local', key: 'test' },
+    })
+    expect(conversationState(primary, remote)).toBe('awaiting')
+    expect(
+      conversationState(primary, messagesLog(), [
+        { name: 'Check result', nextAt: 200, subscribers: [2] },
+      ]),
+    ).toBe('awaiting')
+  })
+
+  it('adds remote progress or reachability to direct and inherited remote wait labels', () => {
+    const remote = { on: 'remote', project: 'ultimate-eval' } as const
+    const branch = { on: 'starter', to: 3 } as const
+    const progress = { reachable: true, progress: { label: 'run', index: 2, total: 4 } }
+    expect(waitLabel(remote, 3, remote, progress)).toBe('waits on ultimate-eval · run 2/4')
+    expect(waitLabel(branch, 3, remote, progress)).toBe(
+      'waits on @ultimate → ultimate-eval · run 2/4',
+    )
+    expect(waitLabel(remote, 3, remote, { reachable: false })).toBe(
+      'waits on ultimate-eval · not running',
+    )
+    expect(waitLabel(branch, 3, remote, { reachable: false })).toBe(
+      'waits on @ultimate → ultimate-eval · not running',
+    )
+    expect(waitLabel(remote, 3, remote, { reachable: true })).toBe('waits on ultimate-eval')
+    expect(waitLabel(branch, 3, undefined, progress)).toBe('waits on @ultimate')
+  })
+
+  it('says every state in a word, so a standing row or lane never falls back to idle', () => {
+    // A standing agent (not the primary) asking @ultimate shows it, rather than idle.
+    const standing = { id: 7, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
+    const log = messagesLog({ from: 7 as ConversationId, to: 3 as ConversationId })
+    expect(
+      stateWord(conversationState(standing, log), 0, waitLabel(conversationWait(standing, log), 3)),
+    ).toBe('waits on @ultimate')
+    expect(stateWord('waits', 2)).toBe('2 waiting on you')
+    expect(stateWord('failed')).toBe('failed')
+    expect(stateWord('done')).toBe('done')
+    expect(stateWord('idle')).toBe('idle')
+  })
+
+  it('failed when its latest input ended without an answer', () => {
+    expect(conversationState({ id: 5, kind: 'other', runState: 'error' }, messagesLog())).toBe(
+      'failed',
+    )
+  })
+
+  it('done for an answered subagent, idle for any other answered conversation', () => {
+    expect(
+      conversationState({ id: 5, kind: 'subagent', runState: 'answered' }, messagesLog()),
+    ).toBe('done')
+    expect(conversationState({ id: 5, kind: 'other', runState: 'answered' }, messagesLog())).toBe(
+      'idle',
+    )
+  })
+})

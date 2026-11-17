@@ -1,7 +1,14 @@
 import type { Agent } from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { expect, it } from 'vitest'
-import { defaultModel, definitionAgent } from '../lib/agents.ts'
+import {
+  defaultAgent,
+  defaultModel,
+  definitionAgent,
+  definitionFamily,
+  onFamily,
+} from '../lib/agents.ts'
+import { mergeFamilies } from '../lib/families.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 
@@ -36,10 +43,48 @@ it('starts a branch on the configured default whose login is gone, never on the 
     model: defaultModel(available, settings, opus),
   } as unknown as Agent
   expect(definitionAgent(coordinator, parent, runtime).model).toEqual(opus)
+  // The branch tool's `family`: the coordinator runs on that family's model and thinking; an unknown one fails.
+  const families = mergeFamilies({
+    families: { lead: { model: 'anthropic/claude-fable-5', thinking: 'xhigh' } },
+    assign: {},
+  })
+  const lead = definitionAgent(onFamily(coordinator, 'lead', families, available), parent, runtime)
+  expect(lead).toMatchObject({
+    model: { provider: 'anthropic', modelId: 'claude-fable-5' },
+    thinkingLevel: 'xhigh',
+  })
+  // It runs as the family it was started on, recorded for its label (#550837), the default one too.
+  expect(definitionFamily(onFamily(coordinator, 'lead', families, available), lead)).toBe('lead')
+  expect(definitionFamily(coordinator, { model: opus })).toBe('default')
+  expect(() => onFamily(coordinator, 'huge', families, available)).toThrow(
+    'Unknown family: huge. Families: default, review, fast, tiny, design, lead',
+  )
   // With nothing configured, a new conversation still starts on a model with a login.
   const none = { getDefaultProvider: () => undefined, getDefaultModel: () => undefined }
   expect(defaultModel(available, none)).toEqual({
     provider: 'anthropic',
     modelId: 'claude-fable-5',
   })
+})
+
+it('answers the default model and its thinking level together', () => {
+  // #552043: Get ready saved a default model and thinking level, but a branch took the model from the default and the
+  // thinking level from what the root had stored.
+  const available = [{ provider: opus.provider, id: opus.modelId }]
+  const pi = {
+    getDefaultProvider: () => 'openai-codex',
+    getDefaultModel: () => 'gpt-6.1-sol',
+    getDefaultThinkingLevel: () => 'low' as const,
+  }
+  expect(
+    defaultAgent(available, pi, {
+      model: 'claude-code/claude-opus-5-5',
+      thinking: 'high',
+      color: 'sky',
+    }),
+  ).toEqual({ model: opus, thinkingLevel: 'high' })
+  // A default family without a thinking level of its own follows Pi's.
+  expect(
+    defaultAgent(available, pi, { model: 'claude-code/claude-opus-5-5', color: 'sky' }),
+  ).toEqual({ model: opus, thinkingLevel: 'low' })
 })

@@ -1,6 +1,13 @@
-import { ExternalLinkIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, LoaderCircleIcon } from 'lucide-react'
+import {
+  ExternalLinkIcon,
+  EyeIcon,
+  EyeOffIcon,
+  KeyRoundIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   api,
@@ -9,6 +16,7 @@ import {
   errorMessage,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -18,15 +26,10 @@ import {
 import { DeleteAction, ListAction, SetAction } from './refs.ts'
 import type { Secret } from './refs.ts'
 
-/** One row of the `list` action: a declared or stored secret, never its value. */
-/**
- * The row another facet asked for with `secrets:open { name }`, until the panel opens it. Kept outside React: the
- * panel mounts only once the request has opened it.
- */
-let requested: string | undefined
+let requestedBeforePanelMount: string | undefined
 const listeners = new Set<() => void>()
 function request(name: string | undefined) {
-  requested = name
+  requestedBeforePanelMount = name
   for (const listener of listeners) listener()
 }
 const subscribe = (listener: () => void) => {
@@ -36,36 +39,25 @@ const subscribe = (listener: () => void) => {
   }
 }
 
-/**
- * The list, read on mount, after a save or delete here, and when an extension is enabled, disabled or changes its
- * declared secrets. A hot reload of server code alone (`loadedAt`) is left out: it changes nothing the list shows,
- * and re-reading on it sent a burst of reads from every tab on each save.
- */
 function useSecrets() {
   const system = useSystem()
-  // Failures show inline in the panel, not as notices: the status line reads the list on every page.
-  const secrets = useAction(ListAction, null, { onError: () => {} })
-  const signature = JSON.stringify(
-    system?.extensions.map((extension) => [
-      extension.name,
-      extension.enabled,
-      extension.server?.secrets,
-    ]),
-  )
-  const seen = useRef(signature)
-  const { refetch } = secrets
-  useEffect(() => {
-    if (signature === seen.current) return
-    seen.current = signature
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [signature, refetch])
-  useEvent('secrets:changed', () => void refetch())
+  const secretDeclarationDependencies = system?.extensions.map((extension) => [
+    extension.name,
+    extension.enabled,
+    extension.server?.secrets,
+  ])
+  const secrets = useAction(ListAction, null, {
+    onError: keepLast,
+    on: secretDeclarationDependencies,
+  })
+  useEvent('secrets:changed', () => void secrets.refetch())
   return secrets
 }
 
 const missing = (secrets: readonly Secret[] | undefined) =>
   secrets?.filter((secret) => !secret.set && !secret.via && secret.declaredBy.length > 0) ?? []
+
+const validName = /^[A-Z][A-Z0-9_]*$/
 
 const dot = (tone: string) => <span className={cn('size-1.5 shrink-0 rounded-full', tone)} />
 const small = 'h-7 gap-1.5 px-2 font-mono text-[11.5px]'
@@ -79,30 +71,42 @@ function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) 
   )
 }
 
-/**
- * The value, typed or pasted, hidden unless shown. It lives only in this component and is cleared after a save. No
- * <form> and a one-time-code field, as in the models login: browsers must not offer to save a key as a password.
- */
+const field =
+  'h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
+
 function ValueInput({
-  name,
+  name: fixed,
   replacing,
+  taken = [],
   onDone,
 }: {
-  name: string
+  name?: string
   replacing: boolean
+  taken?: readonly string[]
   onDone: () => void
 }) {
+  const [typed, setTyped] = useState('')
   const [value, setValue] = useState('')
   const [shown, setShown] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const field = useRef<HTMLInputElement>(null)
+  const first = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    field.current?.focus({ preventScroll: true })
-    field.current?.scrollIntoView({ block: 'nearest' })
+    first.current?.focus({ preventScroll: true })
+    first.current?.scrollIntoView({ block: 'nearest' })
   }, [])
+  const name = fixed ?? typed
+  const nameError =
+    fixed || !typed
+      ? undefined
+      : !validName.test(typed)
+        ? 'Start with a letter; use only A–Z, 0–9 and _'
+        : taken.includes(typed)
+          ? `${typed} is already listed; use its Replace`
+          : undefined
+  const ready = !!value.trim() && !!name && !nameError && !busy
   const save = async () => {
-    if (!value.trim() || busy) return
+    if (!ready) return
     setBusy(true)
     setError(undefined)
     try {
@@ -115,33 +119,49 @@ function ValueInput({
       setBusy(false)
     }
   }
+  const keys = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void save()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onDone()
+    }
+  }
   return (
     <div className="mt-2 flex flex-col gap-1.5">
+      {!fixed && (
+        <input
+          aria-invalid={!!nameError}
+          aria-label="Name of the new secret"
+          autoComplete="off"
+          className={cn(field, 'flex-none', nameError && 'border-error')}
+          disabled={busy}
+          onChange={(event) => setTyped(event.target.value.toUpperCase())}
+          onKeyDown={keys}
+          placeholder="MY_API_KEY"
+          ref={first}
+          spellCheck={false}
+          value={typed}
+        />
+      )}
+      {nameError && <p className="font-mono text-[11px] leading-snug text-error">{nameError}</p>}
       <div className="flex items-center gap-1.5">
         <input
-          aria-label={`${replacing ? 'New value' : 'Value'} for ${name}`}
+          aria-label={fixed ? `${replacing ? 'New value' : 'Value'} for ${fixed}` : 'Value'}
           autoComplete="one-time-code"
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className={field}
           data-1p-ignore
           data-bwignore
           data-lpignore="true"
           disabled={busy}
           onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
-              void save()
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              event.stopPropagation()
-              onDone()
-            }
-          }}
+          onKeyDown={keys}
           placeholder={replacing ? 'Paste the new value' : 'Paste the value'}
-          ref={field}
+          ref={fixed ? first : undefined}
           spellCheck={false}
           type={shown ? 'text' : 'password'}
           value={value}
@@ -162,7 +182,7 @@ function ValueInput({
       <div className="flex items-center gap-1.5">
         <Button
           className={small}
-          disabled={!value.trim() || busy}
+          disabled={!ready}
           onClick={() => void save()}
           size="sm"
           type="button"
@@ -182,9 +202,8 @@ function ValueInput({
 function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  // Focus starts on Cancel, so a stray Enter keeps the secret.
-  const cancel = useRef<HTMLButtonElement>(null)
-  useEffect(() => cancel.current?.focus({ preventScroll: true }), [])
+  const safeCancelFocus = useRef<HTMLButtonElement>(null)
+  useEffect(() => safeCancelFocus.current?.focus({ preventScroll: true }), [])
   const remove = async () => {
     setBusy(true)
     setError(undefined)
@@ -215,7 +234,7 @@ function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
         <Button
           className={small}
           onClick={onDone}
-          ref={cancel}
+          ref={safeCancelFocus}
           size="sm"
           type="button"
           variant="ghost"
@@ -242,12 +261,11 @@ function Row({
   onMode: (mode: Mode['mode'] | undefined) => void
 }) {
   const needed = secret.declaredBy.length > 0
-  // When the form or the confirmation closes, focus returns to the row instead of the page.
-  const primary = useRef<HTMLButtonElement>(null)
+  const rowFocusAfterEditorCloses = useRef<HTMLButtonElement>(null)
   const was = useRef(mode)
   useEffect(() => {
     if (was.current && !mode && document.activeElement === document.body)
-      primary.current?.focus({ preventScroll: true })
+      rowFocusAfterEditorCloses.current?.focus({ preventScroll: true })
     was.current = mode
   }, [mode])
   return (
@@ -308,7 +326,7 @@ function Row({
           <Button
             className={small}
             onClick={() => onMode('edit')}
-            ref={primary}
+            ref={rowFocusAfterEditorCloses}
             size="sm"
             type="button"
             variant="outline"
@@ -335,9 +353,10 @@ function Row({
 function SecretsPanel() {
   const { data, error, loading } = useSecrets()
   const now = useNow(30000)
-  const [open, setOpen] = useState<Mode>()
-  // A row another facet asked for opens for editing once the list has it.
-  const target = useSyncExternalStore(subscribe, () => requested)
+  type SingleOpenSecretEditor = Mode | 'add'
+  const [open, setOpen] = useState<SingleOpenSecretEditor>()
+  const row = open === 'add' ? undefined : open
+  const target = useSyncExternalStore(subscribe, () => requestedBeforePanelMount)
   useEffect(() => {
     if (!target || !data || loading) return
     request(undefined)
@@ -357,7 +376,38 @@ function SecretsPanel() {
     ) : undefined
   return (
     <section className="pt-3 pb-3.5">
-      <Heading meta={meta}>Secrets</Heading>
+      <Heading
+        meta={
+          <>
+            {meta}
+            {data && (
+              <Button
+                aria-label="Add a secret"
+                aria-pressed={open === 'add'}
+                className="-my-1 -mr-1.5 size-6 text-muted-foreground"
+                onClick={() => setOpen(open === 'add' ? undefined : 'add')}
+                size="icon-sm"
+                title="Add a secret"
+                type="button"
+                variant="ghost"
+              >
+                <PlusIcon className="size-3.5" />
+              </Button>
+            )}
+          </>
+        }
+      >
+        Secrets
+      </Heading>
+      {data && open === 'add' && (
+        <div className="px-3 pb-2.5">
+          <ValueInput
+            onDone={() => setOpen(undefined)}
+            replacing={false}
+            taken={data.map((secret) => secret.name)}
+          />
+        </div>
+      )}
       {error && (
         <p className="mx-3 mt-2.5 font-mono text-[11px] leading-snug break-words text-error">
           {errorMessage(error)}
@@ -373,7 +423,7 @@ function SecretsPanel() {
           {data.map((secret) => (
             <Row
               key={secret.name}
-              mode={open?.name === secret.name ? open.mode : undefined}
+              mode={row?.name === secret.name ? row.mode : undefined}
               now={now}
               onMode={(mode) => setOpen(mode ? { name: secret.name, mode } : undefined)}
               secret={secret}
@@ -389,7 +439,6 @@ function SecretsPanel() {
   )
 }
 
-/** Other facets open the panel at a row with `events.emit('secrets:open', { name })`. */
 function Opener() {
   const ui = useUltimate()
   useEvent('secrets:open', (data) => {
@@ -403,7 +452,6 @@ function Opener() {
 export default defineWebExtension({
   slots: { overlay: [Opener] },
   panels: [
-    // Opened from ⌘K and missing-secret prompts.
     {
       id: 'secrets',
       title: 'Secrets',

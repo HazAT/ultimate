@@ -2,20 +2,25 @@ import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durabl
 import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
-import type { Message, Question } from '../messages/api.ts'
+import type { Question } from '../messages/api.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { openQuestion as open } from '../../lib/message-state.ts'
 import { AnswerAction, DismissAction } from './refs.ts'
+import type { Answer } from './refs.ts'
 
-const open = (message: Message) =>
-  message.to === 'user' && message.reply && message.state === 'delivered'
 const NOT_OPEN = 'These questions are no longer open'
 
-function validAnswers(value: unknown): value is { question: string; answer: string }[] {
+const filled = (text: unknown) => typeof text === 'string' && !!text.trim()
+function validAnswers(value: unknown): value is Answer[] {
   return (
     Array.isArray(value) &&
     value.every(
       (a: { question?: unknown; answer?: unknown } | null) =>
-        a && typeof a.question === 'string' && typeof a.answer === 'string' && a.answer.trim(),
+        a &&
+        typeof a.question === 'string' &&
+        (Array.isArray(a.answer)
+          ? a.answer.length > 0 && a.answer.every(filled)
+          : filled(a.answer)),
     )
   )
 }
@@ -26,27 +31,20 @@ function checkAnswers(answers: { question: string }[], questions: Question[]) {
   )
     throw new Error('Unknown question')
 }
-/** The keys of the chosen options, in option order: "a", "a,c"; none when an answer names no option. */
-function keysOf(question: Question, answer: string) {
-  const labels = question.kind === 'multi' ? answer.split(', ') : [answer]
+
+function keysOf(question: Question, labels: string[]) {
   const keys = (question.options ?? []).flatMap((o) =>
     o.key && labels.includes(o.label) ? [o.key] : [],
   )
   return keys.length === labels.length ? keys.join(',') : ''
 }
-/**
- * The reply naming each answer by the message's own numbering: `1a. Topic: label` for an option (`2a,c.` for
- * several), `3: text` for typed text or a rating, `Topic: answer` when the message numbered nothing; a note from the
- * card's field follows the answers.
- */
-export function answerText(
-  answers: { question: string; answer: string }[],
-  questions: Question[],
-  note?: string,
-) {
-  const lines = answers.map(({ question, answer }) => {
+
+export function answerText(answers: Answer[], questions: Question[], note?: string) {
+  const lines = answers.map(({ question, answer: given }) => {
     const q = questions.find((candidate) => candidate.text === question)!
-    const keys = keysOf(q, answer)
+    const labels = [given].flat()
+    const keys = keysOf(q, labels)
+    const answer = labels.join(', ')
     if (!q.ref) return `${q.text}: ${answer}`
     return keys ? `${q.ref}${keys}. ${q.text}: ${answer}` : `${q.ref}: ${answer}`
   })
@@ -56,11 +54,10 @@ export function answerText(
 
 export const userActions = ['answer', 'dismiss']
 export const actions = {
-  /** Answer an open message from its questions, with a note, or as free text: a user reply to its sender. */
   answer: implementAction(AnswerAction, async (args, { host, signal, device }) => {
     const data = args as {
       messageId: number
-      answers?: { question: string; answer: string }[]
+      answers?: Answer[]
       note?: unknown
       text?: unknown
     }
@@ -89,7 +86,6 @@ export const actions = {
         .answer(data.messageId, reply, withAbortSignal(signal, context), device),
     }
   }),
-  /** Close an open message to the user unanswered; its sender gets a one-way note. */
   dismiss: implementAction(DismissAction, async (args, { host, signal, device }) => {
     const data = args as { messageId: number }
     if (!data || !Number.isSafeInteger(data.messageId)) throw new Error('Invalid message')
@@ -102,7 +98,6 @@ export const actions = {
 }
 
 export default function questionsExtension(host: ExtensionHost) {
-  // Core, always on; resolved where it is called, declared here so the catalogue lists it.
   host.need(MessagesApi)
   return defineExtension({ name: 'questions' })
 }

@@ -39,8 +39,11 @@ it('passes the generic card through tool decorators in discovery order, allowing
   expect(html).toContain('demo')
   expect(html).toContain('</section></article>')
 
-  registry.replace('project-a', {
-    default: { tools: { demo: () => createElement('p', null, 'replacement') } },
+  await registry.setLoaders({
+    'extensions/builtin-z/web.tsx': async () => ({ default: { tools: { demo: wrap('section') } } }),
+    'extensions/project-a/web.tsx': async () => ({
+      default: { tools: { demo: () => createElement('p', null, 'replacement') } },
+    }),
   })
   hooks.records = [...registry.getSnapshot()]
   const replaced = renderToStaticMarkup(createElement(ToolCallBlock, { call }))

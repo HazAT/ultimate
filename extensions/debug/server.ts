@@ -1,14 +1,17 @@
-import { arr, int, obj, oneOf, opt, str, union } from '@earendil-works/pi-schema'
+import { parseEntryId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import { arr, int, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { strEnum } from '../../lib/schema.ts'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { CallRow, CallTree } from '../../server/trace.ts'
+import { readOnly } from '../../lib/replay.ts'
 
-/** The most text one call returns; rows past it are cut with a note. */
-const BUDGET = 16_000
+const MAX_RETURNED_TEXT_CHARS = 16_000
 
-/** How long ago `at` (ISO) was: `40s`, `12m`, `3h`, `2d`. */
 export function age(at: string, now = Date.now()) {
   const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000))
   if (seconds < 60) return `${seconds}s`
@@ -42,12 +45,11 @@ function tree(nodes: CallTree[], depth = 0): string[] {
     ...tree(node.children, depth + 1),
   ])
 }
-/** At most `limit` lines within the budget, saying how many were left out. */
 function bounded(lines: string[], limit: number) {
   const shown: string[] = []
   let size = 0
   for (const line of lines.slice(0, limit)) {
-    if (size + line.length > BUDGET) break
+    if (size + line.length > MAX_RETURNED_TEXT_CHARS) break
     shown.push(line)
     size += line.length + 1
   }
@@ -62,7 +64,7 @@ export default function debug(host: ExtensionHost) {
     since?: number | string
     limit?: number
     trace?: string
-    conversation?: number
+    conversation?: ConversationId
     name?: string
   }) {
     const limit = args.limit ?? (args.call === 'events' ? 20 : 50)
@@ -72,7 +74,7 @@ export default function debug(host: ExtensionHost) {
           throw new Error('events: since is an event id (a number)')
         const events = await host.eventLog.recent({
           ...(args.events ? { events: args.events.map((name) => defineEvent(name)) } : {}),
-          ...(args.since === undefined ? {} : { since: args.since }),
+          ...(args.since === undefined ? {} : { since: parseEntryId(args.since) }),
           limit,
         })
         const lines = events.map((event) =>
@@ -159,7 +161,9 @@ export default function debug(host: ExtensionHost) {
       default: {
         if (!args.name) throw new Error('api: name is required')
         const source = await apiSource(host.extensions(), args.name)
-        return source.length > BUDGET ? `${source.slice(0, BUDGET)}\n[truncated]` : source
+        return source.length > MAX_RETURNED_TEXT_CHARS
+          ? `${source.slice(0, MAX_RETURNED_TEXT_CHARS)}\n[truncated]`
+          : source
       }
     }
   }
@@ -169,8 +173,7 @@ export default function debug(host: ExtensionHost) {
       defineTool({
         name: 'debug',
         deferred: true,
-        // Reads events, reactor status, the catalogue, traces and contract files; changes nothing.
-        replay: 'safe',
+        ...readOnly,
         description:
           "Inspect Ultimate's running system to find out why something did or did not happen, and to follow one chain of work across extensions. " +
           'call: `events` lists durable events newest first (filter `events` by name like `workspaces.landed`, `since` an event id); ' +
@@ -180,7 +183,7 @@ export default function debug(host: ExtensionHost) {
           "`apis` lists extension contracts (api.ts, refs.ts) with summaries and `api` returns one extension's by `name`, each file under a header. " +
           'Start from an event or a call, take its trace id and read the tree. Read-only; one line per row, ages relative; `limit` defaults to 20 events or 50 rows.',
         parameters: obj({
-          call: oneOf(['events', 'reactors', 'catalogue', 'trace', 'apis', 'api']),
+          call: strEnum(['events', 'reactors', 'catalogue', 'trace', 'apis', 'api']),
           events: opt(
             arr(str({ minLength: 1 }), {
               description: 'events: event names to keep.',
@@ -197,7 +200,20 @@ export default function debug(host: ExtensionHost) {
           limit: opt(int({ minimum: 1, maximum: 1000 })),
         }),
         async execute(args) {
-          return { output: [{ type: 'text', text: await run(args) }] }
+          return {
+            output: [
+              {
+                type: 'text',
+                text: await run({
+                  ...args,
+                  conversation:
+                    args.conversation === undefined
+                      ? undefined
+                      : parseConversationId(args.conversation),
+                }),
+              },
+            ],
+          }
         },
       }),
     ],

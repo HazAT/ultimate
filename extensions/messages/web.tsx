@@ -1,4 +1,6 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { useEffect, useState } from 'react'
 import {
   api,
@@ -10,6 +12,7 @@ import {
   useConversation,
   useDocOf,
   useEvent,
+  useReady,
   useUltimate,
 } from '@/sdk'
 import {
@@ -23,6 +26,7 @@ import {
 import {
   answeredMessages,
   emptyMessages,
+  openQuestion,
   scriptMessaged,
   threadRow,
   ultimateCompact,
@@ -30,12 +34,13 @@ import {
 import { callerOf } from './caller.ts'
 import { OpenMessages } from './open.tsx'
 import { QuestionPointer } from './pointer.tsx'
+import { OffscreenQuestions } from './waiting.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { MessagesDoc, CallerAction } from './refs.ts'
 import type { MessagesData } from './refs.ts'
 
 function MessageAnswerLabel({ entry }: { entry: EntryRecord }) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const conversation = useConversation((value) => value.id)
   const messages =
     conversation === undefined ? [] : answeredMessages(log.messages, conversation, entry.id)
@@ -50,48 +55,90 @@ function MessageAnswerLabel({ entry }: { entry: EntryRecord }) {
   ))
 }
 
-/**
- * Stay mounted across surfaces so an Open click can reveal after Agent mounts and loads. `messages:open` names the entry,
- * or the tool call that sent a message (`call`): the response that made it, found in the loaded entries or else in the
- * stored history, which the transcript then pages in.
- */
 function MessageNavigation() {
   const { id, entries, loading } = useConversation()
-  const { surface } = useUltimate()
-  const [target, setTarget] = useState<{ conversation: number; entry?: number; call?: string }>()
+  const { surface, showSurface } = useUltimate()
+
+  const { ready } = useReady()
+  const log = useDocOf(ROOT, MessagesDoc)
+  const [target, setTarget] = useState<{
+    conversation: ConversationId
+    entry?: number
+    call?: string
+    message?: number
+  }>()
   useEvent('messages:open', (value) => setTarget(value as NonNullable<typeof target>))
+
   useEffect(() => {
-    if (!target || surface !== 'agent' || id !== target.conversation || loading) return undefined
+    const url = new URL(location.href)
+    const message = Number(url.searchParams.get('message'))
+    const conversation = parseConversationId(Number(url.searchParams.get('conversation')))
+    if (!url.searchParams.has('message')) return
+    url.searchParams.delete('message')
+    history.replaceState(history.state, '', url)
+    if (Number.isSafeInteger(message) && Number.isSafeInteger(conversation) && conversation > 0)
+      setTarget({ conversation, message })
+  }, [])
+
+  useEffect(() => {
+    if (target?.message === undefined || !log) return
+    const asked = log.messages.find((m) => m.id === target.message)
+    if (asked?.call && asked.from === target.conversation && openQuestion(asked)) {
+      showSurface('agent')
+      setTarget({ conversation: target.conversation, call: asked.call })
+    } else setTarget(undefined)
+  }, [target, log, showSurface])
+  useEffect(() => {
+    if (
+      !target ||
+      target.message !== undefined ||
+      !ready ||
+      surface !== 'agent' ||
+      id !== target.conversation ||
+      loading
+    )
+      return undefined
     const { call } = target
+
+    const toolCallId = call?.split('/')[0]
     const reveal = (entry: number) =>
-      events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry })
-    const loaded = target.entry ?? (call && callerOf(entries, call.split('/')[0])?.id)
-    setTarget(undefined)
+      events.emit('ultimate:reveal-entry', { conversationId: id, entryId: entry, toolCallId })
+    const loaded = target.entry ?? (toolCallId && callerOf(entries, toolCallId)?.id)
     if (loaded) {
-      const frame = requestAnimationFrame(() => reveal(loaded))
-      return () => cancelAnimationFrame(frame)
+      const revealAndClearTargetFrame = requestAnimationFrame(() => {
+        setTarget(undefined)
+        reveal(loaded)
+      })
+      return () => cancelAnimationFrame(revealAndClearTargetFrame)
     }
+    setTarget(undefined)
     if (call)
       api.action(CallerAction, { conversation: id, call }).then(
         ({ entry }) => entry !== undefined && reveal(entry),
-        // The conversation is open either way; only the scroll to the question is lost.
         () => undefined,
       )
     return undefined
-  }, [surface, id, entries, loading, target])
+  }, [surface, id, entries, loading, target, ready])
   return null
 }
 
+const afterPinnedPromptOrder = 1
+
 export default defineWebExtension({
-  slots: { overlay: [MessageNavigation], 'composer.status': [OpenMessages] },
+  slots: {
+    overlay: [MessageNavigation],
+    'composer.status': [OpenMessages],
+
+    'transcript.top': [{ component: OffscreenQuestions, order: afterPinnedPromptOrder }],
+  },
   entries: {
     'board.message': MessageInput,
     'board.reply': MessageInput,
     'board.asked': attention(QuestionPointer),
     'board.answered': () => null,
-    // Retired: triage's wake-up pointer in older transcripts.
+
     'board.wake': () => null,
-    // The agent's reminder of the questions still open; the user sees them in the To-dos panel.
+
     'board.open': () => null,
     'pi.assistant': CompactAnswer,
   },
@@ -102,16 +149,14 @@ export default defineWebExtension({
       'message',
       'branch',
       'workspace',
-      // A script that messaged you stays visible, so its messages show as bubbles, even when it was interrupted.
+
       (call, docs) => scriptMessaged(call, docs.board as MessagesData | null | undefined),
     ],
     docs: ['board', StandingDoc.kind],
-    // Your inputs and @ultimate's messages to you are what you read; everything between recedes into one line.
     thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
     summary: StretchSummary,
   },
   answerLabels: [MessageAnswerLabel],
-  // The `branch` tool labels the coordinator branches it starts; the title bar names their kind before the agent.
   provides: [
     provide(ConversationKind, (conversation) =>
       conversation?.label === 'coordinator' ? 'branch · coordinator' : undefined,

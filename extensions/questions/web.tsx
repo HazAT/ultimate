@@ -1,10 +1,26 @@
-import { defineWebExtension, provide } from '@/sdk'
-import { MessageAnswers } from '../messages/ui.tsx'
+import { ROOT } from '@/sdk'
+import { useEffect } from 'react'
+import { defineWebExtension, provide, useDocOf, useUiState } from '@/sdk'
+import { MessageAnswers, MessagesDoc } from '../messages/ui.tsx'
 import { MessageQuestions } from './card.tsx'
+import { forgetSettled } from './open.tsx'
+import { CARDS_KEY } from './state.tsx'
+import type { CardState } from './state.tsx'
+
+function CrossSurfaceDraftSweep() {
+  const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const messages = useDocOf(ROOT, MessagesDoc)?.messages
+
+  useEffect(() => {
+    const logAndStoredCardsLoaded = messages && Object.keys(cards).length
+    if (logAndStoredCardsLoaded) setCards((old) => forgetSettled(old, messages))
+  }, [cards, messages, setCards])
+  return null
+}
 
 export default defineWebExtension({
+  slots: { overlay: [CrossSurfaceDraftSweep] },
   entries: {
-    // Retired cards have no interaction; hide them instead of exposing their raw JSON.
     'questions.asked': () => null,
     'questions.answers': () => null,
   },

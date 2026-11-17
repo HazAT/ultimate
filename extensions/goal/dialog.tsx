@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { FlagIcon, LoaderCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -7,10 +8,8 @@ import { api, errorMessage, useDialog, useDocOf, useUltimate } from '@/sdk'
 import { talkToUltimate } from '../subagents/ui.tsx'
 import { GoalDoc, StartAction } from './refs.ts'
 
-/** The dialog ⌘K "Go hands-off…" opens. */
 export const goalDialog = 'goal.start'
 
-/** What going hands-off means, the goal in the user's words, and the button that grants it. */
 export function GoalDialog() {
   const [open, setOpen] = useDialog(goalDialog)
   return (
@@ -26,7 +25,7 @@ export function GoalDialog() {
 }
 
 function Body({ onClose }: { onClose: () => void }) {
-  const active = useDocOf(1, GoalDoc)?.goals.find((goal) => !goal.ended)
+  const active = useDocOf(ROOT, GoalDoc)?.goals.find((goal) => !goal.ended)
   const actions = useUltimate()
   const [text, setText] = useState('')
   const [starting, setStarting] = useState(false)
@@ -48,7 +47,6 @@ function Body({ onClose }: { onClose: () => void }) {
   const submitOnModEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
     event.preventDefault()
-    // oxlint-disable-next-line typescript/no-floating-promises -- start catches failures and shows them with setFailure.
     void start()
   }
   return (

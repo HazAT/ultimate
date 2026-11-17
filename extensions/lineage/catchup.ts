@@ -1,8 +1,4 @@
-import { isAbsolute, relative, resolve } from 'node:path'
-import { onCommit } from '../../lib/commits.ts'
-import type { Context } from '@earendil-works/chord'
-import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   EntryDraft,
@@ -10,17 +6,19 @@ import type {
   EntryRecord,
   Tx,
 } from '@earendil-works/pi-durable'
+import { isAbsolute, relative, resolve } from 'node:path'
+import { onCommit } from '../../lib/commits.ts'
+import type { Context } from '@earendil-works/chord/context'
+import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { git } from '../../lib/git.ts'
+import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import type { OpenAbstract } from './server.ts'
 
-/**
- * What a conversation last saw: the target tip (`main`, at time `at`) and the last entry of its tree's tally it
- * accounted for (`tally`). A branch gets its own baseline, not its source's.
- */
-export const Seen = defineDoc<{ main?: string; at?: number; tally?: number }>({
+export const Seen = defineDoc<{ main?: string; at?: number; tally?: EntryId }>({
   kind: 'lineage.seen',
   checkpointWhen: () => false,
   version: 1,
@@ -42,17 +40,11 @@ async function mainOf(
     ? (await tx.doc(service.doc, ROOT_CONVERSATION_ID)).items[String(id)]
     : await service.get(id, ctx)
   const cwd = workspace?.source ?? host.projectRoot
-  // A shared conversation follows the branch the project checkout is on, like a workspace's target.
   const target =
     workspace?.target ??
     (await git(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => ''))
   if (!target) return undefined
-  // Projects without a main branch have nothing to catch up on.
-  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(
-    // An unborn target branch has no commits to catch up on.
-    () => undefined,
-  )
-  // Only a ready checkout exists on disk: a concluded conversation's is released, and its next request recreates it.
+  const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(meansNone)
   return sha
     ? { cwd, target, sha, ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}) }
     : undefined
@@ -66,7 +58,6 @@ export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: num
   }
 }
 
-/** Seed existing conversations on open and new ones on creation; commits never overwrite a saved baseline. */
 export function watchSeen(host: ExtensionHost, ctx: Context) {
   let unsubscribe: (() => void) | undefined
   let pending = Promise.resolve()
@@ -81,13 +72,15 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
   }
   host.onOpen(async () => {
     const harness = host.harness()
-    // Not a reactor: it seeds every new top-level conversation, a Pi record, not only lineage's branches and roots.
     unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
-          void seed(change.value.id).catch((error: unknown) => {
-            host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
-          })
+          rebuiltOnOpen(
+            'open seeds every root conversation with its main commit',
+            seed(change.value.id).catch((error: unknown) => {
+              host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
+            }),
+          )
     })
     const records = await harness.commit(async (tx) => {
       const ids: ConversationId[] = []
@@ -107,7 +100,6 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
   })
 }
 
-/** Files this conversation changed: its workspace diff, or its own edit/write calls in a shared checkout. */
 async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx) {
   if (main.workspace) {
     const base = await git(main.workspace, 'merge-base', 'HEAD', main.sha)
@@ -138,6 +130,9 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
   return files
 }
 
+const COMMIT_ROWS_OVERLAPS_FIRST = 30
+const MAX_PATHS_WITH_OVERLAP_MARKS = 1000
+
 async function catchupText(
   host: ExtensionHost,
   id: ConversationId,
@@ -146,32 +141,48 @@ async function catchupText(
   tx: Tx,
 ) {
   const range = `${since.main}..${main.sha}`
-  const [count, records, changed] = await Promise.all([
-    git(main.cwd, 'rev-list', '--count', range).then(Number),
+  const firstParentTargetLogBoundedByRows = (...args: string[]) =>
     git(
       main.cwd,
       'log',
-      '--name-only',
-      '--no-renames',
-      '--diff-merges=first-parent',
+      '--first-parent',
+      `--max-count=${COMMIT_ROWS_OVERLAPS_FIRST}`,
       '--format=%x1e%H%x00%s%x00%(trailers:key=Ultimate-Conversation,valueonly)%x00',
-      range,
-    ),
+      ...args,
+    )
+  const [count, recent, changed] = await Promise.all([
+    git(main.cwd, 'rev-list', '--first-parent', '--count', range).then(Number),
+    firstParentTargetLogBoundedByRows(range),
     changedFiles(host, id, main, tx),
   ])
   if (!count) return undefined
-  const commits = records
-    .split('\x1e')
-    .map((record) => record.trim())
-    .filter(Boolean)
-    .map((record) => {
-      const [sha, subject, trailer, paths] = record.split('\0')
-      const overlap = paths
-        .trim()
-        .split('\n')
-        .filter((path) => changed.has(path))
+  const ownFilePathspecForBoundedMergeNames = [...changed]
+    .slice(0, MAX_PATHS_WITH_OVERLAP_MARKS)
+    .map((path) => (main.workspace ? `:(top,literal)${path}` : `:(literal)${path}`))
+  const overlapMarksOrEmpty = ownFilePathspecForBoundedMergeNames.length
+    ? await firstParentTargetLogBoundedByRows(
+        '--name-only',
+        '--no-renames',
+        '--diff-merges=first-parent',
+        range,
+        '--',
+        ...ownFilePathspecForBoundedMergeNames,
+      ).catch(() => '')
+    : ''
+  const parse = (records: string) =>
+    records
+      .split('\x1e')
+      .map((record) => record.trim())
+      .filter(Boolean)
+      .map((record) => {
+        const [sha, subject, trailer, paths = ''] = record.split('\0')
+        return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
+      })
+  const overlaps = parse(overlapMarksOrEmpty)
+  const listed = new Set(overlaps.map((commit) => commit.sha))
+  const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]
+    .map(({ sha, subject, trailer, paths: overlap }) => {
       const conversation = Number(trailer.trim())
-      // Subagents are never summary-titled; older ones carry their whole prompt as title, so one line each.
       const made = host.conversations().find((summary) => summary.id === conversation)
       const label =
         made?.title &&
@@ -181,16 +192,17 @@ async function catchupText(
         row: `- ${overlap.length ? '**Overlap** ' : ''}\`${sha.slice(0, 7)}\` ${subject}${conversation ? ` · #${conversation}${label ? ` ${label}` : ''}` : ''}${overlap.length ? ` — ${overlap.map((path) => `\`${path}\``).join(', ')}` : ''}`,
       }
     })
-    .toSorted((a, b) => Number(b.overlap.length > 0) - Number(a.overlap.length > 0))
-    .slice(0, 30)
+    .slice(0, COMMIT_ROWS_OVERLAPS_FIRST)
   const behind = main.workspace
-    ? Number(await git(main.workspace, 'rev-list', '--count', `HEAD..${main.sha}`))
+    ? Number(
+        await git(main.workspace, 'rev-list', '--first-parent', '--count', `HEAD..${main.sha}`),
+      )
     : 0
   return [
     `Since you last worked (${new Date(since.at ?? Date.now()).toISOString()}), ${count} commits landed on ${main.target}:`,
     ...commits.map((commit) => commit.row),
     ...(count > commits.length
-      ? [`and ${count - commits.length} more (\`git log ${range}\`).`]
+      ? [`and ${count - commits.length} more (\`git log --first-parent ${range}\`).`]
       : []),
     ...(behind
       ? [`Your workspace is ${behind} commits behind ${main.target}; merge it before continuing.`]
@@ -198,12 +210,11 @@ async function catchupText(
   ].join('\n\n')
 }
 
-/** The first input `id` placed itself; its own entries all follow the entry it was forked at. */
-async function firstInput(tx: Tx, id: ConversationId, forkedAt = 0) {
+async function firstInput(tx: Tx, id: ConversationId, forkedAt = parseEntryId(0)) {
   let cursor
   do {
     const page = await tx.scanEntries(
-      { conversationId: id, minEntryId: (forkedAt + 1) as EntryId, order: 'ascending' },
+      { conversationId: id, minEntryId: offsetEntryId(forkedAt, 1), order: 'ascending' },
       100,
       cursor,
     )
@@ -214,16 +225,13 @@ async function firstInput(tx: Tx, id: ConversationId, forkedAt = 0) {
   return undefined
 }
 
-/** A tally a top-level conversation catches up on: its tree root, once that root is a tally. */
-export type Tree = { root: ConversationId; since: number; abstracts: Record<string, OpenAbstract> }
+export type Tree = { root: ConversationId; since: EntryId; abstracts: Record<string, OpenAbstract> }
 
-/** Tokens the tally part of a catch-up may take. */
 export const TALLY_BUDGET = 6000
 
-/** What one conversation of the tree did since the baseline, as model-visible in the tally now. */
 type Activity = {
-  id: number
-  last: number
+  id: ConversationId
+  last: EntryId
   title?: string
   feature?: string
   prompt?: string
@@ -238,16 +246,16 @@ type Activity = {
   notes: string[]
 }
 
-/** A block's tokens with the blank line that separates it from the next. */
-const cost = (text: string) => estimateTextTokens(`${text}\n\n`)
+const tokensIncludingBlankLineSeparator = (text: string) => estimateTextTokens(`${text}\n\n`)
 const oneLine = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim()
 
 function full(activity: Activity) {
   const { id, title, feature, prompt, abstract, landings, notes } = activity
   if (!abstract && !landings.length && !notes.length) return `**#${id}** started: ${prompt}`
-  // Without a liquid abstract, the state its newest landing froze is its latest.
-  const frozen = abstract ? undefined : landings.findLast((landing) => landing.state)?.state
-  const state = abstract ?? frozen
+  const fallbackLandingState = abstract
+    ? undefined
+    : landings.findLast((landing) => landing.state)?.state
+  const state = abstract ?? fallbackLandingState
   const items = [
     ...(state
       ? state.text
@@ -265,7 +273,7 @@ function full(activity: Activity) {
     ...notes.map((note) => `- Note: ${oneLine(note)}`),
   ]
   return [
-    `**#${id}${title ? ` ${title}` : ''}**${feature ? ` · ${feature}` : ''}${abstract ? ` — abstract as of #${id}/${abstract.at}:` : frozen ? ` — state at landing, as of #${id}/${frozen.at}:` : ':'}`,
+    `**#${id}${title ? ` ${title}` : ''}**${feature ? ` · ${feature}` : ''}${abstract ? ` — abstract as of #${id}/${abstract.at}:` : fallbackLandingState ? ` — state at landing, as of #${id}/${fallbackLandingState.at}:` : ':'}`,
     ...items,
   ].join('\n')
 }
@@ -273,15 +281,10 @@ function full(activity: Activity) {
 const collapsed = ({ id, title, feature, landings }: Activity) =>
   `- #${id}${title ? ` ${title}` : ''}${feature ? ` · ${feature}` : ''} — ${landings.length ? `landed \`${landings.at(-1)!.sha.slice(0, 7)}\`` : 'in progress'}`
 
-/**
- * What the tree's tally learned after `baseline`, for conversation `id`: each other conversation's latest abstract (or
- * its prompt while it has none), landings and notes, and a distillation of the tally itself. The newest stay in full;
- * when they exceed the budget the oldest collapse to one line each. Deterministic: it runs inside input placement.
- */
 export async function tallyText(
   id: ConversationId,
   tree: Tree,
-  baseline: number,
+  baseline: EntryId,
   tx: Tx,
   budget = TALLY_BUDGET,
 ) {
@@ -291,7 +294,7 @@ export async function tallyText(
   let cursor
   do {
     const page = await tx.scanEntries(
-      { conversationId: root, minEntryId: (baseline + 1) as EntryId, order: 'ascending' },
+      { conversationId: root, minEntryId: offsetEntryId(baseline, 1), order: 'ascending' },
       100,
       cursor,
     )
@@ -299,38 +302,34 @@ export async function tallyText(
     cursor = page.next
   } while (cursor)
   const tip = entries.at(-1)?.id
-  // The prompts of the conversations it was forked from are in its context already, as their first inputs, when every
-  // fork on the way up was made at or after that input.
-  const sources = new Set<number>()
-  let cut = Number.POSITIVE_INFINITY
+  const inheritedPromptSources = new Set<number>()
+  let oldestInheritedForkPoint = Number.POSITIVE_INFINITY
   for (let record = await tx.conversation(id); record?.parent;) {
-    cut = Math.min(cut, record.parent.at)
+    oldestInheritedForkPoint = Math.min(oldestInheritedForkPoint, record.parent.at)
     const up = record.parent.conversationId
     if (up === root) break
     record = await tx.conversation(up)
     const first = await firstInput(tx, up, record?.parent?.at)
-    if (first !== undefined && first <= cut) sources.add(up)
+    if (first !== undefined && first <= oldestInheritedForkPoint) inheritedPromptSources.add(up)
   }
   const activities = new Map<number, Activity>()
-  const of = (conversation: number, entry: EntryRecord) => {
+  const of = (conversation: ConversationId, entry: EntryRecord) => {
     let activity = activities.get(conversation)
     if (!activity)
       activities.set(
         conversation,
-        (activity = { id: conversation, last: 0, landings: [], notes: [] }),
+        (activity = { id: conversation, last: entry.id, landings: [], notes: [] }),
       )
     activity.last = entry.id
     return activity
   }
-  // Entries a compaction or genesis replaced are no longer in the tally; its distillation stands for them.
-  const visible = entries.filter(
+  const unreplacedEntries = entries.filter(
     (entry) => (!marker || entry.id >= marker.head) && entry.id !== marker?.id,
   )
-  for (const entry of visible) {
+  for (const entry of unreplacedEntries) {
     const data = (entry.data ?? {}) as Record<string, unknown>
     if (entry.kind === 'lineage.abstract') {
-      // An open abstract's anchor or a carrier updating it: the abstract as it reads now. A frozen one is the landing's.
-      const conversation = data.conversation as number
+      const conversation = parseConversationId(Number(data.conversation))
       const open = tree.abstracts[String(conversation)] as OpenAbstract | undefined
       if (conversation === id || open?.anchor !== ((data.anchor as number | undefined) ?? entry.id))
         continue
@@ -340,11 +339,11 @@ export async function tallyText(
       if (open.feature) activity.feature = open.feature
     } else if (!entry.model) continue
     else if (entry.kind === 'lineage.branched') {
-      const conversation = data.branch as number
-      if (conversation === id || sources.has(conversation)) continue
+      const conversation = parseConversationId(Number(data.branch))
+      if (conversation === id || inheritedPromptSources.has(conversation)) continue
       of(conversation, entry).prompt = oneLine((data.intent as string).split('\n')[0])
     } else if (entry.kind === 'lineage.note' && typeof data.from === 'number' && data.from !== id) {
-      const activity = of(data.from, entry)
+      const activity = of(parseConversationId(data.from), entry)
       if (data.source === 'lander') {
         const state = data.abstract as Omit<OpenAbstract, 'anchor'> | undefined
         activity.landings.push({
@@ -383,20 +382,26 @@ export async function tallyText(
   if (!blocks.length) return { tip }
   const header = `Meanwhile in #${root}'s tree:`
   const pointer = `Earlier, collapsed (read them in full with codemode \`ultimate.entries(${root})\`):`
-  let used = cost(header) + cost(`- and ${blocks.length} more`)
+  let used =
+    tokensIncludingBlankLineSeparator(header) +
+    tokensIncludingBlankLineSeparator(`- and ${blocks.length} more`)
   const kept: string[] = []
   const lines: string[] = []
   let dropped = 0
   for (const block of blocks) {
-    if (!lines.length && !dropped && used + cost(block.full) <= budget) {
+    if (
+      !lines.length &&
+      !dropped &&
+      used + tokensIncludingBlankLineSeparator(block.full) <= budget
+    ) {
       kept.unshift(block.full)
-      used += cost(block.full)
+      used += tokensIncludingBlankLineSeparator(block.full)
       continue
     }
-    if (!lines.length && !dropped) used += cost(pointer)
-    if (!dropped && used + cost(block.line) <= budget) {
+    if (!lines.length && !dropped) used += tokensIncludingBlankLineSeparator(pointer)
+    if (!dropped && used + tokensIncludingBlankLineSeparator(block.line) <= budget) {
       lines.unshift(block.line)
-      used += cost(block.line)
+      used += tokensIncludingBlankLineSeparator(block.line)
     } else dropped++
   }
   return {
@@ -411,33 +416,45 @@ export async function tallyText(
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
-/** The note, baseline and first input commit together, before any request can see them. */
+type NoteBaselineAndInputCommitTogether = Tx
+
+// Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
 export async function catchup(
   host: ExtensionHost,
   _input: EntryDraft,
-  api: { conversationId: ConversationId; tx: Tx },
+  placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
   ctx: Context,
   treeOf: (tx: Tx, id: ConversationId) => Promise<Tree | undefined>,
 ) {
-  const { tx, conversationId } = api
+  const { tx, conversationId } = placement
   const record = await tx.conversation(conversationId)
   if (!record || record.owner) return undefined
   const tree = await treeOf(tx, conversationId)
   const main = await mainOf(host, conversationId, ctx, tx)
-  const seen = await tx.doc(Seen, conversationId)
-  // Conversations from before the tally was tracked catch up from its start.
+  const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
   const meanwhile = tree
-    ? await tallyText(conversationId, tree, seen.tally ?? tree.since, tx)
+    ? await tallyText(conversationId, tree, alwaysAdvancedBaseline.tally ?? tree.since, tx)
     : undefined
   const commits =
-    main && seen.main && seen.main !== main.sha
-      ? await catchupText(host, conversationId, main, { main: seen.main, at: seen.at }, tx)
+    main && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
+      ? await catchupText(
+          host,
+          conversationId,
+          main,
+          {
+            main: alwaysAdvancedBaseline.main,
+            at: alwaysAdvancedBaseline.at,
+          },
+          tx,
+        ).catch((error: unknown) => {
+          host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
+          return undefined
+        })
       : undefined
-  if (meanwhile?.tip !== undefined) seen.tally = meanwhile.tip
+  if (meanwhile?.tip !== undefined) alwaysAdvancedBaseline.tally = meanwhile.tip
   if (main) {
-    seen.main = main.sha
-    if (!seen.at || commits) seen.at = Date.now()
+    alwaysAdvancedBaseline.main = main.sha
+    if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()
   }
   if (!meanwhile?.text && !commits) return undefined
   const text = [
@@ -449,8 +466,13 @@ export async function catchup(
     entries: [
       {
         kind: 'lineage.note',
-        // Where this catch-up left the tally: a fork of this conversation inherits that position.
-        data: { source: 'main', text, ...(seen.tally === undefined ? {} : { tally: seen.tally }) },
+        data: {
+          source: 'main',
+          text,
+          ...(alwaysAdvancedBaseline.tally === undefined
+            ? {}
+            : { tally: alwaysAdvancedBaseline.tally }),
+        },
         model: [{ role: 'user' as const, content: text, timestamp: Date.now() }],
       },
     ],

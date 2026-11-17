@@ -16,16 +16,17 @@ import {
   held,
 } from './helpers.ts'
 import { context } from '../server/harness.ts'
-import { UiState } from '../server/ui-state.ts'
+import { UiState } from '../shared/ui-state.ts'
 import { Metadata } from '../server/metadata.ts'
 import type { ConversationSummary, ServerEvents } from '../shared/protocol.ts'
 import { Logins } from '../extensions/models/server.ts'
 import { fixture, orderedSource, servers } from './server-fixture.ts'
 import { eventHost } from './helpers.ts'
+import { writeSecret } from '../extensions/secrets/store.ts'
 import { UserInputEvent } from '../shared/events.ts'
 
 describe('server', () => {
-  it('admits registered identities for API, SSE, actions, assets and HMR, then revokes on disposal and unload', async () => {
+  it('admits registered identities for API, SSE, actions and assets, then revokes on disposal and unload', async () => {
     const origin = 'https://rog.example.ts.net:5799'
     const { server, options } = await fixture(false, {
       access: `import { defineExtension } from '@earendil-works/pi-durable'
@@ -61,10 +62,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
           },
         )
         req.on('error', reject)
-        req.on('upgrade', (_response, socket) => {
-          resolve(101)
-          socket.destroy()
-        })
         req.end(method === 'POST' ? '{"args":null}' : undefined)
       })
     for (const path of ['/', '/api/models', '/api/events', '/api/extensions/access/actions/ping']) {
@@ -102,14 +99,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
         })
       ).json(),
     ).toEqual({ result: 'pong' })
-    const upgrade = {
-      connection: 'Upgrade',
-      upgrade: 'websocket',
-      'sec-websocket-version': '13',
-      'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
-      'sec-websocket-protocol': 'vite-hmr',
-    }
-    const wsPath = '/?token=' + server.vite.config.webSocketToken
     for (const forwarded of ['x-forwarded-for', 'x-forwarded-host', 'forwarded']) {
       for (const login of [null, 'other', 'owner']) {
         for (const originHeader of ['', server.url]) {
@@ -118,7 +107,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
             expect(
               await wire(path, login, headers, path.includes('actions') ? 'POST' : 'GET'),
             ).toBe(403)
-          expect(await wire(wsPath, login, { ...upgrade, ...headers })).toBe(403)
         }
       }
     }
@@ -138,22 +126,13 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
       expect(await wire('/', 'owner', { ...navigation, 'sec-fetch-dest': 'iframe' })).toBe(403)
       expect(await wire('/', 'owner', { origin: '', 'sec-fetch-site': site })).toBe(403)
       // Navigation metadata cannot turn API, SSE, assets or other paths into documents.
-      for (const path of ['/api/models', '/api/events', '/@vite/client', '/other'])
+      for (const path of ['/api/models', '/api/events', '/assets/index.js', '/other'])
         expect(await wire(path, 'owner', navigation)).toBe(403)
       expect(await wire('/api/extensions/access/actions/ping', 'owner', navigation, 'POST')).toBe(
         403,
       )
-      expect(await wire(wsPath, 'owner', { ...upgrade, 'sec-fetch-site': site })).toBe(403)
-      expect(await wire(wsPath, 'owner', { ...upgrade, ...navigation, origin })).toBe(403)
     }
     expect(await wire('/api/models', 'owner', { 'sec-fetch-site': 'none' })).toBe(200)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(101)
-    expect(await wire(wsPath, 'other', upgrade)).toBe(403)
-    expect(await wire(wsPath, null, upgrade)).toBe(403)
-    expect(await wire(wsPath, 'owner', { ...upgrade, host: 'unknown.example:5799' })).toBe(403)
-    expect(
-      await wire(wsPath, null, { ...upgrade, host: new URL(server.url).host, origin: server.url }),
-    ).toBe(101)
     await until(() => server.system.current().access.origins.includes(origin))
     expect(await wire('/api/extensions/access/actions/revoke', 'owner', {}, 'POST')).toBe(200)
     expect(await wire('/api/models')).toBe(403)
@@ -165,7 +144,6 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
           'sec-fetch-dest': 'document',
         }),
       ).toBe(403)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(403)
     // Reload the facet to create a new registration, then disable it.
     await writeFile(
       join(options.ultimateRoot, 'extensions/access/server.ts'),
@@ -177,9 +155,8 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
       '{"extensions":{"disable":["access"]}}',
     )
     await until(async () => (await wire('/api/models')) === 403)
-    expect(await wire(wsPath, 'owner', upgrade)).toBe(403)
   })
-  it('revokes a deferred verifier in flight for HTTP and upgrades', async () => {
+  it('revokes a deferred verifier in flight', async () => {
     const { server } = await fixture(false, {
       deferred: `import { defineExtension } from '@earendil-works/pi-durable'
 
@@ -191,41 +168,26 @@ waiting: async () => Boolean(resolve),
 finish: async () => { remove(); resolve({login:'owner'}); return true }
 }`,
     })
-    for (const upgrade of [false, true]) {
-      await post(server, '/api/extensions/deferred/actions/arm', { args: null })
-      const pending = new Promise<number>((resolve, reject) => {
-        const req = request(
-          server.url + (upgrade ? '/?token=' + server.vite.config.webSocketToken : '/api/models'),
-          {
-            headers: {
-              host: 'remote.example:5799',
-              ...(upgrade
-                ? {
-                    connection: 'Upgrade',
-                    upgrade: 'websocket',
-                    'sec-websocket-version': '13',
-                    'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
-                    'sec-websocket-protocol': 'vite-hmr',
-                  }
-                : {}),
-            },
-          },
-          (res) => {
-            resolve(res.statusCode!)
-            res.destroy()
-          },
-        )
-        req.on('error', reject)
-        req.end()
-      })
-      await until(
-        async () =>
-          (await post(server, '/api/extensions/deferred/actions/waiting', { args: null })).data
-            .result === true,
+    await post(server, '/api/extensions/deferred/actions/arm', { args: null })
+    const pending = new Promise<number>((resolve, reject) => {
+      const req = request(
+        server.url + '/api/models',
+        { headers: { host: 'remote.example:5799' } },
+        (res) => {
+          resolve(res.statusCode!)
+          res.destroy()
+        },
       )
-      await post(server, '/api/extensions/deferred/actions/finish', { args: null })
-      expect(await pending).toBe(403)
-    }
+      req.on('error', reject)
+      req.end()
+    })
+    await until(
+      async () =>
+        (await post(server, '/api/extensions/deferred/actions/waiting', { args: null })).data
+          .result === true,
+    )
+    await post(server, '/api/extensions/deferred/actions/finish', { args: null })
+    expect(await pending).toBe(403)
   })
 
   it('cleans up facet lifecycles on reload but retains reload-stable resource lifecycles until shutdown', async () => {
@@ -287,11 +249,27 @@ export default host => {
     expect(() => previous('retired notice')).not.toThrow()
     const current = (await server.vite.ssrLoadModule(path)).raise as (message: string) => void
     current('current notice')
-    expect(server.extensions.info.diagnostics()).toContain('current notice')
-    expect(server.extensions.info.diagnostics()).not.toContain('retired notice')
+    expect(await server.extensions.info.diagnostics()).toContain('current notice')
+    expect(await server.extensions.info.diagnostics()).not.toContain('retired notice')
     servers.splice(servers.indexOf(server), 1)
     await server.close()
     expect(() => current('shutdown notice')).not.toThrow()
+  })
+
+  it('clears a missing-secret notice from the diagnostics once the secret is saved', async () => {
+    const { server, options } = await fixture(false, {
+      'needs-key': `import { defineExtension } from '@earendil-works/pi-durable'
+export default host => {
+  host.notice('Missing MY_KEY', { untilSecretSet: 'MY_KEY' })
+  return defineExtension({ name: 'needs-key' })
+}`,
+    })
+    await until(() => server.system.current().extensionDiagnostics.includes('Missing MY_KEY'))
+    expect(await server.extensions.info.diagnostics()).toContain('Missing MY_KEY')
+    await writeSecret(options.userHome, 'MY_KEY', 'value')
+    server.vite.watcher.emit('all', 'change', join(options.userHome, '.ultimate/secrets.json'))
+    await until(() => !server.system.current().extensionDiagnostics.includes('Missing MY_KEY'))
+    expect(await server.extensions.info.diagnostics()).not.toContain('Missing MY_KEY')
   })
 
   it('runs late facet openers immediately and continues after throwing cleanups', async () => {
@@ -318,6 +296,52 @@ export const actions={ late: async()=>{host.onOpen(async()=>{opened=true}); retu
       ),
     )
     await stream.close()
+  })
+
+  it('commits release work, then closes the harness before extensions, so a task running at shutdown resumes instead of faulting', async () => {
+    const { server, options } = await fixture(false, {
+      teardown: `import { defineDoc, defineExtension, defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { awaitWithContext, BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
+import { existsSync, writeFileSync } from 'node:fs'
+import { defineApi } from '../../shared/extension-api.ts'
+const Probe = defineApi()('probe')
+let host, started = false
+const gate = Promise.withResolvers()
+const Task = defineTask({ name: 'teardown.task', version: 1, initial: () => ({ phase: 'run' }), phases: {
+  run: async (_task, runtime, ctx) => {
+    started = true
+    if (!existsSync(host.userHome + '/closed')) await awaitWithContext(gate.promise, ctx)
+    host.need(Probe).ping()
+    await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), ctx)
+  } },
+  abort: (_task, runtime, ctx) => runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx) })
+const Released = defineDoc({ kind: 'teardown.released', checkpointWhen: () => false, version: 1, scope: 'conversation', history: 'latest', fork: 'initial', initial: () => ({ at: 0 }) })
+export const docs = [Released]
+export default h => { host = h; h.implement(Probe, { ping: () => true }); h.onRelease(() => h.harness().commit(async tx => { (await tx.doc(Released, ROOT_CONVERSATION_ID)).at = 1 }, BACKGROUND_CONTEXT)); h.onClose(async () => { writeFileSync(h.userHome + '/closed', ''); gate.resolve(); await new Promise(r => setImmediate(r)) }); return defineExtension({ name: 'teardown', tasks: [Task] }) }
+export const actions = {
+  start: async () => { await host.harness().commit(tx => tx.createTask(Task, null, { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' }, background: true }), BACKGROUND_CONTEXT); return true },
+  started: async () => started,
+  released: async () => (await host.harness().snapshot(Released, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))?.at }`,
+    })
+    await post(server, '/api/extensions/teardown/actions/start', { args: null })
+    await until(
+      async () =>
+        (await post(server, '/api/extensions/teardown/actions/started', { args: null })).data
+          .result === true,
+    )
+    servers.splice(servers.indexOf(server), 1)
+    await server.close()
+    const reopened = await createServer(options)
+    servers.push(reopened)
+    const task = async () =>
+      (await reopened.harness.commit((tx) => tx.scanTasks({ kind: 'teardown.task' }, 10), context))
+        .items[0]
+    await until(async () => (await task()).state.status === 'terminal')
+    expect((await task()).state).toMatchObject({ outcome: { status: 'completed' } })
+    expect(
+      (await post(reopened, '/api/extensions/teardown/actions/released', { args: null })).data
+        .result,
+    ).toBe(1)
   })
 
   it('settles failing process resource cleanups and still closes the server', async () => {

@@ -10,7 +10,7 @@ import { afterAll, vi } from 'vitest'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import { Tally } from '../extensions/lineage/server.ts'
+import { Tally } from '../extensions/lineage/api.ts'
 import { context } from '../server/harness.ts'
 import { createServer, prepareServer } from '../server/main.ts'
 import type { ServerOptions } from '../server/main.ts'
@@ -87,9 +87,7 @@ export function cleanEnv(extra: NodeJS.ProcessEnv = {}) {
     ...extra,
   }
 }
-// Tests run without the supervisor's ULTIMATE_* variables: removed once, not stubbed per test, so concurrent tests never
-// see them come back. Stubs a test leaves behind end with its file; stubbing restores to unset.
-for (const key of Object.keys(process.env)) if (key.startsWith('ULTIMATE_')) delete process.env[key]
+// Stubs a test leaves behind end with its file; stubbing restores to unset (test/setup.ts removed ULTIMATE_*).
 afterAll(() => vi.unstubAllEnvs())
 
 // Every temp() directory is removed once the test file finishes, so runs do not fill the tmpfs.

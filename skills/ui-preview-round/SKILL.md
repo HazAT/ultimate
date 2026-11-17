@@ -12,8 +12,8 @@ screenshots: send them with the request.
 1. **Commit the round** in your branch. A preview runs your checkout as it is on disk; committing keeps each round
    recoverable.
 2. **Start the preview**: `instance start` (or `instance start {subagent: <id>}` for a designer's worktree). It is a
-   clean Ultimate with an empty database and a private copy of your user config (`docs/running.md`); it hot-reloads
-   `web/` and `extensions/` as files change. A change in `server/` or `shared/` needs `instance stop` and a new `start`.
+   clean Ultimate with an empty database and a private copy of your user config (`docs/running.md`); open pages switch
+   to a rebuilt UI about 2 s after a `web/` or `extensions/` file changes. A change in `server/` or `shared/` needs `instance stop` and a new `start`.
    When the user wants to try a flow themselves, leave them an untouched instance and the exact first prompt to paste.
 3. **Seed it like a user**: open @ultimate (the first row of the sidebar) and send real prompts until the state the user should
    judge exists: a long transcript, a running tool, a skill run, an error. Never fake state by writing entries; drive

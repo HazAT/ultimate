@@ -1,32 +1,31 @@
-/** `send()`: validating, admitting and logging a message, and starting its delivery. */
-import type { Context } from '@earendil-works/chord'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
+import type { Context } from '@earendil-works/chord/context'
+import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
 import { Messages, MessageSent } from './api.ts'
-import type { Question } from './api.ts'
+import type { Message, Question } from './api.ts'
 import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
+import { isOwed } from '../../lib/message-state.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
 import type { ImagesRef } from './images.ts'
 import { append } from './log.ts'
-import { parentOf, resolve, senderName, starterOf } from './addresses.ts'
+import { parentOf, resolveRecipient, senderName, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 
-// The receipt commits with the message, closing the gap before api.memo records its id.
-const Sent = defineDoc<{ ids: Record<string, number> }>({
+const AtomicallyCommittedCallReceipts = defineDoc<{ ids: Record<string, number> }>({
   kind: 'board.sent-calls',
   checkpointWhen: () => false,
   version: 1,
   scope: 'task',
   initial: () => ({ ids: {} }),
 })
-// Pipeline requests outlive their calling task, so their receipts belong to the sender conversation.
-const Requests = defineDoc<{ ids: Record<string, number> }>({
+
+const ConversationRequestReceipts = defineDoc<{ ids: Record<string, number> }>({
   kind: 'board.requests',
   checkpointWhen: () => false,
   version: 1,
@@ -35,7 +34,17 @@ const Requests = defineDoc<{ ids: Record<string, number> }>({
   fork: 'initial',
   initial: () => ({ ids: {} }),
 })
-/** An answer in a few characters: its picks (`1a 2b,c 3`) when the card numbered them, else its first line. */
+
+export async function receiptOf(
+  host: ExtensionHost,
+  call: { taskId: TaskId; callId: string },
+  ctx: Context,
+) {
+  return (await host.harness().snapshot(AtomicallyCommittedCallReceipts, call.taskId, ctx))?.ids[
+    call.callId
+  ]
+}
+
 const answerSummary = (text: string) => {
   const lines = text.split('\n').filter((line) => line.trim())
   const picks = lines.flatMap((line) => /^(\d+[a-z,]*)[.:]/.exec(line)?.[1] ?? [])
@@ -44,7 +53,7 @@ const answerSummary = (text: string) => {
 
 export async function send(
   host: ExtensionHost,
-  from: number | 'user',
+  from: ConversationId | 'user',
   input: {
     to: string
     text: string
@@ -52,55 +61,50 @@ export async function send(
     steer?: boolean
     re?: number
     images?: ImagesRef
-    /** Images belong to the caller, even when another conversation is credited as sender. */
     imagesFrom?: ConversationId
-    /** The user's reply `re` dismisses that question instead of answering it. */
     dismiss?: boolean
-    /** With `to: 'user'`, the decisions the message asks, as its answer card shows them. */
     questions?: Question[]
   },
   ctx: Context,
   options: {
-    /** The sending tool call: its task-scoped receipt deduplicates admission. */
     taskId?: TaskId
     callId?: string
-    /** A pipeline's request id, deduplicated in the sender conversation. */
     requestId?: string
-    /** The user's answer or dismissal of open message `answerId`. */
     answerId?: number
-    /** Place it as a note, which starts no run; by default one-way messages to the sender's starter are notes. */
     note?: boolean
     device?: Device
-    /** The user's answer or dismissal settled by @ultimate on their behalf, from their input `via.entry`. */
     via?: Via
-    /** A branch's final answer routed as its report: the branch shows as awaiting its starter. */
     report?: boolean
-    /** The starter's final answer, this entry of its, routed down to the branch it answers. */
     routed?: EntryId
-    /** A branch's report that answers routed answers only. */
     echo?: boolean
   } = {},
 ) {
   const { taskId, callId, requestId, answerId, device, via } = options
   if (requestId !== undefined && from !== 'user') {
-    const sent = await host.harness().snapshot(Requests, from as ConversationId, ctx)
+    const sent = await host.harness().snapshot(ConversationRequestReceipts, from, ctx)
     if (sent?.ids[requestId] !== undefined) return sent.ids[requestId]
   }
   if (taskId !== undefined) {
-    const sent = await host.harness().snapshot(Sent, taskId, ctx)
+    const sent = await host.harness().snapshot(AtomicallyCommittedCallReceipts, taskId, ctx)
     if (callId !== undefined && sent?.ids[callId] !== undefined) return sent.ids[callId]
   }
   const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
   const primaryId = standing?.ultimate
-  // The primary agent's messages to a busy conversation almost always steer it: new scope, a decision, a stop.
-  const steer = input.steer ?? (from !== 'user' && from === primaryId)
-  // Checked before resolving, which may create a standing agent's conversation.
+
+  const primaryMessagesSteerByDefault = from !== 'user' && from === primaryId
+  const steer = input.steer ?? primaryMessagesSteerByDefault
+
   const parent = from === 'user' ? undefined : await parentOf(host, from, ctx)
   const starter = parent ?? (await starterOf(host, from, ctx))
   if (input.to === 'user') {
-    if (from !== primaryId && !(parent === undefined && starter !== undefined))
+    if (parent !== undefined)
       throw new Error(
-        'Only @ultimate and branches message the user; send this to the conversation that started you.',
+        `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
+      )
+    const isStanding = from !== 'user' && Object.values(standing ?? {}).includes(from)
+    if (!isStanding && starter === undefined)
+      throw new Error(
+        'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
       )
   }
   if (!input.text.trim()) throw new Error('Message text must not be empty')
@@ -111,17 +115,18 @@ export async function send(
     throw new Error(
       `Subagents report to the conversation that started them: message only #${parent}. Your final answer reaches it anyway.`,
     )
-  const to = await resolve(host, input.to, from, ctx)
+  const to = await resolveRecipient(host, input.to, from, ctx)
   const fromLabel = via
     ? `user (settled for them by @ultimate, from what they said in its chat)`
     : await senderName(host, from, ctx)
   const toLabel = await senderName(host, to, ctx)
   return host.harness().commit(async (tx) => {
-    const receipt = taskId === undefined ? undefined : await tx.doc(Sent, taskId)
+    const receipt =
+      taskId === undefined ? undefined : await tx.doc(AtomicallyCommittedCallReceipts, taskId)
     const requests =
       requestId === undefined || from === 'user'
         ? undefined
-        : await tx.doc(Requests, from as ConversationId)
+        : await tx.doc(ConversationRequestReceipts, from)
     if (requestId !== undefined && requests?.ids[requestId] !== undefined)
       return requests.ids[requestId]
     if (callId !== undefined && receipt?.ids[callId] !== undefined) return receipt.ids[callId]
@@ -132,38 +137,35 @@ export async function send(
       if (!original || !openQuestion(original))
         throw new Error('These questions are no longer open')
     }
-    if (input.images !== undefined && from === 'user')
-      throw new Error('your images go along with what you submit, not with a message')
-    const images =
-      input.images === undefined
-        ? undefined
-        : await resolveImages(tx, input.imagesFrom ?? (from as ConversationId), input.images)
-    // Only a Reply answers a question to the user, and only the one it replies to; a dismissal closes it unanswered.
+    let images: Message['images']
+    if (input.images !== undefined) {
+      if (from === 'user')
+        throw new Error('your images go along with what you submit, not with a message')
+      images = await resolveImages(tx, input.imagesFrom ?? from, input.images)
+    }
+
     if (from === 'user' && input.re !== undefined)
       for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages)
         if (openQuestion(m) && m.id === input.re) m.state = input.dismiss ? 'dismissed' : 'answered'
     let re = input.re
     if (from !== 'user' && input.reply !== false) {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-      // Only a message the agent has read is owed; one still queued is unread and gets its own turn.
-      const pending = log.messages.find(
-        (m) => m.to === from && m.from === to && m.reply && m.state === 'delivered',
+
+      const readMessageOwedToRecipient = log.messages.find(
+        (m) => m.to === from && m.from === to && isOwed(m),
       )
-      // A message to the user who is owed an answer is that answer, with its questions and images.
-      if (pending && to === 'user') {
-        pending.state = 'answered'
-        re = pending.id
-      }
-      // An agent messaging a sender whose message it has read and owes an answer is answering: this becomes the reply,
-      // and that message's delivery, seeing it answered, keeps the final answer local.
-      else if (pending) {
-        pending.state = 'answered'
+
+      if (readMessageOwedToRecipient && to === 'user') {
+        readMessageOwedToRecipient.state = 'answered'
+        re = readMessageOwedToRecipient.id
+      } else if (readMessageOwedToRecipient) {
+        readMessageOwedToRecipient.state = 'answered'
         const response = await append(tx, {
           from,
           to,
           text: input.text,
           reply: false,
-          re: pending.id,
+          re: readMessageOwedToRecipient.id,
           state: 'sent',
           ...(callId === undefined ? {} : { call: callId }),
           ...(images ? { images } : {}),
@@ -171,7 +173,7 @@ export async function send(
         await tx.createTask(
           delivery(host),
           {
-            message: pending,
+            message: readMessageOwedToRecipient,
             steer: false,
             note: false,
             fromLabel: toLabel,
@@ -218,7 +220,6 @@ export async function send(
       const notification = asked
         ? {
             kind: 'board.asked' as const,
-            // What the pointer shows outlives the capped message log.
             data: {
               message: message.id,
               from,
@@ -260,9 +261,10 @@ export async function send(
           },
         )
     }
-    // The user's answer or dismissal is their input to the asker; the message's `entry` names it once delivered. One
-    // @ultimate settled for them is not: their chat input that it came from counted already.
-    if (from === 'user' && answerId !== undefined && typeof to === 'number' && !via)
+
+    const userAnswerNotAlreadyCountedInChat =
+      from === 'user' && answerId !== undefined && typeof to === 'number' && !via
+    if (userAnswerNotAlreadyCountedInChat)
       await host.emit(tx, UserInputEvent, {
         conversation: to,
         kind: input.dismiss ? 'dismiss' : 'answer',

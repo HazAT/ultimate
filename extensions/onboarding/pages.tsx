@@ -28,12 +28,15 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { MessageResponse } from '@/components/ai/message'
 import type { Isolation } from '../workspaces/refs.ts'
+import { refreshFamilies, runsOn, SetDefaultAction, useFamilies, usePicks } from '../models/ui.tsx'
+import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
+import { nextTurn } from '../../lib/timers.ts'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'
 
-import { extensionOptions, recommended } from './choices.tsx'
+import { extensionOptions, offered } from './choices.tsx'
+import { Line, useDescribed } from './parts.tsx'
 
-/** Only the prerequisites remain modal. Setup choices belong in the conversation. */
 export function FirstRun({
   open,
   onDone,
@@ -44,12 +47,26 @@ export function FirstRun({
   onClosed: () => void
 }) {
   const models = useModels()
-  const { agent } = useConversation()
+  const { id: conversationId, agent } = useConversation()
   const commands = useCommands()
   const ui = useUltimate()
-  const model = models?.models.find(
-    (m) => m.provider === agent.model?.provider && m.id === agent.model?.modelId,
-  )
+  const families = useFamilies()
+  const named = (name: string | undefined) =>
+    models?.models.find((m) => `${m.provider}/${m.id}` === name)
+  const own = agent.model && `${agent.model.provider}/${agent.model.modelId}`
+  const picks = usePicks()
+  const [openingPickCount, setOpeningPickCount] = useState<number>()
+  if (open && openingPickCount === undefined) setOpeningPickCount(picks)
+  if (!open && openingPickCount !== undefined) setOpeningPickCount(undefined)
+  const pickedInDialog = openingPickCount !== undefined && openingPickCount !== picks
+  const fallback = families?.families.find((family) => family.name === DEFAULT_FAMILY)
+  const unconfiguredModelSuggestion =
+    fallback && !runsOn(fallback)
+      ? (RECOMMENDED_MODELS.map(named).find((m) => m?.available) ??
+        models?.models.find((m) => m.available))
+      : undefined
+  const defaultToSave = pickedInDialog ? named(own) : unconfiguredModelSuggestion
+  const model = defaultToSave ?? named(own)
   const connected = models?.providers.some((p) => p.status.configured)
   const opus = models?.models.find(
     (m) => m.provider === 'claude-code' && m.id === 'claude-opus-5-5',
@@ -68,13 +85,20 @@ export function FirstRun({
     const active = document.activeElement
     const here = !active || active === document.body || body.current?.contains(active)
     if (!before.covered && (before.next === next || !here)) return undefined
-    const timer = setTimeout(() => primary.current?.focus())
-    return () => clearTimeout(timer)
+    return nextTurn(() => primary.current?.focus())
   }, [covered, next, open])
   const finish = async (skipped: boolean) => {
     if (busy) return
     setBusy(true)
     try {
+      if (!skipped && defaultToSave) {
+        await api.action(
+          SetDefaultAction,
+          { model: `${defaultToSave.provider}/${defaultToSave.id}` },
+          { conversationId },
+        )
+        await refreshFamilies()
+      }
       await onDone(skipped)
       await api.action(FirstRunDoneAction)
     } catch (failure) {
@@ -91,7 +115,6 @@ export function FirstRun({
     <Dialog
       open={open}
       onOpenChange={(isOpen) => {
-        // oxlint-disable-next-line typescript/no-floating-promises -- finish catches completion failures and displays them with setError.
         if (!isOpen) void finish(true)
       }}
     >
@@ -144,9 +167,14 @@ export function FirstRun({
                   ? `${Math.round(model.contextWindow / 1000)}k context. @ultimate works best with 1M+.`
                   : '1M+ context recommended for @ultimate.'}
               </span>
+              {defaultToSave && (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  @ultimate, new conversations and branches start on it, thinking high.
+                </span>
+              )}
               {(model?.provider !== 'claude-code' || model.id !== 'claude-opus-5-5') && (
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Recommended: Claude Code Opus 5.5 for @ultimate.
+                  Recommended: Opus 5.5 through Claude Code.
                   {!opus?.available && commands.some((c) => c.id === 'claude-code.panel') && (
                     <>
                       {' '}
@@ -170,7 +198,7 @@ export function FirstRun({
           <Button
             size="sm"
             ref={next === 'continue' ? primary : undefined}
-            disabled={busy || !connected || !model?.available}
+            disabled={busy || !connected || !model?.available || !families}
             onClick={() => void finish(false)}
           >
             Continue
@@ -208,13 +236,15 @@ export function Recommended({
   const [changed, setChanged] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const core = (useSystem()?.extensions ?? []).flatMap((info) => (info.core ? [info.name] : []))
-  const options = extensionOptions(status?.user ?? { enable: [], disable: [] }, changed, core)
+  const { line } = useDescribed()
+  const options = extensionOptions(status?.user ?? { enable: [], disable: [] }, changed)
+  const runningExtensions = (useSystem()?.extensions ?? [])
+    .filter((info) => info.enabled && !offered.some((entry) => entry.name === info.name))
+    .toSorted((a, b) => a.name.localeCompare(b.name))
   const checked = Object.fromEntries(options.map(({ name, checked: value }) => [name, value]))
   const check = (name: string, enabled: boolean) => {
-    if (core.includes(name)) return
     const next = { ...checked, [name]: enabled }
-    for (const entry of recommended) {
+    for (const entry of offered) {
       if (enabled && entry.name === name && entry.needs) next[entry.needs] = true
       if (!enabled && entry.needs === name) next[entry.name] = false
     }
@@ -224,8 +254,8 @@ export function Recommended({
     if (busy || !status) return
     setBusy(true)
     try {
-      const extensions = { ...changed, ...checked }
-      for (const entry of recommended)
+      const extensions = { ...checked }
+      for (const entry of offered)
         if (entry.needs && checked[entry.name]) extensions[entry.needs] = true
       await onDone({ extensions })
     } catch (failure) {
@@ -235,43 +265,54 @@ export function Recommended({
   }
   return (
     <div className="space-y-4 p-4">
-      <p className="text-xs text-muted-foreground">
-        Turn on what you want; change it any time under Extensions.
+      <p className="text-sm text-foreground/85">
+        Everything you need is on already. These extras are optional: tick any you want, or just
+        continue. You can change them any time under ⌘K → Extensions.
       </p>
       <ul className="divide-y divide-border/70 rounded-md border border-border/70">
         {options.map((entry) => (
           <li key={entry.name}>
-            <label
-              className={cn(
-                'flex items-center gap-3 px-3 py-3',
-                !entry.required && 'cursor-pointer hover:bg-accent/40',
-              )}
-            >
+            <label className="flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-accent/40">
               <Checkbox
-                disabled={entry.required || busy || !status}
+                className="mt-0.5"
+                disabled={busy || !status}
                 checked={entry.checked}
                 onCheckedChange={(value) => check(entry.name, value === true)}
               />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-                <span className="font-mono text-xs sm:w-24 sm:shrink-0">{entry.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {entry.line}
-                  {entry.hint && (
-                    <span className="mt-0.5 block font-mono text-[10.5px] text-muted-foreground/70 sm:hidden">
-                      {entry.hint}
-                    </span>
-                  )}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <Line className="text-sm" text={line(entry.name) || entry.name} />
+                <span className="font-mono text-[11px] text-muted-foreground/70">
+                  {entry.name}
+                  {entry.needs && ` · turns on ${entry.needs} too`}
                 </span>
               </span>
-              {entry.hint && (
-                <span className="hidden font-mono text-[10.5px] text-muted-foreground/70 sm:block">
-                  {entry.hint}
-                </span>
-              )}
             </label>
           </li>
         ))}
       </ul>
+      {runningExtensions.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1.5 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+            {runningExtensions.length} more are on already
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="mt-2 space-y-1 pl-5">
+              {runningExtensions.map((info) => (
+                <li className="flex min-w-0 items-baseline gap-3 text-xs" key={info.name}>
+                  <span className="w-24 shrink-0 truncate font-mono text-muted-foreground">
+                    {info.name}
+                  </span>
+                  <Line
+                    className="min-w-0 truncate text-muted-foreground/80"
+                    text={line(info.name, info.source)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
       {error && <p className="text-xs text-error">{error}</p>}
       <div className="flex justify-end">
         <Button disabled={busy || !status} size="sm" onClick={() => void apply()}>
@@ -389,17 +430,17 @@ export function GitCard({
   isolation?: Isolation
   onDone: (choice: { initialize: boolean }) => Promise<void>
 }) {
-  const [initializing, setInitializing] = useState<boolean>()
-  // A reload after initialization must retry the same notification, not hand Git back to the agent.
+  const [retryInitialization, setRetryInitialization] = useState<boolean>()
   const initialize =
-    initializing ?? (isolation?.empty === true || (isolation !== undefined && !isolation.reason))
+    retryInitialization ??
+    (isolation?.empty === true || (isolation !== undefined && !isolation.reason))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const apply = async () => {
     if (busy) return
     setBusy(true)
     try {
-      setInitializing(initialize)
+      setRetryInitialization(initialize)
       await onDone({ initialize })
       events.emit('onboarding:git', null)
     } catch (failure) {
@@ -424,7 +465,7 @@ export function GitCard({
       {error && <p className="text-xs text-error">{error}</p>}
       <div className="flex justify-end">
         <Button
-          disabled={busy || (!isolation && initializing === undefined)}
+          disabled={busy || (!isolation && retryInitialization === undefined)}
           size="sm"
           onClick={() => void apply()}
         >

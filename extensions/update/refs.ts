@@ -1,4 +1,5 @@
 /** Update in the browser: whether the Ultimate clone is behind origin, and updating it. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 
@@ -8,7 +9,7 @@ export type Layers = {
   core: boolean
   /** `bin/`: a human restart of the supervisor. */
   bin: boolean
-  /** `pnpm-lock.yaml`: an install, then a restart. */
+  /** `pnpm-lock.yaml` or `patches/`: an install, then a restart. */
   lockfile: boolean
   /** Anything else (`extensions/`, `web/`, `lib/`, `agents/`, docs): hot reload. */
   live: boolean
@@ -49,7 +50,7 @@ export type UpdateState = {
   error?: string
   /** When origin was last fetched (ms), by any Ultimate on this clone. */
   fetchedAt?: number
-  /** `pnpm-lock.yaml` differs from the installed packages: an install is owed. */
+  /** `pnpm-lock.yaml` differs from the installed packages, or the last install failed: an install is owed. */
   install: boolean
   /** Packages were installed, or `server/` or `shared/` changed in HEAD, since this server started: a restart loads them. */
   restart: boolean
@@ -97,7 +98,7 @@ export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
  * branch — offered when conflicts are predicted — or to fix a merged update whose `pnpm check` failed;
  * @ultimate's conversation id. Only while `merge` is offered.
  */
-export const MergeAction = actionRef<null, { id: number }>('update', 'merge')
+export const MergeAction = actionRef<null, { id: ConversationId }>('update', 'merge')
 
 /**
  * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages

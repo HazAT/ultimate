@@ -2,15 +2,18 @@ import { rm, writeFile } from 'node:fs/promises'
 import { temp, removeTemp } from './helpers.ts'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { acquireLock, readOwner, retireStorageOwner, alive } from '../server/lock.ts'
+import { acquireLock, readOwner, retireStorageOwner, alive } from '../lib/lock.ts'
 import * as processes from '../lib/process-group.ts'
 
 const directories: string[] = []
 const locks: Awaited<ReturnType<typeof acquireLock>>[] = []
 afterEach(async () => {
   vi.restoreAllMocks()
-  for (const lock of locks.splice(0)) await lock.close()
-  for (const directory of directories.splice(0)) await removeTemp(directory)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's folders.
+  const closing = locks.splice(0)
+  const taken = directories.splice(0)
+  for (const lock of closing) await lock.close()
+  for (const directory of taken) await removeTemp(directory)
 })
 async function path() {
   const directory = await temp('ultimate-lock-')

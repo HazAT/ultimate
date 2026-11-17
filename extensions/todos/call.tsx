@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { ListTodoIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Tool, ToolContent, ToolHeader, ToolOutput, ToolSection } from '@/components/ai/tool'
@@ -7,16 +8,14 @@ import { TodosDoc } from './refs.ts'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 
-/** One `todo` call as what happened: a to-do added or done, or the list read; a failed call keeps the generic card. */
 export function TodoCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const duration = useToolDuration(call)
-  const items = useDocOf(1, TodosDoc)?.items
+  const items = useDocOf(ROOT, TodosDoc)?.items
   if (call.status === 'error' || call.status === 'interrupted') return core
   const action = words(call.args.action)
   const id = typeof call.args.id === 'number' ? call.args.id : undefined
   const owner = words(call.args.owner)
-  // The result line names the to-do (`Done 6: …`); before it arrives, the list still does.
-  const text =
+  const resultTextOrLiveTodoText =
     action === 'add'
       ? words(call.args.text)
       : (/^Done \d+: ([^]*)$/.exec(call.output)?.[1] ??
@@ -42,7 +41,9 @@ export function TodoCall({ call, core }: { call: ToolCallView; core: ReactNode }
         title={
           <>
             <span className={action === 'list' ? undefined : 'text-foreground'}>{verb}</span>
-            {action !== 'list' && text && <span> · {text}</span>}
+            {action !== 'list' && resultTextOrLiveTodoText && (
+              <span> · {resultTextOrLiveTodoText}</span>
+            )}
           </>
         }
       />
@@ -50,10 +51,10 @@ export function TodoCall({ call, core }: { call: ToolCallView; core: ReactNode }
         {action === 'list' ? (
           <ToolOutput output={call.output} />
         ) : (
-          text && (
+          resultTextOrLiveTodoText && (
             <ToolSection>
               <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-                {text}
+                {resultTextOrLiveTodoText}
               </p>
             </ToolSection>
           )

@@ -14,6 +14,11 @@ The sidebar, its rows and the phone title bar's @ultimate button live in the [si
 reads this extension's overview, titles and actions. `ui.tsx` declares the points it renders for optional extensions:
 `ConversationPhase` (a working conversation's phase) and `ConversationTask` (the plan task a child works on).
 
+It provides the core's `ComposerPlaceholder`: an idle standing agent's composer reads "Message <title>…" by its
+definition's `title` (`standing.tsx`), in the dock, the full view and on a phone alike; @ultimate's
+keeps the core's text. It also provides `EmptyTranscript`: before its first message, a standing agent's transcript shows
+its mark, title and `@name` (`standing.tsx`) instead of the core's card of repo, model and host.
+
 ## Server facet
 
 `context.ts` keeps `conversations.context` (`ContextUsageDoc` in `api.ts`, `ContextDoc` in `refs.ts`) on each
@@ -28,7 +33,9 @@ blocking startup. The status line reads this same document, independent of which
 
 `compactions.ts` emits `conversations.compacted` `{ conversation, entry, reason? }` (`Compacted` in `refs.ts`) for
 each compaction summary Pi places. Pi appends it in its compaction task with no hook in that commit, so a commit
-watcher emits it in a commit of its own: a crash between the two loses the event, nothing repeats it.
+watcher emits it in a commit of its own: a crash between the two loses the event, nothing repeats it. The same
+watcher raises a notice when a compaction its conversation owns (background or manual) fails; a blocking one's failure
+ends the run waiting on it, which reports itself.
 
 `activity.ts` maintains `ultimate.metadata`'s `inputTitle`, `inputAt`, and `answerAt` from committed
 history; core only serves those fields, preferring an explicit `title` over the input title. Reset and

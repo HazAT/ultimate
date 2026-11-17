@@ -1,8 +1,4 @@
-/**
- * The Fall asleep card: what @ultimate prepared for the next chapter (its name, three lines it learned, its handover),
- * then each step live from `sleep`: packing the seed, the last backup, the switch. A failed step says what failed and
- * that we stay in this chapter.
- */
+import { ROOT } from '@/sdk'
 import { ChevronRightIcon, LoaderCircleIcon, MoonIcon, MoonStarIcon } from 'lucide-react'
 import { useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -21,6 +17,7 @@ import {
 } from './chapters.tsx'
 import { Moon } from './moon.tsx'
 import { DreamDoc } from './refs.ts'
+import { ChapterPrepared } from './entries.ts'
 import type { Prepared, Sleep } from './refs.ts'
 
 type Step = Exclude<Sleep['phase'], 'asleep' | 'failed'>
@@ -32,16 +29,15 @@ const titles: Record<Step, string> = {
   switching: 'Switch',
 }
 
-/** `0:42` since `at`, for the step that is running. */
 const elapsed = (now: number, at: number) => {
   const seconds = Math.max(0, Math.floor((now - at) / 1000))
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-/** `dream.prepared`: the card for the preparation it announced; a later one replaces it. */
 export function PreparedCard({ entry }: { entry: EntryRecord }) {
-  const doc = useDocOf(1, DreamDoc)
-  const at = (entry.data as { at: number }).at
+  const doc = useDocOf(ROOT, DreamDoc)
+  if (!ChapterPrepared.is(entry)) return null
+  const at = entry.data.at
   if (doc === undefined) return null
   if (doc?.prepared?.at !== at)
     return (
@@ -55,7 +51,6 @@ export function PreparedCard({ entry }: { entry: EntryRecord }) {
   return <NextChapter prepared={doc.prepared} sleep={doc.sleep} />
 }
 
-/** The prepared next chapter and the way into it; the status line's dialog shows the same card. */
 export function NextChapter({
   prepared,
   sleep,
@@ -73,7 +68,7 @@ export function NextChapter({
     >
       <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
         <MoonStarIcon className="size-3.5 text-brand" />
-        <span className="text-foreground">Ready for a fresh chapter</span>
+        <span className="text-foreground">Next chapter prepared</span>
         <span>{formatTime(prepared.at)}</span>
       </header>
       <ul className="space-y-1.5 px-4 pt-4 pb-3" data-dream-learned>
@@ -163,7 +158,15 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
                 : 'Lowercase letters, digits and dashes, up to 40.'}
             </p>
           )}
-          {blocked && <BusyBlocker busy={busy} />}
+          {blocked && (
+            <div className="space-y-1.5">
+              <BusyBlocker busy={busy} />
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                This wait clears automatically when they finish. Then press Fall asleep to switch
+                chapters.
+              </p>
+            </div>
+          )}
           {refusal && (
             <p className="text-[12px] leading-relaxed" role="alert">
               <span className="text-error">Didn't start.</span>{' '}
@@ -196,7 +199,6 @@ function Ready({ prepared, failed }: { prepared: Prepared; failed?: Sleep }) {
   )
 }
 
-/** What a failed sleep stopped at, its error, and that nothing moved. */
 function Failed({ sleep }: { sleep: Sleep }) {
   const chapters = useChapters()
   return (
@@ -234,7 +236,6 @@ function Failed({ sleep }: { sleep: Sleep }) {
   )
 }
 
-/** The three steps while a sleep runs, and the outcome once it switched (seen when this chapter is opened again). */
 function Progress({ sleep }: { sleep: Sleep }) {
   const chapters = useChapters()
   const actions = useUltimate()
@@ -242,7 +243,6 @@ function Progress({ sleep }: { sleep: Sleep }) {
   const now = useNow(1000, running)
   const current = STEPS.indexOf(sleep.phase as Step)
   const target = chapters?.chapters.find((item) => item.name === sleep.chapter)
-  // A running sleep makes the next chapter; a finished one names it as listed (by name alone if it is gone).
   const number = running ? (chapters?.chapters.length ?? 0) + 1 : target?.number
   const label = number ? chapterLabel(number, sleep.chapter) : sleep.chapter
   if (!running)
@@ -307,7 +307,6 @@ function Progress({ sleep }: { sleep: Sleep }) {
   )
 }
 
-/** One step's quiet second half: what it does, or what it found. */
 function detail(step: Step, sleep: Sleep) {
   if (step === 'seeding') return '— memories, open to-dos, questions, automations, my handover'
   if (step === 'backing up') {

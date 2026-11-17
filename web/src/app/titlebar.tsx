@@ -16,15 +16,10 @@ import { actions } from '../sdk/actions.ts'
 import { shortenPath } from '../sdk/format.ts'
 import { useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { Slot } from './boundary.tsx'
+import { ExtensionBoundary, Slot } from './boundary.tsx'
 import { Shortcut } from './palette.tsx'
-import { sidebarWidthBeyondPhone } from './primitives.tsx'
+import { sidebarWidthBeyondPhone as alignSurfaceTabsWithSidebar } from './primitives.tsx'
 
-/**
- * The project as tabs name it: its folder from home. A branch's checkout (`<home>/worktrees/<id>`) is the project's
- * name and that conversation, and a server with a home outside `~/.ultimate/projects`, as test previews have, says
- * it is a preview.
- */
 export function projectTitle(system: SystemInfo | undefined) {
   if (!system) return undefined
   const { home } = system.machine
@@ -39,10 +34,31 @@ export function projectTitle(system: SystemInfo | undefined) {
     : `preview · ${project}`
 }
 
-/**
- * The project as the title bar's chip says it beside the wordmark: another project's name, a branch checkout's
- * `#<worktree>`; nothing for Ultimate's own checkout, whose name the wordmark already says.
- */
+export function prettyName(folder: string) {
+  return folder
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+export function projectHeading(system: SystemInfo | undefined) {
+  if (!system) return undefined
+  const { home } = system.machine
+  const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(
+    system.project.root,
+  )
+  const path = worktree ? `#${worktree[2]}` : shortenPath(system.project.root, { home })
+  const folder = worktree?.[1] ?? system.project.name
+  return {
+    folder,
+    name: prettyName(folder),
+    path: system.persistence.path.startsWith(`${home}/.ultimate/projects/`)
+      ? path
+      : `preview · ${path}`,
+  }
+}
+
 export function projectName(system: SystemInfo | undefined) {
   if (!system) return ''
   const worktree = /\/\.ultimate\/projects\/(.+)-[\da-f]{8}\/worktrees\/(\d+)$/.exec(
@@ -53,11 +69,6 @@ export function projectName(system: SystemInfo | undefined) {
   return [own ? '' : name, worktree ? `#${worktree[2]}` : ''].filter(Boolean).join(' ')
 }
 
-/**
- * The title bar's project chip: `projectName`, its full path in the tooltip; nothing when that is empty and nothing
- * else is in it. Pass `menu` to show a chevron and act as a dropdown trigger (spread the trigger's props through);
- * without it the chip is plain text.
- */
 export const ProjectChip = forwardRef<
   HTMLButtonElement,
   ComponentProps<'button'> & { menu?: boolean; children?: ReactNode }
@@ -102,7 +113,6 @@ export const ProjectChip = forwardRef<
   )
 })
 
-/** The project chip, or what extensions put in its place (`titlebar.project`), such as the chip with a menu. */
 function Project() {
   const replaced = slotItems(useExtensions(), 'titlebar.project').length > 0
   return replaced ? <Slot name="titlebar.project" variant="inline" /> : <ProjectChip />
@@ -111,7 +121,6 @@ function Project() {
 const wordmark =
   'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[11px] font-semibold tracking-[0.28em] text-brand'
 
-/** The ULTIMATE wordmark beyond a phone; with `onClick` a button, for an extension that fills `titlebar.brand`. */
 export function Wordmark({ onClick, label }: { onClick?: () => void; label?: string }) {
   if (!onClick)
     return (
@@ -140,10 +149,6 @@ export function Wordmark({ onClick, label }: { onClick?: () => void; label?: str
   )
 }
 
-/**
- * The brand. Beyond a phone it is the mark, which an extension may make a button (`titlebar.brand`), since the tabs
- * beside it list the surfaces; on phones it opens the list of surfaces and names the shown one.
- */
 function Brand() {
   const surfaces = surfaceItems(useExtensions())
   const shown = useStore((state) => state.ui.surface?.id)
@@ -214,7 +219,6 @@ function Brand() {
   )
 }
 
-/** One lowercase word per surface beyond a phone, the shown one underlined in brand at the bar's bottom edge. */
 function SurfaceItems() {
   const surfaces = surfaceItems(useExtensions())
   const shown = useStore((state) => state.ui.surface?.id)
@@ -225,11 +229,12 @@ function SurfaceItems() {
     >
       {surfaces.map((surface, index) => {
         const active = surface.id === shown
+        const Badge = surface.badge
         const button = (
           <button
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex cursor-pointer items-center border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
+              'flex cursor-pointer items-center gap-1.5 border-y-2 border-transparent px-0.5 lowercase transition-colors outline-none hover:text-foreground focus-visible:text-foreground',
               active && 'border-b-brand text-foreground',
             )}
             data-selected={active || undefined}
@@ -239,6 +244,15 @@ function SurfaceItems() {
             type="button"
           >
             {surface.title}
+            {Badge && (
+              <ExtensionBoundary
+                extension={surface.extension}
+                variant="inline"
+                version={surface.version}
+              >
+                <Badge />
+              </ExtensionBoundary>
+            )}
           </button>
         )
         if (index >= 9) return button
@@ -256,11 +270,6 @@ function SurfaceItems() {
   )
 }
 
-/**
- * The bar above every surface, as the status line's background: the brand (the surface switcher on phones), the
- * project chip, `titlebar.left`, the surfaces; then `titlebar.right` (the agent surface's panel icons on a tablet among
- * them) and the command palette.
- */
 export function TitleBar() {
   return (
     <div
@@ -268,11 +277,10 @@ export function TitleBar() {
       data-ui="titlebar"
     >
       <div className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
-        {/* As wide as the docked sidebar on every surface, so the surfaces never move and start where Agent's conversation does. */}
         <div
           className={cn(
             'flex min-w-0 items-center gap-2 overflow-hidden pl-3 pr-3 md:shrink-0 md:pr-2',
-            sidebarWidthBeyondPhone,
+            alignSurfaceTabsWithSidebar,
           )}
         >
           <Brand />

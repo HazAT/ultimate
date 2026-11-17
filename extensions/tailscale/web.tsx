@@ -7,7 +7,7 @@ import {
   ShieldCheckIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -17,6 +17,7 @@ import {
   defineWebExtension,
   errorMessage,
   events,
+  keepLast,
   useAction,
   useCopy,
   useEvent,
@@ -42,31 +43,18 @@ const problems: Record<Problem, { title: string; link?: { href: string; label: s
   error: { title: 'Tailscale failed' },
 }
 
-/**
- * The status, read on mount and again when what it depends on shows in system info: a registered origin, a facet
- * notice (each failure posts one), or a reinstall after a settings change.
- */
 function useStatus() {
   const system = useSystem()
-  // Failures show where the status does, not as notices: the status line reads it on every page.
-  const status = useAction(StatusAction, null, { onError: () => {} })
-  const signature = JSON.stringify([
-    system?.access.origins,
-    system?.extensionDiagnostics,
-    system?.extensions.find((extension) => extension.name === 'tailscale')?.server?.loadedAt,
-  ])
-  const seen = useRef(signature)
-  const { refetch } = status
-  useEffect(() => {
-    if (signature === seen.current) return
-    seen.current = signature
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
-  }, [signature, refetch])
-  return status
+  return useAction(StatusAction, null, {
+    onError: keepLast,
+    on: [
+      system?.access.origins,
+      system?.extensionDiagnostics,
+      system?.extensions.find((extension) => extension.name === 'tailscale')?.server?.loadedAt,
+    ],
+  })
 }
 
-/** A shell command to copy, as a code chip. */
 function Command({ value }: { value: string }) {
   const { copied, copy } = useCopy()
   return (
@@ -88,7 +76,6 @@ function Command({ value }: { value: string }) {
   )
 }
 
-/** A hint's command, such as `tailscale up` in "Start Tailscale and log in (tailscale up).", and the words around it. */
 function split(hint: string) {
   const match = /(?:sudo )?tailscale [^()]*?(?=\)|\.?$)/.exec(hint)
   if (!match) return { text: hint }
@@ -107,7 +94,7 @@ function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) 
 
 const dot = (tone: string) => <span className={cn('size-1.5 rounded-full', tone)} />
 
-function Ready({ url, allow }: { url: string; allow: string[] }) {
+function Ready({ url, allow, hint }: { url: string; allow: string[]; hint?: string }) {
   const { copied, copy } = useCopy()
   return (
     <>
@@ -146,7 +133,13 @@ function Ready({ url, allow }: { url: string; allow: string[] }) {
       <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-snug text-muted-foreground">
         <ShieldCheckIcon className="mt-px size-3.5 shrink-0 text-success" />
         <span className="min-w-0 break-words">
-          Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
+          {allow.length ? (
+            <>
+              Only <span className="text-foreground/90">{allow.join(', ')}</span> can open it
+            </>
+          ) : (
+            hint
+          )}
         </span>
       </p>
       <p className="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground/80">
@@ -194,8 +187,7 @@ function Trouble({ state, hint }: { state: Problem; hint?: string }) {
   )
 }
 
-/** Runs the start again, as after fixing what a problem names or to restore a lost mapping, then reads the status. */
-function CheckAgain({ onChecked }: { onChecked: () => Promise<unknown> }) {
+function RepairMappingOrRetry({ onChecked }: { onChecked: () => Promise<unknown> }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const check = async () => {
@@ -238,7 +230,6 @@ const quiet = (label: string) => (
   </span>
 )
 
-/** Everything about the tailnet in one place: the address to scan, or what to fix. */
 function Details({ status }: { status: ReturnType<typeof useStatus> }) {
   const { data, error, refetch } = status
   const state = data?.state
@@ -266,18 +257,17 @@ function Details({ status }: { status: ReturnType<typeof useStatus> }) {
           {errorMessage(error)}
         </p>
       )}
-      {state === 'ready' && data?.url && <Ready allow={data.allow} url={data.url} />}
+      {state === 'ready' && data?.url && (
+        <Ready allow={data.allow} hint={data.hint} url={data.url} />
+      )}
       {state && state in problems && <Trouble hint={data?.hint} state={state as Problem} />}
-      {/* Ready too: it serves the mapping again if something removed it behind this server's back. */}
-      {(state === 'ready' || (state && state in problems)) && <CheckAgain onChecked={refetch} />}
+      {(state === 'ready' || (state && state in problems)) && (
+        <RepairMappingOrRetry onChecked={refetch} />
+      )}
     </section>
   )
 }
 
-/**
- * `text` as a QR code to scan with a phone: one SVG path with a rectangle per run of dark modules in a row, black on
- * white in either theme so every camera reads it.
- */
 function QrCode({ text }: { text: string }) {
   const { size, path } = useMemo(() => {
     const qr = encode(text, { border: 2 })
@@ -305,11 +295,6 @@ function QrCode({ text }: { text: string }) {
   )
 }
 
-/**
- * "tailnet" in the status line: a green dot while this Ultimate is reachable there, amber while it needs a fix. A click
- * opens the details above it. Off or starting, it stays out of the line; `Tailscale…` in the palette opens the details
- * anchored where it would be.
- */
 function Indicator() {
   const status = useStatus()
   const [open, setOpen] = useState(false)
@@ -335,7 +320,6 @@ function Indicator() {
             tailnet
           </button>
         ) : (
-          // Off or starting there is nothing to show in the bar; the palette's details hang from here.
           <span aria-hidden className="h-4 w-0" />
         )}
       </PopoverTrigger>
@@ -347,7 +331,7 @@ function Indicator() {
 }
 
 export default defineWebExtension({
-  slots: { 'statusline.right': [Indicator] },
+  slots: { 'statusline.right': [{ component: Indicator, order: -0.5 }] },
   commands: [
     {
       id: 'tailscale.panel',

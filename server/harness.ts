@@ -1,27 +1,26 @@
 import { existsSync } from 'node:fs'
 import { mkdir, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { projectHome } from './project.ts'
-import type { Source } from './project.ts'
-import { compareExtensions } from './discovery.ts'
-import { acquireLock } from './lock.ts'
+import { projectHome } from '../lib/project-paths.ts'
+import type { Source } from '../lib/project-paths.ts'
+import { compareExtensions } from '../lib/discovery.ts'
+import { acquireLock } from '../lib/lock.ts'
 import { identify } from '../lib/process-group.ts'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { FauxProviderHandle } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
 import { AgentDoc, createRegistry, Harness } from '@earendil-works/pi-durable'
-import type { Context } from '@earendil-works/chord'
-import { UiState } from './ui-state.ts'
+import type { Context } from '@earendil-works/chord/context'
+import { UiState } from '../shared/ui-state.ts'
 import { listModels } from './models.ts'
 import { guardToolArguments, modelTrace } from './tool-arguments.ts'
 import { readFamilies } from '../lib/families-settings.ts'
-import { refOf } from '../lib/families.ts'
 import { callTrace } from './trace.ts'
 import { projectSkills } from './skills.ts'
 import { requestSwap } from './supervisor-protocol.ts'
 import { activeChapter, finishChapterSwitch } from '../lib/chapters.ts'
-import { defaultModel } from '../lib/agents.ts'
+import { defaultAgent } from '../lib/agents.ts'
 import type {
   ConversationId,
   Cursor,
@@ -44,7 +43,6 @@ import type { Notice } from '../shared/protocol.ts'
 
 export { context }
 
-/** A notice of a Pi Durable report, led by what failed: the task and conversation, extension or host callback. */
 export function reportMessage({ error, ...info }: Report): string {
   const parts: string[] = []
   if ('task' in info && info.task)
@@ -58,32 +56,19 @@ export function reportMessage({ error, ...info }: Report): string {
   return `${info.kind.replaceAll('_', ' ')}${reason}${about}. ${String(error)}`
 }
 
-/**
- * Compaction per model, from its context window and answer size, over Pi's defaults (reserve 16k, keep 20k, background
- * 32k), which suit a ~200k window. Larger windows keep more room for the answer, more recent context verbatim, and
- * start the background compaction earlier, so a long turn rarely waits on a blocking one. A `compaction.modelOverrides`
- * entry in Pi's settings files replaces these field by field.
- */
-const large = { reserveTokens: 32768, keepRecentTokens: 60000, backgroundTokens: 131072 }
-export const compactionOverrides: Record<string, Partial<CompactionPolicy>> = {
-  // 500k window, 128k answers: blocking at ~467k, background from ~400k.
-  'openai-codex/gpt-6.1-sol': {
-    reserveTokens: 32768,
-    keepRecentTokens: 40000,
-    backgroundTokens: 65536,
-  },
-  // 1M windows, 128k answers: blocking at ~967k, background from ~836k.
-  'claude-code/default': large,
-  'claude-code/claude-opus-5-5': large,
-  'claude-code/claude-fable-5-1': large,
-  'claude-code/claude-sonnet-5': large,
-  'claude-code/claude-sonnet-5-5': large,
-  'claude-code/claude-haiku-5-5': large,
-  // claude-code/claude-haiku-4-5-20251001 has a 200k window: Pi's defaults fit.
+export function compactionProfile(contextWindow: number): Partial<CompactionPolicy> {
+  if (contextWindow >= 1_000_000)
+    return { reserveTokens: 32768, keepRecentTokens: 60000, backgroundTokens: 131072 }
+  if (contextWindow >= 500_000)
+    return { reserveTokens: 32768, keepRecentTokens: 40000, backgroundTokens: 65536 }
+  return {}
 }
+
+const maxNodeTimeoutMs = 2147483647
 
 export function createHarnessSettings(
   settings: SettingsManager,
+  contextWindow: (provider: string, modelId: string) => number | undefined,
   extensions: () => Extension[],
 ): HarnessSettings {
   return {
@@ -94,17 +79,22 @@ export function createHarnessSettings(
       const provider = settings.getProviderRetrySettings()
       const idle = settings.getHttpIdleTimeoutMs()
       return {
-        timeoutMs: provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
+        timeoutMs: provider.timeoutMs ?? (idle === 0 ? maxNodeTimeoutMs : idle),
         maxRetryDelayMs: provider.maxRetryDelayMs,
         ...(provider.maxRetries === undefined ? {} : { maxRetries: provider.maxRetries }),
       }
     },
     get compaction() {
       const configured = settings.getSettings().compaction?.modelOverrides ?? {}
-      const modelOverrides = { ...compactionOverrides }
-      for (const [model, entry] of Object.entries(configured))
-        modelOverrides[model] = { ...modelOverrides[model], ...entry }
-      return { ...settings.getCompactionSettings(), modelOverrides }
+      const lazilyResolvedModelOverrides = new Proxy(configured, {
+        get(entries, key) {
+          if (typeof key !== 'string' || !key.includes('/')) return Reflect.get(entries, key)
+          const slash = key.indexOf('/')
+          const window = contextWindow(key.slice(0, slash), key.slice(slash + 1)) ?? 0
+          return { ...compactionProfile(window), ...entries[key] }
+        },
+      })
+      return { ...settings.getCompactionSettings(), modelOverrides: lazilyResolvedModelOverrides }
     },
     get retry() {
       return settings.getRetrySettings()
@@ -112,7 +102,6 @@ export function createHarnessSettings(
     get steeringMode() {
       return settings.getSteeringMode()
     },
-    // Every follow-up queued while a run works starts the next run together, whatever Pi's one-at-a-time default.
     followUpMode: 'all',
   }
 }
@@ -121,19 +110,16 @@ export interface HostOptions {
   projectRoot?: string
   userHome?: string
   home?: string
-  /** Tests only: a faux provider, registered with the configured ones; new conversations default to its model. */
   faux?: FauxProviderHandle
   report?: (notice: Notice) => void
 }
 export async function prepareHarness(options: HostOptions) {
   const { ultimateRoot } = options
   const projectRoot = await realpath(options.projectRoot ?? ultimateRoot)
-  // ULTIMATE_USER_HOME: where `.ultimate/` user config lives when it is not HOME's (a preview's private copy).
   const userHome = options.userHome ?? process.env.ULTIMATE_USER_HOME ?? homedir()
   const builds = createBuild(ultimateRoot)
   const home = options.home ?? process.env.ULTIMATE_HOME ?? projectHome(projectRoot, userHome)
   await mkdir(home, { recursive: true })
-  /** The active chapter's files, read again each time storage opens, after a journaled switch finished. */
   let chapter = await activeChapter(home)
   const runtime = await ModelRuntime.create()
   const settings = SettingsManager.create(projectRoot)
@@ -143,31 +129,31 @@ export async function prepareHarness(options: HostOptions) {
   const extensionOrders = new Map<string, number>()
   const extensionSources = new Map<string, Source>()
   const envs = new Map<string, NodeExecutionEnv>()
-  const env = ({ cwd = projectRoot }: EnvTarget) => {
+  const processHelperExecutionEnv = ({ cwd = projectRoot }: EnvTarget) => {
     let found = envs.get(cwd)
     if (!found) {
-      // Agents' commands start from the process helper (the patched spawn option), never by forking this process.
       found = new NodeExecutionEnv({ cwd, spawn })
       envs.set(cwd, found)
     }
     return found
   }
-  // Here, not with the extensions: model calls are traced through the models the harness opens with, and through the
-  // runtime extensions call directly (health's pings), so `modelRuntime` below is the guarded one too.
   const trace = callTrace(() => chapter.trace)
   const modelCalls = modelTrace(trace)
   registry.install(modelCalls.extension)
-  const modelRuntime = guardToolArguments(runtime, modelCalls)
+  const guardedRuntime = guardToolArguments(runtime, modelCalls)
+  const contextWindow = (provider: string, modelId: string) =>
+    guardedRuntime.getModel(provider, modelId)?.contextWindow
   const { faux } = options
   if (faux) {
     runtime.registerNativeProvider(faux.provider)
     await runtime.refresh({ allowNetwork: false })
   }
-  /** The default model, read when the harness opens, after extensions registered theirs. */
-  const preferred = async () => {
-    if (faux) return { provider: faux.getModel().provider, modelId: faux.getModel().id }
+  const defaultAgentAfterRegistration = async () => {
     const family = (await readFamilies(userHome, projectRoot)).families.default
-    return defaultModel(await modelRuntime.getAvailable(), settings, refOf(family.model))
+    const agent = defaultAgent(await guardedRuntime.getAvailable(), settings, family)
+    return faux
+      ? { ...agent, model: { provider: faux.getModel().provider, modelId: faux.getModel().id } }
+      : agent
   }
   let active:
     | {
@@ -181,7 +167,6 @@ export async function prepareHarness(options: HostOptions) {
       if (!active) throw new Error('Harness is not open')
       return (await active.harness.snapshot(UiState, active.root.id, caller)) ?? {}
     },
-    /** Committed submission records; exists until Pi Durable exposes submission scans publicly. */
     scanSubmissions(
       query: SubmissionQuery,
       limit: number,
@@ -191,8 +176,8 @@ export async function prepareHarness(options: HostOptions) {
       if (!active) throw new Error('Harness is not open')
       return active.storage.scanSubmissions(query, limit, cursor, caller)
     },
-    models: async () => (await listModels(modelRuntime)).models,
-    model: (ref: ModelRef) => modelRuntime.getModel(ref.provider, ref.modelId),
+    models: async () => (await listModels(guardedRuntime)).models,
+    model: (ref: ModelRef) => guardedRuntime.getModel(ref.provider, ref.modelId),
     skills: (cwd: string) => projectSkills({ ultimateRoot, projectRoot, userHome }, cwd).skills,
     restart: (approved: (generation: number) => Promise<void>) =>
       requestSwap(approved, builds.current()),
@@ -202,36 +187,33 @@ export async function prepareHarness(options: HostOptions) {
     builds,
     build: builds.current,
     home,
-    /** The active chapter's `state.sqlite`. */
     get database() {
       return chapter.database
     },
-    /** The active chapter: its name, number, the newest chapter's name and its files. */
     get chapter() {
       return chapter
     },
-    /** The call trace of this home, which extensions read as `host.trace`; open while the harness is. */
     callTrace: trace,
-    modelRuntime,
+    modelRuntime: guardedRuntime,
     settings,
     registry,
     extensionOrders,
     extensionSources,
     faux,
     async open(resume = true) {
-      // The supervisor checks this start identity before it signals a stale owner (retireStorageOwner).
-      const coreStart = identify(process.pid)
-      if (!coreStart) throw new Error(`Cannot identify Ultimate core pid ${process.pid}`)
+      const coreStartForStaleOwnerCheck = identify(process.pid)
+      if (!coreStartForStaleOwnerCheck)
+        throw new Error(`Cannot identify Ultimate core pid ${process.pid}`)
       const owner = await acquireLock(
         join(home, 'storage.lock'),
-        { pid: process.pid, coreStart },
+        { pid: process.pid, coreStart: coreStartForStaleOwnerCheck },
         process.env.ULTIMATE_SUPERVISED === '1' ? 10000 : 0,
       )
       let harness: Harness | undefined
       let storage: Awaited<ReturnType<typeof openNodeSqliteStorage>> | undefined
       try {
-        // An interrupted `pnpm reset` or `pnpm restore` left the home half moved: no path opens it until it finishes.
-        if (existsSync(join(home, 'reset.json')))
+        const resetOrRestoreIncomplete = existsSync(join(home, 'reset.json'))
+        if (resetOrRestoreIncomplete)
           throw new Error(
             `A reset or restore of ${home} was interrupted; rerun pnpm reset or pnpm restore`,
           )
@@ -244,9 +226,9 @@ export async function prepareHarness(options: HostOptions) {
         harness = await Harness.open(
           storage,
           {
-            models: modelRuntime,
+            models: guardedRuntime,
             registry,
-            settings: createHarnessSettings(settings, () =>
+            settings: createHarnessSettings(settings, contextWindow, () =>
               registry
                 .snapshot()
                 .installed()
@@ -265,23 +247,17 @@ export async function prepareHarness(options: HostOptions) {
                   ),
                 ),
             ),
-            env,
+            env: processHelperExecutionEnv,
             onReport: (report) =>
               options.report?.({ level: 'error', message: reportMessage(report) }),
           },
           context,
         )
-        const model = await preferred()
-        // The default family's thinking, else Pi's default level.
-        const thinkingLevel =
-          (await readFamilies(userHome, projectRoot)).families.default.thinking ??
-          settings.getDefaultThinkingLevel()
-        const root = await harness.root(context, { agent: { cwd: projectRoot, thinkingLevel } })
+        const currentDefaultRootAgent = await defaultAgentAfterRegistration()
+        const root = await harness.root(context, { agent: { cwd: projectRoot } })
         await root.commit(async (tx) => {
           await tx.doc(UiState, root.id)
-          // The root runs no turns, but what reads its agent (tally compaction, inheriting callers) gets a model with a
-          // login: it follows the default each time it opens, not the one it stored when created.
-          if (model) (await tx.doc(AgentDoc, root.id)).model = model
+          Object.assign(await tx.doc(AgentDoc, root.id), currentDefaultRootAgent)
         }, context)
         active = { harness, root, storage }
         const openedHarness = harness

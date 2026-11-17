@@ -2,6 +2,7 @@
  * Conversations in the browser: the overview of what each conversation is about, and the actions that rename,
  * conclude and resume conversations and pick the summary model. Browser-safe.
  */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { KeptWork, OverviewState, SummaryRecord } from './types.ts'
@@ -10,9 +11,18 @@ import type { KeptWork, OverviewState, SummaryRecord } from './types.ts'
  * Pi compacted conversation `conversation`: its summary is entry `entry`; `reason` is Pi's (`threshold`, `overflow`,
  * `manual`). Emitted in a commit of its own right after Pi's, which has no hook (`compactions.ts`).
  */
-export const Compacted = defineEvent<{ conversation: number; entry: number; reason?: string }>(
-  'conversations.compacted',
-)
+export const Compacted = defineEvent<{
+  conversation: ConversationId
+  entry: EntryId
+  reason?: string
+}>('conversations.compacted')
+
+/**
+ * Top-level conversations were concluded: `conversations` lists them with every conversation they own, ascending.
+ * Emitted in the commit that concludes them (the Conclude action, a landing, a side chat ending), so whatever a
+ * conversation held outside the store can be freed exactly when it ends.
+ */
+export const Concluded = defineEvent<{ conversations: ConversationId[] }>('conversations.concluded')
 
 /**
  * How full conversation `id`'s context is: `tokens` its next request carries (the latest answer's prompt, or after a
@@ -28,7 +38,7 @@ export type ContextUsage = {
   percent?: number
   estimated?: boolean
   at: number
-  entry?: number
+  entry?: EntryId
 }
 /** The context fill of a conversation, on that conversation. */
 export const ContextDoc = docRef<ContextUsage>('conversations.context')
@@ -44,16 +54,16 @@ export type SummaryModelSetting = {
   path?: string
 }
 
-/** `{ [name]: { icon?, tint? } }`: how each standing agent's definition asks its mark to look, on conversation 1. */
+/** `{ [name]: { title?, icon?, tint? } }`: how each standing agent's definition asks to be named and its mark to look, on conversation 1. */
 export const MarksDoc = docRef<Record<string, AgentMarkStyle>>('conversations.agent-marks')
-/** A definition's `icon` (a lucide name) and `tint` (one of lib/marks.ts `markTints`). */
-export type AgentMarkStyle = { icon?: string; tint?: string }
+/** A definition's `title` (its display name), `icon` (a lucide name) and `tint` (one of lib/marks.ts `markTints`). */
+export type AgentMarkStyle = { title?: string; icon?: string; tint?: string }
 
 /** Each conversation's summary, feature, activity and assessment, on conversation 1. */
 export const OverviewDoc = docRef<OverviewState>('ultimate.conversation-overview')
 
 /** `{ id, title }` → `{ ok }`: rename top-level conversation `id`; a blank title lets its first message name it again. */
-export const RenameAction = actionRef<{ id: number; title: string }, { ok: boolean }>(
+export const RenameAction = actionRef<{ id: ConversationId; title: string }, { ok: boolean }>(
   'conversations',
   'rename',
 )
@@ -64,16 +74,16 @@ export const RenameAction = actionRef<{ id: number; title: string }, { ok: boole
  * A caller inside a concluded tree is not stopped: it would wait on itself.
  */
 export const ConcludeAction = actionRef<
-  { ids: number[] },
-  { concluded: number[]; stopped: number[]; previews: string[]; kept: KeptWork[] }
+  { ids: ConversationId[] },
+  { concluded: ConversationId[]; stopped: ConversationId[]; previews: string[]; kept: KeptWork[] }
 >('conversations', 'conclude')
 /** `{ ids }` → `{ resumed }`: resume these conversations and their ancestors; `resumed` lists the ones concluded before. */
-export const ResumeAction = actionRef<{ ids: number[] }, { resumed: number[] }>(
+export const ResumeAction = actionRef<{ ids: ConversationId[] }, { resumed: ConversationId[] }>(
   'conversations',
   'resume',
 )
 /** `{ id }` → conversation `id`'s summaries, newest first, at most 50: what the sidebar's history popover shows. */
-export const SummariesAction = actionRef<{ id: number }, SummaryRecord[]>(
+export const SummariesAction = actionRef<{ id: ConversationId }, SummaryRecord[]>(
   'conversations',
   'summaries',
 )

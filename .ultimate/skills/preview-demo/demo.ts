@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util'
 const { values, positionals } = parseArgs({
   options: {
     port: { type: 'string', default: '4797' },
-    model: { type: 'string', default: 'openai-codex/gpt-6.1-sol' },
+    model: { type: 'string', default: 'openai-codex/gpt-6.2-sol' },
   },
   allowPositionals: true,
 })

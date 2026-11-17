@@ -2,7 +2,7 @@
  * Workspaces: isolated Git worktrees for conversations and the lander that merges them into their target branch.
  * Other extensions create, look up, land and discard a conversation's worktree through this service.
  */
-import type { Context } from '@earendil-works/chord'
+import type { Context } from '@earendil-works/chord/context'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { git } from '../../lib/git.ts'
@@ -31,11 +31,11 @@ export type WorkspaceService = {
 /** Worktrees and landing; core, so `need` it. */
 export const WorkspacesApi = defineApi<WorkspaceService>()('workspaces')
 
-export { CheckRan, SubmissionLanded } from './refs.ts'
+export { CheckRan, SubmissionFailed, SubmissionLanded, LanderReportEntry } from './refs.ts'
 export type { LandedData } from './refs.ts'
 export type BranchesService = {
   /** The conversation that started branch `id`, which hears that its submission landed. */
-  starter(id: ConversationId, ctx: Context): Promise<number | undefined>
+  starter(id: ConversationId, ctx: Context): Promise<ConversationId | undefined>
   /** Inside `tx`: whether branch `id` has work of its own that will wake it again, so a landing leaves it open. */
   working(tx: Tx, id: ConversationId): Promise<boolean>
 }

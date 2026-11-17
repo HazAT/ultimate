@@ -9,9 +9,12 @@ itself.
 
 A dream is ordinary work: one branch, its answer, the user's decisions, ordinary branches for what they approve. There
 is no session to track. Dream's actions, called with codemode `ultimate.action('dream', name, args)`: `prepare
-{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). The trace keeps only about the last
-7 days, so `stats` and `ultimate.trace` see only that window, and `stats` counts only tool calls; older failures and
-model errors are found in conversation entries.
+{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). `stats` counts tool calls over the
+whole retained trace: about the last 7 days, or the newest 200,000 calls, whichever ends first. `debug trace` and
+`ultimate.trace` do not read that window whole: they return the newest rows only (the newest 100 by default for
+`ultimate.trace`, 50 for `debug trace`, at most 1000, and `debug trace` cuts its text at about 160 rows), so on a busy
+project a query can cover hours rather than days. For older failures and model errors, read conversation entries and
+`watchdog.failure` cards.
 
 ## For @ultimate
 
@@ -56,14 +59,15 @@ A codified memory (`retire` on the proposal) stays until its branch lands; then 
 ### Prepare the fresh chapter
 
 A fresh chapter starts lean: the new @ultimate wakes from your handover, the memory and the open work instead of
-re-reading a full context. Offer it when it is worth it: the dream's work has landed or been dropped (the branches
-you care about are done), and either your context is well filled, the user was away for long, or the dream changed a
-lot. After a small dream with plenty of room left, stay in this chapter and carry on.
+re-reading a full context. The branch you start in the turn that answers a dream request is the dream: once it is
+concluded, the user sees "The dream is done · Fall asleep…" in the sidebar and the status line, and decides. Pressing
+it wakes you with a `dream.ready` input; "Stay in this chapter" dismisses it. You may also prepare earlier when the
+user asks.
 
-When ready, call `prepare` once:
+On `dream.ready`, call `prepare` once:
 
 - `chapter`: a 2–3 word lowercase, dash-separated name drawn from what the dream learned (at most 40 characters);
-- `learned`: exactly three short lines in your own voice ("I learned…", "I keep…", "I'd like…");
+- `learned`: an array of exactly three short strings in your own voice ("I learned…", "I keep…", "I'd like…");
 - `handoff`: a fresh handover, written now: what is open and how far each got, what landed from the dream, the
   decisions and the user's corrections, and what to do next (Markdown, at most 12,000 characters).
 
@@ -104,9 +108,11 @@ Every pass starts from @ultimate's handoff in its brief, then reads with codemod
 `#conversation/entry`, a trace error, a commit or `path:line`. Conversation summaries and abstracts (in the root's
 tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation only where they point at something.
 
-- **memory** — distil the project memory: memories that are outdated, contradicted, duplicated or too vague; lessons
-  that later conversations taught but nobody remembered. Output add/update/delete ops, each with reason and evidence
-  (the memory review in extensions/lineage/README.md). Never drop or weaken the memory about the user.
+- **memory** — hold every memory to one test: would a branch starting next month act differently without it? Delete
+  what fails: what the code, docs or instructions now show, one-off or tabled decisions, finished investigations,
+  lessons a check now prevents. Merge overlaps, update what is outdated or contradicted, and add lessons later
+  conversations taught that nobody remembered and that pass the test. Output add/update/delete ops, each with reason
+  and evidence (the memory review in extensions/lineage/README.md). Never drop or weaken the memory about the user.
 - **failures** — what failed often: `watchdog.failure` cards, tool and action errors in the trace, retries, reactor
   failures, lander rejections, runs the user had to stop. Group by cause; for the top ones propose a fix.
 - **tools** — `stats` gives calls, failures, mean duration and enabled tools never called. Explain the numbers: why a
@@ -119,8 +125,12 @@ tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation onl
   `no-guards` keeps most rules in prompts), agent definitions or docs (an instruction rather than a project fact), a
   skill (a multi-step procedure agents repeat across conversations but need only sometimes: clone `skills/`, the
   project's `.ultimate/skills/` or the user's `~/.ultimate/skills/`), or stays a memory (context about the project or
-  the user). Say the memory delete or update that follows once it is codified. Also check the skills that exist: one
-  that is stale, duplicated or never read gets an update or removal proposal.
+  the user). Prefer the earliest fix that makes the mistake impossible: architecture (a shape where it cannot
+  happen) first, then types, then a lint rule, then a test, docs last. A codified rule follows the rules table in
+  AGENTS.md "Review quality": it joins the table with what enforces it. Name the old way an agent would copy (a
+  helper, a pattern, a doc line) and propose deleting it with the fix. Say the memory delete or update that follows
+  once it is codified. Also check the skills that exist: one that is stale, duplicated or never read gets an update or
+  removal proposal.
 - **project** — what Ultimate could do better in this project's own work. Read the root's tally (abstracts and
   landings), the project's conversations and `git log`, and look for what repeats: steps agents did by hand again and
   again (the same commands, checks, lookups, setup), what the user asked for more than once, and where branches got

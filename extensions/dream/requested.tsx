@@ -3,10 +3,21 @@ import { Card } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
 import type { RequestedEntry } from './refs.ts'
 
-/** How long the user was away, in whole hours: `9 h`. */
 const awayFor = (ms: number) => `${Math.max(1, Math.round(ms / 3600_000))} h`
 
-/** `dream.requested`: a dream was asked for, by the user's Dream button or a built-in automation. One quiet line. */
+export function ReadyCard({ entry }: { entry: EntryRecord }) {
+  const { branch } = (entry.data ?? {}) as { branch?: number }
+  return (
+    <Card data-dream-ready={branch}>
+      <p className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <MoonIcon className="size-3.5 text-brand" />
+        <span className="text-foreground">Fall asleep</span>
+        <span>you pressed it after dream #{branch} · preparing the next chapter</span>
+      </p>
+    </Card>
+  )
+}
+
 export function RequestedCard({ entry }: { entry: EntryRecord }) {
   const { automation } = (entry.data ?? {}) as RequestedEntry
   return (

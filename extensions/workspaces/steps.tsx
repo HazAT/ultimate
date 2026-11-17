@@ -1,17 +1,27 @@
 import type { LanderStep } from './types.ts'
 
-/** A running check's line gives way to its result, which follows it. */
-export const runningStep = /^(?:checking|rerunning): (.*)$/s
-export const superseded = (row: LanderStep, later: readonly LanderStep[]) => {
-  const command = runningStep.exec(row.step)?.[1]
-  return command !== undefined && later.some((next) => next.check?.command === command)
+export const superseded = (row: LanderStep, later: readonly LanderStep[]) =>
+  row.runs !== undefined && later.some((next) => next.check?.command === row.runs)
+
+const checkGroupStillRunning = (row: LanderStep, later: readonly LanderStep[]) =>
+  row.runs !== undefined &&
+  later.every((next) => next.check !== undefined || next.runs !== undefined)
+
+export const tookFor = (
+  row: LanderStep,
+  index: number,
+  shownRows: readonly LanderStep[],
+  allLoggedSteps: readonly LanderStep[],
+) => {
+  if (row.check) {
+    const checkingStepBeforeResult = allLoggedSteps.findLast(
+      (other) => other.at <= row.at && other.runs === row.check!.command,
+    )
+    return checkingStepBeforeResult ? row.at - checkingStepBeforeResult.at : undefined
+  }
+  const nextShownStep = shownRows[index + 1]
+  return nextShownStep && (nextShownStep.check ? undefined : nextShownStep.at - row.at)
 }
 
-/** A group's checks run together: a running check whose later rows all belong to its group still runs. */
-const pending = (row: LanderStep, later: readonly LanderStep[]) =>
-  runningStep.test(row.step) &&
-  later.every((next) => next.check !== undefined || runningStep.test(next.step))
-
-/** While its submission lands, a step is in progress when it is the last one or a group check still running; a check result never is. */
 export const inProgress = (row: LanderStep, later: readonly LanderStep[]) =>
-  !row.check && (!later.length || pending(row, later))
+  !row.check && (!later.length || checkGroupStillRunning(row, later))

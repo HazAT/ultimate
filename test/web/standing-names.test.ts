@@ -1,8 +1,8 @@
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import type { EntryRecord } from '@earendil-works/pi-durable'
 import { AgentInput } from '../../extensions/subagents/messages.tsx'
 import { LandingCard } from '../../extensions/workspaces/landing.tsx'
 
@@ -12,6 +12,7 @@ const conversations = [
   { id: 60, title: 'Fold cards in the chat' },
 ]
 vi.mock('@/sdk', async () => ({
+  ROOT: 1,
   Card: (await import('../../web/src/app/card.tsx')).Card,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   api: { action: () => new Promise(() => {}) },
@@ -46,7 +47,7 @@ it("folds a standing agent's landing to its @name, not the feature it carried at
         card: 1,
         tone: 'landed',
         headline: 'Landed',
-        from,
+        from: from as ConversationId,
         sha: '5e1f0a2abc',
         subject: { feature: 'Chat Cards', title: 'Fold cards in the chat' },
       }),
@@ -61,6 +62,7 @@ it('names a report by its standing agent, a subagent by its definition', () => {
       createElement(AgentInput, {
         entry: {
           id: 2,
+          kind: 'subagents.report',
           data: { kind: 'report', agent: 'worker', sender, body: 'done' },
         } as unknown as EntryRecord,
       }),

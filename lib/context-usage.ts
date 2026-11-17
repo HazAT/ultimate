@@ -2,11 +2,70 @@ import type { AssistantMessage, Message, Tool, Usage } from '@earendil-works/pi-
 import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 
-/** What a response's prompt took: the context it was sent with. */
 export const promptTokens = (usage: Pick<Usage, 'input' | 'cacheRead' | 'cacheWrite'>) =>
   usage.input + usage.cacheRead + usage.cacheWrite
 
-/** Context fill; absent tokens or window leave the percentage unknown. */
+export interface CacheBust {
+  written: number
+  read: number
+  before: number
+  gap: number
+  cause: 'system' | 'model' | 'expired' | 'prefix'
+  system?: number
+}
+
+const minimumFreshTokensForCacheBust = 5000
+
+export function cacheBusts(entries: readonly EntryRecord[]): Map<number, CacheBust> {
+  const known = cacheBustsByTranscript.get(entries)
+  if (known) return known
+  const busts = new Map<number, CacheBust>()
+  let previous: AssistantMessage | undefined
+  let system: number | undefined
+  for (const entry of entries) {
+    const rebuildsOnPurpose = entry.kind === 'pi.compaction' || entry.kind === 'pi.reset'
+    if (rebuildsOnPurpose) previous = undefined
+    if (entry.kind === 'pi.system') system = entry.id
+    const message = entry.model?.[0]
+    if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') continue
+    const { usage } = message
+    if (promptTokens(usage) === 0) continue
+    if (previous) {
+      const before = promptTokens(previous.usage)
+      const written = usage.input + usage.cacheWrite
+      if (usage.cacheRead < before / 2 && written >= minimumFreshTokensForCacheBust) {
+        const gapMs = message.timestamp - previous.timestamp
+        const oneHourCacheMs = 3600_000
+        const defaultProviderCacheMs = 300_000
+        const cacheTtlMs =
+          (previous.usage.cacheWrite1h ?? 0) > 0 ? oneHourCacheMs : defaultProviderCacheMs
+        const cause =
+          system !== undefined
+            ? 'system'
+            : `${previous.provider}/${previous.model}` !== `${message.provider}/${message.model}`
+              ? 'model'
+              : gapMs > cacheTtlMs
+                ? 'expired'
+                : 'prefix'
+        busts.set(entry.id, {
+          written,
+          read: usage.cacheRead,
+          before,
+          gap: gapMs,
+          cause,
+          ...(system !== undefined && { system }),
+        })
+      }
+    }
+    previous = message
+    system = undefined
+  }
+  cacheBustsByTranscript.set(entries, busts)
+  return busts
+}
+
+const cacheBustsByTranscript = new WeakMap<readonly EntryRecord[], Map<number, CacheBust>>()
+
 export function contextUsage(
   { tokens, window, estimated }: { tokens?: number; window?: number; estimated?: boolean },
   at: number,
@@ -20,42 +79,35 @@ export function contextUsage(
   }
 }
 
-/**
- * The latest answer. After a compaction or reset (`marker`) the measured context size is `stale` until a newer
- * response; without either, an empty context. A compaction's view lists its marker before the kept entries, so entry
- * IDs, not positions, tell which came last.
- */
 export function lastAssistant(entries: readonly EntryRecord[]) {
   let marker: EntryRecord | undefined
   let message: AssistantMessage | undefined
-  let answered = -1
+  let latestAssistantEntryId = -1
   for (const entry of entries) {
     if (entry.kind === 'pi.compaction' || entry.kind === 'pi.reset') {
       if (!marker || entry.id > marker.id) marker = entry
     }
     const model = entry.model?.[0]
-    if (entry.kind === 'pi.assistant' && model?.role === 'assistant' && entry.id > answered) {
+    if (
+      entry.kind === 'pi.assistant' &&
+      model?.role === 'assistant' &&
+      entry.id > latestAssistantEntryId
+    ) {
       message = model
-      answered = entry.id
+      latestAssistantEntryId = entry.id
     }
   }
-  if (marker && answered < marker.id) return { stale: true, marker: marker.id }
+  if (marker && latestAssistantEntryId < marker.id) return { stale: true, marker: marker.id }
   return message ? { message, stale: false } : { stale: false }
 }
 
-/**
- * Estimated tokens of the next request after a compaction or reset, before a response measures it: the system prompt
- * and tools in effect at the end of the `previous` context, replayed from its system messages, plus the `current`
- * context's other messages (the summary or handoff and the kept entries). Generation writes a fresh baseline after a
- * head marker, so system messages kept in `current` do not count twice.
- */
 export function estimateAfterHead(previous: readonly Message[], current: readonly Message[]) {
-  let base: Extract<Message, { role: 'system' }>['content'] | undefined
+  let previousSystemBaseline: Extract<Message, { role: 'system' }>['content'] | undefined
   const sections = new Map<string, string>()
   const tools = new Map<string, Tool>()
   for (const message of previous) {
     if (message.role !== 'system') continue
-    base ??= message.content
+    previousSystemBaseline ??= message.content
     for (const [name, text] of Object.entries(message.sections ?? {}))
       if (text === null) sections.delete(name)
       else sections.set(name, text)
@@ -64,12 +116,11 @@ export function estimateAfterHead(previous: readonly Message[], current: readonl
   }
   const system = estimateMessageTokens({
     role: 'system',
-    content: base ?? '',
+    content: previousSystemBaseline ?? '',
     sections: Object.fromEntries(sections),
     toolsAdded: [...tools.values()],
     timestamp: 0,
   })
-  return current
-    .filter((message) => message.role !== 'system')
-    .reduce((sum, message) => sum + estimateMessageTokens(message), system)
+  const nonSystemMessages = current.filter((message) => message.role !== 'system')
+  return nonSystemMessages.reduce((sum, message) => sum + estimateMessageTokens(message), system)
 }

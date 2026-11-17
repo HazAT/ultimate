@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { BotIcon, BrainIcon, GitMergeIcon, icons, ScrollTextIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn, useDocOf } from '@/sdk'
@@ -5,23 +6,34 @@ import type { MarkTint } from '../../lib/marks.ts'
 import { MarksDoc } from './refs.ts'
 import type { AgentMarkStyle } from './refs.ts'
 
-/** The display names of the agents Ultimate ships with; any other standing agent is its name, capitalised. */
-const names: Record<string, string> = {
+const builtinAgentTitles: Record<string, string> = {
   ultimate: 'Ultimate',
   lander: 'Lander',
 }
-export const agentTitle = (name: string) =>
-  names[name] ?? name.charAt(0).toUpperCase() + name.slice(1)
+const agentTitle = (name: string) =>
+  builtinAgentTitles[name] ?? name.charAt(0).toUpperCase() + name.slice(1)
 
-/**
- * Each built-in tile: its tint and glyph. Glyphs size to the tile through `size-[60%]`. Every other standing agent
- * takes its definition's `icon` and `tint` (the marks doc), else the grey bot.
- */
-const tiles: Record<string, { tint: string; glyph: ReactNode }> = {
+export function useAgentTitle(name: string) {
+  const marks = useDocOf(ROOT, MarksDoc)
+  const marksPending = marks === undefined
+  if (marksPending) return { title: '', brand: false }
+  const title = marks?.[name]?.title
+  return { title: title ?? agentTitle(name), brand: name === 'ultimate' && !title }
+}
+
+export const standingPlaceholder = (name: string | undefined, title: string, busy: boolean) =>
+  name && name !== 'ultimate' && title && !busy ? `Message ${title}…` : undefined
+
+export const AgentTitle = ({ name }: { name: string }) => useAgentTitle(name).title
+
+const initialGlyph = (text: string) => (
+  <span className="font-sans leading-none font-semibold">{text}</span>
+)
+
+const builtinAgentTiles: Record<string, { tint: string; glyph: ReactNode }> = {
   ultimate: {
     tint: 'bg-brand/12 text-brand ring-brand/25',
-    // The top bar's wordmark, reduced to its first letter.
-    glyph: <span className="font-sans leading-none font-semibold">U</span>,
+    glyph: initialGlyph('U'),
   },
   lander: {
     tint: 'bg-success/10 text-success ring-success/25',
@@ -39,8 +51,7 @@ const tiles: Record<string, { tint: string; glyph: ReactNode }> = {
 const fallbackTint = 'bg-muted text-muted-foreground ring-border'
 const fallbackGlyph = <BotIcon className="size-[60%]" strokeWidth={2} />
 
-/** The classes of each tint a definition may name; spelled out so Tailwind generates them. */
-const tints: Record<MarkTint, string> = {
+const tailwindTintClasses: Record<MarkTint, string> = {
   violet: 'bg-violet-500/12 text-violet-600 ring-violet-500/25 dark:text-violet-300',
   blue: 'bg-blue-500/12 text-blue-600 ring-blue-500/25 dark:text-blue-300',
   green: 'bg-emerald-500/12 text-emerald-600 ring-emerald-500/25 dark:text-emerald-300',
@@ -51,7 +62,6 @@ const tints: Record<MarkTint, string> = {
   grey: fallbackTint,
 }
 
-/** A lucide icon by the name a definition gives, PascalCase or kebab-case; undefined for an unknown one. */
 const iconOf = (name: string) =>
   icons[
     name.replace(/(^|-)([a-z0-9])/g, (_, _dash: string, letter: string) =>
@@ -60,7 +70,6 @@ const iconOf = (name: string) =>
   ]
 
 const warned = new Set<string>()
-/** A standing agent's tile as its definition's `icon` and `tint` ask, else the grey bot. */
 function definedTile(style: AgentMarkStyle | undefined) {
   const Icon = style?.icon ? iconOf(style.icon) : undefined
   if (style?.icon && !Icon && !warned.has(style.icon)) {
@@ -68,42 +77,47 @@ function definedTile(style: AgentMarkStyle | undefined) {
     console.warn(`Unknown lucide icon "${style.icon}" in an agent definition; showing the default`)
   }
   return {
-    tint: (style?.tint && tints[style.tint as MarkTint]) || fallbackTint,
+    tint: (style?.tint && tailwindTintClasses[style.tint as MarkTint]) || fallbackTint,
     glyph: Icon ? <Icon className="size-[60%]" strokeWidth={2} /> : fallbackGlyph,
   }
 }
 
-/** The presence dot in a mark's corner: pulsing while it works, amber while it waits on you, else muted. */
-export type Presence = 'working' | 'waiting' | 'idle'
+export type Presence = 'working' | 'waiting' | 'awaiting' | 'idle'
 
-/**
- * An agent's avatar: a small rounded tile in its colour with its glyph, the same in the sidebar, the title bar and
- * chat headers. `name` is a standing agent's name, `lander`, `root` for a project's context or `memory` for its memory.
- */
 export function AgentMark({
   name,
   size = 'md',
   presence,
 }: {
   name: string
-  size?: 'xs' | 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   presence?: Presence
 }) {
-  const styles = useDocOf(1, MarksDoc)
-  const tile = tiles[name] ?? definedTile(styles?.[name])
+  const marks = useDocOf(ROOT, MarksDoc)
+  const style = marks?.[name]
+  const tile = builtinAgentTiles[name] ?? definedTile(style)
+  const titleInitialAfterMarksArrive =
+    name !== 'ultimate'
+      ? tile.glyph
+      : marks === undefined
+        ? null
+        : style?.title
+          ? initialGlyph(Array.from(style.title)[0])
+          : tile.glyph
   return (
     <span
       aria-hidden
       className={cn(
         'relative inline-flex shrink-0 items-center justify-center rounded-[5px] ring-1 ring-inset',
         tile.tint,
+        size === 'lg' && 'size-10 rounded-[8px] text-[18px]',
         size === 'md' && 'size-6 text-[12px]',
         size === 'sm' && 'size-4 rounded-[4px] text-[9.5px]',
         size === 'xs' && 'size-3.5 rounded-[3px] text-[8.5px]',
       )}
       data-agent-mark={name}
     >
-      {tile.glyph}
+      {titleInitialAfterMarksArrive}
       {presence && (
         <span
           className={cn(
@@ -113,7 +127,9 @@ export function AgentMark({
               ? 'animate-pulse-dot bg-brand'
               : presence === 'waiting'
                 ? 'bg-amber-400'
-                : 'bg-muted-foreground/60',
+                : presence === 'awaiting'
+                  ? 'bg-brand'
+                  : 'bg-muted-foreground/60',
           )}
           data-presence={presence}
         />

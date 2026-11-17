@@ -2,7 +2,7 @@
  * Classify: typed judgments (choice, yes/no, score) over JSON state from TypeSafe's models, for extensions that need a
  * cheap structured verdict instead of a chat completion.
  */
-import type { JsonValue } from '@earendil-works/chord'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { defineApi } from '../../shared/extension-api.ts'
 
 /** One question: its instructions and the criteria for each choice, outcome or score. */

@@ -3,16 +3,13 @@ import { FileDiffIcon } from 'lucide-react'
 import { Fold } from '@/sdk'
 import { Lines } from './comment.tsx'
 import { commentCount, location } from './comments.ts'
-import type { ReviewComments } from './comments.ts'
+import { ReviewCommentsEntry } from './entries.ts'
 import { openReview } from './link.tsx'
 import { shortSpec } from './selector.tsx'
 
-/**
- * A review the user sent, in its recipient's transcript: on the user's side, like their typed messages. Each comment's
- * place opens Review at that spec, file and line.
- */
 export function ReviewCard({ entry }: { entry: EntryRecord }) {
-  const { spec, comments, note } = entry.data as ReviewComments
+  if (!ReviewCommentsEntry.is(entry)) return null
+  const { spec, comments, note } = entry.data
   const title = (
     <>
       Review · {commentCount(comments.length)} on{' '}
@@ -46,7 +43,6 @@ export function ReviewCard({ entry }: { entry: EntryRecord }) {
           )}
           <ol className="divide-y divide-border/60">
             {comments.map((comment, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Fixed submitted comments can share the same location.
               <li className="space-y-1.5 px-3 py-2.5" key={index}>
                 <button
                   className="flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded border border-border/70 bg-background/60 px-1.5 py-0.5 font-mono text-[11px] hover:border-brand/50 hover:text-foreground"

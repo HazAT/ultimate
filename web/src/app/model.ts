@@ -1,5 +1,6 @@
 import type { AssistantMessage, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord, LiveState, ToolDiagnostic, ToolSlot } from '@earendil-works/pi-durable'
+import { ToolResultEntry } from '@earendil-works/pi-durable'
 import type { ToolCallView } from '../sdk/types.ts'
 
 export interface ToolResult {
@@ -7,14 +8,13 @@ export interface ToolResult {
   diagnostics: readonly ToolDiagnostic[]
 }
 
-/** Tool results by call id, and the ids of calls some assistant entry made. */
 export function indexTools(entries: readonly EntryRecord[]) {
   const results = new Map<string, ToolResult>()
   const calls = new Set<string>()
   for (const entry of entries) {
     const message = entry.model?.[0]
-    if (entry.kind === 'pi.tool-result' && message?.role === 'toolResult') {
-      const data = entry.data as { diagnostics?: ToolDiagnostic[] } | undefined
+    if (ToolResultEntry.is(entry) && message?.role === 'toolResult') {
+      const data = entry.data
       results.set(message.toolCallId, {
         message,
         diagnostics: data?.diagnostics ?? [],
@@ -30,8 +30,7 @@ export function slotsOf(tools: LiveState['tools']): Map<string, ToolSlot> {
   return new Map((tools ?? []).map((slot) => [slot.callId, slot]))
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.0 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
-/** The result's text, without the `<harness>` block that repeats its diagnostics for the model. */
+// Pi upstream: @earendil-works/pi-durable@1.5.2 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
 export function resultText(result: ToolResult): string {
   const texts = result.message.content.flatMap((block) =>
     block.type === 'text' ? [block.text] : [],
@@ -40,15 +39,11 @@ export function resultText(result: ToolResult): string {
   return texts.join('')
 }
 
-/** When the calls of an answer start: once its response ended (legacy answers without a duration: when it was asked). */
 export function callsStart(message: AssistantMessage): number {
-  return message.timestamp + (message.durationMs ?? 0)
+  const responseDurationMsOrZero = () => message.durationMs ?? 0
+  return message.timestamp + responseDurationMsOrZero()
 }
 
-/**
- * A tool call's view, timed from durable timestamps so a call first seen mid-run shows how long it really ran:
- * `startedAt` is `callsStart` of the call's answer, used while it runs and for results without their own duration.
- */
 export function toolCallView(
   call: ToolCall,
   context: {
@@ -66,9 +61,8 @@ export function toolCallView(
   else if (streaming) status = 'streaming'
   else status = busy ? 'pending' : 'interrupted'
 
-  // Finished: the result's own timestamp and duration. Live: since its answer ended. Interrupted: no times.
   const endedAt = result?.message.timestamp
-  const startedAt = result
+  const completedOrLiveStartedAt = result
     ? result.message.durationMs === undefined
       ? context.startedAt
       : result.message.timestamp - result.message.durationMs
@@ -88,13 +82,12 @@ export function toolCallView(
     ...(slot?.droppedBytes
       ? { dropped: { bytes: slot.droppedBytes, lines: slot.droppedLines ?? 0 } }
       : {}),
-    startedAt,
-    endedAt: startedAt === undefined ? undefined : endedAt,
+    startedAt: completedOrLiveStartedAt,
+    endedAt: completedOrLiveStartedAt === undefined ? undefined : endedAt,
     result: result?.message,
   }
 }
 
-/** The streaming partial of the current generation, if any. */
 export function partialOf(live: LiveState): AssistantMessage | undefined {
   return live.generation?.message
 }

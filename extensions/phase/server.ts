@@ -47,11 +47,7 @@ export const Phases = defineDoc<PhaseState>({
   initial: () => ({ conversations: {} }),
 })
 export const docs = [Phases]
-/**
- * A run's identity: its first input. Pi hands a run to a new generation after every tool round, so a generation id
- * would forget the phase between rounds; the run's inputs move with it.
- */
-async function runOf(tx: Tx, id: ConversationId) {
+async function firstRunInput(tx: Tx, id: ConversationId) {
   return (await tx.doc(LiveDoc, id)).run?.inputs[0]
 }
 const terminal = {
@@ -62,7 +58,6 @@ const terminal = {
 export default function phase(
   host: Pick<ExtensionHost, 'want' | 'harness' | 'projectRoot' | 'conversations'>,
 ) {
-  // Optional services, resolved where they are called; declared here so the catalogue lists them.
   host.want(ClassifyApi)
   const ClassifyTask = defineTask<{ run: number }, { phase: 'classify' }, null>({
     name: 'phase.classify',
@@ -91,17 +86,16 @@ export default function phase(
             if (!conversation) throw new Error('Conversation unavailable')
             const entries: EntryRecord[] = []
             let cursor: Cursor | undefined
-            let request = false
-            // Only the current request's work: older runs, and a branch's inherited parent history, describe other work.
+            let reachedCurrentRequestInput = false
             do {
               const page = await conversation.entries({ order: 'descending' }, 64, cursor, context)
               for (const entry of page.items) {
                 entries.push(entry)
-                request = isInput(entry)
-                if (request) break
+                reachedCurrentRequestInput = isInput(entry)
+                if (reachedCurrentRequestInput) break
               }
               cursor = page.next
-            } while (cursor !== undefined && !request)
+            } while (cursor !== undefined && !reachedCurrentRequestInput)
             entries.reverse()
             const result = await service.ask(
               {
@@ -117,8 +111,8 @@ export default function phase(
             answer = await runtime.memo('answer', result.answers.phase, context)
           }
         } catch (error) {
-          if (runtime.signal.aborted) throw error
-          // Classification is advisory: provider failures never fail the agent's run.
+          const advisoryFailureWithoutCancellation = !runtime.signal.aborted
+          if (!advisoryFailureWithoutCancellation) throw error
         }
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
@@ -149,7 +143,7 @@ export default function phase(
       hook(GenerationTask, {
         beforeRequest: async (_request, api, context) => {
           await host.harness().commit(async (tx) => {
-            const run = await runOf(tx, api.conversationId)
+            const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
             const row = state.conversations[api.conversationId]
             if (run === undefined || row?.run === run) return
@@ -162,7 +156,7 @@ export default function phase(
         afterTools: async (_assistant, _results, api, context) => {
           if (!host.want(ClassifyApi)) return
           await host.harness().commit(async (tx) => {
-            const run = await runOf(tx, api.conversationId)
+            const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
             if (run === undefined || state.conversations[api.conversationId]?.pending !== undefined)
               return

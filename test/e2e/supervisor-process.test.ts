@@ -168,6 +168,16 @@ process.on('message',(message:{type:string})=>{ if(message.type==='go')process.s
       (await post(first.url, '/api/conversations/1/configure', { thinkingLevel: 'off' })).status,
     ).toBe(200)
   }, 60000)
+  it('keeps a supervised core running when a process outside the supervisor sends it SIGTERM', async () => {
+    const running = await fixture()
+    const stream = await attach(running.url)
+    const pid = stream.system().process.pid
+    process.kill(pid, 'SIGTERM')
+    await until(() => running.output().includes(`Ignored SIGTERM sent to core pid ${pid}`))
+    expect(running.output()).not.toContain('exited unexpectedly')
+    expect((await fetch(running.url + '/api/models')).status).toBe(200)
+    expect(() => process.kill(pid, 0)).not.toThrow()
+  }, 60000)
   it('terminates an orphaned storage owner before booting a new supervisor', async () => {
     const running = await fixture()
     const stream = await attach(running.url)

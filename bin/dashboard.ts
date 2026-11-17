@@ -3,11 +3,9 @@ import { stripVTControlCharacters } from 'node:util'
 import { createLogUpdate } from 'log-update'
 import type { CoreReport } from '../server/supervisor-protocol.ts'
 
-const plain = (text: string) =>
-  // Child diagnostics must not be able to control the terminal, including carriage returns.
-  // eslint-disable-next-line no-control-regex
-  stripVTControlCharacters(text).replace(/[\r\x00-\x08\x0b-\x1f\x7f]/g, '')
-const row = (text: string) => plain(text).replaceAll('\n', ' ').slice(0, 240)
+const terminalSafeText = (text: string) =>
+  stripVTControlCharacters(text).replace(/(?![\t\n\u0080-\u009f])\p{Cc}/gu, '')
+const row = (text: string) => terminalSafeText(text).replaceAll('\n', ' ').slice(0, 240)
 
 export function dashboard(logPath: string, output: NodeJS.WriteStream = process.stdout) {
   const tty = output.isTTY
@@ -41,7 +39,7 @@ export function dashboard(logPath: string, output: NodeJS.WriteStream = process.
   }
   const log = (level: 'info' | 'warn' | 'error', source: string, text: string) => {
     if (closed) return
-    text = plain(text)
+    text = terminalSafeText(text)
     try {
       appendFileSync(
         logPath,
@@ -82,7 +80,6 @@ export function dashboard(logPath: string, output: NodeJS.WriteStream = process.
         web = message.state
         log('info', 'web', message.state)
       } else {
-        // The core logs each change itself (`Ultimate: … (remote)`); the dashboard only keeps the current ones on top.
         origins = message.origins
         draw()
       }

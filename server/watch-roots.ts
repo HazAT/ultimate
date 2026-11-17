@@ -1,7 +1,7 @@
 import { existsSync, watch } from 'node:fs'
 import { dirname } from 'node:path'
+import { isMissing } from '../lib/errors.ts'
 
-/** Watch missing roots through their nearest existing parent, without scanning siblings. */
 export function watchRoots(roots: string[], appeared: (root: string) => void) {
   const cleanups = roots.map((root) => {
     let closed = false
@@ -11,8 +11,8 @@ export function watchRoots(roots: string[], appeared: (root: string) => void) {
     const attach = () => {
       let ancestor = dirname(root)
       while (!existsSync(ancestor)) ancestor = dirname(ancestor)
-      // Sibling activity must not churn watchers, especially when the ancestor is /tmp.
-      if (ancestor !== watchedAncestor) {
+      const nearestExistingAncestorChanged = ancestor !== watchedAncestor
+      if (nearestExistingAncestorChanged) {
         watcher?.close()
         for (;;) {
           try {
@@ -22,7 +22,7 @@ export function watchRoots(roots: string[], appeared: (root: string) => void) {
             watchedAncestor = ancestor
             break
           } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            if (!isMissing(error)) throw error
             ancestor = dirname(ancestor)
           }
         }

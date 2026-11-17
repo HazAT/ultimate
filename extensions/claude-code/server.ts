@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   createClaudeCodeProvider,
   claudeCodeEnv,
@@ -5,13 +6,15 @@ import {
 import {
   getClaudeStatus,
   closeClaudeProcesses,
+  useExchangeTap,
   useSpawn,
 } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { spawn } from '../../lib/spawn.ts'
-import { ClaudeCodeEnv } from './api.ts'
+import { rebuiltOnOpen, inProcess } from '../../lib/errors.ts'
+import { ClaudeCodeEnv, ClaudeCodeExchanges } from './api.ts'
 import type { ClaudeCodeEnvService } from './api.ts'
 import { StatusAction } from './refs.ts'
 
@@ -25,78 +28,105 @@ export function createUltimateClaudeCodeProvider() {
           ? { ...model, thinkingLevelMap: { ...model.thinkingLevelMap, off: null } }
           : model,
       )
-  // Both getters must adapt the current catalog, including discovered/restored rows.
-  // Upstream exposes only chat models. Keep its transport and refresh implementation intact.
   return { ...provider, getModels, getAllModels: getModels }
 }
 
-/**
- * The state retained across facet reloads: data and long-lived handles only, never behaviour, so new code takes
- * effect on reload. A reloaded facet gets the object an earlier load created, possibly by older code with other
- * fields, so each load adds what its own code needs: a missing field is created, one of another kind replaced. A
- * field whose meaning changes but whose kind stays the same needs a new name. Facets of every version share
- * `active`, `closing` and `facets` (process cleanup, captured registrations, registration handoff) on one object,
- * which is why a new resource key per shape would break them: never rename these three.
- */
-const fields = {
+type StableLifecycleFields = {
+  readonly active: Set<Promise<unknown>>
+  closing: boolean
+  readonly facets: Set<symbol>
+}
+type RenameOnMeaningChangeFields = {
+  provider: ReturnType<typeof createUltimateClaudeCodeProvider>
+  sessions: Map<string, ConversationId>
+}
+type ReloadSharedProviderState = StableLifecycleFields & RenameOnMeaningChangeFields
+
+const reloadSharedFieldFactories: {
+  [K in keyof ReloadSharedProviderState]: () => ReloadSharedProviderState[K]
+} = {
   provider: () => createUltimateClaudeCodeProvider(),
-  /** Settlement of every request still streaming, from any facet. */
   active: () => new Set<Promise<unknown>>(),
   closing: () => false,
   facets: () => new Set<symbol>(),
-  // Requests carry Pi's provider session id, not a conversation: `beforeRequest` below maps one to the other.
-  sessions: () => new Map<string, number>(),
+  sessions: () => new Map<string, ConversationId>(),
 }
-type Shared = { [K in keyof typeof fields]: ReturnType<(typeof fields)[K]> }
-
 export default function claudeCode(host: ExtensionHost) {
-  // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useSpawn (patched). Claude Code starts from the
-  // process helper, so a launch does not block this process.
+  // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useSpawn (patched).
   useSpawn(spawn)
+  // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts useExchangeTap (patched).
+  useExchangeTap(({ sessionId, model, exchange }) => {
+    const exchanges = host.want(ClaudeCodeExchanges)
+    if (!exchanges) return
+    exchanges.record({
+      conversationId: sessionId === undefined ? undefined : shared.sessions.get(sessionId),
+      model,
+      url: exchange.url,
+      startedAt: exchange.startedAt,
+      endedAt: exchange.endedAt,
+      requestHeaders: exchange.requestHeaders,
+      requestBody: exchange.requestBody.toString('utf8'),
+      ...(exchange.status === undefined ? {} : { status: exchange.status }),
+      responseHeaders: exchange.responseHeaders,
+      response: exchange.response.toString('utf8'),
+      ...(exchange.failure === undefined ? {} : { failure: exchange.failure }),
+      ...(exchange.message === undefined ? {} : { message: exchange.message }),
+    })
+  })
   const shared = host.resource('claude-code.provider', () => {
-    const state = {} as Shared
+    const state = {} as ReloadSharedProviderState
     host.onClose(async () => {
       state.closing = true
-      // Extension cleanup precedes harness suspension. Let its signal stop active
-      // requests before closing warm workers; never turn suspension into an error.
       if (state.active.size)
-        void Promise.allSettled(state.active)
-          .then(() => closeClaudeProcesses())
-          .catch((error: unknown) =>
-            host.notice(`Closing Claude processes failed: ${String(error)}`),
-          )
+        inProcess(
+          'Claude processes are owned by this process',
+          Promise.allSettled(state.active)
+            .then(() => closeClaudeProcesses())
+            .catch((error: unknown) =>
+              host.notice(`Closing Claude processes failed: ${String(error)}`),
+            ),
+        )
       else await closeClaudeProcesses()
     })
     return state
   })
-  for (const [key, create] of Object.entries(fields)) {
+  for (const [key, create] of Object.entries(reloadSharedFieldFactories)) {
     const value = create()
-    if ((Reflect.get(shared, key) as unknown)?.constructor !== value.constructor)
-      Reflect.set(shared, key, value)
+    const fieldIsMissingOrHasChangedKind =
+      (Reflect.get(shared, key) as unknown)?.constructor !== value.constructor
+    if (fieldIsMissingOrHasChangedKind) Reflect.set(shared, key, value)
   }
   const upstream = shared.provider
-  // What this facet adds to a request (its environment, its tracking) must never fail the request itself.
-  const withEnv = <O extends { env?: Record<string, string | undefined>; sessionId?: string }>(
+  const withBestEffortProjectEnv = <
+    O extends { env?: Record<string, string | undefined>; sessionId?: string },
+  >(
     options: O | undefined,
   ) => {
+    let extra: Record<string, string> | undefined
     try {
       const sessionId = options?.sessionId
       const env: ClaudeCodeEnvService | undefined = host.want(ClaudeCodeEnv)
-      const extra = env?.env(sessionId === undefined ? undefined : shared.sessions.get(sessionId))
-      return extra ? ({ ...options, env: { ...options?.env, ...extra } } as O) : options
+      extra = env?.env(sessionId === undefined ? undefined : shared.sessions.get(sessionId))
     } catch (error) {
       host.notice(`Claude Code environment lookup failed, using the default: ${String(error)}`)
-      return options
     }
+    const env: Record<string, string | undefined> = {
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY ?? '1',
+      ...options?.env,
+      ...extra,
+    }
+    return { ...options, env } as O
   }
   const track = (response: ReturnType<typeof upstream.streamSimple>) => {
     try {
-      const settled = response.result()
-      shared.active.add(settled)
-      void settled.then(
-        () => shared.active.delete(settled),
-        // The stream consumer receives the failure; tracking must not create another rejection.
-        () => shared.active.delete(settled),
+      const settlementForCleanupOnly = response.result()
+      shared.active.add(settlementForCleanupOnly)
+      inProcess(
+        'the active Claude request set belongs to this process',
+        settlementForCleanupOnly.then(
+          () => shared.active.delete(settlementForCleanupOnly),
+          () => shared.active.delete(settlementForCleanupOnly),
+        ),
       )
     } catch (error) {
       host.notice(`Claude Code request tracking failed, running it untracked: ${String(error)}`)
@@ -105,16 +135,14 @@ export default function claudeCode(host: ExtensionHost) {
   }
   const stream: typeof upstream.stream = (model, context, options) => {
     if (shared.closing) throw new Error('Claude Code provider is closing')
-    return track(upstream.stream(model, context, withEnv(options)))
+    return track(upstream.stream(model, context, withBestEffortProjectEnv(options)))
   }
   const streamSimple: typeof upstream.streamSimple = (model, context, options) => {
     if (shared.closing) throw new Error('Claude Code provider is closing')
-    return track(upstream.streamSimple(model, context, withEnv(options)))
+    return track(upstream.streamSimple(model, context, withBestEffortProjectEnv(options)))
   }
-  // The login check sees the project's environment, as its requests do: a project the env hook moves to another Claude
-  // config folder is available when that folder is logged in, whatever the default folder says.
   const apiKey = upstream.auth.apiKey!
-  const check: typeof apiKey.check = (input) => {
+  const checkAuthWithProjectEnv: typeof apiKey.check = (input) => {
     let extra: Record<string, string> | undefined
     try {
       extra = host.want(ClaudeCodeEnv)?.env(undefined)
@@ -130,9 +158,8 @@ export default function claudeCode(host: ExtensionHost) {
     ...upstream,
     stream,
     streamSimple,
-    auth: { ...upstream.auth, apiKey: { ...apiKey, check } },
+    auth: { ...upstream.auth, apiKey: { ...apiKey, check: checkAuthWithProjectEnv } },
   }
-  // Keep subscription accounting, but do not offer an in-app login for external auth.
   if (provider.auth.oauth) Reflect.deleteProperty(provider.auth.oauth, 'login')
   const facet = Symbol('claude-code')
   shared.facets.add(facet)
@@ -140,9 +167,17 @@ export default function claudeCode(host: ExtensionHost) {
     shared.facets.delete(facet)
     if (!shared.facets.size) host.modelRuntime.unregisterProvider(provider.id)
   })
-  // The replacement factory runs before the old facet closes. Keep its models
-  // registered throughout that handoff, including disposal of a failed reload.
   host.modelRuntime.registerNativeProvider(provider)
+  host.onOpen(async () => {
+    rebuiltOnOpen(
+      'Claude Code model discovery runs again on the next open',
+      getClaudeStatus(claudeCodeEnv())
+        .then((status) => discoverModelsAfterRegistration(host, status))
+        .catch((error: unknown) =>
+          host.notice(`Claude Code model discovery failed: ${String(error)}`),
+        ),
+    )
+  })
   return defineExtension({
     name: 'claude-code',
     hooks: [
@@ -160,6 +195,21 @@ export default function claudeCode(host: ExtensionHost) {
   })
 }
 
+async function discoverModelsAfterRegistration(
+  host: Pick<ExtensionHost, 'modelRuntime' | 'notice'>,
+  status: { loggedIn: boolean },
+  signal?: AbortSignal,
+) {
+  if (!status.loggedIn) return
+  const refreshed = await host.modelRuntime.refresh({
+    allowNetwork: true,
+    providers: ['claude-code'],
+    signal,
+  })
+  const error = refreshed.errors.get('claude-code')
+  if (error) host.notice(`Claude Code model discovery failed: ${String(error)}`)
+}
+
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) => {
     signal.throwIfAborted()
@@ -167,7 +217,8 @@ export const actions = {
     if (refreshed.aborted || refreshed.errors.has('claude-code'))
       throw new Error('Claude Code status refresh failed')
     const status = await getClaudeStatus(claudeCodeEnv(), signal)
-    // Only expose status metadata, never CLI output or account identity.
+    await discoverModelsAfterRegistration(host, status, signal)
+    signal.throwIfAborted()
     return {
       available: status.available,
       loggedIn: status.loggedIn,

@@ -1,9 +1,6 @@
-/**
- * The context brief a voice session starts from, put together in code, no model: the project memory a branch starts
- * from, the user's recent requests to @ultimate with the gist of each answer, and the open branches.
- */
-import type { Context } from '@earendil-works/chord'
 import type { ConversationId, Cursor, EntryRecord } from '@earendil-works/pi-durable'
+
+import type { Context } from '@earendil-works/chord/context'
 import type { Message } from '@earendil-works/pi-ai'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { formatAgo } from '../../lib/ago.ts'
@@ -11,12 +8,12 @@ import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { LineageApi } from '../lineage/api.ts'
+import { MessagesApi } from '../messages/api.ts'
 import type { VoiceContext } from './refs.ts'
 
-const REQUESTS = 5
-const BRANCHES = 8
-/** How far back into @ultimate's transcript to look for the recent requests. */
-const SCAN = 3000
+const recentUserRequestLimit = 5
+const openBranchLimit = 8
+const requestScanEntryLimit = 3000
 
 const clip = (text: string, max: number) =>
   text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
@@ -32,8 +29,7 @@ function contentText(content: Message['content']) {
     : content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
 }
 
-/** What the user asked in `entry`, or undefined when it is not a request from the user. */
-function request(entry: EntryRecord) {
+function userRequestOf(entry: EntryRecord) {
   const data = (entry.data ?? {}) as { text?: unknown; from?: unknown }
   if (entry.kind === 'voice.utterance' && typeof data.text === 'string')
     return { text: data.text, voice: true }
@@ -45,8 +41,7 @@ function request(entry: EntryRecord) {
   return undefined
 }
 
-/** What @ultimate told the user in `entry`: its message to the user, else its prose. */
-function said(entry: EntryRecord) {
+function lastUserFacingAnswer(entry: EntryRecord) {
   let text = ''
   for (const message of entry.model ?? []) {
     if (message.role !== 'assistant') continue
@@ -64,27 +59,28 @@ function said(entry: EntryRecord) {
   return text
 }
 
-/**
- * The user's newest requests to @ultimate, oldest first, each with the first line of what its run answered: the newest
- * text of the run the request started, before the next input (a branch's message, a wake-up) began another.
- */
-async function recentRequests(host: ExtensionHost, main: ConversationId, ctx: Context) {
+async function chronologicalRecentRequests(
+  host: ExtensionHost,
+  main: ConversationId,
+  ctx: Context,
+) {
   const conversation = (await host.harness().conversation(main, ctx))!
   const found: { entry: EntryRecord; text: string; voice: boolean; answer: string }[] = []
-  let answer = ''
+  let latestAnswerBeforeNextInput = ''
   let scanned = 0
   let cursor: Cursor | undefined
   scan: do {
     const page = await conversation.entries({ order: 'descending' }, 100, cursor, ctx)
     for (const entry of page.items) {
-      const asked = request(entry)
+      const asked = userRequestOf(entry)
       if (asked) {
-        found.push({ entry, ...asked, answer })
-        answer = ''
-        if (found.length === REQUESTS) break scan
-      } else if (isInput(entry)) answer = ''
-      else if (!answer && entry.kind === 'pi.assistant') answer = said(entry)
-      if (++scanned === SCAN) break scan
+        found.push({ entry, ...asked, answer: latestAnswerBeforeNextInput })
+        latestAnswerBeforeNextInput = ''
+        if (found.length === recentUserRequestLimit) break scan
+      } else if (isInput(entry)) latestAnswerBeforeNextInput = ''
+      else if (!latestAnswerBeforeNextInput && entry.kind === 'pi.assistant')
+        latestAnswerBeforeNextInput = lastUserFacingAnswer(entry)
+      if (++scanned === requestScanEntryLimit) break scan
     }
     cursor = page.next
   } while (cursor)
@@ -97,32 +93,36 @@ async function recentRequests(host: ExtensionHost, main: ConversationId, ctx: Co
   })
 }
 
-/** The open branches, newest activity first: not concluded, with their title and whether they are working. */
-async function openBranches(host: ExtensionHost, ctx: Context) {
+async function newestActiveOpenBranches(host: ExtensionHost, ctx: Context) {
   const concluded = await host.need(ConversationsApi).concluded(ctx)
   const now = Date.now()
   return host
     .conversations()
-    .filter((c) => c.branchOf && !c.parentConversationId && !concluded.has(c.id as ConversationId))
+    .filter((c) => c.branchOf && !c.parentConversationId && !concluded.has(c.id))
     .toSorted((a, b) => (b.inputAt ?? 0) - (a.inputAt ?? 0))
-    .slice(0, BRANCHES)
+    .slice(0, openBranchLimit)
     .map(
       (c) =>
         `- #${c.id} "${clip(c.title ?? 'untitled', 120)}" · ${c.busy ? 'working' : 'idle'}${c.inputAt ? ` · last input ${formatAgo(c.inputAt, now, { ago: true })}` : ''}`,
     )
 }
 
-/** The brief for a session of @ultimate's voice, `main` being @ultimate's conversation. */
 export async function voiceBrief(
   host: ExtensionHost,
   main: ConversationId,
   ctx: Context,
 ): Promise<VoiceContext> {
-  const [memory, requests, branches] = await Promise.all([
+  const [memory, requests, branches, questions] = await Promise.all([
     host.need(LineageApi).memoryBrief(main, ctx),
-    recentRequests(host, main, ctx),
-    openBranches(host, ctx),
+    chronologicalRecentRequests(host, main, ctx),
+    newestActiveOpenBranches(host, ctx),
+    host.need(MessagesApi).openQuestions(ctx),
   ])
+  const now = Date.now()
+  const asker = (id: number) =>
+    id === main
+      ? '@ultimate'
+      : `#${id} "${clip(host.conversations().find((c) => c.id === id)?.title ?? 'untitled', 80)}"`
   const text = [
     '<voice_context>',
     'Context for this voice session: background for understanding what the user refers to, not a request.',
@@ -135,6 +135,15 @@ export async function voiceBrief(
     branches.length
       ? `Open branches (conversations @ultimate started for a feature or fix):\n${branches.join('\n')}`
       : 'No open branches.',
+    '',
+    questions.length
+      ? `Open questions waiting on the user, oldest first (the Inbox order):\n${questions
+          .map(
+            (q) =>
+              `- message ${q.message} from ${asker(q.conversation)}: ${q.text} (asked ${formatAgo(q.at, now, { ago: true })})`,
+          )
+          .join('\n')}`
+      : 'No open questions.',
     '</voice_context>',
   ].join('\n')
   return {
@@ -142,6 +151,7 @@ export async function voiceBrief(
     memories: memory?.memories ?? 0,
     requests: requests.length,
     branches: branches.length,
+    questions: questions.length,
     tokens: estimateTextTokens(text),
     at: Date.now(),
   }

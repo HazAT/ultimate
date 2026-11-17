@@ -28,6 +28,7 @@ import {
   cn,
   errorMessage,
   formatDuration,
+  keepLast,
   shortenPath,
   useAction,
   useCommands,
@@ -42,6 +43,7 @@ import {
   useUltimate,
   useViewport,
 } from '@/sdk'
+import { debounce, every } from '../../lib/timers.ts'
 import { AutomationForm } from './form.tsx'
 import {
   BusyDot,
@@ -77,12 +79,6 @@ import {
 import { RunLabel, WatcherLabel } from './types.ts'
 import type { Automation, AutomationListItem, Run, Schedule } from './refs.ts'
 
-/**
- * Refetches when automation work changes: a scheduler, run or delivery task in the live task graph, or a run or watcher
- * conversation appearing or settling (a quick run can start and finish between two graph updates). The session
- * document itself is not streamed, so this is how fires show up between polls. A next run left in the past means a
- * fire went unseen, such as a skipped one, so it refetches every two seconds until the time moves on.
- */
 export function useLive(overdue: boolean, now: number) {
   const graph = useTasks()
   const conversations = useConversations()
@@ -103,14 +99,14 @@ export function useLive(overdue: boolean, now: number) {
   useEffect(() => {
     if (seen.current === signature) return undefined
     seen.current = signature
-    const timer = setTimeout(() => void refreshAutomations(), 100)
-    return () => clearTimeout(timer)
+    const refresh = debounce(100, () => void refreshAutomations())
+    refresh()
+    return refresh.cancel
   }, [signature])
-  const polled = useRef(0)
+  const lastOverdueRefreshAt = useRef(0)
   useEffect(() => {
-    if (!overdue || now - polled.current < 2000) return
-    polled.current = now
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in its state.
+    if (!overdue || now - lastOverdueRefreshAt.current < 2000) return
+    lastOverdueRefreshAt.current = now
     void refreshAutomations()
   }, [overdue, now])
   useEffect(() => {
@@ -124,10 +120,6 @@ const subscribe = (listener: () => void) => {
   document.addEventListener('visibilitychange', listener)
   return () => document.removeEventListener('visibilitychange', listener)
 }
-/**
- * Whether the panel is open in a visible tab: fast polling runs only then. Below desktop width the panel overlays the
- * conversation and stays mounted while folded away, so its open state is read as the shell keeps it.
- */
 function useShown() {
   const visible = useSyncExternalStore(subscribe, () => document.visibilityState === 'visible')
   const on = useViewport()
@@ -147,17 +139,15 @@ const raw = (schedule: Schedule | undefined) =>
         ? `at ${schedule.time}`
         : `every ${schedule.ms / 1000}s`
 
-/** The schedule in words, from the backend's `describe`; a one-shot needs only its time. */
 function useWords(schedule: Schedule | undefined, now: number) {
   const { data } = useAction(
     DescribeAction,
     { schedule: schedule ?? '' },
-    { enabled: !!schedule && schedule.kind !== 'at', onError: () => {} },
+    { enabled: !!schedule && schedule.kind !== 'at', onError: keepLast },
   )
   return schedule ? words(schedule, data?.description ?? raw(schedule), now) : ''
 }
 
-/** The trigger in words: the schedule, or what the script watches for. */
 function Trigger({ automation, now }: { automation: Automation; now: number }) {
   const described = useWords(automation.schedule, now)
   const script = automation.script
@@ -169,11 +159,9 @@ function Trigger({ automation, now }: { automation: Automation; now: number }) {
   )
 }
 
-/** A subscriber as people address it: `#12` or `@ultimate`. */
 const address = (subscriber: number | string) =>
   typeof subscriber === 'number' ? `#${subscriber}` : subscriber
 
-/** What a fire does: wake conversations, start a prompt run, or both. */
 function actions(automation: Automation) {
   const wakes = automation.subscribers.length
   return [
@@ -186,10 +174,8 @@ function actions(automation: Automation) {
     .join(' · ')
 }
 
-/** The answer's first line without its Markdown marks: `## Complete` reads as `Complete`. */
 const plain = (line: string) => line.replace(/^[\s#>*+-]+/, '').replace(/[*_`]+/g, '')
 
-/** One past run: status, fire time, the first line of its answer, and a way into its conversation. */
 function RunRow({ run, now }: { run: Run; now: number }) {
   const { conversationId, switchConversation } = useUltimate()
   const conversation = useConversationSummary(run.conversationId)
@@ -251,7 +237,6 @@ function RunRow({ run, now }: { run: Run; now: number }) {
 
 const FIRST = 8
 
-/** Past runs, newest first; the backend keeps the last 50. */
 function Runs({ runs, now }: { runs: Run[]; now: number }) {
   const [all, setAll] = useState(false)
   if (runs.length === 0)
@@ -281,7 +266,6 @@ function Runs({ runs, now }: { runs: Run[]; now: number }) {
   )
 }
 
-/** Runs an action, showing its error inline and refreshing the shared list after. */
 function useAct() {
   const [error, setError] = useState<string>()
   const act = async (work: () => Promise<unknown>) => {
@@ -306,7 +290,6 @@ function ErrorLine({ error }: { error?: string }) {
   )
 }
 
-/** Pause or resume, for both triggers: a script stops its process, a schedule its scheduler. */
 function Toggle({
   automation,
   now,
@@ -322,7 +305,6 @@ function Toggle({
   const checked = pending ?? automation.enabled
   const toggle = (enabled: boolean) => {
     setPending(enabled)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(enabled ? ResumeAction : PauseAction, { id: automation.id })).finally(
       () => setPending(undefined),
     )
@@ -381,12 +363,10 @@ function AutomationRow({
   const runNow = () => {
     setBusy('run')
     if (!script) onExpand(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => setBusy(undefined))
   }
   const remove = () => {
     setBusy('delete')
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors and refreshes the list.
     void act(async () => {
       await api.action(DeleteAction, { id: automation.id })
       onDeleted()
@@ -585,10 +565,6 @@ function AutomationRow({
   )
 }
 
-/**
- * The right panel's Automations tab: every automation, worst first, both triggers in one list. It follows the shown
- * conversation: a script's watcher shows that script beside it until "back"; any other conversation shows the list.
- */
 export function AutomationsPanel() {
   const shown = useShown()
   const { data, error } = useAutomations(shown ? 2000 : 15000)
@@ -596,27 +572,24 @@ export function AutomationsPanel() {
   const { conversationId, openPanel, switchConversation } = ui
   const extensionsPanel = useCommands().some((command) => command.id === 'onboarding.extensions')
   const [expanded, setExpanded] = useExtensionUiState<string[]>('expanded', [])
-  const [form, setForm] = useState<{ open: boolean; key: number; automation?: Automation }>({
+  const [form, setForm] = useState<{ open: boolean; openingId: number; automation?: Automation }>({
     open: false,
-    key: 0,
+    openingId: 0,
   })
-  // The conversation shown or loading: a switch sets it at once, so the panel follows without a gap.
-  const requested = useStore((state) => state.requested) ?? conversationId
-  // "Back" from a watcher: the list, until the shell shows another conversation.
+  const shownOrLoadingConversation = useStore((state) => state.requested) ?? conversationId
   const [listing, setListing] = useState<number>()
-  if (listing !== undefined && listing !== requested) setListing(undefined)
+  if (listing !== undefined && listing !== shownOrLoadingConversation) setListing(undefined)
   const newButton = useRef<HTMLButtonElement>(null)
   const opener = useRef<HTMLElement | null>(null)
   const list = data ?? []
-  // A second's resolution while something is about to fire, running or shown live, else a quieter clock.
-  const soon =
+  const needsSecondResolutionClock =
     shown ||
     list.some(
       (automation) =>
         automation.runs.some((run) => run.status === 'running') ||
         (automation.nextAt !== undefined && automation.nextAt - Date.now() < 120000),
     )
-  const now = useNow(soon ? 1000 : 15000)
+  const now = useNow(needsSecondResolutionClock ? 1000 : 15000)
   useLive(
     list.some(
       (automation) =>
@@ -624,27 +597,28 @@ export function AutomationsPanel() {
     ),
     now,
   )
-  const current = list.find((automation) => automation.script?.conversationId === requested)
-  if (current && listing !== requested)
+  const current = list.find(
+    (automation) => automation.script?.conversationId === shownOrLoadingConversation,
+  )
+  if (current && listing !== shownOrLoadingConversation)
     return (
       <ScriptDetail
         automation={current}
         live={shown}
         now={now}
-        onBack={() => setListing(requested)}
+        onBack={() => setListing(shownOrLoadingConversation)}
       />
     )
   const automations = worstFirst(list, now)
   const create = (from: HTMLElement | null) => {
     opener.current = from
-    setForm((previous) => ({ open: true, key: previous.key + 1 }))
+    setForm((previous) => ({ open: true, openingId: previous.openingId + 1 }))
   }
   const failing = automations.filter((automation) => attention(lookOf(automation, now))).length
   const resting = automations.filter((automation) => looks[lookOf(automation, now)].rank > 3).length
-  const openScript = (automation: AutomationListItem) => {
+  const openWatcherThenPanel = (automation: AutomationListItem) => {
     setListing(undefined)
     switchConversation(automation.script!.conversationId)
-    // A switch folds an overlaid panel away below desktop width; this one stays to show the script.
     openPanel('automations')
   }
   return (
@@ -728,7 +702,11 @@ export function AutomationsPanel() {
               }}
               onEdit={(from) => {
                 opener.current = from
-                setForm((previous) => ({ open: true, key: previous.key + 1, automation }))
+                setForm((previous) => ({
+                  open: true,
+                  openingId: previous.openingId + 1,
+                  automation,
+                }))
               }}
               onExpand={(open) =>
                 setExpanded((previous) =>
@@ -737,14 +715,14 @@ export function AutomationsPanel() {
                     : previous.filter((id) => id !== automation.id),
                 )
               }
-              onOpenScript={() => openScript(automation)}
+              onOpenScript={() => openWatcherThenPanel(automation)}
             />
           ))}
         </ul>
       )}
       <AutomationForm
         automation={form.automation}
-        key={form.key}
+        key={form.openingId}
         onClosed={() => {
           const target = opener.current?.isConnected ? opener.current : newButton.current
           target?.focus()
@@ -759,7 +737,6 @@ export function AutomationsPanel() {
 
 const heading = 'section-label'
 
-/** A script automation beside its watcher: what it watches and what a fire does, then its running script. */
 function ScriptDetail({
   automation,
   live,
@@ -822,7 +799,6 @@ const scriptLooks = {
   done: 'done',
 } as const
 
-/** The supervised script: its command and process, the live output tail or source, and restart. */
 function Script({
   automation,
   live,
@@ -838,22 +814,16 @@ function Script({
   const home = useSystem()?.machine.home
   const [view, setView] = useExtensionUiState<'output' | 'script'>('pane', 'output')
   const [busy, setBusy] = useState(false)
-  // Read errors show inline in the pane instead of as a notice on every poll.
-  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: () => {} })
-  // Always read once for the command's path; only the script tab polls it for edits.
-  const source = useAction(ScriptAction, { id: automation.id }, { onError: () => {} })
+  const log = useAction(LogAction, { id: automation.id, lines: 200 }, { onError: keepLast })
+  const source = useAction(ScriptAction, { id: automation.id }, { onError: keepLast })
   const { refetch: refetchLog } = log
   const { refetch: refetchSource } = source
-  // Poll with the list, so new output arrives as the script prints it.
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
+    return every(2000, () => {
       void refetchLog()
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       if (view === 'script') void refetchSource()
-    }, 2000)
-    return () => clearInterval(timer)
+    })
   }, [live, view, refetchLog, refetchSource])
   const output = log.data?.text ?? ''
   const scroller = useRef<HTMLPreElement>(null)
@@ -866,10 +836,8 @@ function Script({
   const path = source.data?.path
   const restart = () => {
     setBusy(true)
-    // oxlint-disable-next-line typescript/no-floating-promises -- act displays action errors; useAction resolves undefined on failure.
     void act(() => api.action(RunAction, { id: automation.id })).finally(() => {
       setBusy(false)
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchLog()
     })
   }
@@ -1000,19 +968,16 @@ function Script({
   )
 }
 
-/** The log with each `FIRE` line marked, since those are what fired the automation. */
 function Output({ text }: { text: string }) {
   const lines = text.split('\n')
   if (!lines.some((line) => /^FIRE(\s|$)/.test(line))) return <AnsiOutput output={text} />
   return lines.map((line, index) =>
     /^FIRE(\s|$)/.test(line) ? (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div className="-mx-3 border-l-2 border-success bg-success/10 px-2.5" key={index}>
         <span className="font-semibold text-success">FIRE</span>
         {line.slice(4)}
       </div>
     ) : (
-      // oxlint-disable-next-line react/no-array-index-key -- Log line positions; text may repeat.
       <div key={index}>
         <AnsiOutput output={line || ' '} />
       </div>
@@ -1020,7 +985,6 @@ function Output({ text }: { text: string }) {
   )
 }
 
-/** Highlighting from the shebang: `#!/usr/bin/env python3` reads as Python. */
 function scriptLanguage(text: string) {
   const shebang = /^#!\S*?(?:env\s+)?(\S+)/.exec(text)?.[1]?.split('/').pop() ?? 'sh'
   const ext: Record<string, string> = {

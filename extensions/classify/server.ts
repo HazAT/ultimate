@@ -17,29 +17,53 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+export const cooldownMs = 15 * 60_000
+const rejected: Record<number, string> = {
+  401: 'TypeSafe: API key rejected',
+  402: 'TypeSafe: out of credits',
+  403: 'TypeSafe: API key not allowed',
+}
+
 export default function classify(host: ExtensionHost) {
+  let billingOrAuthPause: { key: string; until: number; error: string } | undefined
   const service: ClassifyService = {
     async ask(request, signal) {
-      // Pi's `typesafe` provider auth (models.json, auth.json or its env key) wins over the stored secret. An
-      // unresolvable models.json key throws rather than sending the stored secret to a configured endpoint.
-      const key =
-        (await host.modelRuntime.getAuth('typesafe'))?.auth.apiKey ??
-        (await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
-      if (!key) {
+      const failClosedProviderAuth = await host.modelRuntime.getAuth('typesafe')
+      const providerKeyOrStoredSecret =
+        failClosedProviderAuth?.auth.apiKey ?? (await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
+      if (!providerKeyOrStoredSecret) {
         throw new Error(
           'Missing TYPESAFE_API_KEY. Enable secrets and add TYPESAFE_API_KEY in the Secrets panel (⌘K → Secrets).',
         )
       }
+      if (
+        billingOrAuthPause?.key === providerKeyOrStoredSecret &&
+        Date.now() < billingOrAuthPause.until
+      )
+        throw new Error(billingOrAuthPause.error)
       const base =
         host.modelRuntime.getProvider('typesafe')?.baseUrl ?? 'https://api.typesafe.ai/v1'
       const response = await fetch(`${base.replace(/\/+$/, '')}/systemone`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${providerKeyOrStoredSecret}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ model: 'jev-1.14.0', ...request }),
         signal,
       })
       if (!response.ok) {
-        throw new Error(`TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`)
+        const error = `TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`
+        const status = rejected[response.status]
+        if (status) {
+          billingOrAuthPause = {
+            key: providerKeyOrStoredSecret,
+            until: Date.now() + cooldownMs,
+            error,
+          }
+          host.notice(`${status}; classification paused for ${cooldownMs / 60_000} minutes`)
+        }
+        throw new Error(error)
       }
       const body: unknown = await response.json()
       if (

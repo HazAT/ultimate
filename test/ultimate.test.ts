@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterAll, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -21,10 +21,14 @@ import { fauxServer, seedTally, sourceCopy, temp, removeTemp, until, post } from
 type Server = Awaited<ReturnType<typeof fauxServer>>
 const servers: Server[] = []
 const homes: string[] = []
-// Tests run concurrently, each on its own server; close them all once the file is done.
-afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  for (const home of homes.splice(0)) await removeTemp(home)
+// Run the file's tests sequentially: five fixture boots on one worker delayed each other by 7-22 s under bounded load;
+// sequential boots took 2-7 s. Close each test's servers and remove its home when it ends: one afterAll closing all ten
+// and removing ten source copies took over 5 s under load, as each synchronous SQLite close blocks the event loop.
+afterEach(async () => {
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  await Promise.all(closing.map((server) => server.close()))
+  await Promise.all(taken.map(removeTemp))
 })
 function textOf(content: unknown): string {
   return typeof content === 'string'
@@ -69,16 +73,24 @@ async function fixture(onRequest?: (text: string, home: string) => Promise<void>
       const text = textOf(last.content)
       requests.push(text)
       await onRequest?.(text, home)
-      if (last.role === 'user' && text.startsWith('BRANCH '))
-        return fauxAssistantMessage([fauxToolCall('branch', JSON.parse(text.slice(7)))], {
+      // A command is any input since the last answer, not only the last one: a late message from an earlier branch
+      // can join the same request after it, and the command would never run.
+      const command =
+        transcript.messages
+          .slice(transcript.messages.findLastIndex((message) => message.role === 'assistant') + 1)
+          .filter((message) => message.role === 'user')
+          .map((message) => textOf(message.content))
+          .find((input) => /^(BRANCH|CODE|SEND) /.test(input)) ?? ''
+      if (command.startsWith('BRANCH '))
+        return fauxAssistantMessage([fauxToolCall('branch', JSON.parse(command.slice(7)))], {
           stopReason: 'toolUse',
         })
-      if (last.role === 'user' && text.startsWith('CODE '))
-        return fauxAssistantMessage([fauxToolCall('codemode', { code: text.slice(5) })], {
+      if (command.startsWith('CODE '))
+        return fauxAssistantMessage([fauxToolCall('codemode', { code: command.slice(5) })], {
           stopReason: 'toolUse',
         })
-      if (last.role === 'user' && text.startsWith('SEND '))
-        return fauxAssistantMessage([fauxToolCall('message', JSON.parse(text.slice(5)))], {
+      if (command.startsWith('SEND '))
+        return fauxAssistantMessage([fauxToolCall('message', JSON.parse(command.slice(5)))], {
           stopReason: 'toolUse',
         })
       return fauxAssistantMessage(
@@ -116,7 +128,7 @@ async function ask(server: Server, id: ConversationId, text: string) {
   await (await conversation.submit({ type: 'input', content: text }, context)).wait(context)
 }
 
-it.concurrent('ships a resident Ultimate definition with valid tools; standing addresses create recipients and name both sides', async () => {
+it('ships a resident Ultimate definition with valid tools; standing addresses create recipients and name both sides', async () => {
   const f = await fixture()
   const definition = parseDefinition(
     await readFile(resolve('agents/ultimate.md'), 'utf8'),
@@ -134,14 +146,15 @@ it.concurrent('ships a resident Ultimate definition with valid tools; standing a
   const rootTools = (await f.server.root.agent(context)).tools.map((tool) => tool.name)
   expect(rootTools).not.toContain('branch')
   expect(rootTools).not.toContain('debug')
-  expect(
-    (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.dice,
-  ).toBeUndefined()
+  // A resident definition has its conversation from the open, before anything addresses it.
+  const opened = (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.dice
+  expect(opened).toEqual(expect.any(Number))
   await ask(f.server, ultimate, 'SEND ' + JSON.stringify({ to: '@dice', text: 'Roll' }))
   await until(async () =>
     (await entries(f.server, ultimate)).some((entry) => entry.kind === 'board.reply'),
   )
   const dice = (await f.server.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.dice
+  expect(dice).toBe(opened)
   expect((await entries(f.server, dice)).some((entry) => entry.kind === 'board.message')).toBe(true)
   expect(f.requests.some((text) => text.startsWith(`Message from #${ultimate} (@ultimate):`))).toBe(
     true,
@@ -158,7 +171,7 @@ it.concurrent('ships a resident Ultimate definition with valid tools; standing a
 
 // Regression: a branch @ultimate started through codemode's lineage action got a plain prompt, so its answer never
 // reached @ultimate. The action is gone; agents start branches with the `branch` tool.
-it.concurrent('has no lineage action that starts a branch without routing its answer', async () => {
+it('has no lineage action that starts a branch without routing its answer', async () => {
   const f = await fixture()
   await seedTally(f.server.harness)
   const ultimate = await f.subagents.standing('ultimate', context)
@@ -178,7 +191,7 @@ it.concurrent('has no lineage action that starts a branch without routing its an
   ).toBe(false)
 })
 
-it.concurrent('starts a lineage branch with a message input and caller attribution, returns its answer, and selects roots', async () => {
+it('starts a lineage branch with a message input and caller attribution, returns its answer, and selects roots', async () => {
   const f = await fixture()
   await seedTally(f.server.harness)
   const ultimate = await f.subagents.standing('ultimate', context)
@@ -323,7 +336,7 @@ it.concurrent('starts a lineage branch with a message input and caller attributi
   )
 })
 
-it.concurrent('refreshes standing definitions for numeric-address deliveries', async () => {
+it('refreshes standing definitions for numeric-address deliveries', async () => {
   const f = await fixture()
   const dice = await f.subagents.standing('dice', context)
   await writeFile(
@@ -344,7 +357,7 @@ it.concurrent('refreshes standing definitions for numeric-address deliveries', a
   await f.server.harness.waitForIdle(context)
 })
 
-it.concurrent('refreshes standing definitions before delivering automatic replies', async () => {
+it('refreshes standing definitions before delivering automatic replies', async () => {
   const f = await fixture(async (text, home) => {
     if (text.startsWith('Message from') && text.includes('\nRoll after edit\n'))
       await writeFile(
@@ -362,7 +375,7 @@ it.concurrent('refreshes standing definitions before delivering automatic replie
   await f.server.harness.waitForIdle(context)
 })
 
-it.concurrent('keeps Ultimate answers to messages replies out of the log, including after reopen', async () => {
+it('keeps Ultimate answers to messages replies out of the log, including after reopen', async () => {
   const f = await fixture()
   const ultimate = await f.subagents.standing('ultimate', context)
   const resident = (await f.server.harness.conversation(ultimate, context))!
@@ -392,7 +405,7 @@ it.concurrent('keeps Ultimate answers to messages replies out of the log, includ
   expect(await log(reopened)).toEqual(before)
 })
 
-it.concurrent('notes an @ultimate overlay as changed instructions and applies its additions', async () => {
+it('notes an @ultimate overlay as changed instructions and applies its additions', async () => {
   const f = await fixture()
   const ultimate = await f.subagents.standing('ultimate', context)
   await ask(f.server, ultimate, 'first')
@@ -425,7 +438,7 @@ async function agentInstructions(f: Awaited<ReturnType<typeof fixture>>, id: Con
   return (await (await f.server.harness.conversation(id, context))!.agent(context)).instructions
 }
 
-it.concurrent('re-applies an updated @ultimate definition on a typed input and notes changed instructions once', async () => {
+it('re-applies an updated @ultimate definition on a typed input and notes changed instructions once', async () => {
   const f = await fixture()
   const ultimate = await f.subagents.standing('ultimate', context)
   const notes = async () =>
@@ -469,7 +482,7 @@ it.concurrent('re-applies an updated @ultimate definition on a typed input and n
   ).toBe(false)
 })
 
-it.concurrent('switches a conversation whose pinned model lost its login to its definition pin at the next input, with a notice', async () => {
+it('switches a conversation whose pinned model lost its login to its definition pin at the next input, with a notice', async () => {
   const f = await fixture()
   await writeFile(
     join(f.home, '.ultimate/agents/dice.md'),
@@ -496,7 +509,7 @@ it.concurrent('switches a conversation whose pinned model lost its login to its 
   )
 })
 
-it.concurrent('keeps a model whose login check is pending or failed, and never trades a subscription for a pay-per-token login', async () => {
+it('keeps a model whose login check is pending or failed, and never trades a subscription for a pay-per-token login', async () => {
   const f = await fixture()
   const dice = await f.subagents.standing('dice', context)
   const fallbacks = async () =>
@@ -517,6 +530,14 @@ it.concurrent('keeps a model whose login check is pending or failed, and never t
   expect(await model()).toEqual({ provider: 'openrouter', modelId: dead })
   expect(await fallbacks()).toEqual([])
   check.mockRestore()
+  // #534457/543286: with the claude-code provider not loaded during an outage, its login type was unknown, so the
+  // subscription rule did not apply and a conversation moved to a pay-per-token provider. A provider that is not
+  // registered is no evidence of a missing login: the model stays and nothing is said.
+  const unloaded = { provider: 'not-loaded', modelId: 'faux-1' }
+  await f.server.harness.commit((tx) => configure(tx, dice, { model: unloaded }), context)
+  await ask(f.server, dice, 'unloaded')
+  expect(await model()).toEqual(unloaded)
+  expect(await fallbacks()).toEqual([])
   // A subscription whose login is really gone takes neither the pay-per-token default nor any first model in the
   // list: it keeps its model and asks once.
   const subscription = { provider: 'openai-codex', modelId: 'gpt-6.1-sol' }

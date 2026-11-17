@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { LibraryIcon, MoonIcon } from 'lucide-react'
 import {
   attention,
@@ -23,52 +24,45 @@ import {
 } from './chapters.tsx'
 import { MorningCard } from './morning.tsx'
 import { DreamDialog, dreamDialog } from './modal.tsx'
-import { DreamStatus, NextDialog } from './pinned.tsx'
-import { RequestedCard } from './requested.tsx'
+import { AwakeSection, useAwake } from './awake.tsx'
+import { AwakeDialog, DreamStatus, NextDialog } from './pinned.tsx'
+import { ReadyCard, RequestedCard } from './requested.tsx'
 import { DreamDoc } from './refs.ts'
 import { PreparedCard } from './sleep.tsx'
 
-/** Above this share of its context window, a compacted @ultimate has lived long enough to be worth a dream. */
-const FULL = 0.5
+const CONTEXT_SHARE_WORTH_DREAMING = 0.5
 
-/**
- * The share of the context window the latest response was sent with, or undefined when a compaction or reset came
- * after it (the context is fresh then) or nothing answered yet.
- */
 function contextShare(entries: readonly EntryRecord[], window: number) {
-  let marker = -1
-  let answered = -1
+  let latestCompactionOrReset = -1
+  let latestAnswer = -1
   let used = 0
   for (const entry of entries) {
     if (entry.kind === 'pi.compaction' || entry.kind === 'pi.reset')
-      marker = Math.max(marker, entry.id)
+      latestCompactionOrReset = Math.max(latestCompactionOrReset, entry.id)
     const model = entry.model?.[0]
-    if (entry.kind === 'pi.assistant' && model?.role === 'assistant' && entry.id > answered) {
-      answered = entry.id
+    if (entry.kind === 'pi.assistant' && model?.role === 'assistant' && entry.id > latestAnswer) {
+      latestAnswer = entry.id
       used = model.usage.input + model.usage.cacheRead + model.usage.cacheWrite
     }
   }
-  return answered > marker ? used / window : undefined
+  return latestAnswer > latestCompactionOrReset ? used / window : undefined
 }
 
-/**
- * A quiet hint in the status line when @ultimate is shown, has compacted at least once and is past half its context
- * again, and no fresh chapter is prepared: a good time to dream. Clicking it explains what a dream does.
- */
 function TimeToDream() {
   const { id, entries, agent } = useConversation()
-  const ultimate = useDocOf(1, StandingDoc)?.ultimate
-  const doc = useDocOf(1, DreamDoc)
+  const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
+  const doc = useDocOf(ROOT, DreamDoc)
   const models = useModels()
   const actions = useUltimate()
+  const awake = useAwake()
   if (ultimate === undefined || id !== ultimate || doc === undefined) return null
-  if (doc?.prepared && doc.sleep?.phase !== 'asleep') return null
+  if (awake) return null
   if (!entries.some((entry) => entry.kind === 'pi.compaction')) return null
   const window = models?.models.find(
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
   )?.contextWindow
   const share = window ? contextShare(entries, window) : undefined
-  if (share === undefined || share <= FULL) return null
+  if (share === undefined || share <= CONTEXT_SHARE_WORTH_DREAMING) return null
   return (
     <button
       className="-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -83,10 +77,6 @@ function TimeToDream() {
   )
 }
 
-/**
- * The Memory surface's header: which chapter this memory belongs to (a way to the others), and the Dream button, since
- * dreaming distils this memory, among other things.
- */
 function useDreamButton() {
   const actions = useUltimate()
   const chapters = useChapters()
@@ -120,7 +110,6 @@ function useDreamButton() {
   )
 }
 
-/** After a Fall asleep the reloaded page opens @ultimate, where the morning card waits. */
 function WakeUp() {
   const actions = useUltimate()
   useWakeUp(() => talkToUltimate(actions))
@@ -130,17 +119,21 @@ function WakeUp() {
 export default defineWebExtension({
   entries: {
     'dream.requested': RequestedCard,
+    'dream.ready': ReadyCard,
     'dream.prepared': attention(PreparedCard),
     'dream.chapter': MorningCard,
   },
   slots: {
-    'sidebar.top': [{ component: OlderChapterBanner, order: -30 }],
+    'sidebar.top': [
+      { component: OlderChapterBanner, order: -30 },
+      { component: AwakeSection, order: -25 },
+    ],
     'statusline.right': [
       { component: DreamStatus, order: -10, phone: true },
       TimeToDream,
       OlderChapterStatus,
     ],
-    overlay: [DreamDialog, NextDialog, ChaptersDialog, SwitchVeil, WakeUp],
+    overlay: [DreamDialog, AwakeDialog, NextDialog, ChaptersDialog, SwitchVeil, WakeUp],
   },
   commands: [
     { id: 'dream.open', title: 'Dream…', run: (context) => context.open(dreamDialog) },

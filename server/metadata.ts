@@ -1,6 +1,5 @@
 import { defineDoc } from '@earendil-works/pi-durable'
 
-/** Published shell metadata: explicit naming plus input naming and activity maintained by conversations. */
 export const Metadata = defineDoc<{
   title?: string
   label?: string

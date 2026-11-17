@@ -1,16 +1,10 @@
-/**
- * What a live task means, in plain words: the group it belongs to and the phrase that names it. Pure, from the task graph
- * node, the facts its input gives (`describe` action) and, for a message, its state in the messages log.
- */
-import type { TaskGraphNode } from '@earendil-works/pi-durable'
+import type { TaskGraphNode, ConversationId } from '@earendil-works/pi-durable'
 import type { TaskFacts } from './refs.ts'
 
-/** The root conversation: work it owns is the project's, never named after it. */
 const ROOT = 1
 
 export type Group = 'waiting' | 'running' | 'scheduled' | 'landing' | 'background'
 
-/** Groups in the order the panel shows them, with their headings. */
 export const groups: readonly { id: Group; title: string }[] = [
   { id: 'running', title: 'Running' },
   { id: 'waiting', title: 'Messages' },
@@ -21,19 +15,13 @@ export const groups: readonly { id: Group; title: string }[] = [
 
 export type Meaning = {
   group: Group
-  /** The phrase, read before `who` when there is one: "Waiting on" #12. */
   text: string
-  /** The conversation (or the user, another project) the phrase is about. */
-  who?: number | 'user' | 'remote'
-  /** Who asked, for a message. */
-  by?: number | 'user' | 'remote'
-  /** A second line: a message's first line, a lander's step. */
+  who?: ConversationId | 'user' | 'remote'
+  by?: ConversationId | 'user' | 'remote'
   detail?: string
-  /** When a scheduled task wakes. */
   until?: number
 }
 
-/** Chores: background work named by what it does, about the conversation its input names. */
 const chores: Record<string, string> = {
   'board.route': 'Routing the answer of',
   'conversations.summary': 'Summarising',
@@ -44,7 +32,6 @@ const chores: Record<string, string> = {
   'lineage.landing-note': 'Leaving a landing note in',
   'lineage.conclude-landed': 'Concluding after landing',
   'lineage.woken': 'Waking after compaction',
-  'lineage.memorize': 'Distilling memories',
   'lineage.rewind': 'Rewinding',
   'workspaces.prepare': 'Preparing a worktree for',
   'watchdog.failure': 'Reporting a failed run of',
@@ -57,10 +44,6 @@ const chores: Record<string, string> = {
   'ultimate.automation-delivery': 'Delivering automation',
 }
 
-/**
- * The meaning of `task`. `messageState` is its message's state in the log for a `board.delivery`: `sent` until it is
- * placed, then `delivered` until answered; a message the bounded log dropped is long placed.
- */
 export function meaning(
   task: TaskGraphNode,
   facts: TaskFacts | undefined,
@@ -69,7 +52,6 @@ export function meaning(
   const phase = 'phase' in task.state ? task.state.phase : undefined
   const sleeping = task.state.status === 'sleeping' ? task.state.until : undefined
   switch (task.kind) {
-    // The task a subagent's conversation hangs from: the running tree's branch point for it.
     case 'ultimate.subagent-anchor':
       return { group: 'running', text: task.conversations.length > 1 ? 'Subagents' : 'Subagent' }
     case 'pi.generation':
@@ -84,9 +66,9 @@ export function meaning(
         return { group: 'waiting', text: 'Delivering the reply to', who: m.from, by: m.to, detail }
       if (m.note)
         return { group: 'waiting', text: 'Leaving a note for', who: m.to, by: m.from, detail }
-      if (messageState === 'sent')
+      const stillSentInLog = messageState === 'sent'
+      if (stillSentInLog)
         return { group: 'waiting', text: 'Delivering to', who: m.to, by: m.from, detail }
-      // Placed: a reply-enabled message waits for the answer, a one-way one stays until the turn it joined ends.
       return m.reply
         ? { group: 'waiting', text: 'Waiting on', who: m.to, by: m.from, detail }
         : { group: 'waiting', text: 'Delivered to', who: m.to, by: m.from, detail }
@@ -126,10 +108,9 @@ export function meaning(
     task.kind === 'ultimate.automation-delivery' && facts?.automation
       ? `${chore} · ${facts.automation}`
       : chore
-  // A chore without a conversation in its input works on its owner's; the root's work is the project's own.
-  const who =
+  const subjectConversation =
     facts?.conversation ?? (task.conversationId === ROOT ? undefined : task.conversationId)
   return label
-    ? { group: 'background', text: label, who }
+    ? { group: 'background', text: label, who: subjectConversation }
     : { group: 'background', text: task.kind }
 }

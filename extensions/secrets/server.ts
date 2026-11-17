@@ -53,7 +53,11 @@ export const actions: Record<string, ExtensionAction> = {
       })
     }
     for (const item of items.values()) {
-      if (item.provider && host.modelRuntime.getProviderAuthStatus(item.provider).configured)
+      if (
+        item.provider &&
+        host.modelRuntime.getProviderAuthStatus(item.provider).configured &&
+        !host.modelRuntime.isUsingOAuth(item.provider)
+      )
         item.via = item.provider
       delete item.provider
     }

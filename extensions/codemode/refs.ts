@@ -2,6 +2,7 @@
  * Codemode in the browser: the one-line summaries of what each codemode call did, and the event that records one.
  * Browser-safe.
  */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 
@@ -15,7 +16,7 @@ export const SummariesDoc = docRef<Summaries>('codemode.summaries')
 
 /** Codemode call `call` in `conversation` was summarized as `line`; emitted in the commit that stores it. */
 export const Summarized = defineEvent<{
-  conversation: number
+  conversation: ConversationId
   call: string
   line: string
   effect: boolean

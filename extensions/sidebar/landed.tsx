@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
-import { api, events, formatAgo, useStore } from '@/sdk'
-import { store } from '@/sdk/client'
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { events, formatAgo, keepLast, useStore } from '@/sdk'
+import { reads, store } from '@/sdk/client'
+import type { ReadState } from '@/sdk/reads'
 import { RecentAction, TallyDoc } from '../lineage/ui.tsx'
 import { groupLandings, groupRange } from './landings.ts'
 import type { Landing, LandingGroup } from './landings.ts'
@@ -9,55 +12,71 @@ import { FeatureTag } from '../conversations/ui.tsx'
 import { More, Section } from './section.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 
-/**
- * The latest landings of every root (up to 20 each), newest first. Read again whenever a root's token count changes,
- * which every new entry in it does: a new count means something may have landed.
- */
-export function useLandings(roots: readonly number[]) {
-  const key = roots.join(',')
+export function useLandings(rootIds: readonly ConversationId[]) {
+  const key = rootIds.join(',')
+  const roots = useMemo(
+    () => (key ? key.split(',').map((id) => parseConversationId(Number(id))) : []),
+    [key],
+  )
   useEffect(() => {
     const stops = roots.map((id) => store.watchDocOf(id, TallyDoc.kind))
     return () => stops.forEach((stop) => stop())
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-  }, [key])
+  }, [roots])
   const tokens = useStore((state) =>
     roots
       .map((id) => (state.docsOf[id]?.[TallyDoc.kind] as { tokens?: number } | null)?.tokens)
       .join(','),
   )
-  const [landings, setLandings] = useState<Landing[]>([])
-  useEffect(() => {
-    let live = true
-    void Promise.all(
-      roots.map((root) =>
-        api
-          .action(RecentAction, { id: root, types: ['landed'], limit: 20 })
-          .then((recent) => (recent as Landing[]).map((event) => ({ ...event, root })))
-          // A root that cannot list its landings (one just unlisted) only leaves them out; the next entry reads again.
-          .catch(() => [] as Landing[]),
+  const sharedLandingReads = useMemo(
+    () =>
+      roots.map((id) =>
+        reads.get(RecentAction.extension, RecentAction.name, { id, types: ['landed'], limit: 20 }),
       ),
-    )
-      .then((all) => {
-        if (live) setLandings(all.flat().toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)))
-      })
-      .catch(() => {
-        // Each root's call already settles to a list, so nothing reaches here.
-      })
-    return () => {
-      live = false
-    }
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the roots' identity
-  }, [key, tokens])
-  return landings
+    [roots],
+  )
+  useEffect(() => {
+    const releases = sharedLandingReads.map((read) => read.use({ onError: keepLast }))
+    return () => releases.forEach((release) => release())
+  }, [sharedLandingReads])
+  const seen = useRef(tokens)
+  useEffect(() => {
+    if (seen.current === tokens) return
+    seen.current = tokens
+    for (const read of sharedLandingReads) void read.refetch()
+  }, [sharedLandingReads, tokens])
+  const last = useRef<ReadState[]>([])
+  const states = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => {
+        const stops = sharedLandingReads.map((read) => read.subscribe(listener))
+        return () => stops.forEach((stop) => stop())
+      },
+      [sharedLandingReads],
+    ),
+    () => {
+      const next = sharedLandingReads.map((read) => read.get())
+      const same =
+        next.length === last.current.length && next.every((state, i) => state === last.current[i])
+      if (!same) last.current = next
+      return last.current
+    },
+  )
+  return useMemo(
+    () =>
+      states
+        .flatMap((state, index) =>
+          ((state.data as Landing[] | undefined) ?? []).map((event) => ({
+            ...event,
+            root: roots[index],
+          })),
+        )
+        .toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0)),
+    [states, roots],
+  )
 }
 
 const FIRST = 5
 
-/**
- * The lander's Landed section, under its row: what shipped, newest first, every recent landing of one feature as one
- * row with their commits summed. A row opens the branch that landed it (else the root at its landing note); the commit
- * count opens the range in Review when the landings follow each other.
- */
 export function Landed({ landings, now }: { landings: readonly Landing[]; now: number }) {
   const [all, setAll] = useSidebarState<boolean>('landedAll', false)
   const groups = groupLandings(landings)
@@ -90,7 +109,7 @@ function LandedRow({ group, now }: { group: LandingGroup; now: number }) {
   }
   return (
     <li
-      className="mx-2 flex h-6 min-w-0 items-center gap-1.5 rounded-md pr-2 pl-2.5 font-mono text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
+      className="mx-2 flex h-7 min-w-0 items-center gap-1.5 rounded-md pr-2 pl-2.5 font-mono text-[10px] text-muted-foreground hover:bg-sidebar-accent/50"
       data-landed={latest.sha}
     >
       <button

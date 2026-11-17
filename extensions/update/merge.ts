@@ -1,16 +1,8 @@
-/**
- * Merging a diverged clone with origin: predicting conflicts without touching the worktree, the restore ref
- * written before a merge so it can be undone, and the merge itself — never a rebase, reset or stash.
- */
+import { overshadowed } from '../../lib/errors.ts'
 import { exec } from '../../lib/exec.ts'
 import type { FastForward, Git, Standing } from '../../lib/fast-forward.ts'
 import { Refusal } from '../../lib/fast-forward.ts'
 
-/**
- * Whether merging `remote` into `HEAD` would conflict, predicted by `git merge-tree --write-tree` without
- * touching the worktree; undefined when git cannot say (before 2.38, or a failing command). Its exit codes:
- * 0 merges clean, 1 conflicts, anything else unknown.
- */
 export async function conflictsPredicted(
   root: string,
   remote: string,
@@ -27,13 +19,10 @@ export async function conflictsPredicted(
   }
 }
 
-/** Where restore refs live, under their own namespace so `git tag` and `git push --tags` never see them. */
 export const RESTORE_PREFIX = 'refs/ultimate-update/pre-'
 
-/** Restore refs older than this are pruned when a new one is written. */
 const KEEP_DAYS = 30
 
-/** `ref`'s stamp (`pre-<YYYYMMDD-HHMMSS>-<sha>`, local time) as a Date, or undefined for another shape. */
 const stamped = (ref: string) => {
   const match = /(\d{8})-(\d{6})-/.exec(ref.slice(RESTORE_PREFIX.length))
   if (!match) return undefined
@@ -48,11 +37,6 @@ const stamped = (ref: string) => {
   )
 }
 
-/**
- * Write `refs/ultimate-update/pre-<stamp>-<sha>` pointing at `head` before a merge, so `git reset --hard
- * <ref>` undoes it, and prune restore refs older than `KEEP_DAYS` days. The stamp in the name is the clock:
- * a ref carries no creation date of its own, and one written in the same second keeps a distinct sha.
- */
 async function saveRestore(git: Git, head: string): Promise<string> {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -65,20 +49,13 @@ async function saveRestore(git: Git, head: string): Promise<string> {
   for (const other of others) {
     const stamp = stamped(other)
     if (!stamp || stamp.getTime() >= cutoff) continue
-    // Pruning is best-effort: a ref that cannot be deleted only outlives its pruning.
-    await git('update-ref', '-d', other).catch(() => undefined)
+    await git('update-ref', '-d', other).catch(overshadowed)
   }
   return ref
 }
 
-/** A merge that moved a diverged branch: besides `FastForward`, where the branch stood (`restore` undoes it). */
 export type Merged = FastForward & { restore: string }
 
-/**
- * Merge `origin/<branch>` into a diverged clone, in place: a restore ref first, then `git merge --no-edit`,
- * which on a conflict is aborted back to where the branch stood — nothing stashed, rebased or reset.
- * `predicted` is what `conflictsPredicted` said; a predicted conflict refuses before touching anything.
- */
 export async function mergeUpstream(
   git: Git,
   predicted: boolean | undefined,
@@ -90,17 +67,13 @@ export async function mergeUpstream(
   try {
     await git('merge', '--no-edit', state.remote)
   } catch {
-    // Back where the merge started: nothing changed, and the restore ref with it — unless the abort
-    // itself failed, when the tree is torn and the ref stays as the way back to where it stood.
     let undone = true
     try {
       await git('merge', '--abort')
     } catch {
       undone = false
     }
-    if (undone)
-      // A ref that cannot be deleted only outlives its aborted merge.
-      await git('update-ref', '-d', restore).catch(() => undefined)
+    if (undone) await git('update-ref', '-d', restore).catch(overshadowed)
     throw new Refusal(
       `the merge of ${state.remote} conflicted; nothing was changed. Redo it by hand, or ask @ultimate to merge it on a branch`,
     )

@@ -1,14 +1,9 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { formatAgo, formatTime, useAction } from '@/sdk'
+import { formatAgo, formatTime, keepLast, useAction } from '@/sdk'
 import { SummariesAction } from '../conversations/ui.tsx'
 
-/**
- * A branch row with its summary history on hover: the latest first, older ones below in a list that scrolls inside,
- * also with ↑/↓ while the row has focus. Read when it opens. Touch has no hover, so phones show none. Its first line
- * carries the full title the row may truncate, so the row has no native tooltip to cover it.
- */
 export function SummaryHistory({
   id,
   title,
@@ -49,7 +44,7 @@ export function SummaryHistory({
 }
 
 function History({ id, list }: { id: number; list: React.RefObject<HTMLOListElement | null> }) {
-  const { data, loading } = useAction(SummariesAction, { id }, { onError: () => {} })
+  const { data, loading } = useAction(SummariesAction, { id }, { onError: keepLast })
   const now = Date.now()
   if (!data)
     return (

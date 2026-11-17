@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { definePoint } from '@/sdk'
 import type { Message } from './refs.ts'
+import type { WaitFacts } from '../../lib/waits.ts'
 
-/** What shows under a message to the user (`questions` provides its answer card). */
+export const WaitTimers = definePoint<null, WaitFacts['automations']>('messages.wait-timers')
+
 export const MessageAnswers = definePoint<Message, ReactNode>('messages.answers')

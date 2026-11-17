@@ -1,24 +1,39 @@
 import { MoonIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-import { useDialog, useDocOf, useUltimate } from '@/sdk'
+import { useDialog, useUltimate } from '@/sdk'
+import { AwakeSection, nextDialog, useAwake, useDreamStage } from './awake.tsx'
 import { NextChapter } from './sleep.tsx'
-import { DreamDoc } from './refs.ts'
 
-/** The dialog the pinned line opens: the Fall asleep card. */
-export const nextDialog = 'dream.next'
+const awakeDialog = 'dream.awake'
 
-/** The prepared next chapter while it waits for Fall asleep, or a sleep that failed or runs. */
 function usePinned() {
-  const doc = useDocOf(1, DreamDoc)
-  return doc?.prepared && doc.sleep?.phase !== 'asleep' ? doc : undefined
+  const { doc, stage } = useDreamStage() ?? {}
+  return stage === 'prepared' || stage === 'sleeping' || stage === 'failed' ? doc : undefined
 }
 
-/** In the status line, on every surface and on phones, while a fresh chapter is prepared and not yet slept into. */
 export function DreamStatus() {
-  const doc = usePinned()
+  const { doc, stage } = useDreamStage() ?? {}
   const actions = useUltimate()
-  if (!doc?.prepared) return null
-  const failed = doc.sleep?.phase === 'failed'
+  if (stage === 'woke' || stage === 'preparing')
+    return (
+      <button
+        className="-mx-1 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground"
+        data-dream-status={stage}
+        onClick={() => actions.open(awakeDialog)}
+        title={
+          stage === 'woke'
+            ? 'The dream is done: fall asleep into a fresh chapter'
+            : '@ultimate is preparing the next chapter'
+        }
+        type="button"
+      >
+        <MoonIcon className="size-3 shrink-0 text-brand" />
+        <span className="truncate">
+          {stage === 'woke' ? 'dream done · fall asleep' : 'preparing the next chapter'}
+        </span>
+      </button>
+    )
+  if (!doc?.prepared || stage === 'none' || stage === 'asleep') return null
   return (
     <button
       className="-mx-1 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground"
@@ -29,9 +44,27 @@ export function DreamStatus() {
     >
       <MoonIcon className="size-3 shrink-0 text-brand" />
       <span className="truncate">
-        {doc.sleep ? (failed ? 'falling asleep failed' : 'falling asleep') : 'ready to fall asleep'}
+        {stage === 'failed'
+          ? 'falling asleep failed'
+          : stage === 'sleeping'
+            ? 'falling asleep'
+            : 'ready to fall asleep'}
       </span>
     </button>
+  )
+}
+
+export function AwakeDialog() {
+  const [open, setOpen] = useDialog(awakeDialog)
+  const awake = useAwake()
+  return (
+    <Dialog onOpenChange={setOpen} open={open && !!awake && awake.phase !== 'prepared'}>
+      <DialogContent className="gap-0 p-2 pt-3 sm:max-w-[22rem]" data-dream-awake-dialog>
+        <DialogTitle className="sr-only">Fall asleep</DialogTitle>
+        <DialogDescription className="sr-only">The dream is done</DialogDescription>
+        <AwakeSection onAct={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
   )
 }
 

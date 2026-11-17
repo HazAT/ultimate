@@ -1,6 +1,14 @@
+import type {
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  InboxItem,
+  JsonObject,
+  ToolDiagnostic,
+  TaskId,
+} from '@earendil-works/pi-durable'
 import type { ComponentType, ReactNode } from 'react'
 import type { ImageContent, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
-import type { EntryRecord, InboxItem, JsonObject, ToolDiagnostic } from '@earendil-works/pi-durable'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 
 /** Named places in the shell that extensions fill with components. */
@@ -57,6 +65,8 @@ export interface SurfaceContribution {
   /** Position after Agent in the switcher, ⌘K, and `mod+1…9`; lower first (default 0), then by title. */
   order?: number
   component: ComponentType
+  /** A small component after the title in the title bar's tab, such as a count of what waits there; render nothing to show none. */
+  badge?: ComponentType
 }
 
 /** One tool call as the transcript sees it: the model's call, live progress, and the result. */
@@ -107,6 +117,12 @@ export type EntryRenderer = ComponentType<{
 export type LinkRenderer = ComponentType<{ href: string; children: ReactNode; core: ReactNode }>
 
 /**
+ * An inline code span in Markdown (messages, reports): its text as `code`, and `core`, the rendering so far, starting
+ * with the default `<code>`. Return `core` for spans you leave alone.
+ */
+export type InlineCodeRenderer = ComponentType<{ code: string; core: ReactNode }>
+
+/**
  * A fenced code block in Markdown, by its language: `code`, `language`, `incomplete` while the fence still streams, and
  * `core`, the rendering so far, starting with the highlighted block with its copy button.
  */
@@ -125,7 +141,7 @@ export type ComposerRenderer = ComponentType<{ core: ReactNode; dock?: boolean }
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
 export interface DocumentProps {
   value: Readonly<JsonObject>
-  conversationId: number
+  conversationId: ConversationId
 }
 /**
  * How the Documents tab shows one kind of extension document, a server facet's `docs` export (`ultimate.plan`).
@@ -141,7 +157,7 @@ export interface DocumentContribution {
 /** Navigation and shell actions, passed to commands and returned by `useUltimate()`. */
 export interface UltimateActions {
   /** `replace` takes the current browser history entry instead of adding one, as a redirect does. */
-  switchConversation: (id: number, options?: { replace?: boolean }) => void
+  switchConversation: (id: ConversationId, options?: { replace?: boolean }) => void
   /** Show surface `id` (`agent` is the home); the conversation keeps running. */
   showSurface: (id: string) => void
   /** Open the right panel, on tab `id` when given. */
@@ -160,9 +176,9 @@ export interface UltimateActions {
 }
 export interface UltimateContext extends UltimateActions {
   /** The shown conversation, once known. */
-  conversationId?: number
+  conversationId?: ConversationId
   /** A stored message targeted by a contextual command. */
-  entryId?: number
+  entryId?: EntryId
   /** The id of the surface on screen: Agent while a chosen surface that failed falls back. */
   surface: string
 }
@@ -218,6 +234,8 @@ export interface CompactSummaryProps {
   rows: readonly CompactRow[]
   /** Steps in its runs of work. */
   steps: number
+  /** Every entry in it, those in its runs of work included. */
+  entries: readonly EntryRecord[]
   /** Whether the agent still works in it. */
   working: boolean
 }
@@ -244,12 +262,12 @@ export const definePoint = <Input, Value>(point: string): Point<Input, Value> =>
  * held, none of it executes, so the transcript and every list of conversations show them paused, not working.
  * Undefined, as none, while nothing provides it.
  */
-export const ParkedRuns = definePoint<null, ReadonlySet<number>>('ultimate.parked')
+export const ParkedRuns = definePoint<null, ReadonlySet<ConversationId>>('ultimate.parked')
 /**
  * When a run's task first ran, in epoch ms, by its task ID (the `tasks` extension provides it), for the working
  * indicator's clock. Undefined while unknown or while nothing provides it.
  */
-export const RunStart = definePoint<number | undefined, number | undefined>('ultimate.runStart')
+export const RunStart = definePoint<TaskId | undefined, number | undefined>('ultimate.runStart')
 /**
  * What the title bar names a conversation's kind before its title (`messages` provides it: `branch · coordinator` for
  * the branches it starts); undefined shows the conversation's label as it is.
@@ -258,11 +276,30 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
+ * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
+ * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;
+ * a `ComposerRedirect`'s placeholder comes first.
+ */
+export const ComposerPlaceholder = definePoint<
+  { conversation: ConversationId; busy: boolean },
+  string | undefined
+>('ultimate.composerPlaceholder')
+/**
+ * What conversation `conversation`'s transcript shows before its first message, in place of the core's card of repo,
+ * model, extensions and host (`conversations` provides it: a standing agent's mark and title). Each provider gets the
+ * rendering so far as `core` and returns it, wraps it or replaces it.
+ */
+export const EmptyTranscript = definePoint<
+  { conversation: ConversationId; core: ReactNode },
+  ReactNode
+>('ultimate.emptyTranscript')
+/**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
  * message offers to copy it. No copy action while nothing provides it.
  */
 export const MessageReference = definePoint<
-  { conversation: number; id: number },
+  { conversation: ConversationId; id: EntryId },
   string | undefined
 >('ultimate.messageReference')
 
@@ -274,6 +311,16 @@ export const ErrorReport = definePoint<
   null,
   { title: string; send: (report: string) => void } | undefined
 >('ultimate.errorReport')
+
+/**
+ * Where the composer puts a file that is not an inline image (`attachments` provides it): `upload` stores it on the
+ * host and resolves with its absolute path, which the prompt references; files up to `maxBytes` attach, and the host
+ * keeps them `keptMs`. Without a provider only images attach.
+ */
+export const FileUpload = definePoint<
+  null,
+  { upload: (file: File) => Promise<string>; maxBytes: number; keptMs: number } | undefined
+>('ultimate.fileUpload')
 
 /** What a facet provides for a point: `useValue` is a hook, run once per `<Provided>` with its input. */
 export interface Provision {
@@ -289,6 +336,8 @@ export const provide = <Input, Value>(
 export interface WebExtension {
   slots?: Partial<Record<SlotName, Contribution | readonly Contribution[]>>
   panels?: readonly PanelContribution[]
+  /** Badges after a right-panel tab's label or icon, by panel id (any extension's panel), in discovery order. */
+  panelBadges?: Readonly<Record<string, ComponentType>>
   surfaces?: readonly SurfaceContribution[]
   /** Tool-call renderers by tool name. */
   tools?: Readonly<Record<string, ToolRenderer>>
@@ -301,10 +350,12 @@ export interface WebExtension {
   composer?: ComposerRenderer
   /** Renders links in Markdown; renderers compose in discovery order, each wrapping the one before it. */
   link?: LinkRenderer
+  /** Renders inline code spans in Markdown; renderers compose in discovery order, each wrapping the one before it. */
+  inlineCode?: InlineCodeRenderer
   /** Fenced code block renderers by language; they compose in discovery order, each wrapping the one before it. */
   codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>
-  /** Contributions to the hover action row on stored messages, in discovery order. */
-  messageActions?: readonly ComponentType<{ entry: EntryRecord }>[]
+  /** Contributions to the hover action row on stored messages, in discovery order; `text` is what Copy message copies. */
+  messageActions?: readonly ComponentType<{ entry: EntryRecord; text: string }>[]
   /** Readouts on the hover action row on stored messages, before its time, in discovery order. */
   messageDetails?: readonly ComponentType<{ entry: EntryRecord }>[]
   /** Inline labels after the Final answer heading on stored assistant messages. */

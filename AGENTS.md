@@ -54,31 +54,34 @@ A project is a forest of conversation trees, like commit histories.
 
 | Path                          | What lives there                                                                                                                                                                                      | How a change goes live                                                                                                                                                                                 |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `extensions/<name>/web.tsx`   | UI of an extension: slots, panels, surfaces, tool and entry renderers, commands                                                                                                                       | Vite hot reload, instantly, without a page reload. A broken facet shows an error card; the rest keeps running.                                                                                         |
+| `extensions/<name>/web.tsx`   | UI of an extension: slots, panels, surfaces, tool and entry renderers, commands                                                                                                                       | Rebuilt into the page about 2 s after a save; open pages switch to the new bundle (drafts and view kept). A broken facet shows an error card; the rest keeps running.                                  |
 | `extensions/<name>/server.ts` | Agent behaviour: system prompt, tools, hooks (Pi Durable extensions)                                                                                                                                  | Reinstalled on save. Running tool calls finish on the old code; the next call uses the new code.                                                                                                       |
-| `extensions/<name>/api.ts`    | Its contract for other extensions; `export const tier = 'core'` puts it in the always-on core tier, which depends only on the core tier, one way ([docs/extensions.md](docs/extensions.md#core-tier)) | With the facets that import it.                                                                                                                                                                        |
-| `lib/`                        | Pure helpers extensions share (exec, git, JSON and settings files, secret reads); no state, no extension imports                                                                                      | Like the extensions that import it: hot reload or reinstall on save.                                                                                                                                   |
-| `web/`                        | The web core: surface host with primitives, SDK (`web/src/sdk`), transcript, composer, palette                                                                                                        | Vite hot reload, instantly. Nothing else to do.                                                                                                                                                        |
+| `extensions/<name>/api.ts`    | Its contract for other extensions; `export const tier = 'core'` puts it in the always-on core tier, which depends only on the core tier, one way ([the core tier docs](docs/extensions/core-tier.md)) | With the facets that import it.                                                                                                                                                                        |
+| `lib/`                        | Pure helpers extensions share (exec, git, JSON and settings files, secret reads); no state, no extension imports                                                                                      | Like the extensions that import it: rebuilt or reinstalled on save.                                                                                                                                    |
+| `web/`                        | The web core: surface host with primitives, SDK (`web/src/sdk`), transcript, composer, palette                                                                                                        | Rebuilt and switched to like a `web.tsx`. Nothing else to do.                                                                                                                                          |
 | `agents/`                     | Subagent definitions (Markdown with frontmatter)                                                                                                                                                      | Read at each use.                                                                                                                                                                                      |
 | `server/`, `shared/`          | Core plumbing: harness, storage, API, Vite hookup                                                                                                                                                     | Call the `restart` tool. A new process boots and type-checks next to the old one; if it fails you get the error and the old process keeps running. If it succeeds, the run resumes in the new process. |
 | `bin/`                        | The supervisor                                                                                                                                                                                        | Only a human restart (`pnpm start`) applies it. Keep it tiny and change it rarely.                                                                                                                     |
 
-Put behaviour in `extensions/` rather than `server/` whenever you can: it reloads without a restart.
+Put behaviour in `extensions/` rather than `server/` whenever you can: it reloads without a restart. The browser runs a
+production bundle (`server/web.ts`): a change to `web/` or a `web.tsx` rebuilds it in a short-lived child process, and
+every open page reloads onto the new bundle, resuming the view and drafts it left; with no page open the next page load
+builds it.
 A surface is a full-screen app the user switches to (header, ⌘K, `mod+1…9`); the conversation itself is the built-in
-`agent` surface, and a project's apps go in `<project>/.ultimate/extensions/` (see "Surfaces" in the guide).
+`agent` surface, and a project's apps go in `<project>/.ultimate/extensions/` (see [surfaces](docs/extensions/surfaces.md)).
 New UI is a new extension folder, not a change to `web/`: follow the `write-extension` skill, which points into
 [extensions/README.md](extensions/README.md), and copy the closest existing one (`status-line`, `coding-tools`).
 
 ## Developer reference — read when needed
 
-- [Architecture diagrams](docs/architecture/index.html): five pictures of how the browser, server, Pi Durable, extensions, events and agents fit together.
 - [Running the server](docs/running.md): before starting, debugging or testing a server or core swap.
 - [Worktrees and integration](docs/worktrees.md): before previewing an isolate, landing or recovering a rejected push.
 - [Discovery and settings](docs/settings.md): before changing configuration, trust, resources or `summaryModel` (titles, summaries, reply summaries and tree abstracts).
 - [Durability](docs/durability.md): before changing persistence, replay or durable UI state.
-- [Extension mechanics and introspection](docs/extensions.md): before wiring facets, documents, events or runtime inspection.
+- [Extension topics](extensions/README.md#topics): before wiring facets, contracts, documents, events or runtime inspection.
 - [Subagents](docs/subagents.md): before delegating, changing definitions or configuring the review team.
 - [Borrowed from Pi](docs/pi-upstream.md): on Pi upgrades or changes to upstream couplings; includes upstream references.
+- [Searching Pi's code](docs/pi-upstream.md#searching-pis-code): before reading Pi internals; where each package's types live and the `rg` command that finds them.
 
 ## Push permission
 
@@ -103,7 +106,8 @@ see [integration details](docs/worktrees.md#standing-permission-to-push-this-rep
   properties), relative imports end in `.ts`.
 - Core server/web contracts live in `shared/protocol.ts`; extension-local types live with their extension.
 - Pin `@earendil-works/*` packages to exact versions; Pi Durable is experimental.
-- Checks: `pnpm check` (format, lint, types) and the tests covering your change must pass before a commit; the lander runs every suite. Keep `pnpm test` fast: no real-time waits, no spawned processes (those go to `test/e2e`), and fix or delete a flaky test rather than skipping it or raising its timeout. Lint enforces this with `ultimate/no-test-timeout` and `ultimate/no-real-wait-in-fast-tests` (`test/e2e` is exempt); justified exceptions need a `fast-test-reason:` comment. Use the real-deadline `until` from `test/helpers.ts` (`ultimate/no-local-test-polling`). `ultimate/no-retired-ui` keeps retired UI labels and surfaces out of extensions and web code.
+- Tests live with what they test: one extension's in `extensions/<name>/test/` (browser-side ones in `test/web/`, spawned-process ones in `test/e2e/` there), and the core's (`server/`, `shared/`, `lib/`, `web/`, scripts, lint) plus those that exercise several extensions together in the top-level `test/`, which also keeps the shared helpers and fixtures (`test/helpers.ts`). `pnpm test extensions/<name>/` runs one extension's fast tests, `pnpm test:e2e extensions/<name>/` its e2e tests; without a path each runs everything. An extension's `test/` folder is not part of the extension: saving a file there reloads nothing, and its imports are free of the extension import rules and stay out of `pnpm deps`.
+- Checks: `pnpm check` (format, lint, types) and the tests covering your change must pass before a commit; the lander runs every suite. Keep `pnpm test` fast: no real-time waits, no spawned processes (those go to a `test/e2e` folder), and fix or delete a flaky test rather than skipping it or raising its timeout. Lint enforces this with `ultimate/no-test-timeout` and `ultimate/no-real-wait-in-fast-tests` (`test/e2e` folders are exempt); justified exceptions need a `fast-test-reason:` comment. Use the real-deadline `until` from `test/helpers.ts` (`ultimate/no-local-test-polling`). Tests may break production rules when that makes them simpler and more robust: different rules apply to them.
 - Every user-visible result is designed, not dumped: status and outcomes (a subagent report, a landing, a failure) get a
   renderer that matches the existing cards (see `extensions/subagents/messages.tsx`, `extensions/workspaces/log.tsx`),
   never plain Markdown in a message. Look at the running app and recent screenshots first, write the expected look into
@@ -112,9 +116,31 @@ see [integration details](docs/worktrees.md#standing-permission-to-push-this-rep
 ## Review quality
 
 Rules about how agents behave live in prompts and agent definitions, not in code. Code checks protect only safety and
-invalid states: data loss, security, impossible states. Lint enforces only what the user explicitly asked for.
+invalid states: data loss, security, impossible states. Lint enforces only what the user explicitly asked for, and
+every lint message says why we don't want the pattern and what to do instead.
 
-A swallowed error needs a reason comment explaining why ignoring it is correct; `ultimate/no-silent-catch` enforces this for empty catch blocks and empty or `undefined`-returning `.catch` handlers.
+The code base is the example every agent copies, so it carries no exceptions to copy: fix the code rather than explain
+or excuse it. Code that exists only because of something outside it (an upstream bug, a provider quirk, an edge case
+found in the wild) gets its reason in its commit message and a regression test that fails without it.
+
+Each rule and what enforces it. A new check proves in its test that it fails on a real past mistake; a rule leaves the
+table once its mistake can no longer happen.
+
+| Rule                                                                     | Enforced by                                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Time is never a stand-in for an event; timers only through named helpers | `ultimate/no-raw-timer`, `lib/timers.ts`                            |
+| Extensions meet only at contracts; the core tier runs without the rest   | `ultimate/api-only-imports`, `ultimate/core-tier-deps`, `pnpm deps` |
+| Contract files hold only documented contracts, named for their owner     | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
+| Extension UI reaches the server only through the SDK                     | `ultimate/no-raw-stream`                                            |
+| No swallowed errors                                                      | `ultimate/no-silent-catch`                                          |
+| Product code explains itself; comments only document contracts           | `ultimate/no-comments`                                              |
+| A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
+| Server work is a durable task, or says why a crash loses nothing         | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.ts`        |
+| Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
+| One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |
+| A switch over a union names every case                                   | `typescript/switch-exhaustiveness-check`                            |
+| Pi couplings are listed and marked                                       | `scripts/pi-upstream.ts`                                            |
+| No dead code, shims, slop or tests that restate the implementation       | the review team (`reviewer-simplicity`)                             |
 
 Reject slop and jargon: keep code and explanations direct, minimal, and grounded in evidence. No backward-compatibility
 shims or speculative fallbacks; move forward and update callers. Commit tests for a feature's core path and one

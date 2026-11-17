@@ -79,7 +79,6 @@ function Node({
   )
 }
 
-/** JSON as a collapsible tree; levels below `open` start expanded. */
 export function JsonTree({
   value,
   open = 2,

@@ -1,5 +1,3 @@
-// Adapted from vercel/ai-elements packages/elements/src/reasoning.tsx (Apache-2.0, see LICENSE).
-// Changes: collapsed by default, also while streaming (the trigger shimmers instead); no auto open/close or timer.
 import { cn } from 'cn'
 import { ChevronRightIcon } from 'lucide-react'
 import type { ComponentProps } from 'react'
@@ -30,6 +28,7 @@ export const ReasoningTrigger = memo(
           'flex items-center gap-1.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground',
           className,
         )}
+        data-ui="transcript-meta"
         {...props}
       >
         {children ?? (

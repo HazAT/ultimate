@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { acquireLock, alive, readOwner, retireStorageOwner } from '../../server/lock.ts'
+import { acquireLock, alive, readOwner, retireStorageOwner } from '../../lib/lock.ts'
 import { removeTemp, temp } from '../helpers.ts'
 
 it('drops a stale sidecar without signalling an unrelated live process', async () => {

@@ -14,11 +14,15 @@ export const servers: Awaited<ReturnType<typeof createServer>>[] = []
 const directories: string[] = []
 afterEach(async () => {
   vi.restoreAllMocks()
-  for (const server of servers.splice(0)) {
+  // Take both lists before the first await: a hook still running past its timeout must not delete the next test's
+  // directories (first seen in messages.test.ts; server.test.ts timed out in this hook too).
+  const closing = servers.splice(0)
+  const taken = directories.splice(0)
+  for (const server of closing) {
     await server.vite.watcher.close()
     await server.close()
   }
-  for (const directory of directories.splice(0)) await removeTemp(directory)
+  for (const directory of taken) await removeTemp(directory)
 })
 export async function fixture(extra = false, sources?: Record<string, string>, empty = false) {
   const directory = await temp()
