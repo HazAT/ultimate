@@ -183,6 +183,8 @@ async function end(
         : (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
             (candidate) => candidate.id === side.question,
           )
+    if (answer !== undefined && side.question === undefined)
+      throw new Error(`Side chat #${id} talks no question through`)
     const replyTextWanted =
       answer === undefined || !message ? undefined : replyText(answer, message.questions ?? [])
     if (mode === 'injected' && ending.mode === mode && ending.task !== undefined) {
@@ -540,7 +542,11 @@ const draftAnswersTool = (host: ExtensionHost) =>
         if (!message || !openQuestion(message))
           throw new Error('The question is no longer open; nothing to fill in')
         const questions = message.questions ?? []
-        if (questions.length ? text !== undefined : answers.length || note !== undefined)
+        if (
+          questions.length
+            ? text !== undefined
+            : answers.length || note !== undefined || !text?.trim()
+        )
           throw new Error(
             questions.length
               ? 'This card has questions: fill them with answers (and note), not text'

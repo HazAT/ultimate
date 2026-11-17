@@ -1,6 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { openQuestion } from '../../lib/message-state.ts'
 import type { Question } from '../messages/refs.ts'
+import { cardKey } from '../../lib/question-cards.ts'
 import type { CardState } from './state.tsx'
 
 export type Message = {
@@ -27,12 +28,12 @@ export function newestAsked(messages: readonly Message[]) {
 
 export const keyCard = (conversation: ConversationId | undefined, messages: readonly Message[]) => {
   const id = newestAsked(messages.filter((message) => message.from === conversation))
-  return id === undefined ? undefined : `message:${id}`
+  return id === undefined ? undefined : cardKey(id)
 }
 
 export function forgetSettled(cards: Record<string, CardState>, messages: readonly Message[]) {
   const open = new Set(
-    messages.flatMap((message) => (waitsOnUser(message) ? [`message:${message.id}`] : [])),
+    messages.flatMap((message) => (waitsOnUser(message) ? [cardKey(message.id)] : [])),
   )
   const kept = Object.entries(cards).filter(([card]) => open.has(card))
   const keepStoreIdentityWhenNothingSettled = kept.length === Object.keys(cards).length

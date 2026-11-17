@@ -63,22 +63,34 @@ export function choices(question: CardQuestion): Choice[] {
 
 export const position = (question: CardQuestion, index: number) => question.ref ?? String(index + 1)
 
+export function keyOf(question: CardQuestion, index: number) {
+  const list = choices(question)
+  const choice = list[index]
+  if (!choice) return undefined
+  if (choice.key) return choice.key
+  if (choice.custom && !list.some((c) => c.key === 'o')) return 'o'
+  return index < 9 ? String(index + 1) : undefined
+}
+
 export function questionIndex(questions: readonly CardQuestion[], named: string) {
-  const byText = questions.findIndex((question) => question.text === named)
-  if (byText >= 0) return byText
-  const byPosition = questions.flatMap((question, index) =>
-    position(question, index) === named ? [index] : [],
-  )
-  if (byPosition.length > 1) throw new Error(`Question "${named}" is ambiguous on the card`)
-  if (byPosition.length === 0) throw new Error(`No question "${named}" on the card`)
-  return byPosition[0]
+  const matches = [
+    ...new Set(
+      questions.flatMap((question, index) =>
+        question.text === named || position(question, index) === named ? [index] : [],
+      ),
+    ),
+  ]
+  if (matches.length > 1) throw new Error(`Question "${named}" is ambiguous on the card`)
+  if (matches.length === 0) throw new Error(`No question "${named}" on the card`)
+  return matches[0]
 }
 
 function choiceNamed(question: CardQuestion, value: string) {
-  const list = choices(question)
   const wanted = value.trim().toLowerCase()
-  return list.findIndex(
-    (choice) => !choice.custom && (choice.label.toLowerCase() === wanted || choice.key === wanted),
+  return choices(question).findIndex(
+    (choice, index) =>
+      !choice.custom &&
+      (choice.label.toLowerCase() === wanted || keyOf(question, index) === wanted),
   )
 }
 
@@ -92,6 +104,8 @@ export function draftFor(question: CardQuestion, given: string | string[]): Draf
   const found = values.map((value) => [value, choiceNamed(question, value)] as const)
   const chosen = found.flatMap(([, index]) => (index >= 0 ? [index] : []))
   const typed = found.flatMap(([value, index]) => (index < 0 ? [value] : []))
+  if (question.kind === 'confirm' && values.length === 1 && !chosen.length)
+    return { chosen: [], other: true, text: typed[0] }
   if (question.kind === 'scale' || question.kind === 'confirm') {
     if (typed.length || chosen.length !== 1)
       throw new Error(

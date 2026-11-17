@@ -28,6 +28,7 @@ import type { Answer } from './refs.ts'
 import {
   answered,
   answerOf,
+  cardKey,
   cardOf,
   CARDS_KEY,
   choiceForKey,
@@ -79,7 +80,7 @@ export function MessageQuestions({
   sendLabel?: string
 }) {
   const questions = openQuestions(message)
-  const card = `message:${message.id}`
+  const card = cardKey(message.id)
   const shown = useKeys(card)
   if (!waitsOnUser(message)) return null
   const answer = (reply: Reply, keepalive?: boolean) =>

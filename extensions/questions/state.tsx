@@ -2,16 +2,16 @@ import type { Question } from '../messages/refs.ts'
 import { choices } from '../../lib/question-cards.ts'
 import type { Draft } from '../../lib/question-cards.ts'
 
-export { cardOf, CARDS_KEY, choices, EMPTY_CARD, position } from '../../lib/question-cards.ts'
+export {
+  cardKey,
+  cardOf,
+  CARDS_KEY,
+  choices,
+  EMPTY_CARD,
+  keyOf,
+  position,
+} from '../../lib/question-cards.ts'
 export type { CardState, Choice, Draft } from '../../lib/question-cards.ts'
-
-export function keyOf(question: Question, index: number) {
-  const choice = choices(question)[index]
-  if (!choice) return undefined
-  if (choice.key) return choice.key
-  if (choice.custom && !choices(question).some((c) => c.key === 'o')) return 'o'
-  return index < 9 ? String(index + 1) : undefined
-}
 
 export function choiceForKey(question: Question, key: string) {
   const list = choices(question)
