@@ -185,7 +185,7 @@ export function Player({
           {shown.map((layer) => (
             <img
               alt={frames[layer.index]?.step ?? ''}
-              className="absolute inset-0 size-full object-contain p-2 transition-opacity ease-out motion-safe:animate-in motion-safe:fade-in-0"
+              className="absolute inset-0 size-full bg-terminal object-contain p-2 transition-opacity ease-out motion-safe:animate-in motion-safe:fade-in-0"
               key={layer.index}
               src={layer.src}
               style={{ animationDuration: `${FADE_MS}ms` }}
