@@ -9,7 +9,7 @@ import {
   defineExtension,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterEach, beforeAll, expect, it } from 'vitest'
 import { applyMemoryOps, Memory, MEMORY_LIMIT } from '../memory.ts'
 import { Seen } from '../catchup.ts'
 import { abstract, Tally } from '../server.ts'
@@ -37,8 +37,8 @@ beforeAll(async () => {
 })
 type Server = Awaited<ReturnType<typeof fauxServer>>
 const servers: Server[] = []
-afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.close()
 })
 
 const textOf = (content: unknown) =>
@@ -115,7 +115,7 @@ const run = async (server: Server, name: string, args: object, caller: number) =
   return textOf(result.output)
 }
 
-it.concurrent('applies memory ops atomically and holds the cap', async () => {
+it('applies memory ops atomically and holds the cap', async () => {
   const { server } = await fixture()
   expect(await apply(server, [add('pnpm'), add('node')])).toBe("Added pnpm, node in #1's memory.")
   expect(
@@ -165,7 +165,7 @@ it.concurrent('applies memory ops atomically and holds the cap', async () => {
   expect(after['m-0']).toBeUndefined()
 })
 
-it.concurrent('starts a branch from the memory brief, and without memories from the tally', async () => {
+it('starts a branch from the memory brief, and without memories from the tally', async () => {
   const { server } = await fixture()
   // Without memories a branch inherits the tally, as before.
   const plain = await branch(server, 'Plain branch')
@@ -214,7 +214,7 @@ it.concurrent('starts a branch from the memory brief, and without memories from 
   ).toContain("starts with your project's memory index")
 })
 
-it.concurrent('forks of a briefed branch inherit the tally tip its brief covers', async () => {
+it('forks of a briefed branch inherit the tally tip its brief covers', async () => {
   const { server } = await fixture()
   const older = (await server.harness.commit(
     async (tx) => (await tx.scanEntries({ conversationId: ROOT_CONVERSATION_ID }, 1)).items[0].id,
@@ -239,7 +239,7 @@ it.concurrent('forks of a briefed branch inherit the tally tip its brief covers'
   expect((await server.harness.snapshot(Seen, c.id, context))?.tally).toBeGreaterThan(briefTip)
 })
 
-it.concurrent('reads memories with memory; only @ultimate writes them with remember', async () => {
+it('reads memories with memory; only @ultimate writes them with remember', async () => {
   const { server } = await fixture()
   const { id } = await branch(server, 'Reader')
   expect(await run(server, 'memory', {}, id)).toBe('#1 has no memories yet.')
@@ -304,7 +304,7 @@ it.concurrent('reads memories with memory; only @ultimate writes them with remem
   )
 })
 
-it.concurrent('ends a compaction of @ultimate with its project memory', async () => {
+it('ends a compaction of @ultimate with its project memory', async () => {
   const { server, state } = await fixture()
   await apply(server, [add('kept-fact', 'The project keeps this fact')])
   const ultimate = await server.harness.createConversation(
@@ -335,7 +335,7 @@ it.concurrent('ends a compaction of @ultimate with its project memory', async ()
   )
 })
 
-it.concurrent('wakes @ultimate once after its manual compaction, never after an automatic one', async () => {
+it('wakes @ultimate once after its manual compaction, never after an automatic one', async () => {
   const { server, state } = await fixture()
   const ultimate = await server.harness.createConversation(
     { ownership: { kind: 'ownerless' } },
@@ -416,7 +416,7 @@ it.concurrent('wakes @ultimate once after its manual compaction, never after an 
   expect(await kinds()).toEqual(['pi.reset'])
 })
 
-it.concurrent('lets any conversation compact itself with the tool and wakes it to continue', async () => {
+it('lets any conversation compact itself with the tool and wakes it to continue', async () => {
   const { server } = await fixture()
   const other = await server.harness.createConversation(
     { ownership: { kind: 'ownerless' } },

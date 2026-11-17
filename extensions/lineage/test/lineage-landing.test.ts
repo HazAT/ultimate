@@ -35,7 +35,7 @@ const cursor = async (server: Server) =>
     'lineage/landing-notes'
   ] ?? 0
 
-it.concurrent('notes a landing in its tree root once, across a failed attempt and a restart', async () => {
+it('notes a landing in its tree root once, across a failed attempt and a restart', async () => {
   const { server, home } = await fixture()
   const first = await branchFrom(server, { from: 1, prompt: 'Land me' })
   await settled(server, first)

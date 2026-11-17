@@ -1,7 +1,7 @@
 import { removeTemp } from './helpers.ts'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterAll, expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { fauxServer, sourceCopy, temp, until, attach } from './helpers.ts'
 import { context } from '../server/harness.ts'
 import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
@@ -11,13 +11,9 @@ import { createRegistry, toolRenderers } from '../web/src/sdk/registry.ts'
 
 const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
-// Tests run concurrently, each on its own server; close them all once the file is done.
-afterAll(async () => {
-  // Capture both lists before close can yield to another test's setup.
-  const closing = servers.splice(0)
-  const taken = homes.splice(0)
-  await Promise.all(closing.map((server) => server.close()))
-  for (const home of taken) await removeTemp(home)
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.close()
+  for (const home of homes.splice(0)) await removeTemp(home)
 })
 async function fixture(settings?: string) {
   const home = await temp()
@@ -37,7 +33,7 @@ async function fixture(settings?: string) {
   servers.push(server)
   return { home, projectRoot, server }
 }
-it.concurrent('orders facets by source so a project bash tool and renderer win regardless of folder name', async () => {
+it('orders facets by source so a project bash tool and renderer win regardless of folder name', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')
@@ -115,7 +111,7 @@ export default (host) => {
   host.onOpen(async () => {})
   return defineExtension({ name: 'service-test' })
 }`
-it.concurrent('keeps the provider on a failed reload, replaces it on reload and drops it on disable', async () => {
+it('keeps the provider on a failed reload, replaces it on reload and drops it on disable', async () => {
   const { home, projectRoot, server } = await fixture()
   const folder = join(projectRoot, '.ultimate/extensions/service-test')
   await mkdir(folder, { recursive: true })
@@ -161,7 +157,7 @@ it.concurrent('keeps the provider on a failed reload, replaces it on reload and 
   ).toBeNull()
 })
 
-it.concurrent('keeps the replacement provider available while the old cleanup is pending', async () => {
+it('keeps the replacement provider available while the old cleanup is pending', async () => {
   const { projectRoot, server } = await fixture()
   const folder = join(projectRoot, '.ultimate/extensions/service-test')
   await mkdir(folder, { recursive: true })
@@ -199,7 +195,7 @@ it.concurrent('keeps the replacement provider available while the old cleanup is
   expect(await lookup()).toEqual({ detail: 'replacement' })
 })
 
-it.concurrent('refuses a tool name another extension of the same layer already provides', async () => {
+it('refuses a tool name another extension of the same layer already provides', async () => {
   const { home, projectRoot, server } = await fixture('{}')
   const facet = (name: string, version = '') => `
     import { obj } from '@earendil-works/pi-schema'
@@ -243,7 +239,7 @@ const tools = async (server: Awaited<ReturnType<typeof fauxServer>>) =>
   (await server.root.agent(context)).tools.map((tool) => tool.name).toSorted()
 const web = async (server: Awaited<ReturnType<typeof fauxServer>>) => server.web.facets()
 
-it.concurrent('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
+it('layers settings live, installs and uninstalls tools and web facets, and notices unknown names once', async () => {
   const { home, projectRoot, server } = await fixture()
   const config = join(projectRoot, '.ultimate')
   const settings = join(config, 'settings.json')
@@ -322,7 +318,7 @@ it.concurrent('layers settings live, installs and uninstalls tools and web facet
   }
 })
 
-it.concurrent('retains valid enablement through invalid edits and delivers startup diagnostics to later clients', async () => {
+it('retains valid enablement through invalid edits and delivers startup diagnostics to later clients', async () => {
   const valid = { extensions: { enable: ['unknown-startup'], disable: ['browser'] } }
   const { home, server } = await fixture(JSON.stringify(valid))
   const settings = join(home, '.ultimate/settings.json')
@@ -380,7 +376,7 @@ it.concurrent('retains valid enablement through invalid edits and delivers start
   }
 })
 
-it.concurrent('keeps a core-tier extension enabled over extensions.disable, with a diagnostic', async () => {
+it('keeps a core-tier extension enabled over extensions.disable, with a diagnostic', async () => {
   const { home, server } = await fixture(
     JSON.stringify({ extensions: { disable: ['subagents', 'browser'] } }),
   )
@@ -421,7 +417,7 @@ async function discoverCoreClaims(claims: ['user' | 'project', string][]) {
   return (name: string) => discovered.find((entry) => entry.name === name)
 }
 
-it.concurrent('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
+it('lets extensions.disable turn off a user or project extension that declares the core tier', async () => {
   const find = await discoverCoreClaims([
     ['user', 'user-core-claim'],
     ['project', 'project-core-claim'],
@@ -430,7 +426,7 @@ it.concurrent('lets extensions.disable turn off a user or project extension that
   expect(find('project-core-claim')).toMatchObject({ source: 'project', enabled: false })
 })
 
-it.concurrent('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
+it('keeps a user or project replacement of a core built-in core, over extensions.disable', async () => {
   const find = await discoverCoreClaims([
     ['user', 'subagents'],
     ['project', 'lineage'],
@@ -439,7 +435,7 @@ it.concurrent('keeps a user or project replacement of a core built-in core, over
   expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
 })
 
-it.concurrent('enables every built-in by default except the default-off ones', async () => {
+it('enables every built-in by default except the default-off ones', async () => {
   const home = await temp()
   homes.push(home)
   const root = await sourceCopy(home)
@@ -466,7 +462,7 @@ it.concurrent('enables every built-in by default except the default-off ones', a
   ).toEqual([...defaultOff].toSorted())
 })
 
-it.concurrent('turns a default-off built-in on from user or project settings', async () => {
+it('turns a default-off built-in on from user or project settings', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')
@@ -490,7 +486,7 @@ it.concurrent('turns a default-off built-in on from user or project settings', a
   expect(discovered.settings.layers.get('health')).toBe('project')
 })
 
-it.concurrent('turns the updater on by default, and keeps it off for a user who disabled it', async () => {
+it('turns the updater on by default, and keeps it off for a user who disabled it', async () => {
   const home = await temp()
   homes.push(home)
   const projectRoot = join(home, 'project')

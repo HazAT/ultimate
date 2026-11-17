@@ -19,7 +19,7 @@ import {
   textOf,
 } from './lineage-fixture.ts'
 
-it.concurrent('wakes the caller once when the conversation it waits on finishes', async () => {
+it('wakes the caller once when the conversation it waits on finishes', async () => {
   const { server, release } = await notifyFixture()
   const other = await second(server)
   const held = (await server.harness.conversation(other.id, context))!.submit(
@@ -45,7 +45,7 @@ it.concurrent('wakes the caller once when the conversation it waits on finishes'
   expect(textOf(view.entries.at(-1)!.model?.[0]?.content)).toContain(`#${other.id} finished`)
 })
 
-it.concurrent('leaves a note without waking the caller when wake is false', async () => {
+it('leaves a note without waking the caller when wake is false', async () => {
   const { server } = await notifyFixture()
   const other = await second(server)
   await ask(server, other.id, 'Done already')
@@ -66,7 +66,7 @@ it.concurrent('leaves a note without waking the caller when wake is false', asyn
   ).toBeUndefined()
 })
 
-it.concurrent('re-armed on an idle target, waits for its next answer instead of repeating one', async () => {
+it('re-armed on an idle target, waits for its next answer instead of repeating one', async () => {
   const { server } = await notifyFixture()
   const other = await second(server)
   await ask(server, other.id, 'First')
@@ -98,7 +98,7 @@ it.concurrent('re-armed on an idle target, waits for its next answer instead of 
   expect(delivered[1].data).toMatchObject({ from: other.id, text: 'echo Second' })
 })
 
-it.concurrent('does not repeat an answer the caller already received as a reply', async () => {
+it('does not repeat an answer the caller already received as a reply', async () => {
   const { server } = await notifyFixture()
   const other = await second(server)
   await ask(
@@ -126,7 +126,7 @@ it.concurrent('does not repeat an answer the caller already received as a reply'
   ])
 })
 
-it.concurrent('a replacing notify finds the delivery its aborted predecessor made before recording it', async () => {
+it('a replacing notify finds the delivery its aborted predecessor made before recording it', async () => {
   const { server } = await notifyFixture()
   const other = await second(server)
   await ask(server, other.id, 'Once')
@@ -147,7 +147,7 @@ it.concurrent('a replacing notify finds the delivery its aborted predecessor mad
   ).toBeGreaterThan(0)
 })
 
-it.concurrent('a deliver resumed after a restart finds the note it left under its task id', async () => {
+it('a deliver resumed after a restart finds the note it left under its task id', async () => {
   const { server, home } = await notifyFixture()
   const other = await second(server)
   await (await server.harness.conversation(other.id, context))!.submit(
@@ -188,7 +188,7 @@ it.concurrent('a deliver resumed after a restart finds the note it left under it
   ).toBe(1)
 })
 
-it.concurrent('keeps one pending notify per target and delivers it once across a reopen', async () => {
+it('keeps one pending notify per target and delivers it once across a reopen', async () => {
   const { server, home } = await notifyFixture()
   const other = await second(server)
   await (await server.harness.conversation(other.id, context))!.submit(
@@ -212,7 +212,7 @@ it.concurrent('keeps one pending notify per target and delivers it once across a
   expect(entries).not.toContain('lineage.finished')
 })
 
-it.concurrent('notifies after the branch’s run without waiting for the branch’s own pending notify', async () => {
+it('notifies after the branch’s run without waiting for the branch’s own pending notify', async () => {
   const { server } = await fixture()
   const other = await second(server)
   const run = Promise.withResolvers<void>()
