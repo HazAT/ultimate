@@ -243,6 +243,7 @@ it('reads memories with memory; only @ultimate writes them with remember', async
   const { server } = await fixture()
   const { id } = await branch(server, 'Reader')
   expect(await run(server, 'memory', {}, id)).toBe('#1 has no memories yet.')
+  expect(await run(server, 'memory', { query: 'anything' }, id)).toBe('#1 has no memories yet.')
   // A branch finds the deferred tool with tool_search, so the call itself is refused.
   await expect(run(server, 'remember', { ops: [add('pnpm')] }, id)).rejects.toThrow(
     'Only @ultimate writes project memory',
@@ -278,9 +279,9 @@ it('reads memories with memory; only @ultimate writes them with remember', async
     /^lint \[fact\] — About lint \(updated [\d-]+\)\nSource: #2\/3\n\nAbout lint, in full\.$/,
   )
   // An unknown slug, say one deleted since the caller saw it, answers with the index instead of failing.
-  const stale = await run(server, 'memory', { read: ['lint', 'nope'] }, id)
+  const stale = await run(server, 'memory', { read: ['lint', 'pnpm', 'nope'] }, id)
   expect(stale).toMatch(
-    /^lint \[fact\][^]*About lint, in full\.\n\n#1 has no memory nope\. #1's memory \(2\):\n/,
+    /^lint \[fact\][^]*About lint, in full\.\n\n---\n\npnpm \[fact\][^]*About pnpm, in full\.\n\n#1 has no memory nope\. #1's memory \(2\):\n/,
   )
   // Without the classify extension a query answers with the index.
   expect(await run(server, 'memory', { query: 'which package manager' }, id)).toMatch(

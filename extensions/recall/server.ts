@@ -43,24 +43,28 @@ export const Recall = defineDoc<RecallState>({
 export const docs = [Recall]
 
 const INSTRUCTIONS =
-  '@ultimate, a coding agent, just received `message` from `from`. Judge what the sender intends and what @ultimate must do next, not which words or topics appear; messages are often casual or indirect. Which project memory tells @ultimate how to handle exactly this situation, so that without recalling it @ultimate would likely act differently? When a branch reports to @ultimate, the memories about how @ultimate handles such reports (what to relay, what to do after a landing) are triggered by what the report contains; a memory about the feature the branch built usually is not. Standing habits that hold for every message are not triggered by an ordinary message. Pick none when nothing is specifically triggered.'
-
-export function recallQuestion(memories: Record<string, MemoryItem>): ClassifyQuestion {
-  const criteria: Record<string, string> = {
-    none: 'No memory is specifically triggered by this message.',
-  }
-  for (const [slug, item] of Object.entries(memories)) criteria[slug] = item.line
-  return { type: 'choice', instructions: INSTRUCTIONS, criteria }
-}
+  '@ultimate, a coding agent, just received `message` from `from`. Judge what the sender intends and what @ultimate must do next, not which words or topics appear; messages are often casual or indirect. Which project memory tells @ultimate how to handle exactly this situation, so that without recalling it @ultimate would likely act differently? When a branch reports to @ultimate, the memories about how @ultimate handles such reports (what to relay, what to do after a landing) are triggered by what the report contains; a memory about the feature the branch built usually is not. Standing habits that hold for every message are not triggered by an ordinary message. Pick NONE when nothing is specifically triggered.'
 
 const QUERY_INSTRUCTIONS =
-  'A coding agent searches its project memory with `query`: a topic, a question or the situation it is in. Which memory is about what the query asks, so the agent would act differently with it? Pick none when no memory is about it.'
+  'A coding agent searches its project memory with `query`: a topic, a question or the situation it is in. Which memory is about what the query asks, so the agent would act differently with it? Pick NONE when no memory is about it.'
 
-export function queryQuestion(memories: Record<string, MemoryItem>): ClassifyQuestion {
-  const criteria: Record<string, string> = { none: 'No memory is about this query.' }
+const NO_MEMORY_KEY_OUTSIDE_SLUG_SYNTAX = 'NONE'
+
+function memoryChoice(
+  instructions: string,
+  noMemory: string,
+  memories: Record<string, MemoryItem>,
+): ClassifyQuestion {
+  const criteria: Record<string, string> = { [NO_MEMORY_KEY_OUTSIDE_SLUG_SYNTAX]: noMemory }
   for (const [slug, item] of Object.entries(memories)) criteria[slug] = item.line
-  return { type: 'choice', instructions: QUERY_INSTRUCTIONS, criteria }
+  return { type: 'choice', instructions, criteria }
 }
+
+export const recallQuestion = (memories: Record<string, MemoryItem>) =>
+  memoryChoice(INSTRUCTIONS, 'No memory is specifically triggered by this message.', memories)
+
+export const queryQuestion = (memories: Record<string, MemoryItem>) =>
+  memoryChoice(QUERY_INSTRUCTIONS, 'No memory is about this query.', memories)
 
 const textOf = (entry: EntryRecord) =>
   (entry.model ?? [])
@@ -114,7 +118,7 @@ export default function recall(host: ExtensionHost) {
         signal,
       )
       const answer = result.answers.memory
-      if (answer.type !== 'choice') return []
+      if (answer.type !== 'choice') throw new Error(`classify answered ${answer.type}, not choice`)
       return Object.entries(answer.probabilities)
         .filter(([slug, p]) => Object.hasOwn(memories, slug) && p >= CALIBRATED_QUERY_PROBABILITY)
         .toSorted((a, b) => b[1] - a[1])

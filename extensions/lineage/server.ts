@@ -1223,9 +1223,9 @@ export default function lineageExtension(host: ExtensionHost) {
     query: string,
     memories: Record<string, MemoryItem>,
     ctx: Context,
-  ): Promise<string[] | string> => {
+  ): Promise<string[] | undefined> => {
     const search = host.want(MemorySearch)
-    if (!search) return 'it needs the classify extension and TYPESAFE_API_KEY'
+    if (!search) return undefined
     try {
       const slugs = await search.search(
         query,
@@ -1238,7 +1238,7 @@ export default function lineageExtension(host: ExtensionHost) {
       return slugs.filter((slug) => Object.hasOwn(memories, slug))
     } catch (error) {
       if (ctx.abortSignal?.aborted) throw error
-      return error instanceof Error ? error.message : String(error)
+      return undefined
     }
   }
   const ultimateCompactionMemoryBrief = async (id: ConversationId, ctx: Context) => {
@@ -1556,13 +1556,15 @@ export default function lineageExtension(host: ExtensionHost) {
               parts.push(`#${id} has no memory ${unknown.join(', ')}. ${indexText}`)
           }
           if (query !== undefined) {
-            const found = index.length ? await searchMemories(query, memories, ctx) : []
+            const found = index.length ? await searchMemories(query, memories, ctx) : undefined
             parts.push(
-              typeof found === 'string'
-                ? `Memory search is unavailable (${found}); the index instead:\n${indexText}`
-                : found.length
-                  ? inFull(found)
-                  : `No memory in #${id} is about this.`,
+              !index.length
+                ? indexText
+                : !found
+                  ? `Memory search is unavailable (it needs the classify extension and TYPESAFE_API_KEY); the index instead:\n${indexText}`
+                  : found.length
+                    ? inFull(found)
+                    : `No memory in #${id} is about this.`,
             )
           }
           if (!parts.length) parts.push(indexText)

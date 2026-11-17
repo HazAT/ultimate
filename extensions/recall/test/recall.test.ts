@@ -133,7 +133,12 @@ it('answers a memory query with the memories at or above the query threshold, be
         type: 'choice',
         choice: 'night-watch',
         confidence: 0.6,
-        probabilities: { 'tmp-quota-not-flaky': 0.2, 'night-watch': 0.6, none: 0.2 },
+        probabilities: {
+          'tmp-quota-not-flaky': 0.15,
+          'night-watch': 0.55,
+          'below-cutoff': 0.14,
+          NONE: 0.16,
+        },
       },
     },
     usage: { inputTokens: 0 },
@@ -145,7 +150,9 @@ it('answers a memory query with the memories at or above the query threshold, be
       if (api === MemorySearch) search = service
     }) as never,
   } as never)
-  expect(await search.search('going to sleep', memories, AbortSignal.timeout(1000))).toEqual([
+  const belowCutoff = { ...memories['night-watch'], line: 'Barely related' }
+  const all = { ...memories, 'below-cutoff': belowCutoff }
+  expect(await search.search('going to sleep', all, AbortSignal.timeout(1000))).toEqual([
     'night-watch',
     'tmp-quota-not-flaky',
   ])
