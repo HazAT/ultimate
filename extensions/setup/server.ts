@@ -15,6 +15,7 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
+import { readFamilyLayers } from '../../lib/families-settings.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { meansNone } from '../../lib/errors.ts'
@@ -151,6 +152,16 @@ async function agentsArea(host: AreaHost): Promise<SetupIssue[]> {
   if (!issues.length && loggedIn(host))
     issues.push({ area: 'Agent models', status: 'ok', summary: 'every pinned model has a login' })
   return issues
+}
+
+async function familiesArea(host: AreaHost, { settings }: AreaInputs) {
+  const { errors } = await readFamilyLayers(host.userHome, host.projectRoot, (await settings) ?? {})
+  return errors.map((error): SetupIssue => ({
+    area: 'Model families',
+    status: 'warn',
+    summary: 'a modelFamilies setting is invalid',
+    impact: error,
+  }))
 }
 
 const shortPath = (host: Pick<CheckHost, 'projectRoot' | 'userHome'>, path: string) =>
@@ -411,6 +422,7 @@ export async function check(
         loginArea,
         summaryArea,
         agentsArea,
+        familiesArea,
         providersArea,
         secretsArea,
         extensionsArea,
