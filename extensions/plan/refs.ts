@@ -17,7 +17,10 @@ export type Task = {
   verdict?: string
   notes: { at: string; text: string }[]
 }
-/** One epic with its tasks by key; `met` lists the 1-based acceptance criteria the coordinator confirmed. */
+/**
+ * One epic with its tasks by key; `met` lists the 1-based acceptance criteria the coordinator confirmed, and `revision`
+ * counts the edits of its criteria.
+ */
 export type Epic = {
   key: string
   title: string
@@ -25,6 +28,7 @@ export type Epic = {
   status: string
   verdict?: string
   met?: number[]
+  revision?: number
   tasks: Record<string, Task>
 }
 /**
@@ -34,15 +38,8 @@ export type Epic = {
 export type Estimate = { state: 'in_progress' | 'looks_done'; at?: number }
 /** Acceptance criteria at one landing of the coordinator's work: `confirmed` and `estimated` of `total`. */
 export type Landed = { total: number; confirmed: number; estimated: number }
-/**
- * An epic's estimates by criterion text, `revision`, raised by each edit of its criteria, and its criteria at each landing
- * by lander submission id.
- */
-export type EpicProgress = {
-  estimates?: Record<string, Estimate>
-  revision?: number
-  landed?: Record<string, Landed>
-}
+/** An epic's estimates by criterion text, and its criteria at each landing by lander submission id. */
+export type EpicProgress = { estimates?: Record<string, Estimate>; landed?: Record<string, Landed> }
 /** A coordinator's plan. */
 export type Plan = { next: number; epics: Record<string, Epic> }
 /** The plan task a child conversation works on, and whose plan it is in. */

@@ -404,6 +404,8 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
   const estimates = async () =>
     (await opened.harness.snapshot(Progress, id, context))?.epics.E1?.estimates
   try {
+    expect(await service.openCriteria(id, context)).toBeUndefined()
+    expect(await opened.harness.snapshot(Plan, id, context)).toBeUndefined()
     await call({ action: 'create', title: 'Criteria', body: body(['A', 'B', 'C']) })
     expect(await service.openCriteria(id, context)).toEqual({
       epic: 'E1',
@@ -414,6 +416,7 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
         { n: 3, text: 'C' },
       ],
     })
+    expect(await opened.harness.snapshot(Progress, id, context)).toBeUndefined()
 
     await call({ action: 'update', key: 'E1', met: [4] })
     expect(failed.pop()).toContain('E1 has 3 acceptance criteria, not 4')
