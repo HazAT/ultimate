@@ -147,6 +147,7 @@ export const MessageResponse = memo(
         plugins={plugins}
         remarkPlugins={gfmBeforeMentionsKeepsUrlFragments}
         shikiTheme={codePlugin.getThemes()}
+        tableMaxHeight="none"
         {...props}
       />
     )
