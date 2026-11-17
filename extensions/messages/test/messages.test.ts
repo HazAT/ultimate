@@ -1617,9 +1617,7 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
         ({ record }) => record.kind === reporter.definition.name,
       ).length === 1,
   )
-  await (
-    await b.branch.submit({ type: 'input', content: 'Waiting on the scout' }, context)
-  ).wait(context)
+  await b.later('Waiting on the scout')
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
   pendingReport.resolve()

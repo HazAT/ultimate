@@ -25,8 +25,10 @@ import { branchesAwaitingRemoteReply } from './remote.ts'
 import { closeServed, remoteLabel, Serving, Started, stillServedAfter } from './addresses.ts'
 import type { Serves } from './addresses.ts'
 
+const USER_INPUT_KINDS = new Set(['pi.user', 'voice.utterance', 'review.comments'])
+
 function isUserInput(entry: EntryRecord | undefined, data: Partial<DeliveredMessage> | undefined) {
-  if (entry?.kind === 'pi.user' || entry?.kind === 'voice.utterance') return true
+  if (entry && USER_INPUT_KINDS.has(entry.kind)) return true
   return MessageEntry.is(entry) && data?.from === 'user'
 }
 

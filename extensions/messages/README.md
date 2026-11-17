@@ -36,7 +36,7 @@ report.**
   When nothing of the branch is under way (no run, queued input, busy subagent, pending submission or open
   reply-enabled message), it goes as a one-way message with `report: true`, which wakes the starter; otherwise as a
   note, since the branch will run again. A run that answered only the user's own input (typed or spoken in the
-  branch, or their answer to one of its messages) is a note too: the user read it where they asked, and a report
+  branch, a review of its diff, or their answer to one of its messages) is a note too: the user read it where they asked, and a report
   would wake the starter to relay it back. A landing concludes the branch and wakes the starter itself, asking through
   the `workspaces.branches` point this extension provides (`starter`, `underway`).
 - **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of
