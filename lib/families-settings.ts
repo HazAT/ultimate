@@ -4,6 +4,7 @@ import { mergeFamilies, parseFamilies } from './families.ts'
 import type { Families } from './families.ts'
 import { readJson, updateJson } from './json-file.ts'
 import { decisionRoot, projectSettings } from './project-setup.ts'
+import { readSettings, userSettingsPath } from './settings.ts'
 
 export const familiesPath = (userHome: string) => join(userHome, '.ultimate/model-families.json')
 
@@ -28,6 +29,7 @@ async function readStored(path: string): Promise<Stored> {
 }
 
 export type FamilyLayers = {
+  user: Layer
   base: Layer
   from: 'project' | 'recent' | 'builtin'
   project: Layer
@@ -52,9 +54,16 @@ export async function readFamilyLayers(
     errors.push(String(error))
     return {}
   })
+  const user = await readSettings(userSettingsPath(userHome)).catch(
+    (error: unknown): JsonObject => {
+      errors.push(`${userSettingsPath(userHome)}: ${String(error)}`)
+      return {}
+    },
+  )
   const own = isObject(stored.projects) ? stored.projects[projectKey(projectRoot)] : undefined
   const from = own !== undefined ? 'project' : stored.recent !== undefined ? 'recent' : 'builtin'
   return {
+    user: parseLayerOrReportEmpty(user.modelFamilies, 'user settings: modelFamilies'),
     base: parseLayerOrReportEmpty(own ?? stored.recent, `${familiesPath(userHome)} (${from})`),
     from,
     project: parseLayerOrReportEmpty(
@@ -65,8 +74,8 @@ export async function readFamilyLayers(
   }
 }
 
-export const mergeLayers = ({ base, from, project }: FamilyLayers) =>
-  from === 'project' ? mergeFamilies(project, base) : mergeFamilies(base, project)
+export const mergeLayers = ({ user, base, from, project }: FamilyLayers) =>
+  from === 'project' ? mergeFamilies(user, project, base) : mergeFamilies(user, base, project)
 
 export async function readFamilies(
   userHome: string,

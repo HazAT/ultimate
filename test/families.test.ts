@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { definitionRuns, mergeFamilies, parseFamilies } from '../lib/families.ts'
@@ -65,4 +65,24 @@ it("keeps each project's families and starts a project without its own from the 
   const team = { modelFamilies: { families: { tiny: { model: 'acme/team' } } } }
   expect((await readFamilies(userHome, c, team)).families.tiny.model).toBe('acme/team')
   expect((await readFamilies(userHome, a, team)).families.tiny.model).toBe('vllm/a')
+})
+
+it("starts every project from the user's modelFamilies, under the saved and team families", async () => {
+  const userHome = await temp('ultimate-families-')
+  const [saved, fresh] = ['saved', 'fresh'].map((name) => join(userHome, name))
+  for (const root of [saved, fresh, join(userHome, '.ultimate')]) await mkdir(root)
+  await writeFile(
+    join(userHome, '.ultimate/settings.json'),
+    JSON.stringify({
+      modelFamilies: { families: { review: { model: 'acme/review' } } },
+    }),
+  )
+  await writeFamilies(userHome, saved, { families: { review: { color: 'indigo' } } })
+  const review = async (root: string, settings = {}) =>
+    (await readFamilies(userHome, root, settings)).families.review
+  expect((await review(saved)).model).toBe('acme/review')
+  expect((await review(saved)).color).toBe('indigo')
+  expect((await review(fresh)).model).toBe('acme/review')
+  const team = { modelFamilies: { families: { review: { model: 'acme/team' } } } }
+  expect((await review(fresh, team)).model).toBe('acme/team')
 })
