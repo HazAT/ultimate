@@ -93,8 +93,6 @@ export type TallyState = {
   briefTokens?: number
   since?: EntryId
 }
-export { Tally }
-
 export const docs = [Roots, Branch, Tally, Seen, Memory]
 export const userActions = ['rewind', 'forget', 'compact', 'openEditor']
 
@@ -1196,7 +1194,8 @@ async function treeOf(tx: Tx, id: ConversationId): Promise<Tree | undefined> {
 
 async function refuseTally(tx: Tx, id: ConversationId) {
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id)) return
-  if ((await tx.doc(Tally, id)).since !== undefined)
+  const tally = await tx.doc(Tally, id)
+  if (tally.since !== undefined)
     throw new Error(`#${id} is a tally and runs no turns; ask @ultimate to start a branch`)
 }
 
