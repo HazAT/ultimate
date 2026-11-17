@@ -322,6 +322,31 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('ignores what the conversation shown before still sends once another is shown', async () => {
+    const { store, server, latest } = setup()
+    latest().open()
+    const root = server.of()!
+    root.send('view', view([user(1, 'root')], { 'pi.live': { tools: [{ id: 'a' }] } }))
+    store.show(7 as ConversationId)
+    await tick()
+    server.of(7)!.send('view', view([user(2, 'seven')], { 'pi.live': {} }, 7))
+    store.show(undefined)
+    await tick()
+    const back = server.of()!
+    back.send('view', view([user(1, 'root')], { 'pi.live': { tools: [{ id: 'a' }] } }))
+
+    store.show(7 as ConversationId)
+    expect(back.closed).toBe(true)
+    const kept = store.getState().view
+    expect(() =>
+      back.send('ops', [['s', ['docs', 'pi.live', 'tools', 0, 'id'], 'b']]),
+    ).not.toThrow()
+    back.send('view', view([user(3, 'root again')]))
+    expect(store.getState().view).toBe(kept)
+    expect(kept?.conversation.id).toBe(7)
+    store.stop()
+  })
+
   it('keeps the last six views shown and forgets the rest', async () => {
     const { store, server, latest } = setup()
     latest().open()
