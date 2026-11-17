@@ -1,6 +1,7 @@
 import type {
   ConversationId,
   EntryId,
+  EntryRecord,
   GenerationResult,
   SubmissionId,
   TaskId,
@@ -23,6 +24,11 @@ import { delivery } from './delivery.ts'
 import { branchesAwaitingRemoteReply } from './remote.ts'
 import { closeServed, remoteLabel, Serving, Started, stillServedAfter } from './addresses.ts'
 import type { Serves } from './addresses.ts'
+
+function isUserInput(entry: EntryRecord | undefined, data: Partial<DeliveredMessage> | undefined) {
+  if (entry?.kind === 'pi.user' || entry?.kind === 'voice.utterance') return true
+  return MessageEntry.is(entry) && data?.from === 'user'
+}
 
 const NONTERMINAL_TASK_STATUSES = [
   'pending',
@@ -394,6 +400,7 @@ export function route(host: ExtensionHost) {
           let everyInputReturnsToAnotherAsker = true
 
           let answersOnlyRoutedInputs = true
+          let answersOnlyUserInputs = true
           const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
           for (const entryId of inputsSettledByThisAnswer) {
             const entry = await tx.entry(entryId)
@@ -412,9 +419,13 @@ export function route(host: ExtensionHost) {
             if (asked && data?.from === by) return []
             if (!asked) everyInputReturnsToAnotherAsker = false
             if (data?.routed !== true) answersOnlyRoutedInputs = false
+            if (!isUserInput(entry, data)) answersOnlyUserInputs = false
           }
 
-          const report = !answersOnlyRoutedInputs && !(await concludedOrWorkUnderway(host, tx, id))
+          const report =
+            !answersOnlyRoutedInputs &&
+            !answersOnlyUserInputs &&
+            !(await concludedOrWorkUnderway(host, tx, id))
           const routeToStarter = (body: string, options: Route['options']) => [
             {
               to: by,
