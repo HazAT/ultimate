@@ -50,7 +50,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-async function openCard() {
+async function openCard(cardQuestions = questions) {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
   const server = await fauxServer({
@@ -67,7 +67,13 @@ async function openCard() {
     const last = transcript.messages.at(-1)!
     return last.role === 'user' && last.content === 'ask'
       ? fauxAssistantMessage(
-          [fauxToolCall('message', { to: 'user', text: 'The preview is ready.', questions })],
+          [
+            fauxToolCall('message', {
+              to: 'user',
+              text: 'The preview is ready.',
+              questions: cardQuestions,
+            }),
+          ],
           {
             stopReason: 'toolUse',
           },
@@ -126,6 +132,9 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   await page.keyboard.press('Enter')
   // The undo bar fills over the undo window by itself, without relying on a @starting-style transition.
   const bar = card.locator('[data-countdown]')
+  expect(await bar.evaluate((node) => node.getAnimations()[0].effect!.getTiming().duration)).toBe(
+    3000,
+  )
   await page.waitForTimeout(500)
   const width = await bar.evaluate((node) => node.getBoundingClientRect().width)
   const full = await bar.evaluate((node) => node.parentElement!.getBoundingClientRect().width)
@@ -157,6 +166,70 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     (await log())?.messages.find((m) => m.re === second.id && m.from === 'user')
   await until(async () => !!(await picked()))
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+})
+
+it('warns and waits longer for partial multi answers, and the whole pending card cancels without losing drafts', async () => {
+  const { log, asked, page, card } = await openCard([
+    {
+      text: 'Branch starts in the context',
+      kind: 'multi',
+      ref: '1',
+      options: [
+        { label: 'one-line intent, plus breadcrumb', key: 'a' },
+        { label: 'keep abstracts', key: 'b' },
+      ],
+    },
+    ...questions.slice(1),
+  ])
+  const first = card.locator('fieldset').first()
+  await first.getByRole('button', { name: /one-line intent/ }).click()
+  await first.getByRole('button', { name: /keep abstracts/ }).click()
+  await card.locator('[data-note]').fill('Keep this note.')
+  await page.clock.install()
+  const send = async () => {
+    await card.getByRole('button', { name: 'Send 1 of 3', exact: true }).click()
+    await card.locator('[data-countdown]').waitFor()
+  }
+  const answer = async () =>
+    (await log())?.messages.filter((m) => m.re === asked.id && m.from === 'user') ?? []
+  await send()
+  const bar = card.locator('[data-countdown]')
+  expect(await bar.evaluate((node) => node.getAnimations()[0].effect!.getTiming().duration)).toBe(
+    8000,
+  )
+  expect(await card.textContent()).toContain('2 unanswered')
+  const footer = page.locator(`[data-message-outgoing="${asked.id}"] footer`)
+  expect(await footer.innerText()).toBe('sending')
+  const cancel = card.getByRole('button', { name: 'Undo sending your answer' })
+  expect(await cancel.evaluate((node) => getComputedStyle(node).animationName)).toBe('pulse')
+  // The top-left of the card, nowhere near the visible Undo label, is a cancellation target too.
+  await cancel.click({ position: { x: 2, y: 2 } })
+  expect(await card.locator('[aria-pressed=true]').allTextContents()).toEqual([
+    expect.stringContaining('one-line intent, plus breadcrumb'),
+    expect.stringContaining('keep abstracts'),
+  ])
+  expect(await card.locator('[data-note]').inputValue()).toBe('Keep this note.')
+  expect(await footer.innerText()).toBe('awaiting your reply')
+  expect(await answer()).toHaveLength(0)
+
+  for (const key of ['Escape', 'u']) {
+    await send()
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press(key)
+    await card.locator('[data-note]').waitFor()
+    expect(await card.locator('[data-note]').inputValue()).toBe('Keep this note.')
+  }
+
+  await send()
+  await page.clock.runFor(3001)
+  expect(await answer()).toHaveLength(0)
+  await page.clock.runFor(4999)
+  await until(async () => (await answer()).length === 1)
+  expect((await answer())[0].text).toBe(
+    '1a,b. Branch starts in the context: one-line intent, plus breadcrumb, keep abstracts\n\nNote: Keep this note.',
+  )
+  await page.clock.runFor(8000)
+  expect(await answer()).toHaveLength(1)
 })
 
 it('sends a held answer when the page is left inside the undo window', async () => {

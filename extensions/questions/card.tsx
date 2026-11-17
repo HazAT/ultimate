@@ -28,11 +28,12 @@ import {
 import type { CardState, Draft } from './state.tsx'
 
 const ANSWER_UNDO_WINDOW_MS = 3000
+const INCOMPLETE_UNDO_WINDOW_MS = 8000
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
 
 const animateUndoDeadline = (bar: HTMLDivElement | null) => {
   bar?.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
-    duration: ANSWER_UNDO_WINDOW_MS,
+    duration: Number(bar.dataset.duration),
     easing: 'linear',
     fill: 'both',
   })
@@ -260,6 +261,7 @@ function Card({
   const hints = keys && !phone
   const words = questions.map((question, index) => answerOf(question, drafts[index]))
   const ready = answered(questions, drafts)
+  const unanswered = questions.length - ready.length
   const open = questions.flatMap((question, index) =>
     !words[index] && pickIndices(question).length ? [index] : [],
   )
@@ -359,7 +361,9 @@ function Card({
         },
       )
     }
-    undoWindowSend.current = { cancel: deadline(ANSWER_UNDO_WINDOW_MS, fire), fire }
+    const duration =
+      list.length < questions.length ? INCOMPLETE_UNDO_WINDOW_MS : ANSWER_UNDO_WINDOW_MS
+    undoWindowSend.current = { cancel: deadline(duration, fire), fire }
     setPhase('undo')
   }
   const now = flush
@@ -500,11 +504,48 @@ function Card({
 
   if (settled)
     return (
-      <div className={cn(className, 'px-3 py-2.5')} data-questions-card={card} ref={root}>
+      <div
+        className={cn(className, 'relative px-3 py-2.5')}
+        data-questions-card={card}
+        data-sending={phase === 'sent' ? undefined : ''}
+        ref={root}
+      >
+        {phase === 'undo' && (
+          <button
+            type="button"
+            aria-label="Undo sending your answer"
+            onClick={undo}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
+            }}
+            className={cn(
+              'absolute inset-0 z-10 w-full cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              unanswered > 0 && 'bg-warning/15 motion-safe:animate-pulse',
+            )}
+          />
+        )}
         <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          <CornerDownRightIcon className="size-3.5 shrink-0 text-brand" />
-          <span className="font-semibold text-brand">
-            {phase === 'sent' ? 'You answered' : 'Sending your answer'}
+          <CornerDownRightIcon
+            className={cn(
+              'size-3.5 shrink-0',
+              phase === 'undo' && unanswered ? 'text-warning' : 'text-brand',
+            )}
+          />
+          <span
+            className={cn(
+              'font-semibold',
+              phase === 'undo' && unanswered ? 'text-warning' : 'text-brand',
+            )}
+          >
+            {phase === 'sent' ? (
+              'You answered'
+            ) : phase === 'undo' && unanswered ? (
+              <>
+                Sending · <span className="text-error">{unanswered} unanswered</span>
+              </>
+            ) : (
+              'Sending your answer'
+            )}
           </span>
           {phase === 'undo' && (
             <span className="ml-auto flex items-center gap-2">
@@ -513,10 +554,10 @@ function Card({
                   <Key>esc</Key> undo
                 </span>
               )}
-              <Button variant="ghost" size="xs" onClick={undo}>
+              <span className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs [&_svg]:size-3">
                 <Undo2Icon />
                 Undo
-              </Button>
+              </span>
             </span>
           )}
           {phase === 'sending' && <span className="ml-auto">sending…</span>}
@@ -531,7 +572,11 @@ function Card({
             <div
               ref={animateUndoDeadline}
               data-countdown
-              className="h-full w-full origin-left rounded-full bg-brand/70"
+              data-duration={unanswered ? INCOMPLETE_UNDO_WINDOW_MS : ANSWER_UNDO_WINDOW_MS}
+              className={cn(
+                'h-full w-full origin-left rounded-full',
+                unanswered ? 'bg-warning' : 'bg-brand/70',
+              )}
             />
           </div>
         )}
@@ -542,7 +587,6 @@ function Card({
 
   const shown = questions[current]
   const shownKeys = shown ? [0, 1].flatMap((i) => keyOf(shown, i) ?? []) : []
-  const unanswered = questions.length - ready.length
   return (
     <div className={className} data-questions-card={card} ref={root}>
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1 font-mono text-[11px] text-muted-foreground">
