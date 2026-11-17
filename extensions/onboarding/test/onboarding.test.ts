@@ -10,7 +10,7 @@ import { projectDecision } from '../../../lib/project-setup.ts'
 import { updateSettings } from '../../../lib/settings.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 
-it.concurrent('gates project resources, remembers choices, and applies onboarding settings actions live', async () => {
+async function setupFixture(decision?: boolean) {
   const home = await temp('ultimate-onboarding-')
   const project = join(home, 'project')
   const config = join(project, '.ultimate')
@@ -45,6 +45,7 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
       extensions: { disable: ['plan'], extra: 'keep' },
     }),
   )
+  if (decision !== undefined) new ProjectTrustStore(join(home, '.ultimate')).set(project, decision)
   const options = {
     ultimateRoot: resolve('.'),
     projectRoot: project,
@@ -53,18 +54,29 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     localSetup: false,
     firstRun: true,
   }
+  return { home, project, projectFile, userFile, options }
+}
+
+function drive(server: Awaited<ReturnType<typeof fauxServer>>) {
+  return {
+    action: async (name: string, args: unknown = {}) => {
+      const response = await post(server, `/api/extensions/onboarding/actions/${name}`, { args })
+      expect(response.status).toBe(200)
+      return response.data.result
+    },
+    enabled: (name: string) =>
+      server.extensions.info().find((entry) => entry.name === name)?.enabled,
+    web: async () => server.web.facets(),
+    tools: async () => (await server.root.agent(context)).tools.map((tool) => tool.name),
+  }
+}
+
+it('gates project resources until the local setup is chosen, and remembers the choice', async () => {
+  const { home, project, options } = await setupFixture()
   let server: Awaited<ReturnType<typeof fauxServer>> | undefined
   try {
     server = await fauxServer(options)
-    const action = async (name: string, args: unknown = {}) => {
-      const response = await post(server!, `/api/extensions/onboarding/actions/${name}`, { args })
-      expect(response.status).toBe(200)
-      return response.data.result
-    }
-    const enabled = (name: string) =>
-      server!.extensions.info().find((entry) => entry.name === name)?.enabled
-    const web = async () => server!.web.facets()
-    const tools = async () => (await server!.root.agent(context)).tools.map((tool) => tool.name)
+    const { action, enabled, web, tools } = drive(server)
     for (const args of [
       {},
       { extensions: { plan: 'yes' } },
@@ -132,7 +144,18 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     await server.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(true)
-    expect(enabled('x')).toBe(true)
+    expect(drive(server).enabled('x')).toBe(true)
+  } finally {
+    await server?.close()
+    await removeTemp(home)
+  }
+})
+
+it('applies extension choices live at project and user scope, keeping other settings', async () => {
+  const { home, projectFile, userFile, options } = await setupFixture(true)
+  const server = await fauxServer(options)
+  try {
+    const { action, enabled, web } = drive(server)
     await action('setExtension', { name: 'splash', enabled: false, scope: 'project' })
     expect(enabled('splash')).toBe(false)
     expect((await web()).some((path) => path.endsWith('/splash/web.tsx'))).toBe(false)
@@ -178,6 +201,25 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     expect(
       (await action('extensions')).find((entry: { name: string }) => entry.name === 'sounds').layer,
     ).toBe('user')
+  } finally {
+    await server.close()
+    await removeTemp(home)
+  }
+})
+
+it('withdraws the local setup, adopts it into user settings, and remembers the first run', async () => {
+  const { home, projectFile, userFile, options } = await setupFixture(true)
+  await updateSettings(projectFile, (value) => {
+    value.extensions = { ...(value.extensions as object), enable: ['splash'] }
+  })
+  await writeFile(
+    userFile,
+    JSON.stringify({ custom: 'user', extensions: { extra: 2, disable: ['sounds'] } }),
+  )
+  let server: Awaited<ReturnType<typeof fauxServer>> | undefined
+  try {
+    server = await fauxServer(options)
+    const { action, enabled, web, tools } = drive(server)
     await action('decide', { local: false })
     expect(enabled('x')).toBe(false)
     expect(enabled('plan')).toBe(true)
@@ -210,15 +252,15 @@ it.concurrent('gates project resources, remembers choices, and applies onboardin
     await server.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(false)
-    expect(enabled('x')).toBe(false)
-    expect((await action('status')).firstRun).toBe(false)
+    expect(drive(server).enabled('x')).toBe(false)
+    expect((await drive(server).action('status')).firstRun).toBe(false)
   } finally {
     await server?.close()
     await removeTemp(home)
   }
 })
 
-it.concurrent('offers setup only to named definitions, refuses inapplicable cards, and deduplicates user-only choices', async () => {
+it('offers setup only to named definitions, refuses inapplicable cards, and deduplicates user-only choices', async () => {
   const home = await temp('ultimate-setup-cards-')
   const project = join(home, 'project')
   await mkdir(join(project, '.ultimate'), { recursive: true })
@@ -402,7 +444,7 @@ it.concurrent('offers setup only to named definitions, refuses inapplicable card
   }
 })
 
-it.concurrent('does not inherit a parent project choice', async () => {
+it('does not inherit a parent project choice', async () => {
   const home = await temp('ultimate-trust-')
   try {
     const project = join(home, 'parent/child')
@@ -414,7 +456,7 @@ it.concurrent('does not inherit a parent project choice', async () => {
   }
 })
 
-it.concurrent('shares one choice between a checkout and its linked worktrees', async () => {
+it('shares one choice between a checkout and its linked worktrees', async () => {
   const home = await temp('ultimate-trust-worktree-')
   try {
     const main = join(home, 'main')
@@ -450,7 +492,7 @@ it.concurrent('shares one choice between a checkout and its linked worktrees', a
   }
 })
 
-it.concurrent('boots with corrupt trust, discloses project replacements, and recovers after repair', async () => {
+it('boots with corrupt trust, discloses project replacements, and recovers after repair', async () => {
   const home = await temp('ultimate-corrupt-trust-')
   const project = join(home, 'project')
   await mkdir(join(project, '.ultimate/extensions/codemode'), { recursive: true })
