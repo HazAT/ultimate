@@ -15,7 +15,6 @@ import { api, cn, errorMessage, useAction, useCopy, useDialog, useRestart } from
 import { JoinAction, JoinStateAction } from './refs.ts'
 import type { JoinResult, JoinState, JoinStep } from './refs.ts'
 
-/** The dialog id the "Join cloud backups" command opens. */
 export const joinDialog = 'cloud.join'
 
 const steps: { id: JoinStep | 'done'; label: string }[] = [
@@ -27,7 +26,6 @@ const steps: { id: JoinStep | 'done'; label: string }[] = [
 
 type StepState = 'pending' | 'running' | 'done' | 'failed'
 
-/** Each step's state: all running-then-pending while the join runs, all done after it, done up to the failed one. */
 function stepStates(result: JoinResult | 'running'): StepState[] {
   if (result === 'running') return steps.map((_, index) => (index === 0 ? 'running' : 'pending'))
   if (result.ok) return steps.map(() => 'done')
@@ -45,7 +43,6 @@ function StepIcon({ state }: { state: StepState }) {
   return <CircleIcon className="size-2 shrink-0 text-muted-foreground/40" />
 }
 
-/** The move card's step list, for the join's four steps. */
 function Steps({ result }: { result: JoinResult | 'running' }) {
   const states = stepStates(result)
   return (
@@ -69,7 +66,6 @@ function Steps({ result }: { result: JoinResult | 'running' }) {
   )
 }
 
-/** `pnpm setup:machine` as a code chip that copies itself. */
 function Command({ value }: { value: string }) {
   const { copied, copy } = useCopy()
   return (
@@ -114,7 +110,6 @@ function Field({
   )
 }
 
-/** A secret field: a one-time code to the browser, hidden until the user shows it. */
 function Secret({
   name,
   value,
@@ -160,7 +155,6 @@ function Secret({
   )
 }
 
-/** After a join: run setup:machine, restart, and the projects the cloud lists. */
 function Next({ result }: { result: Extract<JoinResult, { ok: true }> }) {
   const restart = useRestart()
   return (
@@ -212,7 +206,6 @@ function Next({ result }: { result: Extract<JoinResult, { ok: true }> }) {
   )
 }
 
-/** The form: cloud URL, machine name and the two secrets; the values live only here and go to `cloud.join`. */
 function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void }) {
   const [url, setUrl] = useState(state.url ?? '')
   const [machine, setMachine] = useState(state.machine)
@@ -242,13 +235,11 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
   return (
     <>
       {!done && (
-        // No <form>: browsers then don't offer to save the secrets as passwords (as in the Secrets panel).
         <div
           className="space-y-2 px-3 py-2"
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
             event.preventDefault()
-            // oxlint-disable-next-line typescript/no-floating-promises -- submit catches join failures and displays them in the result.
             if (ready) void submit()
           }}
         >
@@ -320,26 +311,22 @@ function JoinForm({ state, onJoined }: { state: JoinState; onJoined: () => void 
   )
 }
 
-/**
- * Join cloud backups: on a machine without cloud backups, the form; once joined, "Joined as <machine> · <host>" with a
- * Change link that opens the form again.
- */
 export function JoinCard() {
   const state = useAction(JoinStateAction)
   const [changing, setChanging] = useState(false)
-  // The form stays mounted after its own join, to show the steps and the next block.
-  const [joining, setJoining] = useState(false)
+  const [joinedThroughMountedForm, setJoinedThroughMountedForm] = useState(false)
   const joined = state.data?.joined
-  const form = !!state.data && (!joined || changing || joining)
+  const showJoinFormIncludingOutcome =
+    !!state.data && (!joined || changing || joinedThroughMountedForm)
   return (
     <section
       className="min-w-0 rounded-md border border-l-2 border-border border-l-brand/60 bg-card text-left font-mono text-[11.5px] shadow-xs"
-      data-cloud-join={joined && !form ? 'joined' : 'form'}
+      data-cloud-join={joined && !showJoinFormIncludingOutcome ? 'joined' : 'form'}
     >
       <header className="flex min-w-0 items-center gap-2 py-1.5 pr-1.5 pl-3">
         <NetworkIcon className="size-3.5 shrink-0 text-brand" />
         <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/90">
-          {joined && !form ? (
+          {joined && !showJoinFormIncludingOutcome ? (
             <>
               Joined as {joined.machine}
               <span className="text-muted-foreground/60"> · {joined.host}</span>
@@ -348,7 +335,7 @@ export function JoinCard() {
             'Join cloud backups'
           )}
         </span>
-        {joined && !form && (
+        {joined && !showJoinFormIncludingOutcome && (
           <Button
             className="h-5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => setChanging(true)}
@@ -364,12 +351,11 @@ export function JoinCard() {
           {errorMessage(state.error)}
         </p>
       )}
-      {form && (
+      {showJoinFormIncludingOutcome && (
         <div className="border-t border-border/60">
           <JoinForm
             onJoined={() => {
-              setJoining(true)
-              // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
+              setJoinedThroughMountedForm(true)
               void state.refetch()
             }}
             state={state.data!}
@@ -380,7 +366,6 @@ export function JoinCard() {
   )
 }
 
-/** The "Join cloud backups" command's dialog. */
 export function JoinDialog() {
   const [open, setOpen] = useDialog(joinDialog)
   return (

@@ -24,15 +24,12 @@ import {
 import { plural } from '@/sdk'
 import type { ToolCallView } from '@/sdk'
 
-/** A result or fetched page in the tools' `details` (server.ts). */
 interface Page {
   url: string
   title: string | null
   publish_date: string | null
   excerpts: string[]
-  /** web_fetch: the page's content as the model got it; without it, its excerpts. */
   content?: string | null
-  /** web_fetch: the content was cut to the server's bound. */
   contentTruncated?: boolean
 }
 interface Warning {
@@ -55,8 +52,7 @@ type Details =
   | { status: 'error'; error: string; httpStatus: number | null; ref_id: string | null }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
-/** Fetched markdown must not load anything from the web: no images. */
-const offline = ['img', 'picture', 'source']
+const elementsThatCouldFetchRemoteAssets = ['img', 'picture', 'source']
 
 function host(url: string) {
   try {
@@ -65,9 +61,7 @@ function host(url: string) {
     return url
   }
 }
-/** A URL as shown: no scheme, no `www.`, no trailing slash. */
 const bare = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
-/** The first few distinct domains, in rank order. */
 function domains(urls: readonly string[], count = 3) {
   const unique = [...new Set(urls.map(host))]
   return unique.length > count
@@ -90,10 +84,6 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-/**
- * For a missing or rejected PARALLEL_API_KEY: opens the Secrets panel at it, or, while `secrets` is off, the
- * Extensions panel to turn it on.
- */
 function KeyAction({ error }: { error: string }) {
   const commands = useCommands()
   const ui = useUltimate()
@@ -111,7 +101,6 @@ function KeyAction({ error }: { error: string }) {
   return null
 }
 
-/** The card both tools share: the header, an action beside it, and the body. */
 function Card({
   call,
   name,
@@ -130,13 +119,12 @@ function Card({
   const duration = useToolDuration(call)
   const details = call.details as Details | undefined
   const failure = details?.status === 'error' ? details : undefined
-  // Collapsed while it goes well; a failure opens it, also one that arrives live.
   const failed = call.status === 'error'
   const [open, setOpen] = useState(failed)
-  const was = useRef(failed)
+  const previouslyFailed = useRef(failed)
   useEffect(() => {
-    if (failed && !was.current) setOpen(true)
-    was.current = failed
+    if (failed && !previouslyFailed.current) setOpen(true)
+    previouslyFailed.current = failed
   }, [failed])
   return (
     <Tool onOpenChange={setOpen} open={open}>
@@ -186,7 +174,6 @@ function Card({
   )
 }
 
-/** Counts for the header: warnings, and fetches that failed. */
 function Counts({ details }: { details?: Details }) {
   if (!details || details.status === 'error') return null
   const failed = details.errors?.length ?? 0
@@ -207,7 +194,6 @@ function Notes({ details }: { details: Details }) {
   return (
     <ToolSection className="border-t border-border/60 text-[11.5px]">
       {errors.map((error, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed fetch errors may repeat for repeated input URLs.
         <div className="flex min-w-0 gap-1.5 text-error" key={`error:${index}`}>
           <span className="shrink-0">✗</span>
           <span className="min-w-0 truncate" title={error.url}>
@@ -220,7 +206,6 @@ function Notes({ details }: { details: Details }) {
         </div>
       ))}
       {warnings.map((warning, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed result warnings have no id and may repeat.
         <div className="flex min-w-0 gap-1.5 text-warning" key={`warning:${index}`}>
           <span className="shrink-0">!</span>
           <span className="min-w-0 break-words">{warning.message}</span>
@@ -230,7 +215,6 @@ function Notes({ details }: { details: Details }) {
   )
 }
 
-/** A link that opens in a new tab; nothing is requested until it is followed. */
 function Link({
   url,
   className,
@@ -326,7 +310,6 @@ function Search({ call }: { call: ToolCallView }) {
   )
 }
 
-/** One fetched page: its title, its source, and its content as markdown behind a disclosure. */
 function FetchedPage({ page, open }: { page: Page; open: boolean }) {
   const body = page.content || page.excerpts.join('\n\n')
   return (
@@ -351,7 +334,10 @@ function FetchedPage({ page, open }: { page: Page; open: boolean }) {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-1.5 max-h-96 overflow-y-auto rounded-sm border border-border/70 bg-background px-3 py-2 font-sans">
-              <MessageResponse className="text-[13px] leading-relaxed" disallowedElements={offline}>
+              <MessageResponse
+                className="text-[13px] leading-relaxed"
+                disallowedElements={elementsThatCouldFetchRemoteAssets}
+              >
                 {body}
               </MessageResponse>
             </div>
@@ -395,7 +381,6 @@ function Fetch({ call }: { call: ToolCallView }) {
       {pages.length > 0 && (
         <ul aria-label="Fetched pages" className="divide-y divide-border/60">
           {pages.map((page, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Fixed fetched pages may repeat for repeated input URLs.
             <FetchedPage key={index} open={pages.length === 1} page={page} />
           ))}
         </ul>

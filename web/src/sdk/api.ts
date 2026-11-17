@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../../lib/ids.ts'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import type {
   CompactResponse,
   ConfigureRequest,
@@ -17,15 +19,18 @@ import { errorMessage } from './format.ts'
 import type { Store } from './store.ts'
 
 /** Per-call options of `api.action`. */
-export type ActionOptions = { conversationId?: number; signal?: AbortSignal; keepalive?: boolean }
+export type ActionOptions = {
+  conversationId?: ConversationId
+  signal?: AbortSignal
+  keepalive?: boolean
+}
 
-/** How a call passes an action's arguments: optional when the action takes `null`, required otherwise. */
 export type ActionArgs<Args, Options> = null extends Args
   ? [args?: Args, options?: Options]
   : [args: Args, options?: Options]
 
 /** The root conversation's id (`ROOT_CONVERSATION_ID` in Pi Durable): Ultimate's one ongoing conversation. */
-export const ROOT = 1
+export const ROOT = parseConversationId(1)
 
 /** A failed `api.action()`; one nobody catches becomes a notice. */
 export class ActionError extends Error {
@@ -42,7 +47,6 @@ export class ActionError extends Error {
   }
 }
 
-/** `extension/action: message`, as a notice shows it. */
 export const actionMessage = (error: ActionError) =>
   `${error.extension}/${error.action}: ${error.message}`
 
@@ -54,7 +58,6 @@ export class HttpError extends Error {
   }
 }
 
-/** Commands as `fetch` POSTs. Conversation commands default to the shown conversation. */
 export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) {
   const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
   async function post<T>(
@@ -66,7 +69,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      // Lets a small request outlive the page, such as an action cancelling work when the tab closes.
+
       keepalive,
       signal,
     })
@@ -84,14 +87,14 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
     const state = store.getState()
     return state.view?.conversation.id ?? state.requested ?? ROOT
   }
-  const conversation = (id: number | undefined, action: string) =>
+  const conversation = (id: ConversationId | undefined, action: string) =>
     `/api/conversations/${id ?? shown()}/${action}`
 
   return {
     submit: (
       text: string,
       whenBusy?: SubmitRequest['whenBusy'],
-      id?: number,
+      id?: ConversationId,
       images?: SubmitRequest['images'],
     ) =>
       post<SubmitResponse>(conversation(id, 'submit'), {
@@ -99,12 +102,12 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
         whenBusy,
         images,
       } satisfies SubmitRequest),
-    /** Stored entries of `id` below `before`, newest first; with `after`, only those from `after` on, in larger pages. */
+
     history: async (
-      id: number,
-      before: number,
+      id: ConversationId,
+      before: EntryId,
       signal?: AbortSignal,
-      after?: number,
+      after?: EntryId,
     ): Promise<HistoryResponse> => {
       const query = new URLSearchParams({ before: String(before) })
       if (after !== undefined) query.set('after', String(after))
@@ -113,22 +116,17 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       if (!response.ok) throw new HttpError(response.status, data.error ?? 'Could not load history')
       return data as HistoryResponse
     },
-    abort: (id?: number) => post<EmptyResponse>(conversation(id, 'abort')),
-    cancelSubmission: (submissionId: number, id?: number) =>
+    abort: (id?: ConversationId) => post<EmptyResponse>(conversation(id, 'abort')),
+    cancelSubmission: (submissionId: number, id?: ConversationId) =>
       post<EmptyResponse>(conversation(id, `inbox/${submissionId}/cancel`)),
-    configure: (change: ConfigureRequest, id?: number) =>
+    configure: (change: ConfigureRequest, id?: ConversationId) =>
       post<EmptyResponse>(conversation(id, 'configure'), change),
-    compact: (instructions?: string, id?: number) =>
+    compact: (instructions?: string, id?: ConversationId) =>
       post<CompactResponse>(conversation(id, 'compact'), { instructions }),
     createConversation: (create: CreateConversationRequest = {}) =>
       post<CreateConversationResponse>('/api/conversations', create),
     restart: () => post<unknown>('/api/restart'),
-    /**
-     * Call the action `ref` names (`export const actions` in its extension's `server.ts`, typed in its `refs.ts`)
-     * with JSON `args`, on behalf of the shown conversation, and resolve with its result. Rejects
-     * with `ActionError`; an uncaught rejection shows as a notice. Aborting `signal` aborts the action's processes too; `keepalive` lets the call outlive the page, such as
-     * one sent on `pagehide`.
-     */
+
     action: async <Args, Result>(
       ref: ActionRef<Args, Result>,
       ...[args, call = {}]: ActionArgs<Args, ActionOptions>
@@ -153,7 +151,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
         )
       }
     },
-    /** Write durable UI state; prefer `useUiState`, which batches and applies writes at once. */
+
     updateUi: (change: UiUpdateRequest) => post<UiUpdateResponse>('/api/ui', change),
   }
 }

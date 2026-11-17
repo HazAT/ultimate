@@ -23,7 +23,6 @@ type FastHost = Pick<ExtensionHost, 'userHome' | 'projectSettings' | 'notice'>
 
 const reported = new Set<string>()
 
-/** The providers whose Responses payload takes `service_tier`: the ChatGPT/Codex login and the OpenAI API. */
 export const FAST_PROVIDERS = ['openai-codex', 'openai'] as const
 
 const fastProvider = (model: string) =>
@@ -31,9 +30,7 @@ const fastProvider = (model: string) =>
 
 const userFile = (host: Pick<ExtensionHost, 'userHome'>) => userSettingsPath(host.userHome)
 
-/** The raw `fastModels` value: the project's settings, else the user's. */
 async function fastSetting(host: Pick<FastHost, 'userHome' | 'projectSettings'>) {
-  // Invalid settings JSON is reported where settings load; here it counts as unset.
   const user: JsonObject = await readSettings(userFile(host)).catch(() => ({}))
   const project = await host.projectSettings()
   return Object.hasOwn(project, 'fastModels')
@@ -41,10 +38,6 @@ async function fastSetting(host: Pick<FastHost, 'userHome' | 'projectSettings'>)
     : { value: user.fastModels, project: false }
 }
 
-/**
- * The models `fastModels` names, read at each request so a change applies to the next one; in a preview, also the
- * model it runs every agent on.
- */
 export async function fastModels(host: FastHost): Promise<Set<string>> {
   const preview = previewModel()
   const models = await listedModels(host)
@@ -73,14 +66,9 @@ const status = async (host: FastHost) => ({
 })
 
 export const actions = {
-  /** `{ models, project }`: the fast models, and whether the project's settings decide them. */
   status: implementAction(StatusAction, async (_args, { host }) => {
     return status(host)
   }),
-  /**
-   * `{ model, on }`: adds `"openai-codex/<id>"` or `"openai/<id>"` to the user's `fastModels` or removes it. The project's tracked settings
-   * file is never written: while it sets the list, this refuses.
-   */
   set: implementAction(SetAction, async (args, { host }) => {
     const { model, on } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
     if (typeof model !== 'string' || !fastProvider(model) || typeof on !== 'boolean')
@@ -102,73 +90,66 @@ export const actions = {
   }),
 }
 
-/**
- * Stream (Codex) Responses requests, asking for the priority (fast) service tier for the models `listed` names and for
- * requests from the provider sessions in `sessions` (conversations running a definition with `fast: true`).
- */
 export function fastStream(
   listed: () => Promise<Set<string>>,
   api: ProviderStreams,
-  sessions: ReadonlySet<string> = new Set(),
+  definitionFastSessions: ReadonlySet<string> = new Set(),
 ): Stream {
   return (model, context, options) =>
     lazyStream(model, async () => {
-      const session = options?.sessionId !== undefined && sessions.has(options.sessionId)
-      if (!session && !(await listed()).has(`${model.provider}/${model.id}`))
+      const definitionRequestsPriority =
+        options?.sessionId !== undefined && definitionFastSessions.has(options.sessionId)
+      if (!definitionRequestsPriority && !(await listed()).has(`${model.provider}/${model.id}`))
         return api.streamSimple(model, context, options)
-      // Sign in with ChatGPT rejects the documented "fast"; "priority" is the same tier.
       // Pi upstream: @earendil-works/pi-ai@1.5.2 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
       return api.streamSimple(model, context, {
         ...options,
-        // The tier goes in first so the harness's beforeProviderRequest hooks (wire) see the body as sent.
         onPayload: async (payload, payloadModel) => {
-          const tiered = { ...(payload as object), service_tier: 'priority' }
-          return (await options?.onPayload?.(tiered, payloadModel)) ?? tiered
+          const payloadTieredBeforeHooks = { ...(payload as object), service_tier: 'priority' }
+          return (
+            (await options?.onPayload?.(payloadTieredBeforeHooks, payloadModel)) ??
+            payloadTieredBeforeHooks
+          )
         },
       })
     })
 }
 
 export default function fastExtension(host: ExtensionHost) {
-  // A reload installs the new facet before the old one closes; unregister only when none remain.
-  const facets = host.resource('fast.facets', () => new Set<symbol>())
+  const liveFacetRegistrations = host.resource('fast.facets', () => new Set<symbol>())
   const facet = Symbol('fast')
-  facets.add(facet)
+  liveFacetRegistrations.add(facet)
   host.onClose(async () => {
-    facets.delete(facet)
-    if (!facets.size)
+    liveFacetRegistrations.delete(facet)
+    if (!liveFacetRegistrations.size)
       for (const provider of FAST_PROVIDERS) host.modelRuntime.unregisterProvider(provider)
   })
   const listed = () => fastModels(host)
-  // Provider sessions of conversations whose definition sets `fast: true`, shared across reloads like the overlay.
-  const sessions = host.resource('fast.sessions', () => new Set<string>())
+  const definitionFastSessions = host.resource('fast.sessions', () => new Set<string>())
   host.modelRuntime.registerProvider('openai-codex', {
     api: 'openai-codex-responses',
-    streamSimple: fastStream(listed, openAICodexResponsesApi(), sessions),
+    streamSimple: fastStream(listed, openAICodexResponsesApi(), definitionFastSessions),
   })
   host.modelRuntime.registerProvider('openai', {
     api: 'openai-responses',
-    streamSimple: fastStream(listed, openAIResponsesApi(), sessions),
+    streamSimple: fastStream(listed, openAIResponsesApi(), definitionFastSessions),
   })
   return defineExtension({
     name: 'fast',
     hooks: [
       hook(GenerationTask, {
-        // Before each request on an OpenAI model: the definition the conversation runs (children, automation runs
-        // and standing agents record it; a branch is labelled with it) decides, as it is now.
         beforeRequest: async (_request, api, context) => {
           const provider = await api.snapshot(ProviderDoc, api.conversationId, context)
           if (!provider) return
           const model = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
           const profile = await api.snapshot(Profile, api.conversationId, context)
-          // An agent made on the fly has no definition; its label may match one by chance.
-          const name =
+          const nonAdhocDefinitionName =
             model && fastProvider(`${model.provider}/`) && !profile?.adhoc
               ? (profile?.definition ??
                 (await api.snapshot(host.metadata, api.conversationId, context))?.label)
               : undefined
-          const fast =
-            name !== undefined &&
+          const definitionUsesPriority =
+            nonAdhocDefinitionName !== undefined &&
             (
               await discoverAgents(
                 host.ultimateRoot,
@@ -176,11 +157,14 @@ export default function fastExtension(host: ExtensionHost) {
                 host.userHome,
                 host.modelRuntime,
               )
-            ).definitions.some((definition) => definition.name === name && definition.fast)
-          if (!fast) sessions.delete(provider.sessionId)
-          else if (!sessions.has(provider.sessionId)) {
-            if (sessions.size >= 10_000) sessions.delete(sessions.values().next().value!)
-            sessions.add(provider.sessionId)
+            ).definitions.some(
+              (definition) => definition.name === nonAdhocDefinitionName && definition.fast,
+            )
+          if (!definitionUsesPriority) definitionFastSessions.delete(provider.sessionId)
+          else if (!definitionFastSessions.has(provider.sessionId)) {
+            if (definitionFastSessions.size >= 10_000)
+              definitionFastSessions.delete(definitionFastSessions.values().next().value!)
+            definitionFastSessions.add(provider.sessionId)
           }
         },
       }),

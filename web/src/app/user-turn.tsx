@@ -15,14 +15,12 @@ import { messageItems } from '../sdk/registry.ts'
 import { ExtensionBoundary } from './boundary.tsx'
 import { MessageActions } from './message-actions.tsx'
 
-/** The text blocks of a user message, joined. */
 export function textOf(content: string | readonly (TextContent | ImageContent)[]) {
   return typeof content === 'string'
     ? content
     : content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
-/** A `/skill:name args` input as the server expanded it (Pi's `<skill>` block): the skill, its body, and the request. */
 export function skillInput(text: string) {
   const match =
     /^<skill name="([^"]+)" location="([^"]+)">\nReferences are relative to [^\n]*\n\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]*))?$/.exec(
@@ -33,7 +31,6 @@ export function skillInput(text: string) {
     : undefined
 }
 
-/** The skill an input ran, folded: its name in the header, its instructions inside. */
 function SkillRun({ name, location, body }: { name: string; location: string; body: string }) {
   return (
     <Tool className="bg-background">
@@ -59,7 +56,6 @@ function SkillRun({ name, location, body }: { name: string; location: string; bo
   )
 }
 
-/** A file a sent message references, as its chip; dimmed once the host's retention has removed it. */
 function SentFile({ file, at }: { file: AttachedFile; at?: number }) {
   const uploaded = uploadedAt(file.path) ?? at
   return (
@@ -84,7 +80,6 @@ function SentFile({ file, at }: { file: AttachedFile; at?: number }) {
   )
 }
 
-/** The user's words as written, with mentions as chips: the body of every user turn. */
 export function UserText({ text, className }: { text: string; className?: string }) {
   return (
     <p className={cn('break-words whitespace-pre-wrap', className)}>
@@ -93,10 +88,6 @@ export function UserText({ text, className }: { text: string; className?: string
   )
 }
 
-/**
- * A turn of the user's: its text as written, with mentions as chips, and its images. `text` replaces the message's own,
- * such as the user's words inside a message an extension delivered.
- */
 export function UserView({
   entry,
   message,
@@ -122,11 +113,9 @@ export function UserView({
           {images.length + files.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {images.map((image, index) => (
-                // oxlint-disable-next-line react/no-array-index-key -- Fixed message attachments may contain duplicates.
                 <ToolImage alt={`Attached image ${index + 1}`} image={image} key={index} />
               ))}
               {files.map((file, index) => (
-                // oxlint-disable-next-line react/no-array-index-key -- The same file may be referenced twice.
                 <SentFile at={message.timestamp} file={file} key={index} />
               ))}
             </div>

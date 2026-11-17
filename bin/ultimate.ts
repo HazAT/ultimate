@@ -4,9 +4,11 @@ import type { ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, realpath } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { projectHome } from '../server/project.ts'
-import { acquireLock, readOwner, retireStorageOwner, pause } from '../server/lock.ts'
-import { watch, existsSync } from 'node:fs'
+import { projectHome } from '../lib/project-paths.ts'
+import { acquireLock, readOwner, retireStorageOwner } from '../lib/lock.ts'
+import { deadline, pace } from '../lib/timers.ts'
+import { watch, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { watchRoots } from '../server/watch-roots.ts'
 import { join, resolve as resolvePath } from 'node:path'
 import { createServer, connect } from 'node:net'
@@ -28,15 +30,30 @@ if (positionals.length > 1) throw new Error('Usage: ultimate [dir] [--port N] [-
 const opening = !values['no-open'] && process.env.ULTIMATE_NO_OPEN !== '1'
 const available = (name: string) =>
   process.env.PATH?.split(':').some((path) => existsSync(join(path, name)))
-/** Opens a chromeless app window, like an installed web app, in the first Chrome-family browser; else a tab. */
+function installedChromeApp(app: string) {
+  const apps = join(homedir(), 'Applications/Chrome Apps.localized')
+  const value = (text: string, key: string) =>
+    text.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`))?.[1]
+  try {
+    const plist = readdirSync(apps)
+      .filter((bundle) => bundle.endsWith('.app'))
+      .map((bundle) => readFileSync(join(apps, bundle, 'Contents/Info.plist'), 'utf8'))
+      .find((text) => value(text, 'CrAppModeShortcutURL')?.startsWith(`${app}/`))
+    return plist && value(plist, 'CrAppModeShortcutID')
+  } catch {
+    return undefined
+  }
+}
 function openWindow(port: number) {
   const app = `http://ultimate.localhost:${port}`
   const tab = `http://127.0.0.1:${port}`
   let command = process.platform === 'darwin' ? 'open' : 'xdg-open'
   let args = [tab]
   if (process.platform === 'darwin') {
-    if (existsSync('/Applications/Google Chrome.app'))
-      args = ['-na', 'Google Chrome', '--args', `--app=${app}`]
+    if (existsSync('/Applications/Google Chrome.app')) {
+      const id = installedChromeApp(app)
+      args = ['-na', 'Google Chrome', '--args', id ? `--app-id=${id}` : `--app=${app}`]
+    }
   } else if (available('omarchy-launch-webapp')) {
     command = 'omarchy-launch-webapp'
     args = [app]
@@ -67,7 +84,16 @@ const projectRoot = await realpath(positionals[0] ?? process.cwd()).catch((error
   process.exit(1)
 })
 const home = process.env.ULTIMATE_HOME ?? projectHome(projectRoot)
-const requestedPort = values.port ?? process.env.ULTIMATE_PORT
+function settingsPort() {
+  let settings: { port?: unknown }
+  try {
+    settings = JSON.parse(readFileSync(join(projectRoot, '.ultimate/settings.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+  return settings?.port === undefined ? undefined : JSON.stringify(settings.port)
+}
+const requestedPort = values.port ?? process.env.ULTIMATE_PORT ?? settingsPort()
 let port = Number(requestedPort ?? 4747)
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port')
 const lockPath = join(home, 'ultimate.lock')
@@ -77,17 +103,20 @@ const lock = await acquireLock(lockPath, {
   port,
   project: projectRoot,
 }).catch(async (error) => {
-  // Starting a running project again opens its window.
-  const owner = opening && (await readOwner(lockPath))
-  if (owner && owner.port !== undefined && String(error).includes('already running')) {
-    openWindow(owner.port)
+  const runningProjectToReopen = opening && (await readOwner(lockPath))
+  if (
+    runningProjectToReopen &&
+    runningProjectToReopen.port !== undefined &&
+    String(error).includes('already running')
+  ) {
+    openWindow(runningProjectToReopen.port)
     process.exit(0)
   }
   console.error(String(error))
   process.exit(1)
 })
-// An interrupted `pnpm reset` or `pnpm restore` left the home half moved; storage must not open until it is finished.
-if (existsSync(join(home, 'reset.json'))) {
+const resetOrRestoreInterrupted = existsSync(join(home, 'reset.json'))
+if (resetOrRestoreInterrupted) {
   await lock.close()
   console.error(
     `A reset or restore of ${home} was interrupted. Rerun \`pnpm reset ${projectRoot}\` or \`pnpm restore --dir ${projectRoot}\`, then start Ultimate.`,
@@ -204,6 +233,10 @@ try {
   })
 } catch (error) {
   await lock.close()
+  if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+    console.error(`Port ${port} is in use; free it or start with --port N.`)
+    process.exit(1)
+  }
   throw error
 }
 const address = proxy.address()
@@ -229,7 +262,7 @@ function wait(
 ): Promise<ChildMessage> {
   return new Promise((resolve, reject) => {
     const finish = (error?: Error, message?: ChildMessage) => {
-      clearTimeout(timer)
+      cancel()
       core.child.off('message', check)
       core.child.off('exit', exited)
       if (error) reject(error)
@@ -244,9 +277,8 @@ function wait(
       else if (index !== -1) finish(undefined, core.messages.splice(index, 1)[0])
     }
     const exited = () => finish(new Error(`Core exited before ${type}: ${core.stderr}`))
-    const timer = setTimeout(
-      () => finish(new Error(`Timed out waiting for ${type}: ${core.stderr}`)),
-      timeout,
+    const cancel = deadline(timeout, () =>
+      finish(new Error(`Timed out waiting for ${type}: ${core.stderr}`)),
     )
     core.child.on('message', check)
     core.child.once('exit', exited)
@@ -265,26 +297,26 @@ async function kill(core: Core) {
 }
 async function exit(core: Core) {
   if (core.child.exitCode !== null || core.child.signalCode !== null) return
-  const deadline = Date.now() + 10000
+  const expiresAt = Date.now() + 10000
   try {
     const released = wait(core, 'released', undefined, 10000)
     send(core, { type: 'release' })
     await released
     const exited = once(core.child, 'exit')
     send(core, { type: 'exit' })
-    await Promise.race([exited, pause(Math.max(0, deadline - Date.now()))])
+    await Promise.race([exited, pace(Math.max(0, expiresAt - Date.now()))])
   } catch {
-    // A child that cannot release must be killed before another owner opens.
-  } finally {
     await kill(core)
+    return
   }
+  await kill(core)
 }
 function boot(previousBuild?: BuildInfo): Core {
   const child = fork(join(ultimateRoot, 'server/main.ts'), [], {
     cwd: projectRoot,
     env: {
       ...process.env,
-      MIMALLOC_ALLOW_THP: '0', // Avoid huge-page amplification in Rolldown's allocator.
+      MIMALLOC_ALLOW_THP: '0',
       ULTIMATE_HOME: home,
       ULTIMATE_PROJECT: projectRoot,
       ULTIMATE_SUPERVISED: '1',
@@ -454,7 +486,7 @@ async function recover() {
   try {
     while (!active && failures < 3) {
       display.lifecycle(failures ? 'recovering' : 'starting')
-      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** failures))
+      await pace(500 * 2 ** failures)
       if (stopping) break
       let core: Core | undefined
       try {

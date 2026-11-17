@@ -95,8 +95,8 @@ export async function parallelRequest<T>(
   }
   let payload: unknown
   try {
-    // Decode first: JSON escaping must not defeat credential redaction.
-    payload = raw ? redact(JSON.parse(raw), apiKey) : undefined
+    const decodedBeforeCredentialRedaction: unknown = raw ? JSON.parse(raw) : undefined
+    payload = raw ? redact(decodedBeforeCredentialRedaction, apiKey) : undefined
   } catch {
     if (response.ok) {
       throw new ParallelApiError('Parallel API returned an invalid JSON response.', response.status)

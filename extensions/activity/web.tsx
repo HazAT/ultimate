@@ -12,6 +12,7 @@ import {
   useUltimate,
 } from '@/sdk'
 import { activityEvents, Feed, filters, joined, shows, tone } from './feed.tsx'
+import type { EntryId } from '@earendil-works/pi-durable'
 import type { ActivityEvent, Filter } from './feed.tsx'
 import { PageAction } from './refs.ts'
 
@@ -23,29 +24,26 @@ const chip =
 
 const loud = (event: ActivityEvent) => tone(event) === 'error' || tone(event) === 'warning'
 
-/** What happened in the project, newest first: the live feed, then older pages of the durable log on demand. */
 function ActivityPanel() {
-  // The root's live feed: the newest 100 events of every kind, so a busy hour leaves only a few of these.
   const live = useEvents({ events: activityEvents, limit: 100 })
   const now = useNow(30_000)
   const actions = useUltimate()
   const [storedFilter, setFilter] = useExtensionUiState<string>('filter', 'all')
   const [storedRange, setRange] = useExtensionUiState<string>('range', '7d')
-  // Saved choices from an older build fall back to the defaults.
   const filter: Filter = storedFilter in filters ? (storedFilter as Filter) : 'all'
   const range: Range = storedRange in ranges ? (storedRange as Range) : '7d'
-  // The System surface (the `system` extension) shows everything recorded; linked only while it is installed.
-  const system = useExtensions().some((record) =>
+  const systemSurfaceInstalled = useExtensions().some((record) =>
     record.extension?.surfaces?.some((surface) => surface.id === 'system'),
   )
   const span = ranges[range]
-  // Whole minutes, so the range moves (and older pages reset) at most once a minute.
-  const since =
+  const rangeFloorRoundedToMinute =
     span === undefined
       ? undefined
       : new Date(Math.floor((now - span) / 60_000) * 60_000).toISOString()
   const recent = (live ?? []).filter(
-    (event) => shows(filter, event) && (since === undefined || event.at >= since),
+    (event) =>
+      shows(filter, event) &&
+      (rangeFloorRoundedToMinute === undefined || event.at >= rangeFloorRoundedToMinute),
   )
   const problems = recent.filter(loud).length
   const where = range === 'all' ? 'the log' : `the last ${range}`
@@ -63,7 +61,7 @@ function ActivityPanel() {
             {problems} {problems === 1 ? 'problem' : 'problems'}
           </button>
         )}
-        {system && (
+        {systemSurfaceInstalled && (
           <button
             className={cn(
               'cursor-pointer text-muted-foreground/70 hover:text-foreground',
@@ -125,7 +123,7 @@ function ActivityPanel() {
           key={`${filter}:${range}`}
           now={now}
           recent={recent}
-          since={since}
+          since={rangeFloorRoundedToMinute}
           where={where}
         />
       )}
@@ -133,12 +131,6 @@ function ActivityPanel() {
   )
 }
 
-/**
- * The live rows, then the older pages asked for with Load older, from just before the live feed's oldest shown kind
- * (the newest page without one): the feed holds every newer event, so the two join without gaps or repeats. Once
- * paging starts, rows the live feed drops stay. Keyed by filter and range, so a change starts over; rows that age out
- * of the range leave without losing the pages.
- */
 function Older({
   recent,
   before,
@@ -148,17 +140,16 @@ function Older({
   now,
 }: {
   recent: ActivityEvent[]
-  before: number | undefined
+  before: EntryId | undefined
   filter: Filter
   since: string | undefined
   where: string
   now: number
 }) {
   const [older, setOlder] = useState<ActivityEvent[]>([])
-  const [kept, setKept] = useState<ActivityEvent[]>([])
-  const [next, setNext] = useState<number>()
+  const [liveRowsRetainedDuringPaging, setKept] = useState<ActivityEvent[]>([])
+  const [next, setNext] = useState<EntryId>()
   const paging = next !== undefined || older.length > 0
-  // The live feed holds the newest events only: keep what it showed, so newer arrivals leave no gap above the pages.
   useEffect(() => {
     if (paging) setKept((previous) => joined([previous, recent]))
   }, [paging, recent])
@@ -186,7 +177,7 @@ function Older({
       setLoading(false)
     }
   }
-  const shown = joined([recent, kept, older]).filter(
+  const shown = joined([recent, liveRowsRetainedDuringPaging, older]).filter(
     (event) => shows(filter, event) && (since === undefined || event.at >= since),
   )
   return (

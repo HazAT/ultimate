@@ -1,9 +1,9 @@
-/** Conclude a whole conversation subtree, even when a descendant has live tasks. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 export function hiddenConversationIds(
   conversations: readonly {
     id: number
-    parentConversationId?: number
-    branchOf?: { conversationId: number }
+    parentConversationId?: ConversationId
+    branchOf?: { conversationId: ConversationId }
   }[],
   concluded: readonly number[],
 ) {

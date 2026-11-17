@@ -80,11 +80,14 @@ Fields (others are errors):
   subagent]` opts into bounded delegation. A deferred tool named here is loaded for that conversation. Tool lists
   select tools; they are not a shell sandbox.
 - `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored.
+- `skills`: a YAML list of the skill names its system prompt lists; omitted, every project skill, `[]` none. An overlay
+  replaces the list. `/skill:name` still runs any skill. The Agent card and the form flag names no skill provides.
 - `isolate`: `none` or `worktree`. `resident: true` makes it a standing agent.
 - `fast`: the priority tier for `openai-codex/` and `openai/` models (see the fast README).
 - `summaries: false` turns off automatic titles, summaries, reply activity lines and tree abstracts for its
   conversations; explicit summary calls still work ([conversations](../conversations/README.md)).
-- `title`, `icon`, `tint`: a standing agent's display name (its `@name` stays its address) and mark, a
+- `title`, `icon`, `tint`: a standing agent's display name (its `@name` stays its address; its idle composer reads
+  "Message <title>…") and mark, a
   [lucide](https://lucide.dev/icons) icon name and one of `violet`, `blue`, `green`, `amber`, `red`, `pink`, `teal`,
   `grey`.
 - `addTools` marks an **overlay** (below).
@@ -136,6 +139,9 @@ ordinary one.
 - `standing(name, ctx)` creates or returns the standing conversation and reconfigures it from the current definition;
   unknown and non-resident names fail with the available names. The `standing {name}` action does the same.
 - `createChild(…)`: used by automations to start a run from a definition.
+- `reconfigure(tx, id, {definition, parentAgent, modelRuntime})`: refreshes a conversation an extension keeps (a
+  per-item chat) from its definition's current tools and instructions; the model and thinking chosen in it stay unless
+  the definition pins them.
 
 The `Standing` document (kind `ultimate.standing-agents`, on `ROOT_CONVERSATION_ID`) maps names to conversation ids.
 `ultimate.subagents` holds each conversation's children and actions. Each child's `ultimate.metadata` has `label` (the

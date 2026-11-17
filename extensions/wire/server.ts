@@ -1,8 +1,10 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { getOpenAICodexWebSocketDebugStats } from '@earendil-works/pi-ai/api/openai-codex-responses'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { inProcess } from '../../lib/errors.ts'
 import { ClaudeCodeExchanges } from '../claude-code/api.ts'
 import type { ClaudeCodeExchange } from '../claude-code/api.ts'
 import { diffBodies } from './diff.ts'
@@ -10,7 +12,6 @@ import { CallAction, DiffAction, ListAction } from './refs.ts'
 import type { WireCall, WireUsage } from './refs.ts'
 import { list, load, save } from './store.ts'
 
-/** Anthropic's usage block, as the relay's assembled message carries it. */
 type AnthropicUsage = {
   input_tokens?: number
   output_tokens?: number
@@ -31,17 +32,19 @@ function relayUsage(message: unknown): WireUsage | undefined {
 
 export function fromExchange(
   exchange: ClaudeCodeExchange,
-  conversationId: number,
+  conversationId: ConversationId,
 ): Omit<WireCall, 'n'> {
   const id = (exchange.message as { id?: unknown } | undefined)?.id
   const usage = relayUsage(exchange.message)
-  // Claude Code is started with an alias (`opus[1m]`); the body names the model the API ran.
-  const sent = (exchange.message as { model?: unknown } | undefined)?.model
+  const actualModelIdBehindCliAlias = (exchange.message as { model?: unknown } | undefined)?.model
   return {
     conversationId,
     source: 'relay',
     provider: 'claude-code',
-    model: typeof sent === 'string' ? sent : exchange.model,
+    model:
+      typeof actualModelIdBehindCliAlias === 'string'
+        ? actualModelIdBehindCliAlias
+        : exchange.model,
     api: 'anthropic-messages',
     startedAt: exchange.startedAt,
     endedAt: exchange.endedAt,
@@ -59,35 +62,34 @@ export function fromExchange(
 }
 
 export default function wire(host: ExtensionHost) {
-  // The last body pi-ai built for each conversation, waiting for its response; a provider retry replaces it.
-  const pending = host.resource(
+  const latestPayloadAwaitingResponse = host.resource(
     'wire.pending',
     () => new Map<number, { payload: unknown; at: number; sessionId?: string }>(),
   )
-  const queue = host.resource('wire.writes', () => ({
+  const reloadSharedWriteQueue = host.resource('wire.writes', () => ({
     tail: Promise.resolve() as Promise<unknown>,
   }))
-  const store = (call: Omit<WireCall, 'n'>) => {
-    save(queue, host.home, call).catch((error: unknown) => {
-      // Wire only observes: a failed write must never fail or delay the agent's generation.
-      console.error('wire: storing a call failed:', error)
-    })
+  const storeWithoutBlockingGeneration = (call: Omit<WireCall, 'n'>) => {
+    inProcess(
+      'Wire is a debug log of recent calls: a call a crash cuts off is not worth replaying',
+      save(reloadSharedWriteQueue, host.home, call).catch((error: unknown) => {
+        console.error('wire: storing a call failed:', error)
+      }),
+    )
   }
   host.implement(ClaudeCodeExchanges, {
     record(exchange) {
-      // A call no conversation made (an extension's one-shot request) has nowhere to be shown.
       if (exchange.conversationId === undefined) return
-      store(fromExchange(exchange, exchange.conversationId))
+      storeWithoutBlockingGeneration(fromExchange(exchange, exchange.conversationId))
     },
   })
   return defineExtension({
     name: 'wire',
     hooks: [
       hook(GenerationTask, {
-        // Claude Code never builds a pi-ai body; its exchange comes from the relay instead.
         async beforeProviderRequest({ payload }, api, ctx) {
           const session = await api.snapshot(ProviderDoc, api.conversationId, ctx)
-          pending.set(api.conversationId, {
+          latestPayloadAwaitingResponse.set(api.conversationId, {
             payload,
             at: Date.now(),
             ...(session ? { sessionId: session.sessionId } : {}),
@@ -95,25 +97,24 @@ export default function wire(host: ExtensionHost) {
           return undefined
         },
         afterResponse(message: AssistantMessage, api) {
-          const sent = pending.get(api.conversationId)
-          pending.delete(api.conversationId)
-          if (!sent || message.provider === 'claude-code') return
+          const lastSentPayload = latestPayloadAwaitingResponse.get(api.conversationId)
+          latestPayloadAwaitingResponse.delete(api.conversationId)
+          if (!lastSentPayload || message.provider === 'claude-code') return
           const { input, output, cacheRead, cacheWrite } = message.usage
-          // pi-ai's Codex WebSocket sends only the input after the previous response when the rest matches it.
           const stats =
-            message.api === 'openai-codex-responses' && sent.sessionId
-              ? getOpenAICodexWebSocketDebugStats(sent.sessionId.slice(0, 64))
+            message.api === 'openai-codex-responses' && lastSentPayload.sessionId
+              ? getOpenAICodexWebSocketDebugStats(lastSentPayload.sessionId.slice(0, 64))
               : undefined
-          store({
+          storeWithoutBlockingGeneration({
             conversationId: api.conversationId,
             source: 'payload',
             provider: message.provider,
             model: message.model,
             api: message.api,
-            startedAt: sent.at,
+            startedAt: lastSentPayload.at,
             endedAt: Date.now(),
             ...(message.responseId ? { responseId: message.responseId } : {}),
-            request: JSON.stringify(sent.payload),
+            request: JSON.stringify(lastSentPayload.payload),
             message,
             usage: { input, output, cacheRead, cacheWrite },
             ...(message.errorMessage ? { failure: message.errorMessage } : {}),
@@ -129,7 +130,7 @@ export default function wire(host: ExtensionHost) {
   })
 }
 
-const conversationOf = (id: number | undefined) => {
+const conversationOf = (id: ConversationId | undefined) => {
   if (id === undefined) throw new Error('No conversation')
   return id
 }
@@ -150,7 +151,6 @@ const parsed = (text: string) => {
       ? (value as Record<string, unknown>)
       : undefined
   } catch {
-    // A body that is not JSON (a truncated or non-JSON request) has nothing to compare.
     return undefined
   }
 }

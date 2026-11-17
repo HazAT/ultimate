@@ -12,17 +12,12 @@ import type { TreeRow, WindowName } from './layout.ts'
 import type { Lane, LaneRun } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.tsx'
 
-/**
- * Where a lane stands: its conversation's state, the one the sidebar shows; `known` is false while the conversation has
- * no overview row yet, when only an open run on the timeline says it runs.
- */
 export type LaneState = 'running' | Exclude<ConversationState, 'working'>
 export const laneState = (lane: Lane, state: ConversationState, known: boolean): LaneState =>
   state === 'working' || (!known && lane.runs.length > 0 && lane.runs.at(-1)!.end === undefined)
     ? 'running'
     : state
 
-/** A standing agent's name (`ultimate`, `lander`) for its mark and title; undefined for other conversations. */
 export function standingName(lane: Lane, summary: ConversationSummary | undefined) {
   if (summary?.label === 'lander') return 'lander'
   if (lane.kind === 'standing' && lane.agent) return lane.agent
@@ -30,10 +25,8 @@ export function standingName(lane: Lane, summary: ConversationSummary | undefine
   return undefined
 }
 
-/** `openai/gpt-5.1-codex` → `gpt-5.1-codex`: the model as the composer names it. */
 const modelName = (model: string) => model.slice(model.indexOf('/') + 1)
 
-/** The window's time axis: faint grid lines at each tick, labelled underneath, `now` at the right edge. */
 export function Axis({ window }: { window: WindowName }) {
   return (
     <div className="relative h-5 font-mono text-[10px] text-muted-foreground/70 tabular-nums">
@@ -53,7 +46,6 @@ export function Axis({ window }: { window: WindowName }) {
   )
 }
 
-/** The vertical grid lines behind a lane's timeline. */
 function Grid({ window }: { window: WindowName }) {
   return (
     <>
@@ -69,7 +61,6 @@ function Grid({ window }: { window: WindowName }) {
   )
 }
 
-/** One run as a rounded block: accent while open, amber when its lane waits on you, else muted; calls as ticks. */
 function Block({
   run,
   since,
@@ -114,7 +105,6 @@ function Block({
                 'absolute bottom-0 h-1.5 w-px',
                 call.ok ? 'bg-foreground/25' : 'h-full w-0.5 bg-error',
               )}
-              // oxlint-disable-next-line react/no-array-index-key -- Run calls have no per-call id; traces can repeat.
               key={index}
               style={{
                 left: `${(end > start ? (Date.parse(call.at) - start) / (end - start) : 0) * 100}%`,
@@ -123,7 +113,6 @@ function Block({
           ))}
           <span
             className={cn(
-              // A label shows only where the block has room for a few letters of it.
               'relative hidden truncate px-1.5 font-mono text-[10px] leading-[20px] @[2.75rem]:block',
               tone === 'running' ? 'text-brand' : 'text-foreground/70',
             )}
@@ -141,13 +130,11 @@ function Block({
   )
 }
 
-/** The calls of one run, one line each; a click opens a call's trace tree beneath it. */
 function Calls({ run }: { run: LaneRun }) {
   const [open, setOpen] = useState<number>()
   return (
     <ul className="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[10.5px] leading-[18px] text-muted-foreground">
       {run.calls.map((call, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Run calls have no per-call id; traces can repeat.
         <li key={index}>
           <button
             className="flex w-full min-w-0 cursor-pointer items-start gap-1.5 px-2 py-px text-left hover:bg-muted/50"
@@ -178,26 +165,21 @@ function Calls({ run }: { run: LaneRun }) {
   )
 }
 
-/** Indentation per tree level, in pixels; the guide of level `i` runs down the middle of its column. */
-export const INDENT = 14
-/** Where a lane's head row is centred, from the top of its row: the elbow meets it, links start and end there. */
-export const ROW_CENTRE = 24
+export const TREE_LEVEL_INDENT_PX = 14
+
+export const LANE_HEAD_CENTRE_Y_PX = 24
 
 const dotted = 'absolute border-dotted border-muted-foreground/35'
 
-/**
- * The tree guide in front of a row: a dotted line down each ancestor column that has more rows below, and an elbow from
- * the parent's column into the row (running on down unless the row is its parent's last).
- */
 export function Guide({
   row,
-  centre = ROW_CENTRE,
+  centre = LANE_HEAD_CENTRE_Y_PX,
 }: {
   row: Pick<TreeRow, 'depth' | 'last' | 'through'>
   centre?: number
 }) {
   if (row.depth === 0) return null
-  const x = (level: number) => (level - 1) * INDENT + INDENT / 2
+  const x = (level: number) => (level - 1) * TREE_LEVEL_INDENT_PX + TREE_LEVEL_INDENT_PX / 2
   return (
     <span aria-hidden className="pointer-events-none">
       {row.through.map(
@@ -205,7 +187,6 @@ export function Guide({
           on && (
             <span
               className={cn(dotted, 'inset-y-0 border-l')}
-              // oxlint-disable-next-line react/no-array-index-key -- Guide columns are addressed by tree depth.
               key={index}
               style={{ left: x(index + 1) }}
             />
@@ -216,7 +197,7 @@ export function Guide({
         style={{
           left: x(row.depth),
           height: centre,
-          width: INDENT / 2 + 2,
+          width: TREE_LEVEL_INDENT_PX / 2 + 2,
         }}
       />
       {!row.last && (
@@ -229,17 +210,14 @@ export function Guide({
   )
 }
 
-/** A lane says its conversation's state in the sidebar's words; only an open run says "running". */
-const laneWord = (state: LaneState) => (state === 'running' ? 'running' : stateWord(state))
+const laneWord = (state: LaneState, waitLabel?: string) =>
+  state === 'running' ? 'running' : stateWord(state, 0, waitLabel)
 const laneTone = (state: LaneState) => stateTone[state === 'running' ? 'working' : state]
 
-/**
- * One agent's lane: who it is (its mark and name, its model, its state) on the left, its runs on the timeline on the
- * right; on a phone the name sits above a full-width timeline. A click on the name opens the conversation.
- */
 export function LaneRow({
   row,
   state,
+  waitLabel,
   window,
   since,
   now,
@@ -250,14 +228,15 @@ export function LaneRow({
 }: {
   row: Extract<TreeRow, { kind: 'lane' }>
   state: LaneState
+  waitLabel?: string
   window: WindowName
   since: number
   now: number
-  /** Outside the hovered or picked lane's chain. */
+
   dimmed: boolean
   onFilter: () => void
   onHover: (hovered: boolean) => void
-  /** A run was opened (true) or closed (false): the lane stays highlighted while one is open. */
+
   onPick: (picked: boolean) => void
 }) {
   const { lane } = row
@@ -280,7 +259,7 @@ export function LaneRow({
       data-lane={lane.conversation}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      style={{ '--indent': `${row.depth * INDENT}px` } as CSSProperties}
+      style={{ '--indent': `${row.depth * TREE_LEVEL_INDENT_PX}px` } as CSSProperties}
     >
       <Guide row={row} />
       <div className="flex flex-col gap-1 py-1.5 md:flex-row md:items-center md:gap-3">
@@ -293,7 +272,15 @@ export function LaneRow({
           >
             <AgentMark
               name={standing ?? lane.agent ?? 'agent'}
-              presence={state === 'running' ? 'working' : state === 'waits' ? 'waiting' : 'idle'}
+              presence={
+                state === 'running'
+                  ? 'working'
+                  : state === 'waits'
+                    ? 'waiting'
+                    : state === 'awaiting'
+                      ? 'awaiting'
+                      : 'idle'
+              }
             />
             <span className="flex min-w-0 flex-1 flex-col">
               {standing ? (
@@ -310,13 +297,18 @@ export function LaneRow({
                 />
               )}
               <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
-                <span className={cn('shrink-0', laneTone(state))}>{laneWord(state)}</span>
+                <span
+                  className={cn('max-w-full shrink-0 truncate', laneTone(state))}
+                  title={waitLabel}
+                >
+                  {laneWord(state, waitLabel)}
+                </span>
                 {lane.agent && !standing && (
-                  <span className="shrink-0">
+                  <span className="min-w-0 truncate">
                     · {lane.kind === 'branch' ? 'branch · coordinator' : lane.agent}
                   </span>
                 )}
-                {lane.model && <span className="truncate">· {modelName(lane.model)}</span>}
+                {lane.model && <span className="min-w-0 truncate">· {modelName(lane.model)}</span>}
               </span>
             </span>
           </button>

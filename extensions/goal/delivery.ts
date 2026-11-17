@@ -1,11 +1,14 @@
-import { defineTask } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import { defineTask } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
-/** A goal card for @ultimate: `goal.started` as an input that wakes it, `goal.report` as a write. */
-type Card = { to: number; goal: number; kind: 'goal.started' | 'goal.report'; content: string }
+type Card = {
+  to: ConversationId
+  goal: number
+  kind: 'goal.started' | 'goal.report'
+  content: string
+}
 
-/** Created in the commit that changes the goal, so a crash cannot lose the card; the request id makes retries harmless. */
 export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
   defineTask<Card, { phase: 'submit' }, null>({
     name: 'goal.deliver',
@@ -14,16 +17,21 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
     phases: {
       submit: async (task, runtime, ctx) => {
         const { to, goal, kind, content } = task.input
-        const requestId = `${kind}:${goal}`
+        const cardOncePerGoal = `${kind}:${goal}`
         const data = { goal }
-        // The host handle, unlike the task runtime's, admits passive writes.
-        const target = (await host.harness().conversation(to as ConversationId, ctx))!
-        await target.submit(
+        const passiveWriteTarget = (await host.harness().conversation(to, ctx))!
+        await passiveWriteTarget.submit(
           kind === 'goal.started'
-            ? { type: 'input', requestId, content, entry: { kind, data }, whenBusy: 'followUp' }
+            ? {
+                type: 'input',
+                requestId: cardOncePerGoal,
+                content,
+                entry: { kind, data },
+                whenBusy: 'followUp',
+              }
             : {
                 type: 'write',
-                requestId,
+                requestId: cardOncePerGoal,
                 entry: { kind, data, model: [{ role: 'user', content, timestamp: Date.now() }] },
               },
           ctx,
@@ -40,7 +48,7 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
 
 export const deliver = (host: Pick<ExtensionHost, 'harness'>, tx: Tx, card: Card) =>
   tx.createTask(deliverTask(host), card, {
-    conversationId: card.to as ConversationId,
+    conversationId: card.to,
     ownership: { kind: 'conversation' },
     background: true,
   })

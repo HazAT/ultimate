@@ -14,6 +14,11 @@ The sidebar, its rows and the phone title bar's @ultimate button live in the [si
 reads this extension's overview, titles and actions. `ui.tsx` declares the points it renders for optional extensions:
 `ConversationPhase` (a working conversation's phase) and `ConversationTask` (the plan task a child works on).
 
+It provides the core's `ComposerPlaceholder`: an idle standing agent's composer reads "Message <title>…" by its
+definition's `title` (`standing.tsx`), in the dock, the full view and on a phone alike; @ultimate's
+keeps the core's text. It also provides `EmptyTranscript`: before its first message, a standing agent's transcript shows
+its mark, title and `@name` (`standing.tsx`) instead of the core's card of repo, model and host.
+
 ## Server facet
 
 `context.ts` keeps `conversations.context` (`ContextUsageDoc` in `api.ts`, `ContextDoc` in `refs.ts`) on each

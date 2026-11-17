@@ -1,13 +1,9 @@
-import { defineTask } from '@earendil-works/pi-durable'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
+import { defineTask } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
-/**
- * One entry for @ultimate: an `input` that wakes it, or a `write` the model reads at its next step. `requestId` makes
- * a retried delivery harmless.
- */
 type Delivery = {
-  to: number
+  to: ConversationId
   type: 'input' | 'write'
   requestId: string
   kind: 'dream.requested' | 'dream.ready' | 'dream.prepared' | 'dream.chapter'
@@ -15,33 +11,31 @@ type Delivery = {
   content: string
 }
 
-/** Deliveries are created with their source state; submission request ids make retries harmless. */
+function preserveLegacySessionRequestId(input: unknown) {
+  const { session, ...rest } = input as Omit<Delivery, 'requestId'> & { session: number }
+  return {
+    input: { ...rest, requestId: `${rest.kind}:${session}` },
+    checkpoint: { phase: 'submit' as const },
+  }
+}
 export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
   defineTask<Delivery, { phase: 'submit' }, null>({
     name: 'dream.deliver',
-    // Version 1 keyed its request by `session`: a delivery still pending from before keeps its request id.
     version: 2,
-    migrate: (input) => {
-      const { session, ...rest } = input as Omit<Delivery, 'requestId'> & { session: number }
-      return {
-        input: { ...rest, requestId: `${rest.kind}:${session}` },
-        checkpoint: { phase: 'submit' as const },
-      }
-    },
+    migrate: preserveLegacySessionRequestId,
     initial: () => ({ phase: 'submit' }),
     phases: {
       submit: async (task, runtime, ctx) => {
         const { to, type, requestId, kind, content } = task.input
         const data = task.input.data ?? {}
-        // The host handle, unlike the task runtime's, admits passive writes.
-        const target = (await host.harness().conversation(to as ConversationId, ctx))!
+        const hostConversation = (await host.harness().conversation(to, ctx))!
         if (type === 'input')
-          await target.submit(
+          await hostConversation.submit(
             { type: 'input', requestId, content, entry: { kind, data }, whenBusy: 'followUp' },
             ctx,
           )
         else
-          await target.submit(
+          await hostConversation.submit(
             {
               type: 'write',
               requestId,
@@ -62,11 +56,11 @@ export const deliverTask = (host: Pick<ExtensionHost, 'harness'>) =>
 export const deliver = (
   host: Pick<ExtensionHost, 'harness'>,
   tx: Tx,
-  to: number,
+  to: ConversationId,
   delivery: Omit<Delivery, 'to'>,
 ) =>
   tx.createTask(
     deliverTask(host),
     { to, ...delivery },
-    { conversationId: to as ConversationId, ownership: { kind: 'conversation' }, background: true },
+    { conversationId: to, ownership: { kind: 'conversation' }, background: true },
   )

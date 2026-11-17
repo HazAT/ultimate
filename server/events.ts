@@ -1,21 +1,20 @@
-// Durable events: the log is one ownerless conversation that never runs, and an event is a typed entry in it, so entry
-// ids give one global order and history, search and sync cover it. `emit` appends in the caller's transaction, so the
-// event exists exactly when the state change it describes does. A reactor's cursor advances in the transaction its
-// handler writes in: its `tx` writes happen exactly once per event across crashes, reloads and failures; side effects
-// outside `tx` (files, processes, network) are at least once.
+import { parseEntryId, offsetEntryId } from '../lib/ids.ts'
+import type { EntryId, ConversationId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, EntryId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
+import { inProcess } from '../lib/errors.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type { EventContext, EventData, EventRecord, EventToken } from '../shared/events.ts'
 import { Metadata } from './metadata.ts'
 import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
 
-/** Where the log lives and how far each reactor has read; on the root, next to other project-wide indexes. */
-export const EventLog = defineDoc<{ conversation?: number; cursors: Record<string, number> }>({
+export const EventLog = defineDoc<{
+  conversation?: ConversationId
+  cursors: Record<string, EntryId>
+}>({
   kind: 'ultimate.events',
   checkpointWhen: () => false,
   version: 1,
@@ -25,7 +24,6 @@ export const EventLog = defineDoc<{ conversation?: number; cursors: Record<strin
   initial: () => ({ cursors: {} }),
 })
 
-/** The newest events, oldest first, for the browser (`useEvents()`); on the root. */
 export const EventFeed = defineDoc<{ events: EventRecord[] }>({
   kind: EVENT_FEED,
   checkpointWhen: () => false,
@@ -36,35 +34,28 @@ export const EventFeed = defineDoc<{ events: EventRecord[] }>({
   initial: () => ({ events: [] }),
 })
 
-export type Reactor<D extends JsonValue> = (tx: Tx, event: EventRecord<D>) => void | Promise<void>
+type CursorAtomicWrites = Tx
+type AtLeastOnceExternalEffects<D extends JsonValue> = (
+  tx: CursorAtomicWrites,
+  event: EventRecord<D>,
+) => void | Promise<void>
+
+export type Reactor<D extends JsonValue> = AtLeastOnceExternalEffects<D>
 export interface ReactorStatus {
   name: string
   events: string[]
-  /** The last log entry the reactor has passed. */
-  cursor: number
-  /** Matching events after the cursor. */
+  cursor: EntryId
   lag: number
   running: boolean
-  /** The latest failure; cleared by the next successful step. The failed event stays pending and is retried. */
-  failure?: { error: string; at: string; entryId?: number }
+  failure?: { error: string; at: string; entryId?: EntryId }
 }
 
 export interface ReactOptions {
-  /** Where a reactor without a cursor starts: the start of the log (default), or after its newest event. */
   from?: 'start' | 'now'
 }
 
-/** What the extension host offers; `react` is facet-scoped and named `<extension>/<name>`. */
 export interface EventHost {
-  /** Append event `event` with `data` inside `tx`: it commits or rolls back with the caller's writes. */
   emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, data: D): Promise<EventRecord<D>>
-  /**
-   * Run `handler` once for every event of `events` after the reactor's cursor, oldest first: those emitted before it
-   * started, then each new one, serially per name. Each event commits with the cursor advance in one transaction; a
-   * throw rolls both back and the event is retried on the next matching commit or harness open. Runs while the harness
-   * is open and the facet installed; a facet reload under the same name continues from the cursor. With `from: 'now'`, a
-   * reactor that has no cursor yet starts after the newest event instead of at the start of the log.
-   */
   react<T extends EventToken>(
     name: string,
     events: readonly T[],
@@ -72,11 +63,10 @@ export interface EventHost {
     options?: ReactOptions,
   ): void
   eventLog: {
-    /** Newest first (oldest first with `order: 'ascending'`), plain copies; `since` and `before` are exclusive event ids. */
     recent<T extends EventToken = EventToken>(options?: {
       events?: readonly T[]
-      since?: number
-      before?: number
+      since?: EntryId
+      before?: EntryId
       order?: 'ascending' | 'descending'
       limit?: number
     }): Promise<EventRecord<EventData<T>>[]>
@@ -84,7 +74,6 @@ export interface EventHost {
   }
 }
 
-/** The trace context of the work that emits, stamped on every event. */
 function currentContext(): EventContext | undefined {
   const trace = traceContext()
   return trace && { ...trace }
@@ -100,17 +89,21 @@ const record = (entry: EntryRecord): EventRecord => {
   })
 }
 
-/** Labels the log conversation, which conversation lists leave out; it stays readable by id. */
 export const EVENT_LOG_LABEL = 'events'
 
 async function logOf(tx: Tx) {
   const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
   if (index.conversation === undefined) {
-    const { id } = await tx.createConversation({ ownership: { kind: 'ownerless' } })
-    Object.assign(await tx.doc(Metadata, id), { title: 'Events', label: EVENT_LOG_LABEL })
-    index.conversation = id
+    const { id: ownerlessLogConversationId } = await tx.createConversation({
+      ownership: { kind: 'ownerless' },
+    })
+    Object.assign(await tx.doc(Metadata, ownerlessLogConversationId), {
+      title: 'Events',
+      label: EVENT_LOG_LABEL,
+    })
+    index.conversation = ownerlessLogConversationId
   }
-  return index.conversation as ConversationId
+  return index.conversation
 }
 
 export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, data: D) {
@@ -132,17 +125,16 @@ export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, da
   return emitted
 }
 
-/** Scan the log after entry `after`, oldest first, until `visit` returns true. */
 async function scan(
   tx: Tx,
   log: ConversationId,
-  after: number,
+  after: EntryId,
   visit: (entry: EntryRecord) => boolean,
 ) {
   let cursor: Parameters<Tx['scanEntries']>[2]
   do {
     const page = await tx.scanEntries(
-      { conversationId: log, minEntryId: (after + 1) as EntryId, order: 'ascending' },
+      { conversationId: log, minEntryId: offsetEntryId(after, 1), order: 'ascending' },
       256,
       cursor,
     )
@@ -151,20 +143,15 @@ async function scan(
   } while (cursor)
 }
 
-/**
- * Events, reactors and recorded notices of one extension host. `keep` tells the call trace to write the call that emits
- * (`CallTrace['keep']`): its reactors continue its trace and need it as their parent, even when it repeats a poll.
- */
 export function eventLog(
   harness: () => Harness,
   trace: CallTrace['run'],
-  keep: CallTrace['keep'] = () => {},
+  keepEmittingCallForFutureReactors: CallTrace['keep'] = () => {},
 ) {
   type Active = { kinds: Set<string>; handler: Reactor<JsonValue>; from: 'start' | 'now' }
   const reactors = new Map<
     string,
     {
-      /** The registration that runs, while one does. */
       active?: Active
       kinds: Set<string>
       chain: Promise<void>
@@ -172,44 +159,37 @@ export function eventLog(
     }
   >()
 
-  /** Handle the reactor's next pending event, one per transaction, until none is left or one fails. */
   function drain(name: string) {
     const state = reactors.get(name)!
     state.chain = state.chain.then(async () => {
       for (;;) {
         const active = state.active
         if (!active) return
-        let attempted: number | undefined
+        let attemptedUncommittedEventId: EntryId | undefined
         try {
-          const handled = await harness().commit(async (tx) => {
+          const handled = await harness().commit(async function handleEventAtomically(tx) {
             const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
             if (index.cursors[name] === undefined && active.from === 'now') {
-              // A new reactor that skips the past starts after the newest event, handling none.
               const newest =
                 index.conversation === undefined
                   ? undefined
-                  : (
-                      await tx.scanEntries(
-                        { conversationId: index.conversation as ConversationId },
-                        1,
-                      )
-                    ).items[0]
-              index.cursors[name] = newest?.id ?? 0
+                  : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
+              index.cursors[name] = newest?.id ?? parseEntryId(0)
               return false
             }
             if (index.conversation === undefined) return false
-            const after = index.cursors[name] ?? 0
+            const after = index.cursors[name] ?? parseEntryId(0)
             let pending: EntryRecord | undefined
             let last = after
-            await scan(tx, index.conversation as ConversationId, after, (entry) => {
+            await scan(tx, index.conversation, after, (entry) => {
               last = entry.id
               if (active.kinds.has(entry.kind)) pending = entry
               return pending !== undefined
             })
             if (pending) {
-              attempted = pending.id
+              attemptedUncommittedEventId = pending.id
               const event = record(pending)
-              // The emitter's context, not the drain's: commit listeners run in whichever work committed.
+              const emitterContextNotCommitListener = event.context ?? null
               await trace(
                 {
                   kind: 'reactor',
@@ -219,7 +199,7 @@ export function eventLog(
                   args: { event: event.id },
                 },
                 () => active.handler(tx, event),
-                event.context ?? null,
+                emitterContextNotCommitListener,
               )
             }
             if (last !== after) index.cursors[name] = last
@@ -228,8 +208,11 @@ export function eventLog(
           state.failure = undefined
           if (!handled) return
         } catch (error) {
-          // The transaction rolled back the handler's writes and the cursor: the event stays pending.
-          state.failure = { error: String(error), at: new Date().toISOString(), entryId: attempted }
+          state.failure = {
+            error: String(error),
+            at: new Date().toISOString(),
+            entryId: attemptedUncommittedEventId,
+          }
           return
         }
       }
@@ -238,21 +221,22 @@ export function eventLog(
 
   return {
     emit: <D extends JsonValue>(tx: Tx, event: EventToken<D>, data: D) => {
-      keep(traceContext())
+      keepEmittingCallForFutureReactors(traceContext())
       return emit(tx, event, data)
     },
-    /** Record a notice of `extension` as an event; failures only log, so they cannot raise more notices. */
     notice(extension: string, message: string) {
-      Promise.resolve()
-        .then(() =>
-          harness().commit(
-            (tx) => emit(tx, NoticeEvent, { extension, message, level: 'warning' }),
-            context,
-          ),
-        )
-        .catch((error: unknown) => console.error('Recording a notice failed:', error))
+      inProcess(
+        'a notice is advisory and also printed',
+        Promise.resolve()
+          .then(() =>
+            harness().commit(
+              (tx) => emit(tx, NoticeEvent, { extension, message, level: 'warning' }),
+              context,
+            ),
+          )
+          .catch((error: unknown) => console.error('Recording a notice failed:', error)),
+      )
     },
-    /** A reactor `name` for `events`: `start` on each harness open, `stop` on release and facet disposal. */
     reactor<T extends EventToken>(
       name: string,
       events: readonly T[],
@@ -297,8 +281,8 @@ export function eventLog(
   async function recent<T extends EventToken = EventToken>(
     options: {
       events?: readonly T[]
-      since?: number
-      before?: number
+      since?: EntryId
+      before?: EntryId
       order?: 'ascending' | 'descending'
       limit?: number
     } = {},
@@ -314,11 +298,11 @@ export function eventLog(
       do {
         const page = await tx.scanEntries(
           {
-            conversationId: log as ConversationId,
-            ...(options.since === undefined ? {} : { minEntryId: (options.since + 1) as EntryId }),
+            conversationId: log,
+            ...(options.since === undefined ? {} : { minEntryId: offsetEntryId(options.since, 1) }),
             ...(options.before === undefined
               ? {}
-              : { maxEntryId: (options.before - 1) as EntryId }),
+              : { maxEntryId: offsetEntryId(options.before, -1) }),
             order: options.order ?? 'descending',
           },
           256,
@@ -340,10 +324,10 @@ export function eventLog(
     return harness().commit(async (tx) => {
       const list: ReactorStatus[] = []
       for (const [name, state] of reactors) {
-        const cursor = index?.cursors[name] ?? 0
+        const cursor = index?.cursors[name] ?? parseEntryId(0)
         let lag = 0
         if (index?.conversation !== undefined)
-          await scan(tx, index.conversation as ConversationId, cursor, (entry) => {
+          await scan(tx, index.conversation, cursor, (entry) => {
             if (state.kinds.has(entry.kind)) lag++
             return false
           })

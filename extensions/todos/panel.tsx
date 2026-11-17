@@ -1,10 +1,11 @@
+import { ROOT } from '@/sdk'
 import { CheckIcon, ChevronRightIcon, InboxIcon, PlayIcon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api, cn, errorMessage, events, formatAgo, useDocOf, useNow, useUltimate } from '@/sdk'
-import { MessagesDoc, emptyMessages, stateTone } from '../messages/ui.tsx'
-import { waiting } from '../questions/ui.tsx'
+import { Waiting } from '../inbox/ui.tsx'
+import { stateTone } from '../messages/ui.tsx'
 import { StandingAction } from '../subagents/ui.tsx'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
@@ -14,14 +15,12 @@ const owners: { id: Todo['owner']; label: string }[] = [
   { id: 'ultimate', label: '@ultimate' },
 ]
 
-/**
- * The project's to-dos: what waits on you (one Inbox row for the questions asked of you, read live from Messages, then
- * your own to-dos), what @ultimate is still on, a field to add one for either of you, and the done ones folded away.
- * Questions are answered in the Inbox.
- */
 export function Todos() {
-  const items = useDocOf(1, TodosDoc)?.items ?? []
-  const questions = waiting((useDocOf(1, MessagesDoc) ?? emptyMessages).messages)
+  return <Waiting>{(entries) => <List questions={entries} />}</Waiting>
+}
+
+function List({ questions }: { questions: readonly unknown[] }) {
+  const items = useDocOf(ROOT, TodosDoc)?.items ?? []
   const now = useNow(60_000)
   const [error, setError] = useState<string>()
   const open = items.filter((todo) => !todo.done)
@@ -43,7 +42,6 @@ export function Todos() {
   const toggle = (todo: Todo) =>
     void run(api.action(todo.done ? ReopenAction : DoneAction, { id: todo.id }))
   const { showSurface, switchConversation } = useUltimate()
-  // Sent as the user, like typing it into @ultimate's composer; a busy @ultimate takes it after its current run.
   const start = (todo: Todo) =>
     void run(
       (async () => {
@@ -66,7 +64,7 @@ export function Todos() {
         <span className="ml-auto text-muted-foreground/70">
           {questions.length > 0 && (
             <span className="text-amber-700 dark:text-amber-300">
-              {questions.length} {questions.length === 1 ? 'question' : 'questions'}
+              {questions.length} in Inbox
               {open.length > 0 && ' · '}
             </span>
           )}
@@ -112,7 +110,6 @@ export function Todos() {
   )
 }
 
-/** A labelled group of rows; an empty one says so in a quiet line rather than disappearing. */
 function Section({
   title,
   owner,
@@ -136,10 +133,6 @@ function Section({
   )
 }
 
-/**
- * One to-do: a check, its text and its age; ticking a done one reopens it. An open one also offers, on hover or focus,
- * to send @ultimate to work on it.
- */
 function TodoRow({
   todo,
   now,
@@ -182,7 +175,7 @@ function TodoRow({
           title={`${todo.done ? 'Done' : 'Added'} ${new Date(at).toLocaleString()}`}
         >
           {todo.done && todo.owner === 'ultimate' ? '@ultimate · ' : ''}
-          {age}
+          {todo.id} · {age}
         </time>
       </label>
       {start && !todo.done ? (
@@ -203,7 +196,6 @@ function TodoRow({
   )
 }
 
-/** The questions waiting on you, as one row: a click opens the Inbox, where each is answered. */
 function InboxRow({ count }: { count: number }) {
   const { showSurface } = useUltimate()
   return (
@@ -221,7 +213,6 @@ function InboxRow({ count }: { count: number }) {
   )
 }
 
-/** The add field: text, whose it is, Enter adds; the owner stays as last chosen. */
 function AddTodo({ add }: { add: (text: string, owner: Todo['owner']) => Promise<boolean> }) {
   const [text, setText] = useState('')
   const [owner, setOwner] = useState<Todo['owner']>('user')
@@ -237,7 +228,6 @@ function AddTodo({ add }: { add: (text: string, owner: Todo['owner']) => Promise
       className="mx-2 flex items-center gap-1 rounded-md border border-border bg-background pl-2 focus-within:border-brand/60"
       onSubmit={(event) => {
         event.preventDefault()
-        // oxlint-disable-next-line typescript/no-floating-promises -- add delegates to run, which displays failures and resolves false.
         void submit()
       }}
     >

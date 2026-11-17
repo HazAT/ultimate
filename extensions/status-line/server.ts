@@ -7,6 +7,8 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { createRateSampler, keys, zero, type Rates, type RateSample } from './rates.ts'
 import { usageTotals } from './context.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { every } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { RatesAction } from './refs.ts'
 
 type Totals = ReturnType<typeof usageTotals>
@@ -40,12 +42,12 @@ export default function statusLine(host: Host) {
   let latest: RateSample | null = null
   let spend: Totals = usageTotals({ models: {}, tools: {} })
   let unsubscribe: (() => void) | undefined
-  let timer: ReturnType<typeof setInterval> | undefined
+  let stopSampling: Cancel | undefined
   let epoch = 0
   snapshots.set(host, () => latest && { ...latest, totals: { ...spend } })
   const stop = () => {
     epoch++
-    clearInterval(timer)
+    stopSampling?.()
     unsubscribe?.()
     unsubscribe = undefined
     latest = null
@@ -90,11 +92,6 @@ export default function statusLine(host: Host) {
         } while (cursor !== undefined)
         if (opened !== epoch) return
         sample(performance.now(), total)
-        // Subscribe while this atomic seed still holds the commit boundary. Its own publication
-        // is safe to adopt again (absolute counters); no following commit can slip past the seed.
-        // Not a reactor: token rates follow Pi's usage and live documents, not domain events. Pi stores streamed partials
-        // up to persistWithinMs (1 s) late; a 30 s rate window absorbs that, and the commit that settles an answer reads
-        // pi.live, so its held partials are stored first and settled and partial never count the same tokens twice.
         unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
@@ -110,13 +107,12 @@ export default function statusLine(host: Host) {
                 partial(change.kind === 'change' ? change.value : null),
               )
           }
-          // Do not sample here: settled + partial must be adopted from the whole publication.
         })
       }, context)
       if (opened !== epoch) return
-      timer = setInterval(() => {
+      stopSampling = every(1000, () => {
         latest = sample(performance.now(), total)
-      }, 1000)
+      })
     } catch (error) {
       if (opened !== epoch) return
       stop()

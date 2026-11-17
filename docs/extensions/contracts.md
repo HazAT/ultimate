@@ -62,9 +62,11 @@ An extension's `api.ts` is its whole server-side surface for others, so lint (`l
 `api.ts` describes server code and may reach it through type imports, so the browser never imports it. An extension
 whose documents or actions the browser uses describes them in `refs.ts`: `docRef<T>(kind)` for each document and
 `actionRef<Args, Result>(extension, name)` for each action the browser reads or calls, from
-`shared/extension-api.ts`, and the extension's event tokens (`defineEvent`). `api-file-shape` holds it to the same
-documentation as `api.ts`: every action ref names its arguments and result, since agents read it before
-`ultimate.action`. It stays browser-safe: runtime imports of `shared/` only, types only from packages, `shared/` and
+`shared/extension-api.ts`, the extension's event tokens (`defineEvent`), and the entry kinds other extensions read
+(`defineEntry<D>(kind)` from Pi Durable, so a renderer narrows with `Token.is(entry)` instead of casting `entry.data`).
+`api-file-shape` holds it to the same documentation as `api.ts`: every action ref names its arguments and result,
+since agents read it before `ultimate.action`. It stays browser-safe: runtime imports of `shared/` and Pi Durable's
+`defineEntry` only, types only from packages, `shared/` and
 extensions' `refs.ts` or `types.ts`, and `tsconfig.web.json` type-checks it with the web.
 
 ```ts
@@ -137,5 +139,7 @@ export const CacheRebuiltLine = definePoint<
 
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
-branches `branch · coordinator`) and `MessageReference` (the copyable reference to a stored message; codemode). The
-server's counterpart is the extension point above.
+branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
+winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (a `Rendered` point
+for what a transcript shows before its first message; conversations shows a standing agent's mark and title) and
+`MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is the extension point above.

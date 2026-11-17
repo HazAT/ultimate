@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../../server/extensions.ts'
 import { admit, createAccess } from '../../../server/request-security.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { createServer } from '../../../server/main.ts'
-import { projectHome } from '../../../server/project.ts'
+import { projectHome } from '../../../lib/project-paths.ts'
 import { copyApis, linkDependencies, post, temp, until } from '../../../test/helpers.ts'
 
 // The host's own macOS app is the default CLI's fallback: hide it, so "not installed" holds on a Mac with Tailscale too.
@@ -131,9 +131,6 @@ async function repo(home: string) {
   await cp(resolve('extensions/tailscale'), join(root, 'extensions/tailscale'), { recursive: true })
   await cp(resolve('lib'), join(root, 'lib'), { recursive: true })
   await copyApis(root)
-  await mkdir(join(root, 'server'))
-  await cp(resolve('server/lock.ts'), join(root, 'server/lock.ts'))
-  await cp(resolve('server/project.ts'), join(root, 'server/project.ts'))
   await linkDependencies(root)
   await writeFile(
     join(root, 'vite.config.ts'),

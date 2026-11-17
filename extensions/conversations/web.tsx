@@ -1,9 +1,14 @@
-import { defineWebExtension } from '@/sdk'
+import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk'
 import { SummaryModelDialog, summaryModelDialog } from './dialogs.tsx'
+import { useStandingEmpty, useStandingPlaceholder } from './standing.tsx'
 import { SummaryAction } from './summary-entry.tsx'
 import { MentionLink } from './mention.tsx'
 
 export default defineWebExtension({
+  provides: [
+    provide(ComposerPlaceholder, useStandingPlaceholder),
+    provide(EmptyTranscript, useStandingEmpty),
+  ],
   link: MentionLink,
   entries: {
     'conversations.identity': () => null,

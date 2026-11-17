@@ -15,10 +15,6 @@ const API = 'https://api.openai.com/v1/audio/transcriptions'
 const reason =
   'Voice needs a ChatGPT login or an OpenAI API key: sign in with ChatGPT, or add OPENAI_API_KEY in ⌘K → Secrets'
 
-/**
- * A host holding what the arguments name: an `OPENAI_API_KEY` secret, an API key Pi's `openai` provider holds, and the
- * ChatGPT login's access token in Pi's `openai-codex` provider.
- */
 async function context({
   secret,
   piKey,

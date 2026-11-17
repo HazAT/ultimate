@@ -48,13 +48,12 @@ export function createBuild(root: string) {
       const sorted = Object.fromEntries(
         Object.entries(extensions).toSorted(([a], [b]) => a.localeCompare(b)),
       )
-      // lib/ reloads with the extensions that import it, so it is hashed on each refresh like them.
-      const lib = hash(root, files(root, 'lib'))
+      const reloadedLibraryHash = hash(root, files(root, 'lib'))
       const id = createHash('sha256')
         .update(
           JSON.stringify([
             core,
-            lib,
+            reloadedLibraryHash,
             sorted,
             enablement.toSorted(([a], [b]) => a.localeCompare(b)),
           ]),
@@ -65,7 +64,7 @@ export function createBuild(root: string) {
       const changed: string[] = []
       if (previous) {
         if (previous.core !== core) changed.push('core')
-        if (previous.lib !== lib) changed.push('lib')
+        if (previous.lib !== reloadedLibraryHash) changed.push('lib')
         for (const name of [
           ...new Set([...Object.keys(previous.extensions), ...Object.keys(sorted)]),
         ].toSorted())
@@ -77,7 +76,7 @@ export function createBuild(root: string) {
       value = {
         ...entry,
         core,
-        lib,
+        lib: reloadedLibraryHash,
         extensions: sorted,
         history: [...history],
       }

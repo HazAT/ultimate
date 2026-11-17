@@ -4,9 +4,11 @@
  */
 export {
   attention,
+  ComposerPlaceholder,
   ConversationKind,
   defineWebExtension,
   definePoint,
+  EmptyTranscript,
   ErrorReport,
   FileUpload,
   MessageReference,
@@ -14,6 +16,8 @@ export {
   provide,
   RunStart,
 } from './types.ts'
+export { ROOT } from './api.ts'
+export { renderEntry } from './entry-renderer.tsx'
 export { events, useEvent } from './events.ts'
 export { resumed } from './resume.ts'
 export type {
@@ -55,7 +59,13 @@ export {
   StatusLine,
 } from '../app/primitives.tsx'
 /** The title bar's project chip, for an extension that replaces it in `titlebar.project` with a menu. */
-export { ProjectChip, projectTitle, Wordmark } from '../app/titlebar.tsx'
+export {
+  prettyName,
+  ProjectChip,
+  projectHeading,
+  projectTitle,
+  Wordmark,
+} from '../app/titlebar.tsx'
 /** Isolates another extension's component you render, such as a document renderer: it throws into an error card. */
 export { ExtensionBoundary } from '../app/boundary.tsx'
 /** The transcript's and composer's reading column classes, for a card that sits in that column. */
@@ -83,6 +93,7 @@ export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'
 /** Typed refs for a project extension's own documents and actions; built-ins keep theirs in `refs.ts`. */
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
+export { keepLast } from '../../../lib/errors.ts'
 export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
 export {
   getConversation,

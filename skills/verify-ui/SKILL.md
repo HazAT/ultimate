@@ -23,7 +23,7 @@ Never claim a UI change works without an image of it.
   `[...document.querySelectorAll('[data-entry-id]')].length`. Statements or `await` go in an async IIFE:
   `(async () => { const r = await fetch('/api/x'); return r.status })()`. A bare `const x = …; return x` fails.
 - Scope selectors to the card or panel under test: `[data-entry-id="42"] button:has-text("Retry")`, not
-  `button:has-text("Retry")`, which clicks the first match anywhere on the page.
+  `button:has-text("Retry")`, which fails when it matches several.
 - Wait on Ultimate's state, never a guessed time: `{send: 'prompt'}` submits without the composer, then
   `{until: 'idle'}` returns when that turn is done, `{until: 'quiet'}` when nothing runs (branches and subagents
   included), `{until: {entry: 'pi.tool-result'}}` or `{until: {event: 'workspaces.landed', where: {…}}}` when that
@@ -33,6 +33,11 @@ Never claim a UI change works without an image of it.
   API, not by clicking menus: `{eval: "window.ultimate.api.configure({model: {provider: 'openai-codex', modelId:
   'gpt-6.1-sol'}}, 2)"}`. Also `api.abort(id)`, `api.compact(undefined, id)`, `api.action({extension: 'pause', name:
   'play'}, null)`; `extensions/browser/README.md` has the rest.
+- Call only SDK methods that exist: `window.ultimate` has `api`, `state`, `send` and `until` (`web/src/sdk/test-hook.ts`),
+  and `api`'s methods are in `web/src/sdk/api.ts`; `rg` there or `{eval: 'Object.keys(window.ultimate.api)'}` first.
+  Guessed ones (`api.openPanel`, `ultimate.ready`) fail as "is not a function".
+- Hidden elements (`meta`, `template`, a closed panel) never become visible: read them with `eval`
+  (`document.querySelector('meta[name=ultimate-web]')?.content`), never a visibility wait.
 - `where` matches only fields the event carries, and events never carry text: after a send, match
   `{event: 'user.input', where: {conversation: <id>, kind: 'prompt'}}`, not the prompt. Each event's fields are in
   `extensions/browser/README.md` and its `defineEvent`. Tool calls live inside `pi.assistant`; there is no
@@ -40,6 +45,10 @@ Never claim a UI change works without an image of it.
 - Open a conversation with `?conversation=<id>`. Right-panel section titles show their source text in sentence case
   (the `section-label` utility); match them with `textContent.startsWith('Skills')`, since counts and meta follow.
 - Seed real state with real prompts on a preview; do not inject entries.
+- To seed files into a preview's home (an agent definition, a setting), use an explicit `home`, in separate tool
+  rounds: `instance start {home}` (it seeds `<home>/user/` once), `instance stop`, write into
+  `<home>/user/.ultimate/`, `instance start {home}` again. Never stop and start in one round, and never create
+  `<home>/user/` before the first start.
 
 ## What to check
 

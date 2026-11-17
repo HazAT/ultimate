@@ -2,7 +2,7 @@ import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
 import { eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
-import { projectSettings } from '../../../server/project-setup.ts'
+import { projectSettings } from '../../../lib/project-setup.ts'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -37,15 +37,18 @@ import { Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { UiState } from '../../../server/ui-state.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 import { discoverAgents, parseDefinition, serializeDefinition } from '../../../lib/agents.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 
 const directories: string[] = []
 const hosts: OpenHost[] = []
 afterEach(async () => {
-  for (const host of hosts.splice(0)) await host.close()
-  for (const path of directories.splice(0)) await removeTemp(path)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's folders.
+  const closing = hosts.splice(0)
+  const taken = directories.splice(0)
+  for (const host of closing) await host.close()
+  for (const path of taken) await removeTemp(path)
 })
 const definition = (body = 'Original instructions') =>
   `---\nname: scout\ndescription: Search\ntools: [read, bash]\n---\n${body}\n`
@@ -69,6 +72,11 @@ async function fixture(
   await writeFile(
     join(ultimateRoot, 'agents/scout.md'),
     extension ? definition().replace('tools: [read, bash]\n', '') : definition(),
+  )
+  await mkdir(join(ultimateRoot, '.pi'))
+  await writeFile(
+    join(ultimateRoot, '.pi/settings.json'),
+    JSON.stringify({ retry: { baseDelayMs: 1 } }),
   )
   const errors: string[] = []
   const prepared = await prepareHarness({
@@ -1076,6 +1084,31 @@ describe('turns without an answer', () => {
     const resumed = await f.reopen()
     await resumed.harness.waitForIdle(context)
     expect(await reports(resumed)).toHaveLength(1)
+  })
+  it('keeps a child-side stop when the parent stops the child during the report, and reports the next answer', async () => {
+    const held = { ...gate(), entered: false }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    await until(async () => f.holding.has(child.conversationId))
+    const handle = (await f.opened.harness.conversation(child.conversationId, context))!
+    await handle.abort(context)
+    // The reporter has recorded the child-side stop and waits in its report phase when the parent stops the child.
+    await until(async () => held.entered)
+    expect((await call(f.opened, { action: 'stop', id: child.conversationId })).text).toBe(
+      `Stopped ${child.conversationId}.`,
+    )
+    expect(
+      Object.values(
+        (await f.opened.harness.snapshot(Subagents, f.opened.root.id, context))!.actions,
+      ).map((action) => action.status),
+    ).toEqual(['interrupted'])
+    held.release()
+    await (await handle.submit({ type: 'input', content: 'continue' }, context)).wait(context)
+    await until(async () => (await reports(f.opened)).length === 1)
+    expect((await reports(f.opened))[0].model?.[0]).toMatchObject({
+      content: `[subagent ${child.conversationId} (scout) answered] Returned model: faux/faux-1\nChild: continue`,
+    })
   })
 })
 

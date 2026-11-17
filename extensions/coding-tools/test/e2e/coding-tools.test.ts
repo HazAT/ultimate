@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { expect, it, vi } from 'vitest'
@@ -15,12 +15,15 @@ it('stops default bash at the tripwire, kills its process, and preserves explici
   })
   try {
     const pidFile = join(directory, 'pid')
+    // The command touches this only if sleep ran to completion. It replaced a wall-clock bound on the
+    // whole turn, which failed a loaded lander (6.8 s against 4 s) although the tripwire fired.
+    const finished = join(directory, 'finished')
     for (const explicit of [false, true]) {
       server.host.faux!.setResponses([
         fauxAssistantMessage(
           [
             fauxToolCall('bash', {
-              command: `echo $$ > '${pidFile}'; sleep 10`,
+              command: `echo $$ > '${pidFile}'; sleep 10; touch '${finished}'`,
               ...(explicit ? { timeout: 0.2 } : {}),
             }),
           ],
@@ -28,9 +31,8 @@ it('stops default bash at the tripwire, kills its process, and preserves explici
         ),
         fauxAssistantMessage('Complete'),
       ])
-      const started = performance.now()
       await (await server.root.submit({ type: 'input', content: 'Run' }, context)).wait(context)
-      expect(performance.now() - started).toBeLessThan(4000)
+      await expect(access(finished)).rejects.toThrow('ENOENT')
       const view = await server.root.context(context)
       const result = view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)
         ?.model?.[0]

@@ -1,20 +1,14 @@
-/** What pushes: questions to the user, landings and @ultimate's failed runs, the sounds' cues (extensions/sounds/cues.ts). */
 import type { OverviewRow } from '../conversations/types.ts'
 import type { Message, Question } from '../messages/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
 import type { Answer } from '../questions/refs.ts'
 
-/** A push's JSON, as the service worker (web/public/sw.js) shows it. */
 export type Push = {
   title: string
   body: string
-  /** One notification per tag: a newer push with it replaces the shown one. */
   tag: string
-  /** What a tap opens. */
   path: string
-  /** A question's message id: the notification gets a Reply action. */
   message?: number
-  /** The recommended answers, sent as they are by the Approve action (`questions/answer`'s `answers`). */
   approve?: Answer[]
   urgency: 'high' | 'normal'
 }
@@ -29,7 +23,6 @@ const preview = (text: string) => {
   return line.length > 180 ? `${line.slice(0, 179)}…` : line
 }
 
-/** The recommended answer of a question, as its card would send it; none when the asker recommends nothing. */
 function recommended(question: Question): Answer['answer'] | undefined {
   if (question.kind === 'confirm') return 'Yes'
   const picks = (question.options ?? []).filter((option) => option.recommended)
@@ -37,7 +30,6 @@ function recommended(question: Question): Answer['answer'] | undefined {
   return question.kind === 'choice' && picks.length === 1 ? picks[0].label : undefined
 }
 
-/** Approve answers every question with its recommendation, so only a message that recommends one for each gets it. */
 export function approval(questions: Question[] | undefined) {
   if (!questions?.length) return undefined
   const answers = questions.map((question) => ({
@@ -47,7 +39,6 @@ export function approval(questions: Question[] | undefined) {
   return answers.every((each) => each.answer !== undefined) ? (answers as Answer[]) : undefined
 }
 
-/** A question to the user from any conversation, titled by the asking branch, or `Ultimate`. */
 export function questionPush(
   message: Pick<Message, 'id' | 'from' | 'to' | 'reply' | 'text' | 'questions'>,
   ultimate: number | undefined,
@@ -83,7 +74,6 @@ export const landingPush = (
   urgency: 'normal',
 })
 
-/** @ultimate's run ended in an error; a stop or a reset does not. */
 export function failedPush(row: OverviewRow | undefined, ultimate: number): Push | undefined {
   if (row?.runState !== 'error' || row.inputId === undefined) return undefined
   return {

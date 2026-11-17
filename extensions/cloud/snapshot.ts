@@ -1,5 +1,3 @@
-// Encrypted, chunked project backups in the cloud's private R2: a consistent database copy plus a bundle of the
-// `ultimate/*` branches. Everything is compressed and sealed on the machine; the Worker stores only ciphertext.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdtemp, open as openFile, rename, rm, stat } from 'node:fs/promises'
@@ -7,32 +5,30 @@ import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { createZstdCompress, createZstdDecompress } from 'node:zlib'
+import { pace } from '../../lib/timers.ts'
 import { vacuum } from '../../lib/database-files.ts'
 import { git as gitIn } from '../../lib/git.ts'
 
 export interface SnapshotManifest {
   id: string
   key: string
-  /** Set by snapshots uploaded for the retired lease; read and ignored. */
-  epoch?: number
+  epoch?: RetiredLeaseEpoch
   createdAt: number
   machine: string
-  /** The project checkout it was taken from; conversations and worktrees name absolute paths in it. Older lack it. */
   root?: string
   database: Part
   bundle?: Part
 }
-/**
- * One uploaded file: `bytes` before compression, `uploaded` the encrypted chunks put to R2 (compressed, with nonce and
- * tag per chunk). Snapshots uploaded before `uploaded` was recorded lack it.
- */
+type UncompressedBytes = number
+type EncryptedChunkBytes = number
+type RetiredLeaseEpoch = number
+
 interface Part {
   sha256: string
-  bytes: number
+  bytes: UncompressedBytes
   chunks: number
-  uploaded?: number
+  uploaded?: EncryptedChunkBytes
 }
 type Kind = 'db' | 'bundle'
 interface Remote {
@@ -43,19 +39,16 @@ interface Remote {
   signal?: AbortSignal
 }
 
-/** Compressed bytes per chunk; with nonce and tag each object stays under the Worker's 17 MiB limit. */
-const CHUNK = 16 * 1024 * 1024
-// A for-each-ref pattern without a trailing slash matches refs below it, not `ultimate-moved/`.
-const BRANCHES = 'refs/heads/ultimate'
-/** Bundles take as long as they take and list every branch. */
-const git = (repo: string, ...args: string[]) =>
+const WORKER_SAFE_CHUNK_BYTES = 16 * 1024 * 1024
+const AES_GCM_NONCE_BYTES = 12
+const AES_GCM_TAG_BYTES = 16
+const CREATE_REF_ONLY_IF_ABSENT = ''
+const ULTIMATE_REF_NAMESPACE = 'refs/heads/ultimate'
+const gitWithoutTimeout = (repo: string, ...args: string[]) =>
   gitIn({ cwd: repo, timeout: 0, maxBuffer: 16 * 1024 * 1024 }, ...args)
+const compareAndSwapRef = (repo: string, ref: string, next: string, expected: string) =>
+  gitWithoutTimeout(repo, 'update-ref', ref, next, expected)
 
-/**
- * Copy a closed or open SQLite file consistently (VACUUM INTO via node:sqlite, read-only), compress (zlib zstd), encrypt
- * and upload. `progress` gets the bytes read of `total` (both before compression) and the bytes uploaded so far; the
- * upload's own total is known only at the end, in the manifest.
- */
 export async function uploadSnapshot(o: {
   url: string
   token: string
@@ -64,7 +57,6 @@ export async function uploadSnapshot(o: {
   machine: string
   database: string
   repo: string
-  /** The project checkout, recorded in the manifest. */
   root?: string
   signal?: AbortSignal
   progress?: (done: number, total: number, uploaded: number) => void
@@ -75,9 +67,16 @@ export async function uploadSnapshot(o: {
     const copy = join(temp, 'database.sqlite')
     vacuum(o.database, copy)
     let bundle: string | undefined
-    if (await git(o.repo, 'for-each-ref', '--count=1', BRANCHES)) {
+    if (await gitWithoutTimeout(o.repo, 'for-each-ref', '--count=1', ULTIMATE_REF_NAMESPACE)) {
       bundle = join(temp, 'branches.bundle')
-      await git(o.repo, 'bundle', 'create', '--quiet', bundle, '--branches=ultimate/*')
+      await gitWithoutTimeout(
+        o.repo,
+        'bundle',
+        'create',
+        '--quiet',
+        bundle,
+        '--branches=ultimate/*',
+      )
     }
     const sizes = [(await stat(copy)).size, bundle ? (await stat(bundle)).size : 0]
     const total = sizes[0] + sizes[1]
@@ -95,15 +94,13 @@ export async function uploadSnapshot(o: {
         ? await seal(o, id, 'bundle', bundle, report(sizes[0], db.uploaded!))
         : undefined,
     }
-    // The manifest goes last: it makes the snapshot complete and starts the Worker's retention.
-    await put(o, id, 'manifest', encrypt(o, id, 'manifest', 0, true, json(manifest)))
+    await commitCompletedSnapshotManifest(o, id, manifest)
     return manifest
   } finally {
     await rm(temp, { recursive: true, force: true })
   }
 }
 
-/** Download, verify and decrypt into `<dir>/snapshot-<id>.sqlite` (integrity_check ok) and fetch the bundle's refs into `repo`. Returns the database path and the moved-aside refs. */
 export async function downloadSnapshot(o: {
   url: string
   token: string
@@ -112,7 +109,6 @@ export async function downloadSnapshot(o: {
   id: string
   dir: string
   repo: string
-  /** Refuse, before writing anything, a snapshot taken of a checkout at another path. */
   root?: string
   signal?: AbortSignal
   progress?: (done: number, total: number) => void
@@ -129,7 +125,6 @@ export async function downloadSnapshot(o: {
   const total = manifest.database.bytes + (manifest.bundle?.bytes ?? 0)
   const database = join(o.dir, `snapshot-${o.id}.sqlite`)
   const bundle = join(o.dir, `snapshot-${o.id}.bundle`)
-  // The size is known from the manifest, before the first chunk arrives.
   o.progress?.(0, total)
   try {
     await open(o, manifest.database, o.id, 'db', `${database}.part`, (done) =>
@@ -150,7 +145,6 @@ export async function downloadSnapshot(o: {
     )
     return { database, manifest, keptRefs: await fetchBranches(o.repo, bundle, o.id) }
   } catch (error) {
-    // Only this download's own files go: the project's database and refs are never touched on failure.
     await rm(`${database}.part`, { force: true })
     await rm(database, { force: true })
     throw error
@@ -161,35 +155,40 @@ export async function downloadSnapshot(o: {
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value))
 
-/** Per snapshot key: HKDF-SHA256 over the user's secret, salted with the project key. */
-function cipherKey(o: Remote, id: string) {
+const commitCompletedSnapshotManifest = (remote: Remote, id: string, manifest: SnapshotManifest) =>
+  put(remote, id, 'manifest', encrypt(remote, id, 'manifest', 0, true, json(manifest)))
+
+function snapshotCipherKey(o: Remote, id: string) {
   return Buffer.from(hkdfSync('sha256', o.secret, o.key, `ultimate-snapshot:${id}`, 32))
 }
-// The position and the last-chunk flag are authenticated, so chunks cannot be reordered, swapped or dropped.
-const aad = (id: string, kind: string, index: number, last: boolean) =>
+const authenticatedChunkBoundary = (id: string, kind: string, index: number, last: boolean) =>
   Buffer.from(`${id}:${kind}:${index}:${last ? 'last' : 'more'}`)
 
-/** nonce (12) ‖ AES-256-GCM ciphertext ‖ tag (16) */
 function encrypt(o: Remote, id: string, kind: string, index: number, last: boolean, data: Buffer) {
-  const nonce = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', cipherKey(o, id), nonce)
-  cipher.setAAD(aad(id, kind, index, last))
+  const nonce = randomBytes(AES_GCM_NONCE_BYTES)
+  const cipher = createCipheriv('aes-256-gcm', snapshotCipherKey(o, id), nonce)
+  cipher.setAAD(authenticatedChunkBoundary(id, kind, index, last))
   return Buffer.concat([nonce, cipher.update(data), cipher.final(), cipher.getAuthTag()])
 }
 function decrypt(o: Remote, id: string, kind: string, index: number, last: boolean, data: Buffer) {
   try {
-    if (data.length < 28) throw new Error('short chunk')
-    const decipher = createDecipheriv('aes-256-gcm', cipherKey(o, id), data.subarray(0, 12))
-    decipher.setAAD(aad(id, kind, index, last))
-    decipher.setAuthTag(data.subarray(-16))
-    return Buffer.concat([decipher.update(data.subarray(12, -16)), decipher.final()])
+    if (data.length < AES_GCM_NONCE_BYTES + AES_GCM_TAG_BYTES) throw new Error('short chunk')
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      snapshotCipherKey(o, id),
+      data.subarray(0, AES_GCM_NONCE_BYTES),
+    )
+    decipher.setAAD(authenticatedChunkBoundary(id, kind, index, last))
+    decipher.setAuthTag(data.subarray(-AES_GCM_TAG_BYTES))
+    return Buffer.concat([
+      decipher.update(data.subarray(AES_GCM_NONCE_BYTES, -AES_GCM_TAG_BYTES)),
+      decipher.final(),
+    ])
   } catch {
-    // GCM reports every mismatch alike; the cause is a wrong secret or project, or altered objects.
     throw new Error(`Snapshot ${id} failed verification (${kind} ${index})`)
   }
 }
 
-/** Compress, chunk, encrypt and upload one file, hashing its plaintext and counting the bytes put. */
 async function seal(
   o: Remote,
   id: string,
@@ -201,8 +200,7 @@ async function seal(
   let bytes = 0
   let uploaded = 0
   let chunks = 0
-  // One full chunk is held back until the next exists, so the final one is known and marked last.
-  let held: Buffer | undefined
+  let pendingFinalChunk: Buffer | undefined
   const upload = async (data: Buffer, last: boolean) => {
     const index = chunks++
     const sealed = encrypt(o, id, kind, index, last, data)
@@ -226,24 +224,23 @@ async function seal(
       for await (const piece of source) {
         pieces.push(piece)
         size += piece.length
-        while (size >= CHUNK) {
+        while (size >= WORKER_SAFE_CHUNK_BYTES) {
           const all = Buffer.concat(pieces)
-          if (held) await upload(held, false)
-          held = all.subarray(0, CHUNK)
-          pieces = [all.subarray(CHUNK)]
-          size -= CHUNK
+          if (pendingFinalChunk) await upload(pendingFinalChunk, false)
+          pendingFinalChunk = all.subarray(0, WORKER_SAFE_CHUNK_BYTES)
+          pieces = [all.subarray(WORKER_SAFE_CHUNK_BYTES)]
+          size -= WORKER_SAFE_CHUNK_BYTES
         }
       }
       const rest = Buffer.concat(pieces)
-      if (held) await upload(held, rest.length === 0)
-      if (rest.length || !held) await upload(rest, true)
+      if (pendingFinalChunk) await upload(pendingFinalChunk, rest.length === 0)
+      if (rest.length || !pendingFinalChunk) await upload(rest, true)
     },
     { signal: o.signal },
   )
   return { sha256: hash.digest('hex'), bytes, chunks, uploaded }
 }
 
-/** Download, decrypt and decompress one file, checking its size and plaintext hash. */
 async function open(
   o: Remote,
   part: Part,
@@ -254,10 +251,7 @@ async function open(
 ) {
   const hash = createHash('sha256')
   let bytes = 0
-  // Open before the pipeline starts: createWriteStream(path) opens the file later on the threadpool, so a first chunk
-  // that fails verification at once can reject the pipeline first, and the queued open recreates an empty file after
-  // the caller's rm (seen as a leftover .part in the 'rejects reordered chunks' test under load).
-  const out = await openFile(file, 'w')
+  const fileOpenedBeforePipeline = await openFile(file, 'w')
   await pipeline(
     Readable.from(
       (async function* () {
@@ -276,7 +270,7 @@ async function open(
         yield data
       }
     },
-    out.createWriteStream(),
+    fileOpenedBeforePipeline.createWriteStream(),
     { signal: o.signal },
   )
   if (bytes !== part.bytes || hash.digest('hex') !== part.sha256)
@@ -295,7 +289,6 @@ function objectUrl(o: Remote, id: string, name: string) {
   return url
 }
 
-/** One request, retried twice after network errors and server failures; other statuses are final. */
 async function request(o: Remote, id: string, name: string, init: RequestInit) {
   const url = objectUrl(o, id, name)
   for (let attempt = 1; ; attempt++) {
@@ -305,16 +298,15 @@ async function request(o: Remote, id: string, name: string, init: RequestInit) {
       headers: { Authorization: `Bearer ${o.token}` },
     }).catch((error: unknown) => {
       if (o.signal?.aborted || attempt === 3) throw error
-      // A network error is retried below.
       return undefined
     })
     if (response?.ok) return response
-    // Objects are write-once: a retried PUT that finds its object stored means the first attempt landed.
-    if (response?.status === 409 && init.method === 'PUT' && attempt > 1) return response
+    const retriedPutAlreadyStored = response?.status === 409 && init.method === 'PUT' && attempt > 1
+    if (retriedPutAlreadyStored) return response
     if (response && (response.status < 500 || attempt === 3))
       throw new Error(`Snapshot ${name} returned ${response.status}`)
     await response?.body?.cancel()
-    await sleep(1000 * attempt, undefined, { signal: o.signal })
+    await pace(1000 * attempt, o.signal)
   }
 }
 async function put(o: Remote, id: string, name: string, data: Buffer) {
@@ -324,51 +316,54 @@ async function get(o: Remote, id: string, name: string) {
   return Buffer.from(await (await request(o, id, name, { method: 'GET' })).arrayBuffer())
 }
 
-/**
- * Unbundle the snapshot's `ultimate/*` branches into `repo` without force. A new branch is created and a strictly
- * older one fast-forwarded unless it is checked out; one already containing the incoming commit stays. Anything else
- * keeps the local branch and stores the incoming commit as `refs/heads/ultimate-moved/<id>/<name>`.
- */
 async function fetchBranches(repo: string, bundle: string, id: string) {
-  await git(repo, 'bundle', 'verify', '--quiet', bundle)
-  const heads = (await git(repo, 'bundle', 'unbundle', bundle))
+  await gitWithoutTimeout(repo, 'bundle', 'verify', '--quiet', bundle)
+  const heads = (await gitWithoutTimeout(repo, 'bundle', 'unbundle', bundle))
     .split('\n')
     .map((line) => line.split(' ') as [string, string])
-    .filter(([, ref]) => ref?.startsWith(`${BRANCHES}/`))
+    .filter(([, ref]) => ref?.startsWith(`${ULTIMATE_REF_NAMESPACE}/`))
   const local = new Map(
-    (await git(repo, 'for-each-ref', '--format=%(refname) %(objectname)', BRANCHES))
+    (
+      await gitWithoutTimeout(
+        repo,
+        'for-each-ref',
+        '--format=%(refname) %(objectname)',
+        ULTIMATE_REF_NAMESPACE,
+      )
+    )
       .split('\n')
       .filter(Boolean)
       .map((line) => line.split(' ') as [string, string]),
   )
   const checkedOut = new Set(
-    (await git(repo, 'worktree', 'list', '--porcelain'))
+    (await gitWithoutTimeout(repo, 'worktree', 'list', '--porcelain'))
       .split('\n')
       .filter((line) => line.startsWith('branch '))
       .map((line) => line.slice('branch '.length)),
   )
   const contains = (descendant: string, ancestor: string) =>
-    git(repo, 'merge-base', '--is-ancestor', ancestor, descendant).then(
+    gitWithoutTimeout(repo, 'merge-base', '--is-ancestor', ancestor, descendant).then(
       () => true,
-      // merge-base exits 1 for "not an ancestor".
       () => false,
     )
   const kept: string[] = []
   for (const [oid, ref] of heads) {
     const current = local.get(ref)
-    // The empty old value makes update-ref create only, and a given one makes it compare-and-swap.
-    if (!current) await git(repo, 'update-ref', ref, oid, '')
+    if (!current) await gitWithoutTimeout(repo, 'update-ref', ref, oid, CREATE_REF_ONLY_IF_ABSENT)
     else if (current === oid || (await contains(current, oid))) continue
     else if (!checkedOut.has(ref) && (await contains(oid, current)))
-      await git(repo, 'update-ref', ref, oid, current)
+      await compareAndSwapRef(repo, ref, oid, current)
     else {
-      const moved = `refs/heads/ultimate-moved/${id}/${ref.slice(BRANCHES.length + 1)}`
-      // A repeated download of this snapshot finds its own kept ref already in place.
-      const existing = await git(repo, 'rev-parse', '--verify', '--quiet', moved).catch(
-        // --verify fails for an absent ref.
-        () => '',
-      )
-      if (existing !== oid) await git(repo, 'update-ref', moved, oid, '')
+      const moved = `refs/heads/ultimate-moved/${id}/${ref.slice(ULTIMATE_REF_NAMESPACE.length + 1)}`
+      const previouslyKeptSnapshotCommit = await gitWithoutTimeout(
+        repo,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        moved,
+      ).catch(() => '')
+      if (previouslyKeptSnapshotCommit !== oid)
+        await gitWithoutTimeout(repo, 'update-ref', moved, oid, CREATE_REF_ONLY_IF_ABSENT)
       kept.push(moved)
     }
   }

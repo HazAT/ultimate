@@ -40,6 +40,7 @@
     "cn": "0.4.0",
     "diff": "9.0.0",
     "log-update": "8.0.0",
+    "lovely-mermaid": "0.3.3",
     "lucide-react": "1.49.0",
     "ogl": "^1.0.11",
     "playwright-core": "1.63.0",

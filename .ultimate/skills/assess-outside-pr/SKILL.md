@@ -46,11 +46,22 @@ command and its output.
 ## 4. Classify and report
 
 Under `CONTRIBUTING.md`: a clear-cut fix or improvement to the core merges; a feature stays open and unmerged as a
-reference, titled "Feature: …" with the `feature` label. Report the verdict and the evidence from steps 1 to 3.
+reference, titled "Feature: …" with the `feature` label. Judge the code by AGENTS.md "Review quality".
+
+The user decides many of these in a row from the Inbox, so the report and the card's text open with the PR's title in
+plain words (the Inbox row shows that first line as is), the link after it, then read in this order:
+
+1. **Intent:** what problem the contributor is solving and why, in their terms. When the PR text does not make it
+   clear, say so rather than guess.
+2. **In plain words:** what a user sees go wrong today and what changes with the PR. No file paths, shas or test
+   counts here.
+3. **A diagram, when a flow or a race is involved:** a small `mermaid` `sequenceDiagram` or `flowchart` of where it
+   breaks today and what the PR changes. Skip it for a one-line fix or a purely visual change.
+4. **Evidence:** the verdict with what steps 1 to 3 found, briefly.
 
 The first decision card is the only one: it always carries, next to the verdict question, a **post/skip question
-for the comment** whose "post" option has the drafted comment, in full, as its `preview`. Never leave the comment
-for a later card. Store the draft on the PR's record with codemode `ultimate.action('pr-triage', 'set', {number,
+for the comment** whose "post" option has the drafted comment, in full, as its `preview`; a "merge with changes"
+option has the changes as a diff in its `preview`. Never leave the comment for a later card. Store the draft on the PR's record with codemode `ultimate.action('pr-triage', 'set', {number,
 draft})`, so the post or close the user picks sends exactly that text.
 
 ## 5. Merge, if it merges

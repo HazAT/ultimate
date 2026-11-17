@@ -19,16 +19,14 @@ import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { actions } from '../server.ts'
 import { parseSummaryModel } from '../summary-model-ref.ts'
+import { requestSummary, Summaries, summaryBehavior } from '../summary.ts'
 import {
   IntentSummarized,
   ReplySummarized,
-  requestSummary,
   SpawnSummarized,
-  Summaries,
   SummaryDiscarded,
-  summaryBehavior,
   TitleChanged,
-} from '../summary.ts'
+} from '../entries.ts'
 import type { SummaryHost } from '../summary.ts'
 import { temp, until } from '../../../test/helpers.ts'
 

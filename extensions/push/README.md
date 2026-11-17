@@ -11,6 +11,12 @@ with `extensions.enable: ["push"]` in user or project settings.
 - **A landing** (`workspaces.landed`).
 - **@ultimate's failed run**, read from the conversation overview as the sounds do (`extensions/sounds/cues.ts`).
 
+- **Another extension's push**, through `PushApi` (`api.ts`; `host.want` it, push is optional): `notify(push)` sends a
+  `Push` (`{ title, body, tag, path, urgency }`, `rules.ts`) the same way; `close(tag)` closes that tag's
+  notification on every device with the app open, as an answered question's closes. The closed tags live in the
+  root's `push.closed` document (the newest 50), which open pages read; a new `notify` under a closed tag opens it
+  again. A `path` of `/?inbox=<key>` opens the Inbox at that item (`extensions/inbox`).
+
 A browser that reported the app on screen in the last 15 s gets nothing. Tapping a notification opens its
 conversation, a question's at the question.
 
@@ -28,7 +34,8 @@ subscription; other failures become notices. Encryption (RFC 8291) and VAPID sig
 
 ## Service worker
 
-`web/public/sw.js`, registered by the always-on `share` extension, shows the pushes and handles the actions. It caches
+`web/public/sw.js`, registered by the always-on `share` extension, shows the pushes and handles the actions. After
+showing one it posts `ultimate:shown` to open pages, which close it again if it was answered or closed on its way. It caches
 nothing and handles no fetch but the share target's POST, so a reload still lands on the newest bundle.
 
 Adapted from mjaverto/ultimate's notifications extension (MIT, https://github.com/mjaverto/ultimate).

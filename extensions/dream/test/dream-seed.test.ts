@@ -1,8 +1,8 @@
+import type { Tx, ConversationId } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Tx } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { requestChapter } from '../../../lib/chapters.ts'
 import { writeJson } from '../../../lib/json-file.ts'
@@ -159,7 +159,7 @@ async function fixture() {
         ] as const) {
           board.messages.push({
             id,
-            from: 1,
+            from: 1 as ConversationId,
             to: 'user',
             text: `Question ${id}`,
             at: 1,
@@ -171,7 +171,7 @@ async function fixture() {
         // Open, asking no questions of its own: the message itself is the question.
         board.messages.push({
           id: 103,
-          from: 1,
+          from: 1 as ConversationId,
           to: 'user',
           text: 'Question 103',
           at: 1,

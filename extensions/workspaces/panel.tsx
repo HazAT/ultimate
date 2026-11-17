@@ -6,6 +6,7 @@ import {
   elidePath,
   formatBytes,
   shortenPath,
+  keepLast,
   useAction,
   useConversation,
   useConversationSummary,
@@ -18,7 +19,6 @@ import { DiskAction, InfoAction, StatsAction } from './refs.ts'
 
 const heading = 'mb-1 font-mono text-[10.5px] text-muted-foreground/70'
 
-/** One line for a collapsed section header: what lands now, else the shown conversation's checkout state. */
 export function useWorkspacesMeta() {
   const queue = useLanderQueue()
   const shown = useShown()
@@ -32,10 +32,6 @@ function useShown() {
   return useMemo(() => summary && workspace && { ...summary, workspace }, [summary, workspace])
 }
 
-/**
- * Checkouts at a glance, for Info's Workspaces section: the lander's queue, the shown conversation's checkout, and
- * every checkout counted, with the disk they take.
- */
 export function Workspaces() {
   const shown = useShown()
   return (
@@ -53,14 +49,12 @@ export function Workspaces() {
   )
 }
 
-/** The shown conversation's checkout: path and branch to copy, target, commits ahead and the last landing. */
 function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
   const recorded = conversation.workspace!
   const info = useAction(
     InfoAction,
     { id: conversation.id },
-    // A failure leaves the recorded workspace showing.
-    { onError: () => undefined, on: [recorded.state, recorded.landed, conversation.busy] },
+    { onError: keepLast, on: [recorded.state, recorded.landed, conversation.busy] },
   )
   const queued = useLanderQueue().find((item) => item.conversationId === conversation.id)
   const workspace =
@@ -127,7 +121,6 @@ function Checkout({ conversation }: { conversation: WorkspaceConversation }) {
   )
 }
 
-/** A value that copies itself on click; `shown` is a shorter form to display. */
 function Copyable({ value, shown = value }: { value: string; shown?: string }) {
   return (
     <button
@@ -143,7 +136,6 @@ function Copyable({ value, shown = value }: { value: string; shown?: string }) {
   )
 }
 
-/** The lander's queue, oldest first: what each submission waits for or is doing now. */
 function LanderQueue() {
   const queue = useLanderQueue()
   if (!queue.length) return null
@@ -176,7 +168,6 @@ const parts = (entries: [number, string][]) =>
     .map(([count, label]) => `${count} ${label}`)
     .join(' · ') || 'none'
 
-/** How many checkouts there are, what their commits are, and the disk they take. */
 function Stats() {
   const records = useWorkspaces()
   const states = Object.entries(records)

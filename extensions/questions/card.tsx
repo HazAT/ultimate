@@ -1,9 +1,12 @@
+import { ROOT } from '@/sdk'
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { CornerDownRightIcon, MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
-import { api, cn, errorMessage, useConversation, useDocOf, useViewport } from '@/sdk'
+import { api, cn, errorMessage, useConversation, useDocOf, useUiState, useViewport } from '@/sdk'
 import type { Question } from '../messages/refs.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { keyCard, openQuestions, waitsOnUser } from './open.tsx'
@@ -14,41 +17,41 @@ import type { Answer } from './refs.ts'
 import {
   answered,
   answerOf,
+  cardOf,
+  CARDS_KEY,
   choiceForKey,
   choices,
   keyOf,
   pickDraft,
   pickIndices,
 } from './state.tsx'
-import type { Draft } from './state.tsx'
+import type { CardState, Draft } from './state.tsx'
 
-/** How long a sent card can still be taken back before the answer goes out. */
-const UNDO_MS = 3000
+const ANSWER_UNDO_WINDOW_MS = 3000
+const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
 
-/**
- * Fills the undo bar over UNDO_MS from the moment it mounts, as `send` starts the timer. The Web Animations API
- * runs on every mobile engine, where a `@starting-style` transition left the bar full. It stays under reduced
- * motion: the bar tells how long Undo remains, it is not decoration. Module-level, so re-renders never restart it.
- */
-const countdown = (bar: HTMLDivElement | null) => {
+const animateUndoDeadline = (bar: HTMLDivElement | null) => {
   bar?.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
-    duration: UNDO_MS,
+    duration: ANSWER_UNDO_WINDOW_MS,
     easing: 'linear',
     fill: 'both',
   })
 }
 
-/** Whether `card` is the one on the shown conversation's page that takes the desktop 1–9 and Enter keys. */
 function useKeys(card: string) {
-  const messages = useDocOf(1, MessagesDoc)?.messages ?? []
+  const messages = useDocOf(ROOT, MessagesDoc)?.messages ?? []
   const conversation = useConversation((value) => value.id)
   return keyCard(conversation, messages) === card
 }
 
-/**
- * The answer card of a message that waits on the user: the questions it asks, or only a reply field and Dismiss when
- * it asks none. `keys` (default: the shown conversation decides) whether it takes the desktop 1–9 and Enter keys.
- */
+function useDurableCard(card: string) {
+  const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const state = cardOf(cards, card)
+  const change = (edit: (old: CardState) => CardState) =>
+    setCards((old) => ({ ...old, [card]: edit(cardOf(old, card)) }))
+  return [state, change] as const
+}
+
 export function MessageQuestions({
   message,
   keys,
@@ -81,36 +84,31 @@ export function MessageQuestions({
   )
 }
 
-/** Sends the answer waiting out its undo window now, if one does. */
-function flushPending(
-  pending: {
-    current?: { timer: ReturnType<typeof setTimeout>; fire: (keepalive?: boolean) => void }
+function flushUndoWindowSend(
+  undoWindowSend: {
+    current?: { cancel: Cancel; fire: (keepalive?: boolean) => void }
   },
   keepalive = false,
 ) {
-  const waiting = pending.current
+  const waiting = undoWindowSend.current
   if (!waiting) return
-  clearTimeout(waiting.timer)
+  waiting.cancel()
   waiting.fire(keepalive)
 }
 
-/** Where the card is: being answered, sent but still undoable, on its way, or settled into a summary. */
 type Phase = 'answering' | 'undo' | 'sending' | 'sent'
 
-/** A small key cap for the hint line and buttons. */
 const Key = ({ children, className }: { children: string; className?: string }) => (
   <Kbd className={cn('h-4 min-w-4 rounded-[3px] px-1 font-mono text-[10px]', className)}>
     {children}
   </Kbd>
 )
 
-/** One dot per question, filled as it gets an answer: how far along the card is, at a glance. */
 function Progress({ done }: { done: boolean[] }) {
   return (
     <span className="flex items-center gap-1" aria-hidden>
       {done.map((value, index) => (
         <span
-          // oxlint-disable-next-line react/no-array-index-key -- Progress dots correspond to fixed question positions.
           key={index}
           className={cn(
             'h-1 rounded-full transition-[width,background-color] duration-300 ease-out',
@@ -122,10 +120,6 @@ function Progress({ done }: { done: boolean[] }) {
   )
 }
 
-/**
- * What was sent, folded to a line per question in the shape of the answer under an answered message: the number and
- * letter, the words, and "skipped" for a question left open.
- */
 function Summary({
   questions,
   drafts,
@@ -135,24 +129,25 @@ function Summary({
   drafts: Record<number, Draft>
   note: string
 }) {
-  // One column for the tags, as wide as the widest ("2a,b,c", "note"), so every answer starts at the same place.
-  const widest = Math.max(
+  const widestAnswerTagChars = Math.max(
     ...questions.map((question, index) => brief(question, index, drafts[index]).tag.length),
     note.trim() ? 4 : 0,
   )
-  const tag = { minWidth: `${Math.max(3, widest)}ch` }
+  const alignedAnswerTagStyle = { minWidth: `${Math.max(3, widestAnswerTagChars)}ch` }
   return (
     <ul className="mt-1.5 space-y-0.5 pl-5.5 text-[13px] leading-relaxed">
       {questions.map((question, index) => {
         const answer = brief(question, index, drafts[index])
         return (
           <li
-            // oxlint-disable-next-line react/no-array-index-key -- Answers correspond to fixed question positions.
             key={index}
             className="flex min-w-0 items-baseline gap-2 motion-safe:animate-fade-in"
             style={{ animationDelay: `${index * 40}ms` }}
           >
-            <span className="shrink-0 font-mono text-[11px] text-brand" style={tag}>
+            <span
+              className="shrink-0 font-mono text-[11px] text-brand"
+              style={alignedAnswerTagStyle}
+            >
               {answer.tag}
             </span>
             {answer.words ? (
@@ -168,7 +163,10 @@ function Summary({
           className="flex min-w-0 items-baseline gap-2 motion-safe:animate-fade-in"
           style={{ animationDelay: `${questions.length * 40}ms` }}
         >
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground" style={tag}>
+          <span
+            className="shrink-0 font-mono text-[11px] text-muted-foreground"
+            style={alignedAnswerTagStyle}
+          >
             note
           </span>
           <span className="min-w-0 whitespace-pre-wrap text-foreground">{note.trim()}</span>
@@ -178,10 +176,6 @@ function Summary({
   )
 }
 
-/**
- * The note field under every card: whatever comes to mind while answering goes along with the answers, or on its
- * own. Enter sends, ⇧Enter breaks a line, Esc hands the keys back to the card; `/` focuses it from the card.
- */
 function Note({
   value,
   disabled,
@@ -244,21 +238,24 @@ function Card({
   dismiss: () => Promise<unknown>
   className?: string
 }) {
-  const [text, setText] = useState('')
-  const [note, setNote] = useState('')
+  const [state, setState] = useDurableCard(card)
+  const { drafts, note, current, text } = state
   const root = useRef<HTMLDivElement>(null)
-  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
-  const [current, setCurrent] = useState(0)
+
+  const [submittedSummarySnapshot, setSubmittedSummarySnapshot] = useState<{
+    drafts: Record<number, Draft>
+    note: string
+  }>()
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  // The send waiting out its undo window, and the click that folds a chosen question away.
-  const pending = useRef<{
-    timer: ReturnType<typeof setTimeout>
+
+  const undoWindowSend = useRef<{
+    cancel: Cancel
     fire: (keepalive?: boolean) => void
   }>(undefined)
-  const advance = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const flush = () => flushPending(pending)
+  const cancelAdvanceAfterCheck = useRef<Cancel>(undefined)
+  const flush = () => flushUndoWindowSend(undoWindowSend)
   const phone = useViewport() === 'phone'
   const hints = keys && !phone
   const words = questions.map((question, index) => answerOf(question, drafts[index]))
@@ -268,14 +265,12 @@ function Card({
   )
   const settled = phase !== 'answering'
 
-  // Leaving the page inside the undo window sends what was sent: only Undo takes it back.
   useEffect(() => {
-    // Only this send is keepalive: keepalive bodies share a budget of about 64 KiB, and a note can be longer.
-    const leave = () => flushPending(pending, true)
-    window.addEventListener('pagehide', leave)
+    const flushWithKeepaliveOnPagehide = () => flushUndoWindowSend(undoWindowSend, true)
+    window.addEventListener('pagehide', flushWithKeepaliveOnPagehide)
     return () => {
-      window.removeEventListener('pagehide', leave)
-      clearTimeout(advance.current)
+      window.removeEventListener('pagehide', flushWithKeepaliveOnPagehide)
+      cancelAdvanceAfterCheck.current?.()
       flush()
     }
   }, [])
@@ -287,18 +282,21 @@ function Card({
         ?.focus({ preventScroll: true }),
     )
   const go = (index: number) => {
-    clearTimeout(advance.current)
+    cancelAdvanceAfterCheck.current?.()
     const next = Math.min(questions.length - 1, Math.max(0, index))
-    setCurrent(next)
+    setState((old) => ({ ...old, current: next }))
     if (questions[next]?.kind === 'text') focusField(next)
   }
   const draft = (index: number, change: (old: Draft) => Draft) =>
-    setDrafts((old) => ({ ...old, [index]: change(old[index] ?? { chosen: [] }) }))
+    setState((old) => ({
+      ...old,
+      drafts: { ...old.drafts, [index]: change(old.drafts[index] ?? { chosen: [] }) },
+    }))
   const select = (index: number, option: number, click = false) => {
     const question = questions[index]
     const choice = question && choices(question)[option]
     if (!question || !choice) return
-    setCurrent(index)
+    setState((old) => ({ ...old, current: index }))
     if (question.kind === 'multi')
       return draft(index, (old) =>
         choice.custom
@@ -315,18 +313,22 @@ function Card({
         ? { ...old, chosen: [], other: true }
         : { ...old, chosen: [option], other: false },
     )
-    // A click on a single answer lets its check land, then folds the question and opens the next.
-    clearTimeout(advance.current)
+
+    cancelAdvanceAfterCheck.current?.()
     if (click && !choice.custom && index < questions.length - 1)
-      advance.current = setTimeout(() => go(index + 1), 320)
+      cancelAdvanceAfterCheck.current = deadline(CHECK_LANDING_BEFORE_ADVANCE_MS, () =>
+        go(index + 1),
+      )
   }
-  /** Takes @ultimate's picks for questions `indices`, returning the answers that are ready then. */
-  const takePicks = (indices: number[]) => {
+
+  const takePicksWithImmediateSummary = (
+    indices: number[],
+  ): { answers: Answer[]; drafts: Record<number, Draft> } => {
     const next = { ...drafts }
     for (const [index, question] of questions.entries())
       if (indices.includes(index)) next[index] = pickDraft(question)
-    setDrafts(next)
-    return answered(questions, next)
+    setState((old) => ({ ...old, drafts: next }))
+    return { answers: answered(questions, next), drafts: next }
   }
   const run = async (action: () => Promise<unknown>) => {
     if (busy) return
@@ -340,12 +342,13 @@ function Card({
       setBusy(false)
     }
   }
-  const send = (list: Answer[] = ready) => {
+  const send = (list: Answer[] = ready, picked: Record<number, Draft> = drafts) => {
     const extra = note.trim()
-    if ((!list.length && !extra) || pending.current || phase !== 'answering') return
-    clearTimeout(advance.current)
+    if ((!list.length && !extra) || undoWindowSend.current || phase !== 'answering') return
+    cancelAdvanceAfterCheck.current?.()
+    setSubmittedSummarySnapshot({ drafts: picked, note })
     const fire = (keepalive = false) => {
-      pending.current = undefined
+      undoWindowSend.current = undefined
       setPhase('sending')
       setError(undefined)
       submit(list, extra || undefined, keepalive).then(
@@ -356,32 +359,35 @@ function Card({
         },
       )
     }
-    pending.current = { timer: setTimeout(fire, UNDO_MS), fire }
+    undoWindowSend.current = { cancel: deadline(ANSWER_UNDO_WINDOW_MS, fire), fire }
     setPhase('undo')
   }
   const now = flush
   const undo = () => {
-    if (!pending.current) return
-    clearTimeout(pending.current.timer)
-    pending.current = undefined
+    if (!undoWindowSend.current) return
+    undoWindowSend.current.cancel()
+    undoWindowSend.current = undefined
     setPhase('answering')
   }
-  /** Every pick for the questions still open, sent at once: the one-keystroke path. */
-  const acceptAndSend = () => send(takePicks(open))
-  /** Enter: take the pick of an open question, move on, and send from the last one or once all are answered. */
+
+  const acceptAndSend = () => {
+    const picks = takePicksWithImmediateSummary(open)
+    send(picks.answers, picks.drafts)
+  }
+
   const enter = () => {
     if (phase === 'undo') return now()
     if (phase !== 'answering') return
     if (!words[current] && open.includes(current)) {
-      const list = takePicks([current])
-      return current < questions.length - 1 ? go(current + 1) : send(list)
+      const picks = takePicksWithImmediateSummary([current])
+      return current < questions.length - 1 ? go(current + 1) : send(picks.answers, picks.drafts)
     }
     if (current < questions.length - 1 && ready.length < questions.length) return go(current + 1)
     send()
   }
   const clear = () => {
-    clearTimeout(advance.current)
-    setDrafts((old) => ({ ...old, [current]: { chosen: [] } }))
+    cancelAdvanceAfterCheck.current?.()
+    setState((old) => ({ ...old, drafts: { ...old.drafts, [current]: { chosen: [] } } }))
   }
   const focusNote = () =>
     root.current?.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.focus()
@@ -404,6 +410,8 @@ function Card({
 
   useEffect(() => {
     if (!keys || phone || phase === 'sending' || phase === 'sent') return undefined
+    const outsideControlOwnsKeys = (target: HTMLElement | null) =>
+      !root.current?.contains(target) && target?.closest('[data-questions-card], button, a')
     const key = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (
@@ -412,8 +420,7 @@ function Card({
         event.ctrlKey ||
         event.altKey ||
         target?.closest('input, textarea, select, [contenteditable="true"]') ||
-        // Outside this card, another card or a control keeps its own keys.
-        (!root.current?.contains(target) && target?.closest('[data-questions-card], button, a'))
+        outsideControlOwnsKeys(target)
       )
         return
       if (phase === 'undo') {
@@ -451,7 +458,6 @@ function Card({
     return () => window.removeEventListener('keydown', key)
   })
 
-  // No questions to answer with buttons: a reply field for this message, and Dismiss.
   if (!questions.length)
     return (
       <form
@@ -459,7 +465,6 @@ function Card({
         data-questions-card={card}
         onSubmit={(event) => {
           event.preventDefault()
-          // oxlint-disable-next-line typescript/no-floating-promises -- run catches reply failures and displays them with setError.
           if (text.trim()) void run(() => reply(text.trim()))
         }}
       >
@@ -469,7 +474,7 @@ function Card({
           placeholder="Your answer…"
           value={text}
           disabled={busy}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => setState((old) => ({ ...old, text: event.target.value }))}
           className="min-h-8 min-w-0 flex-1 basis-40 rounded-md border border-border bg-background px-2.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
         />
         <Button
@@ -516,11 +521,15 @@ function Card({
           )}
           {phase === 'sending' && <span className="ml-auto">sending…</span>}
         </div>
-        <Summary questions={questions} drafts={drafts} note={note} />
+        <Summary
+          questions={questions}
+          drafts={submittedSummarySnapshot?.drafts ?? drafts}
+          note={submittedSummarySnapshot?.note ?? note}
+        />
         {phase === 'undo' && (
           <div className="mt-2.5 h-0.5 overflow-hidden rounded-full bg-border/60">
             <div
-              ref={countdown}
+              ref={animateUndoDeadline}
               data-countdown
               className="h-full w-full origin-left rounded-full bg-brand/70"
             />
@@ -530,7 +539,7 @@ function Card({
     )
 
   const last = questions.length - 1
-  // The keys of the open question: its first two choices, none while it is typed.
+
   const shown = questions[current]
   const shownKeys = shown ? [0, 1].flatMap((i) => keyOf(shown, i) ?? []) : []
   const unanswered = questions.length - ready.length
@@ -552,7 +561,6 @@ function Card({
       </div>
       <div className="space-y-0.5 px-1.5">
         {questions.map((question, index) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Questions and their drafts are addressed by index.
           <div key={index} data-question={index}>
             <QuestionItem
               question={question}
@@ -570,7 +578,13 @@ function Card({
         ))}
       </div>
       <div className="px-3 pt-2">
-        <Note value={note} disabled={busy} hint={hints} onChange={setNote} onSend={() => send()} />
+        <Note
+          value={note}
+          disabled={busy}
+          hint={hints}
+          onChange={(value) => setState((old) => ({ ...old, note: value }))}
+          onSend={() => send()}
+        />
       </div>
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
         {hints && (
@@ -619,7 +633,7 @@ function Card({
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => takePicks(open)}
+              onClick={() => takePicksWithImmediateSummary(open)}
               title="Choose @ultimate's pick for every question still open (⇧↵ also sends)"
             >
               Accept picks

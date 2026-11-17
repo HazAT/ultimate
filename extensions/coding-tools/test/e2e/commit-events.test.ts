@@ -34,6 +34,11 @@ afterEach(async () => {
 /** The extension's bash tool, run as one call of conversation 7 in `dir`. */
 async function bash(command: string, dir = cwd) {
   const extension = codingTools({
+    home: cwd,
+    need: (() => ({})) as never,
+    notice: () => {},
+    onOpen: () => {},
+    react: () => {},
     emit: async (_tx, event, data) => {
       expect(event).toBe(Committed)
       emitted.push(data as Event)

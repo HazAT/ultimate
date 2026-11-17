@@ -4,7 +4,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ dismissed: false, off: false }))
-vi.mock('@/sdk', () => ({
+vi.mock('@/sdk', async () => ({
+  renderEntry: (await import('../../../../web/src/sdk/entry-renderer.tsx')).renderEntry,
+  ROOT: 1,
   api: {},
   attention: (renderer: unknown) => renderer,
   Card: () => null,

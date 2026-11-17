@@ -28,17 +28,22 @@ import {
   errorMessage,
   events,
   formatKeys,
+  keepLast,
   useAction,
   useEvent,
   useNow,
   useUltimate,
 } from '@/sdk'
+import { debounce } from '../../lib/timers.ts'
 import { clock, full, until, words } from './parts.tsx'
 import { DefinitionsAction } from '../subagents/ui.tsx'
 import { CreateAction, DescribeAction, EventsAction, UpdateAction } from './refs.ts'
 import type { Automation } from './refs.ts'
 
 type Mode = 'cron' | 'at' | 'every'
+type TypedNumberText = string
+type RelativeLocalOrOffsetTime = string
+type AgentNameOrInheritMain = string
 interface Draft {
   trigger: 'schedule' | 'script' | 'ultimate'
   ultimate: 'event' | 'context'
@@ -46,26 +51,20 @@ interface Draft {
   filters: Record<string, string>
   filterTypes: Record<string, 'string' | 'number' | 'boolean'>
   of: string
-  /** The number fields hold what was typed, so a cleared field stays empty instead of reading 0. */
-  above: string
-  cooldownMinutes: string
-  /** Hours without the user's input before it may fire; 0 for none. */
-  idleHours: string
+  above: TypedNumberText
+  cooldownMinutes: TypedNumberText
+  idleHours: TypedNumberText
   name: string
   prompt: string
-  /** What a script watches for, in plain words; its watcher writes the script from it. */
   ask: string
   once: boolean
-  /** Whether a fire wakes the conversation the form was opened beside. */
   wake: boolean
   mode: Mode
   cron: string
   tz: string
-  /** `in 30m`, a local `2026-12-01 09:00`, or an ISO time with an offset. */
-  at: string
+  at: RelativeLocalOrOffsetTime
   every: string
-  /** An agent definition's name; empty for a copy of the main agent. */
-  agent: string
+  agent: AgentNameOrInheritMain
 }
 type Model = { model?: { provider: string; modelId: string }; thinking?: string }
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -181,7 +180,6 @@ function interval(ms: number) {
   return `${ms / 1000}s`
 }
 
-/** The schedule in the tool's grammar, which the actions accept; undefined while a field is empty. */
 function scheduleOf(draft: Draft): string | undefined {
   if (draft.mode === 'cron')
     return draft.cron.trim() ? `cron "${draft.cron.trim()}" ${draft.tz.trim() || zone}` : undefined
@@ -189,21 +187,19 @@ function scheduleOf(draft: Draft): string | undefined {
   const at = draft.at.trim()
   if (!at) return undefined
   if (/^in\s/.test(at)) return at.replace(/^in\s+/, 'in ')
-  // A date and time without an offset is local to this browser, which runs on the machine Ultimate runs on.
-  const local = /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d)?$/.test(at) && new Date(at.replace(' ', 'T'))
-  return `at ${local && Number.isFinite(local.getTime()) ? local.toISOString() : at}`
+  const browserLocalTime =
+    /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d)?$/.test(at) && new Date(at.replace(' ', 'T'))
+  return `at ${browserLocalTime && Number.isFinite(browserLocalTime.getTime()) ? browserLocalTime.toISOString() : at}`
 }
 
-/** An empty field is no number: `Number('')` would read it as 0. */
-const amount = (text: string) => (text.trim() === '' ? Number.NaN : Number(text))
+const numberOrNaNForEmptyField = (text: string) => (text.trim() === '' ? Number.NaN : Number(text))
 
-/** The context condition the draft describes, or undefined while a field is empty or out of range. */
 export function contextCondition(
   draft: Pick<Draft, 'of' | 'above' | 'cooldownMinutes' | 'idleHours'>,
 ) {
-  const above = amount(draft.above)
-  const cooldownMinutes = amount(draft.cooldownMinutes)
-  const idleHours = amount(draft.idleHours)
+  const above = numberOrNaNForEmptyField(draft.above)
+  const cooldownMinutes = numberOrNaNForEmptyField(draft.cooldownMinutes)
+  const idleHours = numberOrNaNForEmptyField(draft.idleHours)
   if (
     !/^(@[a-zA-Z0-9_-]+|#[1-9]\d*)$/.test(draft.of) ||
     !Number.isInteger(above) ||
@@ -227,12 +223,12 @@ export function contextCondition(
 const matches = (draft: Draft, preset: Partial<Draft>) =>
   Object.entries(preset).every(([key, value]) => draft[key as keyof Draft] === value)
 
-/** Waits `ms` after the last change of `value`. */
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
+    const settle = debounce(ms, () => setSettled(value))
+    settle()
+    return settle.cancel
   }, [value, ms])
   return settled
 }
@@ -259,24 +255,27 @@ function Field({
   )
 }
 
-/** What the backend makes of the schedule: in words, the next fire times, and how often it costs a run. */
 function Preview({ schedule }: { schedule: string | undefined }) {
   const settled = useSettled(schedule, 250)
   const described = useAction(
     DescribeAction,
     { schedule: settled ?? '' },
-    { enabled: settled !== undefined, onError: () => {} },
+    { enabled: settled !== undefined, onError: keepLast },
   )
   const now = useNow(1000)
   const data = settled === schedule ? described.data : undefined
   const error = settled === schedule ? described.error : undefined
   const perDay =
     data && data.next.length > 1 ? Math.round(86400000 / (data.next[1] - data.next[0])) : 0
+  const scheduleAnnouncement = error
+    ? error.message
+    : data
+      ? words(data.schedule, data.description, now)
+      : ''
   return (
     <div className="min-h-[5.25rem] rounded-md border border-border/70 bg-card/60 px-2.5 py-2">
-      {/* Announces what the schedule means, not the ticking countdown below. */}
       <span aria-live="polite" className="sr-only">
-        {error ? error.message : data ? words(data.schedule, data.description, now) : ''}
+        {scheduleAnnouncement}
       </span>
       {error ? (
         <p className="flex items-start gap-1.5 font-mono text-[11.5px] leading-snug text-error">
@@ -327,19 +326,15 @@ function Preview({ schedule }: { schedule: string | undefined }) {
 const model = (agent: Model | undefined, fallback: string) =>
   agent?.model ? `${agent.model.modelId}${agent.thinking ? ` · ${agent.thinking}` : ''}` : fallback
 
-/** Which agent runs the prompt: a copy of the main agent, or a shared agent definition with its own model. */
 function AgentPicker({ value, onChange }: { value: string; onChange: (agent: string) => void }) {
   const { data, refetch } = useAction(DefinitionsAction, null, {
-    onError: () => {},
+    onError: keepLast,
   })
-  // A definition changed in its config dialog shows its new model here once the dialog closes, and focus comes back to
-  // Configure: opened over the bus, that dialog has no trigger of its own to return focus to.
   const configure = useRef<HTMLButtonElement>(null)
-  const opened = useRef(false)
+  const definitionDialogOpenedHere = useRef(false)
   useEvent('subagents:definition-closed', () => {
-    if (!opened.current) return
-    opened.current = false
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
+    if (!definitionDialogOpenedHere.current) return
+    definitionDialogOpenedHere.current = false
     void refetch()
     requestAnimationFrame(() => configure.current?.focus())
   })
@@ -418,7 +413,7 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
         <Button
           className="h-8 shrink-0 gap-1.5 px-2.5 text-[12px]"
           onClick={() => {
-            opened.current = true
+            definitionDialogOpenedHere.current = true
             events.emit('subagents:open-definition', { name: chosen.name })
           }}
           ref={configure}
@@ -435,11 +430,6 @@ function AgentPicker({ value, onChange }: { value: string; onChange: (agent: str
   )
 }
 
-/**
- * Create or edit an automation: name, prompt, schedule (presets or the raw forms) with the backend's preview, and the
- * agent. `automation` edits it; without one the form creates. `onClosed` runs once the dialog has gone, to move focus.
- * Mount it with a new `key` for each opening, so it starts from the automation as it is then, or blank.
- */
 export function AutomationForm({
   open,
   automation,
@@ -455,12 +445,11 @@ export function AutomationForm({
 }) {
   const [draft, setDraft] = useState(() => draftOf(automation))
   const [saving, setSaving] = useState(false)
-  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: () => {} })
+  const eventChoices = useAction(EventsAction, null, { enabled: open, onError: keepLast })
   const [error, setError] = useState<string>()
   const ids = useId()
   const name = useRef<HTMLInputElement>(null)
   const set = (change: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...change }))
-  // A fire wakes the conversation the form opens beside: the shown one, which actions run on behalf of.
   const { conversationId } = useUltimate()
   const script = draft.trigger === 'script'
   const ultimate = draft.trigger === 'ultimate'
@@ -468,8 +457,8 @@ export function AutomationForm({
   const schedule = scheduleOf(draft)
   const condition = contextCondition(draft)
   const prompt = draft.prompt.trim()
-  // A fire needs something to do: wake a conversation, run a prompt, or both. An edit keeps its subscribers.
-  const acts = !!prompt || (automation ? automation.subscribers.length > 0 : wakeable && draft.wake)
+  const hasPromptOrWakeTarget =
+    !!prompt || (automation ? automation.subscribers.length > 0 : wakeable && draft.wake)
   const validTrigger = script
     ? !!draft.ask.trim()
     : ultimate
@@ -484,7 +473,7 @@ export function AutomationForm({
           )
         : condition !== undefined
       : schedule !== undefined
-  const ready = draft.name.trim() && validTrigger && acts && !saving
+  const ready = draft.name.trim() && validTrigger && hasPromptOrWakeTarget && !saving
   const save = async () => {
     if (!ready) return
     setSaving(true)
@@ -514,14 +503,12 @@ export function AutomationForm({
         ? await api.action(UpdateAction, {
             id: automation.id,
             ...fields,
-            // An empty prompt removes the run action the automation had.
             ...(!prompt && automation.prompt ? { prompt: '' } : {}),
             ...(prompt ? { agent: draft.agent } : {}),
           })
         : await api.action(CreateAction, {
             ...fields,
             ...(prompt && draft.agent ? { agent: draft.agent } : {}),
-            // Without a prompt the server subscribes the caller by itself; with one only when asked.
             ...(wakeable && prompt && draft.wake && conversationId !== undefined
               ? { subscribers: [conversationId] }
               : {}),
@@ -537,7 +524,6 @@ export function AutomationForm({
   const submitOnModEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
     event.preventDefault()
-    // oxlint-disable-next-line typescript/no-floating-promises -- save catches failures and displays them with setError.
     void save()
   }
   const mode = modes.find((candidate) => candidate.value === draft.mode)!
@@ -560,7 +546,6 @@ export function AutomationForm({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault()
-            // oxlint-disable-next-line typescript/no-floating-promises -- save catches failures and displays them with setError.
             void save()
           }}
         >

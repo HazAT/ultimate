@@ -1,9 +1,20 @@
 # Inbox
 
 Everything that waits on the user, oldest first, answered in place: the `inbox` surface, first tab after Agent. Its
-items are exactly the messages `waiting` (questions) returns over the Messages log, read live and never copied
-(`items.ts`); an item leaves the moment it is answered or dismissed, wherever that happened. Browser only: no
-`server.ts`, no documents, no actions of its own.
+items are the messages `waiting` (questions) returns over the Messages log, read live and never copied, merged with
+the items other extensions provide (`items.tsx`); a question leaves the moment it is answered or dismissed, wherever
+that happened, a provided item when its provider stops listing it. Browser only: no `server.ts`, no documents, no
+actions of its own.
+
+## Provided items (`ui.tsx`)
+
+Another extension puts its own things to do in the Inbox (a command to run in a terminal, say) by providing the
+`InboxItems` point from its `web.tsx`: `provide(InboxItems, () => items)`, a hook returning
+`{ key, at, conversation?, tag, title, gist?, pane }[]`. `key` is unique across providers (`shell:12`), `at` when it
+started waiting, `tag` the row's kind tag, `pane` the reading pane's content below the title, its buttons included;
+with `conversation` the row names it and the pane offers **Open in branch**. Every provider's items count in the
+sidebar row and the To-dos' "For you" row too: they all read `Waiting` from `ui.tsx`. A provider that throws is left
+out behind its inline error card. Items are entries keyed by string; a question's key is `message:<id>`.
 
 ## Surface (`web.tsx`)
 
@@ -20,12 +31,13 @@ items are exactly the messages `waiting` (questions) returns over the Messages l
 - **Phone**: the list full width; a tap shows the item full screen with a back arrow, the answer card after the text.
 - **Zero**: "Nothing waits on you", the questions answered or dismissed today, and **Back to @ultimate**.
 
-`?inbox=<message>` on load opens the surface at that item and leaves the address; the `inbox:open {message}` event
-does the same at runtime (a push notification's tap, `extensions/push`).
+`?inbox=<key>` on load opens the surface at that entry and leaves the address; the `inbox:open {key}` event does the
+same at runtime (a push notification's tap, `extensions/push`). A plain number, in either or as
+`inbox:open {message}`, is a question's message id.
 
 ## Elsewhere
 
 - **Sidebar**: a row under @ultimate's (`sidebar.under-ultimate`), amber `Inbox · N · oldest 2h` while items wait,
   a quiet `Inbox` at zero; a click opens the surface. @ultimate's own row then says only `waits on you`.
-- **To-dos**: the panel's "For you" keeps one `Inbox · N` row that opens it.
+- **To-dos**: the panel's "For you" keeps one `Inbox · N` row, provided items counted, that opens it.
 - ⌘K **Open Inbox**.

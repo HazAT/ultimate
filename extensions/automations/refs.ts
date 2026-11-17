@@ -17,6 +17,7 @@ export type {
   Schedule,
   TriggerEvent,
 } from './types.ts'
+export type { AutomationInput } from '../entries/refs.ts'
 export type Described = { schedule: Schedule; description: string; next: number[] }
 type Id = { id: string }
 /** Available domain event triggers and filter fields. */
@@ -62,6 +63,7 @@ export const EscalateAction = actionRef<Id & { reason: string }, Automation>(
   'automations',
   'escalate',
 )
+
 /** A trigger fired; fire is its lifetime count. */
 export const Fired = defineEvent<{ id: string; text: string; fire: number }>('automations.fired')
 /** Supervised executable started. */

@@ -27,6 +27,7 @@ import {
   useUltimate,
 } from '@/sdk'
 import type { AuthEvent, AuthPrompt } from '@/sdk'
+import { meansNone } from '../../lib/errors.ts'
 import { authLabel, dialogs, reopenPicker, useLoginProvider } from './state.tsx'
 import type { ProviderInfo } from './state.tsx'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
@@ -36,10 +37,8 @@ function useLoginFlow(flowId: string | undefined) {
   const flows = useDoc(LoginDoc)?.flows
   return flowId === undefined ? undefined : flows?.[flowId]
 }
-/** Cancel a running flow; it may have just ended, which needs no notice. */
 const cancel = (flowId: string) =>
-  // The flow may have just ended; a failed cancel needs no notice.
-  api.action(CancelAction, { flowId }, { keepalive: true }).catch(() => undefined)
+  api.action(CancelAction, { flowId }, { keepalive: true }).catch(meansNone)
 interface Method {
   provider: ProviderInfo
   type: AuthType
@@ -48,8 +47,7 @@ interface Method {
 
 const typeLabel = (method: Method) => (method.type === 'api_key' ? 'API key' : 'OAuth')
 
-/** When this page first saw each flow event, for device-code countdowns. */
-const seen = new Map<string, number>()
+const firstSeenEventAtMs = new Map<string, number>()
 
 function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
   const { copied, copy } = useCopy()
@@ -77,10 +75,9 @@ function OpenButton({ url, children = 'Open' }: { url: string; children?: ReactN
   )
 }
 
-/** One provider event of a login flow, as Pi's login dialog shows it. */
 function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string; index: number }) {
   const key = `${flowId}:${index}`
-  if (!seen.has(key)) seen.set(key, Date.now())
+  if (!firstSeenEventAtMs.has(key)) firstSeenEventAtMs.set(key, Date.now())
   switch (event.type) {
     case 'info':
       return (
@@ -119,10 +116,11 @@ function EventView({ event, flowId, index }: { event: AuthEvent; flowId: string;
         </div>
       )
     case 'device_code':
-      return <DeviceCode event={event} since={seen.get(key) ?? Date.now()} />
-    default:
-      return <p className="text-[12px] text-muted-foreground">{event.message}</p>
+      return <DeviceCode event={event} since={firstSeenEventAtMs.get(key) ?? Date.now()} />
+    case 'progress':
+      break
   }
+  return <p className="text-[12px] text-muted-foreground">{event.message}</p>
 }
 
 function DeviceCode({
@@ -176,7 +174,6 @@ function DeviceCode({
   )
 }
 
-/** The prompt a flow waits on, answered through the `answer` action; the next prompt replaces this form. */
 function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) {
   const [value, setValue] = useState('')
   const [error, setError] = useState<string>()
@@ -215,12 +212,10 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
         {error && <p className="text-[12px] text-error">{error}</p>}
       </div>
     )
-  // A text prompt may accept a blank answer ("blank for github.com"); secrets and codes may not.
-  const optional = prompt.type === 'text'
+  const acceptsBlankTextAnswer = prompt.type === 'text'
   const submit = () => {
-    if ((value.trim() || optional) && !sending) answer(value.trim())
+    if ((value.trim() || acceptsBlankTextAnswer) && !sending) answer(value.trim())
   }
-  // No <form> and a one-time-code field: browsers must not take an API key for a password to save.
   return (
     <div className="flex flex-col gap-1.5">
       <label className="font-sans text-[13px] text-foreground/90" htmlFor="login-answer">
@@ -250,7 +245,7 @@ function PromptForm({ flowId, prompt }: { flowId: string; prompt: AuthPrompt }) 
         />
         <Button
           className="h-8 px-3 text-[12px]"
-          disabled={(!value.trim() && !optional) || sending}
+          disabled={(!value.trim() && !acceptsBlankTextAnswer) || sending}
           onClick={submit}
           type="button"
         >
@@ -277,7 +272,6 @@ function FlowView({
   onBack: () => void
   onRetry: () => void
   onDone: () => void
-  /** The flow id while it runs, so closing the dialog can cancel it. */
   onRunning: (flowId: string | undefined) => void
 }) {
   const flow = useLoginFlow(flowId)
@@ -287,9 +281,7 @@ function FlowView({
   useEffect(() => onRunning(status === 'running' ? flowId : undefined), [flowId, onRunning, status])
   useEffect(() => {
     if (status !== 'complete') return
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
     void refreshModels()
-    // Whoever gates on a credential re-checks its status now instead of on a remount, voice's mic included.
     events.emit('auth:changed', undefined)
   }, [status])
   return (
@@ -334,7 +326,6 @@ function FlowView({
       <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto px-4 py-4">
         {flowId &&
           flow?.events.map((event, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Login events append within this flow.
             <EventView event={event} flowId={flowId} index={index} key={index} />
           ))}
         {flow?.prompt && status === 'running' && flowId && (
@@ -408,8 +399,7 @@ function Chooser({
   const [query, setQuery] = useState(initialQuery)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  /** The row whose logout waits for a second click: the credential is shared with pi. */
-  const [confirming, setConfirming] = useState<string>()
+  const [unconfirmedSharedLogout, setUnconfirmedSharedLogout] = useState<string>()
   const methods: Method[] = (models?.providers ?? [])
     .flatMap((provider) =>
       provider.authTypes.map((auth) => ({ provider, type: auth.type, name: auth.name })),
@@ -427,13 +417,12 @@ function Chooser({
     ),
   )
   const logout = (provider: ProviderInfo) => {
-    setConfirming(undefined)
+    setUnconfirmedSharedLogout(undefined)
     setBusy(provider.id)
     setError(undefined)
     api.action(LogoutAction, { provider: provider.id }).then(
       () => {
         setBusy(undefined)
-        // oxlint-disable-next-line typescript/no-floating-promises -- refreshModels catches fetch failures and retries on the next system event.
         void refreshModels()
       },
       (failure: unknown) => {
@@ -461,7 +450,7 @@ function Chooser({
         {shown.map((method) => {
           const label = authLabel(method.provider)
           const row = `${method.provider.id}:${method.type}`
-          if (confirming === row)
+          if (unconfirmedSharedLogout === row)
             return (
               <div
                 className="flex flex-col gap-2 rounded-sm border border-warning/40 bg-warning/8 px-2.5 py-2"
@@ -476,7 +465,7 @@ function Chooser({
                   <Button
                     autoFocus
                     className="h-7 text-[12px]"
-                    onClick={() => setConfirming(undefined)}
+                    onClick={() => setUnconfirmedSharedLogout(undefined)}
                     size="sm"
                     variant="ghost"
                   >
@@ -525,7 +514,7 @@ function Chooser({
                     <Button
                       className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                       disabled={busy === method.provider.id}
-                      onClick={() => setConfirming(row)}
+                      onClick={() => setUnconfirmedSharedLogout(row)}
                       size="sm"
                       title={`Remove the stored ${method.provider.id} credential from ~/.pi/agent/auth.json`}
                       variant="ghost"
@@ -558,7 +547,6 @@ function Chooser({
   )
 }
 
-/** Log in to a provider: pick a method, then follow the flow in the `models.login` document. */
 export function LoginDialog() {
   const [open, setOpen] = useDialog(dialogs.login)
   const requested = useLoginProvider()
@@ -578,35 +566,31 @@ export function LoginDialog() {
       )
   }
   const close = () => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- cancel catches failures when a flow has already ended.
     if (running) void cancel(running)
     setOpen(false)
     setState(undefined)
     setRunning(undefined)
   }
-  // Pi serializes logins per provider: a flow left waiting when the tab closes would block the next one.
   useEffect(() => {
     if (!running) return undefined
-    const leave = () => void cancel(running)
-    addEventListener('pagehide', leave)
-    return () => removeEventListener('pagehide', leave)
+    const cancelProviderFlowBeforePageHide = () => void cancel(running)
+    addEventListener('pagehide', cancelProviderFlowBeforePageHide)
+    return () => removeEventListener('pagehide', cancelProviderFlowBeforePageHide)
   }, [running])
-  // A flow's document lives on the conversation that started it: showing another one ends the flow.
   const { conversationId } = useUltimate()
-  const shown = useRef(conversationId)
-  const leave = useEffectEvent(() => {
+  const flowConversationId = useRef(conversationId)
+  const closeFlowOnConversationChange = useEffectEvent(() => {
     if (state) close()
   })
   useEffect(() => {
-    if (shown.current === conversationId) return
-    shown.current = conversationId
-    leave()
+    if (flowConversationId.current === conversationId) return
+    flowConversationId.current = conversationId
+    closeFlowOnConversationChange()
   }, [conversationId])
-  // Another tab or pi may have logged in or out since this window last had focus.
   useEffect(() => {
-    const refresh = () => void refreshModels()
-    addEventListener('focus', refresh)
-    return () => removeEventListener('focus', refresh)
+    const refreshCrossTabLoginState = () => void refreshModels()
+    addEventListener('focus', refreshCrossTabLoginState)
+    return () => removeEventListener('focus', refreshCrossTabLoginState)
   }, [])
 
   return (

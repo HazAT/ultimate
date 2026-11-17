@@ -1,23 +1,19 @@
-/**
- * The one band of this tab: which variant plays, what the live project and the demo feed it, and whether the browser
- * lets it play yet. Loads the Tone.js engine only once the sound of agents is on.
- */
-import { demo, demoLength, demoPlayer } from './agents.ts'
-import type { Happening, Variant } from './agents.ts'
+import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
+import { demo, demoLength, demoPlayer } from './agents.tsx'
+import type { Happening, Variant } from './agents.tsx'
 import type { Band } from './engine.ts'
 import { engine } from './tones.ts'
 
 export type Stage = {
   variant?: Variant
-  /** Audio is on but the browser waits for a click in the page. */
   blocked: boolean
-  /** The demo is playing; ends at this time (ms). */
   demoUntil?: number
 }
 
 let stage: Stage = { blocked: false }
 let band: Band | undefined
-let timers: ReturnType<typeof setTimeout>[] = []
+let cancels: Cancel[] = []
 const listeners = new Set<() => void>()
 
 const set = (next: Partial<Stage>) => {
@@ -30,8 +26,7 @@ export const subscribe = (listener: () => void) => {
 }
 export const current = () => stage
 
-/** Any click or key press in the page lets audio start: the mode survives reloads without a dead first sound. */
-async function unblock() {
+async function resumeAudioAfterGesture() {
   const { unlock, running } = await engine()
   await unlock()
   if (running()) set({ blocked: false })
@@ -39,13 +34,12 @@ async function unblock() {
 function waitForGesture() {
   const once = () => {
     for (const type of ['pointerdown', 'keydown'] as const) removeEventListener(type, once, true)
-    unblock().catch((error: unknown) => console.warn('Audio start failed', error))
+    resumeAudioAfterGesture().catch((error: unknown) => console.warn('Audio start failed', error))
   }
   for (const type of ['pointerdown', 'keydown'] as const)
     addEventListener(type, once, { capture: true })
 }
 
-/** Plays `variant`, or stops the band when undefined. */
 export async function conduct(variant: Variant | undefined) {
   if (variant === stage.variant) return
   band?.dispose()
@@ -57,36 +51,37 @@ export async function conduct(variant: Variant | undefined) {
   }
   set({ variant })
   const tone = await engine()
-  // Turned off or switched again while the engine loaded.
-  if (stage.variant !== variant) return
-  // Without a click the browser keeps the context suspended; a click anywhere resumes it.
-  if (!navigator.userActivation.hasBeenActive) {
+
+  const variantSuperseded = stage.variant !== variant
+  if (variantSuperseded) return
+
+  const browserNeedsAudioGesture = !navigator.userActivation.hasBeenActive
+  if (browserNeedsAudioGesture) {
     set({ blocked: true })
     waitForGesture()
   } else await tone.unlock()
   band = tone.band(variant)
 }
 
-/** Hands `happening` to the band; a hidden tab plays nothing, so nothing waits to play on its return. */
 export const hit = (happening: Happening) => {
-  if (!document.hidden) band?.hit(happening)
+  const tabVisible = !document.hidden
+  if (tabVisible) band?.hit(happening)
 }
 
-/** Plays the scripted demo through the band: a feature from first message to landing, about 40 seconds. */
 export function startDemo() {
   stopDemo()
   const step = demoPlayer()
-  timers = demo.map((s) =>
-    setTimeout(() => {
+  cancels = demo.map((s) =>
+    deadline(s.at * 1000, () => {
       const happening = step(s)
       if (happening) hit(happening)
-    }, s.at * 1000),
+    }),
   )
-  timers.push(setTimeout(stopDemo, demoLength * 1000))
+  cancels.push(deadline(demoLength * 1000, stopDemo))
   set({ demoUntil: Date.now() + demoLength * 1000 })
 }
 export function stopDemo() {
-  for (const timer of timers) clearTimeout(timer)
-  timers = []
+  for (const cancel of cancels) cancel()
+  cancels = []
   if (stage.demoUntil !== undefined) set({ demoUntil: undefined })
 }

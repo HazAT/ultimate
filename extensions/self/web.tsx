@@ -1,3 +1,4 @@
+import { deadline } from '../../lib/timers.ts'
 import { LoaderCircleIcon, RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -35,10 +36,6 @@ interface RestartDetails {
   error?: string
 }
 
-/**
- * The `restart` tool: the swap's generations and builds from its `details`, or the boot error that kept the old core
- * serving. A record without details reads as a plain core swap.
- */
 function RestartCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const result = (call.details ?? {}) as RestartDetails
@@ -100,7 +97,6 @@ function RestartCall({ call }: { call: ToolCallView }) {
   )
 }
 
-/** A status-line item next to the generation while `server/` or `shared/` changed since this core booted. */
 function CoreStale() {
   const system = useSystem()
   const restart = useRestart()
@@ -143,7 +139,6 @@ function CoreStale() {
       </Popover>
     )
   if (!system?.code.coreStale && !restart.busy) return null
-  // A phone's status line has room for the action only.
   const stale = (
     <span>
       <span className="max-md:hidden">core changed · </span>restart
@@ -177,10 +172,6 @@ function CoreStale() {
   )
 }
 
-/**
- * The web bundle's rebuild in place of the build item: `building… 2s` while it runs, `ready · switching` as the page
- * is about to reload onto it, and what failed (a facet left out, or the whole build) until a build succeeds.
- */
 function Rebuild() {
   const web = useSystem()?.web
   const building = web?.building === true
@@ -238,7 +229,6 @@ function Rebuild() {
   )
 }
 
-/** `build a1b2c3d` in the status line; it lights up when the build changes, or the page just switched to it. */
 function Build() {
   const system = useSystem()
   const id = system?.build.id
@@ -252,13 +242,13 @@ function Build() {
   }, [id])
   useEffect(() => {
     if (!fresh) return undefined
-    const timer = setTimeout(() => setFresh(false), 4000)
-    return () => clearTimeout(timer)
+    return deadline(4000, () => setFresh(false))
   }, [fresh])
   if (!system) return null
-  // The rebuild item stands in for this one while it shows something.
   const web = system.web
-  if (web.building || web.error || web.left || (web.id && bundle && web.id !== bundle)) return null
+  const rebuildReplacesBuildItem =
+    web.building || web.error || web.left || (web.id && bundle && web.id !== bundle)
+  if (rebuildReplacesBuildItem) return null
   const { build } = system
   return (
     <Tooltip>
@@ -308,32 +298,24 @@ function Build() {
   )
 }
 
-/** How long the update toast stays. */
-const lifetime = 4000
+const updateToastLifetimeMs = 4000
 
-/** `extensions/lineage/web.tsx` as `lineage/web.tsx`: enough to recognise the file. */
 const shortFile = (path: string) => path.split('/').slice(-2).join('/')
 
-/** How far apart a landing and the switch it brought may be: the lander fast-forwards, then records it. */
-const landingWindow = 60_000
+const fastForwardToLandingRecordWindowMs = 60_000
 
-/**
- * A quiet toast above the bottom right of the status line after the page switched to a new web bundle: the branches
- * whose landing brought it, else the sources that changed.
- */
 function Updated() {
   const [shown, setShown] = useState(switched !== undefined)
   const { switchConversation } = useUltimate()
   const events = useEvents({ events: [SubmissionLanded], limit: 5 })
   useEffect(() => {
     if (!shown) return undefined
-    const timer = setTimeout(() => setShown(false), lifetime)
-    return () => clearTimeout(timer)
+    return deadline(updateToastLifetimeMs, () => setShown(false))
   }, [shown])
   if (!shown || !switched) return null
   const { at } = switched
   const landings = (events ?? [])
-    .filter((event) => Math.abs(at - Date.parse(event.at)) < landingWindow)
+    .filter((event) => Math.abs(at - Date.parse(event.at)) < fastForwardToLandingRecordWindowMs)
     .map((event) => event.data)
   const files = switched.changed
   if (landings.length > 0)
@@ -373,7 +355,6 @@ function Updated() {
 export default defineWebExtension({
   tools: { restart: RestartCall },
   slots: {
-    // Discovery order puts `self` before `status-line`: the item sits just left of `live · gen N`.
     'statusline.right': [
       { component: CoreStale, phone: true },
       { component: Rebuild, order: 1, phone: true },

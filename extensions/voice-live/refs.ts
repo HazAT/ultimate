@@ -1,4 +1,5 @@
 /** Live voice actions and the standing Voice conversation. Browser-safe. */
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 export type VoiceStatus = { available: true } | { available: false; reason: string }
@@ -11,7 +12,7 @@ export type VoiceSession = {
  * Where a Voice navigation goes, carried out by the page that holds the voice session: a surface by id or title, a
  * conversation, or the Inbox at an open question (`message`, its id in the Messages log).
  */
-export type VoiceGo = { surface?: string; conversation?: number; message?: number }
+export type VoiceGo = { surface?: string; conversation?: ConversationId; message?: number }
 /**
  * One line of the Voice transcript. `user`: the cleaned request forwarded to @ultimate;
  * `live`: GPT-Live's backchannels; `ultimate`: Voice's speech, `re` the forwarded line it answers;
@@ -24,12 +25,12 @@ export type VoiceLine = {
   forwarded?: true
   at?: number
   re?: number
-  source?: { conversation: number; entry: number }
+  source?: { conversation: ConversationId; entry: EntryId }
   speech?: true
   go?: VoiceGo
 }
 /** A question to the user that opened while voice mode was on, handed to Voice to announce. */
-export type VoiceQuestion = { message: number; from: number; title?: string; gist: string }
+export type VoiceQuestion = { message: number; from: ConversationId; title?: string; gist: string }
 export type VoiceUtterance = { text: string; line: number }
 /**
  * What Voice was given at a session's start: the project memory, the user's recent requests to @ultimate and the open
@@ -55,16 +56,16 @@ export type VoiceContext = {
 export type VoiceAnswer = {
   text: string
   re: number
-  source?: { conversation: number; entry: number }
+  source?: { conversation: ConversationId; entry: EntryId }
 }
 
 /** No arguments → API key availability, or a reason explaining how to enable it. */
 export const StatusAction = actionRef<null, VoiceStatus>('voice-live', 'status')
 /** `{ sdp }` offer → `{ sdp, conversation }` answer; creates a billable WebRTC session. */
-export const StartAction = actionRef<{ sdp: string }, { sdp: string; conversation: number }>(
-  'voice-live',
-  'start',
-)
+export const StartAction = actionRef<
+  { sdp: string },
+  { sdp: string; conversation: ConversationId }
+>('voice-live', 'start')
 /** A finished user transcript → input to the Voice agent, steering while busy. */
 export const HeardAction = actionRef<{ text: string }, Record<string, never>>('voice-live', 'heard')
 /** GPT-Live's own line or a notice. The user's lines use heard instead. */

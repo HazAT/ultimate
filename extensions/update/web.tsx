@@ -15,6 +15,7 @@ import {
   defineWebExtension,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useRestart,
   useSystem,
@@ -29,7 +30,6 @@ const statusButton =
 
 const short = (root: string) => root.replace(/^\/(?:home|Users)\/[^/]+/, '~')
 
-/** "extensions, web · server · lockfile": what the range touches, core and lockfile marked. */
 function Touches({ layers }: { layers: Layers }) {
   const parts: ReactNode[] = []
   if (layers.live) parts.push(<span key="live">extensions, web</span>)
@@ -54,7 +54,6 @@ function Touches({ layers }: { layers: Layers }) {
   return (
     <span>
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional layer fragments built for this render.
         <span key={index}>
           {index > 0 && ' · '}
           {part}
@@ -64,7 +63,6 @@ function Touches({ layers }: { layers: Layers }) {
   )
 }
 
-/** What has to happen after an update with `layers`, one line each. */
 function After({ layers, install }: { layers: Layers; install?: UpdateResult & { ok: true } }) {
   const lines: ReactNode[] = []
   if (layers.live) lines.push('extensions and web reload by themselves')
@@ -87,7 +85,6 @@ function After({ layers, install }: { layers: Layers; install?: UpdateResult & {
   return (
     <ul className="space-y-0.5">
       {lines.map((line, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed instructions derived from this update's layers.
         <li className="flex gap-1.5" key={index}>
           <span className="text-muted-foreground">·</span>
           <span className="min-w-0">{line}</span>
@@ -97,7 +94,6 @@ function After({ layers, install }: { layers: Layers; install?: UpdateResult & {
   )
 }
 
-/** Fetch origin now: shown while nothing was just updated, so a dirty clone can be re-checked after fixing it. */
 function CheckNow({ checking, onClick }: { checking: boolean; onClick: () => void }) {
   return (
     <Button
@@ -137,11 +133,14 @@ function Popup({
 }) {
   const coreStale = useSystem()?.code.coreStale
   const updated = state.behind === 0 ? state.updated : undefined
-  // Under a summary the commit list folds to the first few.
-  const shown = Math.min(state.commits.length, state.summary ? 3 : 5)
-  // Packages owed or loaded since start, with nothing new to pull: retry the install, or restart.
-  const owes = !state.behind && (state.install || state.restart)
-  const current = !state.behind && !updated && !owes
+  const commitCountUnderSummary = 3
+  const commitCountWithoutSummary = 5
+  const shown = Math.min(
+    state.commits.length,
+    state.summary ? commitCountUnderSummary : commitCountWithoutSummary,
+  )
+  const owesInstallOrRestart = !state.behind && (state.install || state.restart)
+  const current = !state.behind && !updated && !owesInstallOrRestart
   return (
     <>
       <div className="border-b border-border/70 px-3 py-2 text-[11.5px]">
@@ -226,7 +225,7 @@ function Popup({
             )}
           </>
         )}
-        {owes && !updated && (
+        {owesInstallOrRestart && !updated && (
           <div>
             {state.install
               ? 'pnpm-lock.yaml differs from the installed packages: pnpm install is owed.'
@@ -267,7 +266,7 @@ function Popup({
             busy={busy}
             coreStale={coreStale}
             merge={merge}
-            owes={owes}
+            owes={owesInstallOrRestart}
             run={run}
             state={state}
           />
@@ -277,7 +276,6 @@ function Popup({
   )
 }
 
-/** The popover's main button: install, restart or update; none while the clone is current. */
 function Action({
   state,
   busy,
@@ -349,14 +347,8 @@ function Action({
   )
 }
 
-/** The status-line item: quiet while the clone is current, prominent while it is behind or owes a restart. */
 function Update() {
-  const { data, refetch } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next one tries again.
-    { onError: () => {}, every: 60_000 },
-  )
+  const { data, refetch } = useAction(StateAction, null, { onError: keepLast, every: 60_000 })
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
@@ -373,7 +365,6 @@ function Update() {
       .catch((failure: unknown) =>
         setError(failure instanceof Error ? failure.message : String(failure)),
       )
-      // The check leaves its answer as the server's state.
       .finally(() => void refetch().finally(() => setChecking(false)))
   }
   const run = () => {
@@ -381,18 +372,15 @@ function Update() {
     setError(undefined)
     api
       .action(UpdateAction)
-      // A refusal comes back in the refreshed state; only a failing command is shown here.
       .catch((failure: unknown) =>
         setError(failure instanceof Error ? failure.message : String(failure)),
       )
       .finally(() => {
         setBusy(false)
-        // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
         void refetch()
       })
   }
-  // Hands the merge to @ultimate and opens its conversation, where the branch it starts shows up.
-  const merge = () => {
+  const openUltimateMerge = () => {
     setBusy(true)
     setError(undefined)
     api
@@ -470,7 +458,7 @@ function Update() {
           check={check}
           checking={checking}
           error={error}
-          merge={merge}
+          merge={openUltimateMerge}
           run={run}
           state={state}
         />

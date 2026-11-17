@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
 import type { UiState } from '../../web/src/sdk/store.ts'
@@ -60,7 +61,7 @@ describe('sidebar and panel', () => {
     actions.toggleSidebar()
     actions.openPanel()
     expect([regionOpen('sidebar'), regionOpen('panels')]).toEqual([false, true])
-    actions.switchConversation(7)
+    actions.switchConversation(7 as ConversationId)
     expect(regionOpen('panels')).toBe(false)
   })
 
@@ -70,7 +71,7 @@ describe('sidebar and panel', () => {
     expect([regionOpen('sidebar'), regionOpen('panels')]).toEqual([true, false])
     actions.openPanel()
     expect([regionOpen('sidebar'), regionOpen('panels')]).toEqual([true, true])
-    actions.switchConversation(7)
+    actions.switchConversation(7 as ConversationId)
     expect([regionOpen('sidebar'), regionOpen('panels')]).toEqual([true, false])
     // Folded, the phone shows the conversation; unfolded, the sidebar docks again.
     width.current = 390

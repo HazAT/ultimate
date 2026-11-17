@@ -31,6 +31,15 @@ export const AnswerAction = actionRef<{ flowId: string; value: string }, null>('
 export const CancelAction = actionRef<{ flowId: string }, null>('models', 'cancel')
 /** `{ provider }` → null: remove the provider's stored credential, which Pi shares. */
 export const LogoutAction = actionRef<{ provider: string }, null>('models', 'logout')
+/**
+ * null → `{ errors }`: fetch every provider's model catalog from pi.dev now, as `pi update --models` does, so a model
+ * released after the installed Pi shows up without an npm release. `errors` maps each provider whose fetch failed to
+ * its message.
+ */
+export const RefreshCatalogAction = actionRef<null, { errors: Record<string, string> }>(
+  'models',
+  'refreshCatalog',
+)
 
 /**
  * A `models.fallback` entry: the conversation's model (`provider/id`) had no login here, so its next run switched to

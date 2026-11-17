@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 // An Android WebView (react-native-webview 13.16.1, 2026-11-11) has service workers but no Notifications or Push API.
 // There every page showed "extension push failed · e.getNotifications is not a function" once a question to the user
 // had been answered: closing its notification called a method the registration lacks. This page deletes those APIs
@@ -6,7 +7,6 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
@@ -49,14 +49,15 @@ it('runs through an answered question without an error where the Notifications a
     ),
     fauxAssistantMessage('Waiting on you.'),
   ])
-  const created = async () => (await post(server, '/api/conversations', {})).data.id as number
+  const created = async () =>
+    (await post(server, '/api/conversations', {})).data.id as ConversationId
   const [branch, other] = [await created(), await created()]
   // Started by another conversation, the branch may ask the user.
   await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Started, branch as ConversationId)).by = other
+    ;(await tx.doc(Started, branch)).by = other
   }, context)
   await (
-    await (await server.harness.conversation(branch as ConversationId, context))!.submit(
+    await (await server.harness.conversation(branch, context))!.submit(
       { type: 'input', content: 'ask' },
       context,
     )

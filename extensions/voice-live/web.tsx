@@ -1,4 +1,6 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
+import { deadline } from '../../lib/timers.ts'
 import {
   ArrowRightIcon,
   AudioLinesIcon,
@@ -58,32 +60,32 @@ import type { VoiceMode } from './live.tsx'
 import { openQuestion } from '../../lib/message-state.ts'
 import { MessagesDoc } from '../messages/ui.tsx'
 import { AskedAction, LogAction, StatusAction } from './refs.ts'
-import type {
-  VoiceAnswer,
-  VoiceContext,
-  VoiceGo,
-  VoiceLine,
-  VoiceQuestion,
-  VoiceSession,
-  VoiceUtterance,
-} from './refs.ts'
+import {
+  VoiceLineEntry,
+  VoiceSessionEntry,
+  VoiceContextEntry,
+  VoiceQuestionEntry,
+  VoiceUtteranceEntry,
+  VoiceAnswerEntry,
+  VoiceHeardEntry,
+} from './entries.ts'
+import type { VoiceAnswer, VoiceGo, VoiceLine } from './refs.ts'
 
 const KEYS = 'alt+v'
 const useMode = () => useSyncExternalStore(live.subscribe, live.voiceMode)
-/** @ultimate's conversation and the Voice conversation, once start created it. */
+
 function useIds() {
-  const main = useDocOf(1, StandingDoc)?.ultimate
-  const voice = useDocOf(1, StandingDoc)?.voice
+  const main = useDocOf(ROOT, StandingDoc)?.ultimate
+  const voice = useDocOf(ROOT, StandingDoc)?.voice
   return { main, voice }
 }
 
 const start = live.start
+const keepEditorFocus = (event: React.PointerEvent) => event.preventDefault()
 
-/** Voice to the front over @ultimate, from anywhere, or back. */
 function toggleFront(actions: Pick<UltimateActions, 'switchConversation' | 'showSurface'>) {
   const front = !live.voiceMode().front
   live.setFront(front)
-  // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
   if (front) void talkToUltimate(actions)
 }
 
@@ -92,12 +94,8 @@ const clock = (ms: number) => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-/** `⌥V` on a Mac, `Alt+V` elsewhere. */
 const keyHint = formatKeys(KEYS)[0].join(formatKeys(KEYS)[0][0] === 'Alt' ? '+' : '')
 
-// ---- the microphone level ------------------------------------------------------------------------------------------
-
-/** Bars following the live microphone; at rest without a session (paused, connecting) or under reduced motion. */
 function Level({ className, bar }: { className?: string; bar: string }) {
   const bars = useRef<HTMLSpanElement[]>([])
   const { phase, muted } = useMode()
@@ -136,7 +134,6 @@ function Level({ className, bar }: { className?: string; bar: string }) {
   )
 }
 
-/** What the mode is, in two or three words. */
 function stateLabel(mode: VoiceMode) {
   if (mode.phase === 'starting') return 'Connecting…'
   if (mode.phase === 'ending') return 'Ending…'
@@ -145,9 +142,6 @@ function stateLabel(mode: VoiceMode) {
   return mode.muted ? 'Muted' : 'Live'
 }
 
-// ---- composer: the way in ------------------------------------------------------------------------------------------
-
-/** Beside the dictation mic in @ultimate's composer: starts the relay, or brings Voice forward while it runs. */
 function StartButton() {
   const id = useConversation((conversation) => conversation.id)
   const { main } = useIds()
@@ -185,11 +179,10 @@ function StartButton() {
             if (status.loading) return
             if (missing) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
             if (on) return toggleFront(actions)
-            // oxlint-disable-next-line typescript/no-floating-promises -- open shows its own failures in the indicator.
             void start()
           }}
-          // Keeps the editor's focus, so a phone's keyboard neither opens nor closes under the tap.
-          onPointerDown={(event) => event.preventDefault()}
+
+          onPointerDown={keepEditorFocus}
           type="button"
         >
           {mode.phase === 'starting' ? (
@@ -204,12 +197,9 @@ function StartButton() {
   )
 }
 
-// ---- the live indicator, on every page -----------------------------------------------------------------------------
-
 const pillButton =
   'flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring max-md:size-7'
 
-/** In the title bar while voice mode is on: state and time, the level, Mute, Voice front/back and End. */
 function LiveIndicator() {
   const mode = useMode()
   const actions = useUltimate()
@@ -217,9 +207,10 @@ function LiveIndicator() {
   const now = useNow(1000, mode.phase === 'live')
   const { main } = useIds()
   if (mode.phase === 'off' && !mode.problem) return null
-  // On @ultimate's conversation, Voice's own card (collapsed or expanded) already says all this: one indicator only.
-  if (mode.phase !== 'off' && actions.surface === 'agent' && actions.conversationId === main)
-    return null
+
+  const voiceCardVisible =
+    mode.phase !== 'off' && actions.surface === 'agent' && actions.conversationId === main
+  if (voiceCardVisible) return null
   if (mode.phase === 'off')
     return (
       <span
@@ -254,7 +245,6 @@ function LiveIndicator() {
       data-voice-live-indicator={mode.phase}
       role="group"
     >
-      {/* The state is the way to Voice: a tap brings it forward or sends it back. */}
       <button
         aria-label={`${label} · ${mode.front ? 'send Voice back' : 'bring Voice to the front'}`}
         className="flex h-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full px-1.5 outline-none hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring"
@@ -282,8 +272,10 @@ function LiveIndicator() {
         >
           {phone && asleep && !mode.waiting ? 'Paused' : label}
         </span>
-        {mode.phase === 'live' && mode.since !== undefined && (
-          <span className="text-muted-foreground tabular-nums">{clock(now - mode.since)}</span>
+        {mode.phase === 'live' && mode.billedSince !== undefined && (
+          <span className="text-muted-foreground tabular-nums">
+            {clock(now - mode.billedSince)}
+          </span>
         )}
         {mode.phase === 'live' && <Level bar="bg-error" className="h-3" />}
       </button>
@@ -331,9 +323,6 @@ function LiveIndicator() {
   )
 }
 
-// ---- answers: spoken as they arrive --------------------------------------------------------------------------------
-
-/** While voice mode is on, speaks each new ultimate line of Voice; never one that was there before. */
 function Relay() {
   const { phase } = useMode()
   const { voice } = useIds()
@@ -346,56 +335,43 @@ function Relay() {
   )
 }
 
-/** How long the user and GPT-Live must have been quiet before Voice may announce a new question. */
-const QUIET_MS = 2000
+const questionAnnouncementQuietMs = 2000
 
-/**
- * Hands each question to the user that opens while voice mode is on to Voice, to announce, once the user and GPT-Live
- * have been quiet a moment; never one that was open before. The server takes each message once.
- */
 function Announce() {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const mode = useMode()
-  const seen = useRef<Set<number>>(undefined)
+  const seenThisSession = useRef<Set<number>>(undefined)
   const [due, setDue] = useState<number[]>([])
   const [quietSince, setQuietSince] = useState(Date.now())
   const busy = mode.floor !== undefined || mode.speaking !== undefined || mode.phase !== 'live'
-  // The quiet starts when the floor frees up.
+
   useEffect(() => {
     if (!busy) setQuietSince(Date.now())
   }, [busy])
   useEffect(() => {
     if (!log) return
     const open = log.messages.filter(openQuestion).map((m) => m.id)
-    if (seen.current === undefined) {
-      seen.current = new Set(open)
+    if (seenThisSession.current === undefined) {
+      seenThisSession.current = new Set(open)
       return
     }
-    const fresh = open.filter((id) => !seen.current!.has(id))
-    for (const id of fresh) seen.current.add(id)
+    const fresh = open.filter((id) => !seenThisSession.current!.has(id))
+    for (const id of fresh) seenThisSession.current.add(id)
     if (fresh.length) setDue((current) => [...current, ...fresh])
   }, [log])
   useEffect(() => {
     if (!due.length || busy) return undefined
-    const timer = setTimeout(
-      () => {
-        setDue([])
-        for (const message of due)
-          api
-            .action(AskedAction, { message })
-            .catch((error: unknown) => console.warn('Voice announce failed', error))
-      },
-      Math.max(0, quietSince + QUIET_MS - Date.now()),
-    )
-    return () => clearTimeout(timer)
+    return deadline(Math.max(0, quietSince + questionAnnouncementQuietMs - Date.now()), () => {
+      setDue([])
+      for (const message of due)
+        api
+          .action(AskedAction, { message })
+          .catch((error: unknown) => console.warn('Voice announce failed', error))
+    })
   }, [due, busy, quietSince])
   return null
 }
 
-/**
- * Carries out Voice's navigation `go` with the page's own actions and events, the way a click does; a target this page
- * cannot show becomes a notice in Voice's transcript.
- */
 function navigate(go: VoiceGo, actions: UltimateActions, commands: ReturnType<typeof useCommands>) {
   live.setFront(false)
   if (go.message !== undefined) return events.emit('inbox:open', { message: go.message })
@@ -420,46 +396,42 @@ function SpeakNew({ voice }: { voice: number }) {
   const loading = useConversation((conversation) => conversation.loading)
   const actions = useUltimate()
   const commands = useCommands()
-  const seen = useRef<number>(undefined)
+  const navigation = useRef({ actions, commands })
+  navigation.current = { actions, commands }
+  const seenThisSession = useRef<number>(undefined)
   useEffect(() => {
     if (loading) return
     const last = entries.at(-1)?.id ?? 0
-    const lines = entries.filter((e) => e.kind === 'voice.line')
+    const lines = entries.filter((candidate) => VoiceLineEntry.is(candidate))
     live.working(
       lines.some((entry) => {
-        const line = entry.data as unknown as VoiceLine
-        return (
-          line.forwarded &&
-          !lines.some((reply) => (reply.data as unknown as VoiceLine).re === entry.id)
-        )
+        const line = entry.data
+        return line.forwarded && !lines.some((reply) => reply.data.re === entry.id)
       }),
     )
-    if (seen.current === undefined) {
-      seen.current = last
+    if (seenThisSession.current === undefined) {
+      seenThisSession.current = last
       return
     }
     for (const entry of entries) {
-      if (entry.id <= seen.current || entry.kind !== 'voice.line') continue
-      const line = entry.data as unknown as VoiceLine
+      if (entry.id <= seenThisSession.current || !VoiceLineEntry.is(entry)) continue
+      const line = entry.data
       if (line.role === 'ultimate' && line.speech) live.hear(line.text, entry.id)
       else if (line.role === 'note') live.note(line.text)
-      else if (line.role === 'action' && line.go) navigate(line.go, actions, commands)
+      else if (line.role === 'action' && line.go)
+        navigate(line.go, navigation.current.actions, navigation.current.commands)
     }
-    seen.current = Math.max(seen.current, last)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- only new entries act; actions and commands are read then.
+    seenThisSession.current = Math.max(seenThisSession.current, last)
   }, [entries, loading])
-  // A new Voice conversation starts counting afresh.
-  useEffect(() => () => (seen.current = undefined), [voice])
+
+  useEffect(() => () => (seenThisSession.current = undefined), [voice])
   return null
 }
-
-// ---- depth view: @ultimate recedes, Voice comes forward ------------------------------------------------------------
 
 const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const duration = 420
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** In @ultimate's conversation: Voice as a sheet in front, the way side chat shows its copy. */
 function Stage() {
   const id = useConversation((conversation) => conversation.id)
   const { main, voice } = useIds()
@@ -473,10 +445,10 @@ function Stage() {
   const isMain = id !== undefined && id === main
   const inFront = isMain && voice !== undefined && mode.phase !== 'off' && mode.front && !sideOpen
 
-  // One sheet at a time: Voice coming forward parks a side chat; a side chat coming forward sends Voice back.
   const was = useRef({ front: mode.front, side: sideOpen })
   useEffect(() => {
-    if (mode.front && !was.current.front && sideOpen) setSideFront(null)
+    const voiceDisplacesSideChat = mode.front && !was.current.front && sideOpen
+    if (voiceDisplacesSideChat) setSideFront(null)
     else if (sideOpen && !was.current.side && mode.front) live.setFront(false)
     was.current = { front: mode.front, side: sideOpen }
   }, [mode.front, sideOpen, setSideFront])
@@ -485,8 +457,7 @@ function Stage() {
   if (inFront && !shown) setShown(true)
   useEffect(() => {
     if (inFront) return undefined
-    const timer = setTimeout(() => setShown(false), duration + 60)
-    return () => clearTimeout(timer)
+    return deadline(duration + 60, () => setShown(false))
   }, [inFront])
 
   useLayoutEffect(() => {
@@ -504,13 +475,13 @@ function Stage() {
       (child): child is HTMLElement => child instanceof HTMLElement && !child.contains(ref.current),
     )
     const still = reduced()
-    // The column as laid out, so a `--reading-width` set by the user moves it to the same resting place.
+
     const reading = layers
       .map((layer) => layer.querySelector<HTMLElement>('[data-ui="transcript"]'))
       .find(Boolean)
-    const columnWidth = reading?.offsetWidth ?? width
+    const readingColumnWidth = reading?.offsetWidth ?? width
     const scale = phone ? 0.92 : 0.88
-    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (columnWidth / 2) * scale))
+    const shift = phone ? 0 : Math.min(0, 24 - (width / 2 - (readingColumnWidth / 2) * scale))
     for (const layer of layers) {
       layer.style.transition = still
         ? `opacity ${duration}ms ease`
@@ -606,10 +577,6 @@ function Stage() {
   )
 }
 
-/**
- * Voice collapsed: a small card at the side of @ultimate's conversation while the session keeps listening. It says what
- * is happening now (with the words being heard), and a tap brings the full Voice view back.
- */
 function Collapsed({ phone }: { phone: boolean }) {
   const mode = useMode()
   const step = useStep(mode)
@@ -675,8 +642,9 @@ function Collapsed({ phone }: { phone: boolean }) {
   )
 }
 
-/** The collapsed card's two lines: the step, then the words being heard or what it is about. */
 function StepLine({ step, mode }: { step: Step; mode: VoiceMode }) {
+  const newestWordsClass =
+    'mt-0.5 block truncate font-mono text-[11px] text-muted-foreground [direction:rtl]'
   const title =
     step.step === 'hearing'
       ? 'Hearing you…'
@@ -708,23 +676,14 @@ function StepLine({ step, mode }: { step: Step; mode: VoiceMode }) {
   return (
     <>
       <span className="block truncate text-[13px] leading-tight font-semibold">{title}</span>
-      {/* The newest words stay in view: the line is cut at its start, never its end. */}
-      <span
-        className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground [direction:rtl]"
-        title={detail}
-      >
+
+      <span className={newestWordsClass} title={detail}>
         <bdi>{detail}</bdi>
       </span>
     </>
   )
 }
 
-// ---- Voice's composer: the controls, since the user talks ------------------------------------------------------------
-
-/**
- * Where the pipeline is, read from the relay and the transcript: who has the floor, whether Voice is deciding, which
- * request @ultimate works on, an answer on its way to speech. A request in flight outranks a quiet session.
- */
 type Step =
   | {
       step:
@@ -748,7 +707,9 @@ function useStep(mode: VoiceMode): Step {
   if (mode.phase === 'ending') return { step: 'ending' }
   const settled = new Map<number, { answered: boolean; spoken: boolean; failed: boolean }>()
   for (const entry of transcript) {
-    const re = (entry.data as { re?: number } | undefined)?.re
+    if (!VoiceLineEntry.is(entry) && !VoiceAnswerEntry.is(entry)) continue
+    const data: { re?: number } | undefined = entry.data
+    const re = data?.re
     if (re === undefined) continue
     const state = settled.get(re) ?? {
       answered: false,
@@ -756,45 +717,46 @@ function useStep(mode: VoiceMode): Step {
       failed: false,
     }
     if (entry.kind === 'voice.answer') state.answered = true
-    const role = entry.kind === 'voice.line' && (entry.data as unknown as VoiceLine).role
+    const role = VoiceLineEntry.is(entry) && entry.data.role
     if (role === 'ultimate') state.spoken = true
     if (role === 'notice') state.failed = true
     settled.set(re, state)
   }
   const open = transcript.findLast(
     (entry) =>
-      entry.kind === 'voice.line' &&
-      (entry.data as unknown as VoiceLine).forwarded &&
+      VoiceLineEntry.is(entry) &&
+      entry.data.forwarded &&
       !settled.get(entry.id)?.answered &&
       !settled.get(entry.id)?.failed,
   )
   const unspoken = [...settled.values()].some((state) => state.answered && !state.spoken)
-  // The session's brief follows its start divider; until it is there, Voice holds the user's first line for it.
+
   const started = transcript.findLastIndex(
-    (entry) => entry.kind === 'voice.session' && (entry.data as VoiceSession).phase === 'started',
+    (entry) => VoiceSessionEntry.is(entry) && entry.data.phase === 'started',
   )
-  const briefed =
+  const sessionBriefArrived =
     started < 0 || transcript.slice(started).some((entry) => entry.kind === 'voice.context')
   if (mode.phase === 'paused') return { step: mode.waiting ? 'waiting' : 'paused' }
   if (mode.floor === 'user') return { step: 'hearing' }
-  if (!briefed) return { step: 'loading' }
+  if (!sessionBriefArrived) return { step: 'loading' }
   if (mode.floor === 'voice') return { step: 'speaking' }
   if (unspoken) return { step: 'answer' }
   if (deciding) return { step: 'deciding' }
-  if (open) {
-    const line = open.data as unknown as VoiceLine
+  if (VoiceLineEntry.is(open)) {
+    const line = open.data
     return { step: 'working', request: line.text, since: line.at }
   }
   return { step: mode.muted ? 'muted' : 'listening' }
 }
 
-/** The step in large words and one quiet line under it, readable from across the room. */
 function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
   const { main } = useIds()
   const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, step.step === 'working' || mode.phase === 'live')
   const session =
-    mode.phase === 'live' && mode.since !== undefined ? clock(now - mode.since) : undefined
+    mode.phase === 'live' && mode.billedSince !== undefined
+      ? clock(now - mode.billedSince)
+      : undefined
   const [title, detail]: [ReactNode, ReactNode] =
     step.step === 'off'
       ? ['Voice is off', 'Start it to talk to @ultimate']
@@ -857,7 +819,6 @@ function StepText({ step, mode }: { step: Step; mode: VoiceMode }) {
   )
 }
 
-/** The step's mark: the live level while the user talks, a calm spinner while something works, else the mic. */
 function StepMark({
   step,
   mode,
@@ -900,7 +861,6 @@ function StepMark({
   )
 }
 
-/** In place of Voice's composer: what is happening right now, Mute and End; or the way to start it again. */
 function VoiceDock({ core }: { core: ReactNode }) {
   const id = useConversation((conversation) => conversation.id)
   const { voice } = useIds()
@@ -982,9 +942,6 @@ function VoiceDock({ core }: { core: ReactNode }) {
   )
 }
 
-// ---- sidebar: Voice under @ultimate ------------------------------------------------------------------------------
-
-/** Voice's row under @ultimate: its state; a click toggles it in front while on, or opens it to start. */
 function useVoiceRow(main: number | undefined): ReactNode {
   const { voice } = useIds()
   const mode = useMode()
@@ -1046,23 +1003,16 @@ function useVoiceRow(main: number | undefined): ReactNode {
   )
 }
 
-/** The Voice conversation nests under @ultimate, never in the sidebar's own sections. */
 function useVoiceIds(): ReadonlySet<number> {
   const { voice } = useIds()
   return useMemo(() => new Set(voice === undefined ? [] : [voice]), [voice])
 }
 
-// ---- transcript ----------------------------------------------------------------------------------------------------
-
-/**
- * A line of the relay. The user's words are their turns; a request passed on to @ultimate is one card that follows it
- * to its answer, so the spoken answer and a failure notice for it live in that card. Other spoken lines are prose
- * under who spoke: @ultimate's answer with its source, the voice assistant's own words quieter.
- */
 function LineRow({ entry }: { entry: EntryRecord }) {
-  const line = entry.data as unknown as VoiceLine
   const actions = useUltimate()
   const mode = useMode()
+  if (!VoiceLineEntry.is(entry)) return null
+  const line = entry.data
   if (line.role === 'note') return null
   if (line.role === 'user' && line.forwarded) return <RequestCard entry={entry} line={line} />
   if ((line.role === 'ultimate' || line.role === 'notice') && line.re !== undefined) return null
@@ -1107,7 +1057,7 @@ function LineRow({ entry }: { entry: EntryRecord }) {
         </p>
       </div>
     )
-  // Voice's own words, not an answer to a request: small talk, an acknowledgement, a clarifying question.
+
   const source = line.source
   return (
     <div className="mt-2 flex gap-2 first:mt-0" data-voice-line="ultimate">
@@ -1120,13 +1070,14 @@ function LineRow({ entry }: { entry: EntryRecord }) {
           <button
             className="mt-1 flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => {
-              // In front of @ultimate, the answer is right behind: step back and reveal it there.
-              const behind = mode.front && actions.conversationId === source.conversation
+              const answerBehindVoice = mode.front && actions.conversationId === source.conversation
               live.setFront(false)
               openAgentSource(
                 actions.switchConversation,
                 source,
-                behind ? source : { conversation: entry.conversationId, entry: entry.id },
+                answerBehindVoice
+                  ? source
+                  : { conversation: entry.conversationId, entry: entry.id },
               )
             }}
             title="Show @ultimate's full answer"
@@ -1141,28 +1092,18 @@ function LineRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * A request passed to @ultimate, as @ultimate's message card: what the user asked on top, then @ultimate working on it
- * (its phase, how long), then its answer. Folded, the answer is what Voice said aloud; unfolded, @ultimate's full
- * answer, with a way to it in @ultimate's conversation. A notice instead of an answer marks it failed.
- */
 function RequestCard({ entry, line }: { entry: EntryRecord; line: VoiceLine }) {
   const transcript = useTranscript()
   const { main } = useIds()
-  const replies = transcript.filter(
-    (e) =>
-      (e.kind === 'voice.line' || e.kind === 'voice.answer') &&
-      (e.data as { re?: number }).re === entry.id,
-  )
-  const find = (kind: string, role?: VoiceLine['role']) =>
-    replies.find(
-      (e) => e.kind === kind && (!role || (e.data as unknown as VoiceLine).role === role),
-    )
-  const data = (kind: string, role?: VoiceLine['role']) => find(kind, role)?.data as unknown
-  const spokenEntry = find('voice.line', 'ultimate')
-  const spoken = spokenEntry?.data as unknown as VoiceLine | undefined
-  const notice = data('voice.line', 'notice') as VoiceLine | undefined
-  const answer = data('voice.answer') as VoiceAnswer | undefined
+  const lines = transcript
+    .filter((candidate) => VoiceLineEntry.is(candidate))
+    .filter((e) => e.data.re === entry.id)
+  const spokenEntry = lines.find((e) => e.data.role === 'ultimate')
+  const spoken = spokenEntry?.data
+  const notice = lines.find((e) => e.data.role === 'notice')?.data
+  const answer = transcript
+    .filter((candidate) => VoiceAnswerEntry.is(candidate))
+    .find((e) => e.data.re === entry.id)?.data
   const state = notice ? 'failed' : answer || spoken ? 'answered' : 'working'
   if (main === undefined) return null
   return (
@@ -1186,7 +1127,6 @@ function RequestCard({ entry, line }: { entry: EntryRecord; line: VoiceLine }) {
   )
 }
 
-/** The user's request, as Voice passed it on: their side of the pair, in their colour. */
 function Asked({ text }: { text: string }) {
   return (
     <div className="px-3 pt-2">
@@ -1203,8 +1143,7 @@ function Asked({ text }: { text: string }) {
   )
 }
 
-/** @ultimate on it: the phase the sidebar shows for it (else working, or waiting its turn) and the time so far. */
-function Working({ main, since }: { main: number; since?: number }) {
+function Working({ main, since }: { main: ConversationId; since?: number }) {
   const busy = useConversationSummary(main)?.busy
   const now = useNow(1000, since !== undefined)
   return (
@@ -1225,10 +1164,6 @@ function Working({ main, since }: { main: number; since?: number }) {
   )
 }
 
-/**
- * The answer: folded to what Voice said aloud, unfolded to @ultimate's full answer. Until Voice speaks, the full answer
- * shows clipped. The link opens @ultimate's conversation at the answer.
- */
 function Answer({
   answer,
   spoken,
@@ -1276,13 +1211,15 @@ function Answer({
             <button
               className="ml-auto flex cursor-pointer items-center gap-1 hover:text-foreground"
               onClick={() => {
-                // In front of @ultimate, the answer is right behind: step back and reveal it there.
-                const behind = mode.front && actions.conversationId === source.conversation
+                const answerBehindVoice =
+                  mode.front && actions.conversationId === source.conversation
                 live.setFront(false)
                 openAgentSource(
                   actions.switchConversation,
                   source,
-                  behind ? source : { conversation: entry.conversationId, entry: entry.id },
+                  answerBehindVoice
+                    ? source
+                    : { conversation: entry.conversationId, entry: entry.id },
                 )
               }}
               title="Open @ultimate's conversation at this answer"
@@ -1298,7 +1235,6 @@ function Answer({
   )
 }
 
-/** No answer came: why, and what Voice told the user about it. */
 function Failed({ notice, spoken }: { notice: VoiceLine; spoken?: VoiceLine }) {
   return (
     <>
@@ -1325,9 +1261,9 @@ function VoiceMark({ children, className }: { children: ReactNode; className?: s
   )
 }
 
-/** Where a session started or ended: a quiet rule. */
 function SessionRow({ entry }: { entry: EntryRecord }) {
-  const session = entry.data as unknown as VoiceSession
+  if (!VoiceSessionEntry.is(entry)) return null
+  const session = entry.data
   const minutes =
     session.seconds === undefined ? undefined : Math.max(1, Math.round(session.seconds / 60))
   return (
@@ -1348,13 +1284,10 @@ function SessionRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * What Voice was given at a session's start, quiet and folded: the counts on one line, the brief itself when opened.
- * An earlier session's brief no longer reaches the model, so it reads as past.
- */
 function ContextRow({ entry }: { entry: EntryRecord }) {
-  const brief = entry.data as unknown as VoiceContext
   const transcript = useTranscript()
+  if (!VoiceContextEntry.is(entry)) return null
+  const brief = entry.data
   const newest = transcript.findLast((e) => e.kind === 'voice.context')?.id === entry.id
   const counts = brief.error
     ? `couldn't load · ${brief.error}`
@@ -1400,9 +1333,9 @@ function ContextRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** In @ultimate: what the user said, as their turn, marked as spoken. */
 function UtteranceRow({ entry }: { entry: EntryRecord }) {
-  const data = entry.data as unknown as VoiceUtterance
+  if (!VoiceUtteranceEntry.is(entry)) return null
+  const data = entry.data
   const message = entry.model?.[0]
   if (message?.role !== 'user') return null
   return (
@@ -1413,12 +1346,9 @@ function UtteranceRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * The user's actual heard input, distinct from the cleaned request Voice passes on: their words as spoken, quieter
- * than the request cards they may become.
- */
 function HeardRow({ entry }: { entry: EntryRecord }) {
-  const { text } = entry.data as { text: string }
+  if (!VoiceHeardEntry.is(entry)) return null
+  const { text } = entry.data
   return (
     <Message className="mt-4 first:mt-0" data-voice-line="user" from="user">
       <MessageContent className="group-[.is-user]:bg-secondary/50 group-[.is-user]:text-[13px] group-[.is-user]:text-foreground/80">
@@ -1428,10 +1358,6 @@ function HeardRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * A Voice line as GPT-Live reads it out: the words said so far in full, the rest still faint, so it fills in with the
- * voice and the layout never jumps. Any other line shows whole.
- */
 function Spoken({ entry, text }: { entry: number; text: string }) {
   const { speaking } = useMode()
   if (speaking?.entry !== entry) return text
@@ -1439,7 +1365,6 @@ function Spoken({ entry, text }: { entry: number; text: string }) {
   return words.map((word, index) => (
     <span
       className={cn('transition-opacity duration-300', index >= speaking.words && 'opacity-25')}
-      // oxlint-disable-next-line react/no-array-index-key -- Word positions track spoken progress in this line.
       key={index}
     >
       {index ? ' ' : ''}
@@ -1448,20 +1373,16 @@ function Spoken({ entry, text }: { entry: number; text: string }) {
   ))
 }
 
-/**
- * The turn the user is saying now, at the end of Voice's transcript: it grows as words are heard, each new word fading
- * in, and stays as the line on its way to Voice until its heard entry takes its place. A long turn keeps its newest
- * words in full view while its start fades out toward the top.
- */
 function LiveTurn() {
   const id = useConversation((conversation) => conversation.id)
   const transcript = useTranscript()
   const { voice } = useIds()
   const { partial, sending } = useMode()
   if (id === undefined || id !== voice) return null
-  const last = transcript.findLast((entry) => entry.kind === 'voice.heard')
-  const arrived = sending && (last?.data as { text?: string } | undefined)?.text === sending.text
-  const text = partial ?? (arrived ? undefined : sending?.text)
+  const last = transcript.findLast((candidate) => VoiceHeardEntry.is(candidate))
+  const data: { text?: string } | undefined = last?.data
+  const sendingEntryArrived = sending && data?.text === sending.text
+  const text = partial ?? (sendingEntryArrived ? undefined : sending?.text)
   if (!text) return null
   return (
     <Message className="mt-4" data-voice-line="hearing" from="user">
@@ -1472,7 +1393,6 @@ function LiveTurn() {
         >
           <span>
             {text.split(' ').map((word, index) => (
-              // oxlint-disable-next-line react/no-array-index-key -- Existing word positions stay mounted as speech streams.
               <span className="animate-fade-in" key={index}>
                 {index ? ' ' : ''}
                 {word}
@@ -1488,9 +1408,9 @@ function LiveTurn() {
   )
 }
 
-/** A question that arrived during the session, handed to Voice to announce: one quiet line naming it. */
 function QuestionRow({ entry }: { entry: EntryRecord }) {
-  const question = entry.data as unknown as VoiceQuestion
+  if (!VoiceQuestionEntry.is(entry)) return null
+  const question = entry.data
   return (
     <div
       className="mt-2 flex items-center gap-2 font-mono text-[11.5px] text-warning first:mt-0"
@@ -1504,8 +1424,7 @@ function QuestionRow({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** Normal agent bookkeeping stays out of the spoken transcript; speech already has its own line. */
-const AgentRow: EntryRenderer = ({ core }) => {
+const QuietAgentRow: EntryRenderer = ({ core }) => {
   const id = useConversation((conversation) => conversation.id)
   const { voice } = useIds()
   return id === voice ? (
@@ -1537,7 +1456,7 @@ export default defineWebExtension({
     'voice.line': LineRow,
     'voice.heard': HeardRow,
     'voice.answer': () => null,
-    'pi.assistant': AgentRow,
+    'pi.assistant': QuietAgentRow,
     'voice.session': SessionRow,
     'voice.context': ContextRow,
     'voice.utterance': UtteranceRow,

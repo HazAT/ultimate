@@ -8,6 +8,7 @@ import {
   errorMessage,
   events,
   shortenPath,
+  keepLast,
   useAction,
   useDialog,
   useEvent,
@@ -23,6 +24,7 @@ import {
   inputClass,
   ModelField,
   Segmented,
+  SkillsField,
   ToolsField,
   StandingField,
   SummariesField,
@@ -37,11 +39,6 @@ import {
 } from './refs.ts'
 import type { DefinitionFields, Discovery, ModelRef, Scope, Shown, Source } from './refs.ts'
 
-/**
- * The config dialog's id, and the UI state naming the definition it shows ('' for a new one); both are this extension's
- * own. Another extension opens a definition over the bus: `subagents:open-definition { name }`, answered by
- * `subagents:definition-closed { name }` once the dialog closes.
- */
 export const definitionDialog = 'subagents.definition'
 const shownKey = 'definition'
 
@@ -51,7 +48,6 @@ export const sourceLabel: Record<Source, string> = {
   project: 'project',
 }
 export const parseError = (error: string) => error.replace(/^Error: /, '')
-/** Opens the config dialog on a definition, or on a new one with `''`. */
 export function useOpenDefinition() {
   const { open } = useUltimate()
   const [, setShown] = useExtensionUiState(shownKey, '')
@@ -61,25 +57,20 @@ export function useOpenDefinition() {
   }
 }
 
-/** The frontmatter a save writes for a definition as `draft` has it. */
-const fieldsOf = (draft: Draft): DefinitionFields => ({
+const frontmatterPreservingUneditedFields = (draft: Draft): DefinitionFields => ({
   description: draft.description,
   ...(draft.model ? { model: `${draft.model.provider}/${draft.model.modelId}` } : {}),
   ...(draft.thinking ? { thinking: draft.thinking } : {}),
   ...(!draft.model && draft.family ? { family: draft.family } : {}),
   ...(draft.tools ? { tools: draft.tools } : {}),
-  ...(draft.denyTools.length ? { denyTools: draft.denyTools } : {}),
+  ...(draft.preservedDenyTools.length ? { denyTools: draft.preservedDenyTools } : {}),
+  ...(draft.skills ? { skills: draft.skills } : {}),
   resident: draft.resident,
   ...(draft.isolate === 'worktree' ? { isolate: 'worktree' as const } : {}),
   ...(draft.fast ? { fast: true } : {}),
   ...(draft.summaries ? {} : { summaries: false }),
 })
 
-/**
- * Move definition `name` to `family`, as the dialog would save it: a definition of the user's or the project's is
- * rewritten in place; a built-in gets an overlay holding only the family, in the project when its setup is trusted.
- * A pinned model gives way to the family. Returns the file written.
- */
 export async function moveDefinition(name: string, family: string, discovery: Discovery) {
   const shown = await api.action(DefinitionAction, { name })
   if (!shown.definition) throw new Error(`${name} fails to parse: open it to fix it`)
@@ -99,7 +90,7 @@ export async function moveDefinition(name: string, family: string, discovery: Di
   await api.action(SaveDefinitionAction, {
     name,
     scope,
-    frontmatter: fieldsOf(draft),
+    frontmatter: frontmatterPreservingUneditedFields(draft),
     instructions: draft.instructions,
     overlay: true,
   })
@@ -107,7 +98,6 @@ export async function moveDefinition(name: string, family: string, discovery: Di
   return `${discovery.scopes[scope]}/${name}.md`
 }
 
-/** The config dialog, mounted in the overlay so other extensions can open it too. */
 export function DefinitionDialog() {
   const [open, setOpen] = useDialog(definitionDialog)
   const [shown, setShown] = useExtensionUiState(shownKey, '')
@@ -133,7 +123,6 @@ export function DefinitionDialog() {
   )
 }
 
-/** Fetches what the form needs, and remounts it with fresh values after each save. */
 function Loader({
   name,
   show,
@@ -144,8 +133,7 @@ function Loader({
   close: () => void
 }) {
   const discovery = useAction(DefinitionsAction)
-  // Shown inline, as the dialog's content, rather than as a notice.
-  const shown = useAction(DefinitionAction, { name }, { enabled: name !== '', onError: () => {} })
+  const shown = useAction(DefinitionAction, { name }, { enabled: name !== '', onError: keepLast })
   const [revision, setRevision] = useState(0)
   if (!discovery.data || (name && !shown.data))
     return (
@@ -179,11 +167,10 @@ interface Draft {
   description: string
   model: ModelRef | null
   thinking: string | null
-  /** The family it names; unused while it pins `model`. */
   family: string | null
   tools: string[] | null
-  /** Kept as read: the form has no control for it, and a save must not drop it. */
-  denyTools: string[]
+  preservedDenyTools: string[]
+  skills: string[] | null
   resident: boolean
   isolate: 'none' | 'worktree'
   fast: boolean
@@ -197,7 +184,8 @@ const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
   thinking: definition?.thinking ?? null,
   family: definition?.family ?? null,
   tools: definition?.tools ?? null,
-  denyTools: definition?.denyTools ?? [],
+  preservedDenyTools: definition?.denyTools ?? [],
+  skills: definition?.skills ?? null,
   resident: definition?.resident ?? false,
   isolate: definition?.isolate ?? 'none',
   fast: definition?.fast ?? false,
@@ -205,7 +193,6 @@ const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
   instructions: definition?.instructions ?? '',
 })
 
-/** One definition's config; a new one when `shown` is undefined or after Duplicate. */
 function Form({
   discovery,
   shown,
@@ -215,13 +202,11 @@ function Form({
   discovery: Discovery
   shown?: Shown
   close: () => void
-  /** After a save (the saved name) or a delete (undefined). */
   onChanged: (saved?: string) => Promise<unknown>
 }) {
   const system = useSystem()
   const initial = draftOf(shown?.definition, shown?.invalid?.name)
   const [draft, setDraft] = useState(initial)
-  // A new definition: blank, duplicated, or replacing a file that fails to parse with nothing else applying.
   const [creating, setCreating] = useState(!shown?.definition)
   const source = creating ? undefined : shown?.source
   const overlays = creating ? [] : (shown?.definition?.overlays ?? [])
@@ -276,15 +261,13 @@ function Form({
   const overrides =
     files.includes('builtin') && scope !== 'user' && !overlays.length ? 'the built-in' : undefined
   const shadowed = scope === 'user' && files.includes('project')
-  // Saving to a scope without the file, or over one that fails to parse, changes something too.
-  const dirty =
+  const definitionOrScopeNeedsSaving =
     creating ||
     JSON.stringify(draft) !== JSON.stringify(initial) ||
     !files.includes(scope) ||
     shown?.invalid?.source === scope
   const removable = source === 'user' || source === 'project' ? source : undefined
-  // What applies once the file Delete removes is gone.
-  const fallback = removable && files.filter((file) => file !== removable).at(-1)
+  const definitionAfterDeletion = removable && files.filter((file) => file !== removable).at(-1)
 
   async function save() {
     setPending('save')
@@ -294,7 +277,7 @@ function Form({
         name: draft.name,
         scope,
         ...(creating ? { create: true } : {}),
-        frontmatter: fieldsOf(draft),
+        frontmatter: frontmatterPreservingUneditedFields(draft),
         instructions: draft.instructions,
       })
       await refreshFamilies()
@@ -451,10 +434,12 @@ function Form({
               <ModelField
                 inherited={familyModel}
                 onChange={(model) => {
-                  // A level the new model lacks would be clamped at start; inherit instead.
-                  const unsupported =
+                  const unsupportedThinking =
                     draft.thinking && !levelsOf(model ?? familyModel).includes(draft.thinking)
-                  set({ model, ...(unsupported ? { thinking: null } : {}) })
+                  set({
+                    model,
+                    ...(unsupportedThinking ? { thinking: null } : {}),
+                  })
                 }}
                 value={draft.model}
               />
@@ -504,6 +489,11 @@ function Form({
             onChange={(tools) => set({ tools })}
             tools={discovery.main.tools}
             value={draft.tools}
+          />
+          <SkillsField
+            onChange={(skills) => set({ skills })}
+            skills={discovery.skills}
+            value={draft.skills}
           />
         </div>
         <div className="flex min-h-[20rem] min-w-0 flex-1 flex-col gap-1.5">
@@ -557,8 +547,8 @@ function Form({
         {removable &&
           (confirming ? (
             <span className="flex items-center gap-1 text-[12px]">
-              {fallback
-                ? `Delete it? The ${sourceLabel[fallback]} one applies again.`
+              {definitionAfterDeletion
+                ? `Delete it? The ${sourceLabel[definitionAfterDeletion]} one applies again.`
                 : 'Delete it?'}
               <Button
                 className="h-7 px-2 text-error hover:bg-error/10 hover:text-error"
@@ -587,7 +577,9 @@ function Form({
               variant="ghost"
             >
               <Trash2Icon className="size-3.5" />
-              {fallback ? `Revert to ${sourceLabel[fallback]}` : 'Delete'}
+              {definitionAfterDeletion
+                ? `Revert to ${sourceLabel[definitionAfterDeletion]}`
+                : 'Delete'}
             </Button>
           ))}
         <Button className="h-7 px-3 text-[12px]" onClick={close} size="sm" variant="ghost">
@@ -595,7 +587,12 @@ function Form({
         </Button>
         <Button
           className="h-7 px-3 text-[12px]"
-          disabled={!dirty || !draft.name || nameError !== undefined || pending !== undefined}
+          disabled={
+            !definitionOrScopeNeedsSaving ||
+            !draft.name ||
+            nameError !== undefined ||
+            pending !== undefined
+          }
           onClick={() => void save()}
           size="sm"
         >

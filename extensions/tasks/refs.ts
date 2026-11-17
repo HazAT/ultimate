@@ -1,4 +1,5 @@
 /** Tasks in the browser: when the durable tasks of the task tree first ran, and running parked ones again. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 /** `{ ids }` → `{ [taskId]: startedAt }`: when each task first ran, in milliseconds; unstarted or gone ones are left out. */
@@ -16,15 +17,15 @@ export type TaskFacts = {
   /** A `board.delivery`'s message; in its `reply` phase the answer goes back to `from`. */
   message?: {
     id: number
-    from: number | 'user' | 'remote'
-    to: number | 'user' | 'remote'
+    from: ConversationId | 'user' | 'remote'
+    to: ConversationId | 'user' | 'remote'
     reply: boolean
     note: boolean
     /** Its first line, shortened. */
     gist: string
   }
   /** The conversation the task works for or waits on, when it is not the one that owns it. */
-  conversation?: number
+  conversation?: ConversationId
   /** An automation's name. */
   automation?: string
   /** A tool call's tool name. */

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
   cn,
+  column,
   defineWebExtension,
   events,
   formatAgo,
@@ -19,34 +20,35 @@ import {
   Header,
   provide,
   Sidebar,
-  useDocOf,
   useEvent,
   useNow,
   useUltimate,
   useViewport,
 } from '@/sdk'
 import { FeatureTag, useOverview, useStandingName } from '../conversations/ui.tsx'
-import { Body, emptyMessages, MessageImages, MessagesDoc, stateTone } from '../messages/ui.tsx'
+import { Body, MessageImages, stateTone } from '../messages/ui.tsx'
 import type { Message } from '../messages/refs.ts'
 import { MessageQuestions } from '../questions/ui.tsx'
 import { UnderUltimate } from '../sidebar/ui.tsx'
 import { talkToUltimate } from '../subagents/ui.tsx'
-import { answeredToday, inboxItems, lead, previewUrl, selection } from './items.tsx'
+import { answeredToday, keyOf, lead, previewUrl, selection } from './items.tsx'
+import type { Entry } from './items.tsx'
+import { Waiting } from './ui.tsx'
 
 const SURFACE = 'inbox'
-const HOUR = 60 * 60_000
+const WAIT_WARNING_AFTER_MS = 60 * 60_000
 const amber = stateTone.waits
 
-/** The messages that wait on the user, oldest first, read live from the Messages log. */
-function useItems() {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
-  return { items: inboxItems(log.messages), messages: log.messages }
-}
+const conversationOf = (entry: Entry) =>
+  entry.message
+    ? typeof entry.message.from === 'number'
+      ? entry.message.from
+      : undefined
+    : entry.item.conversation
 
-/** Who asks, as the sidebar draws a branch: its feature chip (or a standing agent's `@name`) and `#id`. */
 function Asker({ id }: { id: Message['from'] }) {
   const overview = useOverview()
-  const agent = useStandingName(typeof id === 'number' ? id : 0)
+  const agent = useStandingName(typeof id === 'number' ? id : undefined)
   if (typeof id !== 'number') return <span className="font-mono text-[10.5px]">{id}</span>
   const feature = agent ? undefined : overview[id]?.feature
   return (
@@ -58,13 +60,12 @@ function Asker({ id }: { id: Message['from'] }) {
   )
 }
 
-/** How long it has waited; amber once it is over an hour. */
 function Waited({ at, now }: { at: number; now: number }) {
   return (
     <time
       className={cn(
         'shrink-0 font-mono text-[11px] tabular-nums',
-        now - at > HOUR ? amber : 'text-muted-foreground',
+        now - at > WAIT_WARNING_AFTER_MS ? amber : 'text-muted-foreground',
       )}
       dateTime={new Date(at).toISOString()}
       title={`Asked ${new Date(at).toLocaleString()}`}
@@ -74,25 +75,38 @@ function Waited({ at, now }: { at: number; now: number }) {
   )
 }
 
-const KindTag = ({ text }: { text: string }) => (
+const tagOf = (entry: Entry) =>
+  entry.item ? entry.item.tag : previewUrl(entry.message.text) ? 'preview' : 'question'
+
+const KindTag = ({ entry }: { entry: Entry }) => (
   <span className="shrink-0 rounded border border-border/70 px-1 font-mono text-[10px] leading-4 text-muted-foreground">
-    {previewUrl(text) ? 'preview' : 'question'}
+    {tagOf(entry)}
   </span>
 )
 
+const titleOf = (entry: Entry) => (entry.item ? entry.item.title : lead(entry.message.text).title)
+
+function From({ entry }: { entry: Entry }) {
+  if (entry.message) return <Asker id={entry.message.from} />
+  return entry.item.conversation === undefined ? null : <Asker id={entry.item.conversation} />
+}
+
+const blurRowToReleaseAnswerKeys = (row: HTMLButtonElement) => row.blur()
+
 function Row({
-  item,
+  entry,
   now,
   selected,
   onSelect,
 }: {
-  item: Message
+  entry: Entry
   now: number
   selected: boolean
   onSelect: () => void
 }) {
-  const gist = item.questions?.[0]?.text
-  const more = (item.questions?.length ?? 0) > 1 ? ` +${item.questions!.length - 1}` : ''
+  const questions = entry.message?.questions
+  const gist = entry.item ? entry.item.gist : questions?.[0]?.text
+  const more = (questions?.length ?? 0) > 1 ? ` +${questions!.length - 1}` : ''
   return (
     <button
       aria-current={selected ? 'true' : undefined}
@@ -100,24 +114,21 @@ function Row({
         'flex w-full cursor-pointer flex-col gap-1 rounded-md px-3 py-2.5 text-left outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring',
         selected && 'bg-accent/60 hover:bg-accent/60',
       )}
-      data-inbox-row={item.id}
+      data-inbox-row={entry.message?.id ?? entry.key}
       onClick={(event) => {
-        // A focused row would keep the answer card's keys for itself (the card leaves other buttons theirs).
-        event.currentTarget.blur()
+        blurRowToReleaseAnswerKeys(event.currentTarget)
         onSelect()
       }}
       type="button"
     >
       <span className="flex min-w-0 items-center gap-2">
-        <Asker id={item.from} />
+        <From entry={entry} />
         <span className="ml-auto flex shrink-0 items-center gap-2">
-          <KindTag text={item.text} />
-          <Waited at={item.at} now={now} />
+          <KindTag entry={entry} />
+          <Waited at={entry.at} now={now} />
         </span>
       </span>
-      <span className="truncate text-[13px] font-medium text-foreground">
-        {lead(item.text).title}
-      </span>
+      <span className="truncate text-[13px] font-medium text-foreground">{titleOf(entry)}</span>
       {gist && (
         <span className="truncate text-[12px] text-muted-foreground">
           {gist}
@@ -139,10 +150,10 @@ function List({
   onSelect,
   phone,
 }: {
-  items: Message[]
+  items: Entry[]
   now: number
-  selected: number | undefined
-  onSelect: (id: number) => void
+  selected: string | undefined
+  onSelect: (key: string) => void
   phone: boolean
 }) {
   return (
@@ -154,13 +165,13 @@ function List({
         <span className="section-label">oldest first</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" data-inbox-list>
-        {items.map((item) => (
+        {items.map((entry) => (
           <Row
-            item={item}
-            key={item.id}
+            entry={entry}
+            key={entry.key}
             now={now}
-            onSelect={() => onSelect(item.id)}
-            selected={item.id === selected}
+            onSelect={() => onSelect(entry.key)}
+            selected={entry.key === selected}
           />
         ))}
       </div>
@@ -182,49 +193,54 @@ function List({
   )
 }
 
-/** Opens the asking conversation at the message, as the To-dos rows did: messages scrolls to its card. */
 function useOpenBranch() {
   const { showSurface, switchConversation } = useUltimate()
-  return (item: Message) => {
-    if (typeof item.from !== 'number') return
-    events.emit('messages:open', { conversation: item.from, message: item.id })
+  return (entry: Entry) => {
+    const conversation = conversationOf(entry)
+    if (conversation === undefined) return
+    if (entry.message) events.emit('messages:open', { conversation, message: entry.message.id })
     showSurface('agent')
-    switchConversation(item.from)
+    switchConversation(conversation)
   }
 }
 
+const positionedReadingScroller = 'relative min-h-0 flex-1 overflow-y-auto'
+
 function Reading({
-  item,
+  entry,
   now,
   phone,
   onBack,
 }: {
-  item: Message
+  entry: Entry
   now: number
   phone: boolean
   onBack: () => void
 }) {
   const openBranch = useOpenBranch()
-  const { title, body } = lead(item.text)
-  const preview = previewUrl(item.text)
+  const item = entry.message
+  const { body } = item ? lead(item.text) : { body: '' }
+  const preview = item && previewUrl(item.text)
+  const conversation = conversationOf(entry)
   const top = (
     <>
       <header className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
-        <Asker id={item.from} />
-        <span>·</span>
-        <KindTag text={item.text} />
+        <From entry={entry} />
+        {conversation !== undefined && <span>·</span>}
+        <KindTag entry={entry} />
         <span className="ml-auto flex items-center gap-1">
-          waited <Waited at={item.at} now={now} />
+          waited <Waited at={entry.at} now={now} />
         </span>
       </header>
-      <h2 className="mt-3 text-[17px] leading-7 font-semibold tracking-[-0.01em]">{title}</h2>
+      <h2 className="mt-3 text-[17px] leading-7 font-semibold tracking-[-0.01em]">
+        {titleOf(entry)}
+      </h2>
       {body && (
-        // Body's own card padding and 13px give way to the reading pane's prose.
         <div className="mt-1 [&>div]:px-0 [&>div]:py-0 [&>div]:text-[15px] [&>div]:leading-6">
           <Body text={body} />
         </div>
       )}
-      {item.images && typeof item.from === 'number' && (
+      {item?.images && typeof item.from === 'number' && (
         <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-card/60 [&>div]:border-t-0">
           <MessageImages conversation={item.from} entry={item.images.entry} />
         </div>
@@ -238,45 +254,52 @@ function Reading({
             </a>
           </Button>
         )}
-        {typeof item.from === 'number' && (
+        {conversation !== undefined && (
           <Button
             className="text-muted-foreground"
-            onClick={() => openBranch(item)}
+            onClick={() => openBranch(entry)}
             size="sm"
             variant="ghost"
           >
             <GitBranchIcon className="size-3.5" />
-            Open in branch #{item.from}
+            Open in branch #{conversation}
           </Button>
         )}
       </div>
     </>
   )
-  // The card takes the desktop keys here, whatever conversation is shown behind the Inbox; keyed by message so a new
-  // item starts with a fresh draft.
-  const answer = (
+
+  const answer = item ? (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
       <MessageQuestions key={item.id} keys={!phone} message={item} />
     </div>
+  ) : (
+    entry.item.pane
   )
+  const id = item?.id ?? entry.key
   if (phone)
     return (
-      <div className="flex min-h-0 flex-1 flex-col" data-inbox-item={item.id}>
+      <div className="flex min-h-0 flex-1 flex-col" data-inbox-item={id}>
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-2">
           <Button aria-label="Back to the Inbox" onClick={onBack} size="icon" variant="ghost">
             <ArrowLeftIcon className="size-4" />
           </Button>
           <span className="section-label">Inbox</span>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div
+          className={cn(
+            positionedReadingScroller,
+            'px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
+          )}
+        >
           {top}
           <div className="mt-5">{answer}</div>
         </div>
       </div>
     )
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-inbox-item={item.id}>
-      <div className="mx-auto w-full max-w-[44rem] px-8 pt-8 pb-12">
+    <div className={positionedReadingScroller} data-inbox-item={id}>
+      <div className={cn(column(), 'pt-8 pb-12')}>
         {top}
         <div className="mt-6">{answer}</div>
       </div>
@@ -295,11 +318,7 @@ function Zero({ messages, now }: { messages: readonly Message[]; now: number }) 
         </span>
         <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">Nothing waits on you</h2>
         <p className="mt-1 text-[14px] text-muted-foreground">Every branch has what it needs.</p>
-        <Button
-          className="mt-6"
-          // oxlint-disable-next-line typescript/no-floating-promises -- an uncaught action failure becomes a notice.
-          onClick={() => void talkToUltimate(actions)}
-        >
+        <Button className="mt-6" onClick={() => void talkToUltimate(actions)}>
           Back to @ultimate
         </Button>
         {today.length > 0 && (
@@ -326,45 +345,69 @@ function Zero({ messages, now }: { messages: readonly Message[]; now: number }) 
   )
 }
 
-/** A link's or a push's wish to show one item, held until the surface mounts and reads it. */
-let wanted: number | undefined
+let linkedKeyAwaitingSurfaceMount: string | undefined
+let keyShownBeforeSurfaceUnmount: string | undefined
 
 function Inbox() {
+  return <Waiting>{(items, messages) => <Surface items={items} messages={messages} />}</Waiting>
+}
+
+function Surface({ items, messages }: { items: Entry[]; messages: readonly Message[] }) {
   const phone = useViewport() === 'phone'
   const now = useNow(60_000)
-  const { items, messages } = useItems()
   const openBranch = useOpenBranch()
-  // What the user picked, and where it stood: when it leaves (answered), the one now at that place is shown.
-  const [picked, setPicked] = useState<number | null>(() => wanted ?? null)
-  const [index, setIndex] = useState(0)
-  // On a phone the list comes first; an item opens full screen only once tapped or linked.
-  const [open, setOpen] = useState(() => wanted !== undefined)
+
+  const [anchoredSelection, setAnchoredSelection] = useState(
+    () => keyShownBeforeSurfaceUnmount ?? null,
+  )
+
+  const [linkedKeyAwaitingItemLoad, setLinkedKeyAwaitingItemLoad] = useState(
+    () => linkedKeyAwaitingSurfaceMount,
+  )
+  const [indexAfterSelectedItemLeaves, setIndexAfterSelectedItemLeaves] = useState(0)
+
+  const [open, setOpen] = useState(() => linkedKeyAwaitingSurfaceMount !== undefined)
   useEffect(() => {
-    wanted = undefined
+    linkedKeyAwaitingSurfaceMount = undefined
   }, [])
-  const selected = selection(items, picked, index)
-  const at = items.findIndex((candidate) => candidate.id === selected)
+  const selected = selection(
+    items,
+    linkedKeyAwaitingItemLoad ?? anchoredSelection,
+    indexAfterSelectedItemLeaves,
+  )
+  const at = items.findIndex((candidate) => candidate.key === selected)
   const item = items[at]
-  // Hold on to the item shown, also one that took an answered item's place, so a later change elsewhere in the list
-  // does not move the selection (and drop a half-answered card).
   useEffect(() => {
-    if (at >= 0) setIndex(at)
-    if (selected !== undefined && selected !== picked) setPicked(selected)
-  }, [at, selected, picked])
-  const select = (id: number) => {
-    setPicked(id)
+    if (selected !== undefined) keyShownBeforeSurfaceUnmount = selected
+  }, [selected])
+
+  useEffect(() => {
+    if (at >= 0) setIndexAfterSelectedItemLeaves(at)
+    if (linkedKeyAwaitingItemLoad !== undefined) {
+      if (selected === linkedKeyAwaitingItemLoad) {
+        setAnchoredSelection(linkedKeyAwaitingItemLoad)
+        setLinkedKeyAwaitingItemLoad(undefined)
+      }
+    } else if (selected !== undefined && selected !== anchoredSelection)
+      setAnchoredSelection(selected)
+  }, [at, selected, anchoredSelection, linkedKeyAwaitingItemLoad])
+  const select = (key: string) => {
+    setLinkedKeyAwaitingItemLoad(key)
     setOpen(true)
   }
-  useEvent('inbox:show', (id) => {
-    wanted = undefined
-    select(id as number)
+  useEvent('inbox:show', (key) => {
+    linkedKeyAwaitingSurfaceMount = undefined
+    select(key as string)
   })
 
-  // j/k move the selection, ⇧O opens the branch; the answer card keeps 1–9, letters and Enter.
   const keys = useRef({ items, at, item, openBranch })
   keys.current = { items, at, item, openBranch }
   useEffect(() => {
     if (phone) return undefined
+    const openDialogMenuOrPickerOwnsKeys = () =>
+      document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+      )
     const key = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (
@@ -374,10 +417,7 @@ function Inbox() {
         event.ctrlKey ||
         event.altKey ||
         target?.closest('input, textarea, select, [contenteditable="true"]') ||
-        // A dialog, menu or popover (the palette, a picker) owns the keys while it is open.
-        document.querySelector(
-          '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
-        )
+        openDialogMenuOrPickerOwnsKeys()
       )
         return
       const current = keys.current
@@ -388,12 +428,13 @@ function Inbox() {
         event.preventDefault()
         const step = event.key === 'j' ? 1 : -1
         const next = Math.max(0, Math.min(current.items.length - 1, current.at + step))
-        setPicked(current.items[next].id)
+        setLinkedKeyAwaitingItemLoad(current.items[next].key)
       }
     }
-    // Capture: a choice letter j or k on the card stays j/k here, the Inbox's own navigation.
-    window.addEventListener('keydown', key, true)
-    return () => window.removeEventListener('keydown', key, true)
+
+    const captureBeforeAnswerCardChoices = true
+    window.addEventListener('keydown', key, captureBeforeAnswerCardChoices)
+    return () => window.removeEventListener('keydown', key, captureBeforeAnswerCardChoices)
   }, [phone])
 
   const title = (
@@ -405,9 +446,9 @@ function Inbox() {
       )}
     </span>
   )
-  // Keyed by message: each item starts fresh, its images included.
+
   const reading = item && (
-    <Reading item={item} key={item.id} now={now} onBack={() => setOpen(false)} phone={phone} />
+    <Reading entry={item} key={item.key} now={now} onBack={() => setOpen(false)} phone={phone} />
   )
   return (
     <div className="flex min-h-0 flex-1">
@@ -435,38 +476,50 @@ function Inbox() {
   )
 }
 
-/** Shows the Inbox at `message`: a mounted Inbox selects it, else the one about to mount starts there. */
-function show(message: number | undefined, showSurface: (id: string) => void) {
-  if (message !== undefined) {
-    wanted = message
-    events.emit('inbox:show', message)
+function show(key: string | undefined, showSurface: (id: string) => void) {
+  if (key !== undefined) {
+    linkedKeyAwaitingSurfaceMount = key
+    events.emit('inbox:show', key)
   }
   showSurface(SURFACE)
 }
 
-/**
- * `?inbox=<message>` on load, and the `inbox:open {message}` event at runtime (a push's tap), open the Inbox at that
- * item; the parameter then leaves the address, so a reload does not jump again.
- */
 function InboxLink() {
   const { showSurface } = useUltimate()
-  useEvent('inbox:open', (value) => show((value as { message?: number }).message, showSurface))
+  useEvent('inbox:open', (value) => {
+    const { key, message } = value as { key?: string; message?: number }
+    show(keyOf(key ?? message), showSurface)
+  })
   useEffect(() => {
     const url = new URL(location.href)
     if (!url.searchParams.has('inbox')) return
-    const message = Number(url.searchParams.get('inbox'))
+    const key = keyOf(url.searchParams.get('inbox'))
     url.searchParams.delete('inbox')
     history.replaceState(history.state, '', url)
-    show(Number.isSafeInteger(message) && message > 0 ? message : undefined, showSurface)
+    show(key, showSurface)
   }, [showSurface])
   return null
 }
 
-/** The sidebar row under @ultimate's: amber with the count and the oldest wait while anything waits on the user. */
 function useInboxRow(): ReactNode {
+  return <Waiting>{(items) => <InboxRow items={items} />}</Waiting>
+}
+
+function InboxBadge() {
+  return (
+    <Waiting>
+      {(items) =>
+        items.length > 0 && (
+          <span className={cn('font-mono text-[11px]', amber)}>{items.length}</span>
+        )
+      }
+    </Waiting>
+  )
+}
+
+function InboxRow({ items }: { items: Entry[] }) {
   const actions = useUltimate()
   const now = useNow(60_000)
-  const { items } = useItems()
   const active = actions.surface === SURFACE
   const oldest = items[0]
   return (
@@ -509,6 +562,7 @@ export default defineWebExtension({
       description: 'Everything that waits on you, oldest first, answered in place',
       order: 10,
       component: Inbox,
+      badge: InboxBadge,
     },
   ],
   commands: [

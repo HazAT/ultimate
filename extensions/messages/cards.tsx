@@ -1,4 +1,6 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import type { EntryRecord, ConversationId, EntryId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import {
   CheckIcon,
   CornerDownRightIcon,
@@ -60,17 +62,16 @@ import { cacheBusts } from '../../lib/context-usage.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { callerOf } from './caller.ts'
 import { MessagesDoc } from './refs.ts'
+import { MessageEntry, ReplyEntry } from '../entries/ui.tsx'
 import type { Message, Remote } from './refs.ts'
 import { MessageAnswers } from './points.tsx'
 
-/** What an optional extension shows under a message to the user: questions' answer card. */
 const Answers = ({ message }: { message: Message }) => (
   <Provided input={message} point={MessageAnswers}>
     {(answers) => answers}
   </Provided>
 )
 
-/** Who settled `question` with `answer`: you, or @ultimate for you from your chat. */
 const settledLabel = (question: Message, answer: Message) =>
   question.state === 'dismissed'
     ? answer.via
@@ -80,27 +81,21 @@ const settledLabel = (question: Message, answer: Message) =>
       ? '@ultimate answered for you'
       : 'You answered'
 
-/** The accent of sender `id`: @ultimate's fixed one when the standing agents name it, else `accentOf`. */
 export function useAccentOf(id: number | 'user' | 'remote') {
-  const standing = useDocOf(1, StandingDoc)
+  const standing = useDocOf(ROOT, StandingDoc)
   return accentOf(standing?.ultimate === id ? 'ultimate' : id)
 }
 
-/**
- * Who `id` is: you, another project's Ultimate (`remote` names it), `@name` for a standing agent or the lander (with its
- * mark when `mark`), else a conversation link. With its mark, @ultimate is the ULTIMATE wordmark, or its definition's
- * title; either takes the colour of its surroundings: the accent of the bubble it heads.
- */
 export function Address({
   id,
   mark = false,
   remote,
 }: {
-  id: number | 'user' | 'remote'
+  id: ConversationId | 'user' | 'remote'
   mark?: boolean
   remote?: Pick<Remote, 'project' | 'machine'>
 }) {
-  const standing = useDocOf(1, StandingDoc)
+  const standing = useDocOf(ROOT, StandingDoc)
   const workspaces = useWorkspaceIndex()
   const ultimate = useAgentTitle('ultimate')
   if (id === 'user') return <span>you</span>
@@ -138,7 +133,6 @@ export function Address({
   )
 }
 
-/** A message's text; `pending` shimmers in its place until the model has written any, on the line the text takes. */
 export function Body({ text, pending }: { text: string; pending?: string }) {
   return (
     <div className="min-w-0 px-3 py-3 text-[13px] leading-relaxed">
@@ -151,8 +145,13 @@ export function Body({ text, pending }: { text: string; pending?: string }) {
   )
 }
 
-/** Who waits on whom, in words: an open question to the user stands out, other open requests stay amber-muted. */
-function Status({ message, perspective }: { message: Message; perspective: number | 'user' }) {
+function Status({
+  message,
+  perspective,
+}: {
+  message: Message
+  perspective: ConversationId | 'user'
+}) {
   const status = messageStatus(message)
   if (status === 'yours')
     return (
@@ -177,13 +176,6 @@ function Status({ message, perspective }: { message: Message; perspective: numbe
   return <span className={status === 'failed' ? 'text-destructive' : ''}>{status}</span>
 }
 
-/**
- * A message to you in compact mode: a bubble on the left in the sender's accent, its text, and whether it waits on you.
- * `children` mount beneath the text; that is where the answer card of a question goes. `lead` mounts above it: what the
- * message answers. Without `text`, `children` alone are its body (a reply still being worked on). `running` is whether
- * the call that sends it is still running. With `entry`, the stored answer or the response that sent the message, its footer
- * carries the transcript's message actions: usage, time, copy, go back and a reference link.
- */
 export function Bubble({
   from,
   message,
@@ -194,32 +186,31 @@ export function Bubble({
   lead,
   children,
 }: {
-  from: number
+  from: ConversationId
   message: Message | undefined
   text?: string
   running: boolean
   entry?: EntryRecord
-  /** When it was said; a message's own time by default. */
   at?: number
   lead?: ReactNode
   children?: ReactNode
 }) {
   const now = useNow(60000)
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const accent = useAccentOf(from)
   const status = sentStatus(message, running)
   const stored = entry?.model?.[0]
   const answer = message && log ? answerTo(log.messages, message) : undefined
-  // While the model still writes it, the body says so; a `sending` footer would repeat it.
-  const writing = running && !message && !text
-  // In compact mode, how a message was sent is no news: only what asks something of you, or went wrong, says so.
-  const shown =
+
+  const bodyAlreadyShowsWriting = running && !message && !text
+
+  const showAttentionOrFailureStatus =
     status === 'yours' ||
-    (status === 'sending' && !writing) ||
+    (status === 'sending' && !bodyAlreadyShowsWriting) ||
     status === 'failed' ||
     status === 'stopped' ||
     status === 'dismissed'
-  // Prose on the page under a name line; what mounts beneath the text shares one quiet card.
+
   return (
     <section
       data-message-outgoing={message?.id}
@@ -231,7 +222,6 @@ export function Bubble({
       <header className="flex h-6 min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
         <Sender id={from} tone={accent.name} />
         {entry ? (
-          // One line: on a narrow column the details clip on the left instead of wrapping into an empty second row.
           <MessageActions
             bubble
             className="ml-auto min-w-0 flex-nowrap justify-end overflow-hidden whitespace-nowrap"
@@ -254,7 +244,10 @@ export function Bubble({
       <div className="[&>div]:px-0 [&>div]:pt-1.5 [&>div]:pb-0">
         {lead}
         {text !== undefined && (
-          <Body pending={writing ? 'Writing you a message…' : undefined} text={text} />
+          <Body
+            pending={bodyAlreadyShowsWriting ? 'Writing you a message…' : undefined}
+            text={text}
+          />
         )}
       </div>
       <div
@@ -264,12 +257,12 @@ export function Bubble({
         {message?.images && <MessageImages conversation={from} entry={message.images.entry} />}
         {children}
         {answer && <AttachedAnswer answer={answer} question={message!} />}
-        {(shown || message?.error) && (
+        {(showAttentionOrFailureStatus || message?.error) && (
           <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
-            {shown && message ? (
+            {showAttentionOrFailureStatus && message ? (
               <Status message={message} perspective="user" />
             ) : (
-              shown && <span>{status}</span>
+              showAttentionOrFailureStatus && <span>{status}</span>
             )}
             {message?.error && (
               <span className="min-w-0 break-words text-destructive">{message.error}</span>
@@ -281,12 +274,8 @@ export function Bubble({
   )
 }
 
-/**
- * Who wrote a bubble, as its header names it: a standing agent by its mark and title in the sans face, anything else
- * as its address.
- */
-function Sender({ id, tone }: { id: number; tone: string }) {
-  const standing = useDocOf(1, StandingDoc)
+function Sender({ id, tone }: { id: ConversationId; tone: string }) {
+  const standing = useDocOf(ROOT, StandingDoc)
   const name = Object.entries(standing ?? {}).find(([, value]) => value === id)?.[0]
   if (!name)
     return (
@@ -304,10 +293,6 @@ function Sender({ id, tone }: { id: number; tone: string }) {
   )
 }
 
-/**
- * Your answer to a question, attached under it as your side of the pair: in your colour, with when you said it. Its
- * arrow jumps to where the answer reached @ultimate.
- */
 function AttachedAnswer({ answer, question }: { answer: Message; question: Message }) {
   const now = useNow(60000)
   const accent = accentOf('user')
@@ -353,17 +338,14 @@ function AttachedAnswer({ answer, question }: { answer: Message; question: Messa
   )
 }
 
-/**
- * A whole stretch between @ultimate's messages in one line: how many updates, who with, what landed and whether the
- * app reloaded, so the reader knows whether to open it.
- */
 export function StretchSummary({ rows, steps, working, entries }: CompactSummaryProps) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
-  // Against the whole transcript: a stretch's first response compares with the one before the stretch.
-  const busts = cacheBusts(useTranscript())
-  // A response split over rows (a run of work and its visible message call) counts once.
-  const written = [...new Set(entries.map((entry) => entry.id))].reduce(
-    (sum, id) => sum + (busts.get(id)?.written ?? 0),
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
+
+  const transcriptWideCacheBusts = cacheBusts(useTranscript())
+
+  const uniqueResponseIds = [...new Set(entries.map((entry) => entry.id))]
+  const written = uniqueResponseIds.reduce(
+    (sum, id) => sum + (transcriptWideCacheBusts.get(id)?.written ?? 0),
     0,
   )
   const counted = rows.filter(
@@ -379,25 +361,26 @@ export function StretchSummary({ rows, steps, working, entries }: CompactSummary
     ),
   ].filter((id) => id !== 'lander')
   const count = counted.length
+  const named = who.slice(0, who.length > 2 ? 1 : 2)
   const stepped = steps > 0 && `${steps} step${steps === 1 ? '' : 's'}`
   return (
     <span className="flex min-w-0 items-center gap-1.5" data-compact-stretch>
       <span className="shrink-0">
         {count > 0 ? `${count} update${count === 1 ? '' : 's'}` : stepped}
       </span>
-      {who.slice(0, 2).map((id) => (
-        <span className="flex min-w-0" key={id}>
+      {named.map((id) => (
+        <span className="flex min-w-0 overflow-hidden" key={id}>
           <Address id={id} />
         </span>
       ))}
-      {who.length > 2 && <span className="shrink-0">+{who.length - 2}</span>}
+      {who.length > named.length && <span className="shrink-0">+{who.length - named.length}</span>}
       {count > 0 && stepped && <span className="shrink-0 max-sm:hidden">· {stepped}</span>}
-      {shas.map((sha) => (
-        <span className="flex shrink-0 items-center gap-1" key={sha}>
+      {shas.length > 0 && (
+        <span className="flex shrink-0 items-center gap-1" title={shas.join(' ')}>
           · <CheckIcon className="size-3 text-success" />
-          landed {sha}
+          {shas.length === 1 ? `landed ${shas[0]}` : `${shas.length} landed`}
         </span>
-      ))}
+      )}
       {reloaded && <span className="shrink-0 max-sm:hidden">· reloaded</span>}
       {written > 0 && (
         <span className="shrink-0 text-warning/80" data-cache-rebuilt={written}>
@@ -409,12 +392,8 @@ export function StretchSummary({ rows, steps, working, entries }: CompactSummary
   )
 }
 
-/**
- * The `message` tool as the message it sent; a failed call keeps the generic card with its error. In compact mode, a message
- * to you is a bubble.
- */
 export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const { switchConversation, showSurface } = useUltimate()
   const sender = useConversation((conversation) => conversation.id)
   const caller = useCaller(call.id)
@@ -441,9 +420,11 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
         {message && <Answers message={message} />}
       </Bubble>
     )
-  // Until the model has written any text, the body says it is writing; the card's state would repeat it.
-  const writing = call.status !== 'done' && !message && !text
-  const state = writing ? undefined : outgoingState(message, toUser, call.status !== 'done')
+
+  const bodyAlreadyShowsWriting = call.status !== 'done' && !message && !text
+  const state = bodyAlreadyShowsWriting
+    ? undefined
+    : outgoingState(message, toUser, call.status !== 'done')
   const Icon = toUser ? InboxIcon : SendIcon
   return (
     <Fold
@@ -459,9 +440,9 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
               <Address id={recipient} remote={message?.remote} />
             )}
           </span>
-          {(writing || state) && (
+          {(bodyAlreadyShowsWriting || state) && (
             <span className={cn('shrink-0', state === 'failed' && 'text-destructive')}>
-              · {writing ? 'writing' : state}
+              · {bodyAlreadyShowsWriting ? 'writing' : state}
             </span>
           )}
         </>
@@ -488,16 +469,16 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
             {message?.images && ` · ${imageCount(message.images.count)}`}
           </span>
           {state && <span className={state === 'failed' ? 'text-destructive' : ''}>· {state}</span>}
-          {message && typeof message.to === 'number' && message.entry !== undefined && (
+          {message && typeof recipient === 'number' && message.entry !== undefined && (
             <button
               className="ml-auto flex cursor-pointer items-center gap-1 hover:text-foreground"
               onClick={() => {
                 events.emit('messages:open', {
-                  conversation: message.to,
+                  conversation: recipient,
                   entry: message.entry,
                 })
                 showSurface('agent')
-                switchConversation(message.to as number)
+                switchConversation(recipient)
               }}
             >
               <SquareArrowOutUpRightIcon className="size-3" />
@@ -510,19 +491,21 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
             {message.error}
           </p>
         )}
-        <Body pending={writing ? 'Writing a message…' : undefined} text={text ?? ''} />
+        <Body
+          pending={bodyAlreadyShowsWriting ? 'Writing a message…' : undefined}
+          text={text ?? ''}
+        />
         {message && <Answers message={message} />}
       </Card>
     </Fold>
   )
 }
 
-/** The `branch` tool as the branch it started and the prompt it was given; a failed call keeps the generic card. */
 export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const { switchConversation, showSurface } = useUltimate()
   const started = /^Branch #(\d+) started; message (\d+) sent\.$/.exec(call.output)
-  const id = started ? Number(started[1]) : undefined
+  const id = started ? parseConversationId(Number(started[1])) : undefined
   const title = useConversationSummary(id)?.title
   if (call.status === 'error' || call.status === 'interrupted') return core
   const message = started ? log?.messages.find((m) => m.id === Number(started[2])) : undefined
@@ -609,20 +592,12 @@ export function BranchCall({ call, core }: { call: ToolCallView; core: ReactNode
 }
 
 export function MessageInput({ entry }: { entry: EntryRecord }) {
-  const origin = entry.data as {
-    id: number
-    from: number | 'user' | 'remote'
-    text: string
-    reply: boolean
-    delivery?: 'steer' | 'followUp' | 'note'
-    failed?: boolean
-    stopped?: boolean
-    remote?: Remote
-  }
+  const origin = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
   const receiver = useConversation((conversation) => conversation.id)
   const { switchConversation } = useUltimate()
   const reply = entry.kind === 'board.reply'
-  const accent = useAccentOf(origin.from)
+  const accent = useAccentOf(origin?.from ?? 'user')
+  if (!origin) return null
   if (origin.from === 'user') return <UserTurn entry={entry} id={origin.id} text={origin.text} />
   return (
     <Fold
@@ -696,28 +671,25 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/**
- * What you said through messaging, in compact mode: a turn of yours like a typed one. An answer to a question that shows it
- * already is a one-line reference to that question instead.
- */
 function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: string }) {
-  const log = useDocOf(1, MessagesDoc)
+  const log = useDocOf(ROOT, MessagesDoc)
   const transcript = useTranscript()
   const message = log?.messages.find((m) => m.id === id)
   const question =
     message?.re === undefined ? undefined : log?.messages.find((m) => m.id === message.re)
-  // The response that asked it, where the question shows with your answer under it.
-  const asked = question?.call && callerOf(transcript, question.call.split('/')[0])
+
+  const askedWithAttachedAnswer =
+    question?.call && callerOf(transcript, question.call.split('/')[0])
   const input = entry.model?.[0]
-  if (question && asked) {
+  if (question && askedWithAttachedAnswer) {
     return (
       <button
         className="ml-auto flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
         data-compact-answer-ref={id}
         onClick={() =>
           events.emit('ultimate:reveal-entry', {
-            conversationId: asked.conversationId,
-            entryId: asked.id,
+            conversationId: askedWithAttachedAnswer.conversationId,
+            entryId: askedWithAttachedAnswer.id,
             toolCallId: question.call?.split('/')[0],
           })
         }
@@ -735,23 +707,23 @@ function UserTurn({ entry, id, text }: { entry: EntryRecord; id: number; text: s
       </button>
     )
   }
-  // Its input wraps your words for the agent; show them as you wrote them, with the images it carries.
+
   return input?.role === 'user' ? <UserView entry={entry} message={input} text={text} /> : null
 }
 
-/** The loaded response that made tool call `call`. */
 const useCaller = (call: string) => callerOf(useTranscript(), call)
 
 const imageCount = (count: number) => `${count} image${count === 1 ? '' : 's'}`
 
-/** Images forwarded with a message, from its input's model content, as thumbnails that open full size. */
 const InputImages = ({ entry }: { entry: EntryRecord }) => <Thumbnails images={imagesOf(entry)} />
 
-/**
- * The images a message to you carries: they stay in the sender's entry `entry` (a screenshot, a pasted input), read from
- * the loaded transcript or else fetched from its stored history.
- */
-export function MessageImages({ conversation, entry }: { conversation: number; entry: number }) {
+export function MessageImages({
+  conversation,
+  entry,
+}: {
+  conversation: ConversationId
+  entry: EntryId
+}) {
   const loaded = useTranscript().find(
     (item) => item.conversationId === conversation && item.id === entry,
   )
@@ -759,9 +731,8 @@ export function MessageImages({ conversation, entry }: { conversation: number; e
   useEffect(() => {
     if (loaded) return undefined
     const controller = new AbortController()
-    api.history(conversation, entry + 1, controller.signal, entry).then(
+    api.history(conversation, offsetEntryId(entry, 1), controller.signal, entry).then(
       (page) => setFetched(page.entries.find((item) => item.id === entry)),
-      // Without its entry the message still reads; only the thumbnails are missing.
       () => undefined,
     )
     return () => controller.abort()
@@ -774,17 +745,12 @@ function Thumbnails({ images }: { images: readonly { data: string; mimeType: str
   return (
     <div className="flex flex-wrap gap-2 border-t border-border/60 px-3 py-2">
       {images.map((image, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Fixed forwarded attachments may contain duplicates.
         <ToolImage alt={`Forwarded image ${index + 1}`} image={image} key={index} />
       ))}
     </div>
   )
 }
 
-/**
- * In compact mode, an answer that went back to the conversations that asked, not to you, folds to one line, and a `codemode`
- * script that messaged you shows each message as a bubble.
- */
 export function CompactAnswer({
   entry,
   core,
@@ -803,18 +769,14 @@ export function CompactAnswer({
       .join('\n\n')
     return <ReplyFold entry={entry} core={core} text={text} at={message.timestamp} />
   }
-  const shown = (blocks ?? message.content.map((_, index) => index)).flatMap((index) => {
+  const shownToolBlocks = (blocks ?? message.content.map((_, index) => index)).flatMap((index) => {
     const block = message.content[index]
     return block?.type === 'toolCall' ? [block] : []
   })
-  if (!shown.some((block) => block.name === 'codemode')) return core
-  return <ScriptMessages core={core} entry={entry} shown={shown} />
+  if (!shownToolBlocks.some((block) => block.name === 'codemode')) return core
+  return <ScriptMessages core={core} entry={entry} shown={shownToolBlocks} />
 }
 
-/**
- * The messages to you that the shown `codemode` calls sent, as bubbles beneath a quiet line that opens the calls; the
- * calls stay open above them when the row also shows other tools.
- */
 function ScriptMessages({
   entry,
   core,
@@ -824,7 +786,7 @@ function ScriptMessages({
   core: ReactNode
   shown: readonly { id: string; name: string }[]
 }) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const sent = shown.flatMap((block) =>
     block.name === 'codemode' ? sentBy(log.messages, block.id) : [],
   )
@@ -873,10 +835,9 @@ function ReplyFold({
   text: string
   at: number
 }) {
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const answered = answeredMessages(log.messages, entry.conversationId, entry.id)
   if (!answered.length || answered.some((m) => !m.reply || m.from === 'user'))
-    // An answer to you is a bubble like its messages, not a final-answer card.
     return text ? (
       <Bubble
         at={at}

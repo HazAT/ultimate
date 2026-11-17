@@ -30,7 +30,8 @@ Each distinct `host.notice` message of a facet is also recorded as an `ultimate.
 Keep events few and small: they are history.
 
 The events today: `lineage.branched` and `lineage.rooted` (lineage has conversations mark the intent title as
-generated), `workspaces.landed` (lineage notes the submitter's tree root) and `models.login-changed` (health resets
+generated), `workspaces.landed` (lineage notes the submitter's tree root), `conversations.concluded` (coding-tools stops the
+concluded tree's background processes) and `models.login-changed` (health resets
 the provider's record). Recorded for the history and
 the system stream: `ultimate.started` (storage opened: generation, build), `subagents.started` (a subagent,
 automation run, new standing agent or branch configured: agent, model, thinking, parent), `board.sent` (a message

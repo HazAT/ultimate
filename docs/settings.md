@@ -7,7 +7,8 @@ Skills ([Agent Skills](https://agentskills.io) folders with a `SKILL.md`, as Pi 
 project's `.pi/skills/`, `~/.ultimate/skills/`, then, once the project is trusted, its `.agents/skills/` and
 `.ultimate/skills/`; a later scope overrides an earlier skill of the same name. Every agent's
 system prompt lists each skill's name, description and path after the project context, and the agent reads `SKILL.md`
-when a task matches (`disable-model-invocation: true` leaves a skill out of that list). The user runs one with
+when a task matches (`disable-model-invocation: true` leaves a skill out of that list; an agent definition's `skills:`
+list narrows it for that agent, and the Agent card shows the result as pills). The user runs one with
 `/skill:name request` in the composer or ⌘K → Run a skill: the server sends the skill's body in Pi's `<skill>` block
 ahead of the request. The Info tab lists skills with their scope, overrides and Pi's load warnings; a read of a
 `SKILL.md` shows as `skill <name>` in the transcript. Personal instructions load from `~/.ultimate/AGENTS.md`
@@ -21,7 +22,8 @@ produce a notice. To skip onboarding on a machine whose user knows Ultimate, set
 `~/.ultimate/settings.json` (user settings only): no Get ready, no Start here, no setup cards and no "set up git"
 reminder, while the Extensions panel and ⌘K Get ready… stay available and an undecided project setup keeps its
 status-line reminder. Model families (⌘K Model families…, `extensions/models/README.md`) are kept per project in
-`~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; a
+`~/.ultimate/model-families.json`, with the most recently saved ones as the start for projects without their own; `modelFamilies` in
+`~/.ultimate/settings.json` (same shape) sits under both, the user's default for every project on the machine; a
 project's `.ultimate/settings.json` `modelFamilies` is the team's default: it applies over that start, and a person's own families for the project apply over it. `summaryModel` (`"provider/id[:thinking]"`; project over user; without it the
 summaries family's model, by default the tiny family's `openai-codex/gpt-6-luna:low`)
 pins the model for automatic titles, summaries, reply summaries and tree abstracts. Set it in either file or with
@@ -46,6 +48,16 @@ User config is independent of `ULTIMATE_HOME`. A project's `isolates.worktree` s
 how they are made and removed (`add`, `remove`); see `extensions/workspaces/README.md`.
 This repository's `.ultimate/settings.json` holds its isolate setup,
 lander checks and preview model.
+
+A project can name the app it installs as and pin its port, so each project's Chrome or home-screen app keeps its own
+name, icon and origin. `app.name` (for example `"Ultimate - my-app"`) is the web manifest's `name` and `short_name`
+and the home-screen title; `app.icon` is a PNG path relative to the project (512×512 is best), served as the
+manifest's only icon, the favicon and the apple-touch icon. Unset or unusable, each stays stock. Chrome reads them
+only at install and its daily manifest update check: a new name and an icon that changes much wait for the user to
+accept Chrome's update prompt. `port` (an integer) is the supervisor's port when neither `--port` nor
+`ULTIMATE_PORT` is given; unlike the first free port from 4747 it is fixed, so a taken port fails the start with its
+number. The supervisor reads `port` from the file directly, before the project decision applies; `app` goes through
+the gated project settings like every other key.
 
 A project's `.ultimate/` applies only once it is chosen: its `extensions/`, the project `extensions` settings layer,
 `agents/`, and `skills/` load only when the project decision is local. Decisions are kept per project path with Pi's

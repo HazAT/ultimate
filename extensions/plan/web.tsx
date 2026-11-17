@@ -1,3 +1,5 @@
+import { parseConversationId } from '../../lib/ids.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -7,6 +9,7 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from 'lucide-react'
+import { deadline } from '../../lib/timers.ts'
 import type { ReactNode, SyntheticEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageResponse } from '@/components/ai/message'
@@ -38,6 +41,7 @@ import {
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
 import { InfoAction, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
+import { meansNone } from '../../lib/errors.ts'
 import { criteriaOf, sectionsOf, verbatim } from './body.tsx'
 import { criteriaOfBody, finished, number, pillOf, progressLabel } from './progress.tsx'
 import { PlanDoc } from './refs.ts'
@@ -65,11 +69,7 @@ function StatusChip({ status }: { status: string }) {
 
 const time = (at: string) => formatTime(at)
 
-/**
- * Coordinator-written text as written: `<tags>` stay text, single newlines break, and nothing is completed as if it
- * were still streaming (Streamdown would close a lone `*`).
- */
-function PlanText({ children, className }: { children: string; className?: string }) {
+function LiteralPlanText({ children, className }: { children: string; className?: string }) {
   return (
     <MessageResponse className={className} parseIncompleteMarkdown={false}>
       {verbatim(children)}
@@ -77,43 +77,36 @@ function PlanText({ children, className }: { children: string; className?: strin
   )
 }
 
-/** Acceptance criteria as a quiet checklist: open while the epic is, met once it is done. */
 function Criteria({ items, met }: { items: string[]; met: boolean }) {
   return (
     <ol className="space-y-1">
       {items.map((item, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Criteria are numbered by position.
         <li className="flex min-w-0 gap-1.5" key={index}>
           <span className="pt-0.5">
             <StatusIcon status={met ? 'done' : 'todo'} />
           </span>
-          <PlanText className="min-w-0 flex-1 text-foreground/90">{item}</PlanText>
+          <LiteralPlanText className="min-w-0 flex-1 text-foreground/90">{item}</LiteralPlanText>
         </li>
       ))}
     </ol>
   )
 }
 
-/**
- * An epic's plan: each known section (Request, Scope, Risks…) under a small label, acceptance criteria as a checklist
- * unless they are shown in place of tasks; a body without those labels renders as Markdown.
- */
 function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteria: boolean }) {
   const sections = sectionsOf(body)
-  if (!sections) return <PlanText>{body}</PlanText>
+  if (!sections) return <LiteralPlanText>{body}</LiteralPlanText>
   return (
     <div className="space-y-2.5">
       {sections.map((section, index) => {
         if (criteria && section.label === 'Acceptance criteria') return null
         const items = section.label === 'Acceptance criteria' && criteriaOf(section.text)
         return (
-          // oxlint-disable-next-line react/no-array-index-key -- Sections are positional; labels can repeat.
           <div key={index}>
             {section.label && <div className="pb-0.5 section-label">{section.label}</div>}
             {items ? (
               <Criteria items={items} met={met} />
             ) : (
-              section.text && <PlanText>{section.text}</PlanText>
+              section.text && <LiteralPlanText>{section.text}</LiteralPlanText>
             )}
           </div>
         )
@@ -138,18 +131,15 @@ function Note({ note, clamp }: { note: Task['notes'][number]; clamp?: boolean })
   )
 }
 
-/**
- * The linked child's workspace: branch, state and commits ahead. Refetched when the child or its parent settles,
- * since either may have committed or landed.
- */
 function IsolateRow({ child, parent }: { child: ConversationSummary; parent: number }) {
   const conversations = useConversations()
   const parentBusy = conversations.find((conversation) => conversation.id === parent)?.busy
   const recorded = useWorkspaces()[String(child.id)]
+  const commitOrLandingActivity = [child.busy, parentBusy]
   const { data: isolate } = useAction(
     InfoAction,
     { id: child.id },
-    { enabled: !!recorded, on: [child.busy, parentBusy], focus: true },
+    { enabled: !!recorded, on: commitOrLandingActivity, focus: true },
   )
   if (!isolate) return null
   return (
@@ -185,8 +175,7 @@ function IsolateRow({ child, parent }: { child: ConversationSummary; parent: num
   )
 }
 
-/** The linked child: "open #id" like the Agents tab, with a dot while it works. */
-function ChildLink({ id, child }: { id: number; child?: ConversationSummary }) {
+function ChildLink({ id, child }: { id: ConversationId; child?: ConversationSummary }) {
   const { switchConversation } = useUltimate()
   return (
     <Button
@@ -205,8 +194,7 @@ function ChildLink({ id, child }: { id: number; child?: ConversationSummary }) {
   )
 }
 
-/** Scrolls the returned ref's element into view, after `reveal`, each time `focus` becomes a new request. */
-function useScrollTo<T extends HTMLElement>(focus: Focus, reveal?: () => void) {
+function useScrollTo<T extends HTMLElement>(focus: DeepLinkFocus, reveal?: () => void) {
   const ref = useRef<T>(null)
   const latest = useRef(reveal)
   latest.current = reveal
@@ -218,7 +206,6 @@ function useScrollTo<T extends HTMLElement>(focus: Focus, reveal?: () => void) {
   return ref
 }
 
-/** Copies the link that opens this task in its coordinator's plan: `?conversation=N&task=E1.2`. */
 function CopyLink({
   coordinator,
   id,
@@ -245,7 +232,7 @@ function CopyLink({
           .writeText(url.href)
           .then(() => {
             setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
+            deadline(1200, () => setCopied(false))
           })
           .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
       }}
@@ -259,7 +246,6 @@ function CopyLink({
   )
 }
 
-/** One task: key, title, status, role, deps, the linked child and its isolate, and the last note; click for the rest. */
 function TaskRow({
   task,
   tasks,
@@ -270,7 +256,7 @@ function TaskRow({
   task: Task
   tasks: Map<string, Task>
   coordinator: number
-  focus: Focus
+  focus: DeepLinkFocus
   own?: string
 }) {
   const [open, setOpen] = useState(false)
@@ -340,19 +326,18 @@ function TaskRow({
         {task.verdict && (
           <div className="rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
             <div className="pb-1 section-label">Verdict</div>
-            <PlanText>{task.verdict}</PlanText>
+            <LiteralPlanText>{task.verdict}</LiteralPlanText>
           </div>
         )}
         {open ? (
           <div className="space-y-2 pt-1">
             <div className="text-[12.5px] text-foreground/90">
-              <PlanText>{task.description}</PlanText>
+              <LiteralPlanText>{task.description}</LiteralPlanText>
             </div>
             {task.notes.length > 0 && (
               <div className="space-y-1">
                 <div className="section-label">Notes</div>
                 {task.notes.map((note, index) => (
-                  // oxlint-disable-next-line react/no-array-index-key -- Notes are append-only; timestamps can repeat.
                   <Note key={index} note={note} />
                 ))}
               </div>
@@ -381,10 +366,6 @@ function TaskRow({
   )
 }
 
-/**
- * One epic: status and title, its plan folded below, the verdict when there is one, then its tasks. An epic the
- * coordinator works without tasks shows its acceptance criteria in their place.
- */
 function EpicCard({
   epic,
   tasks,
@@ -395,7 +376,7 @@ function EpicCard({
   epic: Epic
   tasks: Map<string, Task>
   coordinator: number
-  focus: Focus
+  focus: DeepLinkFocus
   own?: string
 }) {
   const list = Object.values(epic.tasks)
@@ -439,7 +420,7 @@ function EpicCard({
           >
             Verdict
           </div>
-          <PlanText>{epic.verdict}</PlanText>
+          <LiteralPlanText>{epic.verdict}</LiteralPlanText>
         </div>
       )}
       {list.length > 0 || criteria ? (
@@ -473,10 +454,8 @@ function EpicCard({
   )
 }
 
-/** The task or epic a deep link asked for: its row opens and scrolls into view. */
-type Focus = { key: string } | undefined
+type DeepLinkFocus = { key: string } | undefined
 
-/** Open epics first, newest first; done epics fold into one row at the end. */
 export function PlanBody({
   plan,
   coordinator,
@@ -485,7 +464,7 @@ export function PlanBody({
 }: {
   plan: Plan
   coordinator: number
-  focus: Focus
+  focus: DeepLinkFocus
   own?: string
 }) {
   const epics = Object.values(plan.epics).toSorted((a, b) => number(b.key) - number(a.key))
@@ -528,7 +507,6 @@ export function PlanBody({
 const pill =
   'pointer-events-auto flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
 
-/** The plan card above the pill: the plan with a header naming whose it is. */
 function Panel({
   plan,
   coordinator,
@@ -538,7 +516,7 @@ function Panel({
 }: {
   plan: Plan | null | undefined
   coordinator: number
-  focus: Focus
+  focus: DeepLinkFocus
   own?: string
   close: () => void
 }) {
@@ -571,48 +549,43 @@ function Panel({
   )
 }
 
-/** Where the pill floats: the right edge of the conversation's prompt, just above it. */
-function useAnchor(conversationId: number | undefined) {
+function useAnchor(conversationId: ConversationId | undefined) {
   const [anchor, setAnchor] = useState<{ right: number; bottom: number }>()
   useEffect(() => {
     let form: HTMLFormElement | null | undefined
-    let retry: ReturnType<typeof setTimeout> | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
       setAnchor({ right: innerWidth - rect.right, bottom: innerHeight - rect.top + 6 })
     }
-    // The column resizes when a side region toggles, which moves the prompt without resizing it.
-    const observer = new ResizeObserver(measure)
+    const columnResizeObserver = new ResizeObserver(measure)
     const attach = () => {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
-      if (!container?.parentElement || !form) {
-        setAnchor(undefined)
-        retry = setTimeout(attach, 250)
-        return
-      }
-      observer.observe(container.parentElement)
-      observer.observe(form)
+      if (!container?.parentElement || !form) return false
+      appeared.disconnect()
+      columnResizeObserver.observe(container.parentElement)
+      columnResizeObserver.observe(form)
       measure()
+      return true
     }
-    attach()
+    const appeared = new MutationObserver(attach)
+    if (!attach()) {
+      setAnchor(undefined)
+      appeared.observe(document.body, { childList: true, subtree: true })
+    }
     addEventListener('resize', measure)
     return () => {
-      clearTimeout(retry)
-      observer.disconnect()
+      appeared.disconnect()
+      columnResizeObserver.disconnect()
       removeEventListener('resize', measure)
     }
   }, [conversationId])
   return anchor
 }
 
-type Open = { conversation: number; key: string } | null
+type Open = { conversation: ConversationId; key: string } | null
 
-/**
- * The plan beside the conversation: a pill above the prompt (the open epic's progress, or a worker's task and its
- * coordinator) that expands into the plan. `plan.open` (set by task chips and `?task=` links) opens it at a task.
- */
 function PlanOverlay() {
   const { surface, conversationId } = useUltimate()
   const task = useTaskOf(conversationId)
@@ -621,7 +594,7 @@ function PlanOverlay() {
   useEffect(() => {
     const url = new URL(location.href)
     const key = url.searchParams.get('task')
-    const conversation = Number(url.searchParams.get('conversation'))
+    const conversation = parseConversationId(Number(url.searchParams.get('conversation')))
     if (!key) return
     url.searchParams.delete('task')
     history.replaceState(history.state, '', url)
@@ -651,13 +624,13 @@ function CoordinatorPlan({
   request,
   settle,
 }: {
-  conversation: number
+  conversation: ConversationId
   request: Open
   settle: () => void
 }) {
   const plan = useDoc(PlanDoc)
   const [expanded, setExpanded] = useUiState('plan.panel', false)
-  const [focus, setFocus] = useState<Focus>()
+  const [focus, setFocus] = useState<DeepLinkFocus>()
   useEffect(() => {
     if (!request || plan === undefined) return
     setExpanded(true)
@@ -698,7 +671,7 @@ function CoordinatorPlan({
   )
 }
 
-function WorkerPlan({ conversation, task }: { conversation: number; task: TaskLink }) {
+function WorkerPlan({ conversation, task }: { conversation: ConversationId; task: TaskLink }) {
   const [expanded, setExpanded] = useUiState('plan.panel', false)
   const plan = useDocOf(expanded ? task.coordinator : undefined, PlanDoc)
   const openTask = useOpenTask()
@@ -739,7 +712,6 @@ function WorkerPlan({ conversation, task }: { conversation: number; task: TaskLi
   )
 }
 
-/** A key in a `plan` call's header: the task's chip, or the epic key, opening the plan panel there. */
 function PlanKey({ id }: { id: string }) {
   const { conversationId } = useUltimate()
   const plan = useDoc(PlanDoc)
@@ -777,7 +749,6 @@ function PlanKey({ id }: { id: string }) {
   )
 }
 
-/** One `plan` call: the action and the key it touched, with what it wrote below. */
 function PlanCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const action = text(call.args.action)
@@ -785,8 +756,8 @@ function PlanCall({ call }: { call: ToolCallView }) {
   if (call.status === 'done') {
     try {
       result = JSON.parse(call.output)
-    } catch {
-      // Error outputs may be plain text; the card can still describe the call from its arguments.
+    } catch (error) {
+      meansNone(error)
     }
   }
   const key =
@@ -837,7 +808,7 @@ function PlanCall({ call }: { call: ToolCallView }) {
             value && (
               <ToolSection key={label} label={label}>
                 <div className="font-sans text-[13px] text-foreground/90">
-                  <PlanText>{value}</PlanText>
+                  <LiteralPlanText>{value}</LiteralPlanText>
                 </div>
               </ToolSection>
             ),
@@ -854,14 +825,12 @@ function PlanCall({ call }: { call: ToolCallView }) {
   )
 }
 
-/** The plan task a child conversation works on, for its rows and report cards: the task chip and title. */
 function useConversationTask(id: number | undefined) {
   const task = useTaskOf(id)
   return task && { chip: <TaskChip task={task} />, title: task.title }
 }
 
-/** The epic coordinator `id` works itself, for its sidebar row; one with a task linked to a subagent has none. */
-function useConversationEpic(id: number) {
+function useConversationEpic(id: ConversationId) {
   const epics = useDocOf(id, PlanDoc)?.epics ?? {}
   const openTask = useOpenTask()
   const epic =

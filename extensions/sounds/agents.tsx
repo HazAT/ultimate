@@ -1,11 +1,9 @@
-/**
- * The sound of agents, as data: what the live project does, turned into happenings a band plays. Pure and
- * browser-safe; `engine.ts` makes the music.
- */
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { CheckRan } from '../workspaces/ui.tsx'
+import type { EventRecord } from '../../shared/events.ts'
 
-/** Who makes a sound: each role is its own instrument or register. */
 export type Role = 'ultimate' | 'coordinator' | 'worker' | 'scout' | 'reviewer' | 'lander' | 'other'
-/** Tool calls by timbre. */
+
 export type Tool = 'bash' | 'edit' | 'read' | 'browser' | 'other'
 
 export type Happening =
@@ -24,7 +22,6 @@ export const variants = [
 ] as const
 export type Variant = (typeof variants)[number]['id']
 
-/** A conversation's role from its label: the agent definition it runs as, or `agent` for a standing agent. */
 export function roleOf(label: string | undefined, standing: boolean): Role {
   if (standing) return 'ultimate'
   if (!label) return 'other'
@@ -36,7 +33,6 @@ export function roleOf(label: string | undefined, standing: boolean): Role {
   return 'other'
 }
 
-/** A tool's timbre from its name. */
 export function toolOf(name: string): Tool {
   if (name === 'bash' || name === 'shell') return 'bash'
   if (name === 'edit' || name === 'write') return 'edit'
@@ -45,49 +41,39 @@ export function toolOf(name: string): Tool {
   return 'other'
 }
 
-/** What the tracker reads of the project at one moment. */
 export type Snapshot = {
   conversations: readonly { id: number; label?: string; busy: boolean }[]
-  /** The standing agents' conversation ids. */
   standing: ReadonlySet<number>
-  /** Tool calls of the current rounds by a key unique to each call. */
-  tools: Readonly<Record<string, { name: string; conversationId: number }>>
-  /** Run state and latest input of each conversation, for failures. */
+  tools: Readonly<Record<string, { name: string; conversationId: ConversationId }>>
   runs: Readonly<Record<string, { runState: string; inputId?: number }>>
-  /** Recent durable events, any order. */
-  events: readonly { id: number; kind: string; data: unknown }[]
+  events: readonly EventRecord[]
 }
 
-/**
- * Follows the project and says what newly happened. Whatever the first snapshot shows was heard
- * already: a tab that opens mid-landing does not play it. A `quiet` snapshot (the tab is hidden or its stream catching
- * up after a reconnect) is heard the same way, so nothing that happened while the tab was away plays on its return.
- */
 export function tracker() {
-  let first = true
+  let firstSnapshot = true
   let busy = new Set<number>()
-  const heard = new Set<string>()
+  const heardHappenings = new Set<string>()
   return (snapshot: Snapshot, quiet = false): Happening[] => {
-    const silent = first || quiet
+    const snapshotAlreadyHeard = firstSnapshot || quiet
     const roles = new Map(
       snapshot.conversations.map((c) => [c.id, roleOf(c.label, snapshot.standing.has(c.id))]),
     )
     const role = (id: number) => roles.get(id) ?? 'other'
     const happenings: Happening[] = []
-    const fresh = (key: string) => {
-      if (heard.has(key)) return false
-      heard.add(key)
-      return !silent
+    const markHeardAndShouldPlay = (key: string) => {
+      if (heardHappenings.has(key)) return false
+      heardHappenings.add(key)
+      return !snapshotAlreadyHeard
     }
     const nowBusy = new Set(snapshot.conversations.filter((c) => c.busy).map((c) => c.id))
-    if (!silent) {
+    if (!snapshotAlreadyHeard) {
       for (const id of nowBusy)
         if (!busy.has(id)) happenings.push({ kind: 'start', role: role(id) })
       for (const id of busy) if (!nowBusy.has(id)) happenings.push({ kind: 'stop', role: role(id) })
     }
     busy = nowBusy
     for (const [id, call] of Object.entries(snapshot.tools))
-      if (fresh(`tool:${id}`))
+      if (markHeardAndShouldPlay(`tool:${id}`))
         happenings.push({ kind: 'tool', role: role(call.conversationId), tool: toolOf(call.name) })
     for (const event of snapshot.events) {
       const kind =
@@ -95,21 +81,19 @@ export function tracker() {
           ? 'commit'
           : event.kind === 'event.workspaces.landed'
             ? 'landed'
-            : event.kind === 'event.workspaces.check' &&
-                (event.data as { result?: string }).result === 'failed'
+            : CheckRan.is(event) && event.data.result === 'failed'
               ? 'failed'
               : undefined
-      if (kind && fresh(`event:${event.id}`)) happenings.push({ kind })
+      if (kind && markHeardAndShouldPlay(`event:${event.id}`)) happenings.push({ kind })
     }
     for (const [id, run] of Object.entries(snapshot.runs))
-      if (run.runState === 'error' && fresh(`failed:${id}:${run.inputId}`))
+      if (run.runState === 'error' && markHeardAndShouldPlay(`failed:${id}:${run.inputId}`))
         happenings.push({ kind: 'failed' })
-    first = false
+    firstSnapshot = false
     return happenings
   }
 }
 
-/** One step of the demo: a fake conversation starts, calls a tool or stops, or the project commits, lands, fails. */
 export type DemoStep = { at: number } & (
   | { do: 'start'; id: string; role: Role }
   | { do: 'stop'; id: string }
@@ -120,11 +104,6 @@ export type DemoStep = { at: number } & (
 const calls = (id: string, from: number, tools: Tool[], every: number): DemoStep[] =>
   tools.map((tool, index) => ({ at: from + index * every, do: 'tool', id, tool }))
 
-/**
- * About 50 seconds of a feature's life: @ultimate starts a coordinator, which reads, sends out a scout and two
- * workers; they edit and run tests, one commits; a check fails and is fixed; reviewers read; the lander runs checks
- * and lands; everyone goes quiet.
- */
 export const demo: readonly DemoStep[] = [
   { at: 0, do: 'start', id: 'u', role: 'ultimate' },
   { at: 2.5, do: 'start', id: 'c', role: 'coordinator' },
@@ -157,7 +136,6 @@ export const demo: readonly DemoStep[] = [
   { at: 37.5, do: 'stop', id: 'u' },
 ]
 
-/** Plays the demo's steps through the same mapping: each step's happening, if it has one. */
 export function demoPlayer() {
   const running = new Map<string, Role>()
   return (step: DemoStep): Happening | undefined => {

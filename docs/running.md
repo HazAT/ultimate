@@ -1,6 +1,6 @@
 ## Running the server
 
-- `pnpm install`, then `pnpm start` runs the supervisor on Node 26. It owns the public TCP port and single-instance lock, prints the URL and opens it as a Chrome app window (`http://ultimate.localhost:<port>`, a tab without a Chrome-family browser); `--no-open` or `ULTIMATE_NO_OPEN=1` disables opening.
+- `pnpm install`, then `pnpm start` runs the supervisor on Node 26. It owns the public TCP port and single-instance lock, prints the URL and opens it as a Chrome app window (`http://ultimate.localhost:<port>`, a tab without a Chrome-family browser; on macOS the installed Chrome app of that origin, found by its `CrAppModeShortcutURL` in `~/Applications/Chrome Apps.localized`, when there is one); `--no-open` or `ULTIMATE_NO_OPEN=1` disables opening.
 - Run `pnpm add -g "$PWD"` once in the clone, then `cd ~/Projects/app && ultimate`. `ultimate [dir] [--port N] [--no-open]` starts in that project, or opens a window of it when it already runs; `pnpm start` in the clone uses the clone as the project.
 - Project config belongs in `<project>/.ultimate/`: extensions, agents, skills, and optional `settings.json` (JSON object; `defaultSurface` selects the preferred surface). Discovery is built-in, user `~/.ultimate/`, then project config; later names win. User config is independent of `ULTIMATE_HOME`.
 - Server facets can export `actions`, a map of async `(args, ctx)` functions callable from codemode with `ultimate.action(extension, action, args?)` or from the UI by `POST /api/extensions/:name/actions/:action` with `{ args, conversationId? }`, returning `{ result }`. `ctx` has `host`, optional `conversationId`, `signal`, and `exec(command, args, { cwd?, timeout? })`; exec uses the project cwd, no shell, a 1 MiB output cap and a maximum 30 second timeout.
@@ -9,7 +9,7 @@
 - Call `restart` after editing `server/` or `shared/`, or after a landing that changed `patches/` or `pnpm-lock.yaml`, never for `web/`, `extensions/`, or `agents/`. `POST /api/restart` accepts the same swap; reconnect to events to observe the new generation. The supervisor type-checks and prepares a new child without storage, then waits for the old harness to close before opening the new one and resuming work. Failed checks/preparation keep the old child serving.
 - A crashed child restarts with backoff. After three failed boots the supervisor serves diagnostics and retries on changes in `server/`, `shared/`, or `extensions/`.
 - With Tailscale enabled, the server logs its HTTPS URL as `Ultimate: https://… (remote)` when Tailscale registers it (usually after startup), and logs again when it is no longer served; under the supervisor these are core log lines. The interactive dashboard also keeps the current remote URL at its top, with the local URL underneath, and updates it when remote access changes.
-- Binds only `127.0.0.1`; `--port` or `ULTIMATE_PORT` overrides selection, otherwise the supervisor chooses the first free port from `4747`.
+- Binds only `127.0.0.1`; `--port`, then `ULTIMATE_PORT`, then the project's `.ultimate/settings.json` `port` fix the port (taken, the start fails), otherwise the supervisor chooses the first free port from `4747`.
 - `ULTIMATE_HOME` overrides state storage; the default is `~/.ultimate/projects/<basename>-<sha256(projectRoot) first 8 hex>/`. Different projects can run concurrently, each its own dedicated process, so one Ultimate can manage the others (see [One Ultimate or many](../README.md#one-ultimate-or-many)). Never run two storage owners on the same home.
 - `ULTIMATE_GENERATION` defaults to `1` and labels the process in system info.
 - Pi's models, settings, and auth are shared with `~/.pi/agent`; the `models` extension logs in to providers.
@@ -28,7 +28,11 @@
 - `tsconfig.swap.json` is the server-only type-check gate for swaps.
 - `tsconfig.json` (server, tests, tooling) references `tsconfig.web.json` (browser: `web/src`, `extensions/**/*.tsx`).
   `pnpm check` type-checks both; with plain `tsc`, run `tsc -b`.
-- The standalone server shuts down on SIGINT/SIGTERM; reopening resumes durable work.
+- The standalone server shuts down on SIGINT/SIGTERM; reopening resumes durable work. A supervised core ignores both
+  and logs a warning: the supervisor stops it over IPC, so such a signal either reached the whole group while the
+  service stops Ultimate, or came from outside (an agent's kill by port or name). Stop Ultimate through the supervisor (`pnpm start`'s process, or its service).
+- Closing a server runs the extensions' release callbacks, then closes the Harness before disposing them, so work running at shutdown stays pending and resumes
+  on the next open instead of faulting on a disposed extension.
 
 ## Starting fresh
 

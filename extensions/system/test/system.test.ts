@@ -1,3 +1,4 @@
+import type { EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
@@ -49,7 +50,7 @@ const event = (
   data: JsonValue,
   context?: EventRecord['context'],
 ): EventRecord => ({
-  id,
+  id: id as EntryId,
   name,
   kind: `event.${name}`,
   v: 1,
@@ -92,7 +93,7 @@ async function fixture(events: EventRecord[] = [], summaries: ConversationSummar
           callee: 'b',
           name,
           args: options.args,
-          conversationId: options.conversation,
+          conversationId: options.conversation as ConversationId,
         },
         work,
         null,
@@ -226,7 +227,7 @@ it('follows live with after: only what came since, oldest pages first when behin
 
 it('filters by source, kind, conversation, text and errors', async () => {
   const f = await fixture([
-    event(1, 'x.landed', 1, { sha: 'abc' }, { conversationId: 7, traceId: 't' }),
+    event(1, 'x.landed', 1, { sha: 'abc' }, { conversationId: 7 as ConversationId, traceId: 't' }),
     event(2, 'x.branched', 2, { id: 3 }),
   ])
   f.call('alpha/go', 3, { kind: 'action', conversation: 7, args: { q: 'needle' } })
@@ -341,11 +342,15 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
   const events: EventRecord[] = []
   const f = await fixture(events, [
     // 30 has no event: its owner, 3, is its parent, though 3 did nothing in the window.
-    { id: 30, parentConversationId: 3, busy: false },
+    { id: 30 as ConversationId, parentConversationId: 3 as ConversationId, busy: false },
     // 40 branched from 99, which never worked either.
-    { id: 40, branchOf: { conversationId: 99, at: 1 }, busy: false },
+    {
+      id: 40 as ConversationId,
+      branchOf: { conversationId: 99 as ConversationId, at: 1 as EntryId },
+      busy: false,
+    },
     // 99 has a parent too, but only one hop above a working lane is listed.
-    { id: 99, parentConversationId: 98, busy: false },
+    { id: 99 as ConversationId, parentConversationId: 98 as ConversationId, busy: false },
   ])
   // 7 spawns 8 by `subagent` at 100 s, then 9 at 120 s; a message call at 130 s.
   f.call('subagent', 100, { kind: 'tool', conversation: 7, ms: 1000 })
@@ -364,7 +369,13 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
     .mockReturnValueOnce(start + 2)
     .mockReturnValueOnce(start + 3)
   f.trace.run(
-    { kind: 'tool', caller: 'agent', callee: 'codemode', name: 'codemode', conversationId: 8 },
+    {
+      kind: 'tool',
+      caller: 'agent',
+      callee: 'codemode',
+      name: 'codemode',
+      conversationId: 8 as ConversationId,
+    },
     () =>
       f.trace.run(
         { kind: 'action', caller: 'codemode', callee: 'messages', name: 'messages/send' },
@@ -383,7 +394,7 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
       100.5,
       { id: 8, agent: 'worker', kind: 'child', parent: 7 },
       {
-        conversationId: 7,
+        conversationId: 7 as ConversationId,
         traceId: f.idOf('subagent'),
         parentCall: f.idOf('subagent'),
       },
@@ -396,7 +407,7 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
       130.2,
       { message: 1, from: 7, to: 9, reply: true, steer: false },
       {
-        conversationId: 7,
+        conversationId: 7 as ConversationId,
         traceId: f.idOf('message'),
         parentCall: f.idOf('message'),
       },
@@ -408,7 +419,7 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
       150,
       { message: 3, from: 8, to: 7, reply: false, steer: false },
       {
-        conversationId: 8,
+        conversationId: 8 as ConversationId,
         traceId: action.trace,
         parentCall: action.id,
       },
@@ -419,23 +430,23 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
   const result = await f.lanesAt(200)
   const byId = new Map(result.lanes.map((lane) => [lane.conversation, lane]))
   expect([...byId.keys()].toSorted((a, b) => a - b)).toEqual([3, 7, 8, 9, 30, 40, 99])
-  expect(byId.get(3)).toEqual({ conversation: 3, runs: [] })
-  expect(byId.get(99)).toEqual({ conversation: 99, runs: [] })
-  expect(byId.get(8)).toMatchObject({
+  expect(byId.get(3 as ConversationId)).toEqual({ conversation: 3, runs: [] })
+  expect(byId.get(99 as ConversationId)).toEqual({ conversation: 99, runs: [] })
+  expect(byId.get(8 as ConversationId)).toMatchObject({
     parent: 7,
     spawn: { call: f.idOf('subagent'), at: iso(100) },
   })
-  expect(byId.get(8)!.spawn!.inferred).toBeUndefined()
-  expect(byId.get(9)).toMatchObject({
+  expect(byId.get(8 as ConversationId)!.spawn!.inferred).toBeUndefined()
+  expect(byId.get(9 as ConversationId)).toMatchObject({
     parent: 7,
     agent: 'reviewer',
     spawn: { call: f.idOf('subagent', 1), at: iso(120), inferred: true },
   })
   // 3 and 99 have no calls, so nothing to infer 30's or 40's spawn from.
-  expect(byId.get(30)).toMatchObject({ parent: 3 })
-  expect(byId.get(30)!.spawn).toBeUndefined()
-  expect(byId.get(40)).toMatchObject({ parent: 99 })
-  expect(byId.get(40)!.spawn).toBeUndefined()
+  expect(byId.get(30 as ConversationId)).toMatchObject({ parent: 3 })
+  expect(byId.get(30 as ConversationId)!.spawn).toBeUndefined()
+  expect(byId.get(40 as ConversationId)).toMatchObject({ parent: 99 })
+  expect(byId.get(40 as ConversationId)!.spawn).toBeUndefined()
   expect(result.links).toEqual([
     { from: 7, to: 9, call: f.idOf('message'), at: iso(130), kind: 'message' },
     { from: 9, to: 7, at: iso(140.1), kind: 'message' },
@@ -450,7 +461,10 @@ it('links each lane to its parent and the call that spawned it, exact or inferre
 })
 
 it('keeps a parent with its child under the cap', async () => {
-  const f = await fixture([], [{ id: 500, parentConversationId: 600, busy: false }])
+  const f = await fixture(
+    [],
+    [{ id: 500 as ConversationId, parentConversationId: 600 as ConversationId, busy: false }],
+  )
   for (let conversation = 1; conversation <= 39; conversation++)
     f.call('read', 100 + conversation, { kind: 'tool', conversation })
   // 500 is the least recently active; its parent would make 41, so both stay out.
@@ -470,8 +484,8 @@ it('brings the parent of an active lane that another active lane already listed'
   const f = await fixture(
     [],
     [
-      { id: 802, parentConversationId: 801, busy: false },
-      { id: 801, parentConversationId: 800, busy: false },
+      { id: 802 as ConversationId, parentConversationId: 801 as ConversationId, busy: false },
+      { id: 801 as ConversationId, parentConversationId: 800 as ConversationId, busy: false },
     ],
   )
   f.call('read', 60, { kind: 'tool', conversation: 801 })
@@ -479,9 +493,9 @@ it('brings the parent of an active lane that another active lane already listed'
   const result = await f.lanesAt(200)
   const byId = new Map(result.lanes.map((lane) => [lane.conversation, lane]))
   expect([...byId.keys()].toSorted((a, b) => a - b)).toEqual([800, 801, 802])
-  expect(byId.get(802)?.parent).toBe(801)
-  expect(byId.get(801)?.parent).toBe(800)
-  expect(byId.get(800)?.runs).toEqual([])
+  expect(byId.get(802 as ConversationId)?.parent).toBe(801)
+  expect(byId.get(801 as ConversationId)?.parent).toBe(800)
+  expect(byId.get(800 as ConversationId)?.runs).toEqual([])
 })
 
 it('caps lanes at 40 and calls at 200 per run, counting the rest', async () => {
@@ -546,7 +560,7 @@ export const actions = {
   servers.push(server)
   const signal = new AbortController().signal
   const invoke = (extension: string, action: string, args: JsonValue) =>
-    server.extensions.invoke(extension, action, args, signal, 1)
+    server.extensions.invoke(extension, action, args, signal, 1 as ConversationId)
   for (const n of [1, 2, 3]) await invoke('alpha', 'ping', { n })
   const stream = (await invoke('system', 'stream', { kinds: ['alpha.pinged', 'action'] })) as {
     rows: SystemRow[]
@@ -623,7 +637,7 @@ export const actions = {
   // Navigation: a change of surface or conversation is one event with the browser's device; a repeat is none.
   const device = { device: 'desktop firefox', login: 'me@example.com' }
   const navigate = (args: JsonValue) =>
-    server.extensions.invoke('system', 'navigated', args, signal, 1, 'ui', device)
+    server.extensions.invoke('system', 'navigated', args, signal, 1 as ConversationId, 'ui', device)
   expect(await navigate({ surface: 'agent', conversation: 7 })).toEqual({ recorded: true })
   expect(await navigate({ surface: 'agent', conversation: 7 })).toEqual({ recorded: false })
   expect(await navigate({ surface: 'system' })).toEqual({ recorded: true })

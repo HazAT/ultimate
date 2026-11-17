@@ -10,13 +10,34 @@ import {
   ToolSection,
 } from '@/components/ai/tool'
 import { Button } from '@/components/ui/button'
-import { cn, defineWebExtension, Fold, useToolDuration, useUltimate } from '@/sdk'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import {
+  cn,
+  defineWebExtension,
+  renderEntry,
+  Fold,
+  useToolDuration,
+  useUltimate,
+  ROOT,
+  useDocOf,
+  provide,
+} from '@/sdk'
+import type { TypedEntry } from '@earendil-works/pi-durable'
+import type { AutomationInput } from './refs.ts'
+import { FiredEntry } from '../entries/ui.tsx'
+import { FailedEntry, EscalatedEntry, WritingEntry } from './entries.ts'
+import type { ToolCallView } from '@/sdk'
 import { Chip } from './chip.tsx'
 import { AutomationsPanel } from './panel.tsx'
 import { Dot, looks, openAutomationsPanel, useOpenAutomation } from './parts.tsx'
 import type { Look } from './parts.tsx'
 import { AutomationsSection } from './sidebar.tsx'
+import { StandingDoc } from '../subagents/ui.tsx'
+import { WaitTimers } from '../messages/ui.tsx'
+import { useAutomations, timerWaits } from './ui.tsx'
+
+function useWaitTimers() {
+  return timerWaits(useAutomations(5000).data, useDocOf(ROOT, StandingDoc))
+}
 
 type Kind = 'fired' | 'failed' | 'escalated' | 'writing'
 const kinds: Record<Kind, { look: Look; word: string; border: string }> = {
@@ -26,22 +47,20 @@ const kinds: Record<Kind, { look: Look; word: string; border: string }> = {
   writing: { look: 'writing', word: 'assigned', border: 'border-l-brand/60' },
 }
 
-/** `text` of a FIRE line may be JSON: show it as a code block then. */
 function body(text: string) {
   const trimmed = text.trim()
   if (/^[[{]/.test(trimmed))
     try {
       return `\`\`\`json\n${JSON.stringify(JSON.parse(trimmed), null, 2)}\n\`\`\``
     } catch {
-      // Not JSON after all: it reads as Markdown like any other text.
+      return text
     }
   return text
 }
 
-/** An automation's input to a conversation: it fired, its script failed or was escalated, or the watcher's first task. */
 const card = (kind: Kind) =>
-  function AutomationEntry({ entry }: { entry: EntryRecord }) {
-    const { id, name, text } = entry.data as { id: string; name: string; text: string }
+  function AutomationEntry({ entry }: { entry: TypedEntry<AutomationInput> }) {
+    const { id, name, text } = entry.data
     const look = kinds[kind]
     const open = useOpenAutomation()
     const label: ReactNode = (
@@ -99,11 +118,9 @@ const card = (kind: Kind) =>
 
 const words = (value: unknown) => (typeof value === 'string' ? value : '')
 
-/** The automation id a call touched: its argument, or the id its result line starts with. */
 const touched = (call: ToolCallView) =>
   words(call.args.id) || (/^(A\d+|[a-z][a-z0-9-]*) .+ — /.exec(call.output)?.[1] ?? '')
 
-/** One `automation` call: the action and automation, its ask or prompt, and a way to it. */
 export function AutomationCall({ call }: { call: ToolCallView }) {
   const duration = useToolDuration(call)
   const shell = useUltimate()
@@ -189,16 +206,17 @@ export function AutomationCall({ call }: { call: ToolCallView }) {
 }
 
 export default defineWebExtension({
+  provides: [provide(WaitTimers, useWaitTimers)],
   tools: { automation: AutomationCall },
   slots: {
     'statusline.right': [{ component: Chip, order: -2 }],
     'sidebar.top': [{ component: AutomationsSection, order: -20 }],
   },
   entries: {
-    'automations.fired': card('fired'),
-    'automations.failed': card('failed'),
-    'automations.escalated': card('escalated'),
-    'automations.writing': card('writing'),
+    'automations.fired': renderEntry(FiredEntry, card('fired')),
+    'automations.failed': renderEntry(FailedEntry, card('failed')),
+    'automations.escalated': renderEntry(EscalatedEntry, card('escalated')),
+    'automations.writing': renderEntry(WritingEntry, card('writing')),
   },
   panels: [
     {
@@ -206,7 +224,6 @@ export default defineWebExtension({
       title: 'Automations',
       icon: TimerIcon,
       component: AutomationsPanel,
-      // A working tab after Activity; also opened from the sidebar section, the chip, cards and ⌘K.
       order: 2.5,
     },
   ],

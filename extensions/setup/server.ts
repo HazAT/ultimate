@@ -1,3 +1,9 @@
+import type {
+  ConversationDocToken,
+  ConversationId,
+  JsonObject,
+  Tx,
+} from '@earendil-works/pi-durable'
 import {
   defineDoc,
   defineExtension,
@@ -5,18 +11,13 @@ import {
   hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type {
-  ConversationDocToken,
-  ConversationId,
-  JsonObject,
-  Tx,
-} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readSecret, secretMetadata } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -30,8 +31,7 @@ import type { SetupIssue } from './refs.ts'
 
 const LOGIN = { label: 'Log in', command: 'auth.login' }
 
-/** The warnings the primary agent last heard about, so its next input carries a line only when they change. */
-const Seen = defineDoc<{ key?: string }>({
+const LastWarningsCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'setup.seen',
   checkpointWhen: () => false,
   version: 1,
@@ -40,7 +40,7 @@ const Seen = defineDoc<{ key?: string }>({
   fork: 'current',
   initial: () => ({}),
 })
-export const docs = [Seen]
+export const docs = [LastWarningsCommittedWithInput]
 
 type CheckHost = Pick<
   ExtensionHost,
@@ -49,6 +49,7 @@ type CheckHost = Pick<
   | 'userHome'
   | 'modelRuntime'
   | 'projectSettings'
+  | 'projectSetup'
   | 'extensions'
   | 'need'
   | 'want'
@@ -59,11 +60,13 @@ type CheckHost = Pick<
 const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   host.modelRuntime.getProviderAuthStatus(provider).configured
 
-/** Whether any model has a login here. Without one nothing runs, so that is the only model-related warning. */
+const configuredNonOAuthApiKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
+  configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
+
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
 
-function loginArea(host: CheckHost): SetupIssue | undefined {
+function loginArea(host: AreaHost): SetupIssue | undefined {
   if (loggedIn(host)) return undefined
   return {
     area: 'Login',
@@ -74,8 +77,7 @@ function loginArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
-  // Before any login the Login row says it all.
+async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
   const fix = { label: 'Choose', command: 'conversations.summary-model' }
@@ -108,11 +110,7 @@ async function summaryArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Summary model', status: 'ok', summary: using }
 }
 
-/**
- * Definitions that pin a model whose provider has no login here. They still load, since Pi resolves a definition's
- * model among every known model, and fail at their first model call.
- */
-async function agentsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function agentsArea(host: AreaHost): Promise<SetupIssue[]> {
   const { definitions, errors, replaced } = await discoverAgents(
     host.ultimateRoot,
     host.projectRoot,
@@ -162,20 +160,26 @@ const shortPath = (host: Pick<CheckHost, 'projectRoot' | 'userHome'>, path: stri
       ? `~${path.slice(host.userHome.length)}`
       : path
 
-async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function providersArea(host: AreaHost): Promise<SetupIssue | undefined> {
   const providers = await host.want(HealthApi)?.providers()
   if (!providers?.length) return undefined
   const failing = providers.filter((provider) => provider.state === 'failing')
-  if (failing.length)
+  if (failing.length) {
+    const billingCannotBeFixedByLogin = failing.every((provider) => provider.cause === 'billing')
     return {
       area: 'Providers',
       status: 'warn',
       summary: failing
         .map((provider) => `${provider.provider} ✗ ${provider.error ?? 'failed'}`)
         .join(' · '),
-      impact: 'Its login was refused, or its calls kept failing on this machine.',
-      fix: { label: 'Log in again', command: 'auth.login' },
+      impact: billingCannotBeFixedByLogin
+        ? 'It refused calls for payment: the account hit a credit or spending limit. Add credits or raise the limit with the provider.'
+        : 'Its login was refused, or its calls kept failing on this machine.',
+      ...(billingCannotBeFixedByLogin
+        ? {}
+        : { fix: { label: 'Log in again', command: 'auth.login' } }),
     }
+  }
   return {
     area: 'Providers',
     status: 'ok',
@@ -183,12 +187,7 @@ async function providersArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/**
- * Missing secrets of enabled extensions. One the user turned on (in settings or a project folder) warns; a built-in
- * that is on by default only offers its key, since the rest of Ultimate works without it (voice without
- * `OPENAI_API_KEY`).
- */
-async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
+async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
   const set = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
   const chosen = new Map<string, string[]>()
   const optional = new Map<string, string[]>()
@@ -196,7 +195,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (!set.has(name) && !(provider && configured(host, provider)))
+      if (!set.has(name) && !(provider && configuredNonOAuthApiKey(host, provider)))
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)
@@ -225,7 +224,7 @@ async function secretsArea(host: CheckHost): Promise<SetupIssue[]> {
   return issues
 }
 
-function extensionsArea(host: CheckHost): SetupIssue | undefined {
+function extensionsArea(host: AreaHost): SetupIssue | undefined {
   const broken = host
     .extensions()
     .filter((extension) => extension.enabled && extension.server?.error)
@@ -239,9 +238,11 @@ function extensionsArea(host: CheckHost): SetupIssue | undefined {
   }
 }
 
-async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
-  // Invalid user settings are reported where settings load; here they count as unset.
-  const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(() => ({}))
+async function cloudArea(host: AreaHost): Promise<SetupIssue | undefined> {
+  const invalidSettingsAlreadyReported = () => ({})
+  const settings: JsonObject = await readSettings(userSettingsPath(host.userHome)).catch(
+    invalidSettingsAlreadyReported,
+  )
   const cloud = settings.cloud as { url?: unknown } | undefined
   if (typeof cloud?.url !== 'string')
     return {
@@ -264,7 +265,7 @@ async function cloudArea(host: CheckHost): Promise<SetupIssue | undefined> {
   return { area: 'Cloud backup', status: 'ok', summary: 'joined' }
 }
 
-function tailscaleArea(host: CheckHost): SetupIssue | undefined {
+function tailscaleArea(host: AreaHost): SetupIssue | undefined {
   const service = host.want(TailscaleApi)
   if (!service) return undefined
   const { state } = service.status()
@@ -273,10 +274,27 @@ function tailscaleArea(host: CheckHost): SetupIssue | undefined {
     : { area: 'Tailscale', status: 'info', summary: `${state}: no direct links from other devices` }
 }
 
-async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function projectArea(
+  _host: AreaHost,
+  { settings }: AreaInputs,
+): Promise<SetupIssue | undefined> {
+  if (await settings) return undefined
+  return {
+    area: 'Project setup',
+    status: 'warn',
+    summary: "undecided: this project's .ultimate/ is not loaded",
+    impact:
+      'Its extensions, agents, skills and settings (worktree setup, lander checks) stay off until you choose to use it or keep global.',
+    fix: { label: 'Decide', command: 'onboarding.extensions' },
+  }
+}
+
+async function landerArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const lander = (await host.projectSettings()).lander as { checks?: unknown } | undefined
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const lander = settings.lander as { checks?: unknown } | undefined
   if (Array.isArray(lander?.checks) && lander.checks.length)
     return { area: 'Lander checks', status: 'ok', summary: `${lander.checks.length} configured` }
   return {
@@ -287,8 +305,7 @@ async function landerArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/** Files that say a fresh checkout needs installing before it runs: a worktree has none of their ignored output. */
-const MANIFESTS = [
+const INSTALL_MANIFESTS = [
   'package.json',
   'composer.json',
   'Gemfile',
@@ -299,15 +316,16 @@ const MANIFESTS = [
   'mix.exs',
 ]
 
-async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
+async function worktreeArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIssue | undefined> {
   if (!host.extensions().some((extension) => extension.name === 'workspaces' && extension.enabled))
     return undefined
-  const commands = ((await host.projectSettings()).isolates as { worktree?: { setup?: unknown } })
-    ?.worktree?.setup
+  const settings = await inputs.settings
+  if (!settings) return undefined
+  const commands = (settings.isolates as { worktree?: { setup?: unknown } })?.worktree?.setup
   if (Array.isArray(commands) && commands.length)
     return { area: 'Worktree setup', status: 'ok', summary: `${commands.length} commands` }
   if ('reason' in (await isolatable(host.projectRoot))) return undefined
-  const manifests = MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
+  const manifests = INSTALL_MANIFESTS.filter((name) => existsSync(join(host.projectRoot, name)))
   if (!manifests.length) return undefined
   return {
     area: 'Worktree setup',
@@ -318,23 +336,21 @@ async function worktreeArea(host: CheckHost): Promise<SetupIssue | undefined> {
   }
 }
 
-/** Reads a conversation document; inside a transaction it must read through `tx`, or it waits on its own line. */
-type ReadDoc = (
+type ReadCurrentDoc = (
   doc: ConversationDocToken<JsonObject>,
   id: ConversationId,
 ) => Promise<Readonly<JsonObject> | undefined>
 
 const snapshots =
-  (host: Pick<CheckHost, 'harness'>): ReadDoc =>
+  (host: Pick<CheckHost, 'harness'>): ReadCurrentDoc =>
   (doc, id) =>
     host.harness().snapshot(doc, id, BACKGROUND_CONTEXT)
 
-/**
- * Listed roots that have branched but have no memory: their branches start from the whole tally instead of a memory
- * brief. A root that never branched (a fresh project, where onboarding writes the first memories) has nothing to warn
- * about yet.
- */
-async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | undefined> {
+type AreaHost = Omit<CheckHost, 'projectSettings' | 'projectSetup'>
+
+type AreaInputs = { read: ReadCurrentDoc; settings: Promise<JsonObject | undefined> }
+
+async function memoryArea(host: AreaHost, { read }: AreaInputs): Promise<SetupIssue | undefined> {
   const rootsDoc = host.doc('lineage.roots')
   const memoryDoc = host.doc('lineage.memory')
   const tallyDoc = host.doc('lineage.tally')
@@ -344,13 +360,10 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
     | undefined
   const empty: number[] = []
   for (const root of listed?.roots ?? []) {
-    const tally = (await read(tallyDoc, root as ConversationId)) as
-      | (typeof TallyDoc)['value']
-      | undefined
-    if (tally?.since === undefined) continue
-    const doc = (await read(memoryDoc, root as ConversationId)) as
-      | (typeof MemoryDoc)['value']
-      | undefined
+    const tally = (await read(tallyDoc, root)) as (typeof TallyDoc)['value'] | undefined
+    const rootHasNeverBranched = tally?.since === undefined
+    if (rootHasNeverBranched) continue
+    const doc = (await read(memoryDoc, root)) as (typeof MemoryDoc)['value'] | undefined
     if (!Object.keys(doc?.memories ?? {}).length) empty.push(root)
   }
   if (!empty.length) return undefined
@@ -358,17 +371,40 @@ async function memoryArea(host: CheckHost, read: ReadDoc): Promise<SetupIssue | 
     area: 'Project memory',
     status: 'warn',
     summary: `none in root ${empty.map((root) => `#${root}`).join(', ')}`,
-    // No fix button: no command opens @ultimate with a request, so the row says what to ask.
     impact:
       "New branches start from the full project context (large, slow, costly). Ask @ultimate to review the project's memory.",
   }
 }
 
-/** Every area, warnings first, then information, then what is set up; a failing area is skipped, not fatal. */
+type SetupAreaResult = SetupIssue | SetupIssue[] | undefined
+type SetupAreaCheck = (
+  host: AreaHost,
+  inputs: AreaInputs,
+) => SetupAreaResult | Promise<SetupAreaResult>
+
+function checkAreaWithDeferredThrowHandling(
+  area: SetupAreaCheck,
+  host: AreaHost,
+  inputs: AreaInputs,
+) {
+  return Promise.resolve()
+    .then(() => area(host, inputs))
+    .catch((error: unknown): SetupIssue => ({
+      area: 'Setup check',
+      status: 'info',
+      summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
+    }))
+}
+
 export async function check(
   host: CheckHost,
-  read: ReadDoc = snapshots(host),
+  read: ReadCurrentDoc = snapshots(host),
 ): Promise<SetupIssue[]> {
+  const settings = host
+    .projectSetup()
+    .then(({ config, decision }) =>
+      config && decision === null ? undefined : host.projectSettings(),
+    )
   const areas = await Promise.all(
     (
       [
@@ -378,34 +414,25 @@ export async function check(
         providersArea,
         secretsArea,
         extensionsArea,
+        projectArea,
         cloudArea,
         tailscaleArea,
         landerArea,
         worktreeArea,
         memoryArea,
-      ] as ((
-        host: CheckHost,
-        read: ReadDoc,
-      ) => SetupIssue | SetupIssue[] | undefined | Promise<SetupIssue | SetupIssue[] | undefined>)[]
-    ).map((area) =>
-      // Started inside the promise, so an area that throws synchronously is caught like one that rejects.
-      Promise.resolve()
-        .then(() => area(host, read))
-        .catch((error: unknown): SetupIssue => ({
-          area: 'Setup check',
-          status: 'info',
-          summary: `one check failed: ${error instanceof Error ? error.message : String(error)}`,
-        })),
-    ),
+      ] as SetupAreaCheck[]
+    ).map((area) => checkAreaWithDeferredThrowHandling(area, host, { read, settings })),
   )
-  const rank = { warn: 0, info: 1, ok: 2 }
+  const warningsBeforeInformationBeforeOk = { warn: 0, info: 1, ok: 2 }
   return areas
     .flat()
     .filter((issue): issue is SetupIssue => !!issue)
-    .toSorted((a, b) => rank[a.status] - rank[b.status])
+    .toSorted(
+      (a, b) =>
+        warningsBeforeInformationBeforeOk[a.status] - warningsBeforeInformationBeforeOk[b.status],
+    )
 }
 
-/** The line the primary agent's input carries, or undefined while no warning stands. */
 export function setupNote(issues: SetupIssue[]) {
   const warnings = issues.filter((issue) => issue.status === 'warn')
   if (!warnings.length) return undefined
@@ -414,11 +441,6 @@ export function setupNote(issues: SetupIssue[]) {
     .join('\n')}`
 }
 
-/**
- * Inside the input's commit: a note on the primary agent's input when its warnings differ from those it last heard,
- * including "resolved" once they all clear. The note and the doc that remembers it commit together, so an input
- * gets at most one.
- */
 export async function noteFor(
   tx: Tx,
   conversationId: ConversationId,
@@ -428,7 +450,7 @@ export async function noteFor(
   if (!issues) return undefined
   const text = setupNote(issues)
   const key = text ?? ''
-  const seen = await tx.doc(Seen, conversationId)
+  const seen = await tx.doc(LastWarningsCommittedWithInput, conversationId)
   if ((seen.key ?? '') === key) return undefined
   seen.key = key
   return {
@@ -449,10 +471,10 @@ export async function noteFor(
 }
 
 export default function setup(host: ExtensionHost) {
-  // The check reads files and the model runtime: cached briefly so a burst of inputs reads once.
   const cache = host.resource('setup.check', () => ({ at: 0, issues: [] as SetupIssue[] }))
+  const burstCheckCacheMs = 30_000
   const current = async (tx: Tx) => {
-    if (Date.now() - cache.at > 30_000) {
+    if (Date.now() - cache.at > burstCheckCacheMs) {
       cache.issues = await check(host, (doc, id) => tx.doc(doc, id))
       cache.at = Date.now()
     }
@@ -463,13 +485,10 @@ export default function setup(host: ExtensionHost) {
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
-        // Only the primary agent hears about setup, and only when its warnings change: a per-input note, never a
-        // system-prompt section, keeps the prompt cached.
-        beforeInput: async (_input, { tx, conversationId }) => {
+        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
-          // A check that fails here only skips the note; the status line still shows the setup.
-          return noteFor(tx, conversationId, await current(tx).catch(() => undefined), Date.now())
+          return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())
         },
       }),
     ],

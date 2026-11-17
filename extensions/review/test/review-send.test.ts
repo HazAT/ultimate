@@ -4,6 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/provid
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
+import { git } from '../../../lib/git.ts'
 import { limits } from '../comments.ts'
 import type { ReviewComment } from '../comments.ts'
 import { context } from '../../../server/harness.ts'
@@ -142,6 +143,36 @@ it('sends one review input to a conversation, refuses bad reviews, and is user-o
       (entry) => entry.kind === 'pi.tool-result',
     )
     expect(JSON.stringify(result?.model)).toContain('review/send is a user-only action')
+  } finally {
+    await server.close()
+    await removeTemp(home)
+  }
+})
+
+it("sends a review of an unlanded range to the conversation in its head commit's trailer", async () => {
+  const home = await temp('ultimate-review-range-recipient-')
+  const project = join(home, 'project')
+  await mkdir(join(project, '.ultimate'), { recursive: true })
+  await writeFile(join(project, '.ultimate/settings.json'), '{}')
+  await git(project, 'init', '-q', '-b', 'main')
+  await git(project, 'config', 'user.email', 'test@example.com')
+  await git(project, 'config', 'user.name', 'Test')
+  await git(project, 'commit', '-q', '--allow-empty', '-m', 'first')
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: project,
+    userHome: home,
+    home: join(home, 'state'),
+    localSetup: false,
+  })
+  try {
+    const branch = (await post(server, '/api/conversations', { title: 'Branch' })).data.id as number
+    const message = `add feature\n\nUltimate-Conversation: ${branch}`
+    await git(project, 'commit', '-q', '--allow-empty', '-m', message)
+    const recipient = await post(server, '/api/extensions/review/actions/recipient', {
+      args: { spec: 'main~1...main' },
+    })
+    expect(recipient.data.result).toEqual({ conversation: branch })
   } finally {
     await server.close()
     await removeTemp(home)

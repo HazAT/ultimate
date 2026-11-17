@@ -22,14 +22,45 @@ import { Profile, Standing, Started } from '../api.ts'
 import type { SubagentsService } from '../api.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { Marks } from '../../conversations/api.ts'
-import { parseDefinition, saveDefinition } from '../../../lib/agents.ts'
+import { discoverAgents, parseDefinition, saveDefinition } from '../../../lib/agents.ts'
+
+it('keeps an edit a turn applied while a standing call was waiting to commit', async () => {
+  const { service, host, file, hold } = await fixture()
+  const id = await service.standing('x', ctx)
+  const gate = hold()
+  const refresh = service.standing('x', ctx)
+  await gate.reached
+  await writeFile(file, definition('Edited'))
+  await host.harness.commit((tx) => configure(tx, id, { instructions: 'Edited' }), ctx)
+  gate.release()
+  expect(await refresh).toBe(id)
+  expect(await (await host.harness.conversation(id, ctx))!.agent(ctx)).toMatchObject({
+    instructions: 'Edited',
+  })
+})
+
+it('retires the agent when its definition stops being resident while a standing call was waiting to commit', async () => {
+  const { service, host, file, hold } = await fixture()
+  const id = await service.standing('x', ctx)
+  const gate = hold()
+  const refresh = service.standing('x', ctx)
+  await gate.reached
+  await writeFile(file, definition('Original').replace('resident: true', 'resident: false'))
+  gate.release()
+  await expect(refresh).rejects.toThrow('Unknown standing agent @x')
+  expect(await host.harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)).toEqual({})
+  expect(await host.harness.snapshot(Metadata, id, ctx)).not.toHaveProperty('label')
+})
 
 const ctx = BACKGROUND_CONTEXT
 const directories: string[] = []
 const opened: OpenHost[] = []
 afterEach(async () => {
-  for (const host of opened.splice(0)) await host.close()
-  for (const path of directories.splice(0)) await removeTemp(path)
+  // Both lists before the first await, so a hook past its timeout cannot delete the next test's folders.
+  const closing = opened.splice(0)
+  const taken = directories.splice(0)
+  for (const host of closing) await host.close()
+  for (const path of taken) await removeTemp(path)
 })
 const definition = (body: string, extra = '') =>
   `---\nname: x\ndescription: Test\nresident: true\ntools: [read, t]\nisolate: worktree\n${extra}---\n${body}\n`
@@ -59,9 +90,40 @@ async function fixture() {
   let host!: OpenHost
   let service!: SubagentsService
   const openers: (() => Promise<void>)[] = []
+  // Holds the next commit the extension makes until `release`, so a test edits a definition between a call's start
+  // and its commit.
+  let held: { reached: () => void; release: Promise<void> } | undefined
+  const hold = () => {
+    let reached!: () => void
+    let release!: () => void
+    const gate = {
+      reached: new Promise<void>((resolve) => (reached = resolve)),
+      release: new Promise<void>((resolve) => (release = resolve)),
+    }
+    held = { reached, release: gate.release }
+    return { reached: gate.reached, release }
+  }
+  const gated = (): OpenHost['harness'] =>
+    new Proxy(host.harness, {
+      get(target, property) {
+        if (property !== 'commit') {
+          const value = Reflect.get(target, property, target)
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+        return async (...args: Parameters<typeof target.commit>) => {
+          const gate = held
+          held = undefined
+          if (gate) {
+            gate.reached()
+            await gate.release
+          }
+          return target.commit(...args)
+        }
+      },
+    })
   const backend = subagents({
     ...prepared,
-    harness: () => host.harness,
+    harness: gated,
     metadata: Metadata,
     projectSettings: async () => ({}),
     implement: (_api, value) => {
@@ -89,7 +151,7 @@ async function fixture() {
     opened.push(host)
     return host
   }
-  return { path, prepared, host, service, file, reopen, open }
+  return { path, prepared, host, service, file, reopen, open, hold }
 }
 
 it('lists definitions only to agents that can use them', async () => {
@@ -318,4 +380,45 @@ it('offers deferred tools only when named by the definition, and removes them on
   }, ctx)
   await service.standing('x', ctx)
   expect((await conversation.agent(ctx)).tools.map((tool) => tool.name)).toEqual(['read'])
+})
+
+// solidcraft #6254: a chat created from a definition kept its old tools after the definition gained `message`.
+it('reconfigures a child from its current definition, keeping its chosen model', async () => {
+  const { service, host, prepared, path, file } = await fixture()
+  const ordinary = (tools: string) =>
+    `---\nname: x\ndescription: Test\ntools: ${tools}\n---\nInstructions\n`
+  const read = async () =>
+    (await discoverAgents(path, path, path, prepared.modelRuntime)).definitions.find(
+      (item) => item.name === 'x',
+    )!
+  await writeFile(file, ordinary('[read]'))
+  const options = { parentAgent: await host.root.agent(ctx), modelRuntime: prepared.modelRuntime }
+  const original = await read()
+  const child = await host.harness.commit(
+    (tx) =>
+      service.createChild(tx, {
+        ...options,
+        owner: { kind: 'ownerless' },
+        definition: original,
+        metadata: Metadata,
+        label: 'x',
+        title: 'Chat',
+      }),
+    ctx,
+  )
+  const conversation = (await host.harness.conversation(child.id, ctx))!
+  expect((await conversation.agent(ctx)).tools.map((tool) => tool.name)).toEqual(['read'])
+  await host.harness.commit(
+    (tx) => configure(tx, child.id, { model: { provider: 'faux', modelId: 'faux-pinned' } }),
+    ctx,
+  )
+  await writeFile(file, ordinary('[read, t]'))
+  const edited = await read()
+  await host.harness.commit(
+    (tx) => service.reconfigure(tx, child.id, { ...options, definition: edited }),
+    ctx,
+  )
+  const agent = await conversation.agent(ctx)
+  expect(agent.tools.map((tool) => tool.name)).toEqual(['read', 't'])
+  expect(agent.model).toEqual({ provider: 'faux', modelId: 'faux-pinned' })
 })

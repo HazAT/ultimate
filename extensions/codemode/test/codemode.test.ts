@@ -32,11 +32,15 @@ import type { CallTree } from '../../../server/trace.ts'
 const servers: Awaited<ReturnType<typeof createServer>>[] = []
 const directories: string[] = []
 afterEach(async () => {
-  for (const server of servers.splice(0)) {
+  // Take both lists before the first await: a hook still running past its timeout must not delete the next test's
+  // directories (first seen in messages.test.ts).
+  const closing = servers.splice(0)
+  const taken = directories.splice(0)
+  for (const server of closing) {
     await server.vite.watcher.close()
     await server.close()
   }
-  for (const directory of directories.splice(0)) await removeTemp(directory)
+  for (const directory of taken) await removeTemp(directory)
 })
 async function fixture() {
   const directory = await temp('ultimate-codemode-')
@@ -168,6 +172,47 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   expect(tool.description).toContain('declare const ultimate')
 })
 
+it('keeps model-only tools callable directly but out of script bindings and guidance', async () => {
+  const { server } = await fixture()
+  let executions = 0
+  server.host.registry.install(
+    defineExtension({
+      name: 'caller-test',
+      tools: [
+        defineTool({
+          name: 'model_only_probe',
+          description: 'A model-only test tool',
+          parameters: obj({}),
+          callers: ['model'],
+          execute: async () => {
+            executions++
+            return { output: [{ type: 'text', text: 'Called directly' }] }
+          },
+        }),
+      ],
+    }),
+  )
+  server.host.faux!.setResponses([
+    fauxAssistantMessage([fauxToolCall('model_only_probe', {})], { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Complete'),
+  ])
+  await server.root.submit({ type: 'input', content: 'Call the model-only tool' }, context)
+  await server.harness.waitForIdle(context)
+  expect(executions).toBe(1)
+  const result = await run(server, 'return await tools.model_only_probe({})')
+  expect(executions).toBe(1)
+  expect(result.data.isError).toBe(true)
+  expect(result.text).toContain('model_only_probe')
+  expect(result.data.details.calls).toEqual([])
+  const agent = await server.root.agent(context)
+  const section = server.host.registry.snapshot().extension('codemode')!.sections![0]
+  const guidance = await section.render(
+    { conversationId: server.root.id, agent } as Parameters<typeof section.render>[0],
+    context,
+  )
+  expect(guidance?.split('Available: ')[1].split(', ')).not.toContain('model_only_probe')
+})
+
 async function run(
   server: Awaited<ReturnType<typeof createServer>>,
   code: string,
@@ -228,10 +273,10 @@ it('traces a tool a codemode script calls, and its service call, inside the code
           execute: async () => ({ output: [{ type: 'text', text: echo.echo('probed') }] }),
         }), defineTool({
           name: 'outer',
-          description: 'Runs a codemode script as a Pi nested call',
+          description: 'Runs probe as a Pi nested call',
           parameters: obj({}),
           execute: async (_args, api, ctx) => {
-            const result = await api.executeTool('codemode', { code: 'return await tools.probe({})' }, ctx)
+            const result = await api.executeTool('probe', {}, ctx)
             return { output: [{ type: 'text', text: JSON.stringify(result.details?.value ?? result) }] }
           },
         })] }
@@ -255,7 +300,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
     ],
   ])
 
-  // A model call runs codemode as a Pi nested task, which calls probe in-process: one chain of immediate parents.
+  // A model call runs outer, which runs probe as a Pi nested task: one chain of immediate parents.
   server.host.faux!.setResponses([
     fauxAssistantMessage([fauxToolCall('outer', {})], { stopReason: 'toolUse' }),
     fauxAssistantMessage('Complete'),
@@ -268,14 +313,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
       'tool',
       'agent',
       'outer',
-      [
-        [
-          'tool',
-          'trace-probe',
-          'codemode',
-          [['tool', 'codemode', 'probe', [['service', 'trace-probe', 'trace-echo.echo', []]]]],
-        ],
-      ],
+      [['tool', 'trace-probe', 'probe', [['service', 'trace-probe', 'trace-echo.echo', []]]]],
     ],
   ])
 })
@@ -415,19 +453,18 @@ it('applies each automation call in one script to its own arguments', async () =
      const id = created.split(' ')[0];
      await tools.automation({action:'subscribe', id, to:'@ultimate'});
      await tools.automation({action:'unsubscribe', id, to:'#${server.root.id}'});
-     const [stored] = await ultimate.action('automations', 'list');
-     return { line: await tools.automation({action:'list'}), subscribers: stored.subscribers };`,
+     const stored = (await ultimate.action('automations', 'list')).find((item) => item.id === id);
+     const lines = (await tools.automation({action:'list'})).split('\\n');
+     return { line: lines.find((line) => line.startsWith(id + ' ')).slice(id.length + 1), subscribers: stored.subscribers };`,
   )
   expect(result.data.details.value).toEqual({
-    line: 'A1 Probe — Every 1 day — enabled → @ultimate',
+    line: 'Probe — Every 1 day — enabled → @ultimate',
     subscribers: ['@ultimate'],
   })
 })
 
 it('reserves trust and secret writes for the UI while allowing normal actions', async () => {
   const { server, options } = await fixture()
-  await mkdir(join(options.ultimateRoot, 'server'), { recursive: true })
-  await cp(resolve('server/lock.ts'), join(options.ultimateRoot, 'server/lock.ts'))
   // Onboarding and secrets use the shared helpers in lib/.
   await cp(resolve('lib'), join(options.ultimateRoot, 'lib'), { recursive: true })
   const probes = { onboarding: 'decide', secrets: 'set' } as const
@@ -664,7 +701,6 @@ it('lists conversations with their title and cwd', async () => {
 it('lists conversations whose titles are whole prompts with short titles, far below the read limit', async () => {
   const { server } = await fixture()
   const prompt = `Rewrite the parser ${'and keep every token '.repeat(300)}`
-  expect(prompt.length).toBeGreaterThan(6000)
   const ids = await Promise.all(
     Array.from(
       { length: 40 },

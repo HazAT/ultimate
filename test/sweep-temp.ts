@@ -1,7 +1,7 @@
 import { readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { alive } from '../server/lock.ts'
+import { alive } from '../lib/lock.ts'
 
 /** Each test file's temporary directory, named after the worker that owns it so a later run can tell it is stale. */
 export const testTempPrefix = 'ultimate-test-temp-'

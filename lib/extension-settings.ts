@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { useProjectSetup } from './project-setup.ts'
+import { isMissing } from './errors.ts'
 
 export function extensionSettingsFiles(projectRoot: string, userHome = homedir()) {
   return [join(userHome, '.ultimate/settings.json'), join(projectRoot, '.ultimate/settings.json')]
@@ -45,7 +46,7 @@ export async function extensionSettings(projectRoot: string, userHome?: string) 
       }
       validLayers.set(path, layer)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') validLayers.delete(path)
+      if (isMissing(error)) validLayers.delete(path)
       else notices.push(`${path}: ${String(error)}`)
     }
     for (const [name, enabled] of validLayers.get(path) ?? []) {
