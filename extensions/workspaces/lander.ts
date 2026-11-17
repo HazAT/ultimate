@@ -7,6 +7,7 @@ import type {
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
@@ -129,7 +130,7 @@ export const sweepChecks = async (home: string) => {
     if (!name.startsWith(`${process.pid}-`))
       await rm(join(checkTemp(home), name), { recursive: true, force: true })
 }
-export const checkTemp = (home: string) => join(home, 'lander-tmp')
+export const checkTemp = (home: string) => join(tmpdir(), `ultimate-lander-${landerHash(home)}`)
 
 export async function runLanderCheck(
   path: string,
