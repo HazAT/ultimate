@@ -333,7 +333,6 @@ function backend(host: ExtensionHost) {
         ...(args.agent ? { agent: args.agent } : {}),
         ...(args.model ? { model: args.model } : {}),
         ...(args.thinking ? { thinking: args.thinking } : {}),
-        ...(args.maxFiresPerHour ? { maxFiresPerHour: args.maxFiresPerHour } : {}),
       }
       if (prepared.slug) {
         const sub = state.automations[prepared.slug]
@@ -514,11 +513,6 @@ function backend(host: ExtensionHost) {
     if (args.once !== undefined && typeof args.once !== 'boolean')
       throw new Error('once must be boolean')
     if (
-      args.maxFiresPerHour !== undefined &&
-      (!Number.isInteger(args.maxFiresPerHour) || args.maxFiresPerHour < 1)
-    )
-      throw new Error('maxFiresPerHour must be a positive integer')
-    if (
       args.secrets !== undefined &&
       (!Array.isArray(args.secrets) || args.secrets.some((s) => typeof s !== 'string'))
     )
@@ -692,7 +686,6 @@ function backend(host: ExtensionHost) {
       }
       if (args.model !== undefined) a.model = args.model
       if (args.thinking !== undefined) a.thinking = args.thinking
-      if (args.maxFiresPerHour !== undefined) a.maxFiresPerHour = args.maxFiresPerHour
       if (a.script && a.script.ask !== preDiscoveryAsk) {
         a.script.state = 'writing'
         delete a.script.error
@@ -899,7 +892,7 @@ export default function automations(host: ExtensionHost) {
         ),
         executionMode: SUBSCRIBERS_IN_CALL_ORDER,
         description:
-          'Automate background work: one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers: #id|@name). create {name, trigger, prompt?, subscribers?, key?, …}; with neither action the caller subscribes. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run (a whole agent turn every fire). schedule: cron "0 9 * * 1-5" Europe/Vienna, at <ISO time>, in 30m, every 15m. ask: a watcher writes a supervised script that fires on stdout FIRE (tokens only for setup and repair); once defaults to true, so the first FIRE finishes it: pass once:false to keep watching. maxFiresPerHour (default 6): one more fire that starts a run or wakes a subscriber within an hour pauses it; a fire skipped beside a working run does not count. event {name,where?}: action events lists them. condition {metric:"context",of:"@name"|"#id",above}. list; these take {id}: update, pause, resume, run, runs, log, abort {runId}, escalate {reason}, subscribe/unsubscribe {to?}, delete. Details: extensions/automations/README.md in the Ultimate clone.',
+          'Automate background work: one trigger (schedule, ask, event or condition) and one or both actions (prompt, subscribers: #id|@name). create {name, trigger, prompt?, subscribers?, key?, …}; with neither action the caller subscribes. To be reminded or woken, subscribe (cheap); add a prompt only when fresh work must run (a whole agent turn every fire). schedule: cron "0 9 * * 1-5" Europe/Vienna, at <ISO time>, in 30m, every 15m. ask: a watcher writes a supervised script that fires on stdout FIRE (tokens only for setup and repair); once defaults to true, so the first FIRE finishes it: pass once:false to keep watching. event {name,where?}: action events lists them. condition {metric:"context",of:"@name"|"#id",above}. list; these take {id}: update, pause, resume, run, runs, log, abort {runId}, escalate {reason}, subscribe/unsubscribe {to?}, delete. Details: extensions/automations/README.md in the Ultimate clone.',
         parameters: obj({
           action: strEnum(operations),
           id: opt(str()),
@@ -922,7 +915,6 @@ export default function automations(host: ExtensionHost) {
             }),
           ),
           once: opt(bool()),
-          maxFiresPerHour: opt(int({ minimum: 1 })),
           secrets: opt(arr(str())),
           prompt: opt(str()),
           agent: opt(str()),

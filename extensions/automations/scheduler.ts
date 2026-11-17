@@ -162,10 +162,9 @@ export function scheduler(
       !!a.prompt &&
       (a.runs.some((r) => r.status === 'running') || (await scanRunsBeforeWrites(tx)).has(a.id))
     const countsTowardCap = (!!a.prompt && !skip) || a.subscribers.length > 0
-    const cap = a.maxFiresPerHour ?? MAX_FIRES_PER_HOUR
     a.recentFires = (a.recentFires ?? []).filter((at) => at > firedAt - FIRE_WINDOW_MS)
-    if (countsTowardCap && a.recentFires.length >= cap) {
-      const reason = `Fired more than ${cap} times in an hour; paused`
+    if (countsTowardCap && a.recentFires.length >= MAX_FIRES_PER_HOUR) {
+      const reason = 'Fired more than 6 times in an hour; paused'
       a.enabled = false
       delete a.nextAt
       if (a.script) {

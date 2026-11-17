@@ -46,7 +46,6 @@ export type Automation = {
     firedAt?: number
   }
   recentFires?: number[]
-  maxFiresPerHour?: number
   script?: {
     ask: string
     once: boolean
@@ -94,7 +93,6 @@ export type CreateArgs = {
   agent?: string
   model?: { provider: string; modelId: string }
   thinking?: ModelThinkingLevel
-  maxFiresPerHour?: number
   subscribers?: Subscriber[]
   scope?: 'user' | 'project'
   slug?: string

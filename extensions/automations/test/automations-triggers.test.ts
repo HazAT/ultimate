@@ -513,7 +513,7 @@ it.each(floodTriggers)(
   },
 )
 
-it('counts only fires that start a run toward the hourly cap, which maxFiresPerHour raises', async () => {
+it('counts only fires that start a run toward the hourly cap', async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
   const f = await fixture()
   const a = (await f.action('create', {
@@ -546,21 +546,6 @@ it('counts only fires that start a run toward the hourly cap, which maxFiresPerH
   expect(
     (await f.host.eventLog.recent({ events: [defineEvent('automations.escalated')] }))[0].data,
   ).toEqual({ id: a.id, reason: 'Fired more than 6 times in an hour; paused' })
-  await f.action('update', { id: a.id, maxFiresPerHour: 8 })
-  await f.action('resume', { id: a.id })
-  await fireAndFinish()
-  expect(await f.record(a.id)).toMatchObject({ enabled: true, maxFiresPerHour: 8 })
-  expect((await f.record(a.id)).recentFires).toHaveLength(7)
-  await expect(f.action('update', { id: a.id, maxFiresPerHour: 0 })).rejects.toThrow(
-    'maxFiresPerHour must be a positive integer',
-  )
-  const capped = (await f.action('create', {
-    name: 'Train',
-    prompt: 'Deploy',
-    schedule: 'every 1d',
-    maxFiresPerHour: 12,
-  })) as Automation
-  expect(await f.record(capped.id)).toMatchObject({ maxFiresPerHour: 12 })
 })
 
 it('lists ten event definitions and validates trigger inputs and kind changes', async () => {
