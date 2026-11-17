@@ -36,27 +36,27 @@ const item = (key: string, at: number): InboxItem => ({
   pane: null,
 })
 
-it('lists the open questions to the user and the provided items, oldest first', () => {
-  expect(inboxItems(log).map((entry) => entry.key)).toEqual(['message:1', 'message:3', 'message:7'])
+it('lists the open questions to the user and the provided items, newest first', () => {
+  expect(inboxItems(log).map((entry) => entry.key)).toEqual(['message:7', 'message:3', 'message:1'])
   const merged = inboxItems(log, [[item('shell:a', 350)], [item('mail:b', 50)]])
   expect(merged.map((entry) => entry.key)).toEqual([
-    'mail:b',
-    'message:1',
-    'message:3',
-    'shell:a',
     'message:7',
+    'shell:a',
+    'message:3',
+    'message:1',
+    'mail:b',
   ])
 })
 
-it('moves on to the next oldest when the shown item is answered', () => {
+it('moves on to the next older one when the shown item is answered', () => {
   const before = inboxItems(log)
   expect(selection(before, 'message:3', 1)).toBe('message:3')
   const after = inboxItems(log.map((m) => (m.id === 3 ? { ...m, state: 'answered' as const } : m)))
-  // Item 3 stood at index 1; item 7 now stands there.
-  expect(selection(after, 'message:3', 1)).toBe('message:7')
-  // The newest answered: the one before it shows; the last answered: nothing.
-  expect(selection(after, 'message:7', 1)).toBe('message:7')
-  expect(selection([after[0]], 'message:7', 1)).toBe('message:1')
+  // Item 3 stood at index 1; item 1, the next older one, now stands there.
+  expect(selection(after, 'message:3', 1)).toBe('message:1')
+  // The oldest answered: the one before it shows; the last answered: nothing.
+  expect(selection(after, 'message:1', 1)).toBe('message:1')
+  expect(selection([after[0]], 'message:1', 1)).toBe('message:7')
   expect(selection([], 'message:1', 0)).toBeUndefined()
 })
 

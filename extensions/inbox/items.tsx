@@ -26,7 +26,7 @@ export const inboxItems = (
       message,
     })),
     ...provided.flat().map((item) => ({ key: item.key, at: item.at, item })),
-  ].toSorted((a, b) => a.at - b.at)
+  ].toSorted((a, b) => b.at - a.at)
 
 export function selection(
   entries: readonly { key: string }[],

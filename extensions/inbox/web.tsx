@@ -162,7 +162,7 @@ function List({
         <span className="section-label">
           Waiting on you · <span className={amber}>{items.length}</span>
         </span>
-        <span className="section-label">oldest first</span>
+        <span className="section-label">newest first</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" data-inbox-list>
         {items.map((entry) => (
@@ -521,7 +521,7 @@ function InboxRow({ items }: { items: Entry[] }) {
   const actions = useUltimate()
   const now = useNow(60_000)
   const active = actions.surface === SURFACE
-  const oldest = items[0]
+  const oldest = items.at(-1)
   return (
     <button
       aria-current={active ? 'true' : undefined}
@@ -559,7 +559,7 @@ export default defineWebExtension({
       id: SURFACE,
       title: 'Inbox',
       icon: InboxIcon,
-      description: 'Everything that waits on you, oldest first, answered in place',
+      description: 'Everything that waits on you, newest first, answered in place',
       order: 10,
       component: Inbox,
       badge: InboxBadge,
