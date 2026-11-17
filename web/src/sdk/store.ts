@@ -449,6 +449,8 @@ export function createStore(options: StoreOptions = {}) {
 
     show(id: ConversationId | undefined) {
       if (id === state.requested) return
+      unsubscribe(main)
+      main = undefined
       const kept = id === undefined ? undefined : recentViewsWithRawSnapshots.get(id)?.view
       set({
         requested: id,
