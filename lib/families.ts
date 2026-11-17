@@ -128,7 +128,7 @@ export function mergeFamilies(...layers: FamiliesLayer[]): Families {
     }
     Object.assign(assign, layer.assign)
   }
-  return { families, assign, ...(value.enforce ? { enforce: true } : {}) }
+  return { families, assign }
 }
 
 export const refOf = (value: string | undefined): ModelRef | undefined => {
