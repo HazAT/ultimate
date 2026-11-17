@@ -290,12 +290,15 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   const workspace = useWorkspaceIndex()
   if (!LanderLog.is(entry)) return null
   const data = entry.data
-  const queueReportsLanding = workspace.queue.some(
-    (item) => item.id === data.submission && item.state === 'landing',
-  )
   const own = entries
     .filter((candidate) => LanderLog.is(candidate))
     .filter((other) => other.data.submission === data.submission)
+  const batch = own.find((other) => other.data.batch)?.data.batch
+  const queueReportsLanding = workspace.queue.some(
+    (item) =>
+      (item.id === data.submission || batch?.some((member) => member.submission === item.id)) &&
+      item.state === 'landing',
+  )
   const after = own.filter((other) => other.id > entry.id)
   const afterSteps = after.map((other) => other.data).filter(isStep)
   if (isStep(data) && superseded(data, afterSteps)) return null
@@ -336,16 +339,19 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
   if (queuedLineWaitsForStartedGroup) return null
   if (data.step === 'started') {
     const queued = steps.find((other) => other.step === 'queued')
+    const heads = data.batch ?? [data]
     return (
       <div className="space-y-0.5 border-t border-border/60 pt-3">
-        <div className="flex items-center gap-2 font-mono text-[12px]">
-          <GitMergeIcon className="size-3.5 shrink-0 text-brand" />
-          <Subject from={data.conversationId} subject={data.subject} />
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {short(data.tip)} → {data.target}
-          </span>
-          <Open id={data.conversationId} />
-        </div>
+        {heads.map((head) => (
+          <div className="flex items-center gap-2 font-mono text-[12px]" key={head.tip}>
+            <GitMergeIcon className="size-3.5 shrink-0 text-brand" />
+            <Subject from={head.conversationId} subject={head.subject} />
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {short(head.tip)} → {data.target}
+            </span>
+            <Open id={head.conversationId} />
+          </div>
+        ))}
         {queued && <StepLine row={queued} took={took(queued)} />}
         <StepLine active={landing} done={done} failed={failed} row={data} took={took(data)} />
       </div>

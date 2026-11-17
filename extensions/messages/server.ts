@@ -215,6 +215,8 @@ export default function messages(host: ExtensionHost) {
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),
     working: (tx, id) => working(tx, id),
+    ultimate: async (ctx) =>
+      (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate,
   })
   host.implement(MessagesApi, {
     answer: (messageId, text, ctx, device, call) =>

@@ -110,7 +110,9 @@ full log in `ultimate.lander` entries and refuses every input.
 request (new agreements, different approach or library, changed scope), or "None" when it matches. It queues a
 top-level main's clean tip in the root document's `queue` and returns its position and lander conversation at once;
 the main keeps working. The submission saves `divergence` and `at`, the submitter's latest visible entry at submit
-time, as a breadcrumb. One `workspaces.lander` task per source checkout (`landers`) processes that source's entries
+time, as a breadcrumb. A resubmit replaces the conversation's other entries still `queued`
+(never a landing one), keeping an entry of the same tip, and takes the first one's place in line; it logs `replaced
+<sha> (queued) with <sha>` for each and says `replacing <sha>` in its result. One `workspaces.lander` task per source checkout (`landers`) processes that source's entries
 in order.
 
 The task runs in that source's lander conversation (`landerConversations`): ownerless, titled "@lander",
@@ -172,7 +174,8 @@ lander's sidebar row shows the feature it lands or landed last.
    A failed run's log entry keeps its output tail as `output` (not in `steps`), under a collapsed "Output" in the
    lander's log, so a check that then passed as flaky can still be diagnosed.
 4. Fast-forwards the target branch in the source checkout (`merge --ff-only` when it is checked out). If the target
-   moved meanwhile it starts again, at most three attempts.
+   moved meanwhile it starts again, at most three attempts; a target that already contains the integrated commit (a
+   replay after the fast-forward, with more landed on top) counts as fast-forwarded.
 5. With `lander.push`, pushes the target branch (never forced); a rejection integrates again once, then is reported.
 6. Records `landed`, emitting `workspaces.landed` in the same commit, then reports (request id `lander:<submission>`
    for each write): the landed commit and commits, flaky checks, whether it pushed, "Needs restart." for `server/`,
@@ -188,8 +191,50 @@ lander's sidebar row shows the feature it lands or landed last.
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.
 
-Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin" }`;
-both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
+### Batches
+
+When several submissions wait, the lander takes the first and the ones right behind it for the same target, up to
+`lander.batch` (default 3; 1 lands one at a time), and lands them as one batch:
+
+1. It merges each member's tip onto the target tip in queue order, each with its own merge commit, as landing them
+   one after another would. A member that conflicts leaves the batch (logged with the conflicting paths), moves right
+   behind it and lands by itself afterwards, where it gets the usual conflict report; the rest merge again.
+2. It runs the checks once, on the last merge commit.
+3. Before the target moves, it records each member's own `landed` in one commit: its merge commit, with the member
+   before it (or the old tip) as `base`, the batch's flaky checks, and `checked`, the commit the checks ran on. Then it
+   fast-forwards the target once and pushes `checked` once; the push adds `pushed`. Each member is then reported in
+   turn exactly as a submission landed by an earlier task: no merge, checks or push again, its own report, conclusion,
+   starter card and `workspaces.landed` event. A member whose record the target lacks never landed (its batch
+   stopped before the fast-forward): its record is dropped first, so only what it lands by itself is reported.
+
+A check that fails twice, a remote merge conflict, a fast-forward refused or a target that kept moving splits the
+batch: its members go back to `queued` marked `alone`, and each lands by itself on the usual path, so only the one at
+fault is reported as failed. A rejected batch push leaves each member to push `checked` on its own, with its own retry; no member's
+intermediate merge commit, which no check ran on, is ever pushed.
+The batch is the task's checkpoint (`batch`, `ids`, `attempt`) and its merges, checks and integrated commits are
+memoized under it, so a restart resumes it where it stopped. A lander task that ends mid-batch leaves its members
+queued: before the fast-forward the next task forms the batch again (or, once their records exist, lands them one at a
+time); after it, each reports its own recorded landing and pushes `checked`.
+
+In the lander's log a batch is one run: its first line (`started`, with `batch` listing the members' submissions,
+conversations, tips and subjects) heads it with one row per member, and its steps and checks are logged once, under
+the batch's own id; each check run emits one `workspaces.check` with that id. Each member's `steps` get every batch
+step, starting with `started with #<the others>`, so its submit card follows the batch. Its outcome is its own line.
+
+### Offline
+
+A fetch, `ls-remote` or push that cannot reach the remote (git's or curl's words for an unresolved host, a refused,
+reset or timed-out connection, `SSL_ERROR_SYSCALL`, or our own 5-minute timeout: usually the Mac slept or the VPN
+dropped) fails nothing. The landing waits in place, so the queue pauses with every submission still in it: one
+`waiting for network` step (git's last line under its collapsed output), then `git ls-remote <push> HEAD` every 30 s,
+doubling up to every 5 minutes. Once the probe reaches the remote, or fails some other way, the same command runs
+again and a `network back after <n> min` step follows. After 30 minutes offline the lander says so once, as a notice
+and an input to @ultimate listing the waiting submissions, and keeps waiting. Anything else stays a failure:
+authentication, a rejected push, a conflict. The check watchdog does not apply: git's network commands are not checks.
+A restart mid-wait runs the command again at once.
+
+Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin", "batch": 3 }`;
+all are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
 `workspaces.landed` event.
 
 Each attempt starts from a reset checkout, and the integrated commit is memoized after the checks, so a crash resumes

@@ -28,6 +28,7 @@ import { createLander, landerCheckout, landerPath } from '../../lander.ts'
 import { CheckRan, SubmissionFailed, SubmissionLanded } from '../../api.ts'
 import lineage, { leaveNote, startBranch } from '../../../lineage/server.ts'
 import { LineageApi, Roots } from '../../../lineage/api.ts'
+import type { NetworkWait } from '../../lander.ts'
 import {
   actions as conversationActions,
   concludeIn,
@@ -63,6 +64,8 @@ async function repository() {
     const path = join(await temp('ultimate-workspaces-template-'), 'project')
     await mkdir(join(path, 'agents'), { recursive: true })
     await git(path, 'init', '-b', 'main')
+    // A global core.fsmonitor would leave its daemon's socket in .git, which the copies below cannot copy.
+    await git(path, 'config', 'core.fsmonitor', 'false')
     await git(path, 'config', 'user.email', 'test@example.com')
     await git(path, 'config', 'user.name', 'Test')
     await writeFile(join(path, 'base.txt'), 'base')
@@ -780,6 +783,7 @@ it.concurrent('emits one landed event and notes the root once, across a replayed
     working: async () => false,
     conclude: async () => {},
     release: async () => [],
+    ultimate: async () => undefined,
   })
   const report = task.definition.phases.report
   let replays = 0
@@ -1318,6 +1322,79 @@ it.concurrent('lands two submissions in order onto a moved target and reports bo
   // Lineage is disabled in this fixture: landings leave no root note.
   expect(await rootNotes(f)).toHaveLength(0)
 })
+it.concurrent('a resubmit replaces its queued entry in place, keeps a landing one and leaves other conversations alone', async () => {
+  const f = await fixture()
+  const held = heldCheck(f)
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command] } })
+  const first = await f.create()
+  const second = await f.create()
+  await f.service.ready(first, context)
+  await f.service.ready(second, context)
+  const one = (await f.service.get(first, context))!.path
+  const two = (await f.service.get(second, context))!.path
+  const queue = async () =>
+    (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!.queue.map(
+      (item) => [item.conversationId, item.tip.slice(0, 7), item.state],
+    )
+  const tipOf = async (path: string) => (await git(path, 'rev-parse', 'HEAD')).slice(0, 7)
+  await commit(one, 'one.txt')
+  const landing = await tipOf(one)
+  await f.service.submit(first, 'None', context)
+  await held.started()
+  // The landing entry stays; the resubmit queues behind it.
+  await commit(one, 'two.txt')
+  const stale = await tipOf(one)
+  const kept = await f.service.submit(first, 'None', context)
+  expect(kept.text).not.toContain('replacing')
+  await commit(two, 'other.txt')
+  const other = await tipOf(two)
+  await f.service.submit(second, 'None', context)
+  // The next resubmit replaces the queued entry and keeps its place, ahead of the other conversation's.
+  await commit(one, 'three.txt')
+  const fresh = await tipOf(one)
+  const replacing = await f.service.submit(first, 'None', context)
+  expect(replacing.position).toBe(2)
+  expect(replacing.text).toContain(`position 2 in the main queue, replacing ${stale}.`)
+  expect(await queue()).toEqual([
+    [first, landing, 'landing'],
+    [first, fresh, 'queued'],
+    [second, other, 'queued'],
+  ])
+  // A stale entry left from before this rule, ahead of the other conversation's: resubmitting the same tip keeps its
+  // entry, drops the stale one and takes its place.
+  const staleTip = await git(one, 'rev-parse', 'HEAD~1')
+  await f.opened.harness.commit(async (tx) => {
+    const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+    const [running, current, waiting] = index.queue
+    const left = {
+      ...current,
+      id: 'left-before-the-rule',
+      tip: staleTip,
+      steps: [],
+    }
+    index.queue = [running, left, waiting, current]
+  }, context)
+  const again = await f.service.submit(first, 'None', context)
+  expect(again.id).toBe(replacing.id)
+  expect(again.text).toContain(`position 2 in the main queue, replacing ${stale}.`)
+  expect(await queue()).toEqual([
+    [first, landing, 'landing'],
+    [first, fresh, 'queued'],
+    [second, other, 'queued'],
+  ])
+  await held.release()
+  await submitted(f, second)
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.step?.startsWith('replaced')).map((line) => line.step)).toEqual([
+    `replaced ${stale} (queued) with ${fresh}`,
+    `replaced ${stale} (queued) with ${fresh}`,
+  ])
+  expect(log.filter((line) => line.outcome).map((line) => line.tip.slice(0, 7))).toEqual([
+    landing,
+    fresh,
+    other,
+  ])
+})
 it.concurrent('runs a check group concurrently and records each summary', async () => {
   const f = await fixture()
   /** Both checks must start before either gate is released; serial execution cannot pass. */
@@ -1646,6 +1723,112 @@ it.concurrent('reports a local landing whose push retry conflicts as landed loca
   ).toBe(true)
   expect((await f.service.get(id, context))!.landed).toBe(landed)
 })
+/**
+ * Run the lander with `network`'s probe backoff and offline notice instead of 30 s, 5 min and 30 min; the root plays
+ * @ultimate.
+ */
+function landerWaiting(f: Awaited<ReturnType<typeof fixture>>, network: NetworkWait) {
+  const task = createLander(
+    f.host,
+    Workspaces,
+    (_source, operation) => operation(),
+    {
+      starter: async () => undefined,
+      working: async () => false,
+      conclude: async () => {},
+      release: async () => [],
+      ultimate: async () => f.opened.root.id,
+    },
+    undefined,
+    network,
+  )
+  f.prepared.registry.install(
+    defineExtension({
+      ...workspaceExtension(f.host),
+      tasks: [
+        ...(workspaceExtension(f.host).tasks ?? []).filter(
+          (item) => item.definition.name !== task.definition.name,
+        ),
+        task,
+      ],
+    }),
+  )
+}
+it('waits out an unreachable remote with the submission in place, says so once, and lands once it is back', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({ push: 'origin' }, paths)
+  landerWaiting(f, { first: 0.05, most: 0.1, tell: 0.3 })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path, 'offline.txt')
+  // The Mac slept: GitHub's name does not resolve.
+  await git(f.projectRoot, 'remote', 'set-url', 'origin', 'https://github.invalid/o/r.git')
+  const { id: submission } = await f.service.submit(id, 'None', context)
+  const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
+  await until(async () => (await index())!.queue[0]?.step?.startsWith('still waiting') ?? false)
+  expect((await index())!.queue).toMatchObject([{ id: submission, state: 'landing' }])
+  expect((await index())!.results[submission]).toBeUndefined()
+  expect(f.notice).toHaveBeenCalledWith(
+    expect.stringContaining(
+      `No network for 0 min (fatal: unable to access 'https://github.invalid/o/r.git/': Could not resolve host: github.invalid). 1 submission waits in the queue (#${id})`,
+    ),
+  )
+  // The network is back.
+  await git(f.projectRoot, 'remote', 'set-url', 'origin', bare)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(report).toContain('Pushed to origin/main.')
+  expect(await git(bare, 'rev-parse', 'main')).toBe(await git(f.projectRoot, 'rev-parse', 'main'))
+  const steps = (await index())!.results[submission].steps.map((row) => row.step)
+  expect(steps.slice(0, 6)).toEqual([
+    'queued',
+    'started',
+    'preparing',
+    'waiting for network',
+    'still waiting for network after 0 min',
+    'network back after 0 min',
+  ])
+  expect(steps.filter((step) => step.includes('network'))).toHaveLength(3)
+  expect(f.notice).toHaveBeenCalledTimes(1)
+  expect(await offlineInputs(f)).toEqual([expect.stringContaining('[lander] No network for 0 min')])
+  const waiting = (await landerLog(f)).log.find((line) => line.step === 'waiting for network')
+  expect(waiting?.output).toContain('Could not resolve host: github.invalid')
+})
+it('still fails a push the remote refuses for auth, without waiting for the network', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({ push: 'origin' }, paths)
+  landerWaiting(f, { first: 0.05, most: 0.1, tell: 0.3 })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path, 'auth.txt')
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh\necho "remote: Invalid username or token." >&2\necho "fatal: Authentication failed for 'https://github.com/o/r.git/'" >&2\nexit 1\n`,
+    { mode: 0o755 },
+  )
+  const { id: submission } = await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed locally as')
+  expect(report).toContain('Push failed: origin rejected the push')
+  expect(report).toContain('Authentication failed')
+  expect(await git(bare, 'rev-parse', 'main')).not.toBe(
+    await git(f.projectRoot, 'rev-parse', 'main'),
+  )
+  const result = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+    .results[submission]
+  expect(result.reason).toBe('Push failed: origin rejected the push')
+  expect(result.steps.some((row) => row.step.includes('network'))).toBe(false)
+  expect(f.notice).not.toHaveBeenCalled()
+  expect(await offlineInputs(f)).toEqual([])
+})
+/** What the lander told @ultimate (the root) about an outage. */
+async function offlineInputs(f: Awaited<ReturnType<typeof fixture>>) {
+  const view = await f.opened.root.context(context)
+  return view.entries
+    .flatMap((entry) => entry.model ?? [])
+    .flatMap((message) => (typeof message.content === 'string' ? [message.content] : []))
+    .filter((text) => text.includes('No network'))
+}
 it.concurrent('resumes checks after a restart without rerunning passed ones and keeps flaky notes', async () => {
   const f = await fixture()
   const log = join(f.directory, 'runs')
@@ -1819,6 +2002,231 @@ it.concurrent('resumes a group after a restart without a third run of its twice-
     output: expect.stringContaining('FAILING_OUTPUT'),
   })
   expect(await git(f.projectRoot, 'rev-parse', 'HEAD')).toBe(head)
+})
+
+/** One workspace per file, each with its own commit writing `content` (the file's name by default) to it. */
+async function committed(f: Awaited<ReturnType<typeof fixture>>, files: [string, string?][]) {
+  const ids: ConversationId[] = []
+  for (const [file, content = file] of files) {
+    const id = await f.create()
+    await f.service.ready(id, context)
+    const { path } = (await f.service.get(id, context))!
+    await writeFile(join(path, file), content)
+    await git(path, 'add', '.')
+    await git(path, 'commit', '-qm', file)
+    ids.push(id)
+  }
+  return ids
+}
+/** While a first submission holds the lander on its `held` check, submit `waiting`: they queue behind it together. */
+async function queueBehind(
+  f: Awaited<ReturnType<typeof fixture>>,
+  held: ReturnType<typeof heldCheck>,
+  waiting: ConversationId[],
+) {
+  const [first] = await committed(f, [['first.txt']])
+  await f.service.submit(first, 'None', context)
+  await held.started()
+  for (const id of waiting) await f.service.submit(id, 'None', context)
+  await held.release()
+}
+const lines = (text: string) => text.split('\n').filter(Boolean)
+
+it.concurrent('lands waiting submissions as one batch: one check run and one push, each with its own merge commit, report and landed event', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({}, paths)
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  const pushes = join(f.directory, 'pushes')
+  f.host.projectSettings = async () => ({
+    lander: { checks: [`echo run >> '${runs}'; ${held.command}`], push: 'origin' },
+  })
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh\ncat >/dev/null\necho push >> '${pushes}'\n`,
+    { mode: 0o755 },
+  )
+  const batched = await committed(f, [['1.txt'], ['2.txt'], ['3.txt']])
+  await queueBehind(f, held, batched)
+  const reports = []
+  for (const id of batched) reports.push(await submitted(f, id))
+  // The first submission ran alone, the three after it together.
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(lines(await readFile(pushes, 'utf8'))).toHaveLength(2)
+  expect(await git(bare, 'rev-parse', 'main')).toBe(await git(f.projectRoot, 'rev-parse', 'main'))
+  // Each member merged onto the one before it, in queue order, and reports its own merge commit.
+  const merges = lines(
+    await git(f.projectRoot, 'log', '--first-parent', '--format=%H %P %s', '-4'),
+  ).toReversed()
+  const landings = (await f.host.eventLog.recent({ events: [SubmissionLanded] })).map(
+    (event) => event.data,
+  )
+  for (const [position, id] of batched.entries()) {
+    const [sha, parent, , ...message] = merges[position + 1].split(' ')
+    expect(parent).toBe(merges[position].split(' ')[0])
+    expect(message.join(' ')).toMatch(`from #${id} into main`)
+    expect(reports[position]).toHaveLength(1)
+    expect(reports[position][0]).toContain(`landed as ${sha.slice(0, 7)} on main.`)
+    expect(reports[position][0]).toContain(`${position + 1}.txt`)
+    expect(reports[position][0]).toContain('Pushed to origin/main.')
+    expect(landings.filter((landing) => landing.conversationId === id)).toEqual([
+      expect.objectContaining({ sha, base: parent, pushed: 'origin/main', commitCount: 2 }),
+    ])
+  }
+  // The log heads the batch's run with its three submissions; each member's steps name the others.
+  const { log } = await landerLog(f)
+  const started = log.filter((line) => line.batch)
+  expect(started).toHaveLength(1)
+  expect(started[0].batch!.map((member) => member.conversationId)).toEqual(batched)
+  const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+  const steps = Object.values(index.results)
+    .find((result) => result.conversationId === batched[1])!
+    .steps.map((row) => row.step)
+  expect(steps).toEqual(
+    expect.arrayContaining([
+      `started with #${batched[0]}, #${batched[2]}`,
+      `merging #${batched[1]}`,
+      'pushing to origin',
+    ]),
+  )
+  expect(steps.filter((step) => step === 'pushing to origin')).toHaveLength(1)
+})
+
+it.concurrent('splits a batch whose check fails: the others land one at a time and only the failing one is reported', async () => {
+  const f = await lander({})
+  const held = heldCheck(f, 'test ! -f fail.txt')
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command] } })
+  const [good, bad, later] = await committed(f, [['good.txt'], ['fail.txt'], ['later.txt']])
+  await queueBehind(f, held, [good, bad, later])
+  const [reportGood] = await submitted(f, good)
+  const reportsBad = await submitted(f, bad)
+  const [reportLater] = await submitted(f, later)
+  expect(reportGood).toContain('landed as')
+  expect(reportLater).toContain('landed as')
+  expect(reportsBad).toHaveLength(1)
+  expect(reportsBad[0]).toContain('was not landed: check failed twice')
+  const subjects = await git(f.projectRoot, 'log', '--first-parent', '--format=%s', '-2')
+  expect(lines(subjects).map((line) => line.split(' ').at(-3))).toEqual([`#${later}`, `#${good}`])
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.step?.startsWith('batch not landed'))).toEqual([
+    expect.objectContaining({
+      step: `batch not landed: check failed twice: ${held.command}; landing one at a time`,
+    }),
+  ])
+})
+
+it.concurrent('drops a conflicting submission from its batch: the rest land together and it gets the conflict report after them', async () => {
+  const f = await lander({})
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  f.host.projectSettings = async () => ({
+    lander: { checks: [`echo run >> '${runs}'; ${held.command}`] },
+  })
+  const [one, clash, three] = await committed(f, [
+    ['shared.txt', 'one'],
+    ['shared.txt', 'clash'],
+    ['three.txt'],
+  ])
+  await queueBehind(f, held, [one, clash, three])
+  const [reportClash] = await submitted(f, clash)
+  expect(reportClash).toContain('was not landed: it conflicts with main in:')
+  expect(reportClash).toContain('shared.txt')
+  expect((await submitted(f, one))[0]).toContain('landed as')
+  expect((await submitted(f, three))[0]).toContain('landed as')
+  // The first submission's run and the batch's: the dropped one never ran its checks.
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(await readFile(join(f.projectRoot, 'shared.txt'), 'utf8')).toBe('one')
+  // It landed by itself after the batch, which reported first.
+  const { log } = await landerLog(f)
+  expect(log.filter((line) => line.outcome).map((line) => line.conversationId)).toEqual([
+    expect.any(Number),
+    one,
+    three,
+    clash,
+  ])
+})
+
+it.concurrent('a batch whose task ends after its fast-forward reports each member’s own landing and pushes only the checked commit', async () => {
+  const { paths, bare } = await withRemote()
+  const f = await lander({}, paths)
+  const held = heldCheck(f)
+  f.host.projectSettings = async () => ({ lander: { checks: [held.command], push: 'origin' } })
+  const pushed = join(f.directory, 'pushed')
+  const started = join(f.directory, 'push-started')
+  const gate = join(f.directory, 'push-gate')
+  // Logs every pushed commit and holds the batch's push, the first with 1.txt.
+  await writeFile(
+    join(f.projectRoot, '.git/hooks/pre-push'),
+    `#!/bin/sh
+while read local sha rest; do
+  echo "$sha" >> '${pushed}'
+  if git cat-file -e "$sha:1.txt" 2>/dev/null && [ ! -f '${gate}' ]; then
+    touch '${started}'
+    while [ ! -f '${gate}' ]; do sleep 0.02; done
+  fi
+done
+`,
+    { mode: 0o755 },
+  )
+  const batched = await committed(f, [['1.txt'], ['2.txt']])
+  await queueBehind(f, held, batched)
+  await until(() =>
+    access(started).then(
+      () => true,
+      () => false,
+    ),
+  )
+  const index = () => f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context)
+  const task = Object.values((await index())!.landers)[0]
+  await f.opened.harness.abortTask(task, context)
+  await until(
+    async () =>
+      (await f.opened.harness.commit((tx) => tx.task(task), context))!.state.status === 'terminal',
+  )
+  await writeFile(gate, '')
+  const checked = await git(f.projectRoot, 'rev-parse', 'main')
+  const ownMerge = await git(f.projectRoot, 'rev-parse', 'main~1')
+  await f.reopen()
+  const [reportOne] = await submitted(f, batched[0])
+  const [reportTwo] = await submitted(f, batched[1])
+  expect(reportOne).toContain(`landed as ${ownMerge.slice(0, 7)} on main.`)
+  expect(reportOne).toContain('Pushed to origin/main.')
+  expect(reportTwo).toContain(`landed as ${checked.slice(0, 7)} on main.`)
+  expect(await git(bare, 'rev-parse', 'main')).toBe(checked)
+  // After the first submission's own push, only the commit the batch's checks ran on was pushed.
+  expect(new Set(lines(await readFile(pushed, 'utf8')).slice(1))).toEqual(new Set([checked]))
+})
+
+it.concurrent('resumes a batch after a restart without rerunning its passed checks', async () => {
+  const f = await lander({})
+  const held = heldCheck(f)
+  const runs = join(f.directory, 'runs')
+  const batchStarted = join(f.directory, 'batch-started')
+  const batchGate = join(f.directory, 'batch-gate')
+  f.host.projectSettings = async () => ({
+    lander: {
+      checks: [
+        held.command,
+        `echo run >> '${runs}'`,
+        // Holds only the batch, which has 1.txt.
+        `if [ -f 1.txt ]; then touch '${batchStarted}'; while [ ! -f '${batchGate}' ]; do sleep 0.05; done; fi`,
+      ],
+    },
+  })
+  const batched = await committed(f, [['1.txt'], ['2.txt']])
+  await queueBehind(f, held, batched)
+  await until(() =>
+    access(batchStarted).then(
+      () => true,
+      () => false,
+    ),
+  )
+  await f.reopen()
+  await writeFile(batchGate, '')
+  for (const id of batched) expect((await submitted(f, id))[0]).toContain('landed as')
+  expect((await landerLog(f)).log.filter((line) => line.batch)).toHaveLength(1)
+  expect(lines(await readFile(runs, 'utf8'))).toHaveLength(2)
+  expect(await readFile(join(f.projectRoot, '2.txt'), 'utf8')).toBe('2.txt')
 })
 
 it.concurrent('pending warns about branch commits; release keeps only dirty or detached work and input restores branch commits', async () => {
