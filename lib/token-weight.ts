@@ -1,5 +1,6 @@
 import { git } from './git.ts'
 import { meansNone } from './errors.ts'
+import { spawn } from './spawn.ts'
 
 const measuredBytesPerEstimatedToken = 4
 export const tokensOf = (bytes: number) => Math.round(bytes / measuredBytesPerEstimatedToken)
@@ -34,13 +35,52 @@ export async function filesAt(cwd: string, rev: string) {
   return files
 }
 
+function sizesInOrderMissingAsZero(cwd: string, objects: string[]) {
+  if (!objects.length) return Promise.resolve([])
+  return new Promise<number[]>((resolve, reject) => {
+    const child = spawn('git', ['cat-file', '--batch-check=%(objectsize)'], { cwd })
+    let out = ''
+    let err = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (out += chunk))
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (err += chunk))
+    child.on('error', reject)
+    child.on('close', (code) =>
+      code === 0
+        ? resolve(out.split('\n', objects.length).map((line) => Number(line) || 0))
+        : reject(new Error(`git cat-file exited ${code}: ${err.trim()}`)),
+    )
+    child.stdin.end(`${objects.join('\n')}\n`)
+  })
+}
+
+const absentSideOrSubmoduleHasNoBlob = (mode: string) => mode === '000000' || mode === '160000'
+
 export async function weightDelta(cwd: string, base: string, sha: string) {
-  const [before, after, numstat] = await Promise.all([
-    filesAt(cwd, base),
-    filesAt(cwd, sha),
-    git({ cwd, maxBuffer: 16 * 1024 * 1024 }, 'diff', '--numstat', '--no-renames', base, sha),
+  const options = { cwd, maxBuffer: 64 * 1024 * 1024 }
+  const [rawModesShasStatusThenPathNulSeparated, numstat] = await Promise.all([
+    git(options, 'diff', '--raw', '-z', '--no-abbrev', '--no-renames', base, sha),
+    git(options, 'diff', '--numstat', '--no-renames', base, sha),
   ])
-  const total = (files: { bytes: number }[]) => files.reduce((sum, file) => sum + file.bytes, 0)
+  const objects: string[] = []
+  const signs: number[] = []
+  const fields = rawModesShasStatusThenPathNulSeparated.split('\0')
+  for (let at = 0; at + 1 < fields.length; at += 2) {
+    const [oldMode, newMode, oldSha, newSha] = fields[at].slice(1).split(' ')
+    if (!areaOf(fields[at + 1])) continue
+    for (const [mode, object, sign] of [
+      [oldMode, oldSha, -1],
+      [newMode, newSha, 1],
+    ] as const)
+      if (!absentSideOrSubmoduleHasNoBlob(mode)) {
+        objects.push(object)
+        signs.push(sign)
+      }
+  }
+  let before = 0
+  let after = 0
+  for (const [index, bytes] of (await sizesInOrderMissingAsZero(cwd, objects)).entries())
+    if (signs[index] > 0) after += bytes
+    else before += bytes
   let added = 0
   let removed = 0
   for (const line of numstat.split('\n')) {
@@ -51,7 +91,7 @@ export async function weightDelta(cwd: string, base: string, sha: string) {
     added += addedTextLinesOrBinaryZero
     removed += removedTextLinesOrBinaryZero
   }
-  return { added, removed, tokens: tokensOf(total(after)) - tokensOf(total(before)) }
+  return { added, removed, tokens: tokensOf(after) - tokensOf(before) }
 }
 
 export const landingWeight = (cwd: string, base: string, sha: string) =>
