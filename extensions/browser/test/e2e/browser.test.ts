@@ -1,9 +1,10 @@
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import type { ToolExecutionApi } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../../../server/harness.ts'
-import browserExtension from '../../server.ts'
+import browserExtension, { browserBinary } from '../../server.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { groupAlive } from '../../../../lib/process-group.ts'
 import { removeTemp, temp, until } from '../../../../test/helpers.ts'
@@ -44,6 +45,13 @@ it('kills a browser that drops its connection and keeps running, without a notic
 
 it('times out a hung step, closes its page and keeps later calls working', async () => {
   const directory = await temp('ultimate-browser-timeout-')
+  // Under load a cold launch outlasted the call's 1 s timeoutMs and failed it before its first step.
+  // A launch slower than timeoutMs keeps that deterministic.
+  const slowChrome = join(directory, 'slow-chrome')
+  await writeFile(slowChrome, `#!/bin/sh\nsleep 1.5\nexec '${await browserBinary()}' "$@"\n`, {
+    mode: 0o755,
+  })
+  vi.stubEnv('ULTIMATE_CHROMIUM', slowChrome)
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
   const host = {
@@ -73,6 +81,82 @@ it('times out a hung step, closes its page and keeps later calls working', async
       expect(next.result.isError).toBeFalsy()
       expect(next.text).toContain('Step 1: OK \\"Hang\\"')
     }
+  } finally {
+    vi.unstubAllEnvs()
+    for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
+
+// A store's quiz ran in a sandboxed iframe: every call reported the `ultimate.driven` write throwing in that frame as a
+// page error, also in calls that passed.
+it('marks the page as driven without a page error from a sandboxed frame', async () => {
+  const directory = await temp('ultimate-browser-sandboxed-')
+  const closers: (() => Promise<void>)[] = []
+  const page = createServer((_request, response) =>
+    response.end(
+      '<title>Shop</title><iframe sandbox="allow-scripts" srcdoc="<p>quiz</p>"></iframe>',
+    ),
+  )
+  await new Promise<void>((done) => page.listen(0, '127.0.0.1', done))
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  try {
+    const { port } = page.address() as { port: number }
+    const result = await browser.execute(
+      {
+        url: `http://127.0.0.1:${port}/`,
+        steps: [{ eval: "sessionStorage.getItem('ultimate.driven')" }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBeFalsy()
+    expect(JSON.stringify(result.output)).not.toContain('error')
+    expect(JSON.stringify(result.output)).toContain('Step 1: OK \\"1\\"')
+  } finally {
+    for (const close of closers) await close()
+    await new Promise((done) => page.close(done))
+    await removeTemp(directory)
+  }
+})
+
+// The call trace keeps the first 300 characters of a failed call: a page's console errors filled them, so the dream's
+// tool stats grouped 69 of 88 such failures by a console line, without the step that failed.
+it('names the failure before the console errors', async () => {
+  const directory = await temp('ultimate-browser-failure-')
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  try {
+    const result = await browser.execute(
+      {
+        url: 'data:text/html,<script>console.error("noise")</script>',
+        steps: [{ eval: 'Promise.reject(new Error("boom"))' }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBe(true)
+    const text = (result.output as { text: string }[])[0].text
+    expect(text.split('\n')[0]).toContain('boom')
+    expect(text).toContain('Console error: noise')
   } finally {
     for (const close of closers) await close()
     await removeTemp(directory)

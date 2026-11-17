@@ -1,23 +1,28 @@
-// The lanes as a tree: rows indented under the lane that started them, a dotted overlay linking each spawning call to
-// its child's first block, and the chain of a hovered or picked lane lit while the rest dims.
+import type { ConversationId } from '@earendil-works/pi-durable'
+
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { cn, useConversations } from '@/sdk'
-import { Guide, INDENT, LaneRow, ROW_CENTRE, standingName } from './lanes.tsx'
+import {
+  Guide,
+  TREE_LEVEL_INDENT_PX,
+  LaneRow,
+  LANE_HEAD_CENTRE_Y_PX,
+  standingName,
+} from './lanes.tsx'
 import type { LaneState } from './lanes.tsx'
 import { chain, links, messageLinks, tree } from './layout.ts'
 import type { Frame, WindowName } from './layout.ts'
 import type { Lane, LaneLink } from './refs.ts'
 
 const KEY = 'ultimate.system.expanded'
-/** Parents whose finished children the user unfolded, remembered in this browser. */
+
 function useExpanded() {
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const stored: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]')
       return new Set(Array.isArray(stored) ? stored.filter(Number.isInteger) : [])
     } catch {
-      // A hand-edited or foreign value: start folded, the next toggle overwrites it.
       return new Set()
     }
   })
@@ -32,10 +37,6 @@ function useExpanded() {
 
 type Box = { left: number; width: number; y: Map<number, number> }
 
-/**
- * Where the timeline column sits in the list and each lane's centre line: measured when the rows (`rows`, a key of
- * them) change and whenever the list resizes, as it does when a run's calls open.
- */
 function useFrame(list: RefObject<HTMLUListElement | null>, rows: string) {
   const [box, setBox] = useState<Box>()
   useLayoutEffect(() => {
@@ -48,7 +49,7 @@ function useFrame(list: RefObject<HTMLUListElement | null>, rows: string) {
       const area = timeline.getBoundingClientRect()
       const y = new Map<number, number>()
       for (const row of element.querySelectorAll<HTMLElement>(':scope > [data-lane]'))
-        y.set(Number(row.dataset.lane), row.offsetTop + ROW_CENTRE)
+        y.set(Number(row.dataset.lane), row.offsetTop + LANE_HEAD_CENTRE_Y_PX)
       const next = { left: area.left - origin.left, width: area.width, y }
       setBox((previous) => (previous && same(previous, next) ? previous : next))
     }
@@ -65,11 +66,11 @@ const same = (a: Box, b: Box) =>
   a.y.size === b.y.size &&
   [...a.y].every(([id, at]) => b.y.get(id) === at)
 
-/** The lanes as an indented tree with their spawn and message links. */
 export function LaneTree({
   lanes,
   links: messages,
   states,
+  labels,
   window,
   since,
   now,
@@ -78,25 +79,26 @@ export function LaneTree({
   lanes: Lane[]
   links: LaneLink[]
   states: Map<number, LaneState>
+  labels?: Map<number, string | undefined>
   window: WindowName
   since: number
   now: number
-  onFilter: (conversation: number) => void
+  onFilter: (conversation: ConversationId) => void
 }) {
   const { expanded, toggle } = useExpanded()
-  const [hovered, setHovered] = useState<number>()
-  const [picked, setPicked] = useState<number>()
+  const [hovered, setHovered] = useState<ConversationId>()
+  const [picked, setPicked] = useState<ConversationId>()
   const list = useRef<HTMLUListElement>(null)
   const summaries = useConversations()
-  // @ultimate always leads, with the conversations it started under it.
-  const ultimate = lanes.find(
+
+  const pinnedUltimateConversation = lanes.find(
     (lane) =>
       standingName(
         lane,
         summaries.find((item) => item.id === lane.conversation),
       ) === 'ultimate',
   )?.conversation
-  const rows = tree(lanes, expanded, ultimate)
+  const rows = tree(lanes, expanded, pinnedUltimateConversation)
   const shown = lanes.filter((lane) => rows.some((row) => row.kind === 'lane' && row.lane === lane))
   const box = useFrame(
     list,
@@ -113,7 +115,7 @@ export function LaneTree({
           frame,
         )
       : []
-  const on = (from: number, to: number) => !lit || (lit.has(from) && lit.has(to))
+  const on = (from: ConversationId, to: ConversationId) => !lit || (lit.has(from) && lit.has(to))
   return (
     <ul className="relative" ref={list}>
       {rows.map((row) =>
@@ -136,6 +138,7 @@ export function LaneTree({
             row={row}
             since={since}
             state={states.get(row.lane.conversation) ?? 'idle'}
+            waitLabel={labels?.get(row.lane.conversation)}
             window={window}
           />
         ) : (
@@ -145,7 +148,7 @@ export function LaneTree({
               lit && !lit.has(row.parent) && 'opacity-40',
             )}
             key={`fold-${row.parent}`}
-            style={{ paddingLeft: row.depth * INDENT }}
+            style={{ paddingLeft: row.depth * TREE_LEVEL_INDENT_PX }}
           >
             <Guide centre={16} row={row} />
             <button
@@ -186,7 +189,6 @@ export function LaneTree({
             </g>
           ))}
           {sent.map((link, index) => (
-            // oxlint-disable-next-line react/no-array-index-key -- Computed message paths have no id and can overlap.
             <g className="stroke-brand opacity-45" key={`m${index}`}>
               <path d={link.d} fill="none" strokeDasharray="1 3" strokeLinecap="round" />
               <circle

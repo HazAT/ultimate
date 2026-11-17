@@ -1,6 +1,7 @@
+import { parseConversationId, parseTaskId } from '../../lib/ids.ts'
+import type { EntryId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AssistantEntry } from '@earendil-works/pi-durable'
-import type { EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
@@ -9,24 +10,20 @@ import { DescribeAction, StartedAction } from './refs.ts'
 import type { TaskFacts } from './refs.ts'
 
 type Input = Record<string, unknown> | null | undefined
-/** The message's opening words, lines joined: a first line alone is often only "The user's go:". */
-const gist = (text: string) => {
+const multilineGist = (text: string) => {
   const words = text.replace(/\s+/g, ' ').trim()
   return words.length > 100 ? `${words.slice(0, 99)}…` : words
 }
 
-/** The conversation a task's input names, under whichever field its kind uses. */
 const conversationOf = (input: Input) => {
   for (const key of ['conversationId', 'conversation', 'target', 'id', 'to'])
-    if (typeof input?.[key] === 'number') return input[key]
+    if (typeof input?.[key] === 'number') return parseConversationId(input[key])
   return undefined
 }
 
-/** What one task's input says about it; see `TaskFacts`. */
 async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): Promise<TaskFacts> {
   switch (kind) {
     case 'board.delivery': {
-      // In its `reply` phase it carries the recipient's answer back to this message's sender.
       const m = input?.message as Message
       return {
         message: {
@@ -35,7 +32,7 @@ async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): P
           to: m.to,
           reply: m.reply,
           note: input?.note === true,
-          gist: gist(m.text),
+          gist: multilineGist(m.text),
         },
       }
     }
@@ -51,14 +48,13 @@ async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): P
       return part?.type === 'toolCall' ? { tool: part.name } : {}
     }
     case 'ultimate.automation-scheduler': {
-      const a = await host.want(AutomationsApi)?.read(tx, input?.id as string)
+      const a = await host.need(AutomationsApi).read(tx, input?.id as string)
       return a ? { automation: a.name } : {}
     }
     case 'ultimate.automation-run':
       return { automation: (input!.automation as { name: string }).name }
     case 'ultimate.automation-delivery':
       return { automation: (input!.sub as { name: string }).name }
-    // Which submission it lands changes as it works the queue; the panel reads that from the live queue.
     case 'workspaces.lander':
       return { source: input?.source as string }
     default: {
@@ -71,7 +67,6 @@ async function facts(host: ExtensionHost, tx: Tx, kind: string, input: Input): P
 export default { name: 'tasks' }
 
 export const actions = {
-  /** When each of `ids` first ran, in wall-clock milliseconds; tasks not yet started or gone are left out. */
   started: implementAction(StartedAction, async (args, { host }) => {
     const ids = (args as { ids?: unknown } | null)?.ids
     if (!Array.isArray(ids) || !ids.every((id) => Number.isSafeInteger(id)))
@@ -79,13 +74,12 @@ export const actions = {
     return host.harness().commit(async (tx) => {
       const started: Record<string, number> = {}
       for (const id of ids as number[]) {
-        const at = (await tx.task(id as TaskId))?.startedAt
-        if (at !== undefined) started[id] = at
+        const startedEpochMs = (await tx.task(parseTaskId(id)))?.startedAt
+        if (startedEpochMs !== undefined) started[id] = startedEpochMs
       }
       return started
     }, context)
   }),
-  /** What the input of each of `ids` says about it, to name it in plain words; gone tasks are left out. */
   describe: implementAction(DescribeAction, async (args, { host }) => {
     const ids = (args as { ids?: unknown } | null)?.ids
     if (!Array.isArray(ids) || !ids.every((id) => Number.isSafeInteger(id)))
@@ -93,7 +87,7 @@ export const actions = {
     return host.harness().commit(async (tx) => {
       const described: Record<string, TaskFacts> = {}
       for (const id of ids as number[]) {
-        const task = await tx.task(id as TaskId)
+        const task = await tx.task(parseTaskId(id))
         if (task) described[id] = await facts(host, tx, task.kind, task.input as Input)
       }
       return described

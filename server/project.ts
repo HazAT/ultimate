@@ -1,9 +1,9 @@
-import { createHash } from 'node:crypto'
-import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
-import { alive, readOwner } from './lock.ts'
+import { alive, readOwner } from '../lib/lock.ts'
+import { debounce } from '../lib/timers.ts'
+import { rebuiltOnOpen, meansNone } from '../lib/errors.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,
@@ -49,10 +49,7 @@ export async function projects(userHome: string, currentHome: string): Promise<P
       const project = await readJson<{ root: string; name: string; openedAt: number }>(
         join(home, 'project.json'),
       )
-      const lock = await readOwner(join(home, 'ultimate.lock')).catch(
-        // A missing or unreadable lock supplies no live-process evidence; the project still belongs in the list.
-        () => undefined,
-      )
+      const lock = await readOwner(join(home, 'ultimate.lock')).catch(meansNone)
       return {
         ...project,
         name: project?.name ?? basename(home),
@@ -68,22 +65,26 @@ export async function projects(userHome: string, currentHome: string): Promise<P
   )
 }
 
-/** Debounced, serialized snapshots; busy/ownership fields never enter the public index. */
 export function conversationIndex(home: string) {
   let latest = '[]'
   let written: string | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let writing = Promise.resolve()
+  let serializedSnapshots = Promise.resolve()
+  const publicIndexDebounceMs = 1000
+  const schedule = debounce(publicIndexDebounceMs, () => {
+    rebuiltOnOpen(
+      'the next summary change rebuilds conversations.json',
+      flush().catch((error: unknown) => console.error('Conversation index:', error)),
+    )
+  })
   const flush = () => {
-    clearTimeout(timer)
-    timer = undefined
-    writing = writing.then(async () => {
+    schedule.cancel()
+    serializedSnapshots = serializedSnapshots.then(async () => {
       if (latest === written) return
       const value = latest
       await atomicJson(join(home, 'conversations.json'), value)
       written = value
     })
-    return writing
+    return serializedSnapshots
   }
   return {
     update(summaries: ConversationSummary[]) {
@@ -101,24 +102,8 @@ export function conversationIndex(home: string) {
             answerAt,
           })),
       )
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        void flush().catch((error: unknown) => console.error('Conversation index:', error))
-      }, 1000)
+      schedule()
     },
     flush,
   }
-}
-
-export type Source = 'builtin' | 'user' | 'project'
-export function discoveryRoots(ultimateRoot: string, projectRoot: string, userHome = homedir()) {
-  return [
-    { source: 'builtin' as const, path: ultimateRoot },
-    { source: 'user' as const, path: join(userHome, '.ultimate') },
-    { source: 'project' as const, path: join(projectRoot, '.ultimate') },
-  ]
-}
-export function projectHome(projectRoot: string, userHome = homedir()) {
-  const hash = createHash('sha256').update(projectRoot).digest('hex').slice(0, 8)
-  return join(userHome, '.ultimate', 'projects', `${basename(projectRoot)}-${hash}`)
 }

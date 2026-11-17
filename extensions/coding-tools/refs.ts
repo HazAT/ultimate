@@ -1,4 +1,5 @@
 /** Coding tools in the browser: the event each commit made through the bash tool records. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { defineEvent } from '../../shared/events.ts'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
@@ -11,13 +12,22 @@ export const CancelledDoc = docRef<{ calls: Record<string, number> }>('coding-to
 export const CancelAction = actionRef<{ callId: string }, null>('coding-tools', 'cancel')
 
 /**
+ * Conversation `conversation` started background group `name` (its pid file and log are `<home>/background/<conversation>/<name>.{pid,log}`).
+ * Committed after the start checked that the conversation is not concluded, so the event log orders it against
+ * `conversations.concluded`: a conclusion stops exactly the groups started before it.
+ */
+export const BackgroundStarted = defineEvent<{ conversation: ConversationId; name: string }>(
+  'coding-tools.background-started',
+)
+
+/**
  * Conversation `conversation` made commit `sha` (full) through the bash tool, in repository `repo` (its main
  * checkout, or the bare repository); `worktree` is the linked checkout it was made in, `branch` the checked-out branch
  * (absent when detached). `rewrittenFrom` is the commit an amend or rebase replaced. Recorded after the bash call, in a
  * commit of its own, so it outlives the commit and its worktree.
  */
 export const Committed = defineEvent<{
-  conversation: number
+  conversation: ConversationId
   sha: string
   parents: string[]
   repo: string

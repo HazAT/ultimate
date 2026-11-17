@@ -1,12 +1,13 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import { cn, useConversationSummary, useDocOf } from '@/sdk'
 import { OverviewDoc } from './refs.ts'
 import type { OverviewRow } from './types.ts'
 
 const none: Record<string, OverviewRow> = {}
 
-/** The root's overview rows by conversation id: one stream for all rows, unchanged when selection or expansion changes. */
 export function useOverview() {
-  return useDocOf(1, OverviewDoc)?.conversations ?? none
+  return useDocOf(ROOT, OverviewDoc)?.conversations ?? none
 }
 
 const hues = [
@@ -38,39 +39,31 @@ export function FeatureTag({ feature, className }: { feature: string; className?
   )
 }
 
-/** A standing agent's `@name`, the only name it goes by: titles and feature tags passed along with it go stale. */
-export function useStandingName(id: number) {
+export function useStandingName(id: ConversationId | undefined) {
   const live = useConversationSummary(id)
   return live?.label === 'agent' ? live.title : undefined
 }
 
-/**
- * A conversation as a person recognises it: a standing agent by its `@name`; else its feature tag and `title`, else
- * its live title; then `#id` in gray. Only
- * the name: the caller's button or link opens it. It never grows past its container: a long name truncates, with the
- * full name on hover, as long as the caller's flex item may shrink (`min-w-0`).
- */
 export function ConversationRef({
   id,
   title,
   className,
 }: {
-  id: number
+  id: ConversationId
   title?: string
   className?: string
 }) {
   const overview = useOverview()
   const live = useConversationSummary(id)?.title
-  // A standing agent is always itself: a feature tag would be stale, the work of whichever branch named it last.
   const agent = useStandingName(id)
-  const feature = agent ? undefined : overview[id]?.feature
-  const name = agent ?? title ?? (feature ? undefined : live)
+  const nonStandingFeature = agent ? undefined : overview[id]?.feature
+  const name = agent ?? title ?? (nonStandingFeature ? undefined : live)
   return (
     <span
       className={cn('inline-flex max-w-full min-w-0 items-center gap-1.5', className)}
       data-conversation-ref={id}
     >
-      {feature && <FeatureTag className="shrink-0" feature={feature} />}
+      {nonStandingFeature && <FeatureTag className="shrink-0" feature={nonStandingFeature} />}
       {name && (
         <span className="min-w-0 truncate" title={name}>
           {name}

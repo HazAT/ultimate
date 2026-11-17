@@ -11,14 +11,13 @@ import {
 import { useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { api, cn, formatDuration, formatTime, useUltimate } from '@/sdk'
+import { every, type Cancel } from '../../lib/timers.ts'
 import { ListAction } from './refs.ts'
 import type { Automation, AutomationListItem, Run, Schedule } from './refs.ts'
 
-/** A one-shot schedule whose time has passed: resuming it would fire at once, so its switch stays off. */
 export const spent = (automation: Automation, now: number) =>
   automation.schedule?.kind === 'at' && Date.parse(automation.schedule.time) <= now
 
-/** `in 3s`, `in 12m`, `in 3h 12m`, `in 2d 4h`, then a short date. */
 export function until(at: number, now: number) {
   const seconds = Math.max(0, Math.round((at - now) / 1000))
   if (seconds < 1) return 'now'
@@ -32,7 +31,6 @@ export function until(at: number, now: number) {
   return `on ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 }
 
-/** `now`, `12s ago`, `5m ago`, `3h ago`, `2d ago`, then a short date. */
 export function ago(at: number, now: number) {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
   if (seconds < 2) return 'now'
@@ -46,7 +44,6 @@ export function ago(at: number, now: number) {
   return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** A clock time, with the date when it is not today: `09:00:03`, `Oct 6, 09:00`. */
 export function clock(at: number, now: number) {
   const date = new Date(at)
   return date.toDateString() === new Date(now).toDateString()
@@ -61,7 +58,6 @@ export function clock(at: number, now: number) {
       })
 }
 
-/** The backend's words for a schedule; a one-shot reads as a local time rather than its ISO instant. */
 export const words = (schedule: Schedule, description: string, now: number) =>
   schedule.kind === 'at' ? `Once, ${clock(Date.parse(schedule.time), now)}` : description
 
@@ -102,10 +98,6 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   )
 }
 
-/**
- * What an automation is doing, in one word, whatever its trigger: a script's lifecycle, a prompt run working or failed,
- * or a schedule armed, paused or spent. Red and yellow need attention; green is armed; purple works; grey rests.
- */
 export type Look =
   | 'failed'
   | 'investigating'
@@ -144,9 +136,8 @@ export function lookOf(automation: Automation, now: number): Look {
   if (state === 'failed' || state === 'investigating' || state === 'writing') return state
   const last = automation.runs.at(-1)?.status
   if (last === 'running') return 'working'
-  // A failed run of a paused automation was already dealt with by pausing it; a fired one-shot script is disabled by
-  // its fire, not by anyone, so its failed run still needs attention.
-  if (last === 'failed' && (automation.enabled || state === 'done')) return 'failed'
+  const failedRunStillNeedsAttention = last === 'failed' && (automation.enabled || state === 'done')
+  if (failedRunStillNeedsAttention) return 'failed'
   if (state === 'running') return 'watching'
   if (state === 'done') return 'done'
   if (automation.enabled) {
@@ -158,11 +149,9 @@ export function lookOf(automation: Automation, now: number): Look {
 }
 
 export const attention = (look: Look) => look === 'failed' || look === 'investigating'
-/** Enabled, working or needing attention: what the sidebar and the chip count. */
 export const active = (automation: Automation, now: number) =>
   looks[lookOf(automation, now)].rank <= 3
 
-/** Worst first, then newest. */
 export const worstFirst = <T extends Automation>(list: readonly T[], now: number) =>
   list.toSorted(
     (a, b) => looks[lookOf(a, now)].rank - looks[lookOf(b, now)].rank || b.createdAt - a.createdAt,
@@ -187,7 +176,6 @@ export function Dot({ look, className }: { look: Look; className?: string }) {
   )
 }
 
-/** A clock for schedules, radar for scripts, bolt for Ultimate events and context. */
 export function KindIcon({
   automation,
   className,
@@ -213,7 +201,6 @@ export function KindIcon({
   )
 }
 
-/** `12s`, `5m`, `3h 12m`, `2d 4h`: how long since `at`, in whole units. */
 export function since(at: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - at) / 1000))
   if (seconds < 60) return `${seconds}s`
@@ -230,7 +217,6 @@ const fired = (automation: Automation, now: number) =>
     ? `fired ${automation.fires}${automation.lastFireAt ? ` · ${ago(automation.lastFireAt, now)}` : ''}`
     : undefined
 
-/** The one line under a name: what it is doing right now and what it did last. */
 export function stateLine(automation: Automation, now: number): string {
   const look = lookOf(automation, now)
   const script = automation.script
@@ -269,7 +255,6 @@ export function stateLine(automation: Automation, now: number): string {
     )
     if (last) parts.push(`${statusLabel(last.status)} ${ago(last.finishedAt ?? last.firedAt, now)}`)
   } else {
-    // The state word already stands before this line: add only what happened.
     if (script) parts.push(fired(automation, now) ?? 'never fired')
     else if (last)
       parts.push(`last ${statusLabel(last.status)} ${ago(last.finishedAt ?? last.firedAt, now)}`)
@@ -277,7 +262,6 @@ export function stateLine(automation: Automation, now: number): string {
   return parts.filter(Boolean).join(' · ')
 }
 
-/** Browser-safe wording for the two domain triggers. */
 export function triggerWords(automation: Automation) {
   if (automation.event) {
     const filters = Object.entries(automation.event.where ?? {}).map(
@@ -291,15 +275,11 @@ export function triggerWords(automation: Automation) {
 }
 
 type Polled = { data?: AutomationListItem[]; error?: unknown }
-/**
- * One list poll for the whole page: the chip, the sidebar, the panel and the cards share it, and it runs at the fastest
- * rate any of them asks for.
- */
 const poll = {
   state: {} as Polled,
   listeners: new Set<() => void>(),
   rates: new Map<symbol, number>(),
-  timer: undefined as ReturnType<typeof setInterval> | undefined,
+  stopPolling: undefined as Cancel | undefined,
   rate: 0,
   loading: undefined as Promise<void> | undefined,
 }
@@ -307,7 +287,6 @@ function publish(state: Polled) {
   poll.state = state
   for (const listener of poll.listeners) listener()
 }
-/** Fetch the list now; a fetch in flight is reused. Call it after an action changes an automation. */
 export function refreshAutomations() {
   poll.loading ??= api
     .action(ListAction)
@@ -317,12 +296,12 @@ export function refreshAutomations() {
   return poll.loading
 }
 function reschedule() {
-  const rate = Math.min(...poll.rates.values())
-  if (rate === poll.rate) return
-  clearInterval(poll.timer)
-  poll.rate = rate
-  poll.timer = Number.isFinite(rate)
-    ? setInterval(() => void refreshAutomations(), rate)
+  const fastestRequestedPollMs = Math.min(...poll.rates.values())
+  if (fastestRequestedPollMs === poll.rate) return
+  poll.stopPolling?.()
+  poll.rate = fastestRequestedPollMs
+  poll.stopPolling = Number.isFinite(fastestRequestedPollMs)
+    ? every(fastestRequestedPollMs, () => void refreshAutomations())
     : undefined
 }
 const listen = (listener: () => void) => {
@@ -330,13 +309,11 @@ const listen = (listener: () => void) => {
   return () => void poll.listeners.delete(listener)
 }
 
-/** The automations, fetched again every `ms` while this component is mounted (`false`: once). */
 export function useAutomations(ms: number | false): Polled {
   useEffect(() => {
     const key = Symbol()
     poll.rates.set(key, ms === false ? Infinity : ms)
     reschedule()
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in poll.state.error.
     void refreshAutomations()
     return () => {
       poll.rates.delete(key)
@@ -346,7 +323,6 @@ export function useAutomations(ms: number | false): Polled {
   return useSyncExternalStore(listen, () => poll.state)
 }
 
-/** Opens the Automations panel, on the Agent surface: other surfaces, such as System, have no panels. */
 export function openAutomationsPanel(shell: {
   showSurface: (id: string) => void
   openPanel: (id?: string) => void
@@ -355,29 +331,21 @@ export function openAutomationsPanel(shell: {
   shell.openPanel('automations')
 }
 
-/**
- * Opens automation `id`: a script's watcher conversation in the middle and the panel beside it, which then shows its
- * script; a schedule opens the panel on the list. An id the list does not know yet (a card for one just created) is
- * looked up first.
- */
 export function useOpenAutomation() {
   const { switchConversation, ...shell } = useUltimate()
   const watcher = (id: string) =>
     poll.state.data?.find((automation) => automation.id === id)?.script?.conversationId
-  const show = (id: string) => {
+  const showWatcherThenPanel = (id: string) => {
     const to = watcher(id)
     if (to !== undefined) switchConversation(to)
-    // After the switch, which closes an overlaid panel on a phone.
     openAutomationsPanel(shell)
   }
   return (id: string) => {
-    if (poll.state.data?.some((automation) => automation.id === id)) return show(id)
-    // oxlint-disable-next-line typescript/no-floating-promises -- refreshAutomations catches failures and publishes them in poll.state.error.
-    void refreshAutomations().then(() => show(id))
+    if (poll.state.data?.some((automation) => automation.id === id)) return showWatcherThenPanel(id)
+    void refreshAutomations().then(() => showWatcherThenPanel(id))
   }
 }
 
-/** A small section heading with a meta value on the right, as in the Agents and Extensions panels. */
 export function Heading({
   children,
   meta,

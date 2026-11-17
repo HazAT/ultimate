@@ -1,4 +1,4 @@
-import type { ConversationId, GenerationHooks, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, GenerationHooks, Tx, EntryId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { expect, it } from 'vitest'
 import { reminderTask } from '../reminder.ts'
@@ -157,13 +157,18 @@ it('records decisions with the screenshots of its own conversation only', async 
       question: 'Approve?',
       picked: 'Yes',
       reason: 'Meets 1',
-      conversation: 7,
+      conversation: 7 as ConversationId,
       images: 'latest',
     },
     1,
   )
   await expect(
-    act(tx, ULTIMATE, { action: 'decide', question: 'q', picked: 'p', reason: 'r', images: 10 }, 2),
+    act(
+      tx,
+      ULTIMATE,
+      { action: 'decide', question: 'q', picked: 'p', reason: 'r', images: 10 as EntryId },
+      2,
+    ),
   ).rejects.toThrow('has no images')
   expect((await openGoal(tx))!.decisions).toEqual([
     { at: 1, question: 'Approve?', picked: 'Yes', reason: 'Meets 1', conversation: 7, images: 20 },
@@ -177,7 +182,7 @@ it('never takes an earlier turn\'s screenshot for images: "latest"', async () =>
   await expect(act(tx, ULTIMATE, { ...decide, images: 'latest' }, 1)).rejects.toThrow(
     'no images in this turn',
   )
-  await act(tx, ULTIMATE, { ...decide, images: 20 }, 2)
+  await act(tx, ULTIMATE, { ...decide, images: 20 as EntryId }, 2)
   expect((await openGoal(tx))!.decisions).toMatchObject([{ images: 20 }])
 })
 

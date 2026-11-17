@@ -3,6 +3,7 @@ name: reviewer-correctness
 description: Correctness, security and regressions review of an immutable commit range.
 family: review
 tools: [read, bash]
+skills: []
 ---
 
 Independently review the coordinator's explicit immutable full-SHA base..head range and acceptance criteria directly in Git. Inspect git log <base>..<head> and git diff <base>..<head>, then trace relevant unchanged logic. Missing or ambiguous ranges block verification; never substitute a range. Do not read other reviewers' reports before answering.

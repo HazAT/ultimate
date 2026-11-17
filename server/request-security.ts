@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
 import type { Device } from '../shared/events.ts'
+import { meansNone } from '../lib/errors.ts'
 
 export interface AccessRule {
   origin: string
@@ -44,36 +45,30 @@ export async function admit(
   )
     return true
   const site = request.headers['sec-fetch-site']
-  const navigation =
+  const viewOnlyRootNavigation =
     (site === 'cross-site' || site === 'same-site') &&
     request.method === 'GET' &&
     (request.url === '/' || request.url?.startsWith('/?') === true) &&
     request.headers['sec-fetch-mode'] === 'navigate' &&
     request.headers['sec-fetch-dest'] === 'document' &&
     request.headers.upgrade === undefined
-  // Root navigation relaxes only fetch metadata, not origin or identity verification.
-  // Any site can now open the UI with any query, so query parameters must only select views, never act.
-  if (site !== undefined && site !== 'same-origin' && site !== 'none' && !navigation) return false
+  if (site !== undefined && site !== 'same-origin' && site !== 'none' && !viewOnlyRootNavigation)
+    return false
   for (const rule of rules) {
     if (host !== new URL(rule.origin).host || (origin && origin !== rule.origin)) continue
     try {
       if ((await rule.verify(request))?.login && rules.has(rule)) return true
-    } catch {
-      // A failed identity provider cannot admit a request.
+    } catch (error) {
+      meansNone(error)
     }
   }
   return false
 }
 
-/** Tailscale's address ranges: the CGNAT block it assigns IPv4 addresses from and its IPv6 ULA prefix. */
-const tailnet = new BlockList()
-tailnet.addSubnet('100.64.0.0', 10, 'ipv4')
-tailnet.addSubnet('fd7a:115c:a1e0::', 48, 'ipv6')
+const tailscaleCgnatAndUlaRanges = new BlockList()
+tailscaleCgnatAndUlaRanges.addSubnet('100.64.0.0', 10, 'ipv4')
+tailscaleCgnatAndUlaRanges.addSubnet('fd7a:115c:a1e0::', 48, 'ipv6')
 
-/**
- * The short label of the browser behind a request, `phone safari` or `desktop chrome`, and the Tailscale login and
- * tailnet address of the client when Tailscale Serve proxied it. Nothing else of the request.
- */
 export function deviceOf(headers: IncomingHttpHeaders): Device {
   const agent = headers['user-agent'] ?? ''
   const kind = /Mobi|iPhone|Android/.test(agent) ? 'phone' : 'desktop'
@@ -89,21 +84,17 @@ export function deviceOf(headers: IncomingHttpHeaders): Device {
   const login = headers['tailscale-user-login']
   if (!proxied(headers) || typeof login !== 'string' || !login)
     return { device: `${kind} ${browser}` }
-  const address = tailnetAddress(headers['x-forwarded-for'])
+  const address = lastProxyVouchedTailnetAddress(headers['x-forwarded-for'])
   return { device: `${kind} ${browser}`, login, ...(address ? { address } : {}) }
 }
 
-/**
- * The client's tailnet address from `X-Forwarded-For`, read only next to Serve's login header. Serve is the single hop
- * in front of the server and sets the header to the peer address it saw, dropping what the client sent; should a
- * proxy ever append instead, the rightmost entry is still the one the last hop vouches for and anything left of it is
- * the client's claim, so only the rightmost entry counts, and only inside Tailscale's ranges.
- */
-function tailnetAddress(header: string | string[] | undefined) {
+function lastProxyVouchedTailnetAddress(header: string | string[] | undefined) {
   const address = [header ?? []].flat().join(',').split(',').at(-1)?.trim() ?? ''
   const family = isIP(address)
   if (!family) return undefined
-  return tailnet.check(address, family === 4 ? 'ipv4' : 'ipv6') ? address : undefined
+  return tailscaleCgnatAndUlaRanges.check(address, family === 4 ? 'ipv4' : 'ipv6')
+    ? address
+    : undefined
 }
 
 export function proxied(headers: IncomingHttpHeaders) {

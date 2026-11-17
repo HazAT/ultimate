@@ -7,8 +7,8 @@ type Rule = keyof typeof ultimate.rules
 type Located = { type: string; start: number; end: number; parent?: Located }
 type Comment = { type: string; value: string; start: number; end: number }
 
-/** Run one rule over `source` as oxlint would for `file` (repository-relative): parse, walk, report messages. */
-function lint(rule: Rule, file: string, source: string) {
+/** Run one rule over `source` as oxlint would for `file` (repository-relative): parse, walk, report full messages. */
+function diagnose(rule: Rule, file: string, source: string) {
   const { program, comments } = parseSync(file, source, { lang: 'ts' }) as unknown as {
     program: Located
     comments: Comment[]
@@ -29,7 +29,13 @@ function lint(rule: Rule, file: string, source: string) {
   const visitors = ultimate.rules[rule].create({
     filename: resolve(file),
     options: [],
-    sourceCode: { text: source, getCommentsBefore, getCommentsInside: () => [] },
+    sourceCode: {
+      text: source,
+      getCommentsBefore,
+      getCommentsInside: (node: Located) =>
+        comments.filter((comment) => comment.start >= node.start && comment.end <= node.end),
+      getAllComments: () => comments,
+    },
     report: ({ message }) => reports.push(message),
   }) as Record<string, ((node: Located) => void) | undefined>
   const visit = (node: Located, parent?: Located) => {
@@ -45,6 +51,35 @@ function lint(rule: Rule, file: string, source: string) {
   visit(program)
   return reports
 }
+
+/** The specific part of each message, after the sentence that says why the rule exists. */
+const lint = (rule: Rule, file: string, source: string) =>
+  diagnose(rule, file, source).map((message) => message.slice(message.indexOf('. ') + 2))
+
+it('opens every contract and boundary message with why the rule exists', () => {
+  const why = (rule: Rule, file: string, source: string) =>
+    diagnose(rule, file, source).map((message) => message.slice(0, message.indexOf('. ') + 1))
+  expect(why('api-file-shape', 'extensions/echo/api.ts', 'export const limit = 3')).toContain(
+    'Agents and other extensions read a contract file as the whole surface (ultimate.api), so it holds only contracts, each documented.',
+  )
+  expect(
+    why('api-naming', 'extensions/echo/refs.ts', "export const A = actionRef('messages', 'send')"),
+  ).toEqual(['A name tells the reader who owns it.'])
+  expect(
+    why(
+      'api-only-imports',
+      'extensions/echo/server.ts',
+      "import { x } from '../messages/server.ts'",
+    ),
+  ).toEqual(['Extensions meet only at their contracts, so each can change and reload on its own.'])
+  expect(
+    why(
+      'core-tier-deps',
+      'extensions/conversations/rows.tsx',
+      "import { x } from '../plan/ui.tsx'",
+    ),
+  ).toEqual(['The core tier must run with every optional extension off.'])
+})
 
 const api = `/**
  * Echo: says things back. Other extensions ask it to repeat text.
@@ -127,6 +162,7 @@ const refs = `/**
  * Echo in the browser: the echo log and the action that echoes. Browser-safe.
  */
 import type { JsonValue } from '@earendil-works/chord/json'
+import { defineEntry } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { ProviderHealth } from '../../shared/protocol.ts'
@@ -142,6 +178,8 @@ export const LogDoc = docRef<Texts>('echo.log')
 export const EchoAction = actionRef<{ text: string }, Echoed>('echo', 'echo')
 /** Something was echoed; react to it to count echoes. */
 export const Repeated = defineEvent<{ text: string }>('echo.repeated')
+/** One echo in the transcript; renderers in other extensions narrow with \`EchoEntry.is(entry)\`. */
+export const EchoEntry = defineEntry<Echoed>('echo.entry')
 `
 
 it('accepts a refs.ts of documented browser-safe refs and rejects server reach, runtime code and missing docs', () => {
@@ -162,14 +200,14 @@ export const limit = 3
 `
   expect(lint('api-file-shape', 'extensions/echo/refs.ts', bad)).toEqual([
     'refs.ts is a contract: it imports no node:* module.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
-    'refs.ts imports at runtime only shared/; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
+    'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
     "Document each ref: what it holds, or an action's arguments and result.",
-    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent(...)` and types.',
+    'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.',
   ])
   expect(
     lint('api-naming', 'extensions/echo/refs.ts', "export const A = actionRef('messages', 'send')"),
@@ -277,4 +315,36 @@ const later = () => import('../questions/web.tsx')`
   ])
   expect(lint('core-tier-deps', 'extensions/phase/web.tsx', source)).toEqual([])
   expect(lint('core-tier-deps', 'test/example.test.ts', source)).toEqual([])
+})
+
+it('rejects every product comment except contract JSDoc, Pi upstream markers and copied licences', () => {
+  // Shipped in server/api.ts and web/src/sdk/client.ts at 0e27be8.
+  const server = `export async function invoke(data: object) {
+    // Missing args mean none, so \`curl -d '{}'\` and agents can call argument-free actions.
+    return Object.hasOwn(data, 'args')
+  }`
+  expect(lint('no-comments', 'server/api.ts', server)).toEqual([
+    expect.stringMatching(/^An invariant .* becomes a name, a type or a small function/),
+  ])
+  const sdk = `/** How long the status line shows "ready · switching" before the page reloads onto a new bundle. */
+const switchDelay = 600
+/** Installed web facets of \`extensions/*\`. */
+export const registry = createRegistry()
+// Pi upstream: the event bus, adapted.
+/** Compact token counts, as Pi's footer prints them. */
+export function formatTokens(count: number) {}`
+  expect(lint('no-comments', 'web/src/sdk/client.ts', sdk)).toHaveLength(2)
+  const contract = `/**
+ * Entry kinds that core extensions on both sides of a dependency read.
+ */
+import { defineEntry } from '@earendil-works/pi-durable'
+/** A branch abstract: what a conversation did. */
+export type AbstractData = {
+  /** Where it stands. */
+  at: number
+}
+/*
+MIT License — Copyright (c) 2025 Mario Zechner
+*/`
+  expect(lint('no-comments', 'extensions/entries/refs.ts', contract)).toEqual([])
 })

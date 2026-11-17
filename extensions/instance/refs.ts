@@ -1,15 +1,13 @@
 /** Instances in the browser: the preview servers started from this host, for the title bar and preview links. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 
 /** A preview server that served its UI. */
 export type Preview = {
   id: string
   url: string
-  /** The conversation that started it; a preview the user started (`start`) has none. */
-  conversationId?: number
-  /** What a preview the user started is called, such as `PR #200`. */
+  conversationId?: ConversationId
   label?: string
-  /** The commit a preview the user started runs. */
   ref?: string
   /** False once it exited or was stopped. */
   running: boolean
@@ -19,10 +17,7 @@ export type Preview = {
 
 /** No arguments → the previews that served their UI, running or stopped since; a failed start is not among them. */
 export const ListAction = actionRef<null, Preview[]>('instance', 'list')
-/**
- * User-only: preview a commit of this project (`ref`, a sha or a ref name that is already local) as `label`, in a
- * detached checkout inside the preview's temporary home. Resolves once it serves its UI.
- */
+/** `ref` (a sha or local ref name) and `label` → the preview of that commit once it serves its UI; user-only, stopped after an idle hour. */
 export const StartAction = actionRef<{ ref: string; label: string }, Preview>('instance', 'start')
-/** User-only: stop a preview the user started. */
+/** The `id` of a preview the user started → null once stopped; user-only. */
 export const StopAction = actionRef<{ id: string }, null>('instance', 'stop')

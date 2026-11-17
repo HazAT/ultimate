@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h } from 'react'
 import type { EffectCallback } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -105,7 +106,7 @@ it('asks for the prompt only once the conversation is known, against its own bas
   // As found on a host: a baseline from another conversation, stored while one was still loading.
   uiState.set('context.seen.undefined', 50)
   uiState.set('context.seen.7', 70)
-  store.show(7)
+  store.show(7 as ConversationId)
   await render()
   // Asking now would send entry 50 to conversation 7: "Entry 50 is not visible from conversation 7".
   expect(prompts()).toEqual([])

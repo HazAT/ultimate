@@ -8,11 +8,12 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { afterEach, expect, it, vi } from 'vitest'
 import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
-import type { JsonObject, TaskId } from '@earendil-works/pi-durable'
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { JsonObject, SubmissionId, TaskId, Tx } from '@earendil-works/pi-durable'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { Profile } from '../../subagents/api.ts'
+import { Profile, Standing } from '../../subagents/api.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
@@ -37,6 +38,10 @@ async function fixture() {
   await writeFile(
     join(root, 'agents/writer.md'),
     '---\nname: writer\ndescription: Writes\ntools: [hold]\nisolate: worktree\n---\nOnly write the report.\n',
+  )
+  await writeFile(
+    join(root, 'agents/watcher.md'),
+    '---\nname: watcher\ndescription: Watches\ntools: []\n---\nShort.\n',
   )
   const prepared = await prepareHarness({
     ultimateRoot: root,
@@ -90,6 +95,7 @@ async function fixture() {
   provided.set('subagents', {
     createChild: (tx, options) => createChild(host, tx, options),
   } satisfies Partial<SubagentsService>)
+  provided.set('messages', { owed: async () => ({}) })
   const extension = automations(host as unknown as Parameters<typeof automations>[0])
   prepared.registry.install(extension)
   const route: FauxResponseFactory = (transcript) => {
@@ -115,6 +121,7 @@ async function fixture() {
     Object.values((await opened.harness.snapshot(Automations, context))?.automations ?? {})
   return {
     prepared,
+    provided,
     extension,
     disableDependency: () => {
       enabled = false
@@ -154,6 +161,7 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
     7000,
   )
   await f.action('pause', { id: a.id })
+  await until(async () => (await f.records())[0].runs.every((r) => r.status !== 'running'))
   const runs = (await f.records())[0].runs
   expect(new Set(runs.map((r) => r.conversationId)).size).toBe(runs.length)
   for (const run of runs) {
@@ -262,7 +270,7 @@ it('fires nothing while the host is paused and catches up once after Play', asyn
   await vi.advanceTimersByTimeAsync(5000)
   expect((await f.records())[0].runs).toEqual([])
   f.opened.harness.release()
-  await until(async () => (await f.records())[0].runs.some((r) => r.status === 'done'))
+  await waitFor(async () => (await f.records())[0].runs.some((r) => r.status === 'done'))
   await f.action('pause', { id: a.id })
   // One missed fire, not one per period the pause lasted.
   expect((await f.records())[0].runs.filter((r) => r.status !== 'skipped')).toHaveLength(1)
@@ -372,6 +380,31 @@ it('validates one trigger, project script scope and action targets before creati
     caller.id,
   )) as Automation
   expect(prompt.subscribers).toEqual([])
+})
+
+it("records the branches @ultimate's run read when it creates an ask automation", async () => {
+  // ultimate-eval #53: every ask create failed after createChild, as owed reads the run's submissions and a
+  // transaction cannot read tables after its first write.
+  const f = await fixture()
+  const ultimate = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ultimate.id
+  }, context)
+  f.provided.set('messages', {
+    owed: async (tx: Tx) => {
+      await tx.submission(1 as SubmissionId)
+      return { branches: [7] }
+    },
+  })
+  const a = (await f.action(
+    'create',
+    { name: 'Check back', ask: 'Watch the A/B' },
+    ultimate.id,
+  )) as Automation
+  expect(a.branches).toEqual({ ids: [7], by: ultimate.id })
 })
 
 it('removes the prompt on an empty update only while subscribers remain', async () => {

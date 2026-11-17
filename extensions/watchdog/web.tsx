@@ -1,13 +1,13 @@
 import { AlertCircleIcon } from 'lucide-react'
-import { defineWebExtension, useUltimate } from '@/sdk'
+import { defineWebExtension, renderEntry, useUltimate } from '@/sdk'
 import { MessageResponse } from '@/components/ai/message'
 import { ConversationRef } from '../conversations/ui.tsx'
-import type { Failure } from './refs.ts'
+import { FailureEntry, IdleEntry } from './entries.ts'
 
 export default defineWebExtension({
   entries: {
-    'watchdog.failure': function FailureCard({ entry }) {
-      const failure = entry.data as Failure
+    'watchdog.failure': renderEntry(FailureEntry, function FailureCard({ entry }) {
+      const failure = entry.data
       const { switchConversation } = useUltimate()
       return (
         <section className="min-w-0 rounded-md border border-border border-l-2 border-l-destructive/60 bg-muted/20">
@@ -32,11 +32,11 @@ export default defineWebExtension({
           </div>
         </section>
       )
-    },
-    'watchdog.idle': ({ entry }) => (
+    }),
+    'watchdog.idle': renderEntry(IdleEntry, ({ entry }) => (
       <p className="whitespace-pre-line font-mono text-[11px] text-muted-foreground">
-        {(entry.data as { text: string }).text}
+        {entry.data.text}
       </p>
-    ),
+    )),
   },
 })

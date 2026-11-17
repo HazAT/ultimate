@@ -21,7 +21,7 @@ import workspaceExtension from '../../../workspaces/server.ts'
 import { workspaces } from '../../../workspaces/workspaces.ts'
 import { git } from '../../../../lib/git.ts'
 import { exec } from '../../../../lib/exec.ts'
-import { projectSettings } from '../../../../server/project-setup.ts'
+import { projectSettings } from '../../../../lib/project-setup.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ConversationsService } from '../../../conversations/api.ts'
@@ -58,7 +58,6 @@ async function fixture({ foreign = false } = {}) {
   const source = join(root, 'source')
   await git(root, 'clone', '--no-hardlinks', checkout, source)
   await git(source, 'switch', '-c', 'preview-source')
-  // The preview runs the clone's committed code: give it this checkout's preview, landing and server code.
   for (const path of ['extensions/instance', 'extensions/workspaces', 'lib', 'server'])
     await cp(join(checkout, path), join(source, path), { recursive: true })
   await symlink(join(checkout, 'node_modules'), join(source, 'node_modules'))
@@ -207,7 +206,6 @@ async function fixture({ foreign = false } = {}) {
       tailnet?: string
       running: boolean
     })[]
-  /** A user-only action, called as the UI calls it. */
   const action = async (name: 'start' | 'stop', args: object) =>
     (await actions[name](args as never, { host } as never)) as Listed | null
   return {
@@ -538,10 +536,8 @@ it('previews a commit the user picks until no page was open for the idle limit',
     const client = await attach(preview)
     const checkout = client.system().execution.defaultCwd
     const home = dirname(dirname(checkout))
-    // Named after the repository, so the preview's project reads as it, not as its checkout folder.
     expect(checkout).toBe(join(home, 'checkouts', 'app'))
     expect(client.system().project.name).toBe('app')
-    // The host's Ultimate runs the commit as its project, trusted like the project and behind the push guard.
     expect(client.system().code.ultimateRoot).toBe(f.source)
     expect(client.system().project.decision).toBe(true)
     expect(await readFile(join(checkout, 'README.md'), 'utf8')).toContain('not Ultimate')
@@ -549,7 +545,6 @@ it('previews a commit the user picks until no page was open for the idle limit',
       '\0',
     )
     expect(environ).toContain(`ULTIMATE_PREVIEW_BRANCH=${previewBranch(home)}`)
-    // An open page keeps it running past the idle limit; once it closes, the preview stops and is cleaned up.
     await sleep(2500)
     expect((await f.list()).find(({ id }) => id === preview.id)?.running).toBe(true)
     await client.close()
@@ -580,7 +575,6 @@ it("previews a commit of Ultimate itself on that commit's own code, until the us
     const checkout = client.system().execution.defaultCwd
     expect(client.system().code.ultimateRoot).toBe(checkout)
     await client.close()
-    // The project's worktree setup gave it its dependencies.
     expect((await lstat(join(checkout, 'node_modules'))).isSymbolicLink()).toBe(true)
     expect(await f.action('stop', { id: preview.id })).toBeNull()
     expect(existsSync(dirname(dirname(checkout)))).toBe(false)

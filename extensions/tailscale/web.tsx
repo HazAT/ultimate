@@ -17,6 +17,7 @@ import {
   defineWebExtension,
   errorMessage,
   events,
+  keepLast,
   useAction,
   useCopy,
   useEvent,
@@ -42,15 +43,10 @@ const problems: Record<Problem, { title: string; link?: { href: string; label: s
   error: { title: 'Tailscale failed' },
 }
 
-/**
- * The status, read on mount and again when what it depends on shows in system info: a registered origin, a facet
- * notice (each failure posts one), or a reinstall after a settings change.
- */
 function useStatus() {
   const system = useSystem()
-  // Failures show where the status does, not as notices: the status line reads it on every page.
   return useAction(StatusAction, null, {
-    onError: () => {},
+    onError: keepLast,
     on: [
       system?.access.origins,
       system?.extensionDiagnostics,
@@ -59,7 +55,6 @@ function useStatus() {
   })
 }
 
-/** A shell command to copy, as a code chip. */
 function Command({ value }: { value: string }) {
   const { copied, copy } = useCopy()
   return (
@@ -81,7 +76,6 @@ function Command({ value }: { value: string }) {
   )
 }
 
-/** A hint's command, such as `tailscale up` in "Start Tailscale and log in (tailscale up).", and the words around it. */
 function split(hint: string) {
   const match = /(?:sudo )?tailscale [^()]*?(?=\)|\.?$)/.exec(hint)
   if (!match) return { text: hint }
@@ -193,8 +187,7 @@ function Trouble({ state, hint }: { state: Problem; hint?: string }) {
   )
 }
 
-/** Runs the start again, as after fixing what a problem names or to restore a lost mapping, then reads the status. */
-function CheckAgain({ onChecked }: { onChecked: () => Promise<unknown> }) {
+function RepairMappingOrRetry({ onChecked }: { onChecked: () => Promise<unknown> }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const check = async () => {
@@ -237,7 +230,6 @@ const quiet = (label: string) => (
   </span>
 )
 
-/** Everything about the tailnet in one place: the address to scan, or what to fix. */
 function Details({ status }: { status: ReturnType<typeof useStatus> }) {
   const { data, error, refetch } = status
   const state = data?.state
@@ -269,16 +261,13 @@ function Details({ status }: { status: ReturnType<typeof useStatus> }) {
         <Ready allow={data.allow} hint={data.hint} url={data.url} />
       )}
       {state && state in problems && <Trouble hint={data?.hint} state={state as Problem} />}
-      {/* Ready too: it serves the mapping again if something removed it behind this server's back. */}
-      {(state === 'ready' || (state && state in problems)) && <CheckAgain onChecked={refetch} />}
+      {(state === 'ready' || (state && state in problems)) && (
+        <RepairMappingOrRetry onChecked={refetch} />
+      )}
     </section>
   )
 }
 
-/**
- * `text` as a QR code to scan with a phone: one SVG path with a rectangle per run of dark modules in a row, black on
- * white in either theme so every camera reads it.
- */
 function QrCode({ text }: { text: string }) {
   const { size, path } = useMemo(() => {
     const qr = encode(text, { border: 2 })
@@ -306,11 +295,6 @@ function QrCode({ text }: { text: string }) {
   )
 }
 
-/**
- * "tailnet" in the status line: a green dot while this Ultimate is reachable there, amber while it needs a fix. A click
- * opens the details above it. Off or starting, it stays out of the line; `Tailscale…` in the palette opens the details
- * anchored where it would be.
- */
 function Indicator() {
   const status = useStatus()
   const [open, setOpen] = useState(false)
@@ -336,7 +320,6 @@ function Indicator() {
             tailnet
           </button>
         ) : (
-          // Off or starting there is nothing to show in the bar; the palette's details hang from here.
           <span aria-hidden className="h-4 w-0" />
         )}
       </PopoverTrigger>
@@ -348,7 +331,6 @@ function Indicator() {
 }
 
 export default defineWebExtension({
-  // Left of `live · gen N` and the build item, which stay together at the right end.
   slots: { 'statusline.right': [{ component: Indicator, order: -0.5 }] },
   commands: [
     {

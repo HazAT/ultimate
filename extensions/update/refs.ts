@@ -1,4 +1,5 @@
 /** Update in the browser: whether the Ultimate clone is behind origin, and updating it. Browser-safe. */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 
@@ -80,7 +81,7 @@ export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
  * The user's alone: ask @ultimate to merge `origin/<branch>` into the diverged clone through a coordinator branch;
  * @ultimate's conversation id. Only while `merge` is offered.
  */
-export const MergeAction = actionRef<null, { id: number }>('update', 'merge')
+export const MergeAction = actionRef<null, { id: ConversationId }>('update', 'merge')
 
 /**
  * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages were

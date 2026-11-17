@@ -13,8 +13,11 @@ type Server = Awaited<ReturnType<typeof fauxServer>>
 const servers: Server[] = []
 const homes: string[] = []
 afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  for (const home of homes.splice(0)) await removeTemp(home)
+  // Capture both lists before close can yield to another test's setup.
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  await Promise.all(closing.map((server) => server.close()))
+  for (const home of taken) await removeTemp(home)
 })
 const textOf = (content: unknown) =>
   typeof content === 'string'

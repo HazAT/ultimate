@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
@@ -9,8 +10,11 @@ import { fauxServer, linkDependencies, removeTemp, temp, until } from '../../../
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 const homes: string[] = []
 afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  for (const home of homes.splice(0)) await removeTemp(home)
+  // Capture both lists before close can yield to another test's setup.
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  await Promise.all(closing.map((server) => server.close()))
+  for (const home of taken) await removeTemp(home)
 })
 
 const tokens = `
@@ -83,7 +87,9 @@ const signal = new AbortController().signal
 it('shows events, reactor failures, the catalogue and a trace tree, within limits', async () => {
   const { server, debug } = await start()
   for (const n of [1, 2, 3])
-    expect(await server.extensions.invoke('alpha', 'go', { n }, signal, 1)).toBe('pong')
+    expect(await server.extensions.invoke('alpha', 'go', { n }, signal, 1 as ConversationId)).toBe(
+      'pong',
+    )
 
   // Newest first, with data and the trace the event was emitted in; limit and filters honoured.
   const events = (await debug({ call: 'events', events: ['beta.pinged'] })).split('\n')

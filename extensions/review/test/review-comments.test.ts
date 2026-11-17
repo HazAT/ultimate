@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import {
   checkReview,
@@ -87,8 +88,8 @@ const valid = (key: string) => `ext.review.${key}`.length <= 200 && /^[A-Za-z0-9
 it('keeps drafts apart per spec and per worktree, in keys UI state accepts', () => {
   const keys = [
     draftsKey('uncommitted'),
-    draftsKey('uncommitted', 12),
-    draftsKey('uncommitted', 13),
+    draftsKey('uncommitted', 12 as ConversationId),
+    draftsKey('uncommitted', 13 as ConversationId),
     draftsKey('branch:ultimate/a-1'),
     draftsKey('branch:ultimate/a_1'),
     draftsKey('a...b'),

@@ -1,3 +1,5 @@
+import { deadline, retryAfter } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -26,7 +28,6 @@ import { RatesAction } from './refs.ts'
 import type { RateSample } from './refs.ts'
 import { responseAfter, turnOf } from './turns.ts'
 
-/** A status-line item with a tooltip of details. */
 function Item({
   children,
   tip,
@@ -92,14 +93,14 @@ function useTokenRates() {
   const [observed, setObserved] = useState<{ key: string; sample: RateSample | null }>()
   useEffect(() => {
     let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let requestTimeout: ReturnType<typeof setTimeout> | undefined
+    let cancelPoll: Cancel | undefined
+    let cancelRequestTimeout: Cancel | undefined
     let request: AbortController | undefined
     setObserved({ key, sample: null })
     if (connection.status !== 'open' || generation === undefined) return undefined
     async function poll() {
       request = new AbortController()
-      requestTimeout = setTimeout(() => request?.abort(), 5000)
+      cancelRequestTimeout = deadline(5000, () => request?.abort())
       try {
         const sample = await api.action(RatesAction, null, {
           signal: request.signal,
@@ -111,16 +112,15 @@ function useTokenRates() {
           setObserved({ key, sample: null })
         }
       } finally {
-        clearTimeout(requestTimeout)
-        if (!cancelled) timer = setTimeout(poll, 1000)
+        cancelRequestTimeout?.()
+        if (!cancelled) cancelPoll = retryAfter(1000, poll)
       }
     }
-    // oxlint-disable-next-line typescript/no-floating-promises -- poll catches failures and clears the sample until the next poll.
     void poll()
     return () => {
       cancelled = true
-      clearTimeout(timer)
-      clearTimeout(requestTimeout)
+      cancelPoll?.()
+      cancelRequestTimeout?.()
       request?.abort()
     }
   }, [key, connection.status, generation])
@@ -144,8 +144,8 @@ function Tokens() {
   if (total.cacheRead) parts.push(`R${formatTokens(total.cacheRead)}`)
   if (total.cacheWrite) parts.push(`W${formatTokens(total.cacheWrite)}`)
   if (hit !== undefined) parts.push(`CH${hit.toFixed(1)}%`)
-  // A subscription's $0.000 says something once there is usage, and looks broken before.
-  if (total.cost || (subscription && parts.length > 0))
+  const hasSpendOrSubscriptionUsage = total.cost || (subscription && parts.length > 0)
+  if (hasSpendOrSubscriptionUsage)
     parts.push(
       <span className="text-foreground/80">
         ${total.cost.toFixed(3)}
@@ -155,7 +155,6 @@ function Tokens() {
   if (!parts.length) return null
   return (
     <Item
-      // On a phone the status line below already sums the usage.
       className="max-md:hidden"
       tip={
         <>
@@ -171,7 +170,6 @@ function Tokens() {
       }
     >
       {parts.map((part, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Positional usage fragments built for this render.
         <span key={index}>{part}</span>
       ))}
     </Item>
@@ -264,10 +262,6 @@ function Context() {
 
 const dollars = (cost: number) => `$${cost.toFixed(cost < 1 ? 3 : 2)}`
 
-/**
- * A stored message's readout on its hover row: the context its response was sent with, and what it cost. A turn's
- * last response adds up the turn since its input; an input shows the context it was sent into.
- */
 function MessageUsage({ entry }: { entry: EntryRecord }) {
   const entries = useTranscript()
   const models = useModels()

@@ -1,5 +1,3 @@
-/** An epic body split at the section labels the `plan` tool asks for, for display only; storage stays plain text. */
-
 const labels = [
   'Request',
   'Selected approach',
@@ -10,8 +8,7 @@ const labels = [
   'Verification',
   'Risks',
 ]
-// `Label: text`, optionally bold, `Scope in:` or `Scope (in/out):`; or a Markdown heading `## Label`.
-const line = new RegExp(
+const sectionHeading = new RegExp(
   `^\\*{0,2}(${labels.join('|')})( in| \\(in/out\\))?\\*{0,2}:\\*{0,2}[ \\t]*(.*)$|^#{1,4}[ \\t]+(${labels.join('|')}):?[ \\t]*$`,
   'i',
 )
@@ -20,12 +17,11 @@ const canonical = (label: string) =>
 
 export type Section = { label?: string; text: string }
 
-/** The body's labelled sections in order, text before the first label unlabelled; undefined when it has no labels. */
 export function sectionsOf(body: string): Section[] | undefined {
   const sections: Section[] = []
   let current: Section = { text: '' }
   for (const text of body.split('\n')) {
-    const match = line.exec(text)
+    const match = sectionHeading.exec(text)
     if (!match) {
       current.text += `${text}\n`
       continue
@@ -42,10 +38,6 @@ export function sectionsOf(body: string): Section[] | undefined {
   return sections.map((section) => ({ ...section, text: section.text.trim() }))
 }
 
-/**
- * Coordinator text as Markdown that shows it as written: a `<` outside code stays text instead of an HTML tag the
- * sanitizer drops (`<projects>`), and a single newline breaks the line instead of joining the paragraph.
- */
 export function verbatim(text: string) {
   let fenced = false
   return text
@@ -68,7 +60,6 @@ export function verbatim(text: string) {
 
 const item = /^\s*(?:\d+[.)]|[-*+])\s+(?:\[[ xX]\]\s+)?(.*)$/
 
-/** A section's list items (numbered, bulleted or task list), lines below an item joined to it; undefined if not a list. */
 export function criteriaOf(text: string): string[] | undefined {
   const items: string[] = []
   for (const row of text.split('\n')) {

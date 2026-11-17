@@ -8,7 +8,6 @@ import { errorMessage } from '../sdk/format.ts'
 import {
   ExtensionNameContext,
   useConversation,
-  useConversationSummary,
   useExtensions,
   useReady,
   useShownSurface,
@@ -25,14 +24,12 @@ import { Conversation, Header, StatusLine } from './primitives.tsx'
 import { SurfaceContext } from './surface.ts'
 import { TitleBar, projectTitle } from './titlebar.tsx'
 
-/** Records the surface on screen, for the window title, `useUltimate().surface`, and the agent's prompt. */
 function onScreen({ id, title }: { id: string; title: string }) {
   const current = store.getState().ui.surface
   if (current?.id !== id || current.title !== title) store.setUi({ surface: { id, title } })
 }
 
-/** What shows when not even the Agent surface can, such as after a broken `extensions/agent` reloads. */
-function Frame() {
+function BareConversationFallback() {
   useEffect(() => onScreen({ id: HOME, title: 'Agent' }), [])
   return (
     <>
@@ -43,16 +40,10 @@ function Frame() {
   )
 }
 
-/** An Ultimate shown inside another one's window, under that one's title bar, shows none of its own. */
 const embedded = window.top !== window
 
-/** The missing surface last reported, so it is reported once until it shows again. */
-let reported: string | undefined
+let lastReportedMissingSurface: string | undefined
 
-/**
- * Renders one surface; if it throws, renders `fallback` (the next surface in line) with a notice. A new version of the
- * surface's extension retries it.
- */
 class SurfaceBoundary extends Component<
   { surface: SurfaceItem; fallback: ReactNode },
   { failed: boolean; version: number }
@@ -78,7 +69,6 @@ class SurfaceBoundary extends Component<
       message: `The ${surface.title} surface (${surface.extension}) failed, so ${instead}: ${errorMessage(error)}`,
     })
   }
-  // A failed boundary renders the next in line, which reports itself instead.
   componentDidMount() {
     if (!this.state.failed) onScreen(this.props.surface)
   }
@@ -99,10 +89,9 @@ class SurfaceBoundary extends Component<
   }
 }
 
-/** The first of `surfaces` that renders; the bare frame when none does. */
 function Surfaces({ surfaces }: { surfaces: readonly SurfaceItem[] }) {
   const [surface, ...rest] = surfaces
-  if (!surface) return <Frame />
+  if (!surface) return <BareConversationFallback />
   return (
     <SurfaceBoundary
       fallback={<Surfaces surfaces={rest} />}
@@ -112,13 +101,10 @@ function Surfaces({ surfaces }: { surfaces: readonly SurfaceItem[] }) {
   )
 }
 
-/**
- * The window title: the project's folder first, so tabs of several projects tell apart, then the shown conversation on
- * Agent or the surface elsewhere; a dot while the agent works.
- */
 function useDocumentTitle(surface: { id: string; title: string } | undefined) {
-  const { id, busy } = useConversation()
-  const label = useConversationSummary(id)?.label
+  const id = useConversation((conversation) => conversation.id)
+  const busy = useConversation((conversation) => conversation.busy)
+  const label = useStore((state) => state.conversations.find((row) => row.id === id)?.label)
   const project = projectTitle(useSystem())
   const app = surface && surface.id !== HOME ? surface.title : undefined
   useEffect(() => {
@@ -128,39 +114,31 @@ function useDocumentTitle(surface: { id: string; title: string } | undefined) {
   }, [app, label, busy, id, project])
 }
 
-/** Command shortcuts, which start with the app. */
 function Shortcuts() {
   useShortcuts()
   return null
 }
 
-/**
- * The surface host: the shown surface fills the window; the palette, extension errors, and overlays sit above it.
- * Overlays render as soon as they install, but the app (the surface and its shortcuts) waits until the page is ready,
- * so it never shows half loaded: until then the background `index.html` paints shows beneath them. Starting the
- * shortcuts then also lets an overlay that covers the page, such as the splash, take the keys before they do.
- */
 export function App() {
-  const loaded = useReady().ready
+  const surfaceAndShortcutsReady = useReady().ready
   const records = useExtensions()
   const { surface, pending, missing } = useShownSurface()
-  // Until the stream delivered the UI state and system info, the choice and the project default are unknown.
-  const ready = useStore((state) => state.shared !== undefined && state.system !== undefined)
+  const streamHasSurfaceChoice = useStore(
+    (state) => state.shared !== undefined && state.system !== undefined,
+  )
   const home = surfaceItems(records).find((item) => item.id === HOME)
   const shown = useStore((state) => state.ui.surface)
   const viewed = useStore((state) => state.view !== undefined)
   useDocumentTitle(shown)
-  // Overlays sit outside the 100dvh shell, the rail outside any sized panel: a failed item shows in the fixed error
-  // stack, not below the shell (#565199: a page one card taller than the window) or as a column squeezing the app.
-  const [errors, setErrors] = useState<HTMLDivElement | null>(null)
-  // The surface and its conversation are on screen: what a reload resumes, and what a resumed reload uncovers.
+  const [outOfFlowErrorStack, setOutOfFlowErrorStack] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (loaded && !pending && viewed) rendered()
-  }, [loaded, pending, viewed])
+    const surfaceAndConversationRendered = surfaceAndShortcutsReady && !pending && viewed
+    if (surfaceAndConversationRendered) rendered()
+  }, [surfaceAndShortcutsReady, pending, viewed])
 
   useEffect(() => {
-    if (!ready || pending || missing === reported) return
-    reported = missing
+    if (!streamHasSurfaceChoice || pending || missing === lastReportedMissingSurface) return
+    lastReportedMissingSurface = missing
     if (missing)
       store.notify({
         level: 'warning',
@@ -169,11 +147,10 @@ export function App() {
             ? 'The Agent surface is not installed, so a bare conversation shows.'
             : `The ${missing} surface is not installed, so Agent shows.`,
       })
-  }, [ready, pending, missing])
-  // Record what the user looks at: what rendered, so Agent after the chosen surface failed. Equal writes are dropped.
+  }, [streamHasSurfaceChoice, pending, missing])
   useEffect(() => {
-    if (ready && shown) uiState.set(shellKeys.shownSurface, shown)
-  }, [ready, shown])
+    if (streamHasSurfaceChoice && shown) uiState.set(shellKeys.shownSurface, shown)
+  }, [streamHasSurfaceChoice, shown])
 
   const line = [surface, surface?.id === HOME ? undefined : home].filter(
     (item): item is SurfaceItem => item !== undefined,
@@ -181,16 +158,18 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <div className="safe-area flex">
-        {loaded && !embedded && <Slot errors={errors} name="shell.rail" />}
+        {surfaceAndShortcutsReady && !embedded && (
+          <Slot errors={outOfFlowErrorStack} name="shell.rail" />
+        )}
         <div className="flex min-w-0 flex-1 flex-col">
-          {loaded && !embedded && <TitleBar />}
-          {loaded && !pending && <Surfaces surfaces={line} />}
+          {surfaceAndShortcutsReady && !embedded && <TitleBar />}
+          {surfaceAndShortcutsReady && !pending && <Surfaces surfaces={line} />}
         </div>
       </div>
-      {loaded && <Shortcuts />}
+      {surfaceAndShortcutsReady && <Shortcuts />}
       <CommandPalette />
-      <ExtensionErrors ref={setErrors} />
-      <Slot errors={errors} name="overlay" />
+      <ExtensionErrors ref={setOutOfFlowErrorStack} />
+      <Slot errors={outOfFlowErrorStack} name="overlay" />
     </TooltipProvider>
   )
 }

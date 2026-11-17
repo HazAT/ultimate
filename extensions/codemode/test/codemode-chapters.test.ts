@@ -8,7 +8,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { UiState } from '../../../server/ui-state.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 import { temp } from '../../../test/helpers.ts'
 
 it('reads closed chapter records exactly like live fork-aware history, with titles and read validation', async () => {

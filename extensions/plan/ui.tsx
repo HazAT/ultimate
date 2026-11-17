@@ -1,4 +1,6 @@
 /** The plan's components for other extensions: the task chip of a conversation that works on a plan task. */
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ROOT } from '@/sdk'
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -47,7 +49,7 @@ const noTasks: Record<string, TaskLink> = {}
 
 /** Every linked child conversation id → its plan task, live from the root's `ultimate.plan.tasks`. */
 export function useTaskIndex() {
-  return useDocOf(1, TaskIndexDoc)?.children ?? noTasks
+  return useDocOf(ROOT, TaskIndexDoc)?.children ?? noTasks
 }
 
 /** The plan task conversation `id` works on, if a coordinator linked it. */
@@ -59,7 +61,10 @@ export function useTaskOf(id: number | undefined): TaskLink | undefined {
 /** Show the task's coordinator and ask its plan panel to open the task (durable UI state `plan.open`). */
 export function useOpenTask() {
   const { switchConversation } = useUltimate()
-  const [, setOpen] = useUiState<{ conversation: number; key: string } | null>('plan.open', null)
+  const [, setOpen] = useUiState<{ conversation: ConversationId; key: string } | null>(
+    'plan.open',
+    null,
+  )
   return useCallback(
     (task: Pick<TaskLink, 'coordinator' | 'key'>) => {
       switchConversation(task.coordinator)

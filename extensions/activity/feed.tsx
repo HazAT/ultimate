@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CircleXIcon,
   CloudIcon,
@@ -17,32 +18,29 @@ import { ConversationRef, FeatureTag } from '../conversations/ui.tsx'
 import { Branched, Rooted } from '../lineage/ui.tsx'
 import { CheckRan, CommitCount, SubmissionLanded, useGithubRepo } from '../workspaces/ui.tsx'
 
-// Optional extensions' events, by name: their browser contracts are not imported, so Activity loads without them.
-const Backup = defineEvent<EventData<typeof BackupToken>>('cloud.backup')
-const Escalated = defineEvent<EventData<typeof EscalatedToken>>('automations.escalated')
+const OptionalBackupEvent = defineEvent<EventData<typeof BackupToken>>('cloud.backup')
+const OptionalEscalationEvent =
+  defineEvent<EventData<typeof EscalatedToken>>('automations.escalated')
 
-/** The events the feed shows, each with its own row. */
 export const activityEvents = [
   SubmissionLanded,
   Branched,
   Rooted,
   NoticeEvent,
   CheckRan,
-  Backup,
-  Escalated,
+  OptionalBackupEvent,
+  OptionalEscalationEvent,
 ] as const
 export type ActivityEvent = EventRecord<EventData<(typeof activityEvents)[number]>>
 
-/** The feed's kind filters, each the events it keeps. */
 export const filters = {
   all: activityEvents,
   landed: [SubmissionLanded],
   branches: [Branched, Rooted],
-  problems: [NoticeEvent, CheckRan, Backup, Escalated],
+  problems: [NoticeEvent, CheckRan, OptionalBackupEvent, OptionalEscalationEvent],
 } as const
 export type Filter = keyof typeof filters
 
-/** How loud an event is: `error` and `warning` stand out in the feed; `quiet` ones show only under Problems. */
 export function tone(event: EventRecord): 'error' | 'warning' | 'quiet' | undefined {
   if (NoticeEvent.is(event))
     return event.data.level === 'error'
@@ -56,20 +54,16 @@ export function tone(event: EventRecord): 'error' | 'warning' | 'quiet' | undefi
       : event.data.result === 'flaky'
         ? 'warning'
         : 'error'
-  if (Backup.is(event))
+  if (OptionalBackupEvent.is(event))
     return event.data.phase === 'failed'
       ? 'error'
       : event.data.phase === 'started'
         ? 'quiet'
         : undefined
-  if (Escalated.is(event)) return 'error'
+  if (OptionalEscalationEvent.is(event)) return 'error'
   return undefined
 }
 
-/**
- * Whether filter `filter` shows `event`: Problems only warnings and errors; passed checks and started backups are noise
- * and never show.
- */
 export function shows(filter: Filter, event: EventRecord) {
   if (!filters[filter].some((token) => token.is(event))) return false
   const loudness = tone(event)
@@ -78,16 +72,13 @@ export function shows(filter: Filter, event: EventRecord) {
     : loudness !== 'quiet'
 }
 
-/** Lists of events as one, newest first, each event once. */
 export const joined = (lists: readonly (readonly ActivityEvent[])[]) =>
   [...new Map(lists.flat().map((event) => [event.id, event])).values()].toSorted(
     (a, b) => b.id - a.id,
   )
 
-/** Where a row leads: a conversation, at an entry when there is one. */
-type Target = { conversation: number; entry?: number }
+type Target = { conversation: ConversationId; entry?: number }
 
-/** Opens `target` on the Agent surface, revealing its entry, as the root row's landings do. */
 function useOpen() {
   const actions = useUltimate()
   return ({ conversation, entry }: Target) => {
@@ -97,7 +88,6 @@ function useOpen() {
   }
 }
 
-/** One event as one quiet line: an icon for its kind, what happened, a link where there is one, and its age. */
 function Row({
   event,
   icon,
@@ -276,7 +266,7 @@ function Check({ event, now }: Props<typeof CheckRan>) {
   )
 }
 
-function CloudBackup({ event, now }: Props<typeof Backup>) {
+function CloudBackup({ event, now }: Props<typeof OptionalBackupEvent>) {
   const data = event.data
   const failed = data.phase === 'failed'
   return (
@@ -300,7 +290,7 @@ function CloudBackup({ event, now }: Props<typeof Backup>) {
   )
 }
 
-function Escalation({ event, now }: Props<typeof Escalated>) {
+function Escalation({ event, now }: Props<typeof OptionalEscalationEvent>) {
   const { id, reason } = event.data
   return (
     <Row
@@ -323,12 +313,11 @@ function Activity({ event, now }: { event: ActivityEvent; now: number }) {
   if (Rooted.is(event)) return <Root event={event} now={now} />
   if (NoticeEvent.is(event)) return <Notice event={event} now={now} />
   if (CheckRan.is(event)) return <Check event={event} now={now} />
-  if (Backup.is(event)) return <CloudBackup event={event} now={now} />
-  if (Escalated.is(event)) return <Escalation event={event} now={now} />
+  if (OptionalBackupEvent.is(event)) return <CloudBackup event={event} now={now} />
+  if (OptionalEscalationEvent.is(event)) return <Escalation event={event} now={now} />
   return null
 }
 
-/** Events newest first, one line each; `empty` says why there are none. */
 export function Feed({
   events: list,
   now,

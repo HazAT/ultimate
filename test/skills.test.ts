@@ -1,6 +1,6 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
+import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { loadSkills, ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, it } from 'vitest'
 import { expandSkillCommand, projectSkills } from '../server/skills.ts'
 import { skillInfo } from '../server/system.ts'
@@ -68,6 +68,22 @@ it('loads every scope, lets later scopes override and keeps Pi diagnostics', asy
     },
   ])
 })
+
+// Two project skills once had an unquoted `: ` in their description, so YAML refused them and they never loaded.
+it.each(['skills', '.ultimate/skills'])(
+  'every skill shipped in %s loads without diagnostics',
+  async (folder) => {
+    const path = resolve(folder)
+    const loaded = loadSkills({
+      cwd: resolve('.'),
+      agentDir: path,
+      skillPaths: [path],
+      includeDefaults: false,
+    })
+    expect(loaded.diagnostics).toEqual([])
+    expect(loaded.skills.map((s) => s.name).toSorted()).toEqual((await readdir(path)).toSorted())
+  },
+)
 
 it('expands /skill:name args as Pi does and leaves anything else alone', async () => {
   const host = await setup()

@@ -1,7 +1,17 @@
+import { ROOT } from '@/sdk'
 import { FlameIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
-import { api, cn, defineWebExtension, formatAgo, useAction, useDocOf, useNow } from '@/sdk'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  formatAgo,
+  keepLast,
+  useAction,
+  useDocOf,
+  useNow,
+} from '@/sdk'
 import { failing, TTL } from './due.ts'
 import { SetAction, StateAction, WarmDoc } from './refs.ts'
 import type { WarmState } from './refs.ts'
@@ -11,14 +21,12 @@ const tokens = (count = 0) => (count >= 1000 ? `${Math.round(count / 1000)}k` : 
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-/** Where the cache stands: warm until the hour after @ultimate's last request ends, else cold. */
 function cacheLine(state: WarmState, now: number) {
   if (state.lastRequest === undefined) return 'No Claude request yet'
   const until = state.lastRequest + TTL
   return until > now ? `Warm until ${clock(until)}` : `Cold since ${clock(until)}`
 }
 
-/** Why no ping is coming, or when the next one is. */
 function nextLine(state: WarmState, now: number) {
   if (!state.on) return 'Off'
   if (state.nextAt !== undefined) return `Next ping ${clock(Math.max(now, state.nextAt))}`
@@ -27,31 +35,22 @@ function nextLine(state: WarmState, now: number) {
   return 'Stopped: no input from you for 8 h'
 }
 
-/** The last ping failed and nothing renewed the cache since: a later cached answer from @ultimate clears it. */
 const failed = (state: WarmState) =>
   state.last?.error !== undefined && failing(state.last.at, state.lastRequest)
 
-/**
- * The status-line chip: whether @ultimate's prompt cache is kept warm. Quiet while it is, dimmed while off; the
- * popover has the switch, where the cache stands and the last ping.
- */
 function Chip() {
-  const doc = useDocOf(1, WarmDoc)
-  const { data: state } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next one asks again.
-    { onError: () => {}, on: doc, every: 60_000 },
-  )
+  const doc = useDocOf(ROOT, WarmDoc)
+  const { data: state } = useAction(StateAction, null, {
+    onError: keepLast,
+    on: doc,
+    every: 60_000,
+  })
   const now = useNow(60_000)
   if (!state) return null
   const warm = state.lastRequest !== undefined && state.lastRequest + TTL > now
   const red = failed(state)
   const toggle = (on: boolean) =>
-    api
-      .action(SetAction, { on })
-      // The state comes back from the document change; a failure leaves the switch as it was.
-      .catch((error: unknown) => console.warn('Keep warm', error))
+    api.action(SetAction, { on }).catch((error: unknown) => console.warn('Keep warm', error))
   return (
     <Popover>
       <PopoverTrigger asChild>

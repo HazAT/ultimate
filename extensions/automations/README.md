@@ -38,7 +38,8 @@ Each automation has one or both:
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
-escalating with `Fired more than 6 times in an hour; paused`.
+escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
+one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
 
 An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
 model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
@@ -66,7 +67,7 @@ User scripts live in `~/.ultimate/automations/<project>/<id>/`: executable `run`
 (about 2000 lines / 256 KiB) and `pid`. A user script starts in this folder, not in a repository, so it passes the
 repository or path explicitly (`gh --repo`, `git -C`, absolute paths). Ids restart in every chapter, so a chapter after
 the first keeps its scripts in `<project>@<chapter>/<id>/` instead; the first chapter's folders stay where they were,
-and switching chapters never shares a folder. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE`, plus only the named
+and switching chapters never shares a folder. Scripts get `AUTOMATION_ID` and `AUTOMATION_STATE` (the `state/` folder: keep files inside it), plus only the named
 `secrets` from Secrets; records never hold their values. Script state must survive a restart: open stops leftover
 processes and relaunches enabled running scripts.
 
@@ -89,7 +90,7 @@ edits apply after landing.
 
 ## Service and browser API
 
-`AutomationsApi` (`api.ts`, token `automations`, used with `want`) offers `create(args)` (`subscribers` stand in for a
+`AutomationsApi` (`api.ts`, token `automations`, core tier: consumers `need` it) offers `create(args)` (`subscribers` stand in for a
 caller; `key` makes it safe to retry), `delete`, `resume`, `pause`, `run` and `status`, each returning the record with
 `alive`. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
 

@@ -1,5 +1,7 @@
 Commits made through `bash` carry an `Ultimate-Conversation: <id>` trailer via process-local Git config hooks; commits outside the tool and repository hook files are untouched. Existing attribution is preserved when a commit is rebased, cherry-picked or amended; messages without attribution receive the current conversation's trailer when the message hook runs.
 
+All five hooks are scoped to the Git worktree resolved from the bash call's initial working directory. Child processes still inherit the hook configuration, but commits in fixture repositories (including repositories under that worktree) are neither attributed nor recorded. A commit deliberately made in a second repository or another worktree from the same command is also not attributed or recorded. Calls starting outside a Git worktree install no hooks.
+
 Commit attribution needs Git 2.54 or newer: older Git silently ignores config-based hooks.
 
 Each commit made through `bash` is also recorded as the durable event `coding-tools.committed` (`refs.ts`): the conversation, the full sha, its parents, the repository, the linked worktree and branch, the subject, and for an amend or rebase the commit it replaced (`rewrittenFrom`). So the link survives a discarded worktree, a deleted branch or garbage collection. Per bash call, `post-commit`, `post-applypatch` (`git am`, apply-backend rebases), `post-merge` and `post-rewrite` hooks (same `GIT_CONFIG_*` mechanism) append one line each to a temp log unique to that invocation; every hook ends in `|| true`, so it never fails a commit. When the call ends, even with an error or a timeout, the tool reads and removes the log and emits one event per commit the hooks saw being made. A merge counts when it made a merge commit (not a fast-forward or squash); a rewrite only adds `rewrittenFrom` to a commit made in the same call, so a rebase resumed in a later call records each commit once. Cherry-picks, reverts and rebased commits count; commits made during a rebase have no `branch`, since HEAD is detached then.
@@ -18,6 +20,17 @@ process, then returns the output so far followed by "[Interrupted by a steering 
 tail truncation keeps it) as an ordinary result, so the run goes on and the steer is placed at the next boundary
 instead of after the wait. Follow-ups never interrupt. A marked command that changes things (`git push|commit|merge`,
 an `install` or `migrate` word) is refused with a hint to split it, so a steer can never cut it mid-way.
+
+A bash call with `background: true` (dev servers, watchers) starts the command in its own process group through
+`spawnGroup` (`lib/process-group.ts`) and returns at once with the group id, a log of its output and `kill -- -<pgid>`.
+The pid file and log live in `<home>/background/<conversation>/`, named after the Ultimate process that started them.
+After spawning, the call commits a check that the conversation and its owners are not concluded, together with the
+event `coding-tools.background-started`; a concluded conversation or a failed commit stops the new group at once.
+Concluding emits `conversations.concluded` with the conversation and every conversation it owns. The
+`stop-background` reactor reads both events in log order: it records started groups in the root's
+`coding-tools.background` document, and on a conclusion takes exactly the groups started before it into a durable
+effect that stops them and removes their files, so a resumed conversation keeps what it started since. Each open stops the groups an earlier process recorded, so a restart ends every background process; the agent starts it
+again. A pid is signalled only while its pid file still names it with the start time it recorded.
 
 Any running bash call can be cancelled from its card (the × next to its timer): the user-only action
 `cancel {callId}` (`refs.ts`) records the call in the conversation's durable `coding-tools.cancelled` document, which

@@ -1,3 +1,4 @@
+import { ROOT } from '@/sdk'
 import { HourglassIcon, PauseIcon, PlayIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,7 @@ import {
   formatDuration,
   errorMessage,
   getState,
+  keepLast,
   ParkedRuns,
   provide,
   useAction,
@@ -32,26 +34,18 @@ const statusButton =
 
 const tasks = (count: number) => `${count} ${count === 1 ? 'task' : 'tasks'}`
 
-/** What the provider said: the upstream message a relay wraps (Claude Code's), a JSON body's message, or the error. */
-const said = (error: string) =>
+const unwrappedProviderError = (error: string) =>
   /upstream said: (.+)\)$/s.exec(error)?.[1] ??
   /"message"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(error)?.[1]?.replaceAll('\\"', '"') ??
   error
 
-/** Whether the host is paused, live from the root's pause document. */
-const usePaused = () => useDocOf(1, PauseDoc)?.paused === true
+const usePaused = () => useDocOf(ROOT, PauseDoc)?.paused === true
 
-/** The pause and what still runs, refreshed when the doc changes and, while paused, with the task graph. */
 function usePauseState() {
-  const doc = useDocOf(1, PauseDoc)
+  const doc = useDocOf(ROOT, PauseDoc)
   const live = useTasks()
   const graph = doc?.paused ? live : undefined
-  const { data } = useAction(
-    StateAction,
-    null,
-    // A failed poll keeps the last state; the next change asks again.
-    { onError: () => {}, on: [doc, graph] },
-  )
+  const { data } = useAction(StateAction, null, { onError: keepLast, on: [doc, graph] })
   return data
 }
 
@@ -111,7 +105,7 @@ function Popup({
               )}
             </div>
             <div className="break-words text-muted-foreground" title={limit.error}>
-              “{said(limit.error)}”
+              “{unwrappedProviderError(limit.error)}”
             </div>
             <div className="text-muted-foreground">
               {state.autoPlayAt !== undefined
@@ -167,7 +161,6 @@ function Popup({
   )
 }
 
-/** The user's setting: after a rate limit, play by itself after N minutes. Off by default; a Pause you press waits. */
 function AutoPlay({ minutes }: { minutes?: number }) {
   const [draft, setDraft] = useState(String(minutes ?? 30))
   const [error, setError] = useState<string>()
@@ -209,7 +202,6 @@ function AutoPlay({ minutes }: { minutes?: number }) {
   )
 }
 
-/** The status-line item: a quiet Pause, amber while pausing or paused. */
 function Item() {
   const state = usePauseState()
   const [busy, setBusy] = useState(false)
@@ -272,7 +264,6 @@ function Item() {
   )
 }
 
-/** While paused, Play sits next to the item, one click away. */
 function Play() {
   const paused = usePaused()
   const [busy, setBusy] = useState(false)
@@ -297,7 +288,6 @@ function Play() {
   )
 }
 
-/** Under the composer while paused: what happens to a message sent now. */
 function Hint() {
   if (!usePaused()) return null
   return (
@@ -308,7 +298,6 @@ function Hint() {
   )
 }
 
-/** The note Play leaves on a run paused mid-turn: one quiet divider. */
 function Note({ entry }: { entry: EntryRecord }) {
   const note = (entry.data ?? {}) as Partial<PauseNote>
   if (note.since === undefined || note.until === undefined) return null
@@ -333,12 +322,11 @@ function Note({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** In a parent held by the pause: which subagent hit the rate limit. One quiet divider; the child opens on click. */
 function Held({ entry }: { entry: EntryRecord }) {
   const data = (entry.data ?? {}) as Partial<HeldNote>
   const { switchConversation } = useUltimate()
   if (data.child === undefined || data.provider === undefined) return null
-  const child = data.child
+  const { child } = data
   return (
     <div
       className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground/80 before:h-px before:flex-1 before:bg-warning/25 after:h-px after:flex-1 after:bg-warning/25"
@@ -362,10 +350,9 @@ function Held({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** The card a rate limit leaves in @ultimate's transcript: who limited what, and Play while this pause holds. */
 function Limit({ entry }: { entry: EntryRecord }) {
   const limit = (entry.data ?? {}) as Partial<RateLimit>
-  const doc = useDocOf(1, PauseDoc)
+  const doc = useDocOf(ROOT, PauseDoc)
   const holding = doc?.paused === true && doc.limit?.at === limit.at
   const now = useNow(1000, holding)
   const { switchConversation } = useUltimate()
@@ -382,7 +369,7 @@ function Limit({ entry }: { entry: EntryRecord }) {
       </header>
       <div className="space-y-2 px-3 py-3 text-[13px] leading-relaxed">
         <p className="whitespace-pre-wrap text-warning" title={limit.error}>
-          {said(limit.error)}
+          {unwrappedProviderError(limit.error)}
         </p>
         <p className="flex flex-wrap items-center gap-1 font-mono text-[11px] text-muted-foreground">
           first hit in
@@ -437,7 +424,6 @@ function Limit({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** A rate-limit pause that played by itself, in @ultimate's transcript: one quiet divider saying when. */
 function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
   const data = (entry.data ?? {}) as Partial<AutoPlayed>
   if (data.since === undefined || data.at === undefined) return null
@@ -460,7 +446,6 @@ function AutoPlayedNote({ entry }: { entry: EntryRecord }) {
 
 const paused = () => getState().docsOf[1]?.[PauseDoc.kind]?.paused === true
 
-/** The conversations this pause parked, for the transcript and the lists of conversations. */
 function useParked() {
   const pausedNow = usePaused()
   const graph = useTasks()

@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -122,7 +123,7 @@ it('keeps the newest calls of a conversation', async () => {
   const home = await mkdtemp(join(tmpdir(), 'wire-'))
   try {
     const call = {
-      conversationId: 7,
+      conversationId: 7 as ConversationId,
       source: 'payload' as const,
       provider: 'p',
       model: 'm',
@@ -131,11 +132,11 @@ it('keeps the newest calls of a conversation', async () => {
       request: '{}',
     }
     for (let i = 0; i < PER_CONVERSATION + 2; i++) await save(queue, home, call)
-    const kept = await list(home, 7)
+    const kept = await list(home, 7 as ConversationId)
     expect(kept.map((summary) => summary.n)).toEqual(
       Array.from({ length: PER_CONVERSATION }, (_, i) => i + 3),
     )
-    expect((await load(home, 7, 3))?.request).toBe('{}')
+    expect((await load(home, 7 as ConversationId, 3))?.request).toBe('{}')
     expect(await readdir(join(home, 'wire', '7'))).toHaveLength(PER_CONVERSATION * 2)
   } finally {
     await rm(home, { recursive: true, force: true })

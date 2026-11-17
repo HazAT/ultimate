@@ -17,10 +17,6 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { Started } from './refs.ts'
 import { Profile } from './api.ts'
 
-/**
- * Emit `subagents.started` for `conversation`, configured in `tx` to run as `agent`: its model and thinking level as
- * configured, and its parent, the owner or else the fork source.
- */
 export async function started(
   host: Pick<ExtensionHost, 'emit'>,
   tx: Tx,
@@ -40,10 +36,25 @@ export async function started(
   })
 }
 
-/**
- * A conversation configured from a definition (or as a copy of the parent's agent), new or forked at `fork.at`; a
- * definition with `summaries: false` turns its automatic summaries off.
- */
+export async function reconfigure(
+  tx: Tx,
+  id: ConversationId,
+  definition: AgentDefinition,
+  parent: Agent,
+  modelRuntime: ModelRuntime,
+) {
+  const own = await tx.doc(AgentDoc, id)
+  const currentModelSettings = {
+    ...parent,
+    ...(own.model ? { model: own.model } : {}),
+    ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
+  }
+  const change = definitionAgent(definition, currentModelSettings, modelRuntime)
+  await configure(tx, id, change)
+  ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
+  ;(await tx.doc(Profile, id)).definition = definition.name
+}
+
 export async function createChild(
   host: Pick<ExtensionHost, 'need'>,
   tx: Tx,
@@ -61,7 +72,6 @@ export async function createChild(
     excludeExtensions?: string[]
     model?: { provider: string; modelId: string }
     thinking?: ModelThinkingLevel
-    /** `definition` was made on the fly: no file of its name, so the profile records none. */
     adhoc?: true
   },
 ) {
@@ -76,10 +86,9 @@ export async function createChild(
     ...change,
     cwd: options.cwd ?? parent.cwd ?? null,
   })
-  // An explicit model is no family's; a fork would otherwise keep its parent's.
-  ;(await tx.doc(Family, child.id)).name = options.model
-    ? null
-    : definitionFamily(definition, change)
+  const family = await tx.doc(Family, child.id)
+  const familyClearedByExplicitModel = options.model ? null : definitionFamily(definition, change)
+  family.name = familyClearedByExplicitModel
   Object.assign(await tx.doc(options.metadata, child.id), {
     label: options.label,
     title: options.title,

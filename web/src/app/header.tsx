@@ -57,7 +57,6 @@ export function IconButton({
   )
 }
 
-/** The conversations above `id`, root first, by their parent links. */
 function ancestors(id: number | undefined, conversations: readonly ConversationSummary[]) {
   const chain: ConversationSummary[] = []
   let parent = conversations.find((conversation) => conversation.id === id)?.parentConversationId
@@ -70,20 +69,16 @@ function ancestors(id: number | undefined, conversations: readonly ConversationS
   return chain
 }
 
-/** The root is named by role rather than by its first prompt. */
 const nameOf = (conversation: ConversationSummary) =>
   conversation.id === ROOT ? 'main' : (conversation.label ?? `#${conversation.id}`)
 
-/** Where the shown conversation sits: its ancestors (beyond a phone), a busy dot, and its title. */
 function Trail() {
   const { busy } = useConversation()
-  // The requested conversation while its snapshot loads, so a switch keeps naming where it goes.
   const id = useStore((state) => state.view?.conversation.id ?? state.requested)
   const conversations = useConversations()
   const summary = conversations.find((conversation) => conversation.id === id)
   const trail = ancestors(id, conversations)
   const root = id === ROOT
-  // A conversation just started is named once its summary arrives, not given a placeholder before that.
   const title =
     id === undefined ? 'connecting…' : summary ? (summary.title ?? 'Untitled conversation') : ''
   return (
@@ -127,10 +122,6 @@ function Trail() {
   )
 }
 
-/**
- * The top bar of a surface: `children` (the shown conversation's trail by default) and the `header.right` slot. It
- * toggles the sidebar and panel when the surface renders them.
- */
 export function Header({ children }: { children?: ReactNode }) {
   const records = useExtensions()
   const sidebar = useRegion('sidebar') && slotItems(records, 'sidebar').length > 0

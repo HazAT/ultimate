@@ -1,17 +1,27 @@
 import { PencilIcon } from 'lucide-react'
 import { Fold, formatTime, Provided, useCompact, useTranscript } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
-import type {
-  FeatureChange,
-  IntentSummary,
-  ReplySummary,
-  SpawnSummary,
-  SummaryDiscard,
-  TitleChange,
-} from './types.ts'
+import {
+  TitleChanged,
+  FeatureChanged,
+  IntentSummarized,
+  SpawnSummarized,
+  ReplySummarized,
+  SummaryDiscarded,
+} from './entries.ts'
 import { Unsummarized } from './ui.tsx'
 
-/** The entry kinds a summary task writes, each with the word the folded line names it by. */
+function isSummary(entry: EntryRecord) {
+  return (
+    TitleChanged.is(entry) ||
+    FeatureChanged.is(entry) ||
+    IntentSummarized.is(entry) ||
+    SpawnSummarized.is(entry) ||
+    ReplySummarized.is(entry) ||
+    SummaryDiscarded.is(entry)
+  )
+}
+
 const summaryKinds: Record<string, string> = {
   'conversations.intent-summarized': 'intent',
   'conversations.title-changed': 'title',
@@ -20,41 +30,22 @@ const summaryKinds: Record<string, string> = {
   'conversations.assessed': 'reply',
   'conversations.summary-discarded': 'summary',
 }
-/**
- * Entries that show no row of their own, so summary lines on either side still sit next to each other: a tool result
- * shows inside the call that made it.
- */
 const invisible = new Set(['conversations.identity', 'pi.tool-result'])
 
-/** What a summary task concluded, as one quiet line; each entry traces to its task by `byTaskId`. */
 function summaryText(entry: EntryRecord) {
-  switch (entry.kind) {
-    case 'conversations.intent-summarized':
-      return `Intent: ${(entry.data as IntentSummary).summary}`
-    case 'conversations.title-changed':
-      return `Title changed to “${(entry.data as TitleChange).title}”`
-    case 'conversations.feature-changed': {
-      const data = entry.data as FeatureChange
-      return `Tag changed from “${data.from}” to “${data.feature}”`
-    }
-    case 'conversations.summarized':
-      return `Summary: ${(entry.data as SpawnSummary).summary}`
-    case 'conversations.assessed':
-      return `Reply: ${(entry.data as ReplySummary).activity}`
-    default: {
-      const data = entry.data as SummaryDiscard
-      return data.reason === 'stale'
-        ? 'Summary superseded by newer work'
-        : `Summary unavailable: ${data.cause}`
-    }
-  }
+  if (IntentSummarized.is(entry)) return `Intent: ${entry.data.summary}`
+  if (TitleChanged.is(entry)) return `Title changed to “${entry.data.title}”`
+  if (FeatureChanged.is(entry))
+    return `Tag changed from “${entry.data.from}” to “${entry.data.feature}”`
+  if (SpawnSummarized.is(entry)) return `Summary: ${entry.data.summary}`
+  if (ReplySummarized.is(entry)) return `Reply: ${entry.data.activity}`
+  if (!SummaryDiscarded.is(entry)) return ''
+  return entry.data.reason === 'stale'
+    ? 'Summary superseded by newer work'
+    : `Summary unavailable: ${entry.data.cause}`
 }
 
-/**
- * The run of summary entries `entry` belongs to, oldest first, when it starts the run; undefined when an earlier entry
- * of the run renders it.
- */
-function runFrom(entries: readonly EntryRecord[], entry: EntryRecord) {
+function summaryRunAtFirstVisibleEntry(entries: readonly EntryRecord[], entry: EntryRecord) {
   const shown = entries.filter(
     (other) => other.conversationId === entry.conversationId && !invisible.has(other.kind),
   )
@@ -67,8 +58,7 @@ function runFrom(entries: readonly EntryRecord[], entry: EntryRecord) {
 
 export function SummaryAction({ entry }: { entry: EntryRecord }) {
   const compact = useCompact()
-  const run = runFrom(useTranscript(), entry)
-  // An agent in compact mode and a root get no summaries; older lines would only interrupt them.
+  const run = summaryRunAtFirstVisibleEntry(useTranscript(), entry)
   if (compact || !run) return null
   return (
     <Provided input={entry.conversationId} point={Unsummarized}>
@@ -77,10 +67,11 @@ export function SummaryAction({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** Neighbouring summary lines fold into one quiet line naming what changed; opening it shows each line. */
 function SummaryRun({ run }: { run: readonly EntryRecord[] }) {
   const names = [...new Set(run.map((entry) => summaryKinds[entry.kind]))]
-  const date = new Date((run.at(-1)!.data as { at: number }).at)
+  const last = run.at(-1)!
+  if (!isSummary(last)) return null
+  const date = new Date(last.data.at)
   return (
     <Fold
       always
@@ -106,7 +97,8 @@ function SummaryRun({ run }: { run: readonly EntryRecord[] }) {
 
 function SummaryLine({ entry }: { entry: EntryRecord }) {
   const text = summaryText(entry)
-  const date = new Date((entry.data as { at: number }).at)
+  if (!isSummary(entry)) return null
+  const date = new Date(entry.data.at)
   return (
     <div
       className="flex items-baseline gap-2 font-mono text-[11px] text-muted-foreground"

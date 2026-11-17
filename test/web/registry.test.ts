@@ -1,4 +1,4 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
 import {
   commandApplies,
@@ -403,7 +403,12 @@ describe('web extension registry', () => {
     const report = vi.fn<(extension: string, error: unknown) => void>()
     const records = registry.getSnapshot()
     const kept = (conversation: { id: number; label?: string }, docs = {}) => {
-      const { keeps } = compactTools(records, { ...conversation, busy: false }, docs, report)!
+      const { keeps } = compactTools(
+        records,
+        { ...conversation, id: conversation.id as ConversationId, busy: false },
+        docs,
+        report,
+      )!
       return ['message', 'branch', 'workspace', 'setup', 'bash'].filter((name) =>
         keeps({ type: 'toolCall', id: name, name, arguments: {} }, {}),
       )
@@ -412,10 +417,17 @@ describe('web extension registry', () => {
     expect(kept({ id: 3, label: 'agent' })).toEqual(['message', 'branch'])
     // `when` reads the root documents passed in.
     expect(kept({ id: 4 }, { index: { main: 4 } })).toEqual(['setup'])
-    expect(compactTools(records, { id: 4, busy: false }, { index: { main: 5 } }, report)).toBe(
-      undefined,
-    )
-    expect(compactTools(records, { id: 3, busy: false }, {}, report)).toBeUndefined()
+    expect(
+      compactTools(
+        records,
+        { id: 4 as ConversationId, busy: false },
+        { index: { main: 5 } },
+        report,
+      ),
+    ).toBe(undefined)
+    expect(
+      compactTools(records, { id: 3 as ConversationId, busy: false }, {}, report),
+    ).toBeUndefined()
     expect(compactTools(records, undefined, {}, report)).toBeUndefined()
     expect(report).toHaveBeenCalledWith('c', new Error('broken'))
     const shape = 'compact must be a { when, tools?, docs?, thread?, summary? } object'
@@ -443,7 +455,7 @@ describe('web extension registry', () => {
     })
     const { thread, keeps, summary } = compactTools(
       registry.getSnapshot(),
-      { id: 1, busy: false },
+      { id: 1 as ConversationId, busy: false },
       {},
       vi.fn(),
     )!
@@ -489,7 +501,7 @@ describe('web extension registry', () => {
     const report = vi.fn<(extension: string, error: unknown) => void>()
     const records = registry.getSnapshot()
     expect(compactDocs(records)).toEqual(['board', 'log'])
-    const { keeps } = compactTools(records, { id: 1, busy: false }, {}, report)!
+    const { keeps } = compactTools(records, { id: 1 as ConversationId, busy: false }, {}, report)!
     const script = { type: 'toolCall' as const, id: 's', name: 'codemode', arguments: {} }
     expect(keeps(script, {})).toBe(false)
     expect(keeps(script, { log: { calls: ['t'] } })).toBe(false)

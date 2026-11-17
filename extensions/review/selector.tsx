@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronDownIcon, CornerDownLeftIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import {
@@ -13,10 +14,8 @@ import { cn, useAction } from '@/sdk'
 import { RangesAction } from './refs.ts'
 import type { ReviewRange } from './refs.ts'
 
-/** A spec as a short label: shas cut to seven characters. */
 export const shortSpec = (spec: string) => spec.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
 
-/** The spec on screen as a button; it opens the recent choices of `conversation`'s checkout, or takes any spec typed in. */
 export function Selector({
   spec,
   title,
@@ -25,7 +24,7 @@ export function Selector({
 }: {
   spec: string
   title?: string
-  conversation?: number
+  conversation?: ConversationId
   onChange: (spec: string) => void
 }) {
   const [open, setOpen] = useState(false)

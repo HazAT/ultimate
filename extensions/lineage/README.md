@@ -61,15 +61,18 @@ of at most 120 characters, `body` at most 2000, `source` a `#<conversation>/<ent
   `remember {root?, ops}` tool is the standing `ultimate` agent's only (a branch could find it with `tool_search`); it
   defaults to the caller's tree root, else the project's only root. User-only `forget {root, slug}` deletes one;
   `LineageApi.remember` serves other extensions.
-- **Reading.** `memory {read?, root?}`, offered to every agent, returns the index, one
-  `slug [kind] — line (updated YYYY-MM-DD)` per memory, or with `read` one memory's body and source.
+- **Reading.** `memory {read?, query?, root?}`, offered to every agent, returns the index, one
+  `slug [kind] — line (updated YYYY-MM-DD)` per memory; with `read` (one slug or several) those memories' bodies and
+  sources, an unknown slug answering with the index; with `query`, a topic or situation in plain words, the memories
+  about it in full. `query` searches through the `lineage.memory-search` point, which recall provides with classify;
+  without it, or when the search fails, `query` returns the index.
 - **Brief.** A branch from a root with memories starts from a brief instead of the tally: `<project_memory root="#R">`
   with the index, the root's last 10 landings and where to read the full tally. The inherited tally stays in storage;
   `lineage.branch` records `brief: true`.
-- **Landings.** Each landing in a tree (not from the root itself) asks the summary model once for memory ops in the
-  root, with the landing note, the submitter's abstract and every memory. It defaults to no ops, prefers updates to
-  near-duplicates, deletes or rewrites what the landing replaced, and merges at the cap. Without a summary model nothing
-  happens; a refused answer is asked once more, then left as a notice. The landing itself never fails on it.
+- **What earns a memory.** Only what a branch cannot learn from the code, docs, its instructions or the history and
+  would get wrong without it: how the user likes to work, standing decisions with their reason, lessons from real
+  incidents. Landings write no memory; @ultimate remembers by judgment, and each dream's memory pass prunes what no
+  longer passes that test.
 
 The **Memory** surface (`MEMORY_SURFACE` in `ui.tsx`, opened from the sidebar's Memory row) shows every root's memory
 grouped into Decisions, Facts and Lessons, newest first, with a filter, the count and brief size, and the `MemoryHeader`

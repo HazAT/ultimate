@@ -2,9 +2,17 @@
  * Workspaces in the browser: the worktree index every conversation's isolate and the lander queue live in, the actions
  * that inspect worktrees, and the landing event. Browser-safe.
  */
+import { defineEntry } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
-import type { WorkspaceDisk, WorkspaceIndex, WorkspaceInfo, WorkspaceStats } from './types.ts'
+import type {
+  GithubRepo,
+  WorkspaceDisk,
+  WorkspaceIndex,
+  WorkspaceInfo,
+  WorkspaceStats,
+} from './types.ts'
 import type { KeptWork } from '../conversations/types.ts'
 
 /** Why the project cannot isolate conversations (`reason`, absent when it can), and whether its folder is empty. */
@@ -14,14 +22,23 @@ export type Isolation = { reason?: string; empty?: boolean }
 export const WorkspacesDoc = docRef<WorkspaceIndex>('ultimate.workspaces')
 
 /** `{ id }` → conversation `id`'s worktree with its branch, tip and changes, or null when it has none. */
-export const InfoAction = actionRef<{ id: number }, WorkspaceInfo | null>('workspaces', 'info')
+export const InfoAction = actionRef<{ id: ConversationId }, WorkspaceInfo | null>(
+  'workspaces',
+  'info',
+)
 /**
  * `{ ids }` → the work so far of these conversations' ready worktrees: commits not yet on their target and uncommitted
  * changes, one entry per id that has a worktree, for the sidebar's in-flight rows.
  */
-export const ProgressAction = actionRef<{ ids: number[] }, KeptWork[]>('workspaces', 'progress')
+export const ProgressAction = actionRef<{ ids: ConversationId[] }, KeptWork[]>(
+  'workspaces',
+  'progress',
+)
 /** `{ ids }` → the unlanded work of these conversations' worktrees, to warn before concluding them. */
-export const PendingAction = actionRef<{ ids: number[] }, KeptWork[]>('workspaces', 'pending')
+export const PendingAction = actionRef<{ ids: ConversationId[] }, KeptWork[]>(
+  'workspaces',
+  'pending',
+)
 /** No arguments → how many worktrees there are in total and in each state, for the workspaces panel. */
 export const StatsAction = actionRef<null, WorkspaceStats>('workspaces', 'stats')
 /** No arguments → the disk space the worktrees take (on btrfs also with shared blocks counted once), at most a minute old. */
@@ -33,19 +50,22 @@ export const DiskAction = actionRef<null, WorkspaceDisk>('workspaces', 'disk')
 export const IsolationAction = actionRef<null, Isolation>('workspaces', 'isolation')
 /** No arguments → `github.com/<owner>/<repo>` of the project's `origin`, or null off GitHub. */
 export const GithubAction = actionRef<null, string | null>('workspaces', 'github')
+export type { GithubRepo }
+/** No arguments → the project's `origin` on GitHub with its visibility, or null off GitHub. */
+export const RepoAction = actionRef<null, GithubRepo | null>('workspaces', 'repo')
 
 export type LandedData = {
   /** The submission's id in the lander's queue. */
   submission: string
   /** The submitting conversation, and its latest entry when it submitted. */
-  conversationId: number
-  at: number
+  conversationId: ConversationId
+  at: EntryId
   /** The target's new tip, the tip it moved from, and the branch. */
   sha: string
   base: string
   target: string
   /** The lander conversation that landed it. */
-  lander: number
+  lander: ConversationId
   divergence: string
   /** The submitter's title and summary as they were at submit time. */
   title: string
@@ -69,7 +89,7 @@ export const SubmissionLanded = defineEvent<LandedData>('workspaces.landed')
  */
 export const SubmissionFailed = defineEvent<{
   submission: string
-  conversationId: number
+  conversationId: ConversationId
   target: string
   reason: string
 }>('workspaces.landing-failed', { fails: 'workspaces.landed' })
@@ -84,3 +104,9 @@ export const CheckRan = defineEvent<{
   result: 'passed' | 'failed' | 'flaky' | 'timeout'
   ms: number
 }>('workspaces.check')
+
+/** A submission's outcome card, shared with its starter. */
+export const LanderReportEntry = defineEntry<{
+  id: string
+  outcome: WorkspaceIndex['results'][string]
+}>('workspaces.lander-report')

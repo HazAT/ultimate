@@ -73,8 +73,8 @@ The tool renderer shows a quiet, transcript-width card:
   see [settings](../../docs/settings.md)) start unchecked unless the user's settings enable them, each with one line
   on what it needs (a key, a service, a Worker).
   Core-tier extensions (`ExtensionInfo.core`, such as `subagents`, `messages`, `lineage`, `onboarding` and `documents`)
-  stay checked and disabled with "core, always on": the server keeps them enabled whatever the settings say. Dependencies are checked with their extension (`automations` needs
-  `subagents`, `phase` needs `classify`).
+  stay checked and disabled with "core, always on": the server keeps them enabled whatever the settings say. Dependencies are checked with their extension (`phase` needs
+  `classify`).
   Continue applies user-global choices with `applyFirstRun`. Both checked and unchecked choices are saved explicitly;
   project settings can still override user settings.
 - **Project:** "Use this project's setup?", chips showing its extensions, settings, agents and skills, and its

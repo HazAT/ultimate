@@ -16,6 +16,7 @@ import {
   errorMessage,
   events,
   formatAgo,
+  keepLast,
   useAction,
   useEvent,
   useNow,
@@ -25,15 +26,10 @@ import {
 import { DeleteAction, ListAction, SetAction } from './refs.ts'
 import type { Secret } from './refs.ts'
 
-/** One row of the `list` action: a declared or stored secret, never its value. */
-/**
- * The row another facet asked for with `secrets:open { name }`, until the panel opens it. Kept outside React: the
- * panel mounts only once the request has opened it.
- */
-let requested: string | undefined
+let requestedBeforePanelMount: string | undefined
 const listeners = new Set<() => void>()
 function request(name: string | undefined) {
-  requested = name
+  requestedBeforePanelMount = name
   for (const listener of listeners) listener()
 }
 const subscribe = (listener: () => void) => {
@@ -43,21 +39,16 @@ const subscribe = (listener: () => void) => {
   }
 }
 
-/**
- * The list, read on mount, after a save or delete here, and when an extension is enabled, disabled or changes its
- * declared secrets. A hot reload of server code alone (`loadedAt`) is left out: it changes nothing the list shows,
- * and re-reading on it sent a burst of reads from every tab on each save.
- */
 function useSecrets() {
   const system = useSystem()
-  // Failures show inline in the panel, not as notices: the status line reads the list on every page.
+  const secretDeclarationDependencies = system?.extensions.map((extension) => [
+    extension.name,
+    extension.enabled,
+    extension.server?.secrets,
+  ])
   const secrets = useAction(ListAction, null, {
-    onError: () => {},
-    on: system?.extensions.map((extension) => [
-      extension.name,
-      extension.enabled,
-      extension.server?.secrets,
-    ]),
+    onError: keepLast,
+    on: secretDeclarationDependencies,
   })
   useEvent('secrets:changed', () => void secrets.refetch())
   return secrets
@@ -66,7 +57,6 @@ function useSecrets() {
 const missing = (secrets: readonly Secret[] | undefined) =>
   secrets?.filter((secret) => !secret.set && !secret.via && secret.declaredBy.length > 0) ?? []
 
-/** The rule `set` enforces (`lib/secrets.ts` `validateName`), checked here so the form can say so before saving. */
 const validName = /^[A-Z][A-Z0-9_]*$/
 
 const dot = (tone: string) => <span className={cn('size-1.5 shrink-0 rounded-full', tone)} />
@@ -84,11 +74,6 @@ function Heading({ children, meta }: { children: ReactNode; meta?: ReactNode }) 
 const field =
   'h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
 
-/**
- * The value, typed or pasted, hidden unless shown. It lives only in this component and is cleared after a save. No
- * <form> and a one-time-code field, as in the models login: browsers must not offer to save a key as a password.
- * Without a `name` it adds a new secret and asks for the name first; `taken` are the names already listed.
- */
 function ValueInput({
   name: fixed,
   replacing,
@@ -138,7 +123,6 @@ function ValueInput({
     if (event.nativeEvent.isComposing) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      // oxlint-disable-next-line typescript/no-floating-promises -- save catches secret write failures and displays them with setError.
       void save()
     }
     if (event.key === 'Escape') {
@@ -218,9 +202,8 @@ function ValueInput({
 function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  // Focus starts on Cancel, so a stray Enter keeps the secret.
-  const cancel = useRef<HTMLButtonElement>(null)
-  useEffect(() => cancel.current?.focus({ preventScroll: true }), [])
+  const safeCancelFocus = useRef<HTMLButtonElement>(null)
+  useEffect(() => safeCancelFocus.current?.focus({ preventScroll: true }), [])
   const remove = async () => {
     setBusy(true)
     setError(undefined)
@@ -251,7 +234,7 @@ function ConfirmDelete({ name, onDone }: { name: string; onDone: () => void }) {
         <Button
           className={small}
           onClick={onDone}
-          ref={cancel}
+          ref={safeCancelFocus}
           size="sm"
           type="button"
           variant="ghost"
@@ -278,12 +261,11 @@ function Row({
   onMode: (mode: Mode['mode'] | undefined) => void
 }) {
   const needed = secret.declaredBy.length > 0
-  // When the form or the confirmation closes, focus returns to the row instead of the page.
-  const primary = useRef<HTMLButtonElement>(null)
+  const rowFocusAfterEditorCloses = useRef<HTMLButtonElement>(null)
   const was = useRef(mode)
   useEffect(() => {
     if (was.current && !mode && document.activeElement === document.body)
-      primary.current?.focus({ preventScroll: true })
+      rowFocusAfterEditorCloses.current?.focus({ preventScroll: true })
     was.current = mode
   }, [mode])
   return (
@@ -344,7 +326,7 @@ function Row({
           <Button
             className={small}
             onClick={() => onMode('edit')}
-            ref={primary}
+            ref={rowFocusAfterEditorCloses}
             size="sm"
             type="button"
             variant="outline"
@@ -371,11 +353,10 @@ function Row({
 function SecretsPanel() {
   const { data, error, loading } = useSecrets()
   const now = useNow(30000)
-  // One form at a time: a row's, or the new-secret form's.
-  const [open, setOpen] = useState<Mode | 'add'>()
+  type SingleOpenSecretEditor = Mode | 'add'
+  const [open, setOpen] = useState<SingleOpenSecretEditor>()
   const row = open === 'add' ? undefined : open
-  // A row another facet asked for opens for editing once the list has it.
-  const target = useSyncExternalStore(subscribe, () => requested)
+  const target = useSyncExternalStore(subscribe, () => requestedBeforePanelMount)
   useEffect(() => {
     if (!target || !data || loading) return
     request(undefined)
@@ -458,7 +439,6 @@ function SecretsPanel() {
   )
 }
 
-/** Other facets open the panel at a row with `events.emit('secrets:open', { name })`. */
 function Opener() {
   const ui = useUltimate()
   useEvent('secrets:open', (data) => {
@@ -472,7 +452,6 @@ function Opener() {
 export default defineWebExtension({
   slots: { overlay: [Opener] },
   panels: [
-    // Opened from ⌘K and missing-secret prompts.
     {
       id: 'secrets',
       title: 'Secrets',

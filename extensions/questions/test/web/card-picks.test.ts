@@ -6,6 +6,7 @@ import type { CardState } from '../../state.tsx'
 
 const shell = vi.hoisted(() => ({ cards: {} as Record<string, CardState> }))
 vi.mock('@/sdk', () => ({
+  ROOT: 1,
   api: { action: () => Promise.resolve({}) },
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   errorMessage: (error: unknown) => String(error),

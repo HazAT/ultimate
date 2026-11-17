@@ -1,36 +1,28 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { parseConversationId } from '../../lib/ids.ts'
+import { formatTime } from '@/sdk'
+import { waitsOn } from '../../lib/waits.ts'
+import type { Wait, WaitFacts } from '../../lib/waits.ts'
+import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
-import type { MessagesData, Message, Remote } from './refs.ts'
+import type { MessagesData, Message, Remote, RemoteProgress } from './refs.ts'
+import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/ui.tsx'
+import { FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
+import { LanderReportEntry } from '../workspaces/ui.tsx'
+import { InstructionEntry, ReportEntry } from '../subagents/ui.tsx'
 
 export { isOpen, isOwed, openQuestion }
 
-/** How another project's Ultimate is named; the server says the same in its model text. */
 export const remoteLabel = (remote: Pick<Remote, 'project' | 'machine'>) =>
   `@ultimate@${remote.project} on ${remote.machine}`
 
-/** Only incoming requests belong to an answer, never the outgoing reply log item. */
-export function answeredMessages(messages: Message[], conversation: number, entry: number) {
+export function answeredMessages(messages: Message[], conversation: ConversationId, entry: number) {
   return messages.filter((message) => message.to === conversation && message.answer === entry)
 }
 
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
-/** What waits on the user: each question to the user they have neither answered nor dismissed. */
+
 export const waitingOnUser = (log: MessagesData) => log.messages.filter(openQuestion).length
 
-/**
- * Where a conversation stands, the one state every view shows, first match wins:
- * - `paused`: the host is paused and its run is parked: no task of it executes until Play;
- * - `waits`: a question waits on the user, even while the conversation or a subagent of it works, since the question
- *   asks the user to act: for the primary agent (@ultimate) any question open with the user, for any other
- *   non-subagent conversation one of its own; views that can keep showing the work (a pulsing mark) do;
- * - `working`: it runs, or has input queued;
- * - `awaiting`: a conversation that is no subagent asked the primary agent (a branch asking @ultimate) and waits for
- *   the answer, or reported to it and has not heard from it since; a subagent's questions go to its parent, which
- *   answers them in its own run;
- * - `done`: a subagent answered, and its answer went to its parent;
- * - `failed`: its latest input ended without an answer;
- * - `idle`: everything else.
- */
 export type ConversationState =
   | 'paused'
   | 'working'
@@ -40,81 +32,89 @@ export type ConversationState =
   | 'failed'
   | 'idle'
 
-export function conversationState(
-  conversation: {
-    id: number
-    /** `primary`: the agent that talks to the user; `subagent`: owned by a task of its parent. */
-    kind: 'primary' | 'subagent' | 'other'
-    runState?: 'working' | 'queued' | 'idle' | 'answered' | 'error'
-    busy?: boolean
-    /** A pause of the host parked its run (the `ParkedRuns` point). */
-    parked?: boolean
-    /** The primary agent's conversation, which a branch's open question waits on. */
-    primary?: number
-    /** Since when it counts as concluded (`useConcludedSince`): its reports from before then await nothing. */
-    concludedSince?: number
-  },
+type Conversation = {
+  id: number
+  kind: 'primary' | 'subagent' | 'other'
+  runState?: 'working' | 'queued' | 'idle' | 'answered' | 'error'
+  busy?: boolean
+  parked?: boolean
+  concludedSince?: number
+  starter?: number
+}
+
+export function conversationWait(
+  conversation: Conversation,
   log: MessagesData,
+  automations?: WaitFacts['automations'],
+) {
+  return waitsOn(conversation.id, {
+    working:
+      conversation.busy ||
+      conversation.runState === 'working' ||
+      conversation.runState === 'queued',
+    messages: log.messages,
+    automations,
+    starter: conversation.starter,
+    concluded: conversation.concludedSince === Infinity,
+  })
+}
+
+export function conversationState(
+  conversation: Conversation,
+  log: MessagesData,
+  automations?: WaitFacts['automations'],
 ): ConversationState {
   const { id, kind, runState } = conversation
   if (conversation.parked) return 'paused'
-  if (
+  const userActionTakesPriority =
     kind === 'primary'
       ? waitingOnUser(log) > 0
       : kind === 'other' && log.messages.some((m) => m.from === id && openQuestion(m))
-  )
-    return 'waits'
-  if (conversation.busy || runState === 'working' || runState === 'queued') return 'working'
-  if (
-    kind !== 'subagent' &&
-    awaitsPrimary(id, conversation.primary, log, () => conversation.concludedSince)
-  )
-    return 'awaiting'
+  if (userActionTakesPriority) return 'waits'
+  const wait = conversationWait(conversation, log, automations)
+  if (wait?.on === 'work') return 'working'
   if (runState === 'error') return 'failed'
+  if (kind !== 'subagent' && wait && wait.on !== 'user') return 'awaiting'
   if (kind === 'subagent' && runState === 'answered') return 'done'
   return 'idle'
 }
 
-/** Whether conversation `id` waits on the primary agent: a reply-enabled message to it is open, or a report is pending. */
-function awaitsPrimary(
-  id: number,
-  primary: number | undefined,
-  log: MessagesData,
-  concludedSince: (id: number) => number | undefined,
+export function waitLabel(
+  wait: Wait | undefined,
+  primary?: number,
+  primaryWait?: Wait,
+  remote?: RemoteProgress,
 ) {
-  if (primary === undefined) return false
-  return (
-    log.messages.some((m) => m.from === id && m.to === primary && isOpen(m)) ||
-    pendingReport(log.messages, id, primary, concludedSince) !== undefined
-  )
+  if (!wait) return undefined
+  const suffix =
+    remote?.reachable === false
+      ? ' · not running'
+      : remote?.progress
+        ? ` · ${remote.progress.label} ${remote.progress.index}/${remote.progress.total}`
+        : ''
+  switch (wait.on) {
+    case 'work':
+      return 'working'
+    case 'user':
+      return 'waits on you'
+    case 'agent':
+    case 'starter':
+      return wait.to === primary
+        ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}${suffix}` : ''}`
+        : `waits on #${wait.to}`
+    case 'remote':
+      return `waits on ${wait.project}${suffix}`
+    case 'timer':
+      return `waits on ${wait.name} · ${formatTime(wait.at)}`
+  }
+  return undefined
 }
 
-/**
- * The report `from` left with `to` that `to` has not taken up: `from`'s latest report (a routed final answer after it
- * stopped with nothing under way) or reply that awaits `to` (`awaits`), unless `to` messaged `from` since, or `from`
- * was concluded after sending it. One rule for both sides: `from` shows as awaiting `to`, and `to` owes it.
- */
-export function pendingReport(
-  messages: readonly Message[],
-  from: number | 'user' | 'remote',
-  to: number | 'user' | 'remote',
-  concludedSince: (id: number) => number | undefined,
-) {
-  let pending: Message | undefined
-  for (const m of messages)
-    if (m.from === from && m.to === to) {
-      if ((m.report || m.awaits) && !settled(m, concludedSince)) pending = m
-    } else if (m.from === to && m.to === from) pending = undefined
-  return pending
-}
-
-/** A state in the sidebar's and System's lower-case words; `waiting` counts what waits on you. */
-export function stateWord(state: ConversationState, waiting = 0) {
+export function stateWord(state: ConversationState, waiting = 0, label?: string) {
   if (state === 'waits') return waiting > 0 ? `${waiting} waiting on you` : 'waits on you'
-  return state === 'awaiting' ? 'awaiting @ultimate' : state
+  return state === 'awaiting' ? (label ?? 'waiting') : state
 }
 
-/** The text colour each state is said in; working's comes from its phase, idle is quiet. */
 export const stateTone: Partial<Record<ConversationState, string>> = {
   paused: 'text-warning',
   working: 'text-brand',
@@ -124,19 +124,11 @@ export const stateTone: Partial<Record<ConversationState, string>> = {
   failed: 'text-error',
 }
 
-/**
- * The primary standing agent's conversation, which uses compact mode with the user: @ultimate's, by the standing
- * agents' index on the root (`StandingDoc`), whatever its title or label.
- */
 export const ultimateCompact = (
   conversation: { id: number },
   standing: Readonly<Record<string, unknown>> | null | undefined,
 ) => standing?.ultimate === conversation.id
 
-/**
- * The messages to you that tool call `call` sent, itself or through a script's nested calls, in the order sent (the log
- * keeps id order). Messages from before the log recorded calls match nothing.
- */
 export const sentBy = (messages: readonly Message[], call: string) =>
   messages.filter(
     (message) =>
@@ -145,14 +137,12 @@ export const sentBy = (messages: readonly Message[], call: string) =>
       (message.call === call || message.call.startsWith(`${call}/`)),
   )
 
-/** Whether a `codemode` call messaged you, from the log alone: a script interrupted before its result counts too. */
 export const scriptMessaged = (
   call: { id: string; name: string },
   log: Readonly<MessagesData> | null | undefined,
 ) => call.name === 'codemode' && sentBy(log?.messages ?? [], call.id).length > 0
 
-/** Entries that render nothing in compact mode: they join a background group without counting in it. */
-const hiddenKinds = new Set([
+const hiddenUncountedCompactKinds = new Set([
   'board.wake',
   'board.open',
   'board.answered',
@@ -160,8 +150,8 @@ const hiddenKinds = new Set([
   'questions.asked',
   'questions.answers',
 ])
-/** Entries between agents that are background to the user's conversation with @ultimate. */
-const backgroundKinds = new Set([
+
+const agentTrafficKinds = new Set([
   'lineage.note',
   'lineage.finished',
   'lineage.abstract',
@@ -171,12 +161,6 @@ const backgroundKinds = new Set([
   'workspaces.lander-report',
 ])
 
-/**
- * Whether a row of @ultimate's compact transcript is background, the traffic between agents that folds into groups: messages and
- * replies from other conversations, notes, reports and landings, branches it starts, messages it sends them, and the
- * answers that went back to them. What the user says and what @ultimate says to the user is the conversation itself; so is any
- * kind not named here, so nothing new hides by default.
- */
 export function backgroundRow(
   {
     entry,
@@ -184,11 +168,13 @@ export function backgroundRow(
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData> | null | undefined,
 ): boolean | 'hidden' {
-  if (hiddenKinds.has(entry.kind)) return 'hidden'
+  if (hiddenUncountedCompactKinds.has(entry.kind)) return 'hidden'
   if (landed(entry)) return false
-  if (backgroundKinds.has(entry.kind)) return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from !== 'user'
+  if (agentTrafficKinds.has(entry.kind)) return true
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from !== 'user'
+  }
   const message = entry.model?.[0]
   if (entry.kind !== 'pi.assistant' || message?.role !== 'assistant') return false
   if (calls.length)
@@ -204,25 +190,20 @@ export function backgroundRow(
   return answered.length > 0 && answered.every((m) => m.reply && m.from !== 'user')
 }
 
-/** The branches a final answer went down to (`board.route`): an answer to them, not to the user. */
 const routedTo = (messages: readonly Message[], entry: EntryRecord) =>
   messages.filter((m) => m.from === entry.conversationId && m.routed === entry.id)
 
-/**
- * Whether a row of @ultimate's compact transcript is the conversation itself, what the user reads: their inputs, @ultimate's
- * messages and answers to them. Everything between two such rows recedes; cards that ask the user to act (`attention`
- * renderers) stay out of it too. `hidden` for a row that renders nothing in compact mode, or that a stretch's line does
- * not count: a system prompt change.
- */
 export function threadRow(
   row: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData> | null | undefined,
 ): boolean | 'hidden' {
   const { entry, calls } = row
-  if (hiddenKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
+  if (hiddenUncountedCompactKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
   if (entry.kind === 'pi.user') return true
-  if (entry.kind === 'board.message' || entry.kind === 'board.reply')
-    return (entry.data as { from?: unknown } | undefined)?.from === 'user'
+  if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
+    const data: { from?: unknown } | undefined = entry.data
+    return data?.from === 'user'
+  }
   if (entry.kind !== 'pi.assistant' || backgroundRow(row, log) !== false) return false
   if (calls.length)
     return calls.some(
@@ -231,7 +212,7 @@ export function threadRow(
         (call.name === 'message' &&
           (call.arguments as { to?: unknown } | undefined)?.to === 'user'),
     )
-  // An answer, or a run that failed: both are for the user to read.
+
   const message = entry.model?.[0]
   return (
     message?.role === 'assistant' &&
@@ -239,52 +220,54 @@ export function threadRow(
   )
 }
 
-/** The short commit a landing row says landed, for a summary line. */
 export function landedSha(entry: EntryRecord): string | undefined {
-  const data = entry.data as { sha?: unknown; outcome?: { sha?: unknown } } | undefined
-  const sha = entry.kind === 'lineage.note' ? data?.sha : data?.outcome?.sha
+  const data: { source?: unknown; sha?: unknown; outcome?: { sha?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  const sha = NoteEntry.is(entry) ? data?.sha : data?.outcome?.sha
   return typeof sha === 'string' ? sha.slice(0, 7) : undefined
 }
 
-const idOf = (value: unknown): (number | 'remote')[] =>
-  typeof value === 'number' || value === 'remote' ? [value] : []
+const idOf = (value: unknown): (ConversationId | 'remote')[] =>
+  typeof value === 'number' ? [parseConversationId(value)] : value === 'remote' ? [value] : []
 
-/**
- * Whether an entry says work landed: the lander's landing note, or its report of a landing. Landings are news you wait
- * for, so they stay in the compact transcript and split background around them; a failed report stays background.
- */
 export function landed(entry: EntryRecord) {
-  const data = entry.data as { source?: unknown; outcome?: { outcome?: unknown } } | undefined
-  if (entry.kind === 'lineage.note') return data?.source === 'lander'
-  return entry.kind === 'workspaces.lander-report' && data?.outcome?.outcome === 'landed'
+  const data: { source?: unknown; outcome?: { outcome?: unknown } } | undefined =
+    NoteEntry.is(entry) || LanderReportEntry.is(entry) ? entry.data : undefined
+  if (NoteEntry.is(entry)) return data?.source === 'lander'
+  return LanderReportEntry.is(entry) && data?.outcome?.outcome === 'landed'
 }
 
-/** Who a background row is with: the conversations it came from or went to, `lander` for the lander. */
 export function counterparts(
   {
     entry,
     calls,
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData>,
-): (number | 'remote' | 'lander')[] {
-  const data = (entry.data ?? {}) as {
-    from?: unknown
-    sender?: unknown
-    conversation?: unknown
-    source?: unknown
-  }
+): (ConversationId | 'remote' | 'lander')[] {
   switch (entry.kind) {
     case 'board.message':
     case 'board.reply':
-    case 'lineage.finished':
-      return idOf(data.from)
-    case 'lineage.note':
-      return data.source === 'lander' ? ['lander'] : idOf(data.from)
-    case 'lineage.abstract':
-      return idOf(data.conversation)
+    case 'lineage.finished': {
+      if (!MessageEntry.is(entry) && !ReplyEntry.is(entry) && !FinishedEntry.is(entry)) return []
+      const data: { from?: unknown } | undefined = entry.data
+      return idOf(data?.from)
+    }
+    case 'lineage.note': {
+      if (!NoteEntry.is(entry)) return []
+      const data: { source?: unknown; from?: unknown } | undefined = entry.data
+      return data?.source === 'lander' ? ['lander'] : idOf(data?.from)
+    }
+    case 'lineage.abstract': {
+      if (!AbstractEntry.is(entry)) return []
+      const data: { conversation?: unknown } | undefined = entry.data
+      return idOf(data?.conversation)
+    }
     case 'subagents.report':
-    case 'subagents.instruction':
-      return idOf(data.sender)
+    case 'subagents.instruction': {
+      if (!InstructionEntry.is(entry) && !ReportEntry.is(entry)) return []
+      const data: { sender?: unknown } | undefined = entry.data
+      return idOf(data?.sender)
+    }
     case 'workspaces.lander-report':
       return ['lander']
   }
@@ -293,7 +276,7 @@ export function counterparts(
       const sent = log.messages.find((m) => m.call === call.id)
       if (sent) return idOf(sent.to)
       const to = /^#(\d+)$/.exec(String((call.arguments as { to?: unknown } | undefined)?.to))
-      return to ? [Number(to[1])] : []
+      return to ? [parseConversationId(Number(to[1]))] : []
     })
   return [
     ...answeredMessages(log.messages, entry.conversationId, entry.id).flatMap((m) => idOf(m.from)),
@@ -301,40 +284,39 @@ export function counterparts(
   ]
 }
 
-/** The user's answer to a question they were asked, once it has one. */
 export const answerTo = (messages: readonly Message[], question: Message) =>
   messages.find((m) => m.from === 'user' && m.re === question.id)
 
-/**
- * A conversation's open messages: answers it waits for, what it owes (an open question, or a branch's report it has
- * neither messaged nor concluded the branch about since), and messages still on their way. `concludedSince` says since
- * when a conversation counts as concluded (`useConcludedSince`).
- */
 export function openMessages(
   messages: readonly Message[],
   id: number,
-  concludedSince: (id: number) => number | undefined,
+  branches: readonly {
+    id: number
+    starter?: number
+    working?: boolean
+    concluded?: boolean
+  }[] = [],
+  automations?: WaitFacts['automations'],
 ) {
-  const reporters = new Set(
-    messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
-  )
-  const reports = [...reporters].flatMap(
-    (from) => pendingReport(messages, from, id, concludedSince) ?? [],
-  )
+  const owedBranches = branches.filter((branch) => {
+    const wait = waitsOn(branch.id, { ...branch, messages, automations })
+    return (
+      !branch.concluded &&
+      branch.starter === id &&
+      (wait?.on === 'starter' || wait?.on === 'agent') &&
+      wait.to === id
+    )
+  })
   return {
     waiting: messages.filter((m) => m.from === id && isOwed(m)),
-    owed: [...messages.filter((m) => m.to === id && isOwed(m)), ...reports].toSorted(
-      (a, b) => a.id - b.id,
+    requests: messages.filter(
+      (m) => m.to === id && isOwed(m) && !owedBranches.some((b) => b.id === m.from),
     ),
+    owed: owedBranches,
     delivering: messages.filter((m) => m.from === id && m.state === 'sent'),
   }
 }
 
-/** Whether a report is settled: its sender was concluded after sending it (or is concluded now). */
-export const settled = (message: Message, concludedSince: (id: number) => number | undefined) =>
-  typeof message.from === 'number' && message.at <= (concludedSince(message.from) ?? -Infinity)
-
-/** Who waits on whom for one message; `yours` is an open question to the user. */
 export function messageStatus(message: Message) {
   if (message.state === 'failed') return 'failed'
   if (message.state === 'stopped') return 'stopped'
@@ -345,14 +327,9 @@ export function messageStatus(message: Message) {
   return message.re === undefined ? 'one-way' : 'reply'
 }
 
-/**
- * A message in its sender's transcript: its status while the log holds it, `sending` while the call runs, and nothing once the
- * call is done and the bounded log has dropped it.
- */
 export const sentStatus = (message: Message | undefined, running: boolean) =>
   message ? messageStatus(message) : running ? 'sending' : undefined
 
-/** Where an outgoing message stands, in the sender's words; nothing once the log has dropped a sent one. */
 export function outgoingState(message: Message | undefined, toUser: boolean, running: boolean) {
   if (!message) return running ? 'sending' : undefined
   if (message.state === 'failed') return 'failed'
@@ -364,19 +341,13 @@ export function outgoingState(message: Message | undefined, toUser: boolean, run
   return toUser ? 'awaiting your reply' : 'awaiting reply'
 }
 
-/** Where an open question's card is, against the transcript's view. */
 export type Place = 'above' | 'visible' | 'below'
 
-/** A direction's pointer: how many questions wait that way, and the nearest one, which a click goes to. */
 export type Pointer<T> = { count: number; nearest: T }
 
-/**
- * The pointers to open questions out of view, from each question's place in transcript order (oldest first): one up
- * when any is above, aiming at the lowest of them, and one down when any is below, aiming at the highest.
- */
-export function offscreen<T>(questions: readonly { key: T; place: Place }[]) {
-  const above = questions.filter((q) => q.place === 'above')
-  const below = questions.filter((q) => q.place === 'below')
+export function offscreen<T>(questionsInTranscriptOrder: readonly { key: T; place: Place }[]) {
+  const above = questionsInTranscriptOrder.filter((q) => q.place === 'above')
+  const below = questionsInTranscriptOrder.filter((q) => q.place === 'below')
   return {
     up: above.length ? { count: above.length, nearest: above.at(-1)!.key } : undefined,
     down: below.length ? { count: below.length, nearest: below[0].key } : undefined,

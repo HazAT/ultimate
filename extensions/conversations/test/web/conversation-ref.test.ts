@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ const state = vi.hoisted(() => ({
   titles: [] as { id: number; title?: string; label?: string }[],
 }))
 vi.mock('@/sdk', () => ({
+  ROOT: 1,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   useDocOf: () => ({ conversations: state.features }),
   useConversations: () => state.titles,
@@ -17,7 +19,9 @@ vi.mock('@/sdk', () => ({
 
 /** The text a person reads, and which part of it is the gray `#id`. */
 function read(props: { id: number; title?: string }) {
-  const html = renderToStaticMarkup(createElement(ConversationRef, props))
+  const html = renderToStaticMarkup(
+    createElement(ConversationRef, { ...props, id: props.id as ConversationId }),
+  )
   return {
     text: html
       .replaceAll(/<[^>]+>/g, ' ')

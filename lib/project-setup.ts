@@ -4,11 +4,10 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { JsonObject } from '@earendil-works/pi-durable'
+import { errnoCode, isMissing } from './errors.ts'
 
-const errors = new Map<string, string>()
 export function projectDiagnostics(projectRoot: string, userHome = homedir()) {
-  projectDecision(projectRoot, userHome)
-  const error = errors.get(join(userHome, '.ultimate/trust.json'))
+  const { error } = readDecision(projectRoot, userHome)
   return error ? [error] : []
 }
 
@@ -24,43 +23,40 @@ export async function projectSettings(
       throw new Error('Project settings must be a JSON object')
     return value
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') report(String(error))
+    if (!isMissing(error)) report(String(error))
     return {}
   }
 }
 
-/**
- * Where a folder's decision is kept: a linked git worktree shares its main checkout's, so a new worktree of a chosen
- * project needs no choice of its own.
- */
 export function decisionRoot(projectRoot: string) {
   const root = realpathSync(resolve(projectRoot))
   let link: string
   try {
     link = readFileSync(join(root, '.git'), 'utf8')
   } catch (error) {
-    // No `.git` file: a main checkout (a `.git` directory) or a folder outside git keeps its own decision.
-    if (['ENOENT', 'EISDIR'].includes((error as NodeJS.ErrnoException).code!)) return root
+    const folderOwnsDecision = isMissing(error) || errnoCode(error) === 'EISDIR'
+    if (folderOwnsDecision) return root
     throw error
   }
   const gitdir = resolve(root, link.match(/^gitdir: (.+)$/m)![1])
-  // A submodule's `.git` file has no `commondir`; it keeps its own decision too.
-  if (!existsSync(join(gitdir, 'commondir'))) return root
+  const submoduleOwnsDecision = !existsSync(join(gitdir, 'commondir'))
+  if (submoduleOwnsDecision) return root
   const common = resolve(gitdir, readFileSync(join(gitdir, 'commondir'), 'utf8').trim())
   return basename(common) === '.git' ? realpathSync(dirname(common)) : root
 }
 
-export function projectDecision(projectRoot: string, userHome = homedir()) {
-  const path = join(userHome, '.ultimate/trust.json')
+function readDecision(projectRoot: string, userHome: string) {
   try {
     const root = decisionRoot(projectRoot)
     const entry = new ProjectTrustStore(join(userHome, '.ultimate')).getEntry(root)
-    errors.delete(path)
-    return entry?.path === root ? entry.decision : null
+    return { decision: entry?.path === root ? entry.decision : null }
   } catch (error) {
-    errors.set(path, String(error))
-    return null
+    return { decision: null, error: String(error) }
   }
+}
+
+export function projectDecision(projectRoot: string, userHome = homedir()) {
+  return readDecision(projectRoot, userHome).decision
 }
 
 export function useProjectSetup(projectRoot: string, userHome?: string) {

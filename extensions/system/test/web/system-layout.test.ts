@@ -1,3 +1,4 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import {
   ago,
@@ -94,8 +95,8 @@ const lane = (
   spawned: number | undefined,
   ...runs: LaneRun[]
 ): Lane => ({
-  conversation,
-  ...(parent === undefined ? {} : { parent }),
+  conversation: conversation as ConversationId,
+  ...(parent === undefined ? {} : { parent: parent as ConversationId }),
   ...(spawned === undefined ? {} : { spawn: { call: `c${conversation}`, at: at(spawned) } }),
   runs,
 })
@@ -199,9 +200,9 @@ it("lights a lane's ancestors and descendants, not its siblings", () => {
     lane(4, 2, 8),
     lane(5, 4, 7),
   ]
-  expect([...chain(lanes, 2)].toSorted((a, b) => a - b)).toEqual([1, 2, 4, 5])
-  expect([...chain(lanes, 3)].toSorted((a, b) => a - b)).toEqual([1, 3])
-  expect([...chain(lanes, 5)].toSorted((a, b) => a - b)).toEqual([1, 2, 4, 5])
+  expect([...chain(lanes, 2 as ConversationId)].toSorted((a, b) => a - b)).toEqual([1, 2, 4, 5])
+  expect([...chain(lanes, 3 as ConversationId)].toSorted((a, b) => a - b)).toEqual([1, 3])
+  expect([...chain(lanes, 5 as ConversationId)].toSorted((a, b) => a - b)).toEqual([1, 2, 4, 5])
 })
 
 it('draws a spawn link from the spawning moment on the parent row to the first block on the child row', () => {
@@ -254,9 +255,15 @@ it('draws a message as a vertical line at its moment between the two rows, insid
   expect(
     messageLinks(
       [
-        { from: 2, to: 1, at: at(6), kind: 'message', call: 'c' },
-        { from: 1, to: 2, at: at(40), kind: 'message' },
-        { from: 1, to: 9, at: at(5), kind: 'message' },
+        {
+          from: 2 as ConversationId,
+          to: 1 as ConversationId,
+          at: at(6),
+          kind: 'message',
+          call: 'c',
+        },
+        { from: 1 as ConversationId, to: 2 as ConversationId, at: at(40), kind: 'message' },
+        { from: 1 as ConversationId, to: 9 as ConversationId, at: at(5), kind: 'message' },
       ],
       frame,
     ),

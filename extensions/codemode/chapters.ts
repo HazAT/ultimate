@@ -1,11 +1,12 @@
-/** Read a closed chapter without opening a harness, migrating its schema, or resuming its tasks. */
-import { apply } from '@earendil-works/chord/delta'
+import { parseConversationId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   ConversationRecord,
   EntryRecord,
   JsonObject,
+  EntryId,
 } from '@earendil-works/pi-durable'
+import { apply } from '@earendil-works/chord/delta'
 import { DatabaseSync } from 'node:sqlite'
 import { chapterFiles, readChapters } from '../../lib/chapters.ts'
 import { shortTitle } from '../../lib/title.ts'
@@ -19,23 +20,18 @@ export const limit = (value: unknown, fallback = 100) => {
 export const id = (value: unknown): ConversationId => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1)
     throw new Error('conversationId must be a positive integer')
-  return value as ConversationId
+  return parseConversationId(value)
 }
 
 export type HistoryRead = 'conversations' | 'entries' | 'search'
 
 export type SearchOptions = {
-  conversationId?: number
+  conversationId?: ConversationId
   limit?: number
   kinds?: string[]
   full?: boolean
 }
 
-/**
- * Whether `entry` matches a search, and what the search returns for it: the whole entry with `full`, otherwise
- * `{conversation, id, kind, at, excerpt}` with about 200 characters of its JSON around the match, so wide audits
- * stay small enough to return and to send across projects.
- */
 export function searchHit(entry: EntryRecord, text: string, options: SearchOptions) {
   if (options.kinds && !options.kinds.includes(entry.kind)) return undefined
   const json = JSON.stringify(entry)
@@ -54,15 +50,12 @@ export function searchHit(entry: EntryRecord, text: string, options: SearchOptio
   }
 }
 
-export type EntriesOptions = { kinds?: string[]; limit?: number; before?: number; full?: boolean }
+export type EntriesOptions = { kinds?: string[]; limit?: number; before?: EntryId; full?: boolean }
 
 const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text)
+const toolResultHeadAndExitStatusTail = (text: string) =>
+  `${text.slice(0, 300)}\n…\n${text.slice(-700)}`
 
-/**
- * What `entries` returns for `entry` without `full`: who said what, without thinking, usage or provider diagnostics,
- * which made 1000 raw entries 7.5 MB (#572080). Message text stays whole; tool results keep their start and end
- * (where an exit code is), tool arguments and `data` are cut. Content is a string or an array of blocks.
- */
 export function compactEntry(entry: EntryRecord) {
   const message = entry.model?.[0] as
     | {
@@ -88,7 +81,7 @@ export function compactEntry(entry: EntryRecord) {
     .map((block) => block.text)
     .join('\n')
   if (message?.role === 'toolResult' && text.length > 1000)
-    text = `${text.slice(0, 300)}\n…\n${text.slice(-700)}`
+    text = toolResultHeadAndExitStatusTail(text)
   const tools = blocks
     .filter((block) => block.type === 'toolCall')
     .map((block) => ({ name: block.name, args: cut(JSON.stringify(block.arguments ?? {}), 200) }))
@@ -111,7 +104,6 @@ export function compactEntry(entry: EntryRecord) {
   }
 }
 
-/** Undefined means the live chapter; unknown names fail before any database is opened. */
 export async function closedChapter(home: string, active: string, options: unknown) {
   if (
     !options ||
@@ -146,7 +138,7 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
       if (!row) throw new Error('Unknown conversation')
       return JSON.parse(String(row.record)) as ConversationRecord
     }
-    function* entries(value: unknown, before?: number): Generator<EntryRecord> {
+    function* entries(value: unknown, before?: EntryId): Generator<EntryRecord> {
       let record = conversation(value)
       let upper = before === undefined ? Number.MAX_SAFE_INTEGER : before - 1
       while (true) {
@@ -161,8 +153,7 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
         record = conversation(record.parent.conversationId)
       }
     }
-    /** The latest value of conversation document `kind` on `owner`: its last base with later deltas applied. */
-    const doc = (kind: string, owner: number) => {
+    const latestDocumentFromBaseAndDeltas = (kind: string, owner: number) => {
       const document = db
         .prepare(
           "SELECT id FROM documents WHERE kind = ? AND scope_kind = 'conversation' AND owner_id = ? AND family = 0 AND retired_at IS NULL ORDER BY created_at DESC LIMIT 1",
@@ -185,8 +176,9 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
       return value
     }
     if (op === 'conversations') {
-      // The same listing as the live read: summary fields with short titles, busy from live foreground tasks, concluded from the UI state.
-      const concluded = doc('ultimate.ui', 1)?.['ext.conversations.concluded']
+      const concluded = latestDocumentFromBaseAndDeltas('ultimate.ui', 1)?.[
+        'ext.conversations.concluded'
+      ]
       const done = new Set(Array.isArray(concluded) ? concluded : [])
       const busy = new Set(
         db
@@ -197,8 +189,8 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
           .map((row) => Number(row.id)),
       )
       return conversations().map((record) => {
-        const metadata = doc('ultimate.metadata', record.id) ?? {}
-        const cwd = doc('pi.agent', record.id)?.cwd
+        const metadata = latestDocumentFromBaseAndDeltas('ultimate.metadata', record.id) ?? {}
+        const cwd = latestDocumentFromBaseAndDeltas('pi.agent', record.id)?.cwd
         const title = metadata.title ?? metadata.inputTitle
         return {
           ...record,

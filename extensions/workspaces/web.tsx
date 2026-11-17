@@ -1,3 +1,4 @@
+import type { EntryId } from '@earendil-works/pi-durable'
 import type { ReactNode } from 'react'
 import { ChevronRightIcon, GitMergeIcon } from 'lucide-react'
 import { MentionText } from '@/components/ai/message'
@@ -7,10 +8,10 @@ import { useWorkspaceIndex } from './data.tsx'
 import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
 import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
 import { compareUrl } from '../../lib/compare.ts'
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import { NoteEntry } from '../entries/ui.tsx'
+import type { NoteData } from '../entries/refs.ts'
 
-/** The lander's note in the root: the landing's card, from the note's own data, with the state it froze. */
-function LandingNote({ entry }: { entry: EntryRecord }) {
+function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { source: 'lander' }> }) {
   const {
     from,
     at,
@@ -26,41 +27,24 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
     more,
     pushed,
     abstract,
-  } = entry.data as {
-    from: number
-    at?: number
-    divergence?: string
-    sha: string
-    base?: string
-    target: string
-    title?: string
-    summary?: string
-    feature?: string
-    commits: { sha: string; subject: string }[]
-    paths: string[]
-    more: number
-    pushed?: string
-    abstract?: { at: number; text: string }
-  }
+  } = data
   const github = useGithubRepo()
-  // A note from before landings recorded their base: the landing before it, where the lander's serial queue left the
-  // target.
   const transcript = useTranscript()
-  const previous = base
+  const previousLandingForLegacyBase = base
     ? undefined
-    : (
-        transcript.findLast(
-          (other) =>
-            other.kind === 'lineage.note' &&
-            other.id < entry.id &&
-            (other.data as { source?: string })?.source === 'lander',
-        )?.data as { sha?: string } | undefined
-      )?.sha
-  const rangeBase = base ?? previous
+    : transcript.findLast(
+        (other) => NoteEntry.is(other) && other.id < id && other.data.source === 'lander',
+      )
+  const rangeBase =
+    base ??
+    (NoteEntry.is(previousLandingForLegacyBase) &&
+    previousLandingForLegacyBase.data.source === 'lander'
+      ? previousLandingForLegacyBase.data.sha
+      : undefined)
   return (
     <div data-lineage-note="lander">
       <LandingCard
-        card={entry.id}
+        card={id}
         sha={sha}
         from={from}
         sourceEntry={at}
@@ -108,7 +92,6 @@ function LandingNote({ entry }: { entry: EntryRecord }) {
   )
 }
 
-/** The lander's conversation is its log: in place of a composer, a line saying what it is. */
 function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
   const landers = Object.values(useWorkspaceIndex().landerConversations)
@@ -132,8 +115,8 @@ export default defineWebExtension({
   tools: { workspace: WorkspaceCall },
   entries: {
     'lineage.note': ({ entry, core }) =>
-      (entry.data as { source?: string })?.source === 'lander' ? (
-        <LandingNote entry={entry} />
+      NoteEntry.is(entry) && entry.data.source === 'lander' ? (
+        <LandingNote id={entry.id} data={entry.data} />
       ) : (
         core
       ),

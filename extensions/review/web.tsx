@@ -6,7 +6,6 @@ import { ReviewCard } from './card.tsx'
 import { openReview, ReviewLink } from './link.tsx'
 import { Frame, Loading } from './parts.tsx'
 
-// The diff viewer and its highlighter load with the surface, not with the app.
 const Viewer = lazy(() => import('./surface.tsx'))
 
 function ReviewSurface() {

@@ -1,3 +1,5 @@
+import { ROOT } from '@/sdk'
+import { parseConversationId } from '../../lib/ids.ts'
 import {
   GitBranchIcon,
   CircleCheckIcon,
@@ -39,7 +41,6 @@ import type { OverviewRow } from '../conversations/types.ts'
 import type { ConversationState } from '../messages/ui.tsx'
 import { SummaryHistory } from './summaries.tsx'
 
-/** What a row's mark and state word say for each settled state; `working` and `idle` show no icon. */
 const settled = {
   waits: {
     label: 'Waits on you',
@@ -47,8 +48,8 @@ const settled = {
     tone: 'text-amber-700 dark:text-amber-300',
   },
   awaiting: {
-    label: 'Awaiting @ultimate',
-    word: 'Awaiting @ultimate',
+    label: 'Waiting',
+    word: 'Waiting',
     tone: 'text-brand',
   },
   done: { label: 'Done: its answer went to its parent', word: 'Done', tone: 'text-success' },
@@ -56,15 +57,16 @@ const settled = {
   paused: { label: 'Paused: its run continues on Play', word: 'Paused', tone: 'text-warning' },
 } as const
 
-/** The leading mark: working (pulsing), a settled state's icon, an unseen answer (solid), or an empty slot that keeps titles aligned. */
 function Mark({
   working,
   unseen,
   state,
+  waitLabel,
 }: {
   working?: 'self' | 'subagents'
   unseen: boolean
   state?: ConversationState
+  waitLabel?: string
 }) {
   const shown = !working && state && state in settled ? (state as keyof typeof settled) : undefined
   const label = working
@@ -72,7 +74,7 @@ function Mark({
       ? 'Working'
       : 'Subagents working'
     : shown
-      ? settled[shown].label
+      ? ((shown === 'awaiting' ? waitLabel : undefined) ?? settled[shown].label)
       : 'New answer'
   return (
     <span className="flex size-3 shrink-0 items-center justify-center">
@@ -120,11 +122,11 @@ type RowProps = {
   now: number
   onConclude: (conclude: boolean) => void
   state?: ConversationState
+  waitLabel?: string
   activity?: string
   feature?: string
 }
 
-/** One top-level conversation: click shows it; the menu renames, clears, concludes or resumes it. */
 export function Row(props: RowProps) {
   return (
     <Provided input={props.working ? props.conversation.id : undefined} point={ConversationPhase}>
@@ -133,7 +135,6 @@ export function Row(props: RowProps) {
   )
 }
 
-/** A row with its working phase, when one is known: the phase line makes the row taller. */
 function PhasedRow({
   conversation,
   shown,
@@ -145,17 +146,16 @@ function PhasedRow({
   onConclude,
   feature,
   state,
+  waitLabel,
   activity,
   displayPhase,
 }: RowProps & { displayPhase?: { label: ReactNode } }) {
   const hasActivity = !!(displayPhase || activity)
-  // One indicator per row: the phase line's pulsing dot, else the leading mark's while no phase is known yet.
-  const markWorking = displayPhase ? undefined : working
+  const leadingMarkWorkingWithoutPhaseDot = displayPhase ? undefined : working
   const actions = useShell()
   const [editing, setEditing] = useState(false)
   const cancelled = useRef(false)
-  /** Whether the row button takes focus back once the field closes: after Enter or Escape, not a click elsewhere. */
-  const refocus = useRef(false)
+  const refocusAfterKeyboardRename = useRef(false)
   const name =
     conversation.title ??
     (draft
@@ -164,7 +164,7 @@ function PhasedRow({
         ? 'Untitled conversation'
         : `#${conversation.id}`)
   const latest = Math.max(conversation.inputAt ?? 0, conversation.answerAt ?? 0)
-  const hasMetadata = feature || conversation.workspace || latest > 0
+  const hasMetadata = feature || conversation.workspace || latest > 0 || waitLabel
   const rename = () => {
     cancelled.current = false
     setEditing(true)
@@ -192,7 +192,7 @@ function PhasedRow({
     <div
       className={cn(
         'group relative mx-2 flex items-center rounded-md transition-colors',
-        hasActivity ? 'h-[58px]' : hasMetadata ? 'h-11' : 'h-7',
+        hasActivity ? 'h-[62px]' : hasMetadata ? 'h-12' : 'h-8',
         shown ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50',
       )}
       data-conversation={conversation.id}
@@ -201,7 +201,12 @@ function PhasedRow({
     >
       {editing ? (
         <div className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-1.5">
-          <Mark state={state} unseen={unseen} working={markWorking} />
+          <Mark
+            state={state}
+            waitLabel={waitLabel}
+            unseen={unseen}
+            working={leadingMarkWorkingWithoutPhaseDot}
+          />
           <input
             aria-label="Conversation title"
             autoFocus
@@ -210,15 +215,15 @@ function PhasedRow({
             onBlur={(event) => save(event.currentTarget.value)}
             onFocus={(event) => event.currentTarget.select()}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                // Without it, the keypress lands on the refocused row button and opens the row.
+              const confirmRenameOnly = event.key === 'Enter' && !event.nativeEvent.isComposing
+              if (confirmRenameOnly) {
                 event.preventDefault()
-                refocus.current = true
+                refocusAfterKeyboardRename.current = true
                 event.currentTarget.blur()
               }
               if (event.key === 'Escape') {
                 cancelled.current = true
-                refocus.current = true
+                refocusAfterKeyboardRename.current = true
                 event.currentTarget.blur()
               }
             }}
@@ -231,19 +236,29 @@ function PhasedRow({
             className="flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md pr-2 pl-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             onClick={() => actions.switchConversation(conversation.id)}
             ref={(element) => {
-              if (!element || !refocus.current) return
-              refocus.current = false
+              if (!element || !refocusAfterKeyboardRename.current) return
+              refocusAfterKeyboardRename.current = false
               element.focus()
             }}
             type="button"
           >
             <span className="flex w-full min-w-0 items-center gap-1.5">
-              <Mark state={state} unseen={unseen} working={markWorking} />
+              <Mark
+                state={state}
+                waitLabel={waitLabel}
+                unseen={unseen}
+                working={leadingMarkWorkingWithoutPhaseDot}
+              />
               {title}
             </span>
             {hasMetadata && (
               <span className="flex w-full items-center gap-2 pr-5 pl-[18px] font-mono text-[10px] leading-4 text-muted-foreground">
                 {feature && <FeatureTag feature={feature} />}
+                {waitLabel && (
+                  <span className="min-w-0 truncate text-brand" title={waitLabel}>
+                    {waitLabel}
+                  </span>
+                )}
                 {conversation.workspace && (
                   <span className="shrink-0" title="Isolated checkout">
                     #{conversation.id}
@@ -281,10 +296,6 @@ function PhasedRow({
   )
 }
 
-/**
- * A conversation's `…` menu, at its row's bottom right on hover or focus: its workspace and changes when isolated,
- * Rename, Compact context, and Conclude or Resume.
- */
 export function RowMenu({
   conversation,
   concluded,
@@ -297,13 +308,12 @@ export function RowMenu({
   onConclude: (conclude: boolean) => void
 }) {
   const actions = useShell()
-  /** What a menu item does once the menu has closed, so focus lands where it should. */
-  const afterMenu = useRef<() => void>(undefined)
+  const actionOnMenuClose = useRef<() => void>(undefined)
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         aria-label="Conversation actions"
-        className="invisible absolute right-1 bottom-1 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
+        className="invisible absolute right-1.5 bottom-1.5 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
       >
         <EllipsisIcon className="size-3.5" />
       </DropdownMenuTrigger>
@@ -311,8 +321,8 @@ export function RowMenu({
         align="start"
         className="w-44 [&_[role=menuitem]]:cursor-pointer"
         onCloseAutoFocus={(event) => {
-          const next = afterMenu.current
-          afterMenu.current = undefined
+          const next = actionOnMenuClose.current
+          actionOnMenuClose.current = undefined
           if (!next) return
           event.preventDefault()
           next()
@@ -322,7 +332,7 @@ export function RowMenu({
           <DropdownMenuItem
             className="cursor-pointer text-[12.5px]"
             onSelect={() =>
-              (afterMenu.current = () => {
+              (actionOnMenuClose.current = () => {
                 actions.switchConversation(conversation.id)
                 actions.openPanel('info')
               })
@@ -338,7 +348,7 @@ export function RowMenu({
               open && (
                 <DropdownMenuItem
                   className="cursor-pointer text-[12.5px]"
-                  onSelect={() => (afterMenu.current = open)}
+                  onSelect={() => (actionOnMenuClose.current = open)}
                 >
                   <FileDiffIcon />
                   Review changes
@@ -347,7 +357,10 @@ export function RowMenu({
             }
           </Provided>
         )}
-        <DropdownMenuItem className="text-[12.5px]" onSelect={() => (afterMenu.current = onRename)}>
+        <DropdownMenuItem
+          className="text-[12.5px]"
+          onSelect={() => (actionOnMenuClose.current = onRename)}
+        >
           <PencilIcon />
           Rename
         </DropdownMenuItem>
@@ -361,18 +374,12 @@ export function RowMenu({
   )
 }
 
-/** Saves a conversation's new title; an empty one clears it. Failures show as a notification. */
 export function saveTitle(id: number, value: string) {
   void api
     .action(RenameAction, { id, title: value.trim() })
     .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
 }
 
-/**
- * A standing agent or the lander: its fixed `@name`, a leading status mark and one quiet line of state, never a
- * summary or feature. Click opens it; the menu only compacts its context: it is never cleared, renamed or
- * concluded.
- */
 export function StandingRow({
   conversation,
   name,
@@ -381,9 +388,7 @@ export function StandingRow({
   onOpen,
   children,
 }: {
-  /** Missing until @ultimate's conversation is first opened. */
   conversation?: ConversationSummary
-  /** The agent's name without `@`: `ultimate`, `lander`, `sync`, … */
   name: string
   shown: boolean
   presence: Presence
@@ -394,7 +399,7 @@ export function StandingRow({
   return (
     <div
       className={cn(
-        'group relative mx-2 flex h-11 items-center rounded-md transition-colors',
+        'group relative mx-2 flex h-12 items-center rounded-md transition-colors',
         shown ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50',
       )}
       data-conversation={conversation?.id}
@@ -412,7 +417,6 @@ export function StandingRow({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-1.5">
             {brand ? (
-              // The title bar's wordmark: Ultimate's own name is the brand.
               <span
                 className="truncate font-sans text-[11.5px] leading-5 font-semibold tracking-[0.28em] text-brand"
                 data-ui="wordmark"
@@ -435,7 +439,7 @@ export function StandingRow({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             aria-label="Conversation actions"
-            className="invisible absolute right-1 bottom-1 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
+            className="invisible absolute right-1.5 bottom-1.5 flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none group-focus-within:visible group-hover:visible pointer-coarse:visible hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:visible data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
           >
             <EllipsisIcon className="size-3.5" />
           </DropdownMenuTrigger>
@@ -448,7 +452,6 @@ export function StandingRow({
   )
 }
 
-/** Compacts a conversation's context: the gist stays, older turns leave it; the history stays stored. */
 function CompactItem({ conversation }: { conversation: ConversationSummary }) {
   return (
     <DropdownMenuItem
@@ -466,16 +469,9 @@ type ChildRowProps = {
   conversation: ConversationSummary
   row?: OverviewRow
   shown: boolean
-  /** The primary agent's conversation. */
-  primary?: number
-  /** A pause parked its run. */
   parked?: boolean
 }
 
-/**
- * A subagent in one line under an In flight branch: its mark, plan chip, role and `#id`, and its state word; its
- * latest activity (or plan task) on hover. `depth` indents a subagent's own subagents.
- */
 export function SubagentLine(props: ChildRowProps & { depth: number }) {
   return (
     <Provided input={props.conversation.id} point={ConversationTask}>
@@ -488,13 +484,12 @@ function TaskedSubagentLine({
   conversation,
   row,
   shown,
-  primary,
   parked,
   depth,
   task,
 }: ChildRowProps & { depth: number; task?: { chip: ReactNode; title: string } }) {
   const actions = useShell()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const state = conversationState(
     {
       id: conversation.id,
@@ -502,7 +497,6 @@ function TaskedSubagentLine({
       runState: row?.runState,
       busy: conversation.busy,
       parked,
-      primary,
     },
     log,
   )
@@ -512,7 +506,7 @@ function TaskedSubagentLine({
     <button
       aria-current={shown ? 'true' : undefined}
       className={cn(
-        'mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        'mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         shown && 'bg-sidebar-accent',
       )}
       data-child-conversation={conversation.id}
@@ -547,10 +541,47 @@ function TaskedSubagentLine({
   )
 }
 
-/**
- * The epic a branch's coordinator works itself, as the first line under its In flight row, styled like a subagent's:
- * its dot pulses while the coordinator runs, and a done epic reads done. Click opens the epic in the plan panel.
- */
+const shownWaits = 3
+
+export function WaitLines({
+  waits,
+}: {
+  waits: readonly { id: number; title?: string; feature?: string }[]
+}) {
+  const actions = useShell()
+  const [all, setAll] = useState(false)
+  const hidden = waits.length - shownWaits
+  const shown = all || hidden <= 1 ? waits : waits.slice(0, shownWaits)
+  return (
+    <div data-ui="wait-lines">
+      {shown.map((wait) => (
+        <button
+          className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+          data-wait-line={wait.id}
+          key={wait.id}
+          onClick={() => actions.switchConversation(parseConversationId(wait.id))}
+          title={[`#${wait.id}`, wait.feature, wait.title].filter(Boolean).join(' · ')}
+          type="button"
+        >
+          <span className="w-2 shrink-0 text-muted-foreground/40">└</span>
+          <span className="shrink-0 text-brand">#{wait.id}</span>
+          {wait.feature && <FeatureTag className="max-w-[45%] shrink-0" feature={wait.feature} />}
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{wait.title ?? ''}</span>
+        </button>
+      ))}
+      {!all && hidden > 1 && (
+        <button
+          className="mx-2 flex h-6 w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 rounded-md pl-5 font-mono text-[10.5px] text-muted-foreground outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+          onClick={() => setAll(true)}
+          type="button"
+        >
+          <span className="w-2 shrink-0 text-muted-foreground/40">└</span>+{hidden} more
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function EpicLine({ id, working }: { id: number; working: boolean }) {
   return (
     <Provided input={id} point={ConversationEpic}>
@@ -559,7 +590,7 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
         const done = epic.status === 'done'
         return (
           <button
-            className="mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
             data-epic-line={id}
             data-ui="sidebar-row"
             onClick={epic.open}
@@ -599,7 +630,6 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
   )
 }
 
-/** A subagent under its conversation; one working on a plan task leads with its chip and shows the task's title. */
 export function ChildRow(props: ChildRowProps) {
   return (
     <Provided input={props.conversation.id} point={ConversationTask}>
@@ -612,12 +642,11 @@ function TaskedChildRow({
   conversation,
   row,
   shown,
-  primary,
   parked,
   task,
 }: ChildRowProps & { task?: { chip: ReactNode; title: string } }) {
   const actions = useShell()
-  const log = useDocOf(1, MessagesDoc) ?? emptyMessages
+  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const state = conversationState(
     {
       id: conversation.id,
@@ -625,7 +654,6 @@ function TaskedChildRow({
       runState: row?.runState,
       busy: conversation.busy,
       parked,
-      primary,
     },
     log,
   )

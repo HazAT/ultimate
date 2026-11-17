@@ -1,7 +1,6 @@
 import { cn } from 'cn'
 import type { ReactNode } from 'react'
 
-/** Label/value rows with aligned values, as the Info panel shows them. */
 export function Rows({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <dl
@@ -15,7 +14,6 @@ export function Rows({ children, className }: { children: ReactNode; className?:
   )
 }
 
-/** One muted label and its value. */
 export function Row({
   label,
   children,

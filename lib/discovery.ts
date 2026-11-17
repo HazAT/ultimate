@@ -1,7 +1,12 @@
-import { readdir, readFile, realpath, stat } from 'node:fs/promises'
+import {
+  readdir,
+  readFile,
+  realpath as resolveLinkTargetOnEveryDiscovery,
+  stat,
+} from 'node:fs/promises'
 import { join } from 'node:path'
-import { discoveryRoots } from './project.ts'
-import type { Source } from './project.ts'
+import { discoveryRoots } from './project-paths.ts'
+import type { Source } from './project-paths.ts'
 import { useProjectSetup } from './project-setup.ts'
 import { extensionSettings } from './extension-settings.ts'
 import { coreTier, defaultOff } from '../shared/extension-api.ts'
@@ -31,7 +36,6 @@ export async function discoverExtensions(
     {
       name: string
       path: string
-      /** `path` with symlinks resolved, read anew on each discovery: modules load from here, so a repointed link loads its new target. */
       target: string
       source: Source
       files: string[]
@@ -56,16 +60,16 @@ export async function discoverExtensions(
       try {
         if (!(await stat(path)).isDirectory()) continue
         const files = await readdir(path)
-        // Core belongs to a built-in's name: an outside folder keeps it only when it replaces a core built-in.
+        const coreBelongsToBuiltinName = root.source === 'builtin' || builtinCore.has(entry.name)
         const core =
-          (root.source === 'builtin' || builtinCore.has(entry.name)) &&
+          coreBelongsToBuiltinName &&
           files.includes('api.ts') &&
           coreTier.test(await readFile(join(path, 'api.ts'), 'utf8'))
         if (core && root.source === 'builtin') builtinCore.add(entry.name)
         winners.set(entry.name, {
           name: entry.name,
           path,
-          target: await realpath(path),
+          target: await resolveLinkTargetOnEveryDiscovery(path),
           source: root.source,
           files,
           ...(core ? { core } : {}),
@@ -87,7 +91,6 @@ export async function discoverExtensions(
   const entries = [...winners.values()]
     .map((entry) => ({
       ...entry,
-      // A core-tier extension stays on whatever the settings say; extension reloads report the ignored disable.
       enabled:
         entry.core ||
         (overrides.get(entry.name) ??

@@ -1,3 +1,4 @@
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -18,6 +19,7 @@ import { Standing } from '../../subagents/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
+import { buildSeed } from '../seed.ts'
 import {
   AUTOMATION_NAME,
   BuiltInDoc,
@@ -31,8 +33,11 @@ const openedHosts: OpenHost[] = []
 /** The extensions' close callbacks: automations' minute timer stops before its harness closes. */
 const closers: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const close of closers.splice(0)) await close()
-  for (const opened of openedHosts.splice(0)) await opened.close()
+  // Both lists before the first await, so a hook past its timeout cannot close the next test's hosts.
+  const closing = closers.splice(0)
+  const hosts = openedHosts.splice(0)
+  for (const close of closing) await close()
+  for (const opened of hosts) await opened.close()
   vi.useRealTimers()
 })
 
@@ -213,6 +218,45 @@ it('adopts its own automation after a lost receipt, and keeps a chapter seed pau
   expect(await f.ids()).toEqual([await f.ownPause()])
 })
 
+it('makes the built-ins again in a new chapter with the conditions the user edited', async () => {
+  const f = await fixture()
+  const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  await f.action('update', { id, condition: { metric: 'context', of: '@ultimate', above: 22 } })
+  await f.action('update', {
+    id: pause,
+    condition: {
+      metric: 'context',
+      of: '@ultimate',
+      above: 20,
+      idleFor: 3600_000,
+      cooldownMs: 60_000,
+    },
+  })
+  const prepared = {
+    chapter: 'next',
+    learned: ['one', 'two', 'three'],
+    handoff: 'Open: none.',
+    at: 1,
+  }
+  const seed = await buildSeed(f.host, prepared)
+  // The new chapter has neither automation nor ids yet: only its seed.
+  for (const item of [id, pause]) await f.action('delete', { id: item })
+  await f.harness.commit(async (tx) => {
+    for (const doc of [BuiltInDoc, PauseDoc]) delete (await tx.doc(doc, ROOT_CONVERSATION_ID)).id
+  }, context)
+  await writeJson(`${f.host.chapter.dir}/seed.json`, seed)
+  await ensureAutomation(f.host)
+  expect(await f.record((await f.own())!)).toMatchObject({
+    name: AUTOMATION_NAME,
+    condition: { above: 22, cooldownMs: 3600_000 },
+  })
+  expect(await f.record((await f.ownPause())!)).toMatchObject({
+    name: PAUSE_NAME,
+    condition: { above: 20, idleFor: 3600_000, cooldownMs: 60_000 },
+  })
+})
+
 it("asks @ultimate to dream on a built-in's fire, beside the fire's own wake-up, once per fire", async () => {
   const f = await fixture()
   const id = (await f.own())!
@@ -239,7 +283,12 @@ it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and 
     learned: ['I learned one.', 'I keep two.', "I'd like three."],
     handoff: 'Open: the preview round.',
   }
-  await expect(actions.prepare({ ...ready, learned: ['one'] }, f.call)).rejects.toThrow('3 lines')
+  await expect(actions.prepare({ ...ready, learned: ['one'] }, f.call)).rejects.toThrow(
+    'learned must be an array of 3 strings',
+  )
+  await expect(
+    actions.prepare({ ...ready, learned: ready.learned.join('\n') }, f.call),
+  ).rejects.toThrow('learned must be an array of 3 strings')
   await expect(actions.prepare({ ...ready, chapter: '../escape' }, f.call)).rejects.toThrow(
     'chapter name',
   )
@@ -282,7 +331,10 @@ it("marks the branch a dream request's turn started as the dream, and asks @ulti
       context,
     )
   const mark = (id: number, call: number, by: number = f.ultimate) =>
-    f.harness.commit((tx) => branched(tx, { id, by, call, at: 1000 + id }), context)
+    f.harness.commit(
+      (tx) => branched(tx, { id: id as ConversationId, by, call: call as EntryId, at: 1000 + id }),
+      context,
+    )
   const dreamOf = async () => (await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.dream
   // An ordinary branch, with no dream request in its turn, is not a dream.
   await mark(900, await append('pi.assistant', { stopReason: 'toolUse' }))

@@ -1,3 +1,13 @@
+import type {
+  AgentState,
+  EntryRecord,
+  InboxItem,
+  JsonObject,
+  LiveState,
+  UsageState,
+  ConversationId,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import {
   createContext,
   useCallback,
@@ -9,19 +19,14 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { deadline, every } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
-import type {
-  AgentState,
-  EntryRecord,
-  InboxItem,
-  JsonObject,
-  LiveState,
-  UsageState,
-} from '@earendil-works/pi-durable'
 import { actions, allCommands, ownDefault, regionKeys, shellKeys, shownSurface } from './actions.ts'
 import type { Region } from './actions.ts'
 import { ROOT } from './api.ts'
 import { EVENT_FEED } from '../../../shared/events.ts'
+import { historyCursorFromStreamBefore } from '../../../shared/protocol.ts'
 import type { StreamedView } from '../../../shared/protocol.ts'
 import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
 import type { ActionArgs, ActionError } from './api.ts'
@@ -61,7 +66,7 @@ export function useStore<T>(select: (state: State) => T): T {
 
 export interface ConversationState {
   /** The scoped (or shown) conversation, once its snapshot arrived. */
-  id?: number
+  id?: ConversationId
   /** True until this conversation's snapshot arrived. */
   loading: boolean
   /**
@@ -70,7 +75,7 @@ export interface ConversationState {
    */
   entries: readonly EntryRecord[]
   /** The exclusive `api.history` cursor for entries the stream left out; absent when it sent them all. */
-  older?: number
+  older?: EntryId
   /** `pi.agent`: model, thinking level, cwd, extensions, tools. */
   agent: AgentState
   /** `pi.usage`: spend per model and per tool. */
@@ -104,7 +109,7 @@ function derive(view: StreamedView | undefined): ConversationState {
       id: view.conversation.id,
       loading: false,
       entries: view.entries,
-      older: view.before === undefined ? undefined : view.before + 1,
+      older: historyCursorFromStreamBefore(view.before),
       agent: docs['pi.agent'] ?? {},
       usage: (docs['pi.usage'] ?? empty.usage) as UsageState,
       live,
@@ -134,7 +139,7 @@ export function useConversation<T>(select?: (conversation: ConversationState) =>
  * The shown conversation now, or the streamed conversation `id` (a command's `context.conversationId`), outside React:
  * for commands and callbacks. Components use `useConversation()`.
  */
-export const getConversation = (id?: number): ConversationState => {
+export const getConversation = (id?: ConversationId): ConversationState => {
   const { view, viewsOf } = store.getState()
   return derive(id === undefined || id === view?.conversation.id ? view : viewsOf[id])
 }
@@ -146,7 +151,7 @@ export const useConversations = () => useStore((state) => state.conversations)
  * One conversation's summary: it re-renders only when that row changes, not when another conversation's busy, title or
  * answer time does. Use it instead of `useConversations().find(…)`.
  */
-export const useConversationSummary = (id: number | undefined) =>
+export const useConversationSummary = (id: ConversationId | undefined) =>
   useStore((state) =>
     id === undefined ? undefined : state.conversations.find((summary) => summary.id === id),
   )
@@ -183,7 +188,7 @@ export function useDocKind(kind: string): Readonly<JsonObject> | null | undefine
  * `conversation` is undefined and until its stream delivers it. Every hook on one conversation shares one stream.
  */
 export function useDocOf<T>(
-  conversation: number | undefined,
+  conversation: ConversationId | undefined,
   ref: DocRef<T>,
 ): Readonly<T> | null | undefined {
   const { kind } = ref
@@ -227,7 +232,6 @@ export function useUltimate(): UltimateContext {
   return useMemo(() => ({ ...actions, conversationId, surface }), [conversationId, surface])
 }
 
-/** `shownSurface()` that re-renders when the facets, the choice, or the project's default change. */
 export function useShownSurface() {
   const records = useExtensions()
   const [chosen] = useUiState<JsonValue>(shellKeys.surface, null)
@@ -256,7 +260,7 @@ export function useUiState<T extends JsonValue>(
   )
   return [(stored ?? initial) as Widen<T>, set]
 }
-/** Whether the sidebar or the panel is open: shared on a desktop, this tab's own below it (viewport.ts). */
+
 export function useRegionOpen(region: Region) {
   const [key, fallback] = regionKeys[region]
   const [shared] = useUiState<boolean>(key, fallback)
@@ -276,7 +280,7 @@ export function usePanels() {
   const [selected] = useUiState<string | null>(shellKeys.panel, null)
   return { open, ...shownPanels(panels, selected) }
 }
-/** `true` → boolean, `'a'` → string: an initial value names its type, not the only value. */
+
 export type Widen<T> = T extends boolean
   ? boolean
   : T extends string
@@ -296,7 +300,6 @@ export function useTranscript(): readonly EntryRecord[] {
   return entries ?? (scoped === undefined ? empty.entries : active)
 }
 
-/** The extension whose contribution is rendering; the shell provides it. */
 export const ExtensionNameContext = createContext<string | undefined>(undefined)
 
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
@@ -320,12 +323,12 @@ export function useExtensions() {
   return useSyncExternalStore(registry.subscribe, registry.getSnapshot)
 }
 const compactFailures = new Set<string>()
-/** Reports a `compact.when` that threw once per message, as a notice naming its extension. */
+
 function reportCompact(extension: string, error: unknown) {
   const message = `extension ${extension}: compact is off, its when() threw: ${errorMessage(error)}`
   if (compactFailures.has(message)) return
   compactFailures.add(message)
-  // Predicates run while React renders the transcript; notify after that render.
+
   queueMicrotask(() => store.notify({ level: 'error', message }))
 }
 const noDocs = {}
@@ -337,10 +340,7 @@ export function useCompact(): ((call: ToolCall) => boolean) | undefined {
   const { compact, docs } = useCompactConfig()
   return useMemo(() => compact && ((call: ToolCall) => compact.keeps(call, docs)), [compact, docs])
 }
-/**
- * Which rows of the shown compact transcript are the thread the reader follows, and the line a receded stretch between
- * them shows (`compact` contributions' `thread` and `summary`), else `undefined`.
- */
+
 export function useCompactThread() {
   const { compact, docs } = useCompactConfig()
   return useMemo(() => {
@@ -354,7 +354,7 @@ function useCompactConfig() {
   const conversation = useConversationSummary(id)
   const kinds = useMemo(() => compactDocs(records).join(','), [records])
   useEffect(() => {
-    const releases = kinds ? kinds.split(',').map((kind) => store.watchDocOf(1, kind)) : []
+    const releases = kinds ? kinds.split(',').map((kind) => store.watchDocOf(ROOT, kind)) : []
     return () => releases.forEach((release) => release())
   }, [kinds])
   const docs = useStore((state) => (kinds ? state.docsOf[1] : undefined)) ?? noDocs
@@ -397,8 +397,8 @@ export function useRestart(timeoutMs = 120000): Restart {
   const [state, setState] = useState<{
     phase: 'idle' | 'asking' | 'swapping'
     target?: number
-    /** System info when the stream dropped; a different object after reconnecting is fresh. */
-    dropped?: object
+
+    systemSnapshotAtStreamDrop?: object
     error?: string
   }>({ phase: 'idle' })
   const serving = system?.process.generation ?? 0
@@ -408,26 +408,28 @@ export function useRestart(timeoutMs = 120000): Restart {
       setState({ phase: 'idle' })
       return undefined
     }
-    if (connection !== 'open' && !state.dropped) {
-      setState({ ...state, dropped: system ?? {} })
+    if (connection !== 'open' && !state.systemSnapshotAtStreamDrop) {
+      setState({ ...state, systemSnapshotAtStreamDrop: system ?? {} })
       return undefined
     }
-    if (state.dropped && connection === 'open' && system && system !== state.dropped) {
+    if (
+      state.systemSnapshotAtStreamDrop &&
+      connection === 'open' &&
+      system &&
+      system !== state.systemSnapshotAtStreamDrop
+    ) {
       setState({
         phase: 'idle',
         error: `Generation ${state.target} failed to activate and was rolled back; generation ${serving} keeps serving. The reason is in the supervisor's output.`,
       })
       return undefined
     }
-    const timer = setTimeout(
-      () =>
-        setState({
-          phase: 'idle',
-          error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
-        }),
-      timeoutMs,
+    return deadline(timeoutMs, () =>
+      setState({
+        phase: 'idle',
+        error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
+      }),
     )
-    return () => clearTimeout(timer)
   }, [state, serving, connection, system, timeoutMs])
   return {
     pending: state.phase === 'swapping' ? state.target : undefined,
@@ -484,10 +486,10 @@ export function useAction<Args, T>(
   ref: ActionRef<Args, T>,
   ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
 ): ActionState<T> {
-  // The conversation the call acts on, scoped or shown, keys the read: answers of another conversation never serve it.
   const scoped = useContext(ConversationIdContext)
   const shown = useStore((state) => state.view?.conversation.id ?? state.requested ?? ROOT)
-  const read = reads.get(ref.extension, ref.name, args, scoped ?? shown)
+  const readConversation = scoped ?? shown
+  const read = reads.get(ref.extension, ref.name, args, readConversation)
   const state = useSyncExternalStore(read.subscribe, read.get)
   const enabled = options.enabled !== false
   const reader = useRef<Reader>({}).current
@@ -501,7 +503,6 @@ export function useAction<Args, T>(
   useEffect(() => {
     if (seen.current === on) return
     seen.current = on
-    // oxlint-disable-next-line typescript/no-floating-promises -- a read reports failures and resolves undefined rather than rejecting.
     if (enabled) void read.refetch()
   }, [read, on, enabled])
   return {
@@ -515,15 +516,15 @@ export function useAction<Args, T>(
 /** `copy(text)` puts text on the clipboard; `copied` is true for 1.2 s after, and a failure becomes an error notice. */
 export function useCopy() {
   const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const cancelReset = useRef<Cancel>(undefined)
+  useEffect(() => () => cancelReset.current?.(), [])
   const copy = (text: string) =>
     void navigator.clipboard
       .writeText(text)
       .then(() => {
         setCopied(true)
-        clearTimeout(timer.current)
-        timer.current = setTimeout(() => setCopied(false), 1200)
+        cancelReset.current?.()
+        cancelReset.current = deadline(1200, () => setCopied(false))
       })
       .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
   return { copied, copy }
@@ -535,8 +536,7 @@ export function useNow(intervalMs = 1000, active = true): number {
   useEffect(() => {
     if (!active) return undefined
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), intervalMs)
-    return () => clearInterval(timer)
+    return every(intervalMs, () => setNow(Date.now()))
   }, [intervalMs, active])
   return now
 }
@@ -546,6 +546,7 @@ export function useToolDuration(call: ToolCallView): string | undefined {
   const running = call.startedAt !== undefined && call.endedAt === undefined
   const now = useNow(100, running)
   if (call.startedAt === undefined) return undefined
-  // The start is the server's clock; a browser clock behind it must not show a negative time.
-  return formatDuration(Math.max(0, (call.endedAt ?? now) - call.startedAt))
+
+  const elapsedMsWithoutNegativeClockSkew = Math.max(0, (call.endedAt ?? now) - call.startedAt)
+  return formatDuration(elapsedMsWithoutNegativeClockSkew)
 }

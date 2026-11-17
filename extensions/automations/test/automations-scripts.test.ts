@@ -9,8 +9,11 @@ import { fauxServer, removeTemp, temp, until } from '../../../test/helpers.ts'
 const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 afterAll(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  for (const home of homes.splice(0)) await removeTemp(home)
+  // Capture both lists before close can yield to another test's setup.
+  const closing = servers.splice(0)
+  const taken = homes.splice(0)
+  await Promise.all(closing.map((server) => server.close()))
+  for (const home of taken) await removeTemp(home)
 })
 
 it('accepts loose FIRE text, including JSON and an empty payload, only on stdout', () => {
@@ -111,7 +114,7 @@ it('lets a project extension read, pause and resume an automation through the se
   expect(server.extensions.catalogue().apis.find((api) => api.name === 'automations')).toEqual({
     name: 'automations',
     provider: 'automations',
-    needs: [],
-    wants: ['goal', 'prs'],
+    needs: ['goal'],
+    wants: ['prs'],
   })
 })

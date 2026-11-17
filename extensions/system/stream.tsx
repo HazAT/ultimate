@@ -1,14 +1,15 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, cn, errorMessage, formatDuration, useUltimate } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
 import type { Feed } from './feed.ts'
+import { deadline, every } from '../../lib/timers.ts'
 import { StreamAction } from './refs.ts'
 import type { SystemFilter, SystemRow } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.tsx'
 
-/** The stream's source chips: each a filter of the `stream` action. */
 export const sources = {
   all: {},
   events: { sources: ['event'] },
@@ -20,30 +21,28 @@ export const sources = {
 } satisfies Record<string, SystemFilter>
 export type Source = keyof typeof sources
 
-/** What the user filters the stream by; kept in UI state so it survives reloads. */
-export type StreamView = { source: Source; errors: boolean; conversation?: number; text: string }
+export type StreamView = {
+  source: Source
+  errors: boolean
+  conversation?: ConversationId
+  text: string
+}
 
-/** This surface's own polls, which would otherwise fill the stream it shows. */
 export const ownPoll = (row: SystemRow) =>
   row.kind === 'action' &&
   (row.name === 'system/stream' || row.name === 'system/lanes') &&
   row.summary.startsWith('ui →')
 
-const POLL = 2000
+const LIVE_AND_RETRY_POLL_MS = 2000
 const PAGE = 100
 
-/**
- * Rows newest first: the newest page, then every 2 s while `live` the rows arriving since its `head` (or the newest
- * page again while there is no head), and older pages on demand. A failure shows as `error`; the next tick or scroll
- * asks again. A new filter starts over.
- */
 function useStream(filter: SystemFilter, live: boolean) {
   const key = JSON.stringify(filter)
   const [state, setState] = useState<Feed & { key: string }>({ ...empty, key })
   const latest = useRef(state)
   latest.current = state
   const call = useRef<AbortController>(undefined)
-  /** Ask for a page with `args` and apply `step` to the feed, if the filter is still `key`. */
+
   const request = (args: object, step: (feed: Feed, page: never) => Feed) => {
     const controller = new AbortController()
     call.current = controller
@@ -56,7 +55,6 @@ function useStream(filter: SystemFilter, live: boolean) {
             previous.key === key ? { ...step(previous, page as never), key } : previous,
           ),
         (error: unknown) => {
-          // Aborted by a newer filter or an unmount; the newer request owns the state.
           if (controller.signal.aborted) return
           setState((previous) =>
             previous.key === key ? { ...failed(previous, errorMessage(error)), key } : previous,
@@ -64,36 +62,32 @@ function useStream(filter: SystemFilter, live: boolean) {
         },
       )
   }
+  const ask = useRef(request)
+  ask.current = request
   useEffect(() => {
     setState({ ...empty, key })
-    request({}, loaded)
+    ask.current({}, loaded)
     return () => call.current?.abort()
-    // `filter` is compared through `key`.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
   useEffect(() => {
     if (!live) return undefined
-    const timer = setInterval(() => {
+    return every(LIVE_AND_RETRY_POLL_MS, () => {
       const { head, loading } = latest.current
       if (loading || latest.current.key !== key) return
-      if (head === undefined) request({}, loaded)
-      else request({ after: head }, (feed, page) => followed(feed, head, page))
-    }, POLL)
-    return () => clearInterval(timer)
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
+      if (head === undefined) ask.current({}, loaded)
+      else ask.current({ after: head }, (feed, page) => followed(feed, head, page))
+    })
   }, [key, live])
-  // Older rows are asked for once wanted and nothing else is on its way, also when a live refresh ends.
+
   useEffect(() => {
-    if (!pagesOlder(state)) return
-    const next = state.next!
-    request({ before: next }, (feed, page) => older(feed, next, page))
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    if (!pagesOlder(latest.current)) return
+    const next = latest.current.next!
+    ask.current({ before: next }, (feed, page) => older(feed, next, page))
   }, [state.wanted, state.loading, state.next])
   const more = () => setState((previous) => ({ ...previous, ...wantOlder(previous) }))
   return { ...state, older: more }
 }
 
-/** One row as one quiet line, like the Activity feed: time, kind, name, conversation, duration, failure. */
 function Row({ row }: { row: SystemRow }) {
   const [open, setOpen] = useState(false)
   const actions = useUltimate()
@@ -154,7 +148,6 @@ function Row({ row }: { row: SystemRow }) {
 const chip =
   'h-6 shrink-0 cursor-pointer rounded-md px-2 font-mono text-[10.5px] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
-/** The filter row: a chip per source, errors only, the conversation filtered to, and a text box. */
 function Filters({ view, setView }: { view: StreamView; setView: (view: StreamView) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-1 px-3 py-2">
@@ -209,17 +202,12 @@ function Filters({ view, setView }: { view: StreamView; setView: (view: StreamVi
   )
 }
 
-/** Debounces `value` by `ms`, so typing filters once the user pauses. */
 function useSettled<T>(value: T, ms: number) {
   const [settled, setSettled] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
+  useEffect(() => deadline(ms, () => setSettled(value)), [value, ms])
   return settled
 }
 
-/** The stream of everything, newest first, filtered; scrolling to its end pages older rows in. */
 export function Stream({
   view,
   setView,
@@ -240,15 +228,17 @@ export function Stream({
   const end = useRef<HTMLDivElement>(null)
   const page = useRef(stream.older)
   page.current = stream.older
-  // Observing again reports whether the end is in view, so a page that leaves it in view loads the next, and after a
-  // failure the end asks again 2 s later.
+
   useEffect(() => {
     const observer = new IntersectionObserver((seen) => {
       if (seen.some((entry) => entry.isIntersecting)) page.current()
     })
-    const timer = setTimeout(() => observer.observe(end.current!), stream.error ? POLL : 0)
+    const observeEndAgainAfterPageOrFailureMs = stream.error ? LIVE_AND_RETRY_POLL_MS : 0
+    const cancel = deadline(observeEndAgainAfterPageOrFailureMs, () =>
+      observer.observe(end.current!),
+    )
     return () => {
-      clearTimeout(timer)
+      cancel()
       observer.disconnect()
     }
   }, [stream.rows.length, stream.error])
