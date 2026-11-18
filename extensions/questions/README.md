@@ -43,8 +43,10 @@ labels) and `text` (a field); options offer “Something else…” with an inli
 shows beside the options for the hovered or chosen one. Recommended options (@ultimate's picks, also on a branch's card) carry a “my pick” chip. Under the questions,
 a note field is always there: whatever it holds goes after the answer lines, or on its own (“Send note”), and never
 changes a pick. **Accept picks** chooses every pick still open; Send sends what is answered (“Send 2 of 5”). Sending
-opens a 3 s window with Undo before the answer goes out, then the card settles into the summary of what was sent, the
-note on its own line. Dismiss closes the message without an answer. A message without questions gets a one-line answer
+opens a 3 s window with Undo before the answer goes out; if a question is left unanswered, the window lasts 8 s and
+pulses amber. A click or tap anywhere on the pending card undoes the send and keeps the answers and the note. Then
+the card settles into the summary of what was sent, the note on its own line. Dismiss closes the message without an
+answer. A message without questions gets a one-line answer
 field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
 for Something else) chooses, ↑/↓ moves between questions, Enter takes the open question's pick or goes to the next,
 and sends from the last one; ⇧Enter accepts every pick and sends; `/` focuses the note field, where Enter sends and

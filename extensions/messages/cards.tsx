@@ -156,7 +156,8 @@ function Status({
   if (status === 'yours')
     return (
       <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
-        awaiting your reply
+        <span className="group-has-[[data-sending]]/body:hidden">awaiting your reply</span>
+        <span className="hidden group-has-[[data-sending]]/body:inline">sending</span>
       </span>
     )
   if (status === 'waiting')
@@ -251,7 +252,7 @@ export function Bubble({
         )}
       </div>
       <div
-        className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/60 empty:hidden [&>:first-child]:border-t-0"
+        className="group/body mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/60 empty:hidden [&>:first-child]:border-t-0"
         data-ui="message-card-body"
       >
         {message?.images && <MessageImages conversation={from} entry={message.images.entry} />}
