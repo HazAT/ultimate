@@ -34,7 +34,7 @@ describe('the answer card state', () => {
     expect(choiceForKey(plain, 'a')).toBeUndefined()
   })
 
-  it('opens with every pick chosen, on the first question without one, and keeps what the user changed', () => {
+  it('opens with every pick chosen, on the first question without one, and keeps what the user changed or cleared', () => {
     const questions = [lettered, confirm, plain]
     expect(cardOf({}, 'message:5', questions)).toEqual({
       drafts: { 0: { chosen: [0] }, 2: { chosen: [1] } },
@@ -43,9 +43,22 @@ describe('the answer card state', () => {
       text: '',
     })
     const changed = {
-      'message:5': { drafts: { 0: { chosen: [2] } }, note: '', current: 0, text: '' },
+      'message:5': {
+        drafts: { 0: { chosen: [2] }, 2: { chosen: [] } },
+        note: '',
+        current: 0,
+        text: '',
+      },
     }
-    expect(cardOf(changed, 'message:5', questions).drafts).toEqual({ 0: { chosen: [2] } })
+    expect(cardOf(changed, 'message:5', questions).drafts).toEqual({
+      0: { chosen: [2] },
+      2: { chosen: [] },
+    })
+    const noteOnly = { 'message:5': { drafts: {}, note: 'Later', current: 1, text: '' } }
+    expect(cardOf(noteOnly, 'message:5', questions).drafts).toEqual({
+      0: { chosen: [0] },
+      2: { chosen: [1] },
+    })
   })
 
   it('sends only answered questions, in order, a multiple choice as a list', () => {

@@ -181,6 +181,10 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   await until(async () => !!(await picked()))
   expect(Date.now() - held).toBeLessThan(2500)
   await page.mouse.up()
+  await page.waitForTimeout(500)
+  expect(
+    (await log())?.messages.filter((m) => m.re === second.id && m.from === 'user'),
+  ).toHaveLength(1)
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
 

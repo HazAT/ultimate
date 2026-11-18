@@ -149,27 +149,25 @@ function SendButton({
   children: string
 }) {
   const [holding, setHolding] = useState(false)
-  const hold = useRef<Cancel>(undefined)
-  const sentByHold = useRef(false)
+  const hold = useRef<{ pointer: number; cancel: Cancel }>(undefined)
+  const swallowClick = useRef(false)
+  const sendNow = useRef(onSendNow)
+  sendNow.current = onSendNow
   const release = () => {
-    hold.current?.()
+    hold.current?.cancel()
     hold.current = undefined
     setHolding(false)
   }
+  useEffect(() => {
+    if (phase !== 'answering') release()
+  }, [phase])
   useEffect(() => release, [])
   const pending = phase === 'undo'
-  const label = pending
-    ? 'Undo'
-    : phase === 'sending'
-      ? 'Sending…'
-      : phase === 'sent'
-        ? 'Sent'
-        : children
   return (
-    <button
-      type="button"
+    <Button
+      size="sm"
+      variant={phase === 'answering' ? 'default' : 'outline'}
       data-send={phase}
-      data-holding={holding ? '' : undefined}
       disabled={disabled || phase === 'sending' || phase === 'sent'}
       title={
         pending
@@ -177,33 +175,52 @@ function SendButton({
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
-        if (phase !== 'answering' || event.button !== 0) return
-        sentByHold.current = false
+        if (phase !== 'answering' || event.button !== 0 || hold.current) return
+        swallowClick.current = false
         setHolding(true)
-        hold.current = deadline(HOLD_TO_SEND_MS, () => {
-          hold.current = undefined
-          sentByHold.current = true
-          setHolding(false)
-          onSendNow()
-        })
+        hold.current = {
+          pointer: event.pointerId,
+          cancel: deadline(HOLD_TO_SEND_MS, () => {
+            hold.current = undefined
+            swallowClick.current = true
+            setHolding(false)
+            sendNow.current()
+          }),
+        }
       }}
-      onPointerUp={release}
-      onPointerLeave={release}
-      onPointerCancel={release}
+      onPointerMove={(event) => {
+        if (hold.current?.pointer !== event.pointerId) return
+        const box = event.currentTarget.getBoundingClientRect()
+        const inside =
+          event.clientX >= box.left &&
+          event.clientX <= box.right &&
+          event.clientY >= box.top &&
+          event.clientY <= box.bottom
+        if (inside) return
+        swallowClick.current = true
+        release()
+      }}
+      onPointerUp={(event) => {
+        if (hold.current?.pointer === event.pointerId) release()
+      }}
+      onPointerCancel={(event) => {
+        if (hold.current?.pointer !== event.pointerId) return
+        swallowClick.current = true
+        release()
+      }}
       onContextMenu={(event) => event.preventDefault()}
       onClick={() => {
-        if (sentByHold.current) {
-          sentByHold.current = false
+        if (swallowClick.current) {
+          swallowClick.current = false
           return
         }
         if (pending) onUndo()
         else if (phase === 'answering') onSend()
       }}
       className={cn(
-        'relative isolate inline-flex h-8 shrink-0 cursor-pointer touch-manipulation items-center justify-center overflow-hidden rounded-md border px-3 text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,opacity] outline-none select-none [-webkit-touch-callout:none] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 max-md:h-11 max-md:px-4 [&_svg]:size-3.5',
-        phase === 'answering'
-          ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
-          : 'border-brand/50 bg-brand/10 text-foreground',
+        'relative isolate touch-manipulation overflow-hidden select-none [-webkit-touch-callout:none] max-md:h-11 max-md:px-4',
+        phase !== 'answering' &&
+          'border-brand/50 bg-brand/10 text-foreground dark:border-brand/50 dark:bg-brand/10',
         phase === 'sent' && 'disabled:opacity-100',
       )}
     >
@@ -228,7 +245,7 @@ function SendButton({
           aria-hidden={phase === 'answering'}
         >
           {pending && <Undo2Icon />}
-          {phase !== 'answering' && label}
+          {pending ? 'Undo' : phase === 'sending' ? 'Sending…' : 'Sent'}
         </span>
         <span
           className={cn(
@@ -240,7 +257,7 @@ function SendButton({
           {children}
         </span>
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -327,7 +344,9 @@ function Card({
   className?: string
 }) {
   const [state, setState] = useDurableCard(card, questions)
-  const { drafts, note, current, text } = state
+  const [lockedIn, setLockedIn] = useState<Pick<CardState, 'drafts' | 'note'>>()
+  const { drafts, note } = lockedIn ?? state
+  const { current, text } = state
   const root = useRef<HTMLDivElement>(null)
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
@@ -338,6 +357,7 @@ function Card({
     fire: (keepalive?: boolean) => void
   }>(undefined)
   const cancelAdvanceAfterCheck = useRef<Cancel>(undefined)
+  const committed = useRef(false)
   const flush = () => flushUndoWindowSend(undoWindowSend)
   const phone = useViewport() === 'phone'
   const hints = keys && !phone
@@ -415,8 +435,10 @@ function Card({
   }
   const send = (immediately = false) => {
     const extra = note.trim()
-    if ((!ready.length && !extra) || undoWindowSend.current || phase !== 'answering') return
+    if ((!ready.length && !extra) || committed.current) return
+    committed.current = true
     cancelAdvanceAfterCheck.current?.()
+    setLockedIn({ drafts, note })
     const fire = (keepalive = false) => {
       undoWindowSend.current = undefined
       setPhase('sending')
@@ -424,7 +446,7 @@ function Card({
       submit(ready, extra || undefined, keepalive).then(
         () => setPhase('sent'),
         (failure: unknown) => {
-          setPhase('answering')
+          unlock()
           setError(errorMessage(failure))
         },
       )
@@ -433,12 +455,17 @@ function Card({
     undoWindowSend.current = { cancel: deadline(ANSWER_UNDO_WINDOW_MS, fire), fire }
     setPhase('undo')
   }
+  const unlock = () => {
+    committed.current = false
+    setLockedIn(undefined)
+    setPhase('answering')
+  }
   const now = flush
   const undo = () => {
     if (!undoWindowSend.current) return
     undoWindowSend.current.cancel()
     undoWindowSend.current = undefined
-    setPhase('answering')
+    unlock()
   }
 
   const enter = () => {
@@ -662,7 +689,7 @@ function Card({
           </Button>
           <SendButton
             phase={phase}
-            disabled={(!ready.length && !note.trim()) || busy}
+            disabled={(!locked && !ready.length && !note.trim()) || busy}
             onSend={() => send()}
             onSendNow={() => send(true)}
             onUndo={undo}

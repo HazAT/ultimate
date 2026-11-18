@@ -9,8 +9,6 @@ export {
   choices,
   EMPTY_CARD,
   keyOf,
-  pickDraft,
-  pickIndices,
   position,
 } from '../../lib/question-cards.ts'
 export type { CardState, Choice, Draft } from '../../lib/question-cards.ts'

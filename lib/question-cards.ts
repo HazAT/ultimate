@@ -37,32 +37,29 @@ export const cardKey = (message: number) => `message:${message}`
 
 export const EMPTY_CARD: CardState = { drafts: {}, note: '', current: 0, text: '' }
 
-export const pickIndices = (question: CardQuestion) =>
-  choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
-
-export const pickDraft = (question: CardQuestion): Draft => {
-  const chosen = pickIndices(question)
+export function pickDraft(question: CardQuestion): Draft | undefined {
+  const chosen = choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
+  if (!chosen.length) return undefined
   return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }
 }
 
-function preselected(questions: readonly CardQuestion[]): CardState {
-  const drafts = Object.fromEntries(
-    questions.flatMap((question, index) =>
-      pickIndices(question).length ? [[index, pickDraft(question)]] : [],
-    ),
-  )
-  const firstWithoutPick = questions.findIndex((_, index) => !drafts[index])
-  return { ...EMPTY_CARD, drafts, current: Math.max(0, firstWithoutPick) }
-}
-
-export const cardOf = (
+export function cardOf(
   cards: Record<string, CardState> | undefined,
   card: string,
   questions: readonly CardQuestion[],
-): CardState => ({
-  ...preselected(questions),
-  ...cards?.[card],
-})
+): CardState {
+  const stored = cards?.[card]
+  const drafts: Record<number, Draft> = {}
+  for (const [index, question] of questions.entries()) {
+    const draft = stored?.drafts[index] ?? pickDraft(question)
+    if (draft) drafts[index] = draft
+  }
+  const firstWithoutPick = Math.max(
+    0,
+    questions.findIndex((_, index) => !drafts[index]),
+  )
+  return { ...EMPTY_CARD, current: firstWithoutPick, ...stored, drafts }
+}
 
 const steps = (question: CardQuestion) => {
   const { min = 1, max = 5 } = question.scale ?? {}
