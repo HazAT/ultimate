@@ -71,13 +71,23 @@ export async function isolateWork(core: string, memoryMax: () => Promise<string>
   shared.work = work
   try {
     for (const leaf of await readdir(work, { withFileTypes: true }))
-      if (leaf.isDirectory() && !ownerAlive(leaf.name)) removeOnceEmpty(join(work, leaf.name))
+      if (leaf.isDirectory() && (!ownerAlive(leaf.name) || populated(join(work, leaf.name))))
+        removeOnceEmpty(join(work, leaf.name))
   } catch (error) {
     console.warn(`Sweeping ${work} failed: ${String(error)}`)
   }
   await exec('setfattr', ['-n', 'user.oomd_avoid', '-v', '1', core]).catch((error: unknown) =>
     console.warn(`systemd-oomd may still pick the core: ${String(error)}`),
   )
+}
+
+function populated(leaf: string) {
+  try {
+    return /^populated 1$/m.test(readFileSync(join(leaf, 'cgroup.events'), 'utf8'))
+  } catch (error) {
+    if (isMissing(error)) return false
+    throw error
+  }
 }
 
 function removeOnceEmpty(leaf: string) {

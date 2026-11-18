@@ -47,7 +47,16 @@ export async function startBackground(
   const { pid } = group.child
   if (pid === undefined) throw new Error('The background command did not start')
   group.child.stdout.resume()
-  group.child.stderr.on('data', (data: Buffer) => appendFileSync(log, data))
+  let logFailed = false
+  group.child.stderr.on('data', (data: Buffer) => {
+    if (logFailed) return
+    try {
+      appendFileSync(log, data)
+    } catch (error) {
+      logFailed = true
+      host.notice(`Background group ${pid}: ${String(error)}`)
+    }
+  })
   inProcess(
     'this process owns the group until it exits; a restart sweeps what it recorded',
     group.ended

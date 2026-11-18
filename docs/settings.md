@@ -32,7 +32,7 @@ user) runs those models on the priority tier through the `fast` extension, at a 
 (`"provider/id"`, project over user, default the previews family's model, the fast family's `openai-codex/gpt-6.1-sol`; `null` turns it off) is the one model every
 agent in a preview (`instance start`) runs on, fast tier included; see `extensions/instance/README.md`.
 `work.memoryMax` (bytes or a cgroup size such as `"12G"`, project over user, default 70% of RAM) caps the memory of
-everything agents start (bash, previews, lander checks, automation scripts) when the service runs with a delegated
+the bash tool (foreground and background), previews, lander checks and automation scripts when the service runs with a delegated
 cgroup (`Delegate=yes`, `DelegateSubgroup=core`, as `pnpm setup:machine` writes it): each process group gets its own
 cgroup under `work/`, which the kernel kills as a whole when `work/` runs out, so the core keeps running. Read at start.
 `remotes` (user settings only, `{ "<machine>": { "<project>": "<url>" } }`) names other machines' Ultimate instances,
