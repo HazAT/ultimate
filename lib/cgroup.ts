@@ -1,5 +1,5 @@
 import { readFileSync, rmdirSync, watch } from 'node:fs'
-import { mkdir, readdir, rmdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { totalmem } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -36,10 +36,10 @@ function readSelfCgroup() {
 
 export async function workMemoryMax(projectRoot: string, userHome: string) {
   for (const settings of [
-    await projectSettings(projectRoot, userHome),
-    await readSettings(userSettingsPath(userHome)),
+    () => projectSettings(projectRoot, userHome),
+    () => readSettings(userSettingsPath(userHome)),
   ]) {
-    const memoryMax = (settings.work as { memoryMax?: unknown } | undefined)?.memoryMax
+    const memoryMax = ((await settings()).work as { memoryMax?: unknown } | undefined)?.memoryMax
     if (typeof memoryMax === 'string' || typeof memoryMax === 'number') return String(memoryMax)
   }
   return String(Math.floor(totalmem() * 0.7))
@@ -54,25 +54,27 @@ const ownerAlive = (leaf: string) => {
   }
 }
 
-export async function isolateWork(core: string, memoryMax: string, swapMax = '4G') {
+export async function isolateWork(core: string, memoryMax: () => Promise<string>, swapMax = '4G') {
   const service = dirname(core)
   const work = join(service, 'work')
+  shared.work = undefined
   try {
     await mkdir(work).catch(ignoring(exists))
     await writeFile(join(service, 'cgroup.subtree_control'), '+memory')
     await writeFile(join(work, 'cgroup.subtree_control'), '+memory')
-    await writeFile(join(work, 'memory.max'), memoryMax)
+    await writeFile(join(work, 'memory.max'), await memoryMax())
     await writeFile(join(work, 'memory.swap.max'), swapMax)
   } catch (error) {
-    console.warn(
-      `Branch work shares the core's memory: ${core} is not delegated (${String(error)})`,
-    )
+    console.warn(`Branch work shares the core's memory: ${core}: ${String(error)}`)
     return
   }
-  for (const leaf of await readdir(work, { withFileTypes: true }))
-    if (leaf.isDirectory() && !ownerAlive(leaf.name))
-      await rmdir(join(work, leaf.name)).catch(ignoring(isBusy, isMissing))
   shared.work = work
+  try {
+    for (const leaf of await readdir(work, { withFileTypes: true }))
+      if (leaf.isDirectory() && !ownerAlive(leaf.name)) removeOnceEmpty(join(work, leaf.name))
+  } catch (error) {
+    console.warn(`Sweeping ${work} failed: ${String(error)}`)
+  }
   await exec('setfattr', ['-n', 'user.oomd_avoid', '-v', '1', core]).catch((error: unknown) =>
     console.warn(`systemd-oomd may still pick the core: ${String(error)}`),
   )
@@ -90,11 +92,19 @@ function removeOnceEmpty(leaf: string) {
     }
   }
   if (remove()) return
-  const watcher = watch(join(leaf, 'cgroup.events'), () => {
+  try {
+    const watcher = watch(join(leaf, 'cgroup.events'), () => {
+      if (remove()) watcher.close()
+    })
+    watcher.on('error', (error) => {
+      console.warn(`Work cgroup ${leaf} stays: ${String(error)}`)
+      watcher.close()
+    })
+    watcher.unref()
     if (remove()) watcher.close()
-  })
-  watcher.on('error', () => watcher.close())
-  watcher.unref()
+  } catch (error) {
+    if (!remove()) console.warn(`Work cgroup ${leaf} stays: ${String(error)}`)
+  }
 }
 
 export type Work = {

@@ -203,7 +203,7 @@ export async function prepareHarness(options: HostOptions) {
     faux,
     async open(resume = true) {
       const core = delegatedCore()
-      if (core) await isolateWork(core, await workMemoryMax(projectRoot, userHome))
+      if (core) await isolateWork(core, () => workMemoryMax(projectRoot, userHome))
       const coreStartForStaleOwnerCheck = identify(process.pid)
       if (!coreStartForStaleOwnerCheck)
         throw new Error(`Cannot identify Ultimate core pid ${process.pid}`)

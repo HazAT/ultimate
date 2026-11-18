@@ -6,5 +6,5 @@ it('finds the delegated core cgroup and nothing else', () => {
     '/sys/fs/cgroup/user.slice/app.slice/ultimate.service/core',
   )
   expect(delegatedCore('0::/user.slice/app.slice/ultimate.service')).toBeUndefined()
-  expect(delegatedCore(undefined)).toBeUndefined()
+  expect(delegatedCore('1:name=systemd:/user.slice/core')).toBeUndefined()
 })
