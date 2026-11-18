@@ -2389,6 +2389,44 @@ async function fireAutomation(
   return (await f.opened.harness.submission(submission, context))!
 }
 
+it('a cancelled queued fire does not fail the request while the first fire can answer', async () => {
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  const key = 'cancelled-second-fire'
+  const request = await actions.remote(
+    { key, text: 'Do work\nHOLD', reply: true, from },
+    f.action(),
+  )
+  await until(f.holding)
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A1'), context)
+  f.hold.release()
+  await until(() => other.posted.length === 1)
+  f.holdAgain()
+  const first = await fireAutomation(f, 'A1', 'First result\nHOLD')
+  await until(f.holding)
+  const second = await fireAutomation(f, 'A1', 'Never read')
+  expect((await second.status(context)).status).toBe('queued')
+  expect(await second.abort(context)).toBe('aborted')
+  await until(async () => {
+    const owner = (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))?.owners[
+      request
+    ]
+    return owner?.pending.length === 1 && owner.pending[0] === first.id
+  })
+  expect(other.posted).toHaveLength(1)
+  f.hold.release()
+  await until(() => other.posted.length === 2)
+  expect(other.posted[1].body).toMatchObject({
+    key,
+    failed: false,
+    text: expect.stringContaining('Result of automation A1'),
+  })
+  expect(other.posted[1].body).not.toHaveProperty('interim')
+  expect(
+    (await f.log())!.messages.filter((m) => m.remote?.key === key && m.state === 'failed'),
+  ).toEqual([])
+})
+
 it('fails an owned request once when a message tool terminates the run that read the fire', async () => {
   const other = await otherUltimate(() => [200, { result: 1 }])
   const f = await remoteFixture(other.url)
@@ -2446,11 +2484,7 @@ it('lets a pending branch report settle a concluded branch without failing on ea
     const owner = (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))?.owners[
       request
     ]
-    return (
-      owner?.owner.kind === 'branch' &&
-      owner.owner.id === branch &&
-      owner.outputPending === undefined
-    )
+    return owner?.owner.kind === 'branch' && owner.owner.id === branch && !owner.pending.length
   })
   expect(other.posted).toHaveLength(1)
   f.holdAgain()

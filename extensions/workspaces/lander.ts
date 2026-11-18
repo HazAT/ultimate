@@ -334,6 +334,7 @@ export function createLander(
     starter: (id: ConversationId, context: Context) => Promise<ConversationId | undefined>
     working: (tx: Tx, id: ConversationId) => Promise<boolean>
     conclude: (tx: Tx, id: ConversationId) => Promise<void>
+    reserveLanding: import('./api.ts').BranchesService['reserveLanding']
     submitLanding: import('./api.ts').BranchesService['submitLanding']
     release: (id: ConversationId, context: Context) => Promise<unknown>
   },
@@ -837,6 +838,8 @@ export function createLander(
             } catch (error) {
               host.notice(`Not concluding #${branch} after landing: ${String(error)}`)
             }
+          if (concludedInThisCommit && starter !== undefined && starter !== branch)
+            await after.reserveLanding(tx, branch, id)
           return {
             status: 'running',
             checkpoint: {
@@ -870,6 +873,7 @@ export function createLander(
               to,
               { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` },
               conversationId,
+              id,
             )
           else if (to)
             await to.submit(tx, {

@@ -210,9 +210,12 @@ export function workspaces(host: Host) {
     working: async (tx, id) => (await host.want(Branches)?.working(tx, id)) ?? false,
     conclude: async (tx, id) =>
       void (await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')),
-    submitLanding: async (tx, to, input, id) => {
+    reserveLanding: async (tx, id, result) => {
+      await host.want(Branches)?.reserveLanding(tx, id, result)
+    },
+    submitLanding: async (tx, to, input, id, result) => {
       const messages = host.want(Branches)
-      if (messages) await messages.submitLanding(tx, to, input, id)
+      if (messages) await messages.submitLanding(tx, to, input, id, result)
       else await to.submit(tx, input)
     },
     release: (id, context) => release([id], context),

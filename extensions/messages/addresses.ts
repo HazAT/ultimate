@@ -25,10 +25,17 @@ export type Owner =
   | { kind: 'automation'; id: string }
   | { kind: 'tell'; key: string }
 
+export type LandingOutput = `landing:${string}`
+
 export const Serving = defineDoc<{
   owners: Record<
     string,
-    { request: Serves; owner: Owner; assignedBy: EntryId; outputPending?: SubmissionId }
+    {
+      request: Serves
+      owner: Owner
+      assignedBy: EntryId
+      pending: (SubmissionId | LandingOutput)[]
+    }
   >
 }>({
   kind: 'board.serving',
@@ -139,7 +146,8 @@ export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, own
     for (const { request, owner: current } of Object.values(owners))
       if (sameOwner(current, output.owner)) requests.set(request.message, request)
   }
-  for (const request of requests.values()) owners[request.message] = { request, owner, assignedBy }
+  for (const request of requests.values())
+    owners[request.message] = { request, owner, assignedBy, pending: [] }
   return [...requests.values()]
 }
 

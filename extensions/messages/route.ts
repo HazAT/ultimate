@@ -78,11 +78,11 @@ export async function branchesConcluded(
   const starter = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (starter === undefined) return
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  const losses = Object.values(owners).flatMap(({ owner, request, assignedBy, outputPending }) =>
+  const losses = Object.values(owners).flatMap(({ owner, request, assignedBy, pending }) =>
     owner.kind === 'branch' &&
     assignedBy < conclusion &&
     branches.includes(owner.id) &&
-    outputPending === undefined
+    pending.length === 0
       ? [{ request, source: `Branch #${owner.id}` }]
       : [],
   )
@@ -115,6 +115,7 @@ export async function reported(
   tx: Tx,
   starter: ConversationId,
   answered: EntryId[],
+  submissions?: Map<EntryId, SubmissionId>,
 ) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   const newestAnsweredBranchMessage = new Map<ConversationId, number>()
@@ -176,10 +177,14 @@ export async function reported(
     source?: string
     interim: boolean
   }>(({ request, owner, assignedBy }) => {
-    if (answered.includes(assignedBy))
-      return request.remote && !early.has(request.message) ? [{ request, interim: true }] : []
-    const output = outputs.find((item) => assignedBy < item.entry && sameOwner(item.owner, owner))
-    return output ? [{ request, source: output.source, interim: false }] : []
+    const output = outputs.find(
+      (item) =>
+        assignedBy < (submissions?.get(item.entry) ?? item.entry) && sameOwner(item.owner, owner),
+    )
+    if (output) return [{ request, source: output.source, interim: false }]
+    return answered.includes(assignedBy) && request.remote && !early.has(request.message)
+      ? [{ request, interim: true }]
+      : []
   })
   const localHandOns = new Set(
     Object.values(owners).flatMap(({ request, assignedBy }) =>
@@ -234,11 +239,14 @@ export function route(host: ExtensionHost) {
             task.input.inputs.map((submission) => tx.submission(submission)),
           )
           const handle = async (): Promise<Route[]> => {
-            const inputsSettledByThisAnswer = inputs.flatMap((input) =>
-              input?.type === 'input' && input.status === 'done' && input.answer === answer
-                ? [input.entry]
-                : [],
+            const submissions = new Map(
+              inputs.flatMap((input) =>
+                input?.type === 'input' && input.status === 'done' && input.answer === answer
+                  ? [[input.entry, input.id] as const]
+                  : [],
+              ),
             )
+            const inputsSettledByThisAnswer = [...submissions.keys()]
             if (!inputsSettledByThisAnswer.length) return []
             const message = (await tx.entry(answer))?.model?.[0]
             const text =
@@ -249,7 +257,13 @@ export function route(host: ExtensionHost) {
                 : ''
             if (!text.trim()) return []
             if (down) {
-              const { branches, askers } = await reported(host, tx, by, inputsSettledByThisAnswer)
+              const { branches, askers } = await reported(
+                host,
+                tx,
+                by,
+                inputsSettledByThisAnswer,
+                submissions,
+              )
               const together =
                 branches.length > 1
                   ? `(This answers ${branches.map((b) => `#${b}`).join(' and ')} together.)\n\n`

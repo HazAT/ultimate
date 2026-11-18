@@ -18,7 +18,7 @@ import type {
 import { ConversationsApi } from '../conversations/api.ts'
 import { scanNonterminalTasks } from './tasks.ts'
 import { isOpen } from '../../lib/message-state.ts'
-import type { Owner, Serves } from './addresses.ts'
+import type { LandingOutput, Owner, Serves } from './addresses.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction } from '../../lib/remote.ts'
@@ -109,55 +109,39 @@ export function delivery(host: ExtensionHost) {
           : body
         const deduplicatedPlacementRequestId = `board:${m.id}`
         const branch = typeof m.from === 'number' ? m.from : undefined
-        const placing =
-          task.state.checkpoint.submission !== undefined
-            ? host.harness().submission(task.state.checkpoint.submission, ctx)
-            : !task.input.note && m.report && branch !== undefined
-              ? (async () => {
-                  let submission!: SubmissionId
-                  await runtime.commit(async (tx) => {
-                    submission = await submitOutput(
-                      host,
-                      tx,
-                      recipient,
-                      {
-                        type: 'input',
-                        requestId: deduplicatedPlacementRequestId,
-                        whenBusy: task.input.steer ? 'steer' : 'followUp',
-                        entry,
-                        content,
-                      },
-                      { kind: 'branch', id: branch },
-                      `#${branch}`,
-                    )
-                    return { status: 'running', checkpoint: { phase: 'deliver', submission } }
-                  }, ctx)
-                  return host.harness().submission(submission, ctx)
-                })()
-              : task.input.note
-                ? recipient.submit(
-                    {
-                      type: 'write',
-                      requestId: deduplicatedPlacementRequestId,
-                      entry: {
-                        ...entry,
-                        model: [{ role: 'user', content, timestamp: Date.now() }],
-                      },
-                    },
-                    ctx,
-                  )
-                : recipient.submit(
-                    {
-                      type: 'input',
-                      requestId: deduplicatedPlacementRequestId,
-                      whenBusy: task.input.steer ? 'steer' : 'followUp',
-                      entry,
-                      content,
-                    },
-                    ctx,
-                  )
-
-        const receipt = await placing.catch(async (cause: unknown) => {
+        const draft: SubmissionDraft = task.input.note
+          ? {
+              type: 'write',
+              requestId: deduplicatedPlacementRequestId,
+              entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
+            }
+          : {
+              type: 'input',
+              requestId: deduplicatedPlacementRequestId,
+              whenBusy: task.input.steer ? 'steer' : 'followUp',
+              entry,
+              content,
+            }
+        const place = async () => {
+          let submission = task.state.checkpoint.submission
+          if (submission === undefined) {
+            if (draft.type !== 'input' || !m.report || branch === undefined)
+              return recipient.submit(draft, ctx)
+            await runtime.commit(async (tx) => {
+              submission = await submitOutput(
+                host,
+                tx,
+                recipient,
+                draft,
+                { kind: 'branch', id: branch },
+                `#${branch}`,
+              )
+              return { status: 'running', checkpoint: { phase: 'deliver', submission } }
+            }, ctx)
+          }
+          return host.harness().submission(submission!, ctx)
+        }
+        const receipt = await place().catch(async (cause: unknown) => {
           if (runtime.signal.aborted) throw cause
           const error = `Not delivered to ${task.input.toLabel}: ${cause instanceof Error ? cause.message : String(cause)}`
           await runtime.commit(async (tx) => {
@@ -470,52 +454,74 @@ export async function submitOutput(
   draft: InputSubmissionDraft,
   owner: Owner,
   source: string,
+  reservation?: LandingOutput,
 ) {
   const primary = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (to.id !== primary) return to.submit(tx, draft)
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
   const submission = await to.submit(tx, draft)
-  const requests: number[] = []
+  let tracksSubmission = false
   for (const record of Object.values(owners)) {
     if (
       !sameOwner(record.owner, owner) ||
       record.assignedBy >= submission ||
-      (record.outputPending ?? 0) >= submission
+      record.pending.includes(submission)
     )
       continue
-    record.outputPending = submission
-    requests.push(record.request.message)
+    if (reservation !== undefined)
+      record.pending = record.pending.filter((id) => id !== reservation)
+    record.pending.push(submission)
+    tracksSubmission = true
   }
-  if (requests.length)
-    await tx.createTask(
-      settle(host),
-      { requests, owner, source, submission },
-      {
-        conversationId: to.id,
-        ownership: { kind: 'conversation' },
-        background: true,
-      },
-    )
+  if (tracksSubmission) await observeOutput(host, tx, to.id, submission, source)
   return submission
 }
 
+async function observeOutput(
+  host: ExtensionHost,
+  tx: Tx,
+  by: ConversationId,
+  submission: SubmissionId,
+  source?: string,
+) {
+  await tx.createTask(
+    settle(host),
+    { submission, ...(source === undefined ? {} : { source }) },
+    {
+      conversationId: by,
+      ownership: { kind: 'conversation' },
+      background: true,
+    },
+  )
+}
+
+export async function reconcileOutputs(host: ExtensionHost, tx: Tx) {
+  const by = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+  if (by === undefined) return
+  const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  const pending = new Set(
+    Object.values(owners).flatMap((record) =>
+      record.pending.filter((id) => typeof id === 'number'),
+    ),
+  )
+  if (!pending.size) return
+  for (const task of await scanNonterminalTasks(tx, 'board.settle', by))
+    pending.delete((task.input as { submission: SubmissionId }).submission)
+  for (const id of pending) await observeOutput(host, tx, by, id)
+}
+
 export function settle(host: ExtensionHost) {
-  return defineTask<
-    { requests: number[]; owner: Owner; source: string; submission: SubmissionId },
-    { phase: 'observe' },
-    null
-  >({
+  return defineTask<{ source?: string; submission: SubmissionId }, { phase: 'observe' }, null>({
     name: 'board.settle',
     version: 1,
     initial: () => ({ phase: 'observe' }),
     phases: {
       observe: async (task, runtime, ctx) => {
-        const { requests, owner, source, submission } = task.input
+        const { source, submission } = task.input
         const by = runtime.conversationId
         const handle = await host.harness().submission(submission, ctx)
-        if (!handle) throw new Error(`Missing owner output submission ${submission}`)
-        const outcome = await handle.wait(ctx)
-        if (outcome.status === 'done') {
+        const outcome = await handle?.wait(ctx)
+        if (outcome?.status === 'done') {
           const routes = await host
             .harness()
             .commit((tx) => scanNonterminalTasks(tx, 'board.route', by), ctx)
@@ -525,29 +531,20 @@ export function settle(host: ExtensionHost) {
         }
         await runtime.commit(async (tx) => {
           const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-          const branchStillWorking =
-            owner.kind === 'branch' &&
-            !(await host.need(ConversationsApi).concludedIn(tx)).has(owner.id)
-          for (const message of requests) {
-            const current = owners[message]
-            if (
-              !current ||
-              current.outputPending !== submission ||
-              !sameOwner(current.owner, owner)
-            )
+          const concluded = await host.need(ConversationsApi).concludedIn(tx)
+          for (const current of Object.values(owners)) {
+            const { owner, request } = current
+            if (!current.pending.includes(submission)) continue
+            current.pending = current.pending.filter((id) => id !== submission)
+            if (current.pending.length || (owner.kind === 'branch' && !concluded.has(owner.id)))
               continue
-            if (branchStillWorking) {
-              delete current.outputPending
-              continue
-            }
-            const request = current.request
-            delete owners[message]
+            delete owners[request.message]
             await sendResult(
               host,
               tx,
               by,
               request,
-              `The run that read ${source}'s result, which worked on your message ${message}, ended without an answer; no result will come from it.`,
+              `The run that received ${source ? `${source}'s result` : 'the result'} for your message ${request.message} ended without an answer; no result will come from it.`,
               { failed: true },
             )
           }

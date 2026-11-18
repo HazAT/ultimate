@@ -34,7 +34,7 @@ import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
-import { delivery, settle, submitOutput } from './delivery.ts'
+import { delivery, reconcileOutputs, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
@@ -213,6 +213,7 @@ export default function messages(host: ExtensionHost) {
   host.need(LineageApi)
   host.need(SubagentsApi)
   host.need(WorkspacesApi)
+  host.onOpen(() => host.harness().commit((tx) => reconcileOutputs(host, tx), BACKGROUND_CONTEXT))
 
   host.react(
     'branch-owner-concluded',
@@ -227,8 +228,15 @@ export default function messages(host: ExtensionHost) {
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),
     working: (tx, id) => working(tx, id),
-    submitLanding: async (tx, to, input, id) => {
-      await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`)
+    reserveLanding: async (tx, id, result) => {
+      const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+      const reservation = `landing:${result}` as const
+      for (const { owner, pending } of Object.values(owners))
+        if (owner.kind === 'branch' && owner.id === id && !pending.includes(reservation))
+          pending.push(reservation)
+    },
+    submitLanding: async (tx, to, input, id, result) => {
+      await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`, `landing:${result}`)
     },
   })
   host.implement(MessagesApi, {

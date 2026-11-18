@@ -780,6 +780,7 @@ it.concurrent('emits one landed event and notes the root once, across a replayed
     starter: async () => undefined,
     working: async () => false,
     conclude: async () => {},
+    reserveLanding: async () => {},
     submitLanding: async (tx, to, input) => {
       await to.submit(tx, input)
     },
@@ -1077,6 +1078,7 @@ it.concurrent('notes a clean landing without a branch run, concludes and release
       request: { message, from: asker.id },
       owner: { kind: 'branch', id },
       assignedBy,
+      pending: [],
     }
     return message
   }, context)

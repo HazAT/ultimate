@@ -68,6 +68,7 @@ const HELD_WAIT_PHASES: Record<string, string[]> = {
   'ultimate.automation-run': ['deliver'],
   'board.delivery': ['deliver', 'reply'],
   'board.route': ['observe'],
+  'board.settle': ['observe'],
   'conversations.summary': ['observe'],
   'lineage.notify': ['wait'],
 }
