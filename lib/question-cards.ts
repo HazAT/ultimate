@@ -37,7 +37,7 @@ export const cardKey = (message: number) => `message:${message}`
 
 export const EMPTY_CARD: CardState = { drafts: {}, note: '', current: 0, text: '' }
 
-export function pickDraft(question: CardQuestion): Draft | undefined {
+function pickDraft(question: CardQuestion): Draft | undefined {
   const chosen = choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
   if (!chosen.length) return undefined
   return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }

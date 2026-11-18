@@ -3,7 +3,11 @@ import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { MessageCircleQuestionIcon, Undo2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -149,20 +153,33 @@ function SendButton({
   children: string
 }) {
   const [holding, setHolding] = useState(false)
-  const hold = useRef<{ pointer: number; cancel: Cancel }>(undefined)
-  const swallowClick = useRef(false)
+  const gesture = useRef<{ pointer: number; cancel?: Cancel }>(undefined)
   const sendNow = useRef(onSendNow)
   sendNow.current = onSendNow
-  const release = () => {
-    hold.current?.cancel()
-    hold.current = undefined
+  const endGesture = () => {
+    gesture.current?.cancel?.()
+    gesture.current = undefined
     setHolding(false)
   }
   useEffect(() => {
-    if (phase !== 'answering') release()
+    if (phase !== 'answering') endGesture()
   }, [phase])
-  useEffect(() => release, [])
+  useEffect(() => endGesture, [])
   const pending = phase === 'undo'
+  const activate = () => {
+    if (pending) onUndo()
+    else if (phase === 'answering') onSend()
+  }
+  const inside = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    return (
+      event.clientX >= box.left &&
+      event.clientX <= box.right &&
+      event.clientY >= box.top &&
+      event.clientY <= box.bottom
+    )
+  }
+  const ownGesture = (event: ReactPointerEvent) => gesture.current?.pointer === event.pointerId
   return (
     <Button
       size="sm"
@@ -175,47 +192,33 @@ function SendButton({
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
-        if (phase !== 'answering' || event.button !== 0 || hold.current) return
-        swallowClick.current = false
+        if (gesture.current) return endGesture()
+        if (event.button !== 0 || (phase !== 'answering' && !pending)) return
+        event.currentTarget.setPointerCapture(event.pointerId)
+        gesture.current = { pointer: event.pointerId }
+        if (pending) return
         setHolding(true)
-        hold.current = {
-          pointer: event.pointerId,
-          cancel: deadline(HOLD_TO_SEND_MS, () => {
-            hold.current = undefined
-            swallowClick.current = true
-            setHolding(false)
-            sendNow.current()
-          }),
-        }
+        gesture.current.cancel = deadline(HOLD_TO_SEND_MS, () => {
+          gesture.current = undefined
+          setHolding(false)
+          sendNow.current()
+        })
       }}
       onPointerMove={(event) => {
-        if (hold.current?.pointer !== event.pointerId) return
-        const box = event.currentTarget.getBoundingClientRect()
-        const inside =
-          event.clientX >= box.left &&
-          event.clientX <= box.right &&
-          event.clientY >= box.top &&
-          event.clientY <= box.bottom
-        if (inside) return
-        swallowClick.current = true
-        release()
+        if (ownGesture(event) && !inside(event)) endGesture()
       }}
       onPointerUp={(event) => {
-        if (hold.current?.pointer === event.pointerId) release()
+        if (!ownGesture(event)) return
+        endGesture()
+        if (inside(event)) activate()
       }}
       onPointerCancel={(event) => {
-        if (hold.current?.pointer !== event.pointerId) return
-        swallowClick.current = true
-        release()
+        if (ownGesture(event)) endGesture()
       }}
       onContextMenu={(event) => event.preventDefault()}
-      onClick={() => {
-        if (swallowClick.current) {
-          swallowClick.current = false
-          return
-        }
-        if (pending) onUndo()
-        else if (phase === 'answering') onSend()
+      onClick={(event) => {
+        const fromKeyboard = event.detail === 0
+        if (fromKeyboard) activate()
       }}
       className={cn(
         'relative isolate touch-manipulation overflow-hidden select-none [-webkit-touch-callout:none] max-md:h-11 max-md:px-4',
