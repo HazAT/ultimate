@@ -125,22 +125,17 @@ const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
 
 const SENT = /^Message \d+ sent\.$/m
 
-function scriptQuestions(turn: PiMessage) {
-  if (turn.role !== 'toolResult' || turn.toolName === 'message') return []
-  return (turn.nestedCalls?.calls ?? []).flatMap((nested) =>
-    nested.name === 'message' && nested.status === 'ok' && asksTheUser(nested.arguments)
-      ? [nested.id]
-      : [],
+function sentQuestion(turn: PiMessage) {
+  if (turn.role !== 'toolResult' || turn.isError) return false
+  if (turn.toolName === 'message')
+    return turn.content.some((block) => block.type === 'text' && SENT.test(block.text))
+  const details = turn.details as { calls?: { name?: string; args?: unknown; status?: string }[] }
+  return (details?.calls ?? []).some(
+    (nested) =>
+      nested.name === 'message' &&
+      nested.status === 'ok' &&
+      asksTheUser(nested.args as Readonly<Record<string, unknown>>),
   )
-}
-
-function directlySent(turn: PiMessage) {
-  return turn.role === 'toolResult' &&
-    turn.toolName === 'message' &&
-    !turn.isError &&
-    turn.content.some((block) => block.type === 'text' && SENT.test(block.text))
-    ? [turn.toolCallId]
-    : []
 }
 
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
@@ -149,27 +144,36 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
   const asked = log.find((item) => item.id === message)
   if (!asked || asked.from !== branch || !asked.call)
     throw new Error(`#${branch} sent no message ${message}`)
-  const call = asked.call
+  const [own] = asked.call.split('/')
+  const earlierInScript = log.some(
+    (item) =>
+      item.id < asked.id &&
+      item.from === branch &&
+      item.to === 'user' &&
+      item.reply &&
+      item.call?.split('/')[0] === own,
+  )
   const sent = new Set<string>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {
     for (const turn of entry.model ?? []) {
-      const scripted = scriptQuestions(turn)
-      if (to === undefined) {
-        const at = scripted.indexOf(call)
-        if (at > 0) return { from: entry.id, to: entry.id }
-        if (at === 0 || (turn.role === 'toolResult' && turn.toolCallId === call)) to = entry.id
-        continue
+      if (sentQuestion(turn) && turn.role === 'toolResult') sent.add(turn.toolCallId)
+      if (turn.role !== 'assistant') continue
+      for (const block of turn.content) {
+        if (block.type !== 'toolCall') continue
+        if (to === undefined) {
+          if (block.id === own) {
+            to = entry.id
+            if (earlierInScript) return { from: to, to }
+          }
+          continue
+        }
+        if (sent.has(block.id) && (block.name !== 'message' || asksTheUser(block.arguments)))
+          return { from: entry.id, to }
       }
-      if (scripted.length) return { from: entry.id, to }
-      for (const id of directlySent(turn)) sent.add(id)
-      if (turn.role === 'assistant')
-        for (const block of turn.content)
-          if (block.type === 'toolCall' && sent.has(block.id) && asksTheUser(block.arguments))
-            return { from: entry.id, to }
     }
   }
-  if (to === undefined) throw new Error(`#${branch} holds no result for message ${message}`)
+  if (to === undefined) throw new Error(`#${branch} holds no call for message ${message}`)
   return { from: 0, to }
 }
 

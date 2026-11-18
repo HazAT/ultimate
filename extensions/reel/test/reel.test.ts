@@ -60,13 +60,12 @@ const ask = (id: number, callId: string, args: Record<string, unknown> = {}, sen
 
 const script = (id: number, callId: string, asks: number) => [
   result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
-    nestedCalls: {
-      complete: true,
+    details: {
       calls: Array.from({ length: asks }, (_, n) => ({
-        id: `${callId}/${n + 1}`,
         name: 'message',
-        arguments: { to: 'user', text: `Q${n + 1}` },
+        args: { to: 'user', text: `Q${n + 1}` },
         status: 'ok',
+        ms: 1,
       })),
     },
   }),
@@ -182,6 +181,20 @@ it('a question asked from a script starts after the one before it', async () => 
   const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
   expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
   expect(second.frames).toEqual([])
+})
+
+it('a question still running has its round, and a frame between two questions shows once', async () => {
+  const branch = [
+    call(BRANCH, 60, 'ask2', 'message', { to: 'user', text: 'Preview?' }),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...ask(40, 'ask1'),
+    ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
+  ]
+  const { ctx } = fixture(branch, [question(1, 'ask1'), question(2, 'ask2')])
+  const first = await actions.frames({ conversation: BRANCH, message: 1 }, ctx)
+  const second = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
+  expect(first.frames.map((frame) => frame.entry)).toEqual([31])
+  expect(second.frames.map((frame) => frame.entry)).toEqual([41, 51])
 })
 
 it("a landing's reel spans the whole branch, without a fork's inherited entries", async () => {
