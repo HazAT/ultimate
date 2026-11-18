@@ -15,14 +15,13 @@ export type AbstractData = {
   anchor?: EntryId
 }
 
-/** A note's data: from another conversation or tally catch-up, or with `source: 'lander'` a landing card's. */
+/** A note's data: from another conversation or a commit catch-up, or with `source: 'lander'` a landing card's. */
 export type NoteData =
   | {
       text: string
       from?: ConversationId
       title?: string
       source?: 'finished' | 'main'
-      tally?: EntryId
     }
   | {
       source: 'lander'
@@ -44,7 +43,7 @@ export type NoteData =
       abstract?: Omit<AbstractData, 'conversation'>
     }
 
-/** A note received from another conversation, the lander, or tally catch-up. Lineage writes it. */
+/** A note received from another conversation, the lander, or a commit catch-up. Lineage writes it. */
 export const NoteEntry = defineEntry<NoteData>('lineage.note')
 
 /**

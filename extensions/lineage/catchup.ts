@@ -92,12 +92,17 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
   })
 }
 
+const lines = (output: string) => output.split('\n').filter(Boolean)
+
 async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx) {
   if (main.workspace) {
     const base = await git(main.workspace, 'merge-base', 'HEAD', main.sha)
-    return new Set(
-      (await git(main.workspace, 'diff', '--name-only', base)).split('\n').filter(Boolean),
-    )
+    return new Set([
+      ...lines(await git(main.workspace, 'diff', '--name-only', base)),
+      ...lines(
+        await git(main.workspace, 'ls-files', '--others', '--exclude-standard', '--full-name'),
+      ),
+    ])
   }
   const cwd = (await tx.doc(AgentDoc, id)).cwd ?? host.projectRoot
   const files = new Set<string>()
@@ -171,7 +176,9 @@ async function catchupText(
         const [sha, subject, trailer, paths = ''] = record.split('\0')
         return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
       })
-  const overlaps = parse(overlapMarksOrEmpty)
+  const overlaps = parse(overlapMarksOrEmpty).filter(
+    (commit) => !onlyOverlaps || Number(commit.trailer.trim()) !== id,
+  )
   if (onlyOverlaps && !overlaps.length) return undefined
   const listed = new Set(overlaps.map((commit) => commit.sha))
   const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]

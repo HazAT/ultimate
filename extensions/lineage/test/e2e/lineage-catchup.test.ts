@@ -299,9 +299,13 @@ it('tells a resumed branch only the commits that overlap its checkout, and that 
   await branch.waitForIdle(context)
   const workspace = (await branch.agent(context)).cwd!
   await writeFile(join(workspace, 'schema.ts'), 'own workspace change\n')
+  await writeFile(join(workspace, 'new.ts'), 'own untracked file\n')
   await writeFile(join(f.projectRoot, 'schema.ts'), 'overlapping landing\n')
   repoGit(f.projectRoot, 'add', '.')
   repoGit(f.projectRoot, 'commit', '-m', 'Old overlap')
+  await writeFile(join(f.projectRoot, 'new.ts'), 'same new path\n')
+  repoGit(f.projectRoot, 'add', '.')
+  repoGit(f.projectRoot, 'commit', '-m', 'Add new')
   for (let i = 0; i < 3; i++) repoGit(f.projectRoot, 'commit', '--allow-empty', '-m', `Other ${i}`)
   await ask(f.server, id, 'Continue branch')
   const notes = () =>
@@ -311,12 +315,13 @@ it('tells a resumed branch only the commits that overlap its checkout, and that 
         entries.filter((entry) => entry.conversationId === id && entry.kind === 'lineage.note'),
       )
   const [note] = await notes()
-  const sha = repoGit(f.projectRoot, 'rev-parse', '--short=7', 'main~3')
+  const sha = (rev: string) => repoGit(f.projectRoot, 'rev-parse', '--short=7', rev)
   expect((note.data as { text: string }).text).toBe(
     [
-      '1 new commits on main overlap your checkout:',
-      `- \`${sha}\` Old overlap — \`schema.ts\``,
-      'Your workspace is 4 commits behind main; merge it before continuing.',
+      '2 new commits on main overlap your checkout:',
+      `- \`${sha('main~3')}\` Add new — \`new.ts\``,
+      `- \`${sha('main~4')}\` Old overlap — \`schema.ts\``,
+      'Your workspace is 5 commits behind main; merge it before continuing.',
       'Check whether any of this already covers or changes what you are about to do.',
     ].join('\n\n'),
   )

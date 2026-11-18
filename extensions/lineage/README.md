@@ -36,8 +36,10 @@ documents, tools and model-facing text.
   `wake: false` as a note. Calling again for the same id replaces the pending request; an answer already delivered
   waits for the target's next one.
 - **Catch-up on resume.** When an idle top-level conversation gets input, a note about new target commits goes in
-  before it. A branch hears only of the commits that touch files it changed ("N new commits on main overlap your
-  checkout", with conversation trailers and paths) and an isolate's behind count; other commits bring it no note. Other
+  before it. A branch hears only of other conversations' commits that touch files it changed ("N new commits on main
+  overlap your checkout", with conversation trailers and paths) and an isolate's behind count; other commits bring it
+  no note. An isolate's changed files are its diff from the target plus untracked files; a branch in the shared
+  checkout counts the files its `edit` and `write` calls touched. Other
   top-level conversations get up to 30 new target commits, overlaps first. @ultimate gets none: its landing cards
   already name each landing. No conversation is told what its siblings did: abstracts, landings and notes stay in the
   root's tally, which a branch reads with `ultimate.entries(root)` when it needs it. Nothing new means no note; mid-run
