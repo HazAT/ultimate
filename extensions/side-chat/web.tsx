@@ -26,6 +26,7 @@ import {
   Conversation,
   ConversationScope,
   defineWebExtension,
+  EmptyTranscript,
   errorMessage,
   formatTime,
   provide,
@@ -33,6 +34,7 @@ import {
   useConversations,
   useDoc,
   useDocOf,
+  useUiState,
   useUltimate,
   useViewport,
 } from '@/sdk'
@@ -40,8 +42,15 @@ import type { ComposerTarget } from '@/sdk'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.tsx'
 import { MessagesDoc } from '../messages/ui.tsx'
-import { CardActions, MessageQuestions } from '../questions/ui.tsx'
-import type { QuestionMessage } from '../questions/ui.tsx'
+import {
+  answered,
+  CardActions,
+  cardKey,
+  cardOf,
+  CARDS_KEY,
+  MessageQuestions,
+} from '../questions/ui.tsx'
+import type { CardState, QuestionMessage } from '../questions/ui.tsx'
 import { QuestionPane } from '../inbox/ui.tsx'
 import {
   contextSize,
@@ -519,8 +528,11 @@ function PinnedQuestion({
   answerWith: (answer: Reply, keepalive?: boolean) => Promise<unknown>
 }) {
   const message = useDocOf(ROOT, MessagesDoc)?.messages.find((item) => item.id === id)
-  const [folded, setFolded] = useState(false)
+  const [cards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
+  const [folded, setFolded] = useState(true)
   if (!message) return null
+  const questions = message.questions ?? []
+  const ready = answered(questions, cardOf(cards, cardKey(id)).drafts).length
   const waits = message.state === 'delivered'
   const settled =
     message.state === 'dismissed'
@@ -530,7 +542,7 @@ function PinnedQuestion({
   return (
     <section
       aria-label="The question"
-      className="mx-3 mt-2 flex max-h-[60%] shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/60"
+      className="mx-3 mt-2 flex max-h-[45%] shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/60"
       data-pinned-question={id}
     >
       <button
@@ -543,6 +555,13 @@ function PinnedQuestion({
         <span className="min-w-0 flex-1 truncate">
           {waits ? lead.replace(/\*\*/g, '') : settled}
         </span>
+        {waits && folded && (
+          <span className="shrink-0 text-brand">
+            {questions.length
+              ? `${ready}/${questions.length} · ${ready ? 'review & send' : 'answer'}`
+              : 'answer'}
+          </span>
+        )}
         <ChevronDownIcon
           className={cn('size-3.5 shrink-0 transition-transform', folded && '-rotate-90')}
         />
@@ -628,6 +647,33 @@ function useInboxSideChat({
         <SidePane front index={index} onPark={() => setFront(null)} phone={phone} side={side.id} />
       </ConversationScope>
     </section>
+  )
+}
+
+function useQuestionSideStart({
+  conversation,
+  core,
+}: {
+  conversation: ConversationId
+  core: ReactNode
+}): ReactNode {
+  const side = useDocOf(conversation, SideChatDoc) ?? undefined
+  const message = useDocOf(ROOT, MessagesDoc)?.messages.find((item) => item.id === side?.question)
+  const asker = useConversations().find((item) => item.id === side?.of)
+  if (side?.question === undefined || !message) return core
+  return (
+    <div className="mx-auto w-full max-w-2xl px-5 pt-14 pb-2" data-question-side-start>
+      <p className="font-mono text-[11px] text-muted-foreground">
+        #{side.of}
+        {asker?.title ? ` · ${asker.title}` : ''} asked you, and knows everything that led here:
+      </p>
+      <div className="mt-2 border-l-2 border-brand/50 pl-3 text-[13px] leading-relaxed text-muted-foreground [&_p]:my-1">
+        <MessageResponse>{message.text}</MessageResponse>
+      </div>
+      <p className="mt-3 font-mono text-[11px] text-muted-foreground/70">
+        Ask why, what an option means, or say what to pick.
+      </p>
+    </div>
   )
 }
 
@@ -748,5 +794,6 @@ export default defineWebExtension({
     provide(Unlisted, useSideIds),
     provide(CardActions, useTalkItThrough),
     provide(QuestionPane, useInboxSideChat),
+    provide(EmptyTranscript, useQuestionSideStart),
   ],
 })
