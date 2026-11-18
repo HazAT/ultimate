@@ -162,6 +162,7 @@ async function catchupText(
         '--name-only',
         '--no-renames',
         '--diff-merges=first-parent',
+        ...(onlyOverlaps ? ['--invert-grep', `--grep=^Ultimate-Conversation: ${id}$`] : []),
         range,
         '--',
         ...ownFilePathspecForBoundedMergeNames,
@@ -176,9 +177,7 @@ async function catchupText(
         const [sha, subject, trailer, paths = ''] = record.split('\0')
         return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
       })
-  const overlaps = parse(overlapMarksOrEmpty).filter(
-    (commit) => !onlyOverlaps || Number(commit.trailer.trim()) !== id,
-  )
+  const overlaps = parse(overlapMarksOrEmpty)
   if (onlyOverlaps && !overlaps.length) return undefined
   const listed = new Set(overlaps.map((commit) => commit.sha))
   const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]
