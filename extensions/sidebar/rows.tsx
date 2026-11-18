@@ -623,6 +623,11 @@ export function EpicLine({ id, working }: { id: number; working: boolean }) {
             >
               {done ? 'done' : working ? 'working' : 'idle'}
             </span>
+            {epic.progress && !done && (
+              <span className="shrink-0 text-[10px] text-muted-foreground/70 tabular-nums">
+                {epic.progress}
+              </span>
+            )}
           </button>
         )
       }}

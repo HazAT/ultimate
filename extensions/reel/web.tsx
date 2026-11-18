@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { PlayIcon } from 'lucide-react'
+import { FilmIcon, LoaderCircleIcon, PlayIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { cn, defineWebExtension, provide, Provided, useAction, useConversationSummary } from '@/sdk'
@@ -9,35 +9,46 @@ import type { Message } from '../messages/refs.ts'
 import { LandingExtras } from '../workspaces/ui.tsx'
 import { Peek, Player } from './player.tsx'
 import { FramesAction } from './refs.ts'
+import type { Reel } from './refs.ts'
 
 const PEEKS = 3
 
-function Chip({
+function Watch({
   conversation,
-  message,
+  reel,
   answer,
-  className,
+  onClose,
 }: {
   conversation: ConversationId
-  message?: number
+  reel: Reel
   answer?: ReactNode
-  className?: string
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const title = useConversationSummary(conversation)?.title ?? `#${conversation}`
+  return (
+    <Player
+      answer={answer}
+      earlier={reel.earlier}
+      frames={reel.frames}
+      onOpenChange={(open) => !open && onClose()}
+      title={title}
+    />
+  )
+}
+
+function RoundChip({ message, answer }: { message: Message; answer: ReactNode }) {
+  const conversation = message.from as ConversationId
+  const [open, setOpen] = useState(false)
   const reel = useAction(
     FramesAction,
-    message === undefined ? { conversation } : { conversation, message },
+    { conversation, message: message.id },
     { onError: meansNone },
   ).data
   if (!reel || reel.frames.length < 2) return null
   return (
     <>
       <button
-        className={cn(
-          'group/reel flex w-full cursor-pointer items-center gap-2.5 text-left font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted/40',
-          className,
-        )}
+        className="group/reel flex w-full cursor-pointer items-center gap-2.5 border-t border-border/60 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted/40"
         data-reel-chip
         onClick={() => setOpen(true)}
         type="button"
@@ -58,13 +69,50 @@ function Chip({
         </span>
       </button>
       {open && (
-        <Player
+        <Watch
           answer={answer}
-          earlier={reel.earlier}
-          frames={reel.frames}
-          onOpenChange={setOpen}
-          title={title}
+          conversation={conversation}
+          onClose={() => setOpen(false)}
+          reel={reel}
         />
+      )}
+    </>
+  )
+}
+
+function BranchChip({ conversation }: { conversation: ConversationId }) {
+  const [asked, setAsked] = useState(false)
+  const [open, setOpen] = useState(false)
+  const { data: reel, loading } = useAction(
+    FramesAction,
+    { conversation },
+    { onError: meansNone, enabled: asked },
+  )
+  const none = asked && !loading && (!reel || reel.frames.length < 2)
+  return (
+    <>
+      <button
+        className={cn(
+          'flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground',
+          none && 'cursor-default hover:text-muted-foreground',
+        )}
+        data-reel-branch
+        disabled={none}
+        onClick={() => {
+          setAsked(true)
+          setOpen(true)
+        }}
+        type="button"
+      >
+        {asked && loading ? (
+          <LoaderCircleIcon className="size-3 motion-safe:animate-spin" />
+        ) : (
+          <FilmIcon className="size-3 text-brand" />
+        )}
+        {none ? 'No screenshots to replay' : "Watch the branch's reel"}
+      </button>
+      {open && reel && reel.frames.length > 1 && (
+        <Watch conversation={conversation} onClose={() => setOpen(false)} reel={reel} />
       )}
     </>
   )
@@ -77,18 +125,16 @@ export default defineWebExtension({
   provides: [
     provide(MessageExtras, (message) =>
       asksTheUser(message) ? (
-        <Chip
+        <RoundChip
           answer={
             <Provided input={message} point={MessageAnswers}>
               {(answers) => answers}
             </Provided>
           }
-          className="border-t border-border/60 px-3 py-2"
-          conversation={message.from as ConversationId}
-          message={message.id}
+          message={message}
         />
       ) : null,
     ),
-    provide(LandingExtras, (from) => <Chip conversation={from} />),
+    provide(LandingExtras, (from) => <BranchChip conversation={from} />),
   ],
 })

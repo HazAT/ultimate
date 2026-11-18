@@ -87,6 +87,11 @@ export function useProjectRepo() {
 
 export const Review = definePoint<string, (() => void) | undefined>('workspaces.review')
 
+export const LandedNote = definePoint<
+  { conversation: ConversationId; submission: string },
+  ReactNode | undefined
+>('workspaces.landed-note')
+
 export const LandingExtras = definePoint<ConversationId, ReactNode>('workspaces.landing-extras')
 
 const external = (href: string, children: ReactNode, className?: string) => (
@@ -195,6 +200,7 @@ export function LandingCard({
   at,
   divergence,
   sourceEntry,
+  submission,
   children,
 }: {
   card: number
@@ -206,6 +212,7 @@ export function LandingCard({
   at?: ReactNode
   divergence?: string
   sourceEntry?: number
+  submission?: string
   children?: ReactNode
 }) {
   const [border, color, Icon, label] = tones[tone]
@@ -257,7 +264,12 @@ export function LandingCard({
             </p>
           )}
           {children}
-          {tone === 'landed' && (
+          {submission && tone !== 'failed' && (
+            <Provided input={{ conversation: from, submission }} point={LandedNote}>
+              {(note) => note}
+            </Provided>
+          )}
+          {tone !== 'failed' && (
             <AllProvided input={from} point={LandingExtras}>
               {(extras) => extras}
             </AllProvided>

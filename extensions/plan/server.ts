@@ -14,7 +14,11 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branch } from '../lineage/api.ts'
-import { PlanDoc, TaskIndexDoc } from './refs.ts'
+import { SubmissionLanded } from '../workspaces/api.ts'
+import { PlanApi } from './api.ts'
+import { confirmed, criteriaCounts, criteriaOfBody, currentEpic, raise } from './progress.ts'
+import { PlanDoc, ProgressDoc, TaskIndexDoc } from './refs.ts'
+import type { EpicProgress, Estimate } from './refs.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 
 export type Task = {
@@ -34,6 +38,8 @@ export type Epic = {
   body: string
   status: 'planning' | 'in_progress' | 'done' | 'blocked'
   verdict?: string
+  met?: number[]
+  revision?: number
   tasks: Record<string, Task>
 }
 export const Plan = defineDoc<{ next: number; epics: Record<string, Epic> }>({
@@ -61,7 +67,16 @@ export const TaskIndex = defineDoc<{ children: Record<string, TaskLink> }>({
   fork: 'initial',
   initial: () => ({ children: {} }),
 })
-export const docs = [Plan, TaskIndex]
+export const Progress = defineDoc<{ epics: Record<string, EpicProgress> }>({
+  kind: ProgressDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ epics: {} }),
+})
+export const docs = [Plan, TaskIndex, Progress]
 const AtomicEditReceipt = defineDoc<{ results: Record<string, string> }>({
   kind: 'ultimate.plan.receipt',
   checkpointWhen: () => false,
@@ -135,7 +150,77 @@ async function answeredSinceFork(tx: Tx, id: ConversationId, at: EntryId) {
   return false
 }
 
+async function raiseEstimates(
+  tx: Tx,
+  id: ConversationId,
+  epic: { key: string; body: string },
+  estimates: Record<string, Estimate>,
+) {
+  const progress = await tx.doc(Progress, id)
+  const entry = progress.epics[epic.key]
+  progress.epics[epic.key] = {
+    ...entry,
+    estimates: raise(criteriaOfBody(epic.body) ?? [], entry?.estimates ?? {}, estimates),
+  }
+}
+
+function keepConfirmations(before: string[], after: string[], met: number[]) {
+  const kept = met.map((n) => before[n - 1])
+  return after.flatMap((criterion, index) => {
+    const match = kept.indexOf(criterion)
+    if (match < 0) return []
+    kept.splice(match, 1)
+    return [index + 1]
+  })
+}
+
 export default (host: ExtensionHost) => {
+  host.implement(PlanApi, {
+    openCriteria: async (id, caller) => {
+      const plan = await host.harness().snapshot(Plan, id, caller)
+      const epic = plan && currentEpic(plan.epics)
+      if (!epic || epic.status === 'done') return undefined
+      const progress = (await host.harness().snapshot(Progress, id, caller))?.epics[epic.key]
+      const estimates = progress?.estimates ?? {}
+      const criteria = (criteriaOfBody(epic.body) ?? []).flatMap((text, index) =>
+        confirmed(epic, index + 1)
+          ? []
+          : [
+              {
+                n: index + 1,
+                text,
+                ...(Object.hasOwn(estimates, text) ? { estimate: estimates[text].state } : {}),
+              },
+            ],
+      )
+      return criteria.length
+        ? { epic: epic.key, revision: epic.revision ?? 0, criteria }
+        : undefined
+    },
+    estimate: async (tx, id, key, revision, estimates) => {
+      const epic = (await tx.doc(Plan, id)).epics[key]
+      if (epic && revision === (epic.revision ?? 0)) await raiseEstimates(tx, id, epic, estimates)
+    },
+  })
+  host.react(
+    'criteria-at-landing',
+    [SubmissionLanded],
+    async (tx, { data }) => {
+      const id = data.conversationId
+      if (!(await tx.conversation(id))) return
+      const epic = currentEpic((await tx.doc(Plan, id)).epics)
+      if (!epic) return
+      const progress = await tx.doc(Progress, id)
+      const entry = progress.epics[epic.key]
+      const counts = criteriaCounts(epic, entry?.estimates)
+      if (counts.total > 0)
+        progress.epics[epic.key] = {
+          ...entry,
+          landed: { ...entry?.landed, [data.submission]: counts },
+        }
+    },
+    { from: 'now' },
+  )
   return defineExtension({
     name: 'plan',
     hooks: [
@@ -178,7 +263,7 @@ export default (host: ExtensionHost) => {
       defineTool({
         name: 'plan',
         description:
-          'Maintain the durable epic/task ledger. The tool assigns keys: epics E1, E2; tasks E1.1, E1.2. Use only keys a call has returned: wait for create/add results before calls that reference them (epic, deps, key), never in the same parallel batch. create {title,body}; add {epic,title,role,description,deps?}; update {key,status?,title?,description?,body?,child?,verdict?} replaces only the fields given (description and body whole: show first to extend them); in codemode every action returns the object; note {key,text} notes a task only (E1.1, not E1; record on an epic with update verdict or body); show {key?} reads an epic, task, or the whole ledger. Epic bodies use Request, Selected approach, Intent, Scope (in/out), binary Acceptance criteria, Implementation, Verification, Risks. Task descriptions use Outcome, Scope, Non-goals, Files, Acceptance criteria with a verification command, Constraints. Epic statuses: planning, in_progress, done, blocked. Task statuses: backlog, todo, in_progress, in_review, done, blocked, canceled. child links a conversation number; deps are task keys. body is epic-only; verdict records evidence on either an epic or a task. Children read the root coordinator’s ledger with show; only that coordinator can edit it. Read full plans with show; the prompt contains only a compact ledger.',
+          'Maintain the durable epic/task ledger. The tool assigns keys: epics E1, E2; tasks E1.1, E1.2. Use only keys a call has returned: wait for create/add results before calls that reference them (epic, deps, key), never in the same parallel batch. create {title,body}; add {epic,title,role,description,deps?}; update {key,status?,title?,description?,body?,child?,verdict?,met?} replaces only the fields given (description, body and met whole: show first to extend them); in codemode every action returns the object; note {key,text} notes a task only (E1.1, not E1; record on an epic with update verdict or body); show {key?} reads an epic, task, or the whole ledger. Epic bodies use Request, Selected approach, Intent, Scope (in/out), binary Acceptance criteria, Implementation, Verification, Risks. Task descriptions use Outcome, Scope, Non-goals, Files, Acceptance criteria with a verification command, Constraints. Epic statuses: planning, in_progress, done, blocked. Task statuses: backlog, todo, in_progress, in_review, done, blocked, canceled. child links a conversation number; deps are task keys. body is epic-only; verdict records evidence on either an epic or a task; met lists the numbers of the epic acceptance criteria you verified. Children read the root coordinator’s ledger with show; only that coordinator can edit it. Read full plans with show; the prompt contains only a compact ledger.',
         ...safeToRerun(
           'A memoized receipt id records the result in the same transaction as the ledger change.',
         ),
@@ -202,6 +287,12 @@ export default (host: ExtensionHost) => {
           status: opt(str()),
           child: opt(int({ minimum: 1 })),
           verdict: opt(str()),
+          met: opt(
+            arr(int({ minimum: 1 }), {
+              description:
+                'Epic only: the numbers of the acceptance criteria you verified, all of them each time.',
+            }),
+          ),
           text: opt(str()),
         }),
         execute: async (args, api, context) => {
@@ -286,6 +377,25 @@ export default (host: ExtensionHost) => {
                 if (task && args.body !== undefined) throw new Error('body requires an epic key')
                 if (!task && (args.description !== undefined || args.child !== undefined))
                   throw new Error('description and child require a task key')
+                if (task && args.met !== undefined) throw new Error('met requires an epic key')
+                if (!task && args.met !== undefined) {
+                  const total = criteriaOfBody(args.body ?? item.body)?.length ?? 0
+                  const outside = args.met.find((n) => n > total)
+                  if (outside !== undefined)
+                    throw new Error(`${item.key} has ${total} acceptance criteria, not ${outside}`)
+                }
+                if (!task && args.body !== undefined) {
+                  const before = criteriaOfBody(item.body) ?? []
+                  const after = criteriaOfBody(args.body) ?? []
+                  if (before.join('\n') !== after.join('\n')) {
+                    if (args.met === undefined && item.met)
+                      item.met = keepConfirmations(before, after, item.met)
+                    item.revision = (item.revision ?? 0) + 1
+                    await raiseEstimates(tx, coordinator, { ...item, body: args.body }, {})
+                  }
+                }
+                if (!task && args.met !== undefined)
+                  item.met = [...new Set(args.met)].toSorted((a, b) => a - b)
                 if (args.status !== undefined) item.status = args.status as typeof item.status
                 if (args.title !== undefined) item.title = args.title
                 if (args.verdict !== undefined) item.verdict = args.verdict

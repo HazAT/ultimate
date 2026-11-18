@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { pillOf } from '../../progress.tsx'
+import { pillOf } from '../../progress.ts'
 
 const epic = (key: string, status: string, ...tasks: string[]) => ({
   key,

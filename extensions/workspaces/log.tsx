@@ -119,6 +119,7 @@ export function LanderReport({ entry }: { entry: EntryRecord }) {
       <LandingCard
         card={entry.id}
         sha={outcome.commits?.length ? outcome.sha : undefined}
+        submission={entry.data.id}
         from={from}
         sourceEntry={outcome.at}
         divergence={outcome.divergence}
@@ -316,6 +317,7 @@ export function LanderLogEntry({ entry }: { entry: EntryRecord }) {
         <LandingCard
           card={entry.id}
           sha={outcome.commits?.length ? outcome.sha : undefined}
+          submission={data.submission}
           sourceEntry={data.sourceEntry}
           divergence={data.divergence}
           at={

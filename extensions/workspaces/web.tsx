@@ -27,6 +27,7 @@ function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { sour
     more,
     pushed,
     abstract,
+    submission,
   } = data
   const github = useGithubRepo()
   const transcript = useTranscript()
@@ -46,6 +47,7 @@ function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { sour
       <LandingCard
         card={id}
         sha={sha}
+        submission={submission}
         from={from}
         sourceEntry={at}
         divergence={divergence}

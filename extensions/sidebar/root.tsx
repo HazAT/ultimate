@@ -9,6 +9,7 @@ import {
   keepLast,
   Provided,
   useAction,
+  useConversations,
   useDocOf,
   useEvents,
 } from '@/sdk'
@@ -25,7 +26,7 @@ import {
   useUnderway,
 } from '../messages/ui.tsx'
 import { useAutomations, timerWaits } from '../automations/ui.tsx'
-import { StandingDoc } from '../subagents/ui.tsx'
+import { RunsDoc, StandingDoc } from '../subagents/ui.tsx'
 import { CommitCount, ProgressAction, Review, useWorkspaceIndex } from '../workspaces/ui.tsx'
 import type { WorkspaceConversation as ConversationSummary } from '../workspaces/ui.tsx'
 import {
@@ -40,6 +41,7 @@ import { RowMenu, saveTitle } from './rows.tsx'
 import { Section } from './section.tsx'
 import { SummaryHistory } from './summaries.tsx'
 import { useShell } from './state.tsx'
+import { PreviewUp } from './ui.tsx'
 import { workOf } from './work.ts'
 import type { Work } from './work.ts'
 
@@ -65,8 +67,11 @@ function useBranchState(
   conversation: ConversationSummary,
   working: boolean,
   phase: { word: string; waiting: boolean } | undefined,
+  previewUp: boolean | undefined,
   parked = false,
 ) {
+  const conversations = useConversations()
+  const runs = useDocOf(ROOT, RunsDoc)
   const index = useWorkspaceIndex()
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const overview = useOverview()
@@ -107,14 +112,25 @@ function useBranchState(
   if (queued?.state === 'landing') return { label: 'landing', tone: 'success' } as const
   if (queued) return { label: 'submitted', tone: 'success' } as const
   if (parked) return { label: 'paused', tone: 'paused' } as const
-  if (state === 'working')
-    return {
-      label: phase && !phase.waiting ? phase.word : 'working',
-      tone: 'brand',
-    } as const
-  if (state === 'waits') return { label: 'waits on you', tone: 'waiting' } as const
+  if (state === 'working') {
+    const reviewing = conversations.some((child) => {
+      if (
+        child.parentConversationId !== conversation.id ||
+        child.ownerTaskId === undefined ||
+        !child.busy
+      )
+        return false
+      const agent = runs?.[String(child.id)]?.agent
+      return agent === 'reviewer' || agent?.startsWith('reviewer-')
+    })
+    if (reviewing) return { label: 'reviewing', tone: 'brand' } as const
+    return { label: phase && !phase.waiting ? phase.word : 'working', tone: 'brand' } as const
+  }
+  if (state === 'waits')
+    return { label: previewUp ? 'preview awaits you' : 'waits on you', tone: 'waiting' } as const
   if (state === 'awaiting') return { label: label!, tone: 'awaiting' } as const
   if (state === 'failed') return { label: 'failed', tone: 'failed' } as const
+  if (previewUp) return { label: 'preview up', tone: 'awaiting' } as const
   return { label: 'idle', tone: 'quiet' } as const
 }
 
@@ -174,7 +190,11 @@ function Edits({ count, spec }: { count: number; spec: string }) {
 function FlightRow(props: FlightProps) {
   return (
     <Provided input={props.working ? props.conversation.id : undefined} point={ConversationPhase}>
-      {(phase) => <PhasedFlightRow {...props} phase={phase} />}
+      {(phase) => (
+        <Provided input={props.conversation.id} point={PreviewUp}>
+          {(previewUp) => <PhasedFlightRow {...props} phase={phase} previewUp={previewUp} />}
+        </Provided>
+      )}
     </Provided>
   )
 }
@@ -189,12 +209,13 @@ function PhasedFlightRow({
   children,
   onConclude,
   phase,
-}: FlightProps & { phase?: { word: string; waiting: boolean } }) {
+  previewUp,
+}: FlightProps & { phase?: { word: string; waiting: boolean }; previewUp?: boolean }) {
   const actions = useShell()
   const [editing, setEditing] = useState(false)
   const cancelled = useRef(false)
   const feature = useOverview()[conversation.id]?.feature
-  const state = useBranchState(conversation, working, phase, parked)
+  const state = useBranchState(conversation, working, phase, previewUp, parked)
   const latest = Math.max(conversation.inputAt ?? 0, conversation.answerAt ?? 0)
   const title = conversation.title ?? `#${conversation.id}`
   return (

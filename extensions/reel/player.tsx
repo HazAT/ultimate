@@ -39,6 +39,13 @@ export function Peek({ frame }: { frame: Frame }) {
   )
 }
 
+function ThumbImage({ frame }: { frame: Frame }) {
+  const image = useImage(frame)
+  return image?.src ? (
+    <img alt="" className="size-full object-cover object-top" src={image.src} />
+  ) : null
+}
+
 function Thumb({
   frame,
   current,
@@ -50,7 +57,6 @@ function Thumb({
   near: boolean
   onClick: () => void
 }) {
-  const image = useImage(near ? frame : undefined)
   return (
     <button
       aria-current={current}
@@ -62,7 +68,7 @@ function Thumb({
       onClick={onClick}
       type="button"
     >
-      {image?.src && <img alt="" className="size-full object-cover object-top" src={image.src} />}
+      {near && <ThumbImage frame={frame} />}
     </button>
   )
 }

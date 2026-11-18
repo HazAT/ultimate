@@ -8,6 +8,9 @@ import type { Message } from '../../messages/api.ts'
 const BRANCH = 10 as ConversationId
 const DESIGNER = 11 as ConversationId
 
+const entry = (conversation: ConversationId, id: number, model: unknown[]) =>
+  ({ id: id as EntryId, conversationId: conversation, kind: 'pi', model }) as EntryRecord
+
 const call = (
   conversation: ConversationId,
   id: number,
@@ -15,18 +18,21 @@ const call = (
   name: string,
   args: Record<string, unknown>,
 ) =>
-  ({
-    id: id as EntryId,
-    conversationId: conversation,
-    kind: 'pi.assistant',
-    model: [
-      {
-        role: 'assistant',
-        content: [{ type: 'toolCall', id: callId, name, arguments: args }],
-        timestamp: id,
-      },
-    ],
-  }) as unknown as EntryRecord
+  entry(conversation, id, [
+    { role: 'assistant', content: [{ type: 'toolCall', id: callId, name, arguments: args }] },
+  ])
+
+const result = (
+  conversation: ConversationId,
+  id: number,
+  callId: string,
+  toolName: string,
+  content: unknown[],
+  extra: Record<string, unknown> = {},
+) =>
+  entry(conversation, id, [
+    { role: 'toolResult', toolCallId: callId, toolName, content, isError: false, ...extra },
+  ])
 
 function shot(
   conversation: ConversationId,
@@ -34,72 +40,57 @@ function shot(
   callId: string,
   args: Record<string, unknown>,
   pixels: string,
-): EntryRecord[] {
+) {
   return [
-    {
-      id: (id + 1) as EntryId,
-      conversationId: conversation,
-      kind: 'pi.tool-result',
-      model: [
-        {
-          role: 'toolResult',
-          toolCallId: callId,
-          toolName: 'browser',
-          content: [
-            { type: 'text', text: 'note' },
-            { type: 'image', mimeType: 'image/png', data: pixels },
-            { type: 'text', text: 'Title' },
-          ],
-          isError: false,
-          timestamp: id + 1,
-        },
-      ],
-    },
+    result(conversation, id + 1, callId, 'browser', [
+      { type: 'text', text: 'note' },
+      { type: 'image', mimeType: 'image/png', data: pixels },
+      { type: 'text', text: 'Title' },
+    ]),
     call(conversation, id, callId, 'browser', args),
   ]
 }
 
-const asks = (id: number, callId: string) =>
-  call(BRANCH, id, callId, 'message', { to: 'user', reply: true, text: 'Preview?' })
+const ask = (id: number, callId: string, args: Record<string, unknown> = {}, sent = true) => [
+  result(BRANCH, id + 1, callId, 'message', [
+    { type: 'text', text: sent ? 'Message 9 sent.' : 'images: entry 3 has no images' },
+  ]),
+  call(BRANCH, id, callId, 'message', { to: 'user', text: 'Preview?', ...args }),
+]
 
-function fixture() {
+const script = (id: number, callId: string, asks: number) => [
+  result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
+    nestedCalls: {
+      complete: true,
+      calls: Array.from({ length: asks }, (_, n) => ({
+        id: `${callId}/${n + 1}`,
+        name: 'message',
+        arguments: { to: 'user', text: `Q${n + 1}` },
+        status: 'ok',
+      })),
+    },
+  }),
+  call(BRANCH, id, callId, 'codemode', { code: '…' }),
+]
+
+function fixture(branch: EntryRecord[], log: Message[]) {
   const own = new Map<ConversationId, EntryRecord[]>([
-    [
-      BRANCH,
-      [
-        asks(60, 'ask2'),
-        ...shot(BRANCH, 50, 'c4', { url: '/?conversation=2', width: 390 }, 'C'),
-        ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
-        asks(20, 'ask1'),
-        ...shot(BRANCH, 10, 'c0', { url: '/' }, 'OLD'),
-      ],
-    ],
+    [BRANCH, branch],
     [
       DESIGNER,
       [
         ...shot(DESIGNER, 42, 'd2', { url: '/' }, 'B'),
         ...shot(DESIGNER, 40, 'd1', { url: '/', theme: 'dark' }, 'B'),
-        ...shot(BRANCH, 10, 'c0', { url: '/' }, 'OLD'),
+        ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
       ],
     ],
   ])
-  const message = (id: number, callId: string): Message => ({
-    id,
-    from: BRANCH,
-    to: 'user',
-    text: '',
-    at: 0,
-    reply: true,
-    state: 'sent',
-    call: callId,
-  })
-  const entries = own
   const harness = {
-    snapshot: async () => ({ messages: [message(2, 'ask2')], next: 3 }),
+    snapshot: async () => ({ messages: log, next: 100 }),
     conversation: async (id: ConversationId) => ({
       entries: async ({ maxEntryId }: { maxEntryId?: number }) => ({
-        items: (entries.get(id) ?? [])
-          .filter((entry) => maxEntryId === undefined || entry.id <= maxEntryId)
+        items: (own.get(id) ?? [])
+          .filter((item) => maxEntryId === undefined || item.id <= maxEntryId)
           .toSorted((a, b) => b.id - a.id),
       }),
     }),
@@ -112,13 +103,32 @@ function fixture() {
     harness: () => harness,
   }
   return {
-    entries,
+    own,
     ctx: { host, signal: new AbortController().signal } as unknown as ActionContext,
   }
 }
 
-it("plays a question's round across the branch and its subagents, collapsing identical frames", async () => {
-  const { entries, ctx } = fixture()
+const question = (id: number, callId: string): Message => ({
+  id,
+  from: BRANCH,
+  to: 'user',
+  text: '',
+  at: 0,
+  reply: true,
+  state: 'delivered',
+  call: callId,
+})
+
+const round = [
+  ...ask(60, 'ask2'),
+  ...shot(BRANCH, 50, 'c4', { url: '/?conversation=2', width: 390 }, 'C'),
+  ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
+  ...ask(20, 'ask1'),
+  ...shot(BRANCH, 10, 'c0', { url: '/' }, 'OLD'),
+]
+
+it("plays a question's round across the branch and its subagents, from its own history", async () => {
+  const { own, ctx } = fixture(round, [question(2, 'ask2')])
   const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
   expect(reel).toEqual({
     earlier: 0,
@@ -143,18 +153,44 @@ it("plays a question's round across the branch and its subagents, collapsing ide
     ],
   })
   for (const frame of reel.frames) {
-    const entry = entries.get(frame.conversation)!.find((item) => item.id === frame.entry)
-    expect(imagesOf(entry)[frame.image]).toBeDefined()
+    const stored = own.get(frame.conversation)!.find((item) => item.id === frame.entry)
+    expect(imagesOf(stored)[frame.image]).toBeDefined()
   }
 })
 
+it('a failed send is no round boundary', async () => {
+  const branch = [
+    ...ask(60, 'ask2'),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...ask(40, 'retry', { reply: true }, false),
+    ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
+    ...ask(20, 'ask1'),
+  ]
+  const { ctx } = fixture(branch, [question(2, 'ask2')])
+  const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
+  expect(reel.frames.map((frame) => frame.entry)).toEqual([31, 41, 51])
+})
+
+it('a question asked from a script starts after the one before it', async () => {
+  const branch = [
+    ...script(60, 'run', 2),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...script(20, 'older', 1),
+  ]
+  const { ctx } = fixture(branch, [question(3, 'run/1'), question(4, 'run/2')])
+  const first = await actions.frames({ conversation: BRANCH, message: 3 }, ctx)
+  const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
+  expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
+  expect(second.frames).toEqual([])
+})
+
 it("a landing's reel spans the whole branch, without a fork's inherited entries", async () => {
-  const { ctx } = fixture()
+  const { ctx } = fixture(round, [])
   const reel = await actions.frames({ conversation: BRANCH }, ctx)
-  expect(reel.frames.map((frame) => [frame.conversation, frame.entry])).toEqual([
-    [BRANCH, 11],
-    [BRANCH, 31],
-    [DESIGNER, 41],
-    [BRANCH, 51],
+  expect(reel.frames.map((frame) => [frame.conversation, frame.entry, frame.count])).toEqual([
+    [BRANCH, 11, 1],
+    [BRANCH, 31, 1],
+    [DESIGNER, 41, 2],
+    [BRANCH, 51, 1],
   ])
 })

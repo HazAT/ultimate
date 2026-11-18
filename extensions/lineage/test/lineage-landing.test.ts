@@ -84,6 +84,7 @@ it('notes a landing in its tree root once, across a failed attempt and a restart
     at: 3,
     divergence: 'None',
     sha: 's1abcdef0',
+    submission: 's1',
     base: '0000000',
     target: 'main',
     commits: [{ sha: 'abc1234', subject: 'feat: s1' }],

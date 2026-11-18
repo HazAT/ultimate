@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { Message as PiMessage } from '@earendil-works/pi-ai'
 import type { ConversationId, Cursor, EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -119,8 +120,28 @@ export function collapse(shots: Shot[]) {
   return frames
 }
 
-const asksTheUser = (args: Readonly<Record<string, unknown>>) =>
-  args.to === 'user' && args.reply === true
+const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
+  !args || (args.to === 'user' && args.reply !== false)
+
+const SENT = /^Message \d+ sent\.$/m
+
+function scriptQuestions(turn: PiMessage) {
+  if (turn.role !== 'toolResult' || turn.toolName === 'message') return []
+  return (turn.nestedCalls?.calls ?? []).flatMap((nested) =>
+    nested.name === 'message' && nested.status === 'ok' && asksTheUser(nested.arguments)
+      ? [nested.id]
+      : [],
+  )
+}
+
+function directlySent(turn: PiMessage) {
+  return turn.role === 'toolResult' &&
+    turn.toolName === 'message' &&
+    !turn.isError &&
+    turn.content.some((block) => block.type === 'text' && SENT.test(block.text))
+    ? [turn.toolCallId]
+    : []
+}
 
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
   const log =
@@ -128,32 +149,27 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
   const asked = log.find((item) => item.id === message)
   if (!asked || asked.from !== branch || !asked.call)
     throw new Error(`#${branch} sent no message ${message}`)
-  const scripted = new Set(
-    log.flatMap((item) =>
-      item.from === branch && item.to === 'user' && item.reply && item.call
-        ? [item.call.split('/')[0]]
-        : [],
-    ),
-  )
-  const own = asked.call.split('/')[0]
+  const call = asked.call
+  const sent = new Set<string>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {
-    for (const turn of entry.model ?? [])
+    for (const turn of entry.model ?? []) {
+      const scripted = scriptQuestions(turn)
+      if (to === undefined) {
+        const at = scripted.indexOf(call)
+        if (at > 0) return { from: entry.id, to: entry.id }
+        if (at === 0 || (turn.role === 'toolResult' && turn.toolCallId === call)) to = entry.id
+        continue
+      }
+      if (scripted.length) return { from: entry.id, to }
+      for (const id of directlySent(turn)) sent.add(id)
       if (turn.role === 'assistant')
-        for (const block of turn.content) {
-          if (block.type !== 'toolCall') continue
-          if (to === undefined) {
-            if (block.id === own) to = entry.id
-            continue
-          }
-          if (
-            entry.id < to &&
-            (scripted.has(block.id) || (block.name === 'message' && asksTheUser(block.arguments)))
-          )
+        for (const block of turn.content)
+          if (block.type === 'toolCall' && sent.has(block.id) && asksTheUser(block.arguments))
             return { from: entry.id, to }
-        }
+    }
   }
-  if (to === undefined) throw new Error(`#${branch} holds no call for message ${message}`)
+  if (to === undefined) throw new Error(`#${branch} holds no result for message ${message}`)
   return { from: 0, to }
 }
 

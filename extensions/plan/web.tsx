@@ -3,6 +3,8 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CheckIcon,
   ChevronRightIcon,
+  CircleDashedIcon,
+  CircleDotDashedIcon,
   ClipboardListIcon,
   GitBranchIcon,
   LinkIcon,
@@ -12,7 +14,7 @@ import {
 import { deadline } from '../../lib/timers.ts'
 import type { ReactNode, SyntheticEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MessageResponse } from '@/components/ai/message'
+import { MentionText, MessageResponse } from '@/components/ai/message'
 import {
   Tool,
   ToolContent,
@@ -40,12 +42,21 @@ import {
 } from '@/sdk'
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
-import { InfoAction, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
+import { InfoAction, LandedNote, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
 import { meansNone } from '../../lib/errors.ts'
-import { criteriaOf, sectionsOf, verbatim } from './body.tsx'
-import { criteriaOfBody, finished, number, pillOf, progressLabel } from './progress.tsx'
-import { PlanDoc } from './refs.ts'
-import type { Epic, Plan, Task, TaskLink } from './refs.ts'
+import { criteriaOf, sectionsOf, verbatim } from './body.ts'
+import {
+  confirmed,
+  criteriaCounts,
+  criteriaOfBody,
+  currentEpic,
+  finished,
+  number,
+  pillOf,
+  progressLabel,
+} from './progress.ts'
+import { PlanDoc, ProgressDoc } from './refs.ts'
+import type { Epic, Estimate, Plan, Task, TaskLink } from './refs.ts'
 import { StatusIcon, TaskChip, statusOf, useOpenTask, useTaskOf } from './ui.tsx'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
@@ -77,22 +88,64 @@ function LiteralPlanText({ children, className }: { children: string; className?
   )
 }
 
-function Criteria({ items, met }: { items: string[]; met: boolean }) {
+type Checks = { epic: Epic; coordinator: number; estimates: Record<string, Estimate> }
+
+function EstimateMark({ estimate }: { estimate: Estimate }) {
+  const Icon = estimate.state === 'looks_done' ? CircleDotDashedIcon : CircleDashedIcon
+  return (
+    <Icon
+      aria-label={estimate.state === 'looks_done' ? 'looks done' : 'in progress'}
+      className={cn(
+        'size-3.5 shrink-0',
+        estimate.state === 'looks_done' ? 'text-success/60' : 'text-brand/60',
+      )}
+    />
+  )
+}
+
+function Criteria({ items, checks }: { items: string[]; checks?: Checks }) {
   return (
     <ol className="space-y-1">
-      {items.map((item, index) => (
-        <li className="flex min-w-0 gap-1.5" key={index}>
-          <span className="pt-0.5">
-            <StatusIcon status={met ? 'done' : 'todo'} />
-          </span>
-          <LiteralPlanText className="min-w-0 flex-1 text-foreground/90">{item}</LiteralPlanText>
-        </li>
-      ))}
+      {items.map((item, index) => {
+        const met = !!checks && confirmed(checks.epic, index + 1)
+        const estimate =
+          checks && !met && Object.hasOwn(checks.estimates, item)
+            ? checks.estimates[item]
+            : undefined
+        return (
+          <li className="flex min-w-0 gap-1.5" data-criterion={index + 1} key={index}>
+            <span className="pt-0.5">
+              {estimate ? (
+                <EstimateMark estimate={estimate} />
+              ) : (
+                <StatusIcon status={met ? 'done' : 'todo'} />
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <LiteralPlanText className="text-foreground/90">{item}</LiteralPlanText>
+              {estimate && (
+                <span
+                  className="block font-mono text-[10.5px] text-muted-foreground/70"
+                  title="Estimated from the coordinator's recent work, not confirmed"
+                >
+                  ~ {estimate.state === 'looks_done' ? 'looks done' : 'in progress'}
+                  {estimate.at !== undefined && checks && (
+                    <>
+                      {' · '}
+                      <MentionText text={`#${checks.coordinator}/${estimate.at}`} />
+                    </>
+                  )}
+                </span>
+              )}
+            </span>
+          </li>
+        )
+      })}
     </ol>
   )
 }
 
-function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteria: boolean }) {
+function EpicBody({ body, checks, criteria }: { body: string; checks: Checks; criteria: boolean }) {
   const sections = sectionsOf(body)
   if (!sections) return <LiteralPlanText>{body}</LiteralPlanText>
   return (
@@ -104,7 +157,7 @@ function EpicBody({ body, met, criteria }: { body: string; met: boolean; criteri
           <div key={index}>
             {section.label && <div className="pb-0.5 section-label">{section.label}</div>}
             {items ? (
-              <Criteria items={items} met={met} />
+              <Criteria checks={checks} items={items} />
             ) : (
               section.text && <LiteralPlanText>{section.text}</LiteralPlanText>
             )}
@@ -383,6 +436,9 @@ function EpicCard({
   const done = finished(epic.tasks)
   const approved = epic.verdict?.trimStart().startsWith('APPROVED')
   const criteria = list.length === 0 ? criteriaOfBody(epic.body) : undefined
+  const estimates = useEstimates(coordinator, epic.key)
+  const checks = { epic, coordinator, estimates }
+  const counts = criteriaCounts(epic, estimates)
   const section = useScrollTo<HTMLElement>(focus?.key === epic.key ? focus : undefined)
   return (
     <section
@@ -401,7 +457,7 @@ function EpicCard({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="mx-3 mb-2 rounded-md border border-border/70 bg-card/50 px-3 py-2 text-[12.5px]">
-            <EpicBody body={epic.body} criteria={!!criteria} met={epic.status === 'done'} />
+            <EpicBody body={epic.body} checks={checks} criteria={!!criteria} />
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -427,7 +483,7 @@ function EpicCard({
         <div className="flex items-center px-3 pb-1 section-label">
           {criteria ? 'Acceptance criteria' : 'Tasks'}
           <span className="ml-auto">
-            {criteria ? 'worked directly' : `${done}/${list.length} done`}
+            {criteria ? <CriteriaCount counts={counts} /> : `${done}/${list.length} done`}
           </span>
         </div>
       ) : (
@@ -437,7 +493,7 @@ function EpicCard({
       )}
       {criteria && (
         <div className="px-3 pb-2 text-[12.5px]">
-          <Criteria items={criteria} met={epic.status === 'done'} />
+          <Criteria checks={checks} items={criteria} />
         </div>
       )}
       {list.map((task) => (
@@ -501,6 +557,25 @@ export function PlanBody({
         </Collapsible>
       )}
     </>
+  )
+}
+
+function useEstimates(coordinator: number, key: string) {
+  return (
+    useDocOf(parseConversationId(coordinator), ProgressDoc)?.epics[key]?.estimates ?? noEstimates
+  )
+}
+const noEstimates: Record<string, Estimate> = {}
+
+function CriteriaCount({ counts }: { counts: ReturnType<typeof criteriaCounts> }) {
+  return (
+    <span
+      className="tabular-nums"
+      title={`${counts.confirmed} confirmed by the coordinator, ${counts.estimated} estimated from the work, of ${counts.total}`}
+    >
+      {counts.confirmed > 0 && <span className="text-success">{counts.confirmed}✓ </span>}
+      {counts.confirmed + counts.estimated}/{counts.total}
+    </span>
   )
 }
 
@@ -663,12 +738,20 @@ function CoordinatorPlan({
         >
           <ClipboardListIcon className="size-3.5 shrink-0" />
           <span className="text-foreground/80">{shown.epic.key}</span>
-          <span>· {progressLabel(shown.epic)}</span>
+          <span>
+            · <PillProgress coordinator={conversation} epic={shown.epic} />
+          </span>
           {shown.more > 0 && <span className="text-muted-foreground/70">+{shown.more}</span>}
         </button>
       )}
     </>
   )
+}
+
+function PillProgress({ coordinator, epic }: { coordinator: number; epic: Epic }) {
+  const counts = criteriaCounts(epic, useEstimates(coordinator, epic.key))
+  if (Object.keys(epic.tasks).length > 0 || counts.total === 0) return progressLabel(epic)
+  return <CriteriaCount counts={counts} />
 }
 
 function WorkerPlan({ conversation, task }: { conversation: ConversationId; task: TaskLink }) {
@@ -830,16 +913,44 @@ function useConversationTask(id: number | undefined) {
   return task && { chip: <TaskChip task={task} />, title: task.title }
 }
 
+function useLandedNote({
+  conversation,
+  submission,
+}: {
+  conversation: ConversationId
+  submission: string
+}) {
+  const progress = useDocOf(conversation, ProgressDoc)?.epics ?? {}
+  const landed = Object.entries(progress).find(([, epic]) => epic.landed?.[submission])
+  if (!landed) return undefined
+  const [key, epic] = landed
+  const counts = epic.landed![submission]
+  return (
+    <p className="text-muted-foreground tabular-nums">
+      Criteria{' '}
+      <span className={counts.confirmed === counts.total ? 'text-success' : ''}>
+        {counts.confirmed}/{counts.total} confirmed
+      </span>
+      {counts.estimated > 0 && ` · ${counts.estimated} estimated`}
+      <span className="text-muted-foreground/60"> · {key}</span>
+    </p>
+  )
+}
+
 function useConversationEpic(id: ConversationId) {
   const epics = useDocOf(id, PlanDoc)?.epics ?? {}
+  const progress = useDocOf(id, ProgressDoc)?.epics
   const openTask = useOpenTask()
-  const epic =
-    pillOf(epics)?.epic ?? Object.values(epics).toSorted((a, b) => number(b.key) - number(a.key))[0]
+  const epic = currentEpic(epics)
   if (!epic || Object.values(epic.tasks).some((task) => task.child !== undefined)) return undefined
+  const counts = criteriaCounts(epic, progress?.[epic.key]?.estimates)
   return {
     key: epic.key,
     title: epic.title,
     status: epic.status,
+    ...(counts.total > 0 && Object.keys(epic.tasks).length === 0
+      ? { progress: `${counts.confirmed + counts.estimated}/${counts.total}` }
+      : {}),
     open: () => openTask({ coordinator: id, key: epic.key }),
   }
 }
@@ -850,5 +961,6 @@ export default defineWebExtension({
   provides: [
     provide(ConversationTask, useConversationTask),
     provide(ConversationEpic, useConversationEpic),
+    provide(LandedNote, useLandedNote),
   ],
 })
