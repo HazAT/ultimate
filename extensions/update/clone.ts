@@ -6,6 +6,7 @@ import { readJson, writeJson } from '../../lib/json-file.ts'
 import { meansNone } from '../../lib/errors.ts'
 import { corePath, packagePath } from '../../lib/layers.ts'
 import { acquireLock } from '../../lib/lock.ts'
+import { conflictsPredicted } from './merge.ts'
 import type { Layers, UpdateState } from './refs.ts'
 
 export const FETCH_EVERY = 60 * 60_000
@@ -69,24 +70,34 @@ export async function cloneState(
 ): Promise<
   Pick<
     UpdateState,
-    'branch' | 'behind' | 'ahead' | 'commits' | 'layers' | 'refused' | 'fetchedAt'
+    | 'branch'
+    | 'behind'
+    | 'ahead'
+    | 'diverged'
+    | 'conflicts'
+    | 'commits'
+    | 'layers'
+    | 'refused'
+    | 'fetchedAt'
   > & {
     head: string
     remoteHead?: string
-    diverged?: true
   }
 > {
   const head = await git('rev-parse', 'HEAD')
   const at = await fetchedAt(git, root)
   const state = await standing(git)
+  const predicted = state.diverged ? await conflictsPredicted(root, state.remote) : undefined
   const result = {
     head,
     branch: state.branch,
     behind: state.behind,
     ahead: state.ahead,
     commits: [] as UpdateState['commits'],
+    ...(state.diverged
+      ? { diverged: state.diverged, ...(predicted !== undefined ? { conflicts: predicted } : {}) }
+      : {}),
     ...(state.refused ? { refused: state.refused } : {}),
-    ...(state.diverged ? { diverged: state.diverged } : {}),
     ...(at !== undefined ? { fetchedAt: at } : {}),
   }
   if (!state.behind) return result

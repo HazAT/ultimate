@@ -1,5 +1,9 @@
 import type { UpdateState } from './refs.ts'
 
+export function mergeOffered(state: UpdateState): boolean {
+  return state.behind > 0 && state.diverged === true && state.conflicts !== true
+}
+
 export function itemOf(state: UpdateState): 'none' | 'current' | 'behind' | 'install' | 'restart' {
   if (state.preview) return 'none'
   if (state.behind) return 'behind'

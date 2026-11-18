@@ -82,12 +82,16 @@ export async function fastForward(
   git: Git,
   recordInstallBeforeLockfileChanges?: () => Promise<void>,
   admitAfterFetchBeforeMerge?: () => Promise<string | undefined>,
+  mergeDiverged?: (state: Standing) => Promise<FastForward>,
 ): Promise<FastForward> {
   const dirtyBeforeFetch = await git('status', '--porcelain', '--untracked-files=no')
   if (dirtyBeforeFetch) throw new Refusal('The checkout has uncommitted changes')
   await fetchOrigin(git)
   const state = await standing(git)
-  if (state.refused) throw new Refusal(state.refused)
+  if (state.refused) {
+    if (state.diverged && mergeDiverged) return await mergeDiverged(state)
+    throw new Refusal(state.refused)
+  }
   const refused = state.behind ? await admitAfterFetchBeforeMerge?.() : undefined
   if (refused) throw new Refusal(refused)
   const before = await git('rev-parse', 'HEAD')

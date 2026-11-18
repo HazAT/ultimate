@@ -28,6 +28,8 @@ import {
   summaryFor,
   withLock,
 } from './clone.ts'
+import { conflictsPredicted, mergeUpstream } from './merge.ts'
+import type { Merged } from './merge.ts'
 import { Applied, CheckAction, MergeAction, Refused, StateAction, UpdateAction } from './refs.ts'
 import type { UpdateResult, UpdateState } from './refs.ts'
 import { UpdateApi } from './api.ts'
@@ -311,7 +313,7 @@ async function refresh(host: ExtensionHost, fetchAndSummarizeUnderLock: boolean,
   const clone = await cloneState(git, root)
   const repo = clone.remoteHead ? await githubRepo(root) : undefined
   const startedAt = Date.parse(host.system().process.startedAt)
-  const { head, remoteHead, diverged, ...rest } = clone
+  const { head, remoteHead, ...rest } = clone
   const summary = await summarize(false)
   const landingNow = rest.behind ? await landingRefusalOrClosedStorage(host) : undefined
   shared.latest = {
@@ -320,7 +322,7 @@ async function refresh(host: ExtensionHost, fetchAndSummarizeUnderLock: boolean,
     ...rest,
     ...(summary ? { summary } : {}),
     refused: rest.refused ?? landingNow,
-    ...(diverged && !landingNow && (await landerCanReachClone(host))
+    ...(rest.diverged && !landingNow && (await landerCanReachClone(host))
       ? { merge: true as const }
       : {}),
     ...(error ? { error } : {}),
@@ -352,6 +354,12 @@ const mergeInput = (branch: string, root: string, ahead: number, behind: number)
     'Afterwards the update item asks for any restart the upstream changes need.',
   ].join('\n')
 
+const fixInput = (root: string, branch: string, to: string, checkError?: string) =>
+  [
+    `Update with @ultimate: the update merged origin into ${branch} in ${root} (now at ${to}), but pnpm check fails${checkError ? `:\n${checkError}` : '.'}`,
+    'Start a coordinator branch that fixes the failing check on the merged result: it reads the failure, fixes it at its cause, runs pnpm check and the tests covering what it changed, and lands with workspace submit.',
+  ].join('\n')
+
 async function landingRefusalOrClosedStorage(host: ExtensionHost) {
   let index
   try {
@@ -379,6 +387,17 @@ async function recordWithoutRollingBackClone<D extends JsonValue>(
   }
 }
 
+async function checkAfterMerge(
+  root: string,
+): Promise<{ check: 'passed' | 'failed'; checkError?: string }> {
+  try {
+    await exec('pnpm', ['check'], { cwd: root, timeout: 10 * 60_000 })
+    return { check: 'passed' }
+  } catch (error) {
+    return { check: 'failed', checkError: tail(error) }
+  }
+}
+
 async function run(host: ExtensionHost): Promise<UpdateResult> {
   const root = host.ultimateRoot
   const refuse = async (refused: string): Promise<UpdateResult> => {
@@ -395,10 +414,16 @@ async function apply(
 ): Promise<UpdateResult> {
   const root = host.ultimateRoot
   const git = gitIn(root)
+  let merged: Merged | undefined
   let moved
   try {
     const recheckLandingAfterFetch = () => landingRefusalOrClosedStorage(host)
-    moved = await fastForward(git, undefined, recheckLandingAfterFetch)
+    moved = await fastForward(git, undefined, recheckLandingAfterFetch, async (standing) => {
+      const refused = await recheckLandingAfterFetch()
+      if (refused) throw new Refusal(refused)
+      merged = await mergeUpstream(git, await conflictsPredicted(root, standing.remote), standing)
+      return merged
+    })
   } catch (error) {
     if (error instanceof Refusal) return refuse(error.message)
     throw error
@@ -407,6 +432,7 @@ async function apply(
     moved.before === moved.after ? '' : await git('diff', '--name-only', moved.before, moved.after)
   const layers = layersOf(files.split('\n').filter(Boolean))
   const { install, installError } = await installPackages(host)
+  const checked = merged && install !== 'failed' ? await checkAfterMerge(root) : undefined
   const result = {
     ok: true as const,
     from: moved.before.slice(0, 7),
@@ -414,6 +440,13 @@ async function apply(
     commits: moved.behind,
     layers,
     install,
+    ...(merged && checked
+      ? { merged: true as const, restore: merged.restore, check: checked.check }
+      : {}),
+    ...(checked?.checkError ? { checkError: checked.checkError } : {}),
+    ...(merged && checked?.check === 'failed' && (await landerCanReachClone(host))
+      ? { fixable: true as const }
+      : {}),
     ...(installError ? { installError } : {}),
   }
   if (moved.behind || install !== 'skipped') reloadSharedState(host).updated = result
@@ -425,6 +458,9 @@ async function apply(
       commits: moved.behind,
       layers,
       install,
+      ...(merged && checked
+        ? { merged: true as const, restore: merged.restore, check: checked.check }
+        : {}),
     })
   }
   return result
@@ -464,15 +500,19 @@ export const actions = {
       throw new Error('A preview never updates the clone it runs from')
     await refresh(host, false)
     const latest = reloadSharedState(host).latest!
-    if (!latest.merge) throw new Error(latest.refused ?? `${latest.branch} has not diverged`)
+    const failed = latest.updated?.check === 'failed' ? latest.updated : undefined
+    if (!latest.merge && !failed?.fixable)
+      throw new Error(latest.refused ?? `${latest.branch} has not diverged`)
     const { head, remoteHead } = await cloneState(gitIn(host.ultimateRoot), host.ultimateRoot)
     const id = await host.need(SubagentsApi).standing('ultimate', context)
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
         type: 'input',
-        content: mergeInput(latest.branch!, latest.root, latest.ahead ?? 0, latest.behind),
-        requestId: mergeRequestIdForRange(head, remoteHead),
+        content: failed?.fixable
+          ? fixInput(latest.root, latest.branch ?? 'main', head, failed.checkError)
+          : mergeInput(latest.branch!, latest.root, latest.ahead ?? 0, latest.behind),
+        requestId: failed ? `update-fix:${head}` : mergeRequestIdForRange(head, remoteHead),
         whenBusy: 'followUp',
       },
       context,
