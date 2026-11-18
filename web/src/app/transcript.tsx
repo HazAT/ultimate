@@ -408,6 +408,7 @@ function TranscriptEntries() {
       for (const type of inputs) scroll.removeEventListener(type, release)
     }
   }, [scrollRef, contentRef])
+  useLayoutEffect(() => hold(), [tailSpace])
   const [reveal, setReveal] = useState<{ entry: EntryId; call?: string }>()
   useEvent('ultimate:reveal-entry', (value) => {
     const target = value as
