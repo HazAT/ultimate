@@ -18,9 +18,9 @@ const services: Record<string, unknown> = {
   },
   watchdog: {
     failures: async (since: number) =>
-      [
-        { conversation: 7, title: 'Fix', at: 950, error: 'boom', step: 'bash', retried: true },
-      ].filter((failure) => failure.at >= since),
+      [{ conversation: 7, title: 'Fix', at: 950, error: 'boom', step: 'bash', retries: 1 }].filter(
+        (failure) => failure.at >= since,
+      ),
   },
   health: {
     providers: async () => [

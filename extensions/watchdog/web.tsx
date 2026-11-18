@@ -26,8 +26,13 @@ export default defineWebExtension({
             <p className="whitespace-pre-wrap text-destructive">{failure.error}</p>
             <p className="font-mono text-[11px] text-muted-foreground">last step: {failure.step}</p>
             {failure.hint && <MessageResponse>{failure.hint}</MessageResponse>}
-            {failure.retried && (
-              <p className="text-[11px] text-muted-foreground">after one automatic retry</p>
+            {failure.retries > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                after{' '}
+                {failure.retries === 1
+                  ? 'one automatic retry'
+                  : `${failure.retries} automatic retries`}
+              </p>
             )}
           </div>
         </section>

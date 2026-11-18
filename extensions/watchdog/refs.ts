@@ -6,5 +6,6 @@ export type Failure = {
   error: string
   step: string
   hint?: string
-  retried: boolean
+  /** Automatic retries before this report: 0 to 3. */
+  retries: number
 }
