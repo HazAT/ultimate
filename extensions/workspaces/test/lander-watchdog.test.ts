@@ -31,7 +31,7 @@ function hanging(outputEvery?: number, line = 'progress\n') {
         options.signal!.addEventListener('abort', () => resolve(), { once: true }),
       )
     clearInterval(timer)
-    return 137
+    return { code: 137, outOfMemory: false }
   })
 }
 
@@ -101,7 +101,7 @@ it('names the tests that failed before the watchdog fired, even when they left t
 it('names the failed tests of a check that exits nonzero', async () => {
   vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
     options.onOutput(' × test/models.test.ts > falls back on logout 12ms\n' + 'noise\n'.repeat(600))
-    return 1
+    return { code: 1, outOfMemory: false }
   })
   const failure = (await runLanderCheck('.', 'pnpm test', context)).failure!
   expect(failure).toMatch(
@@ -147,11 +147,20 @@ it('preserves task cancellation instead of reporting a watchdog failure', async 
   expect(vi.getTimerCount()).toBe(0)
 })
 
+it('names a check the kernel killed for memory as out of memory', async () => {
+  vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
+    options.onOutput(' × test/a.test.ts > runs 12ms\n')
+    return { code: 137, outOfMemory: true }
+  })
+  const failure = (await runLanderCheck('.', 'pnpm test', context)).failure!
+  expect(failure).toMatch(/^Out of memory: exit 137\nFailed tests so far:\n× test\/a.test.ts/)
+})
+
 it('keeps successful summaries and clears both timers', async () => {
   vi.useFakeTimers()
   vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
     options.onOutput('first\nlast\n')
-    return 0
+    return { code: 0, outOfMemory: false }
   })
   expect(await runLanderCheck('.', 'print', context)).toEqual({ summary: 'last' })
   expect(vi.getTimerCount()).toBe(0)
@@ -163,7 +172,7 @@ it('gives each check its own TMPDIR in the given directory and removes it afterw
   vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
     seen = options.env?.TMPDIR
     await writeFile(join(seen!, 'left'), '')
-    return 1
+    return { code: 1, outOfMemory: false }
   })
   await run('.', 'pnpm test', context, tmpdir(), temp)
   expect(seen && dirname(seen)).toBe(temp)
@@ -179,7 +188,7 @@ it('keeps the result of a check whose TMPDIR cannot be removed', async () => {
     await mkdir(join(locked, 'file'), { recursive: true })
     await chmod(locked, 0o500)
     options.onOutput('passed\n')
-    return 0
+    return { code: 0, outOfMemory: false }
   })
   try {
     expect(await run('.', 'pnpm test', context, tmpdir(), temp)).toEqual({ summary: 'passed' })

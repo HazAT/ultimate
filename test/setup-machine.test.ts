@@ -46,6 +46,12 @@ it('lets the supervisor stop its children before systemd force-kills the group',
   expect(line(unit.content, 'TimeoutStopSec')).toEqual(['TimeoutStopSec=30'])
 })
 
+it('delegates its cgroup, so branch work runs beside the core and an out-of-memory kill takes the work', () => {
+  const [unit] = renderUnits(options)
+  expect(line(unit.content, 'Delegate')).toEqual(['Delegate=yes'])
+  expect(line(unit.content, 'DelegateSubgroup')).toEqual(['DelegateSubgroup=core'])
+})
+
 it("puts the login shell's PATH first, so a bare service PATH still finds claude, gh and pnpm", () => {
   const calls: [string, string[]][] = []
   const login =

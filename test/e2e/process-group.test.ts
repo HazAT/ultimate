@@ -225,7 +225,7 @@ it('runs a group to its exit code and stops it on abort; an aborted signal runs 
   const directory = await temp('ultimate-process-group-')
   try {
     let output = ''
-    const code = await runGroup('/bin/sh', ['-c', 'echo out; exit 3'], {
+    const { code } = await runGroup('/bin/sh', ['-c', 'echo out; exit 3'], {
       cwd: directory,
       pidFile: join(directory, 'pids', 'a.pid'),
       onOutput: (text) => (output += text),
@@ -239,7 +239,7 @@ it('runs a group to its exit code and stops it on abort; an aborted signal runs 
       signal: controller.signal,
       onOutput: () => controller.abort(),
     })
-    expect(await aborted).toBe(128 + 15)
+    expect((await aborted).code).toBe(128 + 15)
     expect(await readdir(join(directory, 'pids'))).toEqual([])
 
     const marker = join(directory, 'ran')
@@ -262,7 +262,7 @@ it('returns when a process outside the group keeps its output open', async () =>
   const pidFile = join(directory, 'escaped')
   try {
     const began = Date.now()
-    const code = await runGroup(
+    const { code } = await runGroup(
       process.execPath,
       [
         '-e',
