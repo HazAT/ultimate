@@ -15,6 +15,7 @@ import { ContextUsageDoc } from '../../conversations/api.ts'
 import { Standing } from '../../subagents/api.ts'
 import type { SubagentsService } from '../../subagents/api.ts'
 import { createChild } from '../../subagents/children.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../types.ts'
 import { IDLE_TICK } from '../triggers.ts'
@@ -67,7 +68,12 @@ async function fixture() {
     onClose: (fn: () => Promise<void>) => {
       closer = fn
     },
-    ...apis(new Map<string, unknown>([['messages', { send, owed: async () => ({}) }]])),
+    ...apis(
+      new Map<string, unknown>([
+        ['messages', { send, owed: async () => ({}) }],
+        ['workspaces', { doc: Workspaces }],
+      ]),
+    ),
     extensions: () => [{ name: 'subagents', enabled: true }],
     projectSetup: async () => ({ decision: false }),
     notice: (message: string) => {
