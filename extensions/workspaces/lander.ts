@@ -334,6 +334,7 @@ export function createLander(
     starter: (id: ConversationId, context: Context) => Promise<ConversationId | undefined>
     working: (tx: Tx, id: ConversationId) => Promise<boolean>
     conclude: (tx: Tx, id: ConversationId) => Promise<void>
+    submitLanding: import('./api.ts').BranchesService['submitLanding']
     release: (id: ConversationId, context: Context) => Promise<unknown>
   },
   limits: CheckLimits = defaultCheckLimitsSeconds,
@@ -861,31 +862,28 @@ export function createLander(
         } = task.state.checkpoint
         const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const content = `${headline}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
-        if (starter !== undefined)
-          await (
-            await host.harness().conversation(starter, context)
-          )?.submit(
-            conclusionCommitted
-              ? { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` }
-              : {
-                  type: 'write',
-                  requestId: `lander:${id}`,
-                  entry: {
-                    ...entry,
-                    model: [{ role: 'user', content, timestamp: Date.now() }],
-                  },
-                },
-            context,
-          )
-        await runtime.commit(
-          () => ({
+        const to = starter === undefined ? undefined : await runtime.conversation(starter, context)
+        await runtime.commit(async (tx) => {
+          if (to && conclusionCommitted)
+            await after.submitLanding(
+              tx,
+              to,
+              { type: 'input', content, entry, whenBusy: 'followUp', requestId: `lander:${id}` },
+              conversationId,
+            )
+          else if (to)
+            await to.submit(tx, {
+              type: 'write',
+              requestId: `lander:${id}`,
+              entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
+            })
+          return {
             status: 'running',
             checkpoint: conclusionCommitted
               ? { phase: 'release', conversationId }
               : { phase: 'next' },
-          }),
-          context,
-        )
+          }
+        }, context)
       },
       release: async (task, runtime, context) => {
         await after

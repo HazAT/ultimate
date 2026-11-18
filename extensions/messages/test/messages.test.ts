@@ -37,7 +37,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { emit } from '../../../server/events.ts'
 import messagesExtension, { actions } from '../server.ts'
-import { sendResult } from '../outcomes.ts'
+import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
 import { Messages, MessageSent } from '../api.ts'
@@ -289,6 +289,11 @@ async function fixture(
     // A branch's reply that keeps @ultimate busy, so another branch's reply steers into the same run.
     if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('STALL'))
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
+    if (last.role === 'user' && text.startsWith('Automation ') && text.includes('REPLYLOCAL'))
+      return fauxAssistantMessage(
+        [fauxToolCall('message', { to: `#${recipient.id}`, text: 'Approved' })],
+        { stopReason: 'toolUse' },
+      )
     // @ultimate answers a branch's reply with only a message to the user.
     if (
       last.role === 'user' &&
@@ -374,6 +379,7 @@ async function fixture(
       holding = false
     },
     holding: () => holding,
+    reactorsSettled: events.settled,
     observed,
     transcripts,
   }
@@ -2363,16 +2369,111 @@ async function fireAutomation(
   f: Awaited<ReturnType<typeof remoteFixture>>,
   id: string,
   text: string,
+  whenBusy: 'steer' | 'followUp' = 'followUp',
 ) {
-  return f.opened.root.submit(
-    {
-      type: 'input',
-      content: `Automation ${id} "matrix" fired: ${text}`,
-      entry: { kind: 'automations.fired', data: { id, name: 'matrix', text } },
-    },
+  const submission = await f.opened.harness.commit(
+    (tx) =>
+      f.service().submitFire(
+        tx,
+        f.opened.root,
+        {
+          type: 'input',
+          whenBusy,
+          content: `Automation ${id} "matrix" fired: ${text}`,
+          entry: { kind: 'automations.fired', data: { id, name: 'matrix', text } },
+        },
+        { id, name: 'matrix' },
+      ),
     context,
   )
+  return (await f.opened.harness.submission(submission, context))!
 }
+
+it('fails an owned request once when a message tool terminates the run that read the fire', async () => {
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  const key = 'tool-terminated'
+  await actions.remote({ key, text: 'Job\nHOLD', reply: true, from }, f.action())
+  await until(f.holding)
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A1'), context)
+  f.hold.release()
+  await until(() => other.posted.length === 1)
+  f.holdAgain()
+  const local = await sendMessage(
+    f.host,
+    f.recipient.id,
+    { to: '#1', text: 'Approve this?\nHOLD' },
+    context,
+  )
+  await until(f.holding)
+  const fire = await fireAutomation(f, 'A1', 'REPLYLOCAL', 'steer')
+  f.hold.release()
+  expect(await fire.wait(context)).toMatchObject({ status: 'done' })
+  await until(() => other.posted.length === 2)
+  expect((await f.log())!.messages).toContainEqual(
+    expect.objectContaining({ re: local, text: 'Approved' }),
+  )
+  expect(other.posted[1].body).toMatchObject({
+    key,
+    failed: true,
+    text: expect.stringContaining('ended without an answer'),
+  })
+  expect(
+    (await f.log())!.messages.filter((m) => m.remote?.key === key && m.state === 'failed'),
+  ).toHaveLength(1)
+})
+
+it('lets a pending branch report settle a concluded branch without failing on earlier progress', async () => {
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  await enableBranch(f)
+  const key = 'report-pending'
+  const request = await actions.remote(
+    {
+      key,
+      text: 'BRANCH ' + JSON.stringify({ prompt: 'Progress STALL', isolated: false }),
+      reply: true,
+      from,
+    },
+    f.action(),
+  )
+  await until(f.holding)
+  await until(() => other.posted.length === 1)
+  const branch = (await f.log())!.messages.find((m) => m.from === 1 && m.text === 'Progress STALL')!
+    .to as ConversationId
+  f.hold.release()
+  await until(async () => {
+    const owner = (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))?.owners[
+      request
+    ]
+    return (
+      owner?.owner.kind === 'branch' &&
+      owner.owner.id === branch &&
+      owner.outputPending === undefined
+    )
+  })
+  expect(other.posted).toHaveLength(1)
+  f.holdAgain()
+  await sendMessage(
+    f.host,
+    branch,
+    { to: '#1', text: 'Finished WEIGH\nHOLD', reply: false },
+    context,
+    { report: true, note: false },
+  )
+  await until(f.holding)
+  await conversationActions.conclude({ ids: [branch] }, f.action())
+  await until(f.reactorsSettled)
+  expect(other.posted).toHaveLength(1)
+  f.hold.release()
+  await until(() => other.posted.length === 2)
+  expect(other.posted[1].body).toMatchObject({
+    key,
+    failed: false,
+    text: expect.stringContaining(`Result of #${branch}`),
+  })
+  expect(other.posted[1].body).not.toHaveProperty('interim')
+})
 
 it('a one-way update from the remote asker gives its request to the replacement automation', async () => {
   const other = await otherUltimate(() => [200, { result: 1 }])
@@ -2670,16 +2771,14 @@ it('keeps a request open when a late failure report names a fire whose run hande
     )
     await until(f.holding)
     await handOn(next)
-    const entry = (await fired.status(context)).entry!
     f.hold.release()
-    await f.opened.root.waitForIdle(context)
-    return entry
+    await fired.wait(context)
   }
-  const a = await fireThatHandsOn('A8', 'A9')
+  await fireThatHandsOn('A8', 'A9')
   await fireThatHandsOn('A9', 'A10')
   await until(() => other.posted.length === 3)
   await f.opened.harness.commit(
-    (tx) => f.service().dropped(tx, 'A8', 'The run Automation A8 woke', 'was stopped', a),
+    (tx) => f.service().dropped(tx, 'A8', 'The run Automation A8 woke', 'was stopped'),
     context,
   )
   // The request is still served, and no failed reply is queued for it.

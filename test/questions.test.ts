@@ -24,7 +24,7 @@ import questionsExtension, {
 } from '../extensions/questions/server.ts'
 import { Standing } from '../extensions/subagents/api.ts'
 import type { SubagentsService } from '../extensions/subagents/api.ts'
-import { Workspaces } from '../extensions/workspaces/workspaces.ts'
+import { landingPending, Workspaces } from '../extensions/workspaces/workspaces.ts'
 
 const hosts: OpenHost[] = []
 afterEach(async () => {
@@ -88,7 +88,7 @@ async function fixture() {
   } as unknown as ExtensionHost
   // Messages’ core dependencies: no standing agents to list, no worktrees, no concluded conversations.
   services.set('subagents', { residents: async () => [] } satisfies Partial<SubagentsService>)
-  services.set('workspaces', { doc: Workspaces })
+  services.set('workspaces', { doc: Workspaces, landingPending })
   services.set('conversations', { concludedIn: async () => new Set() })
   prepared.registry.install(messagesExtension(host))
   prepared.registry.install(questionsExtension(host))
@@ -441,6 +441,7 @@ describe('settling for the user', () => {
       text: '3: Yes, ship it',
       via: { conversation: id, entry: said.id },
     })
+    expect(log).toContainEqual(expect.objectContaining({ from: asker, to: id, report: true }))
     // The branch reads it as the user's answer, settled by @ultimate.
     expect(
       f.observed.some(

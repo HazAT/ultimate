@@ -31,19 +31,10 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import {
-  ownerOutput,
-  owed,
-  parentOf,
-  runInputs,
-  sameOwner,
-  Serving,
-  Started,
-  starterOf,
-} from './addresses.ts'
+import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
-import { delivery } from './delivery.ts'
+import { delivery, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
@@ -236,6 +227,9 @@ export default function messages(host: ExtensionHost) {
   host.implement(Branches, {
     starter: (id, ctx) => starterOf(host, id, ctx),
     working: (tx, id) => working(tx, id),
+    submitLanding: async (tx, to, input, id) => {
+      await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`)
+    },
   })
   host.implement(MessagesApi, {
     answer: (messageId, text, ctx, device, call) =>
@@ -252,57 +246,17 @@ export default function messages(host: ExtensionHost) {
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
     tell: (from, input, ctx) => tell(host, from, input, ctx),
     owed: (tx, to, automation) => owed(host, tx, to, automation),
-    dropped: (tx, id, source, why, fired) =>
-      dropped(host, tx, { kind: 'automation', id }, source, why, fired),
+    submitFire: (tx, to, input, { id, name }) =>
+      submitOutput(host, tx, to, input, { kind: 'automation', id }, `automation ${id} "${name}"`),
+    dropped: (tx, id, source, why) => dropped(host, tx, { kind: 'automation', id }, source, why),
   })
   return defineExtension({
     name: 'messages',
-    tasks: [delivery(host), route(host), notice(host), tellTask(host)],
+    tasks: [delivery(host), route(host), settle(host), notice(host), tellTask(host)],
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
-        beforeRequest: async (_request, api, ctx) => {
-          const by = api.conversationId
-          if ((await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate !== by)
-            return undefined
-          await host.harness().commit(async (tx) => {
-            const live = (await tx.doc(LiveDoc, by)).run
-            if (live?.taskId !== api.taskId) return
-            const entries = await runInputs(tx, by)
-            const last = entries.at(-1)?.id
-            if (last === undefined) return
-            const started = await tx.doc(Started, by)
-            if (started.watching?.generation === api.taskId && started.watching.last === last)
-              return
-            const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-            for (const entry of entries) {
-              const output = await ownerOutput(host, tx, by, entry)
-              if (
-                !output ||
-                !Object.values(owners).some(
-                  ({ owner, assignedBy }) =>
-                    assignedBy < entry.id && sameOwner(owner, output.owner),
-                )
-              )
-                continue
-              started.watching = { generation: api.taskId, last }
-              await tx.createTask(
-                route(host),
-                {
-                  generation: api.taskId as TaskId<GenerationResult>,
-                  inputs: [...live.inputs],
-                  by,
-                  down: true,
-                  failureOnly: true,
-                },
-                { ownership: { kind: 'conversation' }, conversationId: by, background: true },
-              )
-              break
-            }
-          }, ctx)
-          return undefined
-        },
         onYield: async (_answer, api, ctx) => {
           let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
           const down =

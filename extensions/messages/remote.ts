@@ -85,7 +85,12 @@ export async function tell(
   const openQuestionFromTarget = (
     (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages ?? []
   ).find(
-    (m) => m.from === 'remote' && m.to === from && m.remote?.project === target.name && isOpen(m),
+    (m) =>
+      m.from === 'remote' &&
+      m.to === from &&
+      m.remote?.project === target.name &&
+      m.remote.machine === (target.machine ?? self.machine) &&
+      isOpen(m),
   )
   if (openQuestionFromTarget)
     throw new Error(

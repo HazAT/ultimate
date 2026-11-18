@@ -31,6 +31,7 @@ import { LineageApi, Roots } from '../../../lineage/api.ts'
 import {
   actions as conversationActions,
   concludeIn,
+  concludedIn,
   subject,
 } from '../../../conversations/server.ts'
 import { ConversationsApi } from '../../../conversations/api.ts'
@@ -40,10 +41,10 @@ import { setStanding } from '../../../conversations/server.ts'
 import self from '../../../self/server.ts'
 import messagesExtension from '../../../messages/server.ts'
 import { Messages, MessagesApi } from '../../../messages/api.ts'
-import { Started } from '../../../messages/addresses.ts'
+import { Serving, Started } from '../../../messages/addresses.ts'
 import promptExtension, { order as promptOrder } from '../../../prompt/server.ts'
 import subagents from '../../../subagents/server.ts'
-import { Subagents } from '../../../subagents/api.ts'
+import { Standing, Subagents } from '../../../subagents/api.ts'
 import { seedTally, temp, until } from '../../../../test/helpers.ts'
 
 /** The part of the conversations service a test stands in for; standing a lander turns its summaries off and marks it standing. */
@@ -779,6 +780,9 @@ it.concurrent('emits one landed event and notes the root once, across a replayed
     starter: async () => undefined,
     working: async () => false,
     conclude: async () => {},
+    submitLanding: async (tx, to, input) => {
+      await to.submit(tx, input)
+    },
     release: async () => [],
   })
   const report = task.definition.phases.report
@@ -1044,6 +1048,7 @@ async function concluding() {
       concluded: async () => new Set<ConversationId>(),
       subject: async () => ({}),
       concludeIn: (tx, ids, by) => concludeIn(f.host, tx, ids, by),
+      concludedIn,
     }),
   )
   f.prepared.registry.install(lineage(f.host))
@@ -1058,6 +1063,23 @@ async function concluding() {
 
 it.concurrent('notes a clean landing without a branch run, concludes and releases it, and wakes its starter once across replay', async () => {
   const { f, id } = await concluding()
+  const asker = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const request = await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ROOT_CONVERSATION_ID
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+    const message = log.next++
+    const assignedBy = (await tx.appendEntry(ROOT_CONVERSATION_ID, { kind: 'test.request' })).id
+    owners[message] = {
+      request: { message, from: asker.id },
+      owner: { kind: 'branch', id },
+      assignedBy,
+    }
+    return message
+  }, context)
   const workspace = (await f.service.get(id, context))!
   const task = f.service.Lander
   const report = task.definition.phases.report
@@ -1115,7 +1137,11 @@ it.concurrent('notes a clean landing without a branch run, concludes and release
       context,
     )
     expect(requests.branch).toMatchObject({ type: 'write' })
-    expect(requests.starter).toMatchObject({ type: 'input' })
+    expect(requests.starter).toMatchObject({
+      type: 'input',
+      status: 'done',
+      answer: expect.any(Number),
+    })
     const branch = (await f.opened.harness.conversation(id, context))!
     const entries = (await branch.context(context)).entries
     expect(entries.filter((entry) => entry.kind === 'pi.assistant')).toHaveLength(0)
@@ -1133,8 +1159,17 @@ it.concurrent('notes a clean landing without a branch run, concludes and release
     ).toContain('Commits:')
   }
   await checkReports()
+  const results = async () =>
+    (await messageLog(f)).filter((m) => m.to === asker.id && m.re === request)
+  await until(async () => (await results()).length === 1)
+  expect(await results()).toEqual([
+    expect.objectContaining({
+      text: expect.stringContaining(`Result of #${id}, which worked on your message ${request}`),
+    }),
+  ])
   await f.reopen()
   await checkReports()
+  expect(await results()).toHaveLength(1)
 })
 it.concurrent('keeps a landed branch and its checkout while a reply is under way and tells its starter', async () => {
   const { f, id } = await concluding()

@@ -22,8 +22,8 @@ export type ConversationsService = {
   subject: (id: ConversationId, caller: Context) => Promise<ConversationSubject>
   /** The conversations the user concluded; use it to leave their resources (worktrees) alone or free them. */
   concluded: (caller: Context) => Promise<Set<ConversationId>>
-  /** Read concluded conversations inside `tx`. With `starter`, include only its own and the lander's conclusions. */
-  concludedIn(tx: Tx, starter?: ConversationId): Promise<Set<ConversationId>>
+  /** Read concluded conversations inside `tx`, including its pending changes. */
+  concludedIn(tx: Tx): Promise<Set<ConversationId>>
   /**
    * Conclude top-level conversations `ids` inside `tx`, as the Conclude action does before it frees their resources
    * through `Release`; throws for unknown and owned conversations, roots and standing agents. Returns them with every

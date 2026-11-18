@@ -153,9 +153,9 @@ Server side, imported in one direction (`log`, `images`, `addresses`, `questions
 - `server.ts`: wiring: the `message` tool, prompt section, hooks, actions, `MessagesApi` and the `workspaces.branches`
   point.
 - `send.ts`: `send()`, validation, receipts, and turning a message to a sender you owe into that answer.
-- `delivery.ts`: the `board.delivery` task, its `deliver` and `reply` phases.
+- `delivery.ts`: the `board.delivery` task, owner-output admission and the `board.settle` task that waits for that input.
 - `route.ts`: the `board.route` task: notes, reports and answers back down.
-- `outcomes.ts`: commit the owner's result or failure and its delivery together.
+- `outcomes.ts`: fail requests whose owner has stopped, failed or been deleted.
 - `remote.ts`: `tell`, the `remote` and `remoteReply` actions.
 - `branch.ts`: the `branch` tool.
 - `addresses.ts`: resolving `to`, sender names, a subagent's parent and the lander.

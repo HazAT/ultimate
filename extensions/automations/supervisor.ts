@@ -1,4 +1,10 @@
-import type { ConversationId, Agent, Cursor, Submission, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Agent,
+  Cursor,
+  InputSubmissionDraft,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
@@ -351,11 +357,6 @@ export function supervisor(
               `automations:${sub.id}:${event}:ultimate`,
               ctx,
             )
-        const ultimate =
-          kind === 'fired'
-            ? (await runtime.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
-            : undefined
-        let servingRun: Submission | undefined
         for (const target of targets) {
           const id =
             typeof target === 'string'
@@ -372,45 +373,28 @@ export function supervisor(
           const requestId = `automations:${sub.id}:${event}:${target}`
           const conversation = await runtime.conversation(id, ctx)
           if (!conversation) throw new Error(`Automation ${sub.id}: conversation #${id} is missing`)
-          const submitted = await conversation.submit(
-            {
-              type: 'input',
-              content,
-              whenBusy: 'followUp',
-              requestId,
-              entry: {
-                kind: `automations.${kind}`,
-                data: {
-                  id: sub.id,
-                  name: sub.name,
-                  text,
-                  ...(kind === 'fired' && sub.branches?.by === id
-                    ? { branches: sub.branches.ids }
-                    : {}),
-                },
+          const input: InputSubmissionDraft = {
+            type: 'input',
+            content,
+            whenBusy: 'followUp',
+            requestId,
+            entry: {
+              kind: `automations.${kind}`,
+              data: {
+                id: sub.id,
+                name: sub.name,
+                text,
+                ...(kind === 'fired' && sub.branches?.by === id
+                  ? { branches: sub.branches.ids }
+                  : {}),
               },
             },
-            ctx,
-          )
-          if (id === ultimate) servingRun = submitted
-        }
-        const servingRunEnd = await servingRun?.wait(ctx)
-        if (servingRunEnd?.status === 'unanswered') {
-          await host
-            .harness()
-            .commit(
-              (tx) =>
-                host
-                  .need(MessagesApi)
-                  .dropped(
-                    tx,
-                    sub.id,
-                    `The run automation ${sub.id} "${sub.name}" woke`,
-                    `ended without an answer (${servingRunEnd.reason})`,
-                    servingRunEnd.entry,
-                  ),
-              ctx,
-            )
+          }
+          if (kind === 'fired')
+            await host
+              .harness()
+              .commit((tx) => host.need(MessagesApi).submitFire(tx, conversation, input, sub), ctx)
+          else await conversation.submit(input, ctx)
         }
         await runtime.commit(() => terminal, ctx)
       },

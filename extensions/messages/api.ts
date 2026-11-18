@@ -2,7 +2,15 @@
  * Messages: messages between conversations and the user, delivered as inputs or notes. Other extensions send one-way
  * messages and answer the user's open questions here.
  */
-import type { EntryId, TaskId, Tx, ConversationId } from '@earendil-works/pi-durable'
+import type {
+  ConversationHandle,
+  EntryId,
+  InputSubmissionDraft,
+  SubmissionId,
+  TaskId,
+  Tx,
+  ConversationId,
+} from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
@@ -109,11 +117,15 @@ export type MessagesService = {
    * Omit the id if the automation doesn't wake @ultimate. Return the branches that still expect the run's feedback.
    */
   owed(tx: Tx, to: ConversationId, automation?: string): Promise<{ branches?: ConversationId[] }>
-  /**
-   * In `tx`, fail any requests the automation still owns, naming the source and why it ended. For an unanswered
-   * fire, pass the input entry so ownership assigned after it is left alone.
-   */
-  dropped(tx: Tx, automation: string, source: string, why: string, fired?: EntryId): Promise<void>
+  /** Admit an automation fire and track requests it owns in the same transaction. */
+  submitFire(
+    tx: Tx,
+    to: ConversationHandle,
+    input: InputSubmissionDraft,
+    automation: { id: string; name: string },
+  ): Promise<SubmissionId>
+  /** In `tx`, fail any requests the automation still owns, naming the source and why it ended. */
+  dropped(tx: Tx, automation: string, source: string, why: string): Promise<void>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

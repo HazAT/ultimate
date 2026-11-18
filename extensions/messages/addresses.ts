@@ -1,5 +1,12 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import type { ConversationId, EntryId, EntryRecord, Tx, TaskId } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  SubmissionId,
+  Tx,
+  TaskId,
+} from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
@@ -19,7 +26,10 @@ export type Owner =
   | { kind: 'tell'; key: string }
 
 export const Serving = defineDoc<{
-  owners: Record<string, { request: Serves; owner: Owner; assignedBy: EntryId }>
+  owners: Record<
+    string,
+    { request: Serves; owner: Owner; assignedBy: EntryId; outputPending?: SubmissionId }
+  >
 }>({
   kind: 'board.serving',
   checkpointWhen: () => false,
@@ -157,7 +167,6 @@ export async function owed(host: ExtensionHost, tx: Tx, to: ConversationId, auto
 export const Started = defineDoc<{
   by?: ConversationId
   yielded?: TaskId
-  watching?: { generation: TaskId; last: EntryId }
 }>({
   kind: 'board.started',
   checkpointWhen: () => false,

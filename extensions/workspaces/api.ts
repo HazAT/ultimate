@@ -3,7 +3,12 @@
  * Other extensions create, look up, land and discard a conversation's worktree through this service.
  */
 import type { Context } from '@earendil-works/chord/context'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationHandle,
+  ConversationId,
+  InputSubmissionDraft,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { git } from '../../lib/git.ts'
 import type { Workspaces, workspaces } from './workspaces.ts'
@@ -40,6 +45,13 @@ export type BranchesService = {
   starter(id: ConversationId, ctx: Context): Promise<ConversationId | undefined>
   /** Inside `tx`: whether branch `id` has work of its own that will wake it again, so a landing leaves it open. */
   working(tx: Tx, id: ConversationId): Promise<boolean>
+  /** Admit a concluded branch's landing card and track its owned requests in the same transaction. */
+  submitLanding(
+    tx: Tx,
+    to: ConversationHandle,
+    input: InputSubmissionDraft,
+    id: ConversationId,
+  ): Promise<void>
 }
 /** What a landing asks about the branch it landed; messages provides it. `want` it. */
 export const Branches = defineApi<BranchesService>()('workspaces.branches')

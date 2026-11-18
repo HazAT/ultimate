@@ -10,7 +10,9 @@ import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type {
+  Conversation,
   ConversationId,
+  InputSubmissionDraft,
   JsonObject,
   SubmissionId,
   TaskId,
@@ -102,7 +104,11 @@ async function fixture() {
   provided.set('subagents', {
     createChild: (tx, options) => createChild(host, tx, options),
   } satisfies Partial<SubagentsService>)
-  provided.set('messages', { owed: async () => ({}), dropped: async () => {} })
+  provided.set('messages', {
+    owed: async () => ({}),
+    dropped: async () => {},
+    submitFire: (tx: Tx, to: Conversation, input: InputSubmissionDraft) => to.submit(tx, input),
+  })
   provided.set('workspaces', { doc: Workspaces })
   const extension = automations(host as unknown as Parameters<typeof automations>[0])
   prepared.registry.install(extension)

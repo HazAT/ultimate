@@ -1,7 +1,12 @@
 import { join } from 'node:path'
 import { fauxProvider, fauxAssistantMessage, fauxText } from '@earendil-works/pi-ai/providers/faux'
 import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import type {
+  Conversation,
+  ConversationId,
+  InputSubmissionDraft,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
@@ -70,7 +75,16 @@ async function fixture() {
     },
     ...apis(
       new Map<string, unknown>([
-        ['messages', { send, owed: async () => ({}), dropped: async () => {} }],
+        [
+          'messages',
+          {
+            send,
+            owed: async () => ({}),
+            dropped: async () => {},
+            submitFire: (tx: Tx, to: Conversation, input: InputSubmissionDraft) =>
+              to.submit(tx, input),
+          },
+        ],
         ['workspaces', { doc: Workspaces }],
       ]),
     ),
