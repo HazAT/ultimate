@@ -6,6 +6,7 @@ import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { pace } from './timers.ts'
+import { enterWork } from './cgroup.ts'
 import {
   inProcess,
   ignoring,
@@ -18,7 +19,12 @@ import {
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
 
 export type GroupProcess = ChildProcessByStdio<Writable, Readable, Readable>
-export type Group = { child: GroupProcess; ended: Promise<boolean>; closed: Promise<void> }
+export type Group = {
+  child: GroupProcess
+  ended: Promise<boolean>
+  closed: Promise<void>
+  outOfMemory: () => boolean
+}
 
 export function groupTarget(pid: number) {
   const wouldSignalInitOrEveryUserProcess = !Number.isSafeInteger(pid) || pid <= 1
@@ -131,7 +137,8 @@ export function spawnGroup(
   options: Omit<SpawnOptions, 'detached' | 'stdio'> & { pidFile?: string; grace?: number },
 ): Group {
   const { pidFile, grace = 3000, ...rest } = options
-  const child = spawn('/bin/sh', ['-c', handshake, program, ...args], {
+  const work = enterWork(program, args)
+  const child = spawn('/bin/sh', ['-c', handshake, work.program, ...work.args], {
     ...rest,
     detached: true,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -151,8 +158,10 @@ export function spawnGroup(
   const ended = groupAliveAtLeaderReaping
     .then((remains) => !remains || drainFreshlyVerifiedGroup(child.pid!, grace))
     .catch(survivorOrUnsignalableGroup)
+    .finally(work.leave)
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()))
-  if (child.pid === undefined) return { child, ended, closed }
+  const { outOfMemory } = work
+  if (child.pid === undefined) return { child, ended, closed, outOfMemory }
   try {
     if (pidFile) {
       writeFileSync(`${pidFile}.start`, `${identify(child.pid)}\n`)
@@ -163,7 +172,7 @@ export function spawnGroup(
     throw error
   }
   child.stdin.end('\n')
-  return { child, ended, closed }
+  return { child, ended, closed, outOfMemory }
 }
 
 async function text(path: string) {
@@ -277,7 +286,7 @@ export async function runGroup(
     const code = await Promise.race([exited, stopFailedWhileLeaderRunning.promise])
     await stop()
     await closeOutput(group)
-    return code
+    return { code, outOfMemory: group.outOfMemory() }
   } finally {
     signal?.removeEventListener('abort', halt)
   }

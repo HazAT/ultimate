@@ -191,9 +191,9 @@ export async function runLanderCheck(
     stallDeadline()
   }
   try {
-    let exitCode: number
+    let exit: Awaited<ReturnType<typeof runGroup>>
     try {
-      exitCode = await runGroup('/bin/bash', ['-c', command], {
+      exit = await runGroup('/bin/bash', ['-c', command], {
         cwd: path,
         env: { ...process.env, TMPDIR: tmp },
         pidFile: join(pids, `${process.pid}-${randomUUID()}.pid`),
@@ -207,7 +207,9 @@ export async function runLanderCheck(
     }
     context.abortSignal?.throwIfAborted()
     if (stopped) return { failure: report(stopped, 'Failed tests so far:'), timedOut: true }
-    if (exitCode !== 0) return { failure: report(`exit ${exitCode}`, 'Failed tests:') }
+    if (exit.outOfMemory)
+      return { failure: report(`Out of memory: exit ${exit.code}`, 'Failed tests so far:') }
+    if (exit.code !== 0) return { failure: report(`exit ${exit.code}`, 'Failed tests:') }
     const last = lines(stripVTControlCharacters(output)).findLast((line) => line.trim())
     return { summary: last?.trim().slice(0, 200) }
   } finally {
