@@ -5,14 +5,13 @@ import { totalmem } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type { spawn as nodeSpawn, SpawnOptions } from 'node:child_process'
 import { exec } from './exec.ts'
-import { projectSettings } from './project-setup.ts'
 import { readSettings, userSettingsPath } from './settings.ts'
 import { errnoCode, ignoring, isMissing } from './errors.ts'
 
 const isBusy = (error: unknown) => errnoCode(error) === 'EBUSY'
 const exists = (error: unknown) => errnoCode(error) === 'EEXIST'
 const enterLeaf =
-  'mkdir "$0" && echo 1 > "$0/memory.oom.group" && echo 0 > "$0/cgroup.procs" || exit 1; exec "$@"'
+  'command -p mkdir "$0" && echo 1 > "$0/memory.oom.group" && echo 0 > "$0/cgroup.procs" || exit 1; exec "$@"'
 
 const shared = ((globalThis as Record<symbol, unknown>)[Symbol.for('ultimate.work-cgroup')] ??=
   {}) as { work?: string }
@@ -36,7 +35,7 @@ function readSelfCgroup() {
 
 export async function workMemoryMax(projectRoot: string, userHome: string) {
   for (const settings of [
-    () => projectSettings(projectRoot, userHome),
+    async () => (await import('./project-setup.ts')).projectSettings(projectRoot, userHome),
     () => readSettings(userSettingsPath(userHome)),
   ]) {
     const memoryMax = ((await settings()).work as { memoryMax?: unknown } | undefined)?.memoryMax
@@ -54,7 +53,7 @@ const ownerAlive = (leaf: string) => {
   }
 }
 
-export async function isolateWork(core: string, memoryMax: () => Promise<string>, swapMax = '4G') {
+export async function isolateWork(core: string, memoryMax: () => Promise<string>) {
   const service = dirname(core)
   const work = join(service, 'work')
   shared.work = undefined
@@ -63,7 +62,7 @@ export async function isolateWork(core: string, memoryMax: () => Promise<string>
     await writeFile(join(service, 'cgroup.subtree_control'), '+memory')
     await writeFile(join(work, 'cgroup.subtree_control'), '+memory')
     await writeFile(join(work, 'memory.max'), await memoryMax())
-    await writeFile(join(work, 'memory.swap.max'), swapMax)
+    await writeFile(join(work, 'memory.swap.max'), '4G')
   } catch (error) {
     console.warn(`Branch work shares the core's memory: ${core}: ${String(error)}`)
     return
@@ -117,7 +116,7 @@ function removeOnceEmpty(leaf: string) {
   }
 }
 
-export type Work = {
+type Work = {
   program: string
   args: string[]
   leave: () => void
