@@ -109,7 +109,8 @@ export const CallerAction = actionRef<
  * `{ messageId, text, dismiss? }` → `{ id }`: @ultimate (or its side chat) settles the user's open question
  * `messageId` for them, from what they said in its chat: `text` is their answer, in their words or the picks read
  * from them, sent to the asker as the user's reply; with `dismiss`, `text` says why it no longer matters and the
- * asker gets a note. The answer records `via`, so the card shows @ultimate settled it. Refused from anyone else.
+ * asker gets a note. The answer records `via`, so the card shows @ultimate settled it. With `dismiss`, it also closes
+ * @ultimate's own open request to another project, `text` as the reason. Refused from anyone else.
  */
 export const SettleAction = actionRef<
   { messageId: number; text: string; dismiss?: boolean },

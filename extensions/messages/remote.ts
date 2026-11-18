@@ -204,6 +204,10 @@ export async function remoteAction(args: JsonValue, { host }: ActionContext) {
   }
   if (typeof input.reply !== 'boolean') throw new Error('reply must be a boolean')
   const reply = input.reply
+  const receipts = await host
+    .harness()
+    .snapshot(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
+  if (reply && !Object.hasOwn(receipts?.received ?? {}, key)) await routeBack(host, sender)
   const to = await host.need(SubagentsApi).standing('ultimate', BACKGROUND_CONTEXT)
   const toLabel = await senderName(host, to, BACKGROUND_CONTEXT)
   return host.harness().commit(async (tx) => {
@@ -242,6 +246,43 @@ export async function remoteAction(args: JsonValue, { host }: ActionContext) {
     )
     return message.id
   }, BACKGROUND_CONTEXT)
+}
+
+async function routeBack(host: ExtensionHost, sender: { project: string; machine: string }) {
+  const self = await selfAddress(host)
+  const unreachable = (why: string) =>
+    new Error(
+      `${self.project} on ${self.machine} cannot answer: it has no route back to ${sender.project} on ${sender.machine} (${why}). Add ${sender.project} on ${sender.machine} to remotes in its user settings, or tell with reply: false.`,
+    )
+  const target = await locate(host, sender.project, sender.machine).catch((error: unknown) => {
+    throw unreachable(error instanceof Error ? error.message : String(error))
+  })
+  if ('current' in target) throw unreachable(`${sender.project} is this project`)
+}
+
+export async function dismissTell(
+  host: ExtensionHost,
+  from: ConversationId,
+  messageId: number,
+  reason: string,
+  ctx: Context,
+) {
+  return host.harness().commit(async (tx) => {
+    const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+      (m) => m.id === messageId && m.from === from && m.to === 'remote' && isOpen(m),
+    )
+    if (!stored) throw new Error('These questions are no longer open')
+    stored.state = 'dismissed'
+    stored.error = reason
+    await dropped(
+      host,
+      tx,
+      { kind: 'tell', key: stored.remote!.key },
+      `The tell to ${remoteLabel(stored.remote!)},`,
+      `was dismissed (${reason})`,
+    )
+    return stored.id
+  }, ctx)
 }
 
 export async function remoteReplyAction(args: JsonValue, { host }: ActionContext) {

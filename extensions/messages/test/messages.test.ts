@@ -2897,3 +2897,67 @@ it('keeps a request open when a late failure report names a fire whose run hande
   expect(other.posted).toHaveLength(3)
   expect(other.posted.some((p) => (p.body as { failed: boolean }).failed)).toBe(false)
 })
+it('fails a tell at once when the other Ultimate has no route back for its answer', async () => {
+  // home-assistant-helper on rog told unifi-watcher on haza-pc, which had no route back: both answers failed there and
+  // the requests stayed open on rog for three weeks.
+  const replier = await remoteFixture()
+  Object.assign(replier.host, {
+    projects: async () => [{ name: 'unifi-watcher', current: true }],
+  })
+  const bridge = createServer(async (request, response) => {
+    let raw = ''
+    for await (const chunk of request) raw += String(chunk)
+    const args = (JSON.parse(raw) as { args: JsonValue }).args
+    const [status, json] = await actions
+      .remote(args, replier.action())
+      .then((delivered) => [200, { result: delivered }] as const)
+      .catch((error: Error) => [500, { error: error.message }] as const)
+    response.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(json))
+  })
+  await new Promise<void>((done) => bridge.listen(0, '127.0.0.1', done))
+  servers.push(bridge)
+  const asker = await remoteFixture()
+  Object.assign(asker.host, {
+    projects: async () => [
+      { name: 'home-assistant-helper', current: true },
+      {
+        name: 'unifi-watcher',
+        current: false,
+        running: { url: `http://127.0.0.1:${(bridge.address() as AddressInfo).port}` },
+      },
+    ],
+  })
+  const tell = (reply: boolean) =>
+    asker
+      .service()
+      .tell(ROOT_CONVERSATION_ID, { project: 'unifi-watcher', text: 'Probe', reply }, context)
+  await expect(tell(true)).rejects.toThrow(
+    'unifi-watcher on ' +
+      hostname() +
+      ' cannot answer: it has no route back to home-assistant-helper on ' +
+      hostname(),
+  )
+  expect((await asker.log())!.messages.at(-1)).toMatchObject({ reply: true, state: 'failed' })
+  expect((await replier.log())?.messages ?? []).toEqual([])
+  expect((await tell(false)).delivered).toBeGreaterThan(0)
+})
+it('lets @ultimate dismiss its open request to another project', async () => {
+  const other = await otherUltimate(() => [200, { result: 7 }])
+  const f = await remoteFixture(other.url)
+  const told = await f
+    .service()
+    .tell(ROOT_CONVERSATION_ID, { project: 'poe2-rust', text: 'Probe' }, context)
+  const settle = (args: { messageId: number; text: string; dismiss?: boolean }) =>
+    actions.settle(args, { ...f.action(), conversationId: ROOT_CONVERSATION_ID })
+  await expect(settle({ messageId: told.message, text: 'Answered via a relay' })).rejects.toThrow(
+    'closes only with dismiss: true',
+  )
+  await settle({ messageId: told.message, text: 'Answered via a relay', dismiss: true })
+  expect((await f.log())!.messages.find((m) => m.id === told.message)).toMatchObject({
+    state: 'dismissed',
+    error: 'Answered via a relay',
+  })
+  await expect(settle({ messageId: told.message, text: 'Again', dismiss: true })).rejects.toThrow(
+    'These questions are no longer open',
+  )
+})

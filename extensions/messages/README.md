@@ -102,7 +102,9 @@ message is never the user's.
   project and machine. Telling an Ultimate whose question to you is still open is refused: answer it instead.
 - **Target:** `messages.remote { key, text, reply, from: { project, machine } }` delivers to its own primary agent only,
   which reads `Message from @ultimate@<project> on <machine> (another project's Ultimate, not the user)`. A repeated key
-  delivers once.
+  delivers once. A request that expects a reply is refused when the target has no route back to the sender (its
+  `remotes` or the cloud register), so the sender's `tell` fails at once instead of waiting for an answer that cannot
+  arrive.
 - **One hop back:** with `reply`, the answer posts to the sender's
   `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none.
 - **The reply is the wait.** `board.serving` records one owner per request. An answer that hands a remote request on
@@ -140,7 +142,7 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
 - `settle({ messageId, text, dismiss? }) → { id }`: from @ultimate's conversation or its side chat, settles the user's
   open question for them from what they said there. `text` is their answer (with `dismiss`, why it no longer matters);
   the reply records `via`, so the card reads "@ultimate answered for you". Refused for other callers and closed
-  messages.
+  messages. With `dismiss`, it also closes @ultimate's own open `tell` to another project, `text` as the reason.
 
 There is no user posting action: users type in a conversation or answer a card. `host.want(MessagesApi)` (`api.ts`)
 exposes `send`, a one-way message from a conversation, and `answer`, the user's reply to an open message.
