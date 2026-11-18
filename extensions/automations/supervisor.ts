@@ -248,6 +248,7 @@ export function supervisor(
         if (!gone(sub)) continue
         const publishedSinceScan = trust && (await exists(join(projectDir(sub.id), MANIFEST)))
         if (publishedSinceScan) continue
+        await drop(tx, sub, 'was deleted')
         delete state.automations[sub.id]
         stops.push({
           id: sub.id,
@@ -349,6 +350,10 @@ export function supervisor(
               `automations:${sub.id}:${event}:ultimate`,
               ctx,
             )
+        const ultimate =
+          kind === 'fired'
+            ? (await runtime.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
+            : undefined
         let servingRun: Submission | undefined
         for (const target of targets) {
           const id =
@@ -374,26 +379,18 @@ export function supervisor(
                   id: sub.id,
                   name: sub.name,
                   text,
-                  ...(kind === 'fired' && sub.serves?.by === id
-                    ? {
-                        serves: (({ by: _by, ...serves }) => serves)(sub.serves),
-                        at: sub.lastFireAt ?? 0,
-                      }
-                    : {}),
                   ...(kind === 'fired' && sub.branches?.by === id
-                    ? { branches: sub.branches.ids, at: sub.lastFireAt ?? 0 }
+                    ? { branches: sub.branches.ids }
                     : {}),
                 },
               },
             },
             ctx,
           )
-          if (kind === 'fired' && sub.serves?.by === id && sub.serves.from === 'remote')
-            servingRun = submitted
+          if (id === ultimate) servingRun = submitted
         }
         const servingRunEnd = await servingRun?.wait(ctx)
         if (servingRunEnd?.status === 'unanswered') {
-          const { by, ...serves } = sub.serves!
           await host
             .harness()
             .commit(
@@ -402,9 +399,9 @@ export function supervisor(
                   .need(MessagesApi)
                   .dropped(
                     tx,
-                    by,
-                    serves,
-                    `The run automation ${sub.id} "${sub.name}" woke for your message ${serves.message} ended without an answer (${servingRunEnd.reason}); no result will come from it.`,
+                    sub.id,
+                    `The run automation ${sub.id} "${sub.name}" woke`,
+                    `ended without an answer (${servingRunEnd.reason})`,
                     servingRunEnd.entry,
                   ),
               ctx,
@@ -461,11 +458,14 @@ export function supervisor(
   function retryCleanup(run: Run) {
     delete run.cleanup
   }
+  const drop = (tx: Tx, sub: Automation, why: string) =>
+    host.need(MessagesApi).dropped(tx, sub.id, `Automation ${sub.id} "${sub.name}",`, why)
   async function escalate(tx: Tx, sub: Automation, reason: string) {
     sub.enabled = false
     sub.script!.state = 'failed'
     sub.script!.error = reason
     sub.updatedAt = Date.now()
+    await drop(tx, sub, `failed (${reason})`)
     const event = await host.emit(tx, Escalated, { id: sub.id, reason })
     await deliver(tx, sub, event.id, 'escalated', reason)
   }
@@ -498,6 +498,7 @@ export function supervisor(
       if (cleanRecurringExit) {
         sub.script!.state = 'stopped'
         sub.enabled = false
+        await drop(tx, sub, 'stopped')
       } else if (failed) {
         sub.script!.state = 'investigating'
         const ranLongEnoughToResetFailures =
@@ -786,6 +787,7 @@ export function supervisor(
     status,
     apply,
     escalate,
+    drop,
     watcherYielded,
     open,
     close,

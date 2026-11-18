@@ -40,8 +40,10 @@ report.**
 - **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of
   that run (not concluded, not messaged in the run) with `routed: true`, so a weigh-in reaches the branch. The run's
   other inputs (the user's, another Ultimate's, a card) neither receive it nor keep it from a branch.
-- **Results to the asker.** A branch started while its starter owed an agent an answer records it as `serves`; once the
-  branch is concluded, the starter's final answer goes to that agent instead, another project's Ultimate included.
+- **Results to the asker.** A branch, waking automation or reply-expected `tell` started by @ultimate can own a request.
+  New work takes it over if the run owes the request, reads its current owner's output or hears from its asker (their
+  newest open request). Only the current owner's result goes back. A branch's result is final once it is concluded;
+  local askers receive a normal early answer and then a one-way result.
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
@@ -103,16 +105,11 @@ message is never the user's.
   delivers once.
 - **One hop back:** with `reply`, the answer posts to the sender's
   `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none.
-- **The reply is the wait.** When the run answering a remote request starts work for it (a branch, or an automation
-  that records `serves`), the request is _served_ (`board.serving`) and that run's answer goes back as an interim reply
-  (`interim`: the answering message's id, which dedupes it). The sender places it as a note that wakes no one, and the
-  request stays open (`waits on <project>`). The served work's result, routed as for local askers, closes the request
-  with the final `remoteReply`; a run woken by the serving automation's fire that starts another one (a check-back that
-  finds the job still running) hands the request on and answers interim again. The sender's @ultimate wakes once, with
-  the result, and its answer to it goes to the branches whose reply or report its `tell` run read.
-- **Failures are loud.** An answer that cannot be posted wakes the answering @ultimate with the cause and the
-  undelivered text. A serving automation deleted before it fires sends the asker a failed final reply.
-  Two Ultimates never loop: a reply expects no answer.
+- **The reply is the wait.** `board.serving` records one owner per request. An answer that hands a remote request on
+  arrives as an interim note and doesn't wake the asker. The current owner's final result closes the request and
+  wakes the asker. A reply-expected `tell` can own a branch's relay request; the remote result returns to that branch.
+- **Failures are loud.** Lost owners fail the request once. An answer that cannot be posted wakes the answering
+  @ultimate with the cause and the undelivered text. Two Ultimates never loop: a reply expects no answer.
 - **Durable on the sender:** `tell` logs the message and creates the `messages.tell` effect task in one commit; the
   task posts and settles the message `delivered` or `failed`. A crash before it settles posts again with the same
   key, which the target delivers once.
@@ -158,6 +155,7 @@ Server side, imported in one direction (`log`, `images`, `addresses`, `questions
 - `send.ts`: `send()`, validation, receipts, and turning a message to a sender you owe into that answer.
 - `delivery.ts`: the `board.delivery` task, its `deliver` and `reply` phases.
 - `route.ts`: the `board.route` task: notes, reports and answers back down.
+- `outcomes.ts`: commit the owner's result or failure and its delivery together.
 - `remote.ts`: `tell`, the `remote` and `remoteReply` actions.
 - `branch.ts`: the `branch` tool.
 - `addresses.ts`: resolving `to`, sender names, a subagent's parent and the lander.

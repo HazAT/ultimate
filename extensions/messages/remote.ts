@@ -14,7 +14,8 @@ import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
 import { append } from './log.ts'
 import { isOpen } from '../../lib/message-state.ts'
-import { branchesReadThisRun, remoteLabel, senderName } from './addresses.ts'
+import { branchesReadThisRun, remoteLabel, senderName, serve } from './addresses.ts'
+import { dropped } from './outcomes.ts'
 import { delivery } from './delivery.ts'
 
 type PendingRemoteAnswer = {
@@ -105,6 +106,7 @@ export async function tell(
       remote,
     })
     if (reply) {
+      await serve(host, tx, from, { kind: 'tell', key: remote.key })
       const branches = await branchesReadThisRun(tx, from)
       ;(await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[remote.key] = {
         message,
@@ -119,7 +121,7 @@ export async function tell(
       steer: true,
     })
     const posting = await tx.createTask(
-      Tell,
+      tellTask(host),
       {
         message: message.id,
         target: { url: target.url, label: target.label },
@@ -133,36 +135,51 @@ export async function tell(
   return { message: logged.message, delivered }
 }
 
-export const Tell = defineEffect<
-  {
-    message: number
-    target: { url: string; label: string }
-    args: { key: string; text: string; reply: boolean; from: { project: string; machine: string } }
-  },
-  number
->(
-  'messages.tell',
-  async ({ target, args }, { signal }) =>
-    (await postAction(target, 'messages', 'remote', args, signal)) as number,
-  async (tx, { message, args }, outcome) => {
-    const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-      (m) => m.id === message,
-    )
-    if (!outcome.ok) {
-      if (stored?.state === 'sent') {
-        stored.state = 'failed'
-        stored.error = outcome.error
+export const tellTask = (host: ExtensionHost) =>
+  defineEffect<
+    {
+      message: number
+      target: { url: string; label: string }
+      args: {
+        key: string
+        text: string
+        reply: boolean
+        from: { project: string; machine: string }
       }
-      const { told } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)
-      if (told[args.key]?.answer === undefined) delete told[args.key]
-      return
-    }
-    if (!stored) return
-    stored.remote = { ...stored.remote!, id: outcome.value }
-    const replyHasNotArrivedFirst = stored.state === 'sent'
-    if (replyHasNotArrivedFirst) stored.state = 'delivered'
-  },
-)
+    },
+    number
+  >(
+    'messages.tell',
+    async ({ target, args }, { signal }) =>
+      (await postAction(target, 'messages', 'remote', args, signal)) as number,
+    async (tx, { message, args, target }, outcome) => {
+      const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+        (m) => m.id === message,
+      )
+      if (!outcome.ok) {
+        if (stored?.state === 'sent') {
+          stored.state = 'failed'
+          stored.error = outcome.error
+        }
+        const { told } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)
+        if (told[args.key]?.answer === undefined) {
+          delete told[args.key]
+          await dropped(
+            host,
+            tx,
+            { kind: 'tell', key: args.key },
+            `The tell to ${target.label},`,
+            `failed (${outcome.error})`,
+          )
+        }
+        return
+      }
+      if (!stored) return
+      stored.remote = { ...stored.remote!, id: outcome.value }
+      const replyHasNotArrivedFirst = stored.state === 'sent'
+      if (replyHasNotArrivedFirst) stored.state = 'delivered'
+    },
+  )
 
 export async function branchesAwaitingRemoteReply(tx: Tx, key: string) {
   const { told } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)
@@ -257,6 +274,14 @@ export async function remoteReplyAction(args: JsonValue, { host }: ActionContext
     })
     if (interim !== undefined) entry.interims = { ...entry.interims, [interim]: response.id }
     else entry.answer = response.id
+    if (failed)
+      await dropped(
+        host,
+        tx,
+        { kind: 'tell', key },
+        `The tell to ${remoteLabel(original.remote!)},`,
+        stopped ? 'was stopped' : `failed (${body})`,
+      )
     await tx.createTask(
       delivery(host),
       {

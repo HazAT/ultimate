@@ -1,90 +1,138 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import type { ConversationId, Tx, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, EntryRecord, Tx, TaskId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { LanderReportEntry, WorkspacesApi } from '../workspaces/api.ts'
 import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
 import { Messages } from './api.ts'
-import { isOwed } from '../../lib/message-state.ts'
+import { isOpen } from '../../lib/message-state.ts'
 
 export type { Serves }
 
+export type Owner =
+  | { kind: 'branch'; id: ConversationId }
+  | { kind: 'automation'; id: string }
+  | { kind: 'tell'; key: string }
+
 export const Serving = defineDoc<{
-  keys: Record<string, number>
-  handed: Record<string, true>
-  handedOnBy: Record<string, string>
+  owners: Record<string, { request: Serves; owner: Owner; assignedBy: EntryId }>
 }>({
   kind: 'board.serving',
   checkpointWhen: () => false,
-  version: 1,
+  version: 2,
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ keys: {}, handed: {}, handedOnBy: {} }),
+  initial: () => ({ owners: {} }),
+  migrate: () => ({ owners: {} }),
 })
-const ANSWERING_RUN = 0
 
-export function closeServed(
-  serving: { keys: Record<string, number>; handedOnBy: Record<string, string> },
-  key: string,
-) {
-  delete serving.keys[key]
-  for (const [entry, handedKey] of Object.entries(serving.handedOnBy))
-    if (handedKey === key) delete serving.handedOnBy[entry]
-}
+export const sameOwner = (a: Owner, b: Owner) =>
+  a.kind === 'tell' ? b.kind === 'tell' && a.key === b.key : b.kind === a.kind && a.id === b.id
 
-export async function stillServedAfter(tx: Tx, serves: Serves, fired?: number) {
-  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  if (!serves.remote || !Object.hasOwn(serving.keys, serves.remote.key)) return false
-  const firedRunHandedItOn = fired !== undefined && Object.hasOwn(serving.handedOnBy, String(fired))
-  const laterStepServesIt = fired !== undefined && serving.keys[serves.remote.key] > fired
-  return firedRunHandedItOn || laterStepServesIt
-}
-
-export async function owedRequest(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
-  const newestOwedRequestProxy = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
-    (m) => m.to === to && m.from !== 'user' && isOwed(m),
-  )
-  if (!newestOwedRequestProxy || newestOwedRequestProxy.from === 'user') return undefined
-  return {
-    message: newestOwedRequestProxy.id,
-    from: newestOwedRequestProxy.from,
-    ...(newestOwedRequestProxy.remote ? { remote: { ...newestOwedRequestProxy.remote } } : {}),
-  }
-}
-
-export async function serve(tx: Tx, to: ConversationId): Promise<Serves | undefined> {
-  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  const request = await owedRequest(tx, to)
-  if (request) {
-    if (request.remote) {
-      serving.keys[request.remote.key] = ANSWERING_RUN
-      serving.handed[request.remote.key] = true
-    }
-    return request
-  }
-  for (const submission of ((await tx.doc(LiveDoc, to)).run?.inputs ?? []).toReversed()) {
-    const record = await tx.submission(submission)
+export async function runInputs(tx: Tx, to: ConversationId) {
+  const entries: EntryRecord[] = []
+  for (const id of (await tx.doc(LiveDoc, to)).run?.inputs ?? []) {
+    const record = await tx.submission(id)
     if (record?.type !== 'input' || record.entry === undefined) continue
-    const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
-    if (!serves?.remote || !Object.hasOwn(serving.keys, serves.remote.key)) continue
-    serving.keys[serves.remote.key] = record.entry
-    serving.handedOnBy[String(record.entry)] = serves.remote.key
-    return { message: serves.message, from: serves.from, remote: { ...serves.remote } }
+    const entry = await tx.entry(record.entry)
+    if (entry) entries.push(entry)
   }
+  return entries
+}
+
+export async function ownerOutput(
+  host: ExtensionHost,
+  tx: Tx,
+  to: ConversationId,
+  entry: EntryRecord | undefined,
+): Promise<{ owner: Owner; source: string } | undefined> {
+  if (FiredEntry.is(entry))
+    return {
+      owner: { kind: 'automation', id: entry.data.id },
+      source: `automation ${entry.data.id} "${entry.data.name}"`,
+    }
+  if (
+    ReplyEntry.is(entry) &&
+    entry.data.from === 'remote' &&
+    entry.data.remote &&
+    !entry.data.interim
+  )
+    return {
+      owner: { kind: 'tell', key: entry.data.remote.key },
+      source: `tell to ${remoteLabel(entry.data.remote)}`,
+    }
+  let branch: ConversationId | undefined
+  if (LanderReportEntry.is(entry))
+    branch = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results[
+      entry.data.id
+    ]?.conversationId
+  if (
+    (ReplyEntry.is(entry) || (MessageEntry.is(entry) && !entry.data.reply)) &&
+    typeof entry.data.from === 'number' &&
+    !entry.data.echo
+  )
+    branch = entry.data.from
+  if (branch !== undefined && (await tx.doc(Started, branch)).by === to)
+    return { owner: { kind: 'branch', id: branch }, source: `#${branch}` }
   return undefined
+}
+
+function asker({ from, remote }: Pick<Serves, 'from' | 'remote'>) {
+  return from === 'remote' ? `project:${remote?.project}` : `conversation:${from}`
+}
+
+export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, owner: Owner) {
+  if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== to) return
+  const inputs = await runInputs(tx, to)
+  const assignedBy = inputs.at(-1)?.id
+  if (assignedBy === undefined) return
+  const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  const read = new Set(inputs.flatMap((entry) => (MessageEntry.is(entry) ? [entry.data.id] : [])))
+  const authors = new Set(
+    inputs.flatMap((entry) =>
+      MessageEntry.is(entry) &&
+      entry.data.from !== 'user' &&
+      entry.data.from !== undefined &&
+      !entry.data.echo
+        ? [asker({ from: entry.data.from, remote: entry.data.remote })]
+        : [],
+    ),
+  )
+  const requests = new Map<number, Serves>()
+  const newest = new Map<string, Serves>()
+  for (const { request } of Object.values(owners)) newest.set(asker(request), request)
+  for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages) {
+    if (m.to !== to || m.from === 'user' || !isOpen(m) || !read.has(m.id)) continue
+    const request = {
+      message: m.id,
+      from: m.from,
+      ...(m.remote ? { remote: { ...m.remote } } : {}),
+    }
+    requests.set(m.id, request)
+    if ((newest.get(asker(request))?.message ?? 0) < m.id) newest.set(asker(request), request)
+  }
+  for (const author of authors) {
+    const request = newest.get(author)
+    if (request) requests.set(request.message, request)
+  }
+  for (const entry of inputs) {
+    const output = await ownerOutput(host, tx, to, entry)
+    if (!output) continue
+    for (const { request, owner: current } of Object.values(owners))
+      if (sameOwner(current, output.owner)) requests.set(request.message, request)
+  }
+  for (const request of requests.values()) owners[request.message] = { request, owner, assignedBy }
 }
 
 export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
   const log = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
   const read = new Set<ConversationId>()
-  for (const submission of (await tx.doc(LiveDoc, to)).run?.inputs ?? []) {
-    const record = await tx.submission(submission)
-    if (record?.type !== 'input' || record.entry === undefined) continue
-    const entry = await tx.entry(record.entry)
+  for (const entry of await runInputs(tx, to)) {
     const data: Partial<DeliveredMessage> | undefined =
       MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
     if (!ReplyEntry.is(entry) && !(MessageEntry.is(entry) && data?.reply === false)) continue
@@ -96,13 +144,13 @@ export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
   return [...read]
 }
 
-export async function owed(tx: Tx, to: ConversationId, answersBack = true) {
-  const serves = answersBack ? await serve(tx, to) : undefined
+export async function owed(host: ExtensionHost, tx: Tx, to: ConversationId, automation?: string) {
+  if (automation !== undefined) await serve(host, tx, to, { kind: 'automation', id: automation })
   const branches = await branchesReadThisRun(tx, to)
-  return { ...(serves ? { serves } : {}), ...(branches.length ? { branches } : {}) }
+  return branches.length ? { branches } : {}
 }
 
-export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId; serves?: Serves }>({
+export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId }>({
   kind: 'board.started',
   checkpointWhen: () => false,
   version: 1,
@@ -123,10 +171,17 @@ export async function servesLine(
   to: ConversationId | 'user' | 'remote',
 ) {
   if (typeof from !== 'number') return ''
-  const { by, serves } = await tx.doc(Started, from)
-  if (!serves || by !== to) return ''
-  const asker = serves.from === 'remote' ? remoteLabel(serves.remote!) : `#${serves.from}`
-  return `\n#${from} works on ${asker}'s message ${serves.message}. Once #${from} is concluded, your final answer to it goes to ${asker} instead.`
+  if ((await tx.doc(Started, from)).by !== to) return ''
+  const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  return Object.values(owners)
+    .flatMap(({ request, owner }) => {
+      if (owner.kind !== 'branch' || owner.id !== from) return []
+      const label = request.remote ? remoteLabel(request.remote) : `#${request.from}`
+      return [
+        `\n#${from} works on ${label}'s message ${request.message}. Once #${from} is concluded, your final answer to it goes to ${label} instead.`,
+      ]
+    })
+    .join('')
 }
 
 export async function parentOf(host: ExtensionHost, id: ConversationId, ctx: Context) {

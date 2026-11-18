@@ -100,10 +100,11 @@ export const branchTool = (host: ExtensionHost) =>
             authenticatedOrDefaultAgent,
           )
           const started = await tx.doc(Started, branch.id)
-          started.by = from
-
-          const servedRequest = await serve(tx, from)
-          if (servedRequest) started.serves = servedRequest
+          if (started.by === undefined) {
+            started.by = from
+            if (from === api.conversationId)
+              await serve(host, tx, from, { kind: 'branch', id: branch.id })
+          }
         }, ctx)
         id = await api.memo('branch-id', branch.id, ctx)
       }

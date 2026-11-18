@@ -67,7 +67,11 @@ async function fixture() {
     onClose: (fn: () => Promise<void>) => {
       closer = fn
     },
-    ...apis(new Map<string, unknown>([['messages', { send, owed: async () => ({}) }]])),
+    ...apis(
+      new Map<string, unknown>([
+        ['messages', { send, owed: async () => ({}), dropped: async () => {} }],
+      ]),
+    ),
     extensions: () => [{ name: 'subagents', enabled: true }],
     projectSetup: async () => ({ decision: false }),
     notice: (message: string) => {

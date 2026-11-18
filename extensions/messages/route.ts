@@ -13,16 +13,15 @@ import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Messages } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
-import { append, terminal } from './log.ts'
+import { terminal } from './log.ts'
 import type { Message } from './api.ts'
-import type { DeliveredMessage } from './refs.ts'
+import type { DeliveredMessage, Serves } from './refs.ts'
 import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { send } from './send.ts'
-import { delivery } from './delivery.ts'
 import { branchesAwaitingRemoteReply } from './remote.ts'
-import { closeServed, remoteLabel, Serving, Started, stillServedAfter } from './addresses.ts'
-import type { Serves } from './addresses.ts'
+import { ownerOutput, runInputs, sameOwner, Serving, Started } from './addresses.ts'
+import { dropped, sendResult } from './outcomes.ts'
 
 const NONTERMINAL_TASK_STATUSES = [
   'pending',
@@ -94,50 +93,106 @@ async function hasBusyDescendant(tx: Tx, id: ConversationId): Promise<boolean> {
   return false
 }
 
+export async function branchLost(
+  host: ExtensionHost,
+  tx: Tx,
+  branch: ConversationId,
+  conclusion: EntryId,
+) {
+  const { by: starter } = await tx.doc(Started, branch)
+  if (starter === undefined) return
+  const pending = (await tx.doc(Serving, ROOT_CONVERSATION_ID)).owners
+  if (
+    !Object.values(pending).some(
+      ({ owner, assignedBy }) =>
+        owner.kind === 'branch' && owner.id === branch && assignedBy < conclusion,
+    )
+  )
+    return
+  const landerTasks = await scanNonterminalTasks(tx, 'workspaces.lander')
+  if (
+    landerTasks.some(({ state }) => {
+      const checkpoint = (
+        state as {
+          checkpoint?: {
+            phase?: string
+            conversationId?: ConversationId
+            concluded?: boolean
+            starter?: ConversationId
+          }
+        }
+      ).checkpoint
+      return (
+        checkpoint?.phase === 'deliver' &&
+        checkpoint.conversationId === branch &&
+        checkpoint.concluded &&
+        checkpoint.starter === starter
+      )
+    })
+  )
+    return
+  const delivered = await runInputs(tx, starter)
+  for (const task of await scanNonterminalTasks(tx, 'board.route', starter)) {
+    const { inputs } = task.input as { inputs: SubmissionId[] }
+    for (const id of inputs) {
+      const record = await tx.submission(id)
+      if (record?.type !== 'input' || record.entry === undefined) continue
+      const entry = await tx.entry(record.entry)
+      if (entry) delivered.push(entry)
+    }
+  }
+  for (const entry of delivered) {
+    const output = await ownerOutput(host, tx, starter, entry)
+    if (output?.owner.kind === 'branch' && output.owner.id === branch) return
+  }
+  const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
+  for (const queued of (await tx.doc(InboxDoc, starter)).items) {
+    if (queued.mode === 'write') continue
+    if (
+      queued.entry?.kind === LanderReportEntry.kind &&
+      results[(queued.entry.data as { id?: string } | undefined)?.id ?? '']?.conversationId ===
+        branch
+    )
+      return
+    const data = queued.entry?.data as Partial<DeliveredMessage> | undefined
+    if (
+      (queued.entry?.kind === ReplyEntry.kind || queued.entry?.kind === MessageEntry.kind) &&
+      data?.from === branch &&
+      !data.echo &&
+      !data.reply
+    )
+      return
+  }
+  await dropped(
+    host,
+    tx,
+    { kind: 'branch', id: branch },
+    `Branch #${branch},`,
+    'was concluded without reporting to @ultimate',
+    conclusion,
+  )
+}
+
 export async function reported(
   host: ExtensionHost,
   tx: Tx,
   starter: ConversationId,
-  answered: number[],
+  answered: EntryId[],
 ) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  const requestKeyWithinRemoteLimit = (message: number) => `request:${message}`
   const newestAnsweredBranchMessage = new Map<ConversationId, number>()
-  const askers: { source: string; key: string; serves: Serves; fired?: number }[] = []
-  const serving = (await tx.doc(Serving, ROOT_CONVERSATION_ID)).keys
-  const stillServed = (serves: Serves) =>
-    serves.remote !== undefined && Object.hasOwn(serving, serves.remote.key)
-  const messaged = (after: (m: Message) => boolean, to: (m: Message) => boolean) =>
-    log.messages.some((m) => m.from === starter && after(m) && to(m))
-
-  const askerMessagedBeyondEarlyAnswer = (serves: Serves, after: (m: Message) => boolean) =>
-    messaged(
-      after,
-      (m) =>
-        m.re !== serves.message &&
-        (serves.from === 'remote'
-          ? m.to === 'remote' && m.remote?.project === serves.remote!.project
-          : m.to === serves.from),
-    )
+  const concluded = await host.need(ConversationsApi).concludedIn(tx)
+  const outputs: NonNullable<Awaited<ReturnType<typeof ownerOutput>>>[] = []
+  const early = new Set<number>()
+  const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
   for (const entryId of answered) {
-    const entry = await tx.entry(entryId as never)
+    const entry = await tx.entry(entryId)
+    if (MessageEntry.is(entry) && entry.data.reply) early.add(entry.data.id)
+    const output = await ownerOutput(host, tx, starter, entry)
+    if (output && (output.owner.kind !== 'branch' || concluded.has(output.owner.id)))
+      outputs.push(output)
     if (FiredEntry.is(entry)) {
-      const { data } = entry
-
-      const { serves, at: firedAt = 0 } = data
-      if (
-        serves &&
-        (serves.remote
-          ? stillServed(serves)
-          : !askerMessagedBeyondEarlyAnswer(serves, (m) => m.at >= firedAt))
-      )
-        askers.push({
-          source: `automation ${data.id} "${data.name}"`,
-          key: requestKeyWithinRemoteLimit(serves.message),
-          serves: { ...serves, ...(serves.remote ? { remote: { ...serves.remote } } : {}) },
-          fired: entryId,
-        })
-      for (const branch of data.branches ?? []) {
+      for (const branch of entry.data.branches ?? []) {
         const branchSpokeLast =
           log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
         newestAnsweredBranchMessage.set(
@@ -148,10 +203,8 @@ export async function reported(
       continue
     }
     if (LanderReportEntry.is(entry)) {
-      const results = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).results
-      const data: { id?: string } | undefined = entry.data
-      const branch = results[String(data?.id)]?.conversationId
-      if (branch === undefined || (await tx.doc(Started, branch)).by !== starter) continue
+      if (output?.owner.kind !== 'branch') continue
+      const branch = output.owner.id
       const last = log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
       newestAnsweredBranchMessage.set(
         branch,
@@ -181,96 +234,31 @@ export async function reported(
       Math.max(newestAnsweredBranchMessage.get(from) ?? 0, data.id ?? 0),
     )
   }
-  const concluded = await host.need(ConversationsApi).concludedIn(tx)
-  const branches: ConversationId[] = []
-  for (const [branch, since] of newestAnsweredBranchMessage) {
-    if (!concluded.has(branch)) {
-      if (
-        !messaged(
-          (m) => m.id > since,
-          (m) => m.to === branch,
-        )
-      )
-        branches.push(branch)
-      continue
-    }
-
-    const servedRequestProxy = (await tx.doc(Started, branch)).serves
-    const detachedServedRequest: Serves | undefined = servedRequestProxy && {
-      message: servedRequestProxy.message,
-      from: servedRequestProxy.from,
-      ...(servedRequestProxy.remote ? { remote: { ...servedRequestProxy.remote } } : {}),
-    }
-
-    if (
-      detachedServedRequest &&
-      (detachedServedRequest.remote
-        ? stillServed(detachedServedRequest)
-        : !askerMessagedBeyondEarlyAnswer(detachedServedRequest, (m) => m.id > since))
-    )
-      askers.push({ source: `#${branch}`, key: String(branch), serves: detachedServedRequest })
-  }
-
-  const oneResultPerRequest = askers.filter(
-    (a, i) => askers.findIndex((b) => b.serves.message === a.serves.message) === i,
-  )
-  return { branches, askers: oneResultPerRequest }
-}
-
-export async function answerRemoteRequest(
-  host: ExtensionHost,
-  tx: Tx,
-  from: ConversationId,
-  serves: Serves,
-  text: string,
-  answer: EntryId | undefined,
-  fired: number | undefined,
-  failed = false,
-) {
-  const serving = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  const key = serves.remote!.key
-  if (!Object.hasOwn(serving.keys, key)) return
-  const handedOnAgain =
-    !failed && fired !== undefined && Object.hasOwn(serving.handedOnBy, String(fired))
-  const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  const replayedInterim =
-    answer !== undefined && log.messages.some((m) => m.to === 'remote' && m.routed === answer)
-  if (replayedInterim) return
-  if (!handedOnAgain) closeServed(serving, key)
-  const request = log.messages.find((m) => m.id === serves.message) ?? {
-    id: serves.message,
-    from: 'remote' as const,
-    to: from,
-    text: '',
-    at: 0,
-    reply: true,
-    state: 'answered' as const,
-    remote: serves.remote!,
-  }
-  const response = await append(tx, {
-    from,
-    to: 'remote',
-    text,
-    reply: false,
-    re: serves.message,
-    state: failed ? 'failed' : 'sent',
-    ...(answer !== undefined ? { answer, routed: answer } : {}),
-    ...(failed ? { error: text } : {}),
-    remote: serves.remote!,
-    ...(handedOnAgain ? { interim: true as const } : {}),
+  const askers = Object.values(owners).flatMap<{
+    request: Serves
+    source?: string
+    interim: boolean
+  }>(({ request, owner, assignedBy }) => {
+    if (answered.includes(assignedBy))
+      return request.remote && !early.has(request.message) ? [{ request, interim: true }] : []
+    const output = outputs.find((item) => sameOwner(item.owner, owner))
+    return output ? [{ request, source: output.source, interim: false }] : []
   })
-  await tx.createTask(
-    delivery(host),
-    {
-      message: request,
-      steer: true,
-      note: false,
-      fromLabel: remoteLabel(serves.remote!),
-      toLabel: remoteLabel(serves.remote!),
-      reply: { message: response, failed },
-    },
-    { conversationId: ROOT_CONVERSATION_ID, ownership: { kind: 'conversation' }, background: true },
+  const localHandOns = new Set(
+    Object.values(owners).flatMap(({ request, assignedBy }) =>
+      typeof request.from === 'number' && answered.includes(assignedBy) ? [request.from] : [],
+    ),
   )
+  const branches: ConversationId[] = []
+  for (const [branch, since] of newestAnsweredBranchMessage)
+    if (
+      !concluded.has(branch) &&
+      !localHandOns.has(branch) &&
+      !askers.some((a) => a.request.from === branch) &&
+      !log.messages.some((m) => m.from === starter && m.to === branch && m.id > since)
+    )
+      branches.push(branch)
+  return { branches, askers }
 }
 
 interface Route {
@@ -297,30 +285,6 @@ export function route(host: ExtensionHost) {
     phases: {
       observe: async (task, runtime, ctx) => {
         const settled = await runtime.waitForTask(task.input.generation, ctx)
-        const failServedRemoteRequests = (why: string) =>
-          host.harness().commit(async (tx) => {
-            if (task.input.down)
-              for (const submission of task.input.inputs) {
-                const record = await tx.submission(submission)
-                if (record?.type !== 'input' || record.entry === undefined) continue
-                const serves = (await tx.entry(FiredEntry, record.entry))?.data.serves
-                if (
-                  serves?.from === 'remote' &&
-                  !(await stillServedAfter(tx, serves, record.entry))
-                )
-                  await answerRemoteRequest(
-                    host,
-                    tx,
-                    runtime.conversationId,
-                    serves,
-                    `The run that worked on your message ${serves.message} ${why}; no result will come from it.`,
-                    undefined,
-                    record.entry,
-                    true,
-                  )
-              }
-            return terminal
-          }, ctx)
         if (settled.state.outcome.status !== 'completed') {
           await runtime.commit(() => terminal, ctx)
           return
@@ -333,7 +297,6 @@ export function route(host: ExtensionHost) {
         )
         const { by } = task.input
         const id = runtime.conversationId
-        let unanswered: string | undefined
         const routed = await host.harness().commit(async (tx): Promise<Route[]> => {
           const inputsSettledByThisAnswer = inputs.flatMap((input) =>
             input?.type === 'input' && input.status === 'done' && input.answer === answer
@@ -347,16 +310,23 @@ export function route(host: ExtensionHost) {
             message.stopReason === 'error' ||
             message.stopReason === 'aborted'
           ) {
-            unanswered =
-              message?.role === 'assistant' && message.stopReason === 'aborted'
-                ? 'was stopped'
-                : 'failed'
             return []
           }
           const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
           if (task.input.down) {
             if (!text.trim()) {
-              unanswered = 'ended without an answer'
+              for (const entryId of inputsSettledByThisAnswer) {
+                const entry = await tx.entry(FiredEntry, entryId)
+                if (entry)
+                  await dropped(
+                    host,
+                    tx,
+                    { kind: 'automation', id: entry.data.id },
+                    `The run automation ${entry.data.id} "${entry.data.name}" woke`,
+                    'ended without an answer',
+                    entryId,
+                  )
+              }
               return []
             }
             const { branches, askers } = await reported(host, tx, by, inputsSettledByThisAnswer)
@@ -364,31 +334,20 @@ export function route(host: ExtensionHost) {
               branches.length > 1
                 ? `(This answers ${branches.map((b) => `#${b}`).join(' and ')} together.)\n\n`
                 : ''
-            return [
-              ...branches.map((to) => ({
-                to,
-                text: together + text,
-                requestId: `route:${answer}:${to}`,
-                options: { routed: answer },
-              })),
-              ...(await Promise.all(
-                askers.map(async ({ source, key, serves, fired }) => {
-                  const result = `Result of ${source}, which worked on your message ${serves.message}:\n\n${text}`
-                  if (serves.from === 'remote') {
-                    await answerRemoteRequest(host, tx, id, serves, result, answer, fired)
-                    return []
-                  }
-                  return [
-                    {
-                      to: serves.from,
-                      text: result,
-                      requestId: `route:${answer}:asker:${key}`,
-                      options: { routed: answer },
-                    },
-                  ]
-                }),
-              ).then((routes) => routes.flat())),
-            ]
+            const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+            for (const { request, source, interim } of askers) {
+              if (!interim) delete owners[request.message]
+              const result = source
+                ? `Result of ${source}, which worked on your message ${request.message}:\n\n${text}`
+                : text
+              await sendResult(host, tx, id, request, result, { answer, interim })
+            }
+            return branches.map((to) => ({
+              to,
+              text: together + text,
+              requestId: `route:${answer}:${to}`,
+              options: { routed: answer },
+            }))
           }
 
           let everyInputReturnsToAnotherAsker = true
@@ -437,7 +396,6 @@ export function route(host: ExtensionHost) {
           }
           return routeToStarter(text, { echo: answersOnlyRoutedInputs })
         }, ctx)
-        if (unanswered) await failServedRemoteRequests(unanswered)
         for (const { to, text, requestId, options } of routed) {
           if (!text.trim()) continue
           await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {

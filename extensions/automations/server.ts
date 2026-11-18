@@ -290,27 +290,19 @@ function backend(host: ExtensionHost) {
     }
     return prepared
   }
-  async function owedAtCreation(tx: Tx, subscribers: Subscriber[], caller?: ConversationId) {
+  async function owedAtCreation(
+    tx: Tx,
+    id: string,
+    subscribers: Subscriber[],
+    caller?: ConversationId,
+  ) {
     if (caller === undefined || (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== caller)
       return {}
     const firesWakeCaller = subscribers.some((s) => s === caller || s === '@ultimate')
-    const { serves, branches } = await host.need(MessagesApi).owed(tx, caller, firesWakeCaller)
-    return {
-      ...(serves ? { serves: { ...serves, by: caller } } : {}),
-      ...(branches ? { branches: { ids: branches, by: caller } } : {}),
-    }
-  }
-  async function dropServedRequest(tx: Tx, a: Automation) {
-    if (!a.serves) return
-    const { by, ...serves } = a.serves
-    await host
+    const { branches } = await host
       .need(MessagesApi)
-      .dropped(
-        tx,
-        by,
-        serves,
-        `Automation ${a.id} "${a.name}", which worked on your message ${serves.message}, was deleted before it fired; no result will come from it.`,
-      )
+      .owed(tx, caller, firesWakeCaller ? id : undefined)
+    return branches ? { branches: { ids: branches, by: caller } } : {}
   }
   async function changeScript(
     tx: Tx,
@@ -362,7 +354,7 @@ function backend(host: ExtensionHost) {
           updatedAt: Date.now(),
           subscribers,
           ...(args.key ? { key: args.key } : {}),
-          ...(await owedAtCreation(tx, subscribers, caller)),
+          ...(await owedAtCreation(tx, sub.id, subscribers, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -374,7 +366,7 @@ function backend(host: ExtensionHost) {
         : args.prompt
           ? []
           : [caller!]
-      const owed = await owedAtCreation(tx, subscribers, caller)
+      const owed = await owedAtCreation(tx, id, subscribers, caller)
       const conversationId = await agentConversation(
         tx,
         prepared,
@@ -438,10 +430,9 @@ function backend(host: ExtensionHost) {
         sub.enabled = false
         if (sub.script!.state !== 'done') sub.script!.state = 'stopped'
       }
-      if (args.action === 'delete') {
-        await dropServedRequest(tx, sub)
-        delete state.automations[id]
-      }
+      if (args.action !== 'escalate')
+        await scripts.drop(tx, sub, args.action === 'delete' ? 'was deleted' : 'was stopped')
+      if (args.action === 'delete') delete state.automations[id]
       return {
         result: args.action === 'delete' ? { id } : sub,
         effect: { id, action: 'pause', ...(pid ? { previousPid: pid } : {}) },
@@ -602,7 +593,7 @@ function backend(host: ExtensionHost) {
         fires: 0,
         ...(args.key ? { key: args.key } : {}),
         subscribers,
-        ...(await owedAtCreation(tx, subscribers, caller)),
+        ...(await owedAtCreation(tx, id, subscribers, caller)),
       }
     }
     const a = state.automations[id]
@@ -634,7 +625,7 @@ function backend(host: ExtensionHost) {
     delete a.scheduler
     if (args.action !== 'update') delete a.nextAt
     if (args.action === 'delete') {
-      await dropServedRequest(tx, a)
+      await scripts.drop(tx, a, 'was deleted')
       delete state.automations[id]
       return { result: { id }, ...(abort ? { abort } : {}) }
     }
@@ -695,8 +686,10 @@ function backend(host: ExtensionHost) {
           ...(a.script.pid ? { previousPid: a.script.pid } : {}),
         }
       }
-    } else if (args.action === 'pause') a.enabled = false
-    else if (args.action === 'resume') a.enabled = true
+    } else if (args.action === 'pause') {
+      a.enabled = false
+      await scripts.drop(tx, a, 'was stopped')
+    } else if (args.action === 'resume') a.enabled = true
     else throw new Error(`Unknown action: ${args.action}`)
     if (args.action === 'resume' && a.event) a.event.sinceEvent = await eventActivationCursor(tx)
     if (args.action === 'create' || args.action === 'resume')

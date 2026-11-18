@@ -7,6 +7,7 @@ import {
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
+import { MessagesApi } from '../messages/api.ts'
 import { discoverAgents, hostDefault } from '../../lib/agents.ts'
 import { nextAt } from './schedule.ts'
 import type { Automation, Run } from './types.ts'
@@ -171,6 +172,7 @@ export function scheduler(
         a.script.state = 'stopped'
         a.script.error = reason
       }
+      await host.need(MessagesApi).dropped(tx, a.id, `Automation ${a.id} "${a.name}",`, reason)
       const event = await host.emit(tx, Escalated, { id: a.id, reason })
       await deliver(tx, a, event.id, 'escalated', reason)
       return { id: a.id }
@@ -183,14 +185,10 @@ export function scheduler(
     a.lastFireAt = firedAt
     const event = await host.emit(tx, Fired, { id: a.id, text, fire: a.fires })
     if (a.subscribers.length) await deliver(tx, a, event.id, 'fired', text)
-    consumeFirstFireRequest(a)
+    delete a.branches
     return result
   }
   const activeRuns = new WeakMap<Tx, Set<string>>()
-  function consumeFirstFireRequest(a: Automation) {
-    delete a.serves
-    delete a.branches
-  }
   async function scanRunsBeforeWrites(tx: Tx): Promise<Set<string>> {
     const cached = activeRuns.get(tx)
     if (cached) return cached

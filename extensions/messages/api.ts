@@ -8,7 +8,7 @@ import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Serves, Via } from './refs.ts'
+import type { Question, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -38,6 +38,8 @@ export type Message = {
   remote?: Remote
   /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
   interim?: true
+  /** The owner already settled this inbound remote request before its original answer was delivered. */
+  ownerSettled?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
@@ -103,22 +105,15 @@ export type MessagesService = {
     ctx: Context,
   ): Promise<{ message: number; delivered: number }>
   /**
-   * Inside `tx`, what work conversation `to` starts now answers: `serves`, the newest agent's request it still owes,
-   * and `branches`, those whose reply or report its current run read and it has not messaged since. An
-   * `automations.fired` input whose data carries them routes the woken run's final answer there (route.ts). Pass
-   * `answersBack: false` for work whose answer never returns to `to` (a prompt-only automation): it serves nothing.
+   * In the creation transaction, let `automation` take over the requests related to @ultimate's current run.
+   * Omit the id if the automation doesn't wake @ultimate. Return the branches that still expect the run's feedback.
    */
-  owed(
-    tx: Tx,
-    to: ConversationId,
-    answersBack?: boolean,
-  ): Promise<{ serves?: Serves; branches?: ConversationId[] }>
+  owed(tx: Tx, to: ConversationId, automation?: string): Promise<{ branches?: ConversationId[] }>
   /**
-   * Inside `tx`, the work `by` started to serve `serves` (an automation) ended before it answered: another Ultimate's
-   * request still open on it gets a failed reply saying `why`, so that Ultimate learns of it at once. `fired` is the
-   * input entry of the run that failed, if one ran: work that run handed the request on to keeps it open.
+   * In `tx`, fail any requests the automation still owns, naming the source and why it ended. For an unanswered
+   * fire, pass the input entry so ownership assigned after it is left alone.
    */
-  dropped(tx: Tx, by: ConversationId, serves: Serves, why: string, fired?: number): Promise<void>
+  dropped(tx: Tx, automation: string, source: string, why: string, fired?: EntryId): Promise<void>
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'

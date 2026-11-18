@@ -13,7 +13,7 @@ import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
-import { closeServed, remoteLabel, Serving, servesLine } from './addresses.ts'
+import { remoteLabel, Serving, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
@@ -176,9 +176,8 @@ export function delivery(host: ExtensionHost) {
         await runtime.commit(async (tx) => {
           const answer =
             settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
-          const original = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
-            (item) => item.id === m.id,
-          )
+          const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+          const original = messages.find((item) => item.id === m.id)
           if (!m.reply) {
             retainOneWayAnswer(original, answer)
             return terminal
@@ -208,11 +207,14 @@ export function delivery(host: ExtensionHost) {
               ? `ended its turn without an answer (${settled.status === 'unanswered' ? settled.reason : settled.status})`
               : undefined
           const state = stopped ? 'stopped' : failed ? 'failed' : undefined
-          const serving = m.remote && (await tx.doc(Serving, ROOT_CONVERSATION_ID))
-          const interim = !failed && serving && Object.hasOwn(serving.handed, m.remote!.key)
-          if (serving) {
-            delete serving.handed[m.remote!.key]
-            if (failed) closeServed(serving, m.remote!.key)
+          const interim =
+            m.remote &&
+            (original?.ownerSettled ||
+              (await tx.doc(Serving, ROOT_CONVERSATION_ID)).owners[m.id] !== undefined)
+          if (original?.ownerSettled) delete original.ownerSettled
+          if (interim && failed) {
+            if (original) original.state = 'answered'
+            return terminal
           }
 
           const answerAlreadyReturnedToLocalSender =
