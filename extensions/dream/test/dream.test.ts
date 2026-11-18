@@ -57,7 +57,7 @@ async function fixture() {
   const events = eventHost(() => opened.harness, 'test')
   const services = apis(
     new Map<string, unknown>([
-      ['messages', { send: async () => ({}) }],
+      ['messages', { send: async () => ({}), dropped: async () => {} }],
       ['lineage', { rootOf: async () => undefined }],
       [
         'subagents',
