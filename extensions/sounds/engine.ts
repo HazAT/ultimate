@@ -1,4 +1,5 @@
 import * as Tone from 'tone'
+import { browserVoice } from '../../lib/browser-voice.ts'
 import { deadline, pace } from '../../lib/timers.ts'
 import type { Sound } from './cues.ts'
 import type { Happening, Role, Tool } from './agents.ts'
@@ -85,24 +86,20 @@ export async function play(sound: Sound) {
 
 const voiceLeadInSeconds = 0.45
 
-export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffer | undefined) {
+export async function say(sound: Sound, text: string, encodedAudio: ArrayBuffer | undefined) {
   await Tone.start()
   const now = Tone.now() + 0.03
   strike(sound, now)
-  if (!mono24kHzPcm16) {
+  const buffer = encodedAudio
+    ? await Tone.getContext()
+        .decodeAudioData(encodedAudio)
+        .catch((error: unknown) => console.warn('Narrator audio could not be decoded', error))
+    : undefined
+  if (!buffer) {
     await pace(voiceLeadInSeconds * 1000)
-    const utterance = new SpeechSynthesisUtterance(text)
-    await new Promise((resolve) => {
-      utterance.addEventListener('end', resolve)
-      utterance.addEventListener('error', resolve)
-      speechSynthesis.speak(utterance)
-    })
+    await new Promise<void>((resolve) => browserVoice(text, 1, resolve))
     return
   }
-  const samples = new Int16Array(mono24kHzPcm16)
-  const buffer = Tone.getContext().createBuffer(1, samples.length, 24000)
-  const wave = buffer.getChannelData(0)
-  for (let i = 0; i < samples.length; i++) wave[i] = samples[i] / 32768
   const voice = new Tone.Player(buffer).connect(limitedMaster)
   voice.onstop = () => voice.dispose()
   voice.start(now + voiceLeadInSeconds)

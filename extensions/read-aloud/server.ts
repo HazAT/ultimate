@@ -2,15 +2,16 @@ import { createHash } from 'node:crypto'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { openaiSecretOrNonOAuthKey, openaiError } from '../../lib/openai.ts'
 import { ConversationsApi } from '../conversations/api.ts'
+import { SpeechApi } from '../speech/api.ts'
 import { SpeakAction } from './refs.ts'
-import type { SpokenSection } from './refs.ts'
 import { plainSpeech, sections, words } from './speech.ts'
 
-const TTS_MODEL = 'gpt-4o-mini-tts'
-const TTS_VOICE = 'marin'
-const TTS_INSTRUCTIONS = 'Calm, warm and clear, at an easy conversational pace.'
+const VOICE = {
+  model: 'gpt-4o-mini-tts',
+  voice: 'marin',
+  instructions: 'Calm, warm and clear, at an easy conversational pace.',
+}
 const REWRITE_TIMEOUT_MS = 30_000
 const TTS_TIMEOUT_MS = 60_000
 const MAX_TEXT = 100_000
@@ -29,10 +30,8 @@ Only change what does not work when heard:
 
 Return only the text to speak, as plain prose with paragraphs, no Markdown.`
 
-type Cached = Omit<SpokenSection, 'sections'>
-
-function sectionCache(host: ExtensionHost) {
-  return host.resource('read-aloud.spoken-sections', () => new Map<string, Cached>())
+function rewriteCache(host: ExtensionHost) {
+  return host.resource('read-aloud.rewritten-sections', () => new Map<string, string>())
 }
 
 async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSignal) {
@@ -55,28 +54,9 @@ async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSigna
   return text
 }
 
-export async function openaiSpeech(key: string, text: string, signal: AbortSignal) {
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: TTS_MODEL,
-      voice: TTS_VOICE,
-      input: text,
-      instructions: TTS_INSTRUCTIONS,
-      response_format: 'mp3',
-    }),
-    signal,
-  })
-  if (!response.ok) {
-    const { status, message } = await openaiError(response)
-    throw new Error(`OpenAI speech failed (HTTP ${status})${message ? `: ${message}` : ''}`)
-  }
-  return Buffer.from(await response.arrayBuffer()).toString('base64')
-}
-
 export default function readAloud(host: ExtensionHost) {
   host.need(ConversationsApi)
+  host.want(SpeechApi)
   return defineExtension({ name: 'read-aloud' })
 }
 
@@ -89,22 +69,24 @@ export const actions = {
     if (typeof section !== 'number' || !Number.isInteger(section) || section < 0)
       throw new Error('Expected { section } as a whole number from 0')
     if (section >= parts.length) throw new Error(`The text has ${parts.length} sections`)
-    const cache = sectionCache(host)
+    const rewrites = rewriteCache(host)
     const key = createHash('sha256').update(parts[section]).digest('hex')
-    const cached = cache.get(key)
-    if (cached) return { sections: parts.length, ...cached }
-    const spoken = await rewrite(host, parts[section], signal)
-    const apiKey = await openaiSecretOrNonOAuthKey(host, signal)
-    const audio =
-      apiKey && spoken.trim()
-        ? await openaiSpeech(
-            apiKey,
-            spoken,
-            AbortSignal.any([signal, AbortSignal.timeout(TTS_TIMEOUT_MS)]),
-          )
-        : null
-    cache.set(key, { spoken, audio })
-    if (cache.size > CACHED_SECTIONS) cache.delete(cache.keys().next().value!)
-    return { sections: parts.length, spoken, audio }
+    let spoken = rewrites.get(key)
+    if (spoken === undefined) {
+      spoken = await rewrite(host, parts[section], signal)
+      rewrites.set(key, spoken)
+      if (rewrites.size > CACHED_SECTIONS) rewrites.delete(rewrites.keys().next().value!)
+    }
+    const voiced = spoken.trim()
+      ? await host
+          .want(SpeechApi)
+          ?.speak({ text: spoken, openai: VOICE, timeoutMs: TTS_TIMEOUT_MS }, signal)
+      : null
+    return {
+      sections: parts.length,
+      spoken,
+      audio: voiced?.audio ?? null,
+      mimeType: voiced?.mimeType ?? null,
+    }
   }),
 }

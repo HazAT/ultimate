@@ -134,6 +134,7 @@
     "lib/ago.ts",
     "lib/cell.ts",
     "lib/plural.ts",
+    "lib/browser-voice.ts",
     "lib/compare.ts",
     "lib/context-usage.ts",
     "lib/conversation-ref.ts",

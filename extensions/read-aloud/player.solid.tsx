@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { api, errorMessage } from '@/sdk/solid'
+import { browserVoice } from '../../lib/browser-voice.ts'
 import { meansNone } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
 import type { SpokenSection } from './refs.ts'
@@ -105,20 +106,32 @@ async function play(text: string, index: number) {
     set({ ...still, section: index + 1, spoken: undefined, status: 'loading' })
     void play(text, index + 1)
   }
-  if (spoken.audio) {
-    const bytes = Uint8Array.from(atob(spoken.audio), (c) => c.charCodeAt(0))
-    const player = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' })))
-    audio = player
-    player.playbackRate = rate
-    player.addEventListener('ended', () => audio === player && next())
-    await player.play().catch(failed)
-  } else {
-    const line = new SpeechSynthesisUtterance(spoken.spoken)
+  const speakInBrowser = () => {
+    const line = browserVoice(spoken.spoken, rate, () => utterance === line && next())
     utterance = line
-    line.rate = rate
-    line.addEventListener('end', () => utterance === line && next())
-    speechSynthesis.speak(line)
   }
+  if (!spoken.audio) return speakInBrowser()
+  const bytes = Uint8Array.from(atob(spoken.audio), (c) => c.charCodeAt(0))
+  const player = new Audio(
+    URL.createObjectURL(new Blob([bytes], { type: spoken.mimeType ?? 'audio/mpeg' })),
+  )
+  audio = player
+  player.playbackRate = rate
+  player.addEventListener('ended', () => audio === player && next())
+  player.addEventListener('error', () => {
+    if (audio !== player || !mine()) return
+    console.warn(
+      'Read aloud: the browser cannot play this audio, using its own voice',
+      player.error,
+    )
+    URL.revokeObjectURL(player.src)
+    audio = undefined
+    speakInBrowser()
+    if (mine()?.status === 'paused') speechSynthesis.pause()
+  })
+  await player.play().catch((error: unknown) => {
+    if (!player.error) failed(error)
+  })
 }
 
 export function pause() {
