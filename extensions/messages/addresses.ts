@@ -48,6 +48,16 @@ export const Serving = defineDoc<{
   migrate: () => ({ owners: {} }),
 })
 
+export const EarlyReplies = defineDoc<{ pending: Record<string, { settledBy?: EntryId }> }>({
+  kind: 'board.early-replies',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ pending: {} }),
+})
+
 export const sameOwner = (a: Owner, b: Owner) =>
   a.kind === 'tell' ? b.kind === 'tell' && a.key === b.key : b.kind === a.kind && a.id === b.id
 
@@ -123,6 +133,7 @@ export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, own
     ),
   )
   const requests = new Map<number, Serves>()
+  const { pending: early } = await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)
   const newest = new Map<string, Serves>()
   for (const { request } of Object.values(owners)) newest.set(asker(request), request)
   for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages) {
@@ -133,6 +144,7 @@ export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, own
       from: m.from,
       ...(m.remote ? { remote: { ...m.remote } } : {}),
     }
+    early[m.id] ??= {}
     requests.set(m.id, request)
     if ((newest.get(asker(request))?.message ?? 0) < m.id) newest.set(asker(request), request)
   }

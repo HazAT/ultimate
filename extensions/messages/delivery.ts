@@ -16,6 +16,7 @@ import type {
   Tx,
 } from '@earendil-works/pi-durable'
 import { ConversationsApi } from '../conversations/api.ts'
+import { WorkspacesApi } from '../workspaces/api.ts'
 import { scanNonterminalTasks } from './tasks.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import type { LandingOutput, Owner, Serves } from './addresses.ts'
@@ -26,7 +27,7 @@ import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
-import { remoteLabel, sameOwner, Serving, servesLine } from './addresses.ts'
+import { EarlyReplies, remoteLabel, sameOwner, Serving, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 
 const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
@@ -199,9 +200,19 @@ export function delivery(host: ExtensionHost) {
         }, ctx)
         if (task.input.note) return
         const settled = await receipt.wait(ctx)
+        const answer =
+          settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
+        if (
+          answer !== undefined &&
+          m.reply &&
+          (await host.harness().snapshot(EarlyReplies, ROOT_CONVERSATION_ID, ctx))?.pending[m.id]
+        ) {
+          for (const route of await host
+            .harness()
+            .commit((tx) => routesForInput(tx, recipient.id, receipt.id), ctx))
+            await runtime.waitForTask(route, ctx)
+        }
         await runtime.commit(async (tx) => {
-          const answer =
-            settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
           const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
           const original = messages.find((item) => item.id === m.id)
           if (!m.reply) {
@@ -209,8 +220,18 @@ export function delivery(host: ExtensionHost) {
             return terminal
           }
 
-          const answeredByMessageAlready = original?.state === 'answered'
-          if (answeredByMessageAlready) return terminal
+          const { pending } = await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)
+          const early = pending[m.id]
+          const routedThisAnswer = answer !== undefined && early?.settledBy === answer
+          if (early) delete pending[m.id]
+          if (original?.state === 'answered' || routedThisAnswer) {
+            if (original && routedThisAnswer) {
+              original.state = 'answered'
+              original.answer = answer
+              delete original.ownerSettled
+            }
+            return terminal
+          }
           const model =
             answer === undefined ? undefined : (await tx.entry(AssistantEntry, answer))?.model?.[0]
           const text =
@@ -244,6 +265,7 @@ export function delivery(host: ExtensionHost) {
           }
 
           const answerAlreadyReturnedToLocalSender =
+            !early &&
             !failed &&
             !m.remote &&
             (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
@@ -499,15 +521,51 @@ export async function reconcileOutputs(host: ExtensionHost, tx: Tx) {
   const by = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (by === undefined) return
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  const pending = new Set(
-    Object.values(owners).flatMap((record) =>
-      record.pending.filter((id) => typeof id === 'number'),
-    ),
+  const pending = [...new Set(Object.values(owners).flatMap((record) => record.pending))]
+  const submissions = new Set(pending.filter((id) => typeof id === 'number'))
+  const reservations = pending.filter((id) => typeof id === 'string')
+  const liveCards = reservations.length
+    ? new Set((await host.need(WorkspacesApi).pendingLandingCards(tx)).map((id) => `landing:${id}`))
+    : undefined
+  if (submissions.size)
+    for (const task of await scanNonterminalTasks(tx, 'board.settle', by))
+      submissions.delete((task.input as { submission: SubmissionId }).submission)
+  for (const id of submissions) await observeOutput(host, tx, by, id)
+  for (const reservation of reservations)
+    if (!liveCards?.has(reservation))
+      await retireOutput(host, tx, by, reservation, 'The landing card was not delivered')
+}
+
+export async function retireOutput(
+  host: ExtensionHost,
+  tx: Tx,
+  by: ConversationId,
+  output: SubmissionId | LandingOutput,
+  why: string,
+) {
+  const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+  const concluded = await host.need(ConversationsApi).concludedIn(tx)
+  for (const current of Object.values(owners)) {
+    const { owner, request } = current
+    if (!current.pending.includes(output)) continue
+    current.pending = current.pending.filter((id) => id !== output)
+    if (current.pending.length || (owner.kind === 'branch' && !concluded.has(owner.id))) continue
+    delete owners[request.message]
+    await sendResult(
+      host,
+      tx,
+      by,
+      request,
+      `${why} for your message ${request.message}; no result will come from it.`,
+      { failed: true },
+    )
+  }
+}
+
+async function routesForInput(tx: Tx, by: ConversationId, submission: SubmissionId) {
+  return (await scanNonterminalTasks(tx, 'board.route', by)).flatMap((route) =>
+    (route.input as { inputs: SubmissionId[] }).inputs.includes(submission) ? [route.id] : [],
   )
-  if (!pending.size) return
-  for (const task of await scanNonterminalTasks(tx, 'board.settle', by))
-    pending.delete((task.input as { submission: SubmissionId }).submission)
-  for (const id of pending) await observeOutput(host, tx, by, id)
 }
 
 export function settle(host: ExtensionHost) {
@@ -522,32 +580,19 @@ export function settle(host: ExtensionHost) {
         const handle = await host.harness().submission(submission, ctx)
         const outcome = await handle?.wait(ctx)
         if (outcome?.status === 'done') {
-          const routes = await host
+          for (const route of await host
             .harness()
-            .commit((tx) => scanNonterminalTasks(tx, 'board.route', by), ctx)
-          for (const route of routes)
-            if ((route.input as { inputs: SubmissionId[] }).inputs.includes(submission))
-              await runtime.waitForTask(route.id, ctx)
+            .commit((tx) => routesForInput(tx, by, submission), ctx))
+            await runtime.waitForTask(route, ctx)
         }
         await runtime.commit(async (tx) => {
-          const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-          const concluded = await host.need(ConversationsApi).concludedIn(tx)
-          for (const current of Object.values(owners)) {
-            const { owner, request } = current
-            if (!current.pending.includes(submission)) continue
-            current.pending = current.pending.filter((id) => id !== submission)
-            if (current.pending.length || (owner.kind === 'branch' && !concluded.has(owner.id)))
-              continue
-            delete owners[request.message]
-            await sendResult(
-              host,
-              tx,
-              by,
-              request,
-              `The run that received ${source ? `${source}'s result` : 'the result'} for your message ${request.message} ended without an answer; no result will come from it.`,
-              { failed: true },
-            )
-          }
+          await retireOutput(
+            host,
+            tx,
+            by,
+            submission,
+            `The run that received ${source ? `${source}'s result` : 'the result'} ended without an answer`,
+          )
           return terminal
         }, ctx)
       },
@@ -566,6 +611,11 @@ export async function sendResult(
   { answer, interim, failed }: { answer?: EntryId; interim?: boolean; failed?: boolean },
 ) {
   const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  if (answer !== undefined && !interim && !failed) {
+    const { pending } = await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)
+    const early = pending[request.message]
+    if (early) early.settledBy = answer
+  }
   const remote = request.remote
   const message = await append(tx, {
     from,

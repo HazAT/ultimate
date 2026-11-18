@@ -114,21 +114,23 @@ export async function reported(
   host: ExtensionHost,
   tx: Tx,
   starter: ConversationId,
-  answered: EntryId[],
-  submissions?: Map<EntryId, SubmissionId>,
+  inputs: { entry: EntryId; submission: SubmissionId }[],
 ) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   const newestAnsweredBranchMessage = new Map<ConversationId, number>()
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
-  const outputs: (NonNullable<Awaited<ReturnType<typeof ownerOutput>>> & { entry: EntryId })[] = []
+  const outputs: (NonNullable<Awaited<ReturnType<typeof ownerOutput>>> & {
+    submission: SubmissionId
+  })[] = []
+  const answered = new Set(inputs.map((input) => input.entry))
   const early = new Set<number>()
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  for (const entryId of answered) {
+  for (const { entry: entryId, submission } of inputs) {
     const entry = await tx.entry(entryId)
     if (MessageEntry.is(entry) && entry.data.reply) early.add(entry.data.id)
     const output = await ownerOutput(host, tx, starter, entry)
     if (output && (output.owner.kind !== 'branch' || concluded.has(output.owner.id)))
-      outputs.push({ ...output, entry: entryId })
+      outputs.push({ ...output, submission })
     if (FiredEntry.is(entry)) {
       for (const branch of entry.data.branches ?? []) {
         const branchSpokeLast =
@@ -178,17 +180,16 @@ export async function reported(
     interim: boolean
   }>(({ request, owner, assignedBy }) => {
     const output = outputs.find(
-      (item) =>
-        assignedBy < (submissions?.get(item.entry) ?? item.entry) && sameOwner(item.owner, owner),
+      (item) => assignedBy < item.submission && sameOwner(item.owner, owner),
     )
     if (output) return [{ request, source: output.source, interim: false }]
-    return answered.includes(assignedBy) && request.remote && !early.has(request.message)
+    return answered.has(assignedBy) && request.remote && !early.has(request.message)
       ? [{ request, interim: true }]
       : []
   })
   const localHandOns = new Set(
     Object.values(owners).flatMap(({ request, assignedBy }) =>
-      typeof request.from === 'number' && answered.includes(assignedBy) ? [request.from] : [],
+      typeof request.from === 'number' && answered.has(assignedBy) ? [request.from] : [],
     ),
   )
   const branches: ConversationId[] = []
@@ -239,14 +240,11 @@ export function route(host: ExtensionHost) {
             task.input.inputs.map((submission) => tx.submission(submission)),
           )
           const handle = async (): Promise<Route[]> => {
-            const submissions = new Map(
-              inputs.flatMap((input) =>
-                input?.type === 'input' && input.status === 'done' && input.answer === answer
-                  ? [[input.entry, input.id] as const]
-                  : [],
-              ),
+            const inputsSettledByThisAnswer = inputs.flatMap((input) =>
+              input?.type === 'input' && input.status === 'done' && input.answer === answer
+                ? [{ entry: input.entry, submission: input.id }]
+                : [],
             )
-            const inputsSettledByThisAnswer = [...submissions.keys()]
             if (!inputsSettledByThisAnswer.length) return []
             const message = (await tx.entry(answer))?.model?.[0]
             const text =
@@ -257,13 +255,7 @@ export function route(host: ExtensionHost) {
                 : ''
             if (!text.trim()) return []
             if (down) {
-              const { branches, askers } = await reported(
-                host,
-                tx,
-                by,
-                inputsSettledByThisAnswer,
-                submissions,
-              )
+              const { branches, askers } = await reported(host, tx, by, inputsSettledByThisAnswer)
               const together =
                 branches.length > 1
                   ? `(This answers ${branches.map((b) => `#${b}`).join(' and ')} together.)\n\n`
@@ -288,7 +280,7 @@ export function route(host: ExtensionHost) {
 
             let answersOnlyRoutedInputs = true
             const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-            for (const entryId of inputsSettledByThisAnswer) {
+            for (const { entry: entryId } of inputsSettledByThisAnswer) {
               const entry = await tx.entry(entryId)
               const data: Partial<DeliveredMessage> | undefined =
                 MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined

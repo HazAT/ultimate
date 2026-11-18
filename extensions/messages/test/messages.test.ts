@@ -48,7 +48,7 @@ import { BranchReceipts, rootOf, startBranch } from '../../lineage/server.ts'
 import type { BranchInput } from '../../lineage/server.ts'
 import { Branch, Roots, Tally } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
-import { landingPending, Workspaces } from '../../workspaces/workspaces.ts'
+import { landingPending, pendingLandingCards, Workspaces } from '../../workspaces/workspaces.ts'
 import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
 import { UiState } from '../../../shared/ui-state.ts'
 
@@ -149,7 +149,7 @@ async function fixture(
             },
           }
         : name === 'workspaces'
-          ? { doc: Workspaces, landingPending, git: async () => '' }
+          ? { doc: Workspaces, landingPending, pendingLandingCards, git: async () => '' }
           : name === 'conversations'
             ? { concludedIn }
             : name === 'lineage'
@@ -1068,10 +1068,10 @@ async function codemodeFixture() {
     `import { ConversationsApi } from ${JSON.stringify(resolve('extensions/conversations/api.ts'))}
 import { SubagentsApi } from ${JSON.stringify(resolve('extensions/subagents/api.ts'))}
 import { WorkspacesApi } from ${JSON.stringify(resolve('extensions/workspaces/api.ts'))}
-import { landingPending, Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
+import { landingPending, pendingLandingCards, Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
 export default (host) => {
   host.implement(SubagentsApi, { residents: async () => [] })
-  host.implement(WorkspacesApi, { doc: Workspaces, landingPending })
+  host.implement(WorkspacesApi, { doc: Workspaces, landingPending, pendingLandingCards })
   host.implement(ConversationsApi, { concludedIn: async () => new Set() })
   return { name: 'core-stand-ins' }
 }
@@ -2388,6 +2388,47 @@ async function fireAutomation(
   )
   return (await f.opened.harness.submission(submission, context))!
 }
+
+it('sends only the final result when a tell replies in the original request’s run', async () => {
+  const asker = await otherUltimate(() => [200, { result: 1 }])
+  const target = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(target.url)
+  const projects = f.host.projects.bind(f.host)
+  Object.assign(f.host, {
+    projects: async () => [
+      ...(await projects()),
+      { name: 'asker', current: false, running: { url: asker.url } },
+    ],
+  })
+  const key = 'original-request'
+  await actions.remote(
+    { key, text: 'Relay this\nHOLD', reply: true, from: { ...from, project: 'asker' } },
+    f.action(),
+  )
+  await until(f.holding)
+  await f.service().tell(ROOT_CONVERSATION_ID, { project: from.project, text: 'Check it' }, context)
+  const tellKey = (target.posted[0].body as { key: string }).key
+  await actions.remoteReply({ key: tellKey, text: 'Fast result', failed: false }, f.action())
+  await until(async () =>
+    (await f.log())!.messages.some(
+      (m) => m.from === 'remote' && m.text === 'Fast result' && m.state === 'delivered',
+    ),
+  )
+  f.hold.release()
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      ({ record }) => !['board.route', 'board.delivery', 'board.settle'].includes(record.kind),
+    ),
+  )
+  expect(asker.posted.map(({ body }) => body)).toEqual([
+    expect.objectContaining({
+      key,
+      failed: false,
+      text: expect.stringMatching(/Result of tell[\s\S]*Fast result/),
+    }),
+  ])
+  expect(asker.posted[0].body).not.toHaveProperty('interim')
+})
 
 it('a cancelled queued fire does not fail the request while the first fire can answer', async () => {
   const other = await otherUltimate(() => [200, { result: 1 }])

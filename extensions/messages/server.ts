@@ -34,7 +34,7 @@ import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
-import { delivery, reconcileOutputs, settle, submitOutput } from './delivery.ts'
+import { delivery, reconcileOutputs, retireOutput, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
@@ -235,6 +235,11 @@ export default function messages(host: ExtensionHost) {
         if (owner.kind === 'branch' && owner.id === id && !pending.includes(reservation))
           pending.push(reservation)
     },
+    retireLanding: async (tx, result) => {
+      const by = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+      if (by !== undefined)
+        await retireOutput(host, tx, by, `landing:${result}`, 'The landing card was not delivered')
+    },
     submitLanding: async (tx, to, input, id, result) => {
       await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`, `landing:${result}`)
     },
@@ -402,7 +407,11 @@ export default function messages(host: ExtensionHost) {
             await Promise.all(
               inputs.map(async (s) => (await host.harness().submission(s, ctx))?.status(ctx)),
             )
-          ).flatMap((s) => (s?.type === 'input' && s.entry !== undefined ? [s.entry] : []))
+          ).flatMap((s) =>
+            s?.type === 'input' && s.entry !== undefined
+              ? [{ entry: s.entry, submission: s.id }]
+              : [],
+          )
           const hasPendingReplies = await host
             .harness()
             .commit(

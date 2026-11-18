@@ -781,6 +781,7 @@ it.concurrent('emits one landed event and notes the root once, across a replayed
     working: async () => false,
     conclude: async () => {},
     reserveLanding: async () => {},
+    retireLanding: async () => {},
     submitLanding: async (tx, to, input) => {
       await to.submit(tx, input)
     },

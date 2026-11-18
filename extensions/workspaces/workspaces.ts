@@ -32,6 +32,7 @@ import {
 import {
   contains,
   createLander,
+  activeLandingCards,
   hasPendingLanderReport,
   landerCheckout,
   landerPath,
@@ -83,6 +84,10 @@ export async function landingPending(tx: Tx, id: ConversationId) {
     index.queue.some((item) => item.conversationId === id) ||
     (await hasPendingLanderReport(tx, index, id))
   )
+}
+
+export async function pendingLandingCards(tx: Tx) {
+  return activeLandingCards(tx, await tx.doc(Workspaces, ROOT_CONVERSATION_ID))
 }
 
 const tasksStartedByThisModule = new Set<number>()
@@ -212,6 +217,9 @@ export function workspaces(host: Host) {
       void (await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')),
     reserveLanding: async (tx, id, result) => {
       await host.want(Branches)?.reserveLanding(tx, id, result)
+    },
+    retireLanding: async (tx, result) => {
+      await host.want(Branches)?.retireLanding(tx, result)
     },
     submitLanding: async (tx, to, input, id, result) => {
       const messages = host.want(Branches)
