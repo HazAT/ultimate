@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..1b1ce3669bc4a652fb028936da9dac6942aa4e8f 100644
+index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..76e1ab3cea4d1e8011956ab6f9a944f61bf90052 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -1,4 +1,5 @@
@@ -494,6 +494,16 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..1b1ce3669bc4a652fb028936da9dac69
        const usage = message.usage ?? result.usage;
        if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
          throw new Error("Claude Code response did not include complete token usage");
+@@ -1019,7 +1178,8 @@ class ClaudeProcess {
+           requestId: this.relay.requestId,
+         },
+         initialUserPrefix:
+-          input.initialUserPrefix ?? deriveInitialUserPrefix(this.relay.originalRequestBody, canonicalInitialUser),
++          (input.initialUserPrefix && withoutUserEmailBlocks(structuredClone(input.initialUserPrefix))) ??
++          deriveInitialUserPrefix(this.relay.originalRequestBody, canonicalInitialUser),
+         initialSystemMessages:
+           input.initialSystemMessages ?? deriveInitialSystemMessages(this.relay.originalRequestBody),
+         rateLimit,
 diff --git a/src/model-catalog.ts b/src/model-catalog.ts
 index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3d58dfacc 100644
 --- a/src/model-catalog.ts
