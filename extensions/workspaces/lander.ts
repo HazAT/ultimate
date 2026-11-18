@@ -895,7 +895,7 @@ export function createLander(
                 requestId: `lander:${id}`,
                 entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
               })
-            else if (conclusionCommitted) await after.retireLanding(tx, id)
+            else if (conclusionCommitted && starter !== undefined) await after.retireLanding(tx, id)
             return {
               status: 'running',
               checkpoint: conclusionCommitted
@@ -904,14 +904,11 @@ export function createLander(
             }
           }, context)
         } catch (error) {
-          if (runtime.signal.aborted) throw error
-          await runtime.commit(async (tx) => {
-            if (conclusionCommitted) await after.retireLanding(tx, id)
-            return {
-              status: 'terminal',
-              outcome: { status: 'failed', error: { message: String(error) } },
-            }
-          }, context)
+          if (!runtime.signal.aborted && conclusionCommitted && starter !== undefined)
+            await runtime.commit(async (tx) => {
+              await after.retireLanding(tx, id)
+            }, context)
+          throw error
         }
       },
       release: async (task, runtime, context) => {
@@ -936,7 +933,11 @@ export function createLander(
             delete item.step
           }
         const checkpoint = task.state.checkpoint
-        if (checkpoint.phase === 'deliver' && checkpoint.concluded)
+        if (
+          checkpoint.phase === 'deliver' &&
+          checkpoint.concluded &&
+          checkpoint.starter !== undefined
+        )
           await after.retireLanding(tx, checkpoint.id)
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, context),

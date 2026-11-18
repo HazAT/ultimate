@@ -265,7 +265,6 @@ export function delivery(host: ExtensionHost) {
           }
 
           const answerAlreadyReturnedToLocalSender =
-            !early &&
             !failed &&
             !m.remote &&
             (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.some(
@@ -464,8 +463,12 @@ export function delivery(host: ExtensionHost) {
         }, ctx)
       },
     },
-    abort: (_task, runtime, ctx) =>
-      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
+    abort: (task, runtime, ctx) =>
+      runtime.commit(async (tx) => {
+        if (task.state.checkpoint.phase === 'deliver' && task.input.message.reply)
+          delete (await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)).pending[task.input.message.id]
+        return { status: 'terminal', outcome: { status: 'aborted' } }
+      }, ctx),
   })
 }
 

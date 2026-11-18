@@ -1046,6 +1046,40 @@ it('delivers one answer to several messages once, and closes each', async () => 
   expect(log.filter((m) => m.from === f.recipient.id)).toHaveLength(1)
   expect(await replies(f)).toHaveLength(1)
 })
+it('replies once to two requests from the same local asker delegated in one run', async () => {
+  const f = await fixture()
+  const send = (text: string) =>
+    sendMessage(f.host, f.recipient.id, { to: '#1', text, steer: true }, context)
+  const first = await send('First\nHOLD')
+  await until(f.holding)
+  const firstHold = f.hold
+  const second = await send('Second\nHOLD')
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(InboxDoc, ROOT_CONVERSATION_ID, context))!.items.length ===
+      1,
+  )
+  f.holdAgain()
+  firstHold.release()
+  await until(f.holding)
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A1'), context)
+  const owners = (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))!.owners
+  expect(Object.keys(owners).map(Number)).toEqual([first, second])
+  f.hold.release()
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      ({ record }) => !['board.delivery', 'board.route'].includes(record.kind),
+    ),
+  )
+  expect(
+    (await f.log())!.messages.filter((m) => m.id === first || m.id === second).map((m) => m.state),
+  ).toEqual(['answered', 'answered'])
+  const received = (await f.recipient.context(context)).entries.filter(
+    (entry) => entry.kind === 'board.reply',
+  )
+  expect(received).toHaveLength(1)
+})
+
 async function codemodeFixture() {
   const home = await temp('ultimate-messages-actions-')
   homes.push(home)
