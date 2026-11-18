@@ -895,6 +895,12 @@ it.each([
     undefined,
   ],
   ['Overloaded (529)', true, undefined],
+  // A gateway's daily spending cap on premium models, through the OpenAI SDK once the openai patch keeps its reason.
+  [
+    'OpenAI API error (400): 400 {"error":"BadRequestError","location":"proxy","description":"The proxy threw an \'BadRequestError\' error","reason":"You\'ve hit your daily premium model limit: $301.52 of $300.00, counted for your local day in America/New_York and resetting at 2026-11-18 00:00 America/New_York (2026-11-18 05:00 UTC). Please switch to a non-premium model.","details":null}',
+    false,
+    'The daily premium model limit is used up ($301.52 of $300.00) until 2026-11-18 00:00 America/New_York (2026-11-18 05:00 UTC). Resume this conversation with a message after that, or move it to a non-premium model',
+  ],
   // A conversation pinned to a provider whose login was removed (rog, 2026-10-25).
   [
     'Provider is not configured: openrouter',

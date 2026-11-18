@@ -11,6 +11,7 @@ patchedDependencies:
   '@earendil-works/chord@1.5.2': 0a84e0316a4ce02b090b6c94540148771592890bc6f0869d75243fa34e5d3f25
   '@earendil-works/pi-claude-code@0.1.0': bd3825e7cab2a13a494c87f2c6658f445f3978c0b5de2857273fb36ade3ff78e
   '@earendil-works/pi-durable@1.5.2': da103834f55ff797bdc07bc967b4a51ab697f056657fb7c9db6a7d16577d839e
+  openai@7.19.0: fd51571d064db4cc2ce227ebe977ba3652736ef7d9f91abf8aa76c4da2e1dd23
 
 importers:
 
@@ -3672,7 +3673,7 @@ snapshots:
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
       https-proxy-agent: 9.1.0
-      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)
+      openai: 7.19.0(patch_hash=fd51571d064db4cc2ce227ebe977ba3652736ef7d9f91abf8aa76c4da2e1dd23)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)
       partial-json: 0.1.7
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -3697,7 +3698,7 @@ snapshots:
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
       https-proxy-agent: 9.1.0
-      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.12.3)
+      openai: 7.19.0(patch_hash=fd51571d064db4cc2ce227ebe977ba3652736ef7d9f91abf8aa76c4da2e1dd23)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.12.3)
       partial-json: 0.1.7
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -6244,13 +6245,13 @@ snapshots:
       regex: 6.1.0
       regex-recursion: 6.0.2
 
-  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2):
+  openai@7.19.0(patch_hash=fd51571d064db4cc2ce227ebe977ba3652736ef7d9f91abf8aa76c4da2e1dd23)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2):
     optionalDependencies:
       '@aws-sdk/credential-provider-node': 3.972.84
       '@smithy/signature-v4': 5.7.4
       undici: 8.10.2
 
-  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.12.3):
+  openai@7.19.0(patch_hash=fd51571d064db4cc2ce227ebe977ba3652736ef7d9f91abf8aa76c4da2e1dd23)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.12.3):
     optionalDependencies:
       '@aws-sdk/credential-provider-node': 3.972.84
       '@smithy/signature-v4': 5.7.4

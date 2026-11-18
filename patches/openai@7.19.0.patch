@@ -1,0 +1,28 @@
+diff --git a/core/error.js b/core/error.js
+index f169ce0..175aeb1 100644
+--- a/core/error.js
++++ b/core/error.js
+@@ -40,7 +40,8 @@ class APIError extends OpenAIError {
+         if (!status || !headers) {
+             return new APIConnectionError({ message, cause: (0, errors_1.castToError)(errorResponse) });
+         }
+-        const error = errorResponse?.['error'];
++        const nested = errorResponse?.['error'];
++        const error = nested !== null && typeof nested === 'object' ? nested : errorResponse;
+         if (status === 400) {
+             return new BadRequestError(status, error, message, headers);
+         }
+diff --git a/core/error.mjs b/core/error.mjs
+index 1b15b59..687d933 100644
+--- a/core/error.mjs
++++ b/core/error.mjs
+@@ -36,7 +36,8 @@ export class APIError extends OpenAIError {
+         if (!status || !headers) {
+             return new APIConnectionError({ message, cause: castToError(errorResponse) });
+         }
+-        const error = errorResponse?.['error'];
++        const nested = errorResponse?.['error'];
++        const error = nested !== null && typeof nested === 'object' ? nested : errorResponse;
+         if (status === 400) {
+             return new BadRequestError(status, error, message, headers);
+         }

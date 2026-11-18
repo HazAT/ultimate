@@ -53,6 +53,19 @@ it('reports a 402 streak as a billing failure, not a broken login', async () => 
   ])
 })
 
+it('keeps a premium model limit as a capacity error, so it never flips the provider', async () => {
+  // A gateway's daily spending cap on premium models came back as a 400 that health counted as a transient failure.
+  const home = await temp()
+  const capped =
+    '400 {"error":"BadRequestError","reason":"You\'ve hit your daily premium model limit: $301.52 of $300.00, resetting at 2026-11-18 00:00 America/New_York."}'
+  expect(sanitize(capped)).toBe('400 premium_limit')
+  await record(home, 'p', { lastOk: NOW })
+  for (let i = 1; i <= 3; i++) await record(home, 'p', { lastFail: NOW + i, error: capped })
+  expect(await readHealth(home, NOW + 4)).toMatchObject([
+    { provider: 'p', state: 'ok', error: '400 premium_limit' },
+  ])
+})
+
 it('counts a provider failing only after an auth error or a transient streak', async () => {
   const home = await temp()
   const states = async () => (await readHealth(home)).map((entry) => entry.state)
