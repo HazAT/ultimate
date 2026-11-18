@@ -1,7 +1,9 @@
 import { expect, it } from 'vitest'
-import { speakCommand } from '../../command.ts'
+import { speakCommand, wavOf } from '../../lib/speech.ts'
 
-it('sends literal text on stdin and returns the command PCM', async () => {
+const pcm = Buffer.from([0, 0, 255, 127])
+
+it('sends literal text on stdin and wraps headerless PCM in a WAV', async () => {
   const text = 'Literal "$HOME"; echo not-a-command.'
   const script = `
     let text = ''
@@ -14,7 +16,20 @@ it('sends literal text on stdin and returns the command PCM', async () => {
   `
   expect(
     await speakCommand([process.execPath, '-e', script, text], text, new AbortController().signal),
-  ).toEqual(Buffer.from([0, 0, 255, 127]))
+  ).toEqual({ audio: wavOf(pcm), mimeType: 'audio/wav' })
+})
+
+it('takes output longer than a minute of audio', async () => {
+  const seconds = 90
+  const script = `process.stdin.resume(); process.stdin.on('end', () =>
+    process.stdout.write(Buffer.alloc(24000 * 2 * ${seconds})))`
+  const { audio, mimeType } = await speakCommand(
+    [process.execPath, '-e', script],
+    'A long section.',
+    new AbortController().signal,
+  )
+  expect(mimeType).toBe('audio/wav')
+  expect(audio.length).toBe(44 + 24000 * 2 * seconds)
 })
 
 it('rejects failed commands with their stderr', async () => {
@@ -24,5 +39,5 @@ it('rejects failed commands with their stderr', async () => {
   })`
   await expect(
     speakCommand([process.execPath, '-e', script], 'A line.', new AbortController().signal),
-  ).rejects.toThrow('Narrator command exited 7: Speech runtime unavailable')
+  ).rejects.toThrow('Speech command exited 7: Speech runtime unavailable')
 })
