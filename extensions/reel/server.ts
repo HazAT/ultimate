@@ -125,17 +125,32 @@ const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
 
 const SENT = /^Message \d+ sent\.$/m
 
-function sentQuestion(turn: PiMessage) {
-  if (turn.role !== 'toolResult' || turn.isError) return false
-  if (turn.toolName === 'message')
-    return turn.content.some((block) => block.type === 'text' && SENT.test(block.text))
-  const details = turn.details as { calls?: { name?: string; args?: unknown; status?: string }[] }
-  return (details?.calls ?? []).some(
-    (nested) =>
-      nested.name === 'message' &&
-      nested.status === 'ok' &&
-      asksTheUser(nested.args as Readonly<Record<string, unknown>>),
+type ToolResult = Extract<PiMessage, { role: 'toolResult' }>
+type NestedCall = { name?: string; args?: unknown; status?: string }
+
+function questionsOf(
+  call: { id: string; name: string; arguments: Readonly<Record<string, unknown>> },
+  result: ToolResult | undefined,
+  logged: ReadonlySet<string>,
+) {
+  if (call.name === 'message')
+    return logged.has(call.id) ||
+      (asksTheUser(call.arguments) &&
+        result !== undefined &&
+        !result.isError &&
+        result.content.some((block) => block.type === 'text' && SENT.test(block.text)))
+      ? [call.id]
+      : []
+  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? []).flatMap(
+    (item, index) =>
+      item.name === 'message' &&
+      item.status === 'ok' &&
+      asksTheUser(item.args as Readonly<Record<string, unknown>>)
+        ? [`${call.id}/${index + 1}`]
+        : [],
   )
+  const live = [...logged].filter((id) => id.startsWith(`${call.id}/`) && !nested.includes(id))
+  return [...nested, ...live].toSorted((a, b) => Number(a.split('/')[1]) - Number(b.split('/')[1]))
 }
 
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
@@ -144,34 +159,29 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
   const asked = log.find((item) => item.id === message)
   if (!asked || asked.from !== branch || !asked.call)
     throw new Error(`#${branch} sent no message ${message}`)
-  const [own] = asked.call.split('/')
-  const earlierInScript = log.some(
-    (item) =>
-      item.id < asked.id &&
-      item.from === branch &&
-      item.to === 'user' &&
-      item.reply &&
-      item.call?.split('/')[0] === own,
+  const logged = new Set(
+    log.flatMap((item) =>
+      item.from === branch && item.to === 'user' && item.reply && item.call ? [item.call] : [],
+    ),
   )
-  const sent = new Set<string>()
+  const results = new Map<string, ToolResult>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {
+    const sends: { entry: number; id: string }[] = []
     for (const turn of entry.model ?? []) {
-      if (sentQuestion(turn) && turn.role === 'toolResult') sent.add(turn.toolCallId)
+      if (turn.role === 'toolResult') results.set(turn.toolCallId, turn)
       if (turn.role !== 'assistant') continue
-      for (const block of turn.content) {
-        if (block.type !== 'toolCall') continue
-        if (to === undefined) {
-          if (block.id === own) {
-            to = entry.id
-            if (earlierInScript) return { from: to, to }
-          }
-          continue
-        }
-        if (sent.has(block.id) && (block.name !== 'message' || asksTheUser(block.arguments)))
-          return { from: entry.id, to }
-      }
+      for (const block of turn.content)
+        if (block.type === 'toolCall')
+          for (const id of questionsOf(block, results.get(block.id), logged))
+            sends.push({ entry: entry.id, id })
     }
+    const at = sends.findIndex((send) => send.id === asked.call)
+    if (to === undefined && at < 0) continue
+    if (to === undefined) {
+      to = entry.id
+      if (at > 0) return { from: to, to }
+    } else if (sends.length) return { from: entry.id, to }
   }
   if (to === undefined) throw new Error(`#${branch} holds no call for message ${message}`)
   return { from: 0, to }

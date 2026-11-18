@@ -58,8 +58,9 @@ const ask = (id: number, callId: string, args: Record<string, unknown> = {}, sen
   call(BRANCH, id, callId, 'message', { to: 'user', text: 'Preview?', ...args }),
 ]
 
-const script = (id: number, callId: string, asks: number) => [
+const script = (id: number, callId: string, asks: number, failed = false) => [
   result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
+    isError: failed,
     details: {
       calls: Array.from({ length: asks }, (_, n) => ({
         name: 'message',
@@ -70,6 +71,31 @@ const script = (id: number, callId: string, asks: number) => [
     },
   }),
   call(BRANCH, id, callId, 'codemode', { code: '…' }),
+]
+
+const both = (id: number, first: string, second: string) => [
+  entry(
+    BRANCH,
+    id + 1,
+    [first, second].map((callId) => ({
+      role: 'toolResult',
+      toolCallId: callId,
+      toolName: 'message',
+      content: [{ type: 'text', text: 'Message 9 sent.' }],
+      isError: false,
+    })),
+  ),
+  entry(BRANCH, id, [
+    {
+      role: 'assistant',
+      content: [first, second].map((callId) => ({
+        type: 'toolCall',
+        id: callId,
+        name: 'message',
+        arguments: { to: 'user', text: callId },
+      })),
+    },
+  ]),
 ]
 
 function fixture(branch: EntryRecord[], log: Message[]) {
@@ -179,6 +205,34 @@ it('a question asked from a script starts after the one before it', async () => 
   const { ctx } = fixture(branch, [question(3, 'run/1'), question(4, 'run/2')])
   const first = await actions.frames({ conversation: BRANCH, message: 3 }, ctx)
   const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
+  expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
+  expect(second.frames).toEqual([])
+
+  const trimmed = fixture(branch, [question(4, 'run/2')]).ctx
+  expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
+})
+
+it('a script that asked and then failed still ends its round', async () => {
+  const branch = [
+    ...ask(60, 'ask2'),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...script(40, 'failing', 1, true),
+    ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
+  ]
+  const { ctx } = fixture(branch, [question(2, 'ask2')])
+  const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
+  expect(reel.frames.map((frame) => frame.entry)).toEqual([41, 51])
+})
+
+it('two questions sent in one turn: the first gets the round, the second none', async () => {
+  const branch = [
+    ...both(60, 'qa', 'qb'),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...ask(40, 'ask0'),
+  ]
+  const { ctx } = fixture(branch, [question(5, 'qa'), question(6, 'qb')])
+  const first = await actions.frames({ conversation: BRANCH, message: 5 }, ctx)
+  const second = await actions.frames({ conversation: BRANCH, message: 6 }, ctx)
   expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
   expect(second.frames).toEqual([])
 })
