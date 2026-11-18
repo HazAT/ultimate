@@ -30,7 +30,7 @@ All three actions are user-only (`userActions`); agents cannot call them. Inputs
 - **Where it shows:**
   - On the agent surface the sheet opens over the asker's transcript; `Stage` and the composer chips work over any conversation with open side chats, not only @ultimate. The transcript layer behind it is `inert`, so its card takes no clicks or keys.
   - In the Inbox the reading pane becomes the side chat in front (inbox's `QuestionPane` point). It stays there after the question is answered elsewhere, until the user parks or ends it.
-  - The card's button reads **Side chat** once one is open.
+  - The card's button always reads **Talk it through**; once a side chat is open it brings that one back.
 - **Card pinned on top:** the question's card is pinned and foldable. The cards share their drafts (questions' durable card state), so picks made on either side show on both.
   - Its Send reads **Summarize & send**: `inject {id, answer}`. One commit checks that the question is still open and creates the ending task. The task writes the summary, rechecks the question, then answers it with a receipt, so a crash or a reload sends the answer once. A failed summary sends nothing; a closed question is refused before anything is written.
   - **Summarize only** sends the summary without answering.

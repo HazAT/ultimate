@@ -590,7 +590,11 @@ function useTalkItThrough(message: QuestionMessage): ReactNode {
         }
       }}
       size="sm"
-      title="Talk this question through in a read-only side chat forked from the agent that asked it"
+      title={
+        open
+          ? 'Back to the side chat where you are talking this question through'
+          : 'Talk this question through in a read-only side chat forked from the agent that asked it'
+      }
       variant="ghost"
     >
       {opening ? (
@@ -598,7 +602,7 @@ function useTalkItThrough(message: QuestionMessage): ReactNode {
       ) : (
         <GitForkIcon className="text-brand" />
       )}
-      {open ? 'Side chat' : 'Talk it through'}
+      Talk it through
     </Button>
   )
 }
