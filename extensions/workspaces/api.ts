@@ -25,6 +25,8 @@ export type WorkspaceService = {
   git: typeof git
   /** The worktree index document (`ultimate.workspaces` on the root), for reads inside a transaction. */
   doc: typeof Workspaces
+  /** Inside `tx`, whether `id` has a queued landing or still has a landing report on its way. */
+  landingPending(tx: Tx, id: ConversationId): Promise<boolean>
   /** Make the project folder a Git repository with a first commit, so worktrees and landing work. */
   setupGit(): Promise<void>
 }

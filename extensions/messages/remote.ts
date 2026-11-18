@@ -106,8 +106,10 @@ export async function tell(
       remote,
     })
     if (reply) {
-      await serve(host, tx, from, { kind: 'tell', key: remote.key })
-      const branches = await branchesReadThisRun(tx, from)
+      const owned = await serve(host, tx, from, { kind: 'tell', key: remote.key })
+      const branches = (await branchesReadThisRun(tx, from)).filter(
+        (branch) => !owned.some((request) => request.from === branch),
+      )
       ;(await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[remote.key] = {
         message,
         ...(branches.length ? { branches } : {}),

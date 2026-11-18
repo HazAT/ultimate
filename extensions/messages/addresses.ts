@@ -83,14 +83,16 @@ export async function ownerOutput(
 }
 
 function asker({ from, remote }: Pick<Serves, 'from' | 'remote'>) {
-  return from === 'remote' ? `project:${remote?.project}` : `conversation:${from}`
+  return from === 'remote'
+    ? JSON.stringify([remote?.project, remote?.machine])
+    : `conversation:${from}`
 }
 
 export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, owner: Owner) {
-  if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== to) return
+  if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== to) return []
   const inputs = await runInputs(tx, to)
   const assignedBy = inputs.at(-1)?.id
-  if (assignedBy === undefined) return
+  if (assignedBy === undefined) return []
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
   const read = new Set(inputs.flatMap((entry) => (MessageEntry.is(entry) ? [entry.data.id] : [])))
   const authors = new Set(
@@ -107,7 +109,8 @@ export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, own
   const newest = new Map<string, Serves>()
   for (const { request } of Object.values(owners)) newest.set(asker(request), request)
   for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages) {
-    if (m.to !== to || m.from === 'user' || !isOpen(m) || !read.has(m.id)) continue
+    if (m.to !== to || m.from === 'user' || m.ownerSettled || !isOpen(m) || !read.has(m.id))
+      continue
     const request = {
       message: m.id,
       from: m.from,
@@ -127,6 +130,7 @@ export async function serve(host: ExtensionHost, tx: Tx, to: ConversationId, own
       if (sameOwner(current, output.owner)) requests.set(request.message, request)
   }
   for (const request of requests.values()) owners[request.message] = { request, owner, assignedBy }
+  return [...requests.values()]
 }
 
 export async function branchesReadThisRun(tx: Tx, to: ConversationId) {
@@ -150,7 +154,11 @@ export async function owed(host: ExtensionHost, tx: Tx, to: ConversationId, auto
   return branches.length ? { branches } : {}
 }
 
-export const Started = defineDoc<{ by?: ConversationId; yielded?: TaskId }>({
+export const Started = defineDoc<{
+  by?: ConversationId
+  yielded?: TaskId
+  watching?: { generation: TaskId; last: EntryId }
+}>({
   kind: 'board.started',
   checkpointWhen: () => false,
   version: 1,

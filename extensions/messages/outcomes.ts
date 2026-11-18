@@ -18,8 +18,6 @@ export async function sendResult(
   { answer, interim, failed }: { answer?: EntryId; interim?: boolean; failed?: boolean },
 ) {
   const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  if (answer !== undefined && messages.some((m) => m.routed === answer && m.re === request.message))
-    return
   const remote = request.remote
   const message = await append(tx, {
     from,
@@ -34,7 +32,7 @@ export async function sendResult(
     ...(remote ? { remote } : {}),
   })
   const original = messages.find((m) => m.id === request.message)
-  if (remote && !interim && original && isOpen(original)) original.ownerSettled = true
+  if (!interim && original && isOpen(original)) original.ownerSettled = true
   if (!remote)
     await host.emit(tx, MessageSent, {
       message: message.id,

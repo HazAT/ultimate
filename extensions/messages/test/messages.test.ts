@@ -48,8 +48,8 @@ import { BranchReceipts, rootOf, startBranch } from '../../lineage/server.ts'
 import type { BranchInput } from '../../lineage/server.ts'
 import { Branch, Roots, Tally } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
-import { Workspaces } from '../../workspaces/workspaces.ts'
-import { concludedIn } from '../../conversations/server.ts'
+import { landingPending, Workspaces } from '../../workspaces/workspaces.ts'
+import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
 import { UiState } from '../../../shared/ui-state.ts'
 
 const homes: string[] = []
@@ -149,7 +149,7 @@ async function fixture(
             },
           }
         : name === 'workspaces'
-          ? { doc: Workspaces, git: async () => '' }
+          ? { doc: Workspaces, landingPending, git: async () => '' }
           : name === 'conversations'
             ? { concludedIn }
             : name === 'lineage'
@@ -1062,10 +1062,10 @@ async function codemodeFixture() {
     `import { ConversationsApi } from ${JSON.stringify(resolve('extensions/conversations/api.ts'))}
 import { SubagentsApi } from ${JSON.stringify(resolve('extensions/subagents/api.ts'))}
 import { WorkspacesApi } from ${JSON.stringify(resolve('extensions/workspaces/api.ts'))}
-import { Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
+import { landingPending, Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
 export default (host) => {
   host.implement(SubagentsApi, { residents: async () => [] })
-  host.implement(WorkspacesApi, { doc: Workspaces })
+  host.implement(WorkspacesApi, { doc: Workspaces, landingPending })
   host.implement(ConversationsApi, { concludedIn: async () => new Set() })
   return { name: 'core-stand-ins' }
 }
@@ -1708,9 +1708,10 @@ it("sends @ultimate's answer to a branch it concluded to the agent whose request
   expect(reply.model![0].content).toContain(
     `#${id} works on #${f.recipient.id}'s message ${asked.id}.`,
   )
-  await f.opened.harness.commit(async (tx) => {
-    ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [id]
-  }, context)
+  await conversationActions.conclude(
+    { ids: [id] },
+    { ...f.action(), conversationId: ROOT_CONVERSATION_ID },
+  )
   f.hold.release()
   await until(async () =>
     (await f.log())!.messages.some((m) => m.from === 1 && m.to === f.recipient.id && m.routed),
@@ -1800,7 +1801,7 @@ it("routes the answer of a run an automation woke to the branches whose report t
               id: 'A3',
               name: 'check-back',
               text: 'AB-DONE',
-              ...(branches ? { branches, at: Date.now() } : {}),
+              ...(branches ? { branches } : {}),
             },
           },
         },
@@ -2340,10 +2341,11 @@ it('hands a concluded branch’s remote request to the automation created while 
   await until(() => other.posted.length === 1)
   expect(other.posted[0].body).toMatchObject({ key, interim: expect.any(Number) })
   const id = (await f.log())!.messages.find((m) => m.from === 1 && m.text === 'Inspect STALL')!.to
-  await f.opened.harness.commit(async (tx) => {
-    await f.service().owed(tx, ROOT_CONVERSATION_ID, 'A2')
-    ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [id]
-  }, context)
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A2'), context)
+  await conversationActions.conclude(
+    { ids: [id] },
+    { ...f.action(), conversationId: ROOT_CONVERSATION_ID },
+  )
   f.hold.release()
   await until(() => other.posted.length === 2)
   expect(other.posted[1].body).toMatchObject({ key, interim: expect.any(Number) })
@@ -2616,6 +2618,32 @@ it('serves nothing for work that never answers back, and fails a served request 
     text: expect.stringContaining('was deleted'),
   })
 })
+it('does not give a failed request another owner in its answering run', async () => {
+  const other = await otherUltimate(() => [200, { result: 1 }])
+  const f = await remoteFixture(other.url)
+  const key = 'deleted-before-answer'
+  await actions.remote({ key, text: 'Job\nHOLD', reply: true, from }, f.action())
+  await until(f.holding)
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A1'), context)
+  await f.opened.harness.commit(
+    (tx) => f.service().dropped(tx, 'A1', 'Automation A1,', 'was deleted'),
+    context,
+  )
+  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A2'), context)
+  f.hold.release()
+  await until(() => other.posted.length === 2)
+  await (await fireAutomation(f, 'A2', 'done')).wait(context)
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.every(
+      (t) => !['board.route', 'board.delivery'].includes(t.record.kind),
+    ),
+  )
+  expect(other.posted.map(({ body }) => body)).toEqual([
+    expect.objectContaining({ key, failed: true }),
+    expect.objectContaining({ key, failed: false, interim: expect.any(Number) }),
+  ])
+})
+
 it('keeps a request open when a late failure report names a fire whose run handed it on', async () => {
   // Re-review of c0f0b4a5: A handed on to B, B to C; a late failure report for A's run failed the request C served.
   const other = await otherUltimate(() => [200, { result: 1 }])

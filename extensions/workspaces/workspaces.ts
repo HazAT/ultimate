@@ -29,7 +29,14 @@ import {
   treeName,
   treePath,
 } from './tree.ts'
-import { contains, createLander, landerCheckout, landerPath, log } from './lander.ts'
+import {
+  contains,
+  createLander,
+  hasPendingLanderReport,
+  landerCheckout,
+  landerPath,
+  log,
+} from './lander.ts'
 import type {
   LandResult,
   SubmitResult,
@@ -70,6 +77,14 @@ export const Workspaces = defineDoc<WorkspaceIndex>({
     }
   },
 })
+export async function landingPending(tx: Tx, id: ConversationId) {
+  const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+  return (
+    index.queue.some((item) => item.conversationId === id) ||
+    (await hasPendingLanderReport(tx, index, id))
+  )
+}
+
 const tasksStartedByThisModule = new Set<number>()
 async function landerIdle(tx: Tx, index: WorkspaceIndex, source: string) {
   const running = index.landers[source]
@@ -193,7 +208,8 @@ export function workspaces(host: Host) {
   const Lander = createLander(host, Workspaces, serializeSourceWrites, {
     starter: async (id, context) => host.want(Branches)?.starter(id, context),
     working: async (tx, id) => (await host.want(Branches)?.working(tx, id)) ?? false,
-    conclude: async (tx, id) => void (await host.need(ConversationsApi).concludeIn(tx, [id])),
+    conclude: async (tx, id) =>
+      void (await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')),
     release: (id, context) => release([id], context),
   })
   type IdleReadBeforeWrites = string

@@ -31,7 +31,16 @@ import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
-import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
+import {
+  ownerOutput,
+  owed,
+  parentOf,
+  runInputs,
+  sameOwner,
+  Serving,
+  Started,
+  starterOf,
+} from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
 import { delivery } from './delivery.ts'
@@ -39,7 +48,7 @@ import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
-import { branchLost, reported, route, working } from './route.ts'
+import { branchesConcluded, reported, route, working } from './route.ts'
 import { projectsSection, remoteAction, remoteReplyAction, tellTask, tell } from './remote.ts'
 import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
@@ -219,7 +228,7 @@ export default function messages(host: ExtensionHost) {
     [Concluded],
     async (tx, event) => {
       if (!Concluded.is(event)) return
-      for (const branch of event.data.conversations) await branchLost(host, tx, branch, event.id)
+      await branchesConcluded(host, tx, event.data.conversations, event.data.by, event.id)
     },
     { from: 'now' },
   )
@@ -253,6 +262,47 @@ export default function messages(host: ExtensionHost) {
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
+        beforeRequest: async (_request, api, ctx) => {
+          const by = api.conversationId
+          if ((await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate !== by)
+            return undefined
+          await host.harness().commit(async (tx) => {
+            const live = (await tx.doc(LiveDoc, by)).run
+            if (live?.taskId !== api.taskId) return
+            const entries = await runInputs(tx, by)
+            const last = entries.at(-1)?.id
+            if (last === undefined) return
+            const started = await tx.doc(Started, by)
+            if (started.watching?.generation === api.taskId && started.watching.last === last)
+              return
+            const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+            for (const entry of entries) {
+              const output = await ownerOutput(host, tx, by, entry)
+              if (
+                !output ||
+                !Object.values(owners).some(
+                  ({ owner, assignedBy }) =>
+                    assignedBy < entry.id && sameOwner(owner, output.owner),
+                )
+              )
+                continue
+              started.watching = { generation: api.taskId, last }
+              await tx.createTask(
+                route(host),
+                {
+                  generation: api.taskId as TaskId<GenerationResult>,
+                  inputs: [...live.inputs],
+                  by,
+                  down: true,
+                  failureOnly: true,
+                },
+                { ownership: { kind: 'conversation' }, conversationId: by, background: true },
+              )
+              break
+            }
+          }, ctx)
+          return undefined
+        },
         onYield: async (_answer, api, ctx) => {
           let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
           const down =

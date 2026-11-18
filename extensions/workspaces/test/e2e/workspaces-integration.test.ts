@@ -1043,7 +1043,7 @@ async function concluding() {
     conversations({
       concluded: async () => new Set<ConversationId>(),
       subject: async () => ({}),
-      concludeIn: (tx, ids) => concludeIn(f.host, tx, ids),
+      concludeIn: (tx, ids, by) => concludeIn(f.host, tx, ids, by),
     }),
   )
   f.prepared.registry.install(lineage(f.host))
@@ -1284,7 +1284,7 @@ it.concurrent('lands two submissions in order onto a moved target and reports bo
   expect(metadata).toEqual({ title: '@lander', label: 'lander' })
   // The lander the submission created is standing at once: concluding it is refused.
   await expect(
-    f.opened.harness.commit((tx) => concludeIn(f.host, tx, [id]), context),
+    f.opened.harness.commit((tx) => concludeIn(f.host, tx, [id], 'user'), context),
   ).rejects.toThrow(`#${id} is a standing agent`)
   expect(cwd).toMatch(/\/lander\/[0-9a-f]{12}$/)
   expect(kinds.every((kind) => kind === 'ultimate.lander')).toBe(true)

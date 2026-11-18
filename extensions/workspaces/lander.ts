@@ -316,6 +316,16 @@ type State =
   | CommittedDeliveryDecision
   | ConcludedBranchRelease
 
+export async function hasPendingLanderReport(tx: Tx, index: WorkspaceIndex, id: ConversationId) {
+  for (const taskId of Object.values(index.landers)) {
+    const state = (await tx.task(taskId))?.state
+    if (!state || state.status === 'terminal') continue
+    const checkpoint = state.checkpoint as State | undefined
+    if (checkpoint?.phase === 'report' && checkpoint.conversationId === id) return true
+  }
+  return false
+}
+
 export function createLander(
   host: Host,
   Workspaces: ConversationDocToken<WorkspaceIndex>,

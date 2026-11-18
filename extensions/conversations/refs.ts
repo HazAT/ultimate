@@ -18,11 +18,15 @@ export const Compacted = defineEvent<{
 }>('conversations.compacted')
 
 /**
- * Top-level conversations were concluded: `conversations` lists them with every conversation they own, ascending.
+ * Top-level conversations were concluded: `conversations` includes their owned descendants, ascending.
+ * `by` is the caller's conversation, `landing`, or `user` for a UI conclusion.
  * Emitted in the commit that concludes them (the Conclude action, a landing, a side chat ending), so whatever a
  * conversation held outside the store can be freed exactly when it ends.
  */
-export const Concluded = defineEvent<{ conversations: ConversationId[] }>('conversations.concluded')
+export const Concluded = defineEvent<{
+  conversations: ConversationId[]
+  by: ConversationId | 'landing' | 'user'
+}>('conversations.concluded')
 
 /**
  * How full conversation `id`'s context is: `tokens` its next request carries (the latest answer's prompt, or after a

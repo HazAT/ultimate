@@ -310,6 +310,7 @@ function backend(host: ExtensionHost) {
     args: Args,
     prepared: Prepared,
     caller?: ConversationId,
+    runBy = caller,
   ): Promise<{ result: JsonValue; effect?: Effect }> {
     const state = await tx.doc(Automations)
     if (args.action === 'list')
@@ -355,7 +356,7 @@ function backend(host: ExtensionHost) {
           updatedAt: Date.now(),
           subscribers,
           ...(args.key ? { key: args.key } : {}),
-          ...(await owedAtCreation(tx, sub.id, subscribers, caller)),
+          ...(await owedAtCreation(tx, sub.id, subscribers, runBy)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -367,7 +368,7 @@ function backend(host: ExtensionHost) {
         : args.prompt
           ? []
           : [caller!]
-      const owed = await owedAtCreation(tx, id, subscribers, caller)
+      const owed = await owedAtCreation(tx, id, subscribers, runBy)
       const conversationId = await agentConversation(
         tx,
         prepared,
@@ -563,6 +564,7 @@ function backend(host: ExtensionHost) {
     args: Args,
     prepared: Awaited<ReturnType<typeof prepare>>,
     caller?: ConversationId,
+    runBy = caller,
   ): Promise<Change> {
     if (args.action === 'events') return { result: json(TRIGGER_EVENTS) }
     const state = await tx.doc(Automations)
@@ -574,7 +576,7 @@ function backend(host: ExtensionHost) {
         throw new Error(`The automation for key ${args.key} was deleted meanwhile; create it again`)
     }
     if (args.action === 'create' && args.ask !== undefined)
-      return changeScript(tx, args, prepared, caller)
+      return changeScript(tx, args, prepared, caller, runBy)
     const id = args.action === 'create' ? `A${state.next++}` : required(args.id, 'id')
     if (args.action === 'create') {
       const now = Date.now()
@@ -594,7 +596,7 @@ function backend(host: ExtensionHost) {
         fires: 0,
         ...(args.key ? { key: args.key } : {}),
         subscribers,
-        ...(await owedAtCreation(tx, id, subscribers, caller)),
+        ...(await owedAtCreation(tx, id, subscribers, runBy)),
       }
     }
     const a = state.automations[id]
@@ -951,7 +953,9 @@ export default function automations(host: ExtensionHost) {
             const prepared = await api.prepare(args, caller)
             receipt = await tool.commit(async (tx) => {
               const saved = await tx.doc(ReceiptsByToolCallId, tool.taskId)
-              saved[tool.callId] ??= json(await api.change(tx, args, prepared, caller))
+              saved[tool.callId] ??= json(
+                await api.change(tx, args, prepared, caller, tool.conversationId),
+              )
               return json(saved[tool.callId])
             }, context)
           }

@@ -401,7 +401,7 @@ export function endTask(host: ExtensionHost) {
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Side, id)
           if (state.ended) return terminal
-          await summaries.concludeIn(tx, [id])
+          await summaries.concludeIn(tx, [id], id)
           if (response) await summaries.accountResponse(tx, id, response)
           state.ended = mode
           const listed = (await tx.doc(Index, side.of!)).sides.find((item) => item.id === id)!

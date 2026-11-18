@@ -177,7 +177,7 @@ async function concludeAndStopOtherTrees(
 ) {
   const harness = host.harness()
   const { tree, callerWouldWaitForItself } = await harness.commit(async (tx) => {
-    const owned = await concludeIn(host, tx, ids)
+    const owned = await concludeIn(host, tx, ids, from ?? 'user')
     return { tree: owned, callerWouldWaitForItself: from !== undefined && owned.has(from) }
   }, context)
   const stopped: ConversationId[] = []
@@ -223,6 +223,7 @@ export async function concludeIn(
   host: Pick<ExtensionHost, 'doc' | 'emit'>,
   tx: Tx,
   ids: ConversationId[],
+  by: ConversationId | 'landing' | 'user',
 ) {
   for (const id of ids) {
     const found = await tx.conversation(id)
@@ -245,8 +246,17 @@ export async function concludeIn(
       : {}),
     ...Object.fromEntries(ids.map((id) => [id, now])),
   }
+  const conclusionSources = ui['ext.conversations.concludedBy']
+  ui['ext.conversations.concludedBy'] = {
+    ...(conclusionSources &&
+    typeof conclusionSources === 'object' &&
+    !Array.isArray(conclusionSources)
+      ? conclusionSources
+      : {}),
+    ...Object.fromEntries(ids.map((id) => [id, by])),
+  }
   const tree = await ownedTree(tx, ids)
-  await host.emit(tx, Concluded, { conversations: [...tree].toSorted((a, b) => a - b) })
+  await host.emit(tx, Concluded, { conversations: [...tree].toSorted((a, b) => a - b), by })
   return tree
 }
 
@@ -305,9 +315,16 @@ export async function subject(
   }
 }
 
-export async function concludedIn(tx: Tx): Promise<Set<ConversationId>> {
-  const ids = (await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded']
-  return new Set(Array.isArray(ids) ? (ids as ConversationId[]) : [])
+export async function concludedIn(tx: Tx, starter?: ConversationId): Promise<Set<ConversationId>> {
+  const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)
+  const ids = ui['ext.conversations.concluded']
+  if (!Array.isArray(ids)) return new Set()
+  if (starter === undefined) return new Set(ids as ConversationId[])
+  const by = ui['ext.conversations.concludedBy']
+  if (!by || typeof by !== 'object' || Array.isArray(by)) return new Set()
+  return new Set(
+    (ids as ConversationId[]).filter((id) => by[id] === 'landing' || by[id] === starter),
+  )
 }
 
 export default (host: ExtensionHost) => {
@@ -316,7 +333,7 @@ export default (host: ExtensionHost) => {
   host.want(Previews)
   host.implement(ConversationsApi, {
     subject: (id, caller) => subject(host, id, caller),
-    concludeIn: (tx, ids) => concludeIn(host, tx, ids),
+    concludeIn: (tx, ids, by) => concludeIn(host, tx, ids, by),
     concludedIn,
     summaryModel: () => summaryModel(host),
     summaryModelStatus: () => summaryModelStatus(host),

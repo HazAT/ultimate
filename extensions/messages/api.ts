@@ -38,7 +38,7 @@ export type Message = {
   remote?: Remote
   /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
   interim?: true
-  /** The owner already settled this inbound remote request before its original answer was delivered. */
+  /** The owner already settled this request before its original answer was delivered. */
   ownerSettled?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
