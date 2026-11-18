@@ -2,11 +2,10 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { PlayIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { cn, defineWebExtension, provide, useAction, useConversationSummary } from '@/sdk'
+import { cn, defineWebExtension, provide, Provided, useAction, useConversationSummary } from '@/sdk'
 import { meansNone } from '../../lib/errors.ts'
-import { MessageExtras } from '../messages/ui.tsx'
+import { MessageAnswers, MessageExtras } from '../messages/ui.tsx'
 import type { Message } from '../messages/refs.ts'
-import { MessageQuestions } from '../questions/ui.tsx'
 import { LandingExtras } from '../workspaces/ui.tsx'
 import { Peek, Player } from './player.tsx'
 import { FramesAction } from './refs.ts'
@@ -79,7 +78,11 @@ export default defineWebExtension({
     provide(MessageExtras, (message) =>
       asksTheUser(message) ? (
         <Chip
-          answer={<MessageQuestions message={message} />}
+          answer={
+            <Provided input={message} point={MessageAnswers}>
+              {(answers) => answers}
+            </Provided>
+          }
           className="border-t border-border/60 px-3 py-2"
           conversation={message.from as ConversationId}
           message={message.id}

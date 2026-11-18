@@ -11,7 +11,15 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MentionText } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
-import { api, definePoint, Fold, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import {
+  AllProvided,
+  api,
+  definePoint,
+  Fold,
+  Provided,
+  useConversationSummary,
+  useUltimate,
+} from '@/sdk'
 import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
 import { GithubAction, RepoAction } from './refs.ts'
 import type { GithubRepo } from './refs.ts'
@@ -249,6 +257,11 @@ export function LandingCard({
             </p>
           )}
           {children}
+          {tone === 'landed' && (
+            <AllProvided input={from} point={LandingExtras}>
+              {(extras) => extras}
+            </AllProvided>
+          )}
         </div>
       </section>
     </Fold>

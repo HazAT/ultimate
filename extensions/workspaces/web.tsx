@@ -3,9 +3,9 @@ import type { ReactNode } from 'react'
 import { ChevronRightIcon, GitMergeIcon } from 'lucide-react'
 import { MentionText } from '@/components/ai/message'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { AllProvided, cn, column, defineWebExtension, useConversation, useTranscript } from '@/sdk'
+import { cn, column, defineWebExtension, useConversation, useTranscript } from '@/sdk'
 import { useWorkspaceIndex } from './data.tsx'
-import { CommitCount, LandingCard, LandingExtras, useGithubRepo } from './landing.tsx'
+import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
 import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
 import { compareUrl } from '../../lib/compare.ts'
 import { NoteEntry } from '../entries/ui.tsx'
@@ -73,9 +73,6 @@ function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { sour
         {paths.length > 0 && (
           <p className="break-words text-muted-foreground">Changed: {paths.join(', ')}</p>
         )}
-        <AllProvided input={from} point={LandingExtras}>
-          {(extras) => extras}
-        </AllProvided>
         {abstract && (
           <Collapsible className="group/state">
             <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">

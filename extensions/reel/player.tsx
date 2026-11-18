@@ -2,7 +2,7 @@ import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon, XIcon } from 'l
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-import { cn, useExtensionUiState } from '@/sdk'
+import { cn, useUiState } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
 import { imageOf } from './frames.tsx'
 import type { Frame } from './refs.ts'
@@ -11,6 +11,7 @@ const FADE_MS = 300
 const SPEEDS = [1, 2, 0.5]
 const FRAME_MS = 1600
 const SWIPE_PX = 40
+const NEAR = 3
 
 function useImage(frame: Frame | undefined) {
   const [src, setSrc] = useState<{ key: string; src?: string; error?: string }>()
@@ -41,13 +42,15 @@ export function Peek({ frame }: { frame: Frame }) {
 function Thumb({
   frame,
   current,
+  near,
   onClick,
 }: {
   frame: Frame
   current: boolean
+  near: boolean
   onClick: () => void
 }) {
-  const image = useImage(frame)
+  const image = useImage(near ? frame : undefined)
   return (
     <button
       aria-current={current}
@@ -80,7 +83,7 @@ export function Player({
   const [at, setAt] = useState(0)
   const [shown, setShown] = useState<{ index: number; src: string }[]>([])
   const [playing, setPlaying] = useState(true)
-  const [speed, setSpeed] = useExtensionUiState('speed', 1)
+  const [speed, setSpeed] = useUiState('ext.reel.speed', 1)
   const [ended, setEnded] = useState(false)
   const touch = useRef<{ x: number; y: number }>(undefined)
   const strip = useRef<HTMLDivElement>(null)
@@ -225,7 +228,12 @@ export function Player({
           <div className="flex gap-1.5 overflow-x-auto px-3 py-2" ref={strip}>
             {frames.map((item, index) => (
               <div className="shrink-0" data-frame={index} key={`${item.entry}:${item.image}`}>
-                <Thumb current={index === at} frame={item} onClick={() => go(index)} />
+                <Thumb
+                  current={index === at}
+                  frame={item}
+                  near={Math.abs(index - at) <= NEAR}
+                  onClick={() => go(index)}
+                />
               </div>
             ))}
           </div>

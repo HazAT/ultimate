@@ -3,7 +3,7 @@ import { imagesOf } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import type { Frame } from './refs.ts'
 
-const KEPT = 60
+const KEPT = 12
 const loaded = new Map<string, Promise<string>>()
 
 const keyOf = (frame: Frame) => `${frame.entry}:${frame.image}`

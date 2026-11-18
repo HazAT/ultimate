@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { ConversationId, Cursor, EntryRecord, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Cursor, EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -11,8 +11,10 @@ import { FramesAction } from './refs.ts'
 import type { Frame } from './refs.ts'
 
 export const MAX_FRAMES = 40
+const PAGE = 100
 
 type Shot = Frame & { hash: string }
+type Window = { from: number; to: number }
 
 export function treeOf(summaries: readonly ConversationSummary[], root: ConversationId) {
   const tree = [root]
@@ -44,62 +46,62 @@ export function stepOf(name: string, args: Readonly<Record<string, unknown>>) {
   return parts.filter(Boolean).join(' · ') || name
 }
 
-async function shotsOf(
-  tx: Tx,
-  conversation: ConversationId,
-  agent: string,
-  from: number,
-  to: number,
-) {
-  const shots: Shot[] = []
-  const pending = new Map<string, Shot[]>()
-  let cursor: Cursor | undefined
-  scan: do {
-    const page = await tx.scanEntries({ conversationId: conversation }, 100, cursor)
-    for (const entry of page.items) {
-      for (const message of entry.model ?? []) {
-        if (message.timestamp <= from) break scan
-        if (message.timestamp > to) continue
-        if (message.role === 'assistant') {
-          for (const block of message.content)
-            if (block.type === 'toolCall')
-              for (const shot of pending.get(block.id) ?? [])
-                shot.step = stepOf(block.name, block.arguments)
-          continue
-        }
-        if (message.role !== 'toolResult') continue
-        const found = imageShots(entry, message.content, conversation, agent, message.toolName)
-        pending.set(message.toolCallId, found)
-        shots.push(...found)
-      }
-    }
-    cursor = page.next
-  } while (cursor !== undefined)
-  return shots
+const ownEntries = (host: ExtensionHost, conversation: ConversationId, maxEntryId?: EntryId) =>
+  async function* () {
+    const handle = await host.harness().conversation(conversation, context)
+    if (!handle) return
+    let cursor: Cursor | undefined
+    do {
+      const page = await handle.entries(maxEntryId ? { maxEntryId } : {}, PAGE, cursor, context)
+      for (const entry of page.items) if (entry.conversationId === conversation) yield entry
+      cursor = page.next
+    } while (cursor !== undefined)
+  }
+
+function imageShots(entry: EntryRecord, conversation: ConversationId, agent: string) {
+  return (entry.model ?? []).flatMap((message) => {
+    if (message.role !== 'toolResult') return []
+    const images = message.content.flatMap((block) => (block.type === 'image' ? [block] : []))
+    return images.map((block, image) => ({
+      call: message.toolCallId,
+      shot: {
+        conversation,
+        entry: entry.id,
+        image,
+        agent,
+        step: message.toolName,
+        count: 1,
+        hash: createHash('sha1').update(block.data).digest('hex'),
+      },
+    }))
+  })
 }
 
-function imageShots(
-  entry: EntryRecord,
-  content: readonly { type: string; data?: string }[],
+async function shotsOf(
+  host: ExtensionHost,
   conversation: ConversationId,
   agent: string,
-  step: string,
+  window: Window,
 ) {
-  return content.flatMap((block, image) =>
-    block.type === 'image' && block.data
-      ? [
-          {
-            conversation,
-            entry: entry.id,
-            image,
-            agent,
-            step,
-            count: 1,
-            hash: createHash('sha1').update(block.data).digest('hex'),
-          },
-        ]
-      : [],
-  )
+  const shots: Shot[] = []
+  const unlabelled = new Map<string, Shot[]>()
+  for await (const entry of ownEntries(host, conversation, window.to as EntryId)()) {
+    if (entry.id <= window.from && !unlabelled.size) break
+    for (const message of entry.model ?? [])
+      if (message.role === 'assistant')
+        for (const block of message.content)
+          if (block.type === 'toolCall') {
+            for (const shot of unlabelled.get(block.id) ?? [])
+              shot.step = stepOf(block.name, block.arguments)
+            unlabelled.delete(block.id)
+          }
+    if (entry.id <= window.from) continue
+    for (const { call, shot } of imageShots(entry, conversation, agent)) {
+      unlabelled.set(call, [...(unlabelled.get(call) ?? []), shot])
+      shots.push(shot)
+    }
+  }
+  return shots
 }
 
 export function collapse(shots: Shot[]) {
@@ -115,6 +117,44 @@ export function collapse(shots: Shot[]) {
     last = shot
   }
   return frames
+}
+
+const asksTheUser = (args: Readonly<Record<string, unknown>>) =>
+  args.to === 'user' && args.reply === true
+
+async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
+  const log =
+    (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, context))?.messages ?? []
+  const asked = log.find((item) => item.id === message)
+  if (!asked || asked.from !== branch || !asked.call)
+    throw new Error(`#${branch} sent no message ${message}`)
+  const scripted = new Set(
+    log.flatMap((item) =>
+      item.from === branch && item.to === 'user' && item.reply && item.call
+        ? [item.call.split('/')[0]]
+        : [],
+    ),
+  )
+  const own = asked.call.split('/')[0]
+  let to: number | undefined
+  for await (const entry of ownEntries(host, branch)()) {
+    for (const turn of entry.model ?? [])
+      if (turn.role === 'assistant')
+        for (const block of turn.content) {
+          if (block.type !== 'toolCall') continue
+          if (to === undefined) {
+            if (block.id === own) to = entry.id
+            continue
+          }
+          if (
+            entry.id < to &&
+            (scripted.has(block.id) || (block.name === 'message' && asksTheUser(block.arguments)))
+          )
+            return { from: entry.id, to }
+        }
+  }
+  if (to === undefined) throw new Error(`#${branch} holds no call for message ${message}`)
+  return { from: 0, to }
 }
 
 export default defineExtension({ name: 'reel' })
@@ -133,26 +173,14 @@ export const actions = {
       const summary = summaries.find((item) => item.id === id)
       return id === branch ? (summary?.label ?? `#${id}`) : `${summary?.label ?? 'agent'} #${id}`
     }
-    return host.harness().commit(async (tx) => {
-      let from = 0
-      let to = Number.POSITIVE_INFINITY
-      if (message !== undefined) {
-        const log = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
-        const asked = log.find((item) => item.id === message)
-        if (!asked || asked.from !== branch)
-          throw new Error(`#${branch} sent no message ${message}`)
-        to = asked.at
-        from =
-          log.findLast(
-            (item) =>
-              item.from === branch && item.to === 'user' && item.reply && item.id < asked.id,
-          )?.at ?? 0
-      }
-      const shots = []
-      for (const id of treeOf(summaries, branch))
-        shots.push(...(await shotsOf(tx, id, agentOf(id), from, to)))
-      const frames = collapse(shots)
-      return { frames: frames.slice(-MAX_FRAMES), earlier: Math.max(0, frames.length - MAX_FRAMES) }
-    }, context)
+    const window =
+      message === undefined
+        ? { from: 0, to: Number.MAX_SAFE_INTEGER }
+        : await windowOf(host, branch, message)
+    const shots = []
+    for (const id of treeOf(summaries, branch))
+      shots.push(...(await shotsOf(host, id, agentOf(id), window)))
+    const frames = collapse(shots)
+    return { frames: frames.slice(-MAX_FRAMES), earlier: Math.max(0, frames.length - MAX_FRAMES) }
   }),
 }
