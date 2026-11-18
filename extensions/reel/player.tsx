@@ -29,6 +29,15 @@ function useImage(frame: Frame | undefined) {
   return src?.key === key ? src : undefined
 }
 
+export function Peek({ frame }: { frame: Frame }) {
+  const image = useImage(frame)
+  return (
+    <span className="block h-9 w-14 shrink-0 overflow-hidden rounded-sm border border-border/60 bg-terminal">
+      {image?.src && <img alt="" className="size-full object-cover object-top" src={image.src} />}
+    </span>
+  )
+}
+
 function Thumb({
   frame,
   current,

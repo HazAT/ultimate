@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { FilmIcon } from 'lucide-react'
+import { PlayIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { cn, defineWebExtension, provide, useAction, useConversationSummary } from '@/sdk'
@@ -8,8 +8,10 @@ import { MessageExtras } from '../messages/ui.tsx'
 import type { Message } from '../messages/refs.ts'
 import { MessageQuestions } from '../questions/ui.tsx'
 import { LandingExtras } from '../workspaces/ui.tsx'
-import { Player } from './player.tsx'
+import { Peek, Player } from './player.tsx'
 import { FramesAction } from './refs.ts'
+
+const PEEKS = 3
 
 function Chip({
   conversation,
@@ -34,17 +36,26 @@ function Chip({
     <>
       <button
         className={cn(
-          'flex w-full cursor-pointer items-center gap-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground',
+          'group/reel flex w-full cursor-pointer items-center gap-2.5 text-left font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted/40',
           className,
         )}
         data-reel-chip
         onClick={() => setOpen(true)}
         type="button"
       >
-        <FilmIcon className="size-3 text-brand" />
-        <span className="text-foreground/80">Reel</span>
-        <span>
-          · {reel.frames.length} frames{reel.earlier > 0 && ` · +${reel.earlier} earlier`}
+        <span className="flex shrink-0 gap-1">
+          {reel.frames.slice(0, PEEKS).map((frame) => (
+            <Peek frame={frame} key={`${frame.entry}:${frame.image}`} />
+          ))}
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex items-center gap-1.5 text-foreground/90 group-hover/reel:text-foreground">
+            <PlayIcon className="size-3 fill-current text-brand" />
+            Watch the reel
+          </span>
+          <span className="truncate">
+            {reel.frames.length} screenshots{reel.earlier > 0 && ` · +${reel.earlier} earlier`}
+          </span>
         </span>
       </button>
       {open && (
@@ -69,7 +80,7 @@ export default defineWebExtension({
       asksTheUser(message) ? (
         <Chip
           answer={<MessageQuestions message={message} />}
-          className="border-t border-border/60 px-3 py-1.5"
+          className="border-t border-border/60 px-3 py-2"
           conversation={message.from as ConversationId}
           message={message.id}
         />
