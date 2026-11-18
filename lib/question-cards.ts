@@ -37,10 +37,29 @@ export const cardKey = (message: number) => `message:${message}`
 
 export const EMPTY_CARD: CardState = { drafts: {}, note: '', current: 0, text: '' }
 
-export const cardOf = (cards: Record<string, CardState> | undefined, card: string): CardState => ({
-  ...EMPTY_CARD,
-  ...cards?.[card],
-})
+function pickDraft(question: CardQuestion): Draft | undefined {
+  const chosen = choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
+  if (!chosen.length) return undefined
+  return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }
+}
+
+export function cardOf(
+  cards: Record<string, CardState> | undefined,
+  card: string,
+  questions: readonly CardQuestion[],
+): CardState {
+  const stored = cards?.[card]
+  const drafts: Record<number, Draft> = {}
+  for (const [index, question] of questions.entries()) {
+    const draft = stored?.drafts[index] ?? pickDraft(question)
+    if (draft) drafts[index] = draft
+  }
+  const firstWithoutPick = Math.max(
+    0,
+    questions.findIndex((_, index) => !drafts[index]),
+  )
+  return { ...EMPTY_CARD, current: firstWithoutPick, ...stored, drafts }
+}
 
 const steps = (question: CardQuestion) => {
   const { min = 1, max = 5 } = question.scale ?? {}

@@ -532,7 +532,7 @@ function PinnedQuestion({
   const [folded, setFolded] = useState(true)
   if (!message) return null
   const questions = message.questions ?? []
-  const ready = answered(questions, cardOf(cards, cardKey(id)).drafts).length
+  const ready = answered(questions, cardOf(cards, cardKey(id), questions).drafts).length
   const waits = message.state === 'delivered'
   const settled =
     message.state === 'dismissed'
