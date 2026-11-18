@@ -1,4 +1,4 @@
-import { readFileSync, rmdirSync } from 'node:fs'
+import { readFileSync, rmdirSync, watch } from 'node:fs'
 import { mkdir, readdir, rmdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { totalmem } from 'node:os'
@@ -24,10 +24,14 @@ export function delegatedCore(cgroupLine = readSelfCgroup()) {
 }
 
 function readSelfCgroup() {
-  if (process.platform !== 'linux') return undefined
-  return readFileSync('/proc/self/cgroup', 'utf8')
-    .split('\n')
-    .find((line) => line.startsWith('0::'))
+  try {
+    return readFileSync('/proc/self/cgroup', 'utf8')
+      .split('\n')
+      .find((line) => line.startsWith('0::'))
+  } catch (error) {
+    if (isMissing(error)) return undefined
+    throw error
+  }
 }
 
 export async function workMemoryMax(projectRoot: string, userHome: string) {
@@ -41,20 +45,56 @@ export async function workMemoryMax(projectRoot: string, userHome: string) {
   return String(Math.floor(totalmem() * 0.7))
 }
 
+const ownerAlive = (leaf: string) => {
+  try {
+    process.kill(Number(leaf.split('-')[0]), 0)
+    return true
+  } catch (error) {
+    return errnoCode(error) !== 'ESRCH'
+  }
+}
+
 export async function isolateWork(core: string, memoryMax: string, swapMax = '4G') {
   const service = dirname(core)
   const work = join(service, 'work')
-  await mkdir(work).catch(ignoring(exists))
-  await writeFile(join(service, 'cgroup.subtree_control'), '+memory')
-  await writeFile(join(work, 'cgroup.subtree_control'), '+memory')
-  await writeFile(join(work, 'memory.max'), memoryMax)
-  await writeFile(join(work, 'memory.swap.max'), swapMax)
+  try {
+    await mkdir(work).catch(ignoring(exists))
+    await writeFile(join(service, 'cgroup.subtree_control'), '+memory')
+    await writeFile(join(work, 'cgroup.subtree_control'), '+memory')
+    await writeFile(join(work, 'memory.max'), memoryMax)
+    await writeFile(join(work, 'memory.swap.max'), swapMax)
+  } catch (error) {
+    console.warn(
+      `Branch work shares the core's memory: ${core} is not delegated (${String(error)})`,
+    )
+    return
+  }
   for (const leaf of await readdir(work, { withFileTypes: true }))
-    if (leaf.isDirectory()) await rmdir(join(work, leaf.name)).catch(ignoring(isBusy))
+    if (leaf.isDirectory() && !ownerAlive(leaf.name))
+      await rmdir(join(work, leaf.name)).catch(ignoring(isBusy, isMissing))
   shared.work = work
   await exec('setfattr', ['-n', 'user.oomd_avoid', '-v', '1', core]).catch((error: unknown) =>
     console.warn(`systemd-oomd may still pick the core: ${String(error)}`),
   )
+}
+
+function removeOnceEmpty(leaf: string) {
+  const remove = () => {
+    try {
+      rmdirSync(leaf)
+      return true
+    } catch (error) {
+      if (isBusy(error)) return false
+      if (!isMissing(error)) console.warn(`Work cgroup ${leaf} stays: ${String(error)}`)
+      return true
+    }
+  }
+  if (remove()) return
+  const watcher = watch(join(leaf, 'cgroup.events'), () => {
+    if (remove()) watcher.close()
+  })
+  watcher.on('error', () => watcher.close())
+  watcher.unref()
 }
 
 export type Work = {
@@ -66,7 +106,7 @@ export type Work = {
 
 export function enterWork(program: string, args: string[], work = shared.work): Work {
   if (!work) return { program, args, leave: () => {}, outOfMemory: () => false }
-  const leaf = join(work, randomUUID())
+  const leaf = join(work, `${process.pid}-${randomUUID()}`)
   let killed = false
   return {
     program: '/bin/sh',
@@ -74,10 +114,10 @@ export function enterWork(program: string, args: string[], work = shared.work): 
     leave() {
       try {
         killed ||= /^oom_kill [1-9]/m.test(readFileSync(join(leaf, 'memory.events'), 'utf8'))
-        rmdirSync(leaf)
       } catch (error) {
-        ignoring(isBusy, isMissing)(error)
+        if (!isMissing(error)) console.warn(`Work cgroup ${leaf}: ${String(error)}`)
       }
+      removeOnceEmpty(leaf)
     },
     outOfMemory: () => killed,
   }
