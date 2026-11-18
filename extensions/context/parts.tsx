@@ -361,7 +361,7 @@ export function Header({
   return (
     <Collapsible
       className={cn(
-        'group/context rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]',
+        'group/context @container rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]',
         className,
       )}
       data-context-header={breakdown.start?.id ?? 'start'}
@@ -381,7 +381,12 @@ export function Header({
         )}
         <span className="ml-auto flex min-w-0 items-center gap-2.5 pl-2">
           {notice}
-          <span className={cn('shrink-0 max-sm:hidden', notice && 'max-lg:hidden')}>
+          <span
+            className={cn(
+              'shrink-0 max-sm:hidden @max-xl:hidden',
+              notice && 'max-lg:hidden @max-2xl:hidden',
+            )}
+          >
             {sections.length} sections · {tools.length} tools · {plural(skills, 'skill')}
             {breakdown.injected && ` · ${breakdown.injected.label.split(' · ')[0]}`}
           </span>

@@ -24,11 +24,13 @@ import {
   cardKey,
   cardOf,
   CARDS_KEY,
+  choices,
   draftFor,
+  keyOf,
   position,
   questionIndex,
 } from '../../lib/question-cards.ts'
-import type { CardState } from '../../lib/question-cards.ts'
+import type { CardQuestion, CardState } from '../../lib/question-cards.ts'
 import type { Reply } from '../../lib/question-answers.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
@@ -659,11 +661,34 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
   ].includes(name)
 }
 
-export function questionReminder(side: ConversationId, asker: number, message: number) {
+export function questionReminder(
+  side: ConversationId,
+  asker: number,
+  message: { id: number; questions?: CardQuestion[] },
+) {
+  const questions = message.questions ?? []
+  const card = questions.length
+    ? questions
+        .map((question, index) => {
+          const options = choices(question)
+            .flatMap((choice, at) =>
+              choice.custom
+                ? []
+                : [
+                    `${keyOf(question, at)}) ${choice.label}${choice.recommended ? ' (your pick)' : ''}`,
+                  ],
+            )
+            .join(', ')
+          return `${position(question, index)}. ${question.text}${options ? ` — ${options}` : ' — typed answer'}`
+        })
+        .join('\n')
+    : 'One free-text answer, no options.'
   return [
-    `You are in a side chat (#${side}): a read-only copy of #${asker}, forked right after it asked the user message ${message}. #${asker} itself waits for the answer and does not see this chat.`,
-    'The user wants to talk the question through before answering: explain what is going on, what each option means and costs, and why you recommend what you do. Look things up when it helps: read, bash for reading (git log, rg), memory, web search and fetch.',
-    `Change nothing: every other tool is blocked (codemode too), and bash must not write files or start anything. You do not answer the question: the user answers it on its card, which they see beside this chat. When they tell you what to pick ("take your picks", "b for the first"), fill the card in with draft_answers; it never sends.`,
+    `You are in a side chat (#${side}): a read-only copy of #${asker}, forked right after it asked the user message ${message.id}. #${asker} itself waits for the answer and does not see this chat. The question card the user sees beside this chat:`,
+    card,
+    'The user talks it through with you before answering: explain what is going on, what each option means and costs, and why you recommend what you do. You already know the reasoning behind the question; look things up (read, bash for reading, memory, web search) only when the user asks about something you do not know.',
+    `When the user says what to pick ("pick list under asker", "take your picks", "b for the first"), call draft_answers at once with what they named, e.g. draft_answers {answers: [{question: "1", answer: "a"}]}. Do not search or read anything first: the card above is all you need. It only fills the card; the user reviews it and sends.`,
+    'Change nothing else: every other tool is blocked (codemode too), and bash must not write files or start anything. You never send the answer yourself.',
     `When they are done, they choose Discard, or Summarize, which sends #${asker} a summary of this talk, together with their answer if they send one.`,
   ].join('\n')
 }
@@ -701,7 +726,13 @@ export default (host: ExtensionHost) =>
                     content:
                       side.question === undefined
                         ? sideReminder(conversationId, side.of, new Date())
-                        : questionReminder(conversationId, side.of, side.question),
+                        : questionReminder(
+                            conversationId,
+                            side.of,
+                            (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+                              (item) => item.id === side.question,
+                            ) ?? { id: side.question },
+                          ),
                     timestamp: Date.now(),
                   },
                 ],
