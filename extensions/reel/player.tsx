@@ -112,6 +112,7 @@ export function Player({
   }, [at])
 
   const go = (index: number) => {
+    setPlaying(false)
     setAt(Math.max(0, Math.min(frames.length - 1, index)))
     setEnded(false)
   }
@@ -183,7 +184,6 @@ export function Player({
             const dx = end.clientX - start.x
             if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(end.clientY - start.y)) return
             event.preventDefault()
-            setPlaying(false)
             go(dx < 0 ? at + 1 : at - 1)
           }}
           onTouchStart={(event) => {
@@ -225,14 +225,7 @@ export function Player({
           <div className="flex gap-1.5 overflow-x-auto px-3 py-2" ref={strip}>
             {frames.map((item, index) => (
               <div className="shrink-0" data-frame={index} key={`${item.entry}:${item.image}`}>
-                <Thumb
-                  current={index === at}
-                  frame={item}
-                  onClick={() => {
-                    setPlaying(false)
-                    go(index)
-                  }}
-                />
+                <Thumb current={index === at} frame={item} onClick={() => go(index)} />
               </div>
             ))}
           </div>
