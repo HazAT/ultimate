@@ -16,6 +16,7 @@ import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
+import { Standing } from '../subagents/api.ts'
 import type { OpenAbstract } from './server.ts'
 
 export const Seen = defineDoc<{ main?: string; at?: number; tally?: EntryId }>({
@@ -435,8 +436,9 @@ export async function catchup(
   const meanwhile = tree
     ? await tallyText(conversationId, tree, alwaysAdvancedBaseline.tally ?? tree.since, tx)
     : undefined
+  const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
   const commits =
-    main && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
+    main && !ultimate && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
       ? await catchupText(
           host,
           conversationId,
