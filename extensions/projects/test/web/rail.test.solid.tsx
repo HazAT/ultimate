@@ -180,6 +180,12 @@ it('lists projects by name, leaves the current project unfocusable, and an agent
   expect(document.activeElement).toBe(rows[1])
   rows[1].blur()
   flush()
+  const inbox = container.querySelector<HTMLAnchorElement>('a[title$="Inbox"]')!
+  expect([inbox.getAttribute('href'), inbox.title, inbox.textContent]).toEqual([
+    'http://127.0.0.1:4748/?inbox=',
+    'Open Ultimate Eval’s Inbox',
+    '2',
+  ])
 
   rail(container)!.dispatchEvent(new MouseEvent('mouseenter'))
   await advance(149)
