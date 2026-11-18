@@ -314,6 +314,7 @@ type State =
   | { phase: 'land'; id: string; attempt: number; pushRetried?: boolean }
   | UnderwayReportPhase
   | CommittedDeliveryDecision
+  | { phase: 'card-failed'; error: string }
   | ConcludedBranchRelease
 
 export async function hasPendingLanderReport(tx: Tx, index: WorkspaceIndex, id: ConversationId) {
@@ -904,12 +905,21 @@ export function createLander(
             }
           }, context)
         } catch (error) {
-          if (!runtime.signal.aborted && conclusionCommitted && starter !== undefined)
-            await runtime.commit(async (tx) => {
-              await after.retireLanding(tx, id)
-            }, context)
-          throw error
+          if (runtime.signal.aborted || !conclusionCommitted || starter === undefined) throw error
+          await runtime.commit(async (tx) => {
+            await after.retireLanding(tx, id)
+            return {
+              status: 'running',
+              checkpoint: {
+                phase: 'card-failed',
+                error: error instanceof Error ? error.message : String(error),
+              },
+            }
+          }, context)
         }
+      },
+      'card-failed': (task) => {
+        throw new Error(task.state.checkpoint.error)
       },
       release: async (task, runtime, context) => {
         await after
