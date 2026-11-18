@@ -556,7 +556,7 @@ const draftAnswersTool = (host: ExtensionHost) =>
         const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)
         const cards = (ui[CARDS_KEY] ?? {}) as Record<string, CardState>
         const card = cardKey(message.id)
-        const previous = cardOf(cards, card)
+        const previous = cardOf(cards, card, questions)
         const drafts = { ...previous.drafts }
         const lines: string[] = []
         for (const { question, answer } of answers) {

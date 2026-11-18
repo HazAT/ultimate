@@ -37,8 +37,30 @@ export const cardKey = (message: number) => `message:${message}`
 
 export const EMPTY_CARD: CardState = { drafts: {}, note: '', current: 0, text: '' }
 
-export const cardOf = (cards: Record<string, CardState> | undefined, card: string): CardState => ({
-  ...EMPTY_CARD,
+export const pickIndices = (question: CardQuestion) =>
+  choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
+
+export const pickDraft = (question: CardQuestion): Draft => {
+  const chosen = pickIndices(question)
+  return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }
+}
+
+function preselected(questions: readonly CardQuestion[]): CardState {
+  const drafts = Object.fromEntries(
+    questions.flatMap((question, index) =>
+      pickIndices(question).length ? [[index, pickDraft(question)]] : [],
+    ),
+  )
+  const firstWithoutPick = questions.findIndex((_, index) => !drafts[index])
+  return { ...EMPTY_CARD, drafts, current: Math.max(0, firstWithoutPick) }
+}
+
+export const cardOf = (
+  cards: Record<string, CardState> | undefined,
+  card: string,
+  questions: readonly CardQuestion[],
+): CardState => ({
+  ...preselected(questions),
   ...cards?.[card],
 })
 
