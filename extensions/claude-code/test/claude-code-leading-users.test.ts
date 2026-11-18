@@ -168,6 +168,8 @@ it('keeps system messages behind every leading user message Claude Code sends', 
     'user',
   ])
   expect(JSON.stringify(second).split('# Environment').length - 1).toBe(1)
+  // The account reminder Claude Code adds never leaves the relay, on the first request or a replay (#243625).
+  expect(JSON.stringify(relayed)).not.toContain('# userEmail')
   // The start of the request is the first request again, so its prompt cache still applies.
   const plain = (messages: Message[]) =>
     JSON.parse(
