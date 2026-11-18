@@ -24,11 +24,12 @@ export const ConversationTask = definePoint<
 >('conversations.task')
 /**
  * The epic coordinator `id` works itself (`plan` provides it): its newest open epic, else its newest, when none of its
- * tasks went to a subagent; `open` shows it in the plan panel.
+ * tasks went to a subagent; `progress` counts its acceptance criteria confirmed or estimated done (`5/8`) when it has
+ * no tasks, and `open` shows it in the plan panel.
  */
 export const ConversationEpic = definePoint<
   ConversationId,
-  { key: string; title: string; status: string; open: () => void } | undefined
+  { key: string; title: string; status: string; progress?: string; open: () => void } | undefined
 >('conversations.epic')
 
 export { ConversationRef, FeatureTag, useOverview, useStandingName } from './feature.tsx'

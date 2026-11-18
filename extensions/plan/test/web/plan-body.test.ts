@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { criteriaOf, sectionsOf, verbatim } from '../../body.tsx'
-import { progressLabel } from '../../progress.tsx'
+import { criteriaOf, sectionsOf, verbatim } from '../../body.ts'
+import { criteriaCounts } from '../../progress.ts'
 
 const body = [
   'Request: pick 1a.',
@@ -37,11 +37,18 @@ it('keeps tags and line breaks as written, outside code', () => {
   )
 })
 
-it('labels a task-less epic by its status and criteria', () => {
-  expect(progressLabel({ key: 'E1', status: 'planning', body, tasks: {} })).toBe(
-    'planning · 2 criteria',
-  )
-  expect(progressLabel({ key: 'E1', status: 'in_progress', body: 'Do it.', tasks: {} })).toBe(
-    'in progress',
-  )
+it('counts confirmed criteria and estimates of the rest, and confirms all once done', () => {
+  const estimates = {
+    'pnpm check passes, with tests.': { state: 'looks_done' as const, at: 4 },
+  }
+  expect(criteriaCounts({ status: 'planning', body, met: [1] }, estimates)).toEqual({
+    total: 2,
+    confirmed: 1,
+    estimated: 1,
+  })
+  expect(criteriaCounts({ status: 'done', body }, estimates)).toEqual({
+    total: 2,
+    confirmed: 2,
+    estimated: 0,
+  })
 })

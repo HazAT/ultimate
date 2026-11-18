@@ -614,6 +614,7 @@ function landingNote(landing: LandedData) {
     at: landing.at,
     divergence: landing.divergence,
     sha: landing.sha,
+    submission: landing.submission,
     base: landing.base,
     target: landing.target,
     commits: landing.commits,

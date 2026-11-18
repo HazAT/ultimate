@@ -557,6 +557,8 @@ it('composes read and bash with private nested results and final JSON details', 
   )
   server.host.registry.install(
     planExtension({
+      react: () => {},
+      implement: () => {},
       metadata: Metadata,
       onOpen: () => {},
     } as unknown as ExtensionHost),

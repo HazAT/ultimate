@@ -13,9 +13,15 @@ import type { UltimateActions } from '@/sdk'
 import { RunsDoc, StandingAction } from './refs.ts'
 import type { Run } from './refs.ts'
 
-export { DefinitionAction, DefinitionsAction, StandingAction, StandingDoc } from './refs.ts'
+export {
+  DefinitionAction,
+  DefinitionsAction,
+  RunsDoc,
+  StandingAction,
+  StandingDoc,
+} from './refs.ts'
 
-/** What child `id` was started on, its model id and whether it was made on the fly; undefined for other conversations. */
+/** The model and definition or ad hoc flag of child `id`; undefined for other conversations. */
 export function useRun(id: number | undefined): Run | undefined {
   const runs = useDocOf(ROOT, RunsDoc)
   return id === undefined ? undefined : runs?.[String(id)]

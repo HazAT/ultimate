@@ -7,13 +7,15 @@ import {
   MemoryStorage,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { EntryRecord, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
+import type { EntryId, EntryRecord, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
 import { context } from '../../../server/harness.ts'
 import phase, { Phases } from '../server.ts'
 import { phaseState } from '../state.ts'
 import type { ClassifyService } from '../../classify/api.ts'
+import { PlanApi } from '../../plan/api.ts'
+import type { PlanService } from '../../plan/api.ts'
 import { until } from '../../../test/helpers.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -77,14 +79,16 @@ it('builds the bounded request, relative paths, stripped commands and failed res
   expect(state.agentSaid).toBe('Checking now')
 })
 
-async function fixture(service?: ClassifyService) {
+async function fixture(service?: ClassifyService, plan?: PlanService) {
   const registry = createRegistry()
   let harness: Harness
   const extension = phase({
     harness: () => harness,
     projectRoot: '/project',
     conversations: () => [],
-    want: (() => service) as Parameters<typeof phase>[0]['want'],
+    want: ((api: { name: string }) => (api.name === PlanApi.name ? plan : service)) as Parameters<
+      typeof phase
+    >[0]['want'],
   })
   registry.install(extension)
   const storage = new MemoryStorage()
@@ -114,7 +118,8 @@ async function fixture(service?: ClassifyService) {
   }
   const round = async () => {
     await handOver()
-    await hooks.afterTools(1 as never, [], api, context)
+    const last = (await root.entries({ order: 'descending' }, 1, undefined, context)).items[0]
+    await hooks.afterTools(last?.id ?? (1 as EntryId), [], api, context)
   }
   const snapshot = () => harness.snapshot(Phases, ROOT_CONVERSATION_ID, context)
   const yieldRun = () => hooks.onYield({} as never, api, context)
@@ -257,6 +262,75 @@ it('allows one in flight, stores the first low answer, holds later low answers a
   await until(async () => (await f.snapshot())?.conversations[f.root.id]?.phase === 'verifying')
   await f.yieldRun()
   expect((await f.snapshot())?.conversations).toEqual({})
+})
+it('asks about each open criterion and raises only confident estimates, with the round they came from', async () => {
+  const criteria = [
+    { n: 1, text: 'Plan update records met criteria.' },
+    { n: 3, text: 'Preview approved.', estimate: 'in_progress' as const },
+  ]
+  const estimate = vi.fn<PlanService['estimate']>(async () => {})
+  const ask = vi.fn<ClassifyService['ask']>().mockResolvedValue({
+    model: 'fake',
+    answers: {
+      ...answer(0.9).answers,
+      criterion1: { type: 'choice', choice: 'looks_done', confidence: 0.8, probabilities: {} },
+      criterion3: { type: 'choice', choice: 'looks_done', confidence: 0.5, probabilities: {} },
+    },
+    usage: { inputTokens: 0 },
+  })
+  let release!: () => void
+  const laterInputWritten = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const f = await fixture(
+    { ask },
+    {
+      openCriteria: async () => {
+        await laterInputWritten
+        return { epic: 'E1', revision: 3, criteria }
+      },
+      estimate,
+    },
+  )
+  await f.harness.commit(async (tx) => {
+    await tx.appendEntry(f.root.id, {
+      kind: 'pi.user',
+      model: [{ role: 'user', content: 'Build it', timestamp: 1 }],
+    })
+  }, context)
+  await f.round()
+  const last = (await f.root.entries({ order: 'descending' }, 1, undefined, context)).items[0]
+  await f.harness.commit(async (tx) => {
+    await tx.appendEntry(f.root.id, {
+      kind: 'pi.user',
+      model: [{ role: 'user', content: 'Later input', timestamp: 2 }],
+    })
+  }, context)
+  release()
+  await until(() => estimate.mock.calls.length === 1)
+  const { questions, state } = ask.mock.calls[0][0]
+  expect(state).toMatchObject({ request: 'Build it' })
+  expect(Object.keys(questions)).toEqual(['phase', 'criterion1', 'criterion3'])
+  expect(questions.criterion3.instructions).toMatchObject({
+    criterion: 'Preview approved.',
+    estimate: 'in_progress',
+  })
+  const [, conversation, epic, revision, estimates] = estimate.mock.calls[0]
+  expect([conversation, epic, revision, estimates]).toEqual([
+    f.root.id,
+    'E1',
+    3,
+    { 'Plan update records met criteria.': { state: 'looks_done', at: last.id } },
+  ])
+})
+it('asks only the phase without open criteria', async () => {
+  const ask = vi.fn<ClassifyService['ask']>().mockResolvedValue(answer(0.9))
+  const estimate = vi.fn<PlanService['estimate']>(async () => {})
+  const f = await fixture({ ask }, { openCriteria: async () => undefined, estimate })
+  await f.round()
+  await until(async () => (await f.snapshot())?.conversations[f.root.id]?.phase === 'editing')
+  expect(Object.keys(ask.mock.calls[0][0].questions)).toEqual(['phase'])
+  expect(estimate).not.toHaveBeenCalled()
 })
 it('does not schedule without classify', async () => {
   const f = await fixture()
