@@ -154,6 +154,7 @@ function SendButton({
 }) {
   const [holding, setHolding] = useState(false)
   const gesture = useRef<{ pointer: number; cancel: Cancel[] }>(undefined)
+  const interruption = useRef<Event>(undefined)
   const sendNow = useRef(onSendNow)
   sendNow.current = onSendNow
   const endGesture = () => {
@@ -189,11 +190,15 @@ function SendButton({
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
-        if (!event.isPrimary || event.button !== 0 || (phase !== 'answering' && !pending)) return
+        const interrupting = interruption.current === event.nativeEvent
+        if (interrupting || !event.isPrimary || event.button !== 0) return
+        if (phase !== 'answering' && !pending) return
         event.currentTarget.setPointerCapture(event.pointerId)
         const pointer = event.pointerId
         const anotherContact = (other: PointerEvent) => {
-          if (other.pointerId !== pointer) endGesture()
+          if (other.pointerId === pointer) return
+          interruption.current = other
+          endGesture()
         }
         window.addEventListener('pointerdown', anotherContact, true)
         gesture.current = {
