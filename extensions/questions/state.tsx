@@ -21,14 +21,6 @@ export function choiceForKey(question: Question, key: string) {
   return key === 'o' ? list.findIndex((choice) => choice.custom) : undefined
 }
 
-export const pickIndices = (question: Question) =>
-  choices(question).flatMap((choice, index) => (choice.recommended ? [index] : []))
-
-export const pickDraft = (question: Question): Draft => {
-  const chosen = pickIndices(question)
-  return { chosen: question.kind === 'multi' ? chosen : chosen.slice(0, 1) }
-}
-
 function labelsIncludingTypedMultiAnswer(question: Question, draft: Draft) {
   const list = choices(question)
   const typed = draft.text?.trim() ?? ''
@@ -42,14 +34,6 @@ export function answerOf(question: Question, draft: Draft | undefined) {
     return draft.text?.trim() ?? ''
   const labels = labelsIncludingTypedMultiAnswer(question, draft)
   return question.kind === 'multi' ? labels.join(', ') : (labels[0] ?? '')
-}
-
-export function picks(questions: Question[]): Record<number, string> {
-  return Object.fromEntries(
-    questions.flatMap((question, index) =>
-      pickIndices(question).length ? [[index, answerOf(question, pickDraft(question))]] : [],
-    ),
-  )
 }
 
 export const answered = (questions: Question[], drafts: Record<number, Draft | undefined>) =>

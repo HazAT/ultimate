@@ -171,7 +171,7 @@ function Scale({
   )
 }
 
-export function brief(question: Question, index: number, draft: Draft | undefined) {
+function brief(question: Question, index: number, draft: Draft | undefined) {
   const list = choices(question)
   const keys =
     question.kind === 'scale' || draft?.other
