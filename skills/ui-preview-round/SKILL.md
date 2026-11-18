@@ -20,8 +20,9 @@ screenshots: send them with the request.
    it as `verify-ui` describes (`send`, then `until`).
 4. **Look first yourself**: follow the `verify-ui` skill. Fix what is off before you ask anyone.
 5. **Ask for approval** the way your instructions ask decisions, with the screenshots as `images`. Include the URL (the tailnet URL when the preview chip
-   shows one), what changed, a short numbered "what to try" naming the conversation you seeded, and a choice question
-   (approve as is, or change something).
+   shows one), what changed, a short numbered "what to try" naming the conversation you seeded, the review state (the
+   reviewed `base..head` and its verdict, or "preview first, review before submit"), and a choice question (approve as
+   is, or change something). Review never has to come before a preview.
 6. **Iterate**: each change is a new commit and a new round; keep the same preview running.
-7. **On approval**: remove anything only the preview needed, `instance stop`, then `workspace submit` with the
-   divergence. Report the landing in your final answer.
+7. **On approval**: remove anything only the preview needed, `instance stop`, run the review if it has not run, then
+   `workspace submit` with the divergence and the reviewed range. Report the landing in your final answer.

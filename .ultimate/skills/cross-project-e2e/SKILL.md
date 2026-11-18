@@ -11,13 +11,10 @@ Only @ultimate can `tell`; a branch asks @ultimate to run this.
    tailnet URLs. A project that is not running cannot be told anything; say so.
 2. **Tell it what to do**, as a user would, in one self-contained message:
    `ultimate.tell({ project, text: 'Start a branch that …; report back when it lands.', reply: true })`, then end your
-   turn. The reply is the wait (`extensions/messages/README.md`, "Other projects' Ultimates"): when its @ultimate starts work
-   for you, its first answer ("I've started it") arrives as a note that wakes no one, and the request stays open
-   (the sidebar shows `waits on <project>`). The work's result arrives as the reply and wakes you once. Set no
-   check-back of your own, even for a long job.
-3. **Failures are loud**: an undeliverable answer, a serving automation deleted before it fires, or a serving run
-   that stops, fails or answers empty comes back as a failed reply or wakes that project's @ultimate. If a wait stays
-   open with no progress, read the other project directly (step 4); a lost result is a bug to report.
+   turn. The reply is the wait, and failures come back as failed replies: `extensions/messages/README.md`, "Other
+   projects' Ultimates". Set no check-back of your own, even for a long job.
+3. **No progress**: if a wait stays open with nothing moving, read the other project directly (step 4); a lost
+   result is a bug to report.
 4. **Watch it** with read-only calls: `ultimate.conversations({ project })` to find the branch,
    `ultimate.entries(id, { project })` for what it did, `ultimate.trace({ project })` for why something did not happen.
 5. **Look at its UI** through a coordinator branch: you have no `browser` or `screenshot` tool. Start a branch that

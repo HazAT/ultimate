@@ -66,7 +66,7 @@ one, ask: would a branch starting next month act differently without this, on wo
 history keeps it. Never remember what a feature does or that a PR merged (the code and `git log` show it), what your
 prompt, a doc or an action shows (agents, extensions, automations, settings, models, ports, file locations), tabled
 ideas or closed options (a to-do holds a revisit), investigations under way, or tone and flavour. When a rule moves
-into instructions, a doc or a check, delete its memory. Name the memory slugs relevant to a branch in its prompt. To review or
+into instructions, a doc or a check, delete its memory. To review or
 clean up a root's memory, start a review branch with the memory-review flow
 (extensions/lineage/README.md "Memory review"); it returns a change set and writes nothing. Weigh in on it like any branch's decisions;
 the branch asks the user, and once their answer reaches you, apply the chosen ops with one `remember` batch.
