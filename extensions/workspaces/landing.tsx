@@ -11,7 +11,15 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MentionText } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
-import { api, definePoint, Fold, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import {
+  AllProvided,
+  api,
+  definePoint,
+  Fold,
+  Provided,
+  useConversationSummary,
+  useUltimate,
+} from '@/sdk'
 import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
 import { GithubAction, RepoAction } from './refs.ts'
 import type { GithubRepo } from './refs.ts'
@@ -83,6 +91,8 @@ export const LandedNote = definePoint<
   { conversation: ConversationId; submission: string },
   ReactNode | undefined
 >('workspaces.landed-note')
+
+export const LandingExtras = definePoint<ConversationId, ReactNode>('workspaces.landing-extras')
 
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
@@ -258,6 +268,11 @@ export function LandingCard({
             <Provided input={{ conversation: from, submission }} point={LandedNote}>
               {(note) => note}
             </Provided>
+          )}
+          {tone !== 'failed' && (
+            <AllProvided input={from} point={LandingExtras}>
+              {(extras) => extras}
+            </AllProvided>
           )}
         </div>
       </section>

@@ -20,6 +20,7 @@ vi.mock('@/sdk', async () => ({
   events: { emit: () => {} },
   Fold: ({ summary }: { summary: ReactNode }) => createElement('div', null, summary),
   Provided: () => null,
+  AllProvided: () => null,
   useConversation: () => 1,
   useConversations: () => conversations,
   useConversationSummary: (id?: number) =>

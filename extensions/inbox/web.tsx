@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
+  AllProvided,
   cn,
   column,
   defineWebExtension,
@@ -27,7 +28,7 @@ import {
   useViewport,
 } from '@/sdk'
 import { FeatureTag, useOverview, useStandingName } from '../conversations/ui.tsx'
-import { Body, MessageImages, stateTone } from '../messages/ui.tsx'
+import { Body, MessageExtras, MessageImages, stateTone } from '../messages/ui.tsx'
 import type { Message } from '../messages/refs.ts'
 import { MessageQuestions } from '../questions/ui.tsx'
 import { UnderUltimate } from '../sidebar/ui.tsx'
@@ -273,6 +274,9 @@ function Reading({
 
   const answer = item ? (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
+      <AllProvided input={item} point={MessageExtras}>
+        {(extras) => extras}
+      </AllProvided>
       <MessageQuestions key={item.id} keys={!phone} message={item} />
     </div>
   ) : (
