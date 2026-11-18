@@ -167,16 +167,23 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
   const results = new Map<string, ToolResult>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {
-    const sends: { entry: number; id: string }[] = []
+    const sends: string[] = []
     for (const turn of entry.model ?? []) {
-      if (turn.role === 'toolResult') results.set(turn.toolCallId, turn)
+      if (turn.role === 'toolResult')
+        results.set(
+          turn.toolCallId,
+          turn.toolName === 'message'
+            ? turn
+            : { ...turn, content: turn.content.filter((block) => block.type === 'text') },
+        )
       if (turn.role !== 'assistant') continue
       for (const block of turn.content)
-        if (block.type === 'toolCall')
-          for (const id of questionsOf(block, results.get(block.id), logged))
-            sends.push({ entry: entry.id, id })
+        if (block.type === 'toolCall') {
+          sends.push(...questionsOf(block, results.get(block.id), logged))
+          results.delete(block.id)
+        }
     }
-    const at = sends.findIndex((send) => send.id === asked.call)
+    const at = sends.indexOf(asked.call)
     if (to === undefined && at < 0) continue
     if (to === undefined) {
       to = entry.id
