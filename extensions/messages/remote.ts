@@ -207,12 +207,16 @@ export async function remoteAction(args: JsonValue, { host }: ActionContext) {
   const receipts = await host
     .harness()
     .snapshot(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
-  if (reply && !Object.hasOwn(receipts?.received ?? {}, key)) await routeBack(host, sender)
+  const noRouteBack =
+    reply && !Object.hasOwn(receipts?.received ?? {}, key)
+      ? await noRouteBackTo(host, sender)
+      : undefined
   const to = await host.need(SubagentsApi).standing('ultimate', BACKGROUND_CONTEXT)
   const toLabel = await senderName(host, to, BACKGROUND_CONTEXT)
   return host.harness().commit(async (tx) => {
     const { received } = await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)
     if (Object.hasOwn(received, key)) return received[key]
+    if (noRouteBack) throw noRouteBack
     const message = await append(tx, {
       from: 'remote',
       to,
@@ -248,16 +252,16 @@ export async function remoteAction(args: JsonValue, { host }: ActionContext) {
   }, BACKGROUND_CONTEXT)
 }
 
-async function routeBack(host: ExtensionHost, sender: { project: string; machine: string }) {
+async function noRouteBackTo(host: ExtensionHost, sender: { project: string; machine: string }) {
+  const why = await locate(host, sender.project, sender.machine).then(
+    (target) => ('current' in target ? `${sender.project} is this project` : undefined),
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
+  if (why === undefined) return undefined
   const self = await selfAddress(host)
-  const unreachable = (why: string) =>
-    new Error(
-      `${self.project} on ${self.machine} cannot answer: it has no route back to ${sender.project} on ${sender.machine} (${why}). Add ${sender.project} on ${sender.machine} to remotes in its user settings, or tell with reply: false.`,
-    )
-  const target = await locate(host, sender.project, sender.machine).catch((error: unknown) => {
-    throw unreachable(error instanceof Error ? error.message : String(error))
-  })
-  if ('current' in target) throw unreachable(`${sender.project} is this project`)
+  return new Error(
+    `${self.project} on ${self.machine} cannot answer: add ${sender.project} on ${sender.machine} to remotes in its user settings, or tell with reply: false. It has no route back (${why}).`,
+  )
 }
 
 export async function dismissTell(
@@ -274,6 +278,10 @@ export async function dismissTell(
     if (!stored) throw new Error('These questions are no longer open')
     stored.state = 'dismissed'
     stored.error = reason
+    const told = (await tx.doc(UnprunedRemoteReceipts, ROOT_CONVERSATION_ID)).told[
+      stored.remote!.key
+    ]
+    if (told) told.answer = stored.id
     await dropped(
       host,
       tx,

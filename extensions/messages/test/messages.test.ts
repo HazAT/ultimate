@@ -2898,12 +2898,10 @@ it('keeps a request open when a late failure report names a fire whose run hande
   expect(other.posted.some((p) => (p.body as { failed: boolean }).failed)).toBe(false)
 })
 it('fails a tell at once when the other Ultimate has no route back for its answer', async () => {
-  // home-assistant-helper on rog told unifi-watcher on haza-pc, which had no route back: both answers failed there and
-  // the requests stayed open on rog for three weeks.
+  // An asker on one machine told an Ultimate on another that had no route back: both answers failed there and the
+  // requests stayed open on the asker for weeks.
   const replier = await remoteFixture()
-  Object.assign(replier.host, {
-    projects: async () => [{ name: 'unifi-watcher', current: true }],
-  })
+  Object.assign(replier.host, { projects: async () => [{ name: 'my-app', current: true }] })
   const bridge = createServer(async (request, response) => {
     let raw = ''
     for await (const chunk of request) raw += String(chunk)
@@ -2911,7 +2909,7 @@ it('fails a tell at once when the other Ultimate has no route back for its answe
     const [status, json] = await actions
       .remote(args, replier.action())
       .then((delivered) => [200, { result: delivered }] as const)
-      .catch((error: Error) => [500, { error: error.message }] as const)
+      .catch((error: Error) => [500, { error: error.message.slice(0, 500) }] as const)
     response.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(json))
   })
   await new Promise<void>((done) => bridge.listen(0, '127.0.0.1', done))
@@ -2919,29 +2917,44 @@ it('fails a tell at once when the other Ultimate has no route back for its answe
   const asker = await remoteFixture()
   Object.assign(asker.host, {
     projects: async () => [
-      { name: 'home-assistant-helper', current: true },
+      { name: 'asker', current: true },
       {
-        name: 'unifi-watcher',
+        name: 'my-app',
         current: false,
         running: { url: `http://127.0.0.1:${(bridge.address() as AddressInfo).port}` },
       },
     ],
   })
   const tell = (reply: boolean) =>
-    asker
-      .service()
-      .tell(ROOT_CONVERSATION_ID, { project: 'unifi-watcher', text: 'Probe', reply }, context)
+    asker.service().tell(ROOT_CONVERSATION_ID, { project: 'my-app', text: 'Probe', reply }, context)
   await expect(tell(true)).rejects.toThrow(
-    'unifi-watcher on ' +
-      hostname() +
-      ' cannot answer: it has no route back to home-assistant-helper on ' +
-      hostname(),
+    `my-app on ${hostname()} cannot answer: add asker on ${hostname()} to remotes in its user settings, or tell with reply: false.`,
   )
   expect((await asker.log())!.messages.at(-1)).toMatchObject({ reply: true, state: 'failed' })
   expect((await replier.log())?.messages ?? []).toEqual([])
   expect((await tell(false)).delivered).toBeGreaterThan(0)
 })
-it('lets @ultimate dismiss its open request to another project', async () => {
+it('accepts a retried request that another copy already took, though the route back is gone', async () => {
+  const f = await remoteFixture()
+  const routes = Promise.withResolvers<void>()
+  let looked = 0
+  Object.assign(f.host, {
+    projects: async () => {
+      looked += 1
+      if (looked === 1) await routes.promise
+      return [{ name: 'ultimate', current: true }]
+    },
+  })
+  const retry = actions.remote({ key: 'twice', text: 'Probe', reply: true, from }, f.action())
+  await until(() => looked === 1)
+  const first = await actions.remote(
+    { key: 'twice', text: 'Probe', reply: false, from },
+    f.action(),
+  )
+  routes.resolve()
+  expect(await retry).toBe(first)
+})
+it('lets @ultimate dismiss its open request to another project, and a late reply leaves it dismissed', async () => {
   const other = await otherUltimate(() => [200, { result: 7 }])
   const f = await remoteFixture(other.url)
   const told = await f
@@ -2953,10 +2966,16 @@ it('lets @ultimate dismiss its open request to another project', async () => {
     'closes only with dismiss: true',
   )
   await settle({ messageId: told.message, text: 'Answered via a relay', dismiss: true })
+  const key = (other.posted[0].body as { key: string }).key
+  await actions.remoteReply({ key, text: 'Late', failed: false }, f.action())
+  await actions.remoteReply({ key, text: 'Late note', failed: false, interim: 3 }, f.action())
+  await f.opened.root.waitForIdle(context)
   expect((await f.log())!.messages.find((m) => m.id === told.message)).toMatchObject({
     state: 'dismissed',
     error: 'Answered via a relay',
   })
+  expect((await f.log())!.messages.filter((m) => m.re === told.message)).toEqual([])
+  expect(await replies(f)).toEqual([])
   await expect(settle({ messageId: told.message, text: 'Again', dismiss: true })).rejects.toThrow(
     'These questions are no longer open',
   )
