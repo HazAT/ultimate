@@ -153,18 +153,15 @@ function SendButton({
   children: string
 }) {
   const [holding, setHolding] = useState(false)
-  const gesture = useRef<{ pointer: number; cancel?: Cancel }>(undefined)
+  const gesture = useRef<{ pointer: number; cancel: Cancel[] }>(undefined)
   const sendNow = useRef(onSendNow)
   sendNow.current = onSendNow
   const endGesture = () => {
-    gesture.current?.cancel?.()
+    for (const cancel of gesture.current?.cancel ?? []) cancel()
     gesture.current = undefined
     setHolding(false)
   }
-  useEffect(() => {
-    if (phase !== 'answering') endGesture()
-  }, [phase])
-  useEffect(() => endGesture, [])
+  useEffect(() => endGesture, [phase])
   const pending = phase === 'undo'
   const activate = () => {
     if (pending) onUndo()
@@ -192,17 +189,25 @@ function SendButton({
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
-        if (gesture.current) return endGesture()
-        if (event.button !== 0 || (phase !== 'answering' && !pending)) return
+        if (!event.isPrimary || event.button !== 0 || (phase !== 'answering' && !pending)) return
         event.currentTarget.setPointerCapture(event.pointerId)
-        gesture.current = { pointer: event.pointerId }
+        const pointer = event.pointerId
+        const anotherContact = (other: PointerEvent) => {
+          if (other.pointerId !== pointer) endGesture()
+        }
+        window.addEventListener('pointerdown', anotherContact, true)
+        gesture.current = {
+          pointer,
+          cancel: [() => window.removeEventListener('pointerdown', anotherContact, true)],
+        }
         if (pending) return
         setHolding(true)
-        gesture.current.cancel = deadline(HOLD_TO_SEND_MS, () => {
-          gesture.current = undefined
-          setHolding(false)
-          sendNow.current()
-        })
+        gesture.current.cancel.push(
+          deadline(HOLD_TO_SEND_MS, () => {
+            endGesture()
+            sendNow.current()
+          }),
+        )
       }}
       onPointerMove={(event) => {
         if (ownGesture(event) && !inside(event)) endGesture()
