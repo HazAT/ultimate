@@ -9,11 +9,18 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { JsonObject, SubmissionId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  JsonObject,
+  SubmissionId,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { Profile, Standing } from '../../subagents/api.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
@@ -96,6 +103,7 @@ async function fixture() {
     createChild: (tx, options) => createChild(host, tx, options),
   } satisfies Partial<SubagentsService>)
   provided.set('messages', { owed: async () => ({}) })
+  provided.set('workspaces', { doc: Workspaces })
   const extension = automations(host as unknown as Parameters<typeof automations>[0])
   prepared.registry.install(extension)
   const route: FauxResponseFactory = (transcript) => {
@@ -223,6 +231,35 @@ it('fires a subscriber-only schedule without creating a run conversation', async
       'automation',
     )
   }
+})
+
+it('skips the recorded lander conversation whatever its label says', async () => {
+  const f = await fixture()
+  const [lander, other] = await f.opened.harness.commit(async (tx) => {
+    const made = []
+    for (const label of ['release gate', undefined]) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      if (label) (await tx.doc(Metadata, child.id)).label = label
+      made.push(child.id)
+    }
+    ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).landerConversations['/repo'] = made[0]
+    return made
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Wake',
+    schedule: 'every 2s',
+    subscribers: [lander, other],
+  })) as Automation
+  const fired = async (id: ConversationId) => {
+    const conversation = (await f.opened.harness.conversation(id, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === id && e.kind === 'automations.fired',
+    )
+  }
+  await until(async () => (await fired(other)).length > 0)
+  await f.action('pause', { id: a.id })
+  expect(await fired(lander)).toEqual([])
 })
 
 it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {

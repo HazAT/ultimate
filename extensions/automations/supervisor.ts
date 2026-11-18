@@ -21,6 +21,7 @@ import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { readSecret, validateName } from '../../lib/secrets.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
+import { WorkspacesApi } from '../workspaces/api.ts'
 import { Done, Escalated, Exited, Started } from './refs.ts'
 import type { Automations as Ledger } from './server.ts'
 import {
@@ -356,8 +357,12 @@ export function supervisor(
               ? await host.need(SubagentsApi).standing(target.slice(1), ctx)
               : target
           if (kind === 'escalated' && id === alreadyMessagedUltimate) continue
-          const isReadOnlyLander =
-            (await runtime.snapshot(host.metadata, id, ctx))?.label === 'lander'
+          const index = await runtime.snapshot(
+            host.need(WorkspacesApi).doc,
+            ROOT_CONVERSATION_ID,
+            ctx,
+          )
+          const isReadOnlyLander = Object.values(index?.landerConversations ?? {}).includes(id)
           if (isReadOnlyLander) continue
           const requestId = `automations:${sub.id}:${event}:${target}`
           const conversation = await runtime.conversation(id, ctx)
