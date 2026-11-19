@@ -1,16 +1,14 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
-import { BlockList, isIP } from 'node:net'
 import type { Device } from '../shared/events.ts'
 import { meansNone } from '../lib/errors.ts'
+
+export type Identity = { login: string; address?: string }
 
 export interface AccessRule {
   origin: string
   verify(request: {
     headers: IncomingHttpHeaders
-  }):
-    | { login: string; name?: string }
-    | undefined
-    | Promise<{ login: string; name?: string } | undefined>
+  }): Identity | undefined | Promise<Identity | undefined>
 }
 
 export function createAccess(changed: () => void = () => {}) {
@@ -36,14 +34,14 @@ export async function admit(
   request: Pick<IncomingMessage, 'headers' | 'method' | 'url'>,
   port: string,
   rules: Set<AccessRule>,
-) {
+): Promise<Partial<Identity> | undefined> {
   const { host, origin } = request.headers
   if (
     !proxied(request.headers) &&
     loopbackAuthority(host, port) &&
     (!origin || loopbackOrigin(origin, port))
   )
-    return true
+    return {}
   const site = request.headers['sec-fetch-site']
   const viewOnlyRootNavigation =
     (site === 'cross-site' || site === 'same-site') &&
@@ -53,24 +51,21 @@ export async function admit(
     request.headers['sec-fetch-dest'] === 'document' &&
     request.headers.upgrade === undefined
   if (site !== undefined && site !== 'same-origin' && site !== 'none' && !viewOnlyRootNavigation)
-    return false
+    return undefined
   for (const rule of rules) {
     if (host !== new URL(rule.origin).host || (origin && origin !== rule.origin)) continue
     try {
-      if ((await rule.verify(request))?.login && rules.has(rule)) return true
+      const identity = await rule.verify(request)
+      if (identity?.login && rules.has(rule))
+        return { login: identity.login, ...(identity.address && { address: identity.address }) }
     } catch (error) {
       meansNone(error)
     }
   }
-  return false
+  return undefined
 }
 
-const tailscaleCgnatAndUlaRanges = new BlockList()
-tailscaleCgnatAndUlaRanges.addSubnet('100.64.0.0', 10, 'ipv4')
-tailscaleCgnatAndUlaRanges.addSubnet('fd7a:115c:a1e0::', 48, 'ipv6')
-
-export function deviceOf(headers: IncomingHttpHeaders): Device {
-  const agent = headers['user-agent'] ?? ''
+export function deviceOf(agent = '', identity: Partial<Identity>): Device {
   const kind = /Mobi|iPhone|Android/.test(agent) ? 'phone' : 'desktop'
   const browser = /Edg\//.test(agent)
     ? 'edge'
@@ -81,20 +76,7 @@ export function deviceOf(headers: IncomingHttpHeaders): Device {
         : /Safari/.test(agent)
           ? 'safari'
           : 'other'
-  const login = headers['tailscale-user-login']
-  if (!proxied(headers) || typeof login !== 'string' || !login)
-    return { device: `${kind} ${browser}` }
-  const address = lastProxyVouchedTailnetAddress(headers['x-forwarded-for'])
-  return { device: `${kind} ${browser}`, login, ...(address ? { address } : {}) }
-}
-
-function lastProxyVouchedTailnetAddress(header: string | string[] | undefined) {
-  const address = [header ?? []].flat().join(',').split(',').at(-1)?.trim() ?? ''
-  const family = isIP(address)
-  if (!family) return undefined
-  return tailscaleCgnatAndUlaRanges.check(address, family === 4 ? 'ipv4' : 'ipv6')
-    ? address
-    : undefined
+  return { device: `${kind} ${browser}`, ...identity }
 }
 
 export function proxied(headers: IncomingHttpHeaders) {

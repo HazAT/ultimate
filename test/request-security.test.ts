@@ -12,7 +12,7 @@ it.each(['127.0.0.1', 'localhost', '[::1]', 'ultimate.localhost', 'preview.ultim
         '4799',
         new Set(),
       ),
-    ).toBe(true)
+    ).toEqual({})
   },
 )
 
@@ -24,14 +24,14 @@ it.each([
 ])('rejects foreign or wrong-port authority %s and its origin', async (host) => {
   expect(loopbackAuthority(host, '4799')).toBe(false)
   expect(loopbackOrigin(`http://${host}`, '4799')).toBe(false)
-  expect(await admit({ headers: { host } }, '4799', new Set())).toBe(false)
+  expect(await admit({ headers: { host } }, '4799', new Set())).toBeUndefined()
   expect(
     await admit(
       { headers: { host: 'ultimate.localhost:4799', origin: `http://${host}` } },
       '4799',
       new Set(),
     ),
-  ).toBe(false)
+  ).toBeUndefined()
 })
 
 it('does not admit forwarded localhost subdomains', async () => {
@@ -41,37 +41,18 @@ it('does not admit forwarded localhost subdomains', async () => {
       '4799',
       new Set(),
     ),
-  ).toBe(false)
+  ).toBeUndefined()
 })
 
-it('labels a request by its browser, with the Tailscale login only behind Serve', () => {
+it('labels a request by its browser, with the login of the rule that admitted it', () => {
   const iphone =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
   const linux = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36'
-  expect(deviceOf({ 'user-agent': iphone })).toEqual({ device: 'phone safari' })
-  expect(
-    deviceOf({
-      'user-agent': linux,
-      'tailscale-user-login': 'me@example.com',
-      'x-forwarded-for': '100.64.0.2',
-    }),
-  ).toEqual({ device: 'desktop chrome', login: 'me@example.com', address: '100.64.0.2' })
-  // A login header that no proxy set is a local client's claim, not Tailscale's.
-  expect(deviceOf({ 'user-agent': linux, 'tailscale-user-login': 'me@example.com' })).toEqual({
+  expect(deviceOf(iphone, {})).toEqual({ device: 'phone safari' })
+  expect(deviceOf(linux, { login: 'me@example.com', address: '100.64.0.2' })).toEqual({
     device: 'desktop chrome',
+    login: 'me@example.com',
+    address: '100.64.0.2',
   })
-  expect(deviceOf({})).toEqual({ device: 'desktop other' })
-})
-
-it('keeps only the tailnet address Serve forwarded', () => {
-  const address = (forwarded: string) =>
-    deviceOf({ 'x-forwarded-for': forwarded, 'tailscale-user-login': 'me@example.com' }).address
-  // Without Serve's login the header is anyone's claim.
-  expect(deviceOf({ 'x-forwarded-for': '100.64.0.2' })).toEqual({ device: 'desktop other' })
-  expect(address('fd7a:115c:a1e0::1')).toBe('fd7a:115c:a1e0::1')
-  // Should a proxy append, only the rightmost entry counts; a leftmost one is the client's own claim.
-  expect(address('100.64.0.9, 100.100.1.2')).toBe('100.100.1.2')
-  expect(address('100.64.0.9, 192.168.1.5')).toBeUndefined()
-  for (const outside of ['127.0.0.1', '192.168.1.5', '100.128.0.1', '::1', 'not-an-ip', ''])
-    expect(address(outside)).toBeUndefined()
+  expect(deviceOf(undefined, {})).toEqual({ device: 'desktop other' })
 })

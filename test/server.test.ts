@@ -519,6 +519,59 @@ export default host => { host.resource('cleanup.process',()=>{
     expect(JSON.stringify(events)).not.toContain('secret')
     await server.root.abort(context)
   })
+  it('records the login of the access rule that admitted an input, never a forged Tailscale header', async () => {
+    const tailnet = 'https://rog.example.ts.net:5799'
+    const cloudflare = 'https://lab.example.com'
+    const { server } = await fixture(false, {
+      access: `import { defineExtension } from '@earendil-works/pi-durable'
+
+export default host => {
+  host.access.allow({ origin: '${tailnet}', verify: ({ headers }) => headers['tailscale-user-login'] === 'owner@example.com' ? { login: 'owner@example.com', address: '100.64.0.2' } : undefined })
+  host.access.allow({ origin: '${cloudflare}', verify: ({ headers }) => headers['cf-access-jwt-assertion'] === 'guest-token' ? { login: 'guest@example.com' } : undefined })
+  return defineExtension({ name: 'access' })
+}`,
+    })
+    server.host.faux!.setResponses([held])
+    const submit = (origin: string, headers: Record<string, string>) =>
+      new Promise<number>((resolve, reject) => {
+        const req = request(
+          server.url + '/api/conversations/1/submit',
+          {
+            method: 'POST',
+            headers: {
+              host: new URL(origin).host,
+              origin,
+              'content-type': 'application/json',
+              'x-forwarded-for': '203.0.113.7, 100.64.0.9',
+              ...headers,
+            },
+          },
+          (response) => {
+            resolve(response.statusCode!)
+            response.destroy()
+          },
+        )
+        req.on('error', reject)
+        req.end(JSON.stringify({ text: 'hi', whenBusy: 'followUp' }))
+      })
+    await until(() => server.system.current().access.origins.length === 2)
+    expect(
+      await submit(cloudflare, {
+        'cf-access-jwt-assertion': 'guest-token',
+        'tailscale-user-login': 'owner@example.com',
+      }),
+    ).toBe(202)
+    expect(await submit(tailnet, { 'tailscale-user-login': 'owner@example.com' })).toBe(202)
+    const events = await eventHost(() => server.harness, 'test').eventLog.recent({
+      events: [UserInputEvent],
+      order: 'ascending',
+    })
+    expect(events.map(({ data: { login, address } }) => ({ login, address }))).toEqual([
+      { login: 'guest@example.com', address: undefined },
+      { login: 'owner@example.com', address: '100.64.0.2' },
+    ])
+    await server.root.abort(context)
+  })
   it('orders live-added sections and tools deterministically across reopen', async () => {
     const { server, options } = await fixture(false, {
       a: orderedSource('a'),

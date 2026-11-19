@@ -197,6 +197,17 @@ it('serves, verifies the owner login by default, and tears down only its port', 
     await rule.verify({ headers: { 'tailscale-user-login': 'shared@example.com' } }),
   ).toBeUndefined()
   expect(await rule.verify({ headers: {} })).toBeUndefined()
+  const address = async (forwarded: string) =>
+    (
+      await rule.verify({
+        headers: { 'tailscale-user-login': 'owner@example.com', 'x-forwarded-for': forwarded },
+      })
+    )?.address
+  expect(await address('fd7a:115c:a1e0::1')).toBe('fd7a:115c:a1e0::1')
+  expect(await address('100.64.0.9, 100.100.1.2')).toBe('100.100.1.2')
+  expect(await address('100.64.0.9, 192.168.1.5')).toBeUndefined()
+  for (const outside of ['127.0.0.1', '192.168.1.5', '100.128.0.1', '::1', 'not-an-ip', ''])
+    expect(await address(outside)).toBeUndefined()
   expect(await f.invocations()).toContainEqual([
     'serve',
     '--bg',
@@ -334,10 +345,13 @@ it('admits the owner once status reports the login it lacked at start', async ()
     },
   }
   expect(await app.status()).toMatchObject({ state: 'ready', allow: [], hint: /owner login/ })
-  expect(await admit(request, '4747', app.access.rules)).toBe(false)
+  expect(await admit(request, '4747', app.access.rules)).toBeUndefined()
   const config = JSON.parse(await readFile(f.config, 'utf8'))
   await writeFile(f.config, JSON.stringify({ ...config, node }))
-  expect(await admit(request, '4747', app.access.rules)).toBe(true)
+  expect(await admit(request, '4747', app.access.rules)).toEqual({
+    login: 'owner@example.com',
+    address: '100.64.0.1',
+  })
   expect(await app.status()).toEqual({
     state: 'ready',
     url: 'https://rog.example.ts.net:4747',
