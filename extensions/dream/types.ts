@@ -51,6 +51,6 @@ export type PassName = (typeof PASSES)[number]
 
 export function busyElsewhere(conversations: readonly ConversationSummary[]) {
   return conversations
-    .filter((item) => item.busy && item.parentConversationId === undefined)
+    .filter((item) => item.busy)
     .map((item) => ({ id: item.id, title: item.title ?? `#${item.id}` }))
 }
