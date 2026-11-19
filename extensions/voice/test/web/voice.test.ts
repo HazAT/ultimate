@@ -36,15 +36,16 @@ async function button(data: unknown) {
   return html
 }
 
-it('dims the mic and says why while no OpenAI key is set', async () => {
-  const reason = 'Voice needs an OpenAI API key: add OPENAI_API_KEY in ⌘K → Secrets'
+it('dims the mic and says why while no credential is set', async () => {
+  const reason =
+    'Voice needs a ChatGPT login or an OpenAI API key: sign in with ChatGPT, or add OPENAI_API_KEY in ⌘K → Secrets'
   const html = await button({ available: false, reason })
   expect(html).toContain('data-voice="blocked"')
   expect(html).toContain('aria-disabled="true"')
   expect(html).toContain(`aria-label="${reason}"`)
 })
 
-it('offers the mic once a key is set', async () => {
+it('offers the mic once a credential is set', async () => {
   const html = await button({ available: true })
   expect(html).toContain('data-voice="idle"')
   expect(html).toContain('aria-label="Voice input"')

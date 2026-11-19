@@ -94,6 +94,7 @@ function VoiceButton() {
   const { id } = useConversation()
   const status = useAction(StatusAction)
   useEvent('secrets:changed', () => void status.refetch())
+  useEvent('auth:changed', () => void status.refetch())
   const [recording, setRecording] = useState<Recording>()
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState<string>()

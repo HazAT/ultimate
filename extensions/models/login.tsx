@@ -17,6 +17,7 @@ import {
   api,
   cn,
   errorMessage,
+  events,
   refreshModels,
   useCopy,
   useDialog,
@@ -279,7 +280,9 @@ function FlowView({
   const failure = error ?? flow?.error
   useEffect(() => onRunning(status === 'running' ? flowId : undefined), [flowId, onRunning, status])
   useEffect(() => {
-    if (status === 'complete') void refreshModels()
+    if (status !== 'complete') return
+    void refreshModels()
+    events.emit('auth:changed', undefined)
   }, [status])
   return (
     <div className="flex flex-col">
