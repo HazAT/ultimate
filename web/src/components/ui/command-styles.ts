@@ -10,6 +10,7 @@ export const commandStyles = {
     'flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
   list: 'max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto',
   empty: 'py-6 text-center text-sm',
+  emptySolid: 'not-data-empty:hidden',
   group: 'overflow-hidden p-1 text-foreground',
   groupReact:
     '[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground',

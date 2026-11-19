@@ -103,6 +103,11 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     throws without one, unlike the React label.
   - Menu and Command `onAction` details have an optional `event`, but no `source`; item `onSelect` takes only an
     event. Their open, radio value and query change callbacks do carry `details.source`.
+  - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it
+    with `not-data-empty:hidden`; a padded empty part otherwise leaves a blank band above the list. Compare a moved
+    usage with its React original side by side on the host before calling it the same.
+  - A command item whose content is not plain text needs `label` (its search text and agent label) and `keywords`;
+    without `label` the agent sees every text node run together.
   - The installed Solid SDK bundles Permissions into `docs/agents.md#permissions`. A refused `act` puts the message
     in `result.error.message`, not in `steps` (only completed steps go there).
   - Check modal Tab wrapping in a real browser: jsdom can verify initial focus, Escape and focus return, but does not

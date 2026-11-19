@@ -58,7 +58,12 @@ function CommandList(props: ComponentProps<typeof CommandListRoot> & { class?: s
 
 function CommandEmpty(props: ComponentProps<typeof CommandEmptyRoot> & { class?: string }) {
   const rest = omit(props, 'class')
-  return <CommandEmptyRoot {...rest} class={cn(commandStyles.empty, props.class)} />
+  return (
+    <CommandEmptyRoot
+      {...rest}
+      class={cn(commandStyles.empty, props.class, commandStyles.emptySolid)}
+    />
+  )
 }
 
 function CommandGroup(
