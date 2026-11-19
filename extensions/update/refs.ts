@@ -68,6 +68,26 @@ export type UpdateResult =
     }
   | { ok: false; refused: string }
 
+/** One instance's restart in a `restartAll`: never `ok` unless the generation it announced is the one serving there. */
+export type RestartOutcome = {
+  /** The project's name, as its folder spells it. */
+  name: string
+  url: string
+  ok: boolean
+  /** The generation it announced when it accepted the restart. */
+  generation?: number
+  /** Why it refused, did not answer, or did not come back on the generation it announced. */
+  error?: string
+}
+
+export type RestartAllResult = {
+  at: number
+  /** Why no instance was asked: a preview, or a restart within the last few minutes. */
+  refused?: string
+  /** One per instance asked, in the order they were asked. */
+  outcomes: RestartOutcome[]
+}
+
 /** No arguments → the clone's update state, from the last fetch (fetched hourly in the background). */
 export const StateAction = actionRef<null, UpdateState>('update', 'state')
 /** No arguments → fetch origin now (bypassing the hourly gate, under the clone's lock), then the refreshed state. */
@@ -82,6 +102,12 @@ export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
  * @ultimate's conversation id. Only while `merge` is offered.
  */
 export const MergeAction = actionRef<null, { id: ConversationId }>('update', 'merge')
+/**
+ * No arguments → restart every other instance running this clone that owes a restart, one after another, proving each
+ * by the generation it announces and then serves. The instance answering is not restarted: its window keeps Restart
+ * now. Refused within a few minutes of the last attempt. User-only.
+ */
+export const RestartAllAction = actionRef<null, RestartAllResult>('update', 'restartAll')
 
 /**
  * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages were

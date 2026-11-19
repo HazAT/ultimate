@@ -16,14 +16,15 @@ import {
   events,
   formatAgo,
   keepLast,
+  prettyName,
   useAction,
   useRestart,
   useSystem,
   useUltimate,
 } from '@/sdk'
 import { itemOf } from './item.ts'
-import { CheckAction, MergeAction, StateAction, UpdateAction } from './refs.ts'
-import type { Layers, UpdateResult, UpdateState } from './refs.ts'
+import { CheckAction, MergeAction, RestartAllAction, StateAction, UpdateAction } from './refs.ts'
+import type { Layers, RestartAllResult, UpdateResult, UpdateState } from './refs.ts'
 
 const statusButton =
   '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent'
@@ -122,6 +123,9 @@ function Popup({
   run,
   check,
   merge,
+  restartAll,
+  restartOthers,
+  restartingOthers,
 }: {
   state: UpdateState
   busy: boolean
@@ -130,6 +134,9 @@ function Popup({
   run: () => void
   check: () => void
   merge: () => void
+  restartAll?: RestartAllResult
+  restartOthers: () => void
+  restartingOthers: boolean
 }) {
   const coreStale = useSystem()?.code.coreStale
   const updated = state.behind === 0 ? state.updated : undefined
@@ -253,6 +260,27 @@ function Popup({
           </div>
         )}
         {error && <div className="break-words text-error">{error}</div>}
+        {restartAll && (
+          <div className="border-t border-border/60 pt-2" data-update-restart-all>
+            <div className="text-muted-foreground">
+              {restartAll.refused ??
+                (restartAll.outcomes.length
+                  ? 'Every other window running this clone that owes a restart was asked; this window keeps its own Restart now.'
+                  : 'No other window running this clone owes a restart; this window keeps its own Restart now.')}
+            </div>
+            {restartAll.outcomes.map((outcome) => (
+              <div className="flex min-w-0 gap-2" key={outcome.url}>
+                <span className="shrink-0 text-foreground/85">{prettyName(outcome.name)}</span>
+                <span
+                  className={cn('min-w-0 truncate', outcome.ok ? 'text-success' : 'text-error')}
+                  title={outcome.error}
+                >
+                  {outcome.ok ? `restarted · generation ${outcome.generation}` : outcome.error}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-border/70 px-3 py-1.5">
         <span className="text-[10.5px] text-muted-foreground">
@@ -266,6 +294,7 @@ function Popup({
             busy={busy}
             coreStale={coreStale}
             merge={merge}
+            others={{ busy: restartingOthers, run: restartOthers }}
             owes={owesInstallOrRestart}
             run={run}
             state={state}
@@ -283,6 +312,7 @@ function Action({
   coreStale,
   run,
   merge,
+  others,
 }: {
   state: UpdateState
   busy: boolean
@@ -290,6 +320,7 @@ function Action({
   coreStale?: boolean
   run: () => void
   merge: () => void
+  others: { busy: boolean; run: () => void }
 }) {
   const restart = useRestart()
   const updated = state.behind === 0 ? state.updated : undefined
@@ -309,15 +340,28 @@ function Action({
         </Button>
       ) : updated || owes ? (
         (updated?.layers.core || updated?.layers.lockfile || coreStale || state.restart) && (
-          <Button
-            className="h-7 font-sans text-[12px]"
-            disabled={restart.busy}
-            onClick={restart.run}
-            size="sm"
-            variant="outline"
-          >
-            {restart.busy ? 'Restarting…' : 'Restart now'}
-          </Button>
+          <>
+            <Button
+              className="h-7 font-sans text-[12px]"
+              disabled={restart.busy}
+              onClick={restart.run}
+              size="sm"
+              variant="outline"
+            >
+              {restart.busy ? 'Restarting…' : 'Restart now'}
+            </Button>
+            <Button
+              className="h-7 font-sans text-[12px]"
+              data-update-restart-others
+              disabled={others.busy}
+              onClick={others.run}
+              size="sm"
+              title="Restarts the other windows running this clone; this one keeps Restart now"
+              variant="ghost"
+            >
+              {others.busy ? 'Restarting others…' : 'Restart others'}
+            </Button>
+          </>
         )
       ) : state.merge ? (
         <Button
@@ -352,6 +396,8 @@ function Update() {
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
+  const [restartAll, setRestartAll] = useState<RestartAllResult>()
+  const [restartingOthers, setRestartingOthers] = useState(false)
   const { showSurface, switchConversation } = useUltimate()
   const state = data
   if (!state) return null
@@ -394,6 +440,17 @@ function Update() {
         setError(failure instanceof Error ? failure.message : String(failure)),
       )
       .finally(() => setBusy(false))
+  }
+  const restartOthers = () => {
+    setRestartingOthers(true)
+    setError(undefined)
+    api
+      .action(RestartAllAction)
+      .then(setRestartAll)
+      .catch((failure: unknown) =>
+        setError(failure instanceof Error ? failure.message : String(failure)),
+      )
+      .finally(() => setRestartingOthers(false))
   }
   const label =
     item === 'current' ? (
@@ -459,6 +516,9 @@ function Update() {
           checking={checking}
           error={error}
           merge={openUltimateMerge}
+          restartAll={restartAll}
+          restartOthers={restartOthers}
+          restartingOthers={restartingOthers}
           run={run}
           state={state}
         />

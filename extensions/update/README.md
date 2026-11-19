@@ -53,6 +53,14 @@ When the clone's only refusal is a diverged branch (commits of its own plus new 
 
 Where the clone is not the project (a project run from a separate Ultimate clone), nothing is offered: a branch lives in the project's repository and the lander lands into the project, so it cannot merge into the clone. That clone keeps the plain refusal; merge it by hand.
 
+## Restarting the other instances
+
+After an update that needs a restart, every window offers **Restart now** for itself. **Restart others**, next to it, does that for the other instances running this clone that owe a restart, one at a time, so seven windows do not need seven clicks. The window you clicked in is not restarted: a restart cuts the answer this action is still writing, and that window keeps its own **Restart now**.
+
+It enumerates instances with `host.projects()` and asks each one's `update` `state` over loopback (`postAction`), the way `projects` reads another instance's `status`. An instance is asked only when it reports this clone as the one it runs from (`state.root`) and its state says `restart`. In series, per instance: `POST /api/restart` on it with its own `Origin`, which answers `202 { ok, generation }` before the swap, then its `status` action until the `generation` it serves is that number or later, within 60 s; accepting may take 90 s, since a swap type-checks first. Its port answers throughout the swap, so the generation is the only proof. One failing instance never stops the rest. A restart interrupts the turn running there, which resumes from its checkpoint.
+
+An instance that refused, did not answer or served an older generation afterwards is reported that way in the popover, never as restarted. `restartAll` records its attempt in `update-restart-all.json` in the home (where the automatic restart keeps its own cooldown) and refuses a second one within 3 minutes. Like `merge`, it is user-only.
+
 ## Before anything loads
 
 An extension reload, a web build or a restart must never read a checkout that git is still writing, or packages that `pnpm install` is still linking. The extension registers `host.onBeforeLoad` (`loadable` in `server.ts`), which the core awaits before each of the three:

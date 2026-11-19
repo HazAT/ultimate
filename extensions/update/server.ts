@@ -19,6 +19,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import { PauseApi } from '../pause/api.ts'
+import { postAction, postRestart } from '../../lib/remote.ts'
 import {
   cloneState,
   fetchIfDue,
@@ -28,8 +29,16 @@ import {
   summaryFor,
   withLock,
 } from './clone.ts'
-import { Applied, CheckAction, MergeAction, Refused, StateAction, UpdateAction } from './refs.ts'
-import type { UpdateResult, UpdateState } from './refs.ts'
+import {
+  Applied,
+  CheckAction,
+  MergeAction,
+  Refused,
+  RestartAllAction,
+  StateAction,
+  UpdateAction,
+} from './refs.ts'
+import type { RestartOutcome, UpdateResult, UpdateState } from './refs.ts'
 import { UpdateApi } from './api.ts'
 
 export const TICK = 5 * 60_000
@@ -101,6 +110,109 @@ export function restartOnStaleLoad(options: {
         pending.current = undefined
       })
   }
+}
+
+export const RESTART_ALL_LOCK_MS = 3 * 60_000
+const RESTART_ACCEPT_MS = 90_000
+const RESTART_SERVE_MS = 60_000
+const RESTART_POLL_MS = 1_000
+
+type RestartTarget = { name: string; url: string }
+
+const remote = (target: RestartTarget) => ({ url: target.url, label: target.name })
+
+export const restartAllLocked = (at: number | undefined, now: number) =>
+  at !== undefined && now - at < RESTART_ALL_LOCK_MS
+
+export function restartNeeded(
+  clone: string,
+  answered: readonly { instance: RestartTarget; state?: UpdateState }[],
+): RestartTarget[] {
+  return answered.flatMap(({ instance, state }) =>
+    state?.root === clone && state.restart ? [instance] : [],
+  )
+}
+
+export const cameBack = (announced: number, served: number | undefined) =>
+  served !== undefined && served >= announced
+
+export type RestartPoster = {
+  accept: (target: RestartTarget) => Promise<{ generation: number } | { error: string }>
+  served: (target: RestartTarget) => Promise<number | undefined>
+  pause: () => Promise<void>
+  now: () => number
+}
+
+export async function restartInSeries(
+  targets: readonly RestartTarget[],
+  poster: RestartPoster,
+  serveWithinMs = RESTART_SERVE_MS,
+): Promise<RestartOutcome[]> {
+  const outcomes: RestartOutcome[] = []
+  for (const target of targets) {
+    const accepted = await poster.accept(target)
+    if ('error' in accepted) {
+      outcomes.push({ ...target, ok: false, error: accepted.error })
+      continue
+    }
+    const until = poster.now() + serveWithinMs
+    let served = await poster.served(target).catch(meansNone)
+    while (!cameBack(accepted.generation, served) && poster.now() < until) {
+      await poster.pause()
+      served = await poster.served(target).catch(meansNone)
+    }
+    outcomes.push(
+      cameBack(accepted.generation, served)
+        ? { ...target, ok: true, generation: accepted.generation }
+        : {
+            ...target,
+            ok: false,
+            generation: accepted.generation,
+            error: `generation ${accepted.generation} did not serve within ${Math.round(serveWithinMs / 1000)} s`,
+          },
+    )
+  }
+  return outcomes
+}
+
+const restartPoster = (signal: AbortSignal): RestartPoster => ({
+  accept: (target) =>
+    postRestart(remote(target), RESTART_ACCEPT_MS, signal).then(
+      (generation) => ({ generation }),
+      (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }),
+    ),
+  served: (target) =>
+    postAction(remote(target), 'status', 'status', {}, signal).then((answer) => {
+      const generation = (answer as { generation?: unknown } | undefined)?.generation
+      return typeof generation === 'number' ? generation : undefined
+    }),
+  pause: () => pace(RESTART_POLL_MS, signal),
+  now: Date.now,
+})
+
+const restartAllFile = (host: ExtensionHost) => join(host.home, 'update-restart-all.json')
+
+const lastRestartAll = (path: string) =>
+  readFile(path, 'utf8').then(
+    (text) => (JSON.parse(text) as { at: number }).at,
+    () => undefined,
+  )
+
+async function restartOthers(host: ExtensionHost, signal: AbortSignal) {
+  const instances = (await host.projects()).flatMap(({ name, running, current }) =>
+    current || !running ? [] : [{ name, url: running.url }],
+  )
+  const answered = await Promise.all(
+    instances.map(async (instance) => ({
+      instance,
+      state: (await postAction(remote(instance), 'update', 'state', null, signal).catch(
+        meansNone,
+      )) as UpdateState | undefined,
+    })),
+  )
+  const targets = restartNeeded(host.ultimateRoot, answered)
+  if (targets.length) await writeFile(restartAllFile(host), JSON.stringify({ at: Date.now() }))
+  return restartInSeries(targets, restartPoster(signal))
 }
 
 async function installPackages(
@@ -433,7 +545,7 @@ async function apply(
 const mergeRequestIdForRange = (head: string, remoteHead: string | undefined) =>
   `update-merge:${head}..${remoteHead}`
 
-export const userActions = ['merge']
+export const userActions = ['merge', 'restartAll']
 
 export const actions = {
   state: implementAction(StateAction, (_args, { host }) => locallyRefreshedState(host)),
@@ -478,5 +590,25 @@ export const actions = {
       context,
     )
     return { id }
+  }),
+  restartAll: implementAction(RestartAllAction, async (_args, { host, signal }) => {
+    const at = Date.now()
+    if (sharesHostCloneAsPreview())
+      return { at, outcomes: [], refused: 'A preview never restarts the instance it runs' }
+    const last = await lastRestartAll(restartAllFile(host))
+    if (restartAllLocked(last, at))
+      return {
+        at,
+        outcomes: [],
+        refused: `Restarted within the last ${RESTART_ALL_LOCK_MS / 60_000} minutes, so nothing was asked again`,
+      }
+    const attempt = host.resource<{ current?: Promise<RestartOutcome[]> }>(
+      'update.restart-all',
+      () => ({}),
+    )
+    attempt.current ??= restartOthers(host, signal).finally(() => {
+      attempt.current = undefined
+    })
+    return { at, outcomes: await attempt.current }
   }),
 }
