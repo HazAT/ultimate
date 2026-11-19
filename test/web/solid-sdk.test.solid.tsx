@@ -140,42 +140,46 @@ it('matches the immutable replica after every kind of op, and never writes into 
   })
 })
 
-it('tells length readers about an append at the end, and keeps a replace-then-edit batch out of the event', async () => {
+it('follows appends, prepends and replace-then-edit batches exactly, rows included', async () => {
   const doc = mount(() => useDoc(board))
   flush()
   await tick()
   source().send('doc', { kind: board.kind, value: initial })
   const length = mount(() => createMemo(() => doc()?.columns[0].cards.length))
+  const names = mount(() =>
+    createMemo(() =>
+      doc()
+        ?.columns.map((column) => column.name)
+        .join(),
+    ),
+  )
   flush()
-  expect(length()).toBe(2)
+  expect([length(), names()]).toEqual([2, 'todo,done'])
+  const replica = () => store.getState().docs[board.kind]
 
   source().send('docOps', { kind: board.kind, ops: [['s', ['columns', 0, 'cards', 2], 'c']] })
   flush()
   expect(length()).toBe(3)
-  expect(JSON.parse(JSON.stringify(doc()))).toEqual(store.getState().docs[board.kind])
+  expect(JSON.parse(JSON.stringify(doc()))).toEqual(replica())
 
-  const seen: unknown[] = []
-  const stop = store.onDocChange((_target, _kind, event) => seen.push(structuredClone(event)))
-  const replaced = { ...initial, note: 'start' }
+  source().send('docOps', {
+    kind: board.kind,
+    ops: [['p', ['columns'], 0, 0, [{ name: 'first', cards: [] }]]],
+  })
+  flush()
+  expect(names()).toBe('first,todo,done')
+  expect(JSON.parse(JSON.stringify(doc()))).toEqual(replica())
+
   source().send('docOps', {
     kind: board.kind,
     ops: [
-      ['r', replaced],
+      ['r', { ...initial, note: 'start' }],
       ['a', ['note'], '!'],
     ],
   })
-  stop()
   flush()
   expect(doc()?.note).toBe('start!')
-  expect(seen).toEqual([
-    {
-      kind: board.kind,
-      ops: [
-        ['r', replaced],
-        ['a', ['note'], '!'],
-      ],
-    },
-  ])
+  expect(replica()).toMatchObject({ note: 'start!' })
 })
 
 it('drops a shown document from the server subscription once its last reader is gone', async () => {

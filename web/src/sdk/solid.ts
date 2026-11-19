@@ -48,29 +48,24 @@ function createReplica() {
   const [docs, setDocs] = createStore<Record<string, Doc>>({})
   const [state, setState] = createSignal(store.getState())
   const [ui, setUi] = createSignal(uiState.snapshot())
-  const watched = new Map<string, { target: Target; kind: string; readers: number }>()
+  const watched = new Map<string, { target: Target; kind: string; readers: number; seen: Doc }>()
 
+  const follow = (key: string, next: Doc) =>
+    setDocs((draft) => {
+      const current = draft[key]
+      const own = structuredClone(next)
+      if (isObject(current) && isObject(own)) reconcile(own, null)(current)
+      else draft[key] = own
+    })
   store.subscribe(() => {
     const current = store.getState()
     setState(current)
-    for (const [key, { target, kind }] of watched) {
-      const value = immutableDoc(current, target, kind)
-      if (value === undefined || value === null)
-        setDocs((draft) => {
-          if (draft[key] !== value) draft[key] = value
-        })
+    for (const [key, reader] of watched) {
+      const value = immutableDoc(current, reader.target, reader.kind)
+      if (value === reader.seen) continue
+      reader.seen = value
+      follow(key, value)
     }
-  })
-  store.onDocChange((conversation, kind) => {
-    const target = conversation ?? 'shown'
-    const key = replicaKey(target, kind)
-    if (!watched.has(key)) return
-    const next = immutableDoc(store.getState(), target, kind)
-    setDocs((draft) => {
-      const current = draft[key]
-      if (isObject(current) && isObject(next)) reconcile(next, null)(current)
-      else draft[key] = next
-    })
   })
   uiState.subscribe(() => setUi(uiState.snapshot()))
 
@@ -86,13 +81,11 @@ function createReplica() {
     watch(target: Target, kind: string) {
       const release = target === 'shown' ? store.watchDoc(kind) : store.watchDocOf(target, kind)
       const key = replicaKey(target, kind)
-      const reader = watched.get(key) ?? { target, kind, readers: 0 }
+      const reader = watched.get(key) ?? { target, kind, readers: 0, seen: undefined }
       if (reader.readers++ === 0) {
         watched.set(key, reader)
-        const value = immutableDoc(store.getState(), target, kind)
-        setDocs((draft) => {
-          draft[key] = value
-        })
+        reader.seen = immutableDoc(store.getState(), target, kind)
+        follow(key, reader.seen)
       }
       return () => {
         if (--reader.readers === 0) {

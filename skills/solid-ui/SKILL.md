@@ -54,8 +54,9 @@ component reads documents, UI state and client state as accessors from `@/sdk/so
 - **State that should survive** a reload, a restart or a second tab is durable: bind it with `useExtensionUiState` or a
   document from `@/sdk/solid`, not a local signal.
 - **Solid 2 facts that tripped agents here** (checked against the pinned version):
-  - Stores are copy-on-write: a setter never mutates the object it wraps, so values from the immutable SDK replica or
-    the server can go into a store without a copy.
+  - Stores are copy-on-write: a setter never mutates the object it wraps. But `reconcile` by position adopts the
+    incoming objects, so reconciling a value that shares rows with the store's current value (an immutable replica's
+    next revision) duplicates rows on a prepend: reconcile a `structuredClone`, as `@/sdk/solid` does.
   - A write inside an owned scope (a component body, a memo, `createRoot(() => …)`) throws
     `REACTIVE_WRITE_IN_OWNED_SCOPE`, tests included: create the store inside the root, write from outside it.
   - A context created without a default throws when nothing provides it, and a provider passing `undefined` counts as
