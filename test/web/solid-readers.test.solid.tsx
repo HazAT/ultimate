@@ -152,7 +152,7 @@ it('hears bus events while mounted', () => {
 })
 
 it('marks a copy for a moment', async () => {
-  const writeText = vi.fn(async () => {})
+  const writeText = vi.fn<(text: string) => Promise<void>>(async () => {})
   Object.assign(navigator, { clipboard: { writeText } })
   let copy!: ReturnType<typeof useCopy>
   renderSolid(() => {
