@@ -163,8 +163,12 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
   return useUiState(extensionUiKey(useContext(ExtensionName), key), initial)
 }
 
-/** Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again. */
+/**
+ * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again, and
+ * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
+ */
 export type UseActionOptions = {
+  conversation?: ConversationId
   onError?: (error: ActionError) => void
   on?: Accessor<unknown>
   every?: number
@@ -180,7 +184,8 @@ export function useAction<Args, T>(
   ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
 ) {
   const { state } = shared()
-  const scoped = useContext(ConversationScope)
+  const scope = useContext(ConversationScope)
+  const scoped = options.conversation ?? scope
   const read = createMemo(() => {
     const { view, requested } = state()
     const conversation = scoped ?? view?.conversation.id ?? requested ?? ROOT

@@ -4,6 +4,7 @@ import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import { parseConversationId } from '../../../../lib/ids.ts'
 import type { WarmState } from '../../refs.ts'
 
 const harness = vi.hoisted(() => ({
@@ -87,6 +88,19 @@ it('shows the warm chip, opens its popover, and sends a person’s click as thei
   container.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
   await vi.advanceTimersByTimeAsync(10)
   expect(harness.actions).toContainEqual({ name: 'set', args: { on: false }, source: 'person' })
+})
+
+it('stays on screen and actable while the page switches to another conversation', async () => {
+  const container = await mountChip()
+  const calls = harness.actions.length
+  store.show(parseConversationId(42))
+  flush()
+  expect(container.querySelector('[data-keep-warm]')).not.toBeNull()
+  const trigger = agent.snapshot().find((entry) => entry.label === "Keep @ultimate's cache warm")
+  expect(await act([{ ref: trigger!.ref, action: 'setOpen', args: [true] }])).toMatchObject({
+    ok: true,
+  })
+  expect(harness.actions.slice(calls)).toEqual([])
 })
 
 it('lets an agent open the popover and turn keep-warm off through the server', async ({

@@ -35,7 +35,12 @@ const toggle = (on: boolean) =>
 
 export function Chip() {
   const doc = useDocOf(() => ROOT, WarmDoc)
-  const { data } = useAction(StateAction, null, { onError: keepLast, on: doc, every: 60_000 })
+  const { data } = useAction(StateAction, null, {
+    conversation: ROOT,
+    onError: keepLast,
+    on: doc,
+    every: 60_000,
+  })
   const now = useNow(60_000)
   return (
     <Show when={data()}>
