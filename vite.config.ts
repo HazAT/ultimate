@@ -356,6 +356,7 @@ export default defineConfig({
   fmt: { semi: false, singleQuote: true },
   test: {
     root: '.',
+    environment: 'node',
     globalSetup: ['test/sweep-temp.ts'],
     setupFiles: ['test/setup.ts', 'test/no-group-signals.ts'],
     // Core and integration tests in test/, each extension's own in extensions/<name>/test/: `pnpm test extensions/<name>/`
