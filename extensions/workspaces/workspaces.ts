@@ -35,6 +35,8 @@ import {
   activeLandingCards,
   hasPendingLanderReport,
   landerCheckout,
+  landerOff,
+  landerOffReason,
   landerPath,
   log,
 } from './lander.ts'
@@ -269,12 +271,15 @@ export function workspaces(host: Host) {
       for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) await host.need(ConversationsApi).setStanding(tx, id, true)
     }, context)
+    const off = await landerOff(host)
     const checkout = await isolatable(host.projectRoot)
-    const { source, target } = 'source' in checkout ? checkout : {}
+    const { source, target } = 'source' in checkout && !off ? checkout : {}
     const path =
       source && target && (await landerCheckout(host.home, source, await host.projectSettings()))
     await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+      if (off) index.landerOff = true
+      else delete index.landerOff
       const landers: ConversationId[] = []
       for (const id of Object.values(index.landerConversations))
         if (await tx.conversation(id)) landers.push(id)
@@ -765,6 +770,7 @@ export function workspaces(host: Host) {
         "Submitting requires divergence: describe changes from the original request, or say 'None'.",
       )
     divergence = divergence.trim()
+    if (await landerOff(host)) throw new Error(landerOffReason)
     const workspace = await get(id, context)
     if (!workspace) throw new Error('Conversation has no workspace')
     if (workspace.state !== 'ready') throw new Error(`Workspace is ${workspace.state}`)

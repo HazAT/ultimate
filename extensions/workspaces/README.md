@@ -193,6 +193,11 @@ Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "
 both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the
 `workspaces.landed` event.
 
+A project that lands its work some other way (pull requests and a merge queue) sets `"lander": false`. Branches still
+get their worktrees; open then stands no lander and records `landerOff` in the index, the sidebar hides an existing
+lander's row, top-level branches' prompts tell them to finish the way the project's instructions say, and
+`workspace submit` refuses with the same reason. Open reads the setting; the sidebar follows it after the next open.
+
 Each attempt starts from a reset checkout, and the integrated commit is memoized after the checks, so a crash resumes
 safely. Failed submissions are dropped from the queue after their report.
 
