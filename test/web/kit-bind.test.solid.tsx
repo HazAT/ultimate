@@ -76,7 +76,17 @@ it('binds kit controls to stored UI state and sends each write with who made it'
   expect(container.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('true')
   await uiState.flush()
   expect(writes).toEqual([
-    [{ set: { 'test.view': 'grid' }, delete: [] }, 'agent'],
-    [{ set: { 'test.digest': true }, delete: [] }, 'person'],
+    [
+      { ops: [{ key: 'test.view', value: 'grid', who: 'agent' }], tab: expect.any(String), seq: 1 },
+      'agent',
+    ],
+    [
+      {
+        ops: [{ key: 'test.digest', value: true, who: 'person' }],
+        tab: expect.any(String),
+        seq: 2,
+      },
+      'person',
+    ],
   ])
 })

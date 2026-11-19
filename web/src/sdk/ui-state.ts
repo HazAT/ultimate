@@ -8,10 +8,15 @@ import type { UiWho } from './writer.ts'
 
 export type UiValues = Readonly<Record<string, JsonValue>>
 
-interface LocalWrite {
+interface PendingOp {
+  key: string
   value: JsonValue | undefined
   who: UiWho
-  batch?: number
+}
+
+interface SentWrite {
+  value: JsonValue | undefined
+  batch: number
   rev?: number
 }
 
@@ -49,21 +54,23 @@ export function createUiState(
 ) {
   const listeners = new Set<() => void>()
   let streamSnapshot: UiValues = {}
-  const unconfirmedLocalWrites = new Map<string, LocalWrite>()
+  const pending: PendingOp[] = []
+  const unconfirmedSentWrites = new Map<string, SentWrite>()
   const tabOnly = options.tabOnly ?? (() => false)
   let tabOnlyAtLoad: UiValues | undefined
   const tabOnlyWrites = new Map<string, JsonValue | undefined>()
   let values: UiValues = {}
 
+  const tab = crypto.randomUUID()
+  let lastSeq = 0
   let lastSentBatch = 0
   let newestStreamRevision = 0
-  let inFlight: Promise<void> | undefined
+  let inFlight: { ops: PendingOp[]; done: Promise<void> } | undefined
 
   let serverProcessEpoch = 0
 
   let awaitingRestartSnapshot = false
   let cancelSend: Cancel | undefined
-  const unsent = () => [...unconfirmedLocalWrites].filter(([, entry]) => entry.batch === undefined)
 
   function update() {
     const next: Record<string, JsonValue> = { ...streamSnapshot }
@@ -71,11 +78,12 @@ export function createUiState(
       for (const key of Object.keys(next)) if (tabOnly(key)) delete next[key]
       Object.assign(next, tabOnlyAtLoad)
     }
-    for (const [key, value] of tabOnlyWrites) {
-      if (value === undefined) delete next[key]
-      else next[key] = value
-    }
-    for (const [key, { value }] of unconfirmedLocalWrites) {
+    const overlay = [
+      ...tabOnlyWrites,
+      ...[...unconfirmedSentWrites].map(([key, { value }]) => [key, value] as const),
+      ...pending.map(({ key, value }) => [key, value] as const),
+    ]
+    for (const [key, value] of overlay) {
       if (value === undefined) delete next[key]
       else next[key] = value
     }
@@ -85,9 +93,9 @@ export function createUiState(
 
   function releaseStreamConfirmedWrites() {
     if (awaitingRestartSnapshot) return
-    for (const [key, entry] of unconfirmedLocalWrites)
+    for (const [key, entry] of unconfirmedSentWrites)
       if (entry.rev !== undefined && entry.rev <= newestStreamRevision)
-        unconfirmedLocalWrites.delete(key)
+        unconfirmedSentWrites.delete(key)
   }
   function schedule(delay: number) {
     cancelSend ??= deadline(delay, () => {
@@ -96,55 +104,65 @@ export function createUiState(
     })
   }
 
-  function send(keepaliveBudget?: { bytes: number }): Promise<void> | undefined {
-    const pending = unsent()
-    if (!write || pending.length === 0) return undefined
-    const change: UiUpdateRequest = { set: {}, delete: [] }
+  function oldestWriterRun() {
+    const end = pending.findIndex((op) => op.who !== pending[0].who)
+    return pending.splice(0, end === -1 ? pending.length : end)
+  }
+
+  function send(ops = oldestWriterRun(), exit = false) {
+    if (!write || ops.length === 0) return undefined
     const batch = ++lastSentBatch
-    const who = pending[0][1].who
-    for (const [key, entry] of pending) {
-      if (entry.who !== who) break
-      entry.batch = batch
-      if (entry.value === undefined) change.delete?.push(key)
-      else if (change.set) change.set[key] = entry.value
+    for (const { key, value } of ops) unconfirmedSentWrites.set(key, { value, batch })
+    const change: UiUpdateRequest = {
+      ops: ops.map(({ key, value, who }) => ({
+        key,
+        ...(value === undefined ? {} : { value }),
+        who,
+      })),
+      tab,
+      seq: ++lastSeq,
     }
-    const bytes = new TextEncoder().encode(JSON.stringify(change)).byteLength
-    const keepalive = keepaliveBudget !== undefined && bytes <= keepaliveBudget.bytes
-    if (keepalive) keepaliveBudget.bytes -= bytes
+    const fitsKeepalive =
+      new TextEncoder().encode(JSON.stringify(change)).byteLength <= KEEPALIVE_BYTES
     const sentInServerEpoch = serverProcessEpoch
     const settled = () => {
       if (inFlight === sent) inFlight = undefined
-      if (unsent().length > 0) schedule(0)
+      if (pending.length > 0) schedule(0)
     }
-    const sent: Promise<void> = write(change, who, keepalive ? { keepalive } : undefined).then(
-      ({ rev }) => {
+    const done = write(change, ops[0].who, exit ? { keepalive: fitsKeepalive } : undefined).then(
+      (response) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
-        for (const entry of unconfirmedLocalWrites.values())
-          if (entry.batch === batch) entry.rev = rev
+        for (const [key, entry] of unconfirmedSentWrites)
+          if (entry.batch !== batch) continue
+          else if (response.ok) entry.rev = response.rev
+          else unconfirmedSentWrites.delete(key)
         settled()
         releaseStreamConfirmedWrites()
         update()
       },
       (error: unknown) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
-        for (const [key, entry] of unconfirmedLocalWrites)
-          if (entry.batch === batch) unconfirmedLocalWrites.delete(key)
+        for (const [key, entry] of unconfirmedSentWrites)
+          if (entry.batch === batch) unconfirmedSentWrites.delete(key)
         settled()
         update()
         options.onError?.(error)
       },
     )
+    const sent = { ops, done }
     return sent
   }
   function set(key: string, value: JsonValue | undefined) {
     if (same(values[key], value)) return
-    if (tabOnly(key)) {
+    if (!write || tabOnly(key)) {
       tabOnlyWrites.set(key, value)
       update()
       return
     }
-    unconfirmedLocalWrites.delete(key)
-    unconfirmedLocalWrites.set(key, { value, who: writerNow() })
+    const who = writerNow()
+    const newest = pending.at(-1)
+    if (newest?.key === key && newest.who === who) newest.value = value
+    else pending.push({ key, value, who })
     schedule(options.delayMs ?? 150)
     update()
   }
@@ -178,26 +196,26 @@ export function createUiState(
       newestStreamRevision = 0
       inFlight = undefined
       awaitingRestartSnapshot = true
-      for (const entry of unconfirmedLocalWrites.values())
-        if (entry.batch !== undefined) entry.rev = 0
-      if (unsent().length > 0) schedule(0)
+      for (const entry of unconfirmedSentWrites.values()) entry.rev = 0
+      if (pending.length > 0) schedule(0)
     },
 
-    async flush({ keepalive = false } = {}) {
+    async flush() {
       cancelSend?.()
       cancelSend = undefined
       if (!write) return
-      if (keepalive) {
-        const budget = { bytes: KEEPALIVE_BYTES }
-        const leaving = inFlight ? [inFlight] : []
-        for (let sent = send(budget); sent; sent = send(budget)) leaving.push(sent)
-        await Promise.all(leaving)
-        return
-      }
-      while (inFlight || unsent().length > 0) {
+      while (inFlight || pending.length > 0) {
         inFlight ??= send()
-        await inFlight
+        await inFlight?.done
       }
+    },
+
+    async exit() {
+      cancelSend?.()
+      cancelSend = undefined
+      const ops = [...(inFlight?.ops ?? []), ...pending.splice(0)]
+      inFlight = send(ops, true)
+      await inFlight?.done
     },
   }
 }

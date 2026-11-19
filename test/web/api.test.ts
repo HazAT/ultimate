@@ -55,14 +55,14 @@ describe('extension actions', () => {
     await expect(unavailable.api.action(ref('onboarding', 'status'))).rejects.toBeInstanceOf(
       ActionError,
     )
-    await expect(unavailable.api.updateUi({ set: {} })).rejects.toMatchObject({ status: 503 })
+    await expect(unavailable.api.updateUi({ ops: [] })).rejects.toMatchObject({ status: 503 })
   })
 
   it('sends a page-exit UI-state flush to /api/ui with keepalive', async () => {
     const { api, fetch } = setup(() => json(200, { ok: true, rev: 1 }))
     const state = createUiState(api.updateUi)
     state.set('ext.digest.on', true)
-    await state.flush({ keepalive: true })
+    await state.exit()
     expect(fetch.mock.calls.map(([url, init]) => [url, init?.keepalive])).toEqual([
       ['/api/ui', true],
     ])

@@ -409,7 +409,9 @@ export default host => { host.resource('cleanup.process',()=>{
       const { server } = await fixture()
       expect(server.url).toBe(`http://127.0.0.1:${server.port}`)
       expect((await fetch(server.url)).status).toBe(200)
-      expect((await post(server, '/api/ui', { set: { 'test.isolated': true } })).status).toBe(200)
+      expect(
+        (await post(server, '/api/ui', { ops: [{ key: 'test.isolated', value: true }] })).status,
+      ).toBe(200)
       expect(await server.host.uiState(context)).toEqual({ 'test.isolated': true, 'ui.rev': 1 })
       await (
         await server.root.submit({ type: 'input', content: 'self URL' }, context)
@@ -563,11 +565,16 @@ export default host => { host.resource('cleanup.process',()=>{
     const first = await attach(server)
     const second = await attach(server, { conversation: created.data.id as number })
     expect(
-      await post(server, '/api/ui', { set: { 'shell.panel': 'tasks', 'app.count': 2 } }),
+      await post(server, '/api/ui', {
+        ops: [
+          { key: 'shell.panel', value: 'tasks' },
+          { key: 'app.count', value: 2 },
+        ],
+      }),
     ).toEqual({ status: 200, data: { ok: true, rev: 1 } })
     // The revision is the server's: a client cannot set or delete it.
-    expect((await post(server, '/api/ui', { set: { 'ui.rev': 9 } })).status).toBe(400)
-    expect((await post(server, '/api/ui', { delete: ['ui.rev'] })).status).toBe(400)
+    expect((await post(server, '/api/ui', { ops: [{ key: 'ui.rev', value: 9 }] })).status).toBe(400)
+    expect((await post(server, '/api/ui', { ops: [{ key: 'ui.rev' }] })).status).toBe(400)
     await until(() => second.events.some((event) => event.name === 'uiOps'))
     let value = (second.events.find((event) => event.name === 'ui')!.data as ServerEvents['ui'])
       .value
@@ -575,7 +582,7 @@ export default host => { host.resource('cleanup.process',()=>{
       value = applyImmutable(value, (event.data as ServerEvents['uiOps']).ops)
     expect(value).toEqual({ 'shell.panel': 'tasks', 'app.count': 2, 'ui.rev': 1 })
     const count = second.events.filter((event) => event.name === 'uiOps').length
-    await post(server, '/api/ui', { delete: ['app.count'] })
+    await post(server, '/api/ui', { ops: [{ key: 'app.count' }] })
     await until(() => second.events.filter((event) => event.name === 'uiOps').length > count)
     const deletion = second.events.filter((event) => event.name === 'uiOps').at(-1)!
     expect(applyImmutable(value, (deletion.data as ServerEvents['uiOps']).ops)).toEqual({
@@ -588,14 +595,14 @@ export default host => { host.resource('cleanup.process',()=>{
       async (tx) => tx.appendEntry(server.root.id, { kind: 'test.marker' }),
       context,
     )
-    await post(server, '/api/ui', { set: { 'shell.panel': 'settings' } })
+    await post(server, '/api/ui', { ops: [{ key: 'shell.panel', value: 'settings' }] })
     const fork = await server.root.fork(entry.id, { ownership: { kind: 'ownerless' } }, context)
     expect(await server.harness.snapshot(UiState, fork.id, context)).toEqual({
       'shell.panel': 'tasks',
       'ui.rev': 2,
     })
     expect(await server.host.uiState(context)).toEqual({ 'shell.panel': 'settings', 'ui.rev': 3 })
-    await post(server, '/api/ui', { set: { 'shell.panel': 'tasks' } })
+    await post(server, '/api/ui', { ops: [{ key: 'shell.panel', value: 'tasks' }] })
     await first.close()
     await second.close()
     await server.vite.watcher.close()
@@ -613,15 +620,16 @@ export default host => { host.resource('cleanup.process',()=>{
   it('validates UI keys and the merged document size atomically', async () => {
     const { server } = await fixture()
     for (const key of ['', 'bad key', 'x'.repeat(201)])
-      expect((await post(server, '/api/ui', { set: { [key]: true } })).status).toBe(400)
-    expect((await post(server, '/api/ui', { delete: [4] })).status).toBe(400)
-    expect((await post(server, '/api/ui', { set: [] })).status).toBe(400)
-    await post(server, '/api/ui', { set: { large: 'x'.repeat(200000) } })
-    expect((await post(server, '/api/ui', { set: { extra: 'é'.repeat(40000) } })).status).toBe(413)
+      expect((await post(server, '/api/ui', { ops: [{ key, value: true }] })).status).toBe(400)
+    expect((await post(server, '/api/ui', { ops: [{ key: 4 }] })).status).toBe(400)
+    expect((await post(server, '/api/ui', { ops: {} })).status).toBe(400)
+    await post(server, '/api/ui', { ops: [{ key: 'large', value: 'x'.repeat(200000) }] })
+    expect(
+      (await post(server, '/api/ui', { ops: [{ key: 'extra', value: 'é'.repeat(40000) }] })).status,
+    ).toBe(413)
     expect(await server.host.uiState(context)).toEqual({ large: 'x'.repeat(200000), 'ui.rev': 1 })
     await post(server, '/api/ui', {
-      set: JSON.parse('{"__proto__":{"safe":true}}'),
-      delete: ['large'],
+      ops: [JSON.parse('{"key":"__proto__","value":{"safe":true}}'), { key: 'large' }],
     })
     expect(await server.host.uiState(context)).toEqual(
       JSON.parse('{"__proto__":{"safe":true},"ui.rev":2}'),

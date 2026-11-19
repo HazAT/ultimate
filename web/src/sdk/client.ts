@@ -185,7 +185,7 @@ addEventListener('popstate', () => {
     replaceSelection = false
   }
 })
-addEventListener('pagehide', () => void uiState.flush({ keepalive: true }))
+addEventListener('pagehide', () => void uiState.exit())
 
 addEventListener('unhandledrejection', (event) => {
   if (!(event.reason instanceof ActionError)) return

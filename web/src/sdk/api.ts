@@ -14,7 +14,7 @@ import type {
   UiUpdateRequest,
   UiUpdateResponse,
 } from '../../../shared/protocol.ts'
-import { DRIVEN_HEADER, SOURCE_HEADER } from '../../../shared/protocol.ts'
+import { DRIVEN_HEADER, SOURCE_HEADER, UI_SUPERSEDED_STATUS } from '../../../shared/protocol.ts'
 import { writerNow } from './writer.ts'
 import type { UiWho } from './writer.ts'
 import type { ActionRef } from '../../../shared/extension-api.ts'
@@ -164,7 +164,11 @@ export function createApi(store: Store, options: { fetch?: typeof fetch; driven?
     },
 
     updateUi: (change: UiUpdateRequest, who?: UiWho, exit?: { keepalive: boolean }) =>
-      post<UiUpdateResponse>('/api/ui', change, { who, ...exit }),
+      post<UiUpdateResponse>('/api/ui', change, { who, ...exit }).catch((error: unknown) => {
+        if (error instanceof HttpError && error.status === UI_SUPERSEDED_STATUS)
+          return { ok: false, superseded: true } as const
+        throw error
+      }),
   }
 }
 export type Api = ReturnType<typeof createApi>

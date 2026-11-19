@@ -46,16 +46,21 @@ async function serve() {
       .map((event) => event.data)
   return { server, send, post, changes }
 }
+const sets = (set: Record<string, unknown>) =>
+  Object.entries(set).map(([key, value]) => ({ key, value }))
+const deletes = (...keys: string[]) => keys.map((key) => ({ key }))
 
 it('records each stored UI-state change in the commit that writes it, with who, from where and the device', async () => {
   const { server, send, post, changes } = await serve()
   const agent = { [SOURCE_HEADER]: 'agent', [DRIVEN_HEADER]: '1' }
-  await post('/api/ui', { set: { 'ext.digest.on': true, 'shell.panel': 'tasks' } }, agent)
-  await post('/api/ui', { set: { 'ext.digest.on': true } })
-  await post('/api/ui', { set: { 'ext.notes.text': 'x'.repeat(3000) }, delete: ['ext.digest.on'] })
-  await post('/api/ui', { delete: ['ext.never.set'] })
-  await post('/api/ui', { set: { 'ext.sidebar.seen': { 7: 1 } } }, { [SOURCE_HEADER]: 'app' })
-  const refused = await send('/api/ui', { set: { 'ext.huge': 'x'.repeat(300 * 1024) } })
+  await post('/api/ui', { ops: sets({ 'ext.digest.on': true, 'shell.panel': 'tasks' }) }, agent)
+  await post('/api/ui', { ops: sets({ 'ext.digest.on': true }) })
+  await post('/api/ui', {
+    ops: [...sets({ 'ext.notes.text': 'x'.repeat(3000) }), ...deletes('ext.digest.on')],
+  })
+  await post('/api/ui', { ops: deletes('ext.never.set') })
+  await post('/api/ui', { ops: sets({ 'ext.sidebar.seen': { 7: 1 } }) }, { [SOURCE_HEADER]: 'app' })
+  const refused = await send('/api/ui', { ops: sets({ 'ext.huge': 'x'.repeat(300 * 1024) }) })
   expect(refused.status).toBe(413)
 
   const device = 'desktop firefox'
@@ -72,12 +77,12 @@ it('records each stored UI-state change in the commit that writes it, with who, 
 it('keeps drafts out of the event history: only booleans, numbers and null are recorded as they are', async () => {
   const { server, post, changes } = await serve()
   const draft = { 'ext.questions.cards': { 42: { answer: 'my private answer', step: 2 } } }
-  await post('/api/ui', { set: { 'ext.review.comment': 'a draft I never sent', ...draft } })
+  await post('/api/ui', { ops: sets({ 'ext.review.comment': 'a draft I never sent', ...draft }) })
   await post('/api/ui', {
-    set: { 'ext.questions.cards': { 42: { step: 2, answer: 'my private answer' } } },
+    ops: sets({ 'ext.questions.cards': { 42: { step: 2, answer: 'my private answer' } } }),
   })
-  await post('/api/ui', { set: { 'ext.count': 3, 'ext.picked': null } })
-  await post('/api/ui', { delete: ['ext.review.comment', 'ext.questions.cards'] })
+  await post('/api/ui', { ops: sets({ 'ext.count': 3, 'ext.picked': null }) })
+  await post('/api/ui', { ops: deletes('ext.review.comment', 'ext.questions.cards') })
 
   const events = await changes()
   expect(JSON.stringify(events)).not.toContain('private')
@@ -114,4 +119,40 @@ it('records keep-warm’s switch as a UI change in its own commit, by the agent 
     }),
     expect.objectContaining({ key: 'keep-warm.on', value: true, previous: false }),
   ])
+})
+
+it('applies ops in order and records each with its own writer, the header only the default', async () => {
+  const { server, post, changes } = await serve()
+  await post('/api/ui', { ops: sets({ 'ext.a': 1 }) }, { [SOURCE_HEADER]: 'app' })
+  await post(
+    '/api/ui',
+    {
+      ops: [
+        { key: 'ext.a' },
+        { key: 'ext.b', value: 2 },
+        { key: 'ext.panel', value: 'mine', who: 'person' },
+        { key: 'ext.panel', value: 'app', who: 'app' },
+      ],
+    },
+    { [SOURCE_HEADER]: 'agent' },
+  )
+  const device = 'desktop firefox'
+  expect(await changes()).toEqual([
+    { key: 'ext.a', previous: 1, source: 'agent', device },
+    { key: 'ext.b', value: 2, source: 'agent', device },
+    { key: 'ext.panel', value: '[value]', source: 'person', device },
+  ])
+  const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+  expect(state).toEqual({ 'ext.b': 2, 'ext.panel': 'app', 'ui.rev': 2 })
+})
+
+it('refuses a tab’s request whose sequence is not newer than its last commit, applying none of its ops', async () => {
+  const { server, send, post } = await serve()
+  await post('/api/ui', { ops: sets({ 'ext.panel': 'final' }), tab: 'tab-1', seq: 2 })
+  const late = await send('/api/ui', { ops: sets({ 'ext.panel': 'older' }), tab: 'tab-1', seq: 1 })
+  expect(late.status).toBe(409)
+  expect(await late.json()).toEqual({ ok: false, superseded: true })
+  await post('/api/ui', { ops: sets({ 'ext.other': 1 }), tab: 'tab-2', seq: 1 })
+  const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+  expect(state).toEqual({ 'ext.panel': 'final', 'ext.other': 1, 'ui.rev': 2 })
 })

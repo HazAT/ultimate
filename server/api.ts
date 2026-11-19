@@ -10,8 +10,19 @@ import type {
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { onCommit } from '../lib/commits.ts'
 import { inProcess } from '../lib/errors.ts'
-import type { ServerEvents, ConversationSummary, ConfigureRequest } from '../shared/protocol.ts'
-import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
+import type {
+  ServerEvents,
+  ConversationSummary,
+  ConfigureRequest,
+  UiOp,
+} from '../shared/protocol.ts'
+import {
+  UI_REVISION,
+  UI_SUPERSEDED_STATUS,
+  imageMimeTypes,
+  maxImageBytes,
+  maxImages,
+} from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { hostDefault } from '../lib/agents.ts'
 import { expandSkillCommand } from './skills.ts'
@@ -69,8 +80,21 @@ function text(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new HttpError(400, `Expected ${name}`)
   return value
 }
-const validUiKey = (key: unknown) =>
+const validUiKey = (key: unknown): key is string =>
   typeof key === 'string' && key.length <= 200 && /^[A-Za-z0-9_.:-]+$/.test(key)
+function uiOps(ops: unknown): UiOp[] {
+  if (!Array.isArray(ops)) throw new HttpError(400, 'Invalid UI update')
+  return ops.map((op: unknown) => {
+    if (!op || typeof op !== 'object' || Array.isArray(op))
+      throw new HttpError(400, 'Invalid UI update')
+    const { key, value, who } = op as Record<string, unknown>
+    if (!validUiKey(key)) throw new HttpError(400, 'Invalid UI key')
+    if (key === UI_REVISION) throw new HttpError(400, 'The UI revision is the server’s')
+    if (who !== undefined && who !== 'person' && who !== 'agent' && who !== 'app')
+      throw new HttpError(400, 'Invalid UI writer')
+    return { key, value: value as JsonValue | undefined, who }
+  })
+}
 const actionPath = /^\/api\/extensions\/([^/]+)\/actions\/([^/]+)$/
 const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)\/(\d+)$/
 const maxResentSummaryTitleCharacters = 200
@@ -171,6 +195,7 @@ export async function createApi(
   const { harness, root } = opened
   const streams = new Set<() => Promise<void>>()
   const connections = new Map<string, Connection>()
+  const lastCommittedSeqPerTabUntilRestart = new Map<string, number>()
   let onGraph = () => {}
   const latestCommitGraph: { tasks?: TaskGraph } = {}
   const graph = await harness.observeTaskGraph(
@@ -505,39 +530,58 @@ export async function createApi(
           return true
         }
         if (url.pathname === '/api/ui') {
-          const set = data.set === undefined ? {} : data.set
-          const remove = data.delete === undefined ? [] : data.delete
-          if (!set || typeof set !== 'object' || Array.isArray(set) || !Array.isArray(remove))
-            throw new HttpError(400, 'Invalid UI update')
-          if (!Object.keys(set).every(validUiKey) || !remove.every(validUiKey))
-            throw new HttpError(400, 'Invalid UI key')
-          if (UI_REVISION in set || remove.includes(UI_REVISION))
-            throw new HttpError(400, 'The UI revision is the server’s')
+          const ops = uiOps(data.ops)
+          const { tab, seq } = data
+          const ordered = typeof tab === 'string' && Number.isSafeInteger(seq)
+          if ((tab !== undefined || seq !== undefined) && !ordered)
+            throw new HttpError(400, 'Invalid UI tab sequence')
           const by = { ...sourceOf(request.headers), ...deviceOf(request.headers) }
           const rev = await root.commit(async (tx) => {
+            if (
+              ordered &&
+              (lastCommittedSeqPerTabUntilRestart.get(tab) ?? -Infinity) >= (seq as number)
+            )
+              return undefined
             const value = await tx.doc(UiState, root.id)
-            const next = { ...value, ...(set as Record<string, JsonValue>) }
-            for (const key of remove) delete next[key]
+            const written = new Map<string, JsonValue | undefined>()
+            const stored = (key: string) =>
+              written.has(key)
+                ? written.get(key)
+                : Object.hasOwn(value, key)
+                  ? value[key]
+                  : undefined
+            const changes = ops.map(({ key, value: after, who }) => {
+              const change = uiChange(who ? { ...by, source: who } : by, {
+                key,
+                value: after,
+                previous: stored(key),
+              })
+              written.set(key, after)
+              return change
+            })
+            const next = { ...value, ...Object.fromEntries(written) }
+            for (const [key, item] of written) if (item === undefined) delete next[key]
             if (Buffer.byteLength(JSON.stringify(next)) > 256 * 1024)
               throw new HttpError(413, 'UI state too large')
-            const stored = (record: Record<string, JsonValue>, key: string) =>
-              Object.hasOwn(record, key) ? record[key] : undefined
-            for (const key of new Set([...Object.keys(set), ...remove])) {
-              const before = stored(value, key)
-              const after = remove.includes(key)
-                ? undefined
-                : stored(set as Record<string, JsonValue>, key)
-              const change = uiChange(by, { key, value: after, previous: before })
-              if (change) await emit(tx, ChangedEvent, change)
-            }
-            for (const [key, item] of Object.entries(set)) value[key] = item as JsonValue
-            for (const key of remove) delete value[key]
+            for (const change of changes) if (change) await emit(tx, ChangedEvent, change)
+            for (const [key, item] of written)
+              if (item === undefined) delete value[key]
+              else value[key] = item
             const previous = value[UI_REVISION]
             const revisionInSameCommit = (typeof previous === 'number' ? previous : 0) + 1
             value[UI_REVISION] = revisionInSameCommit
+            if (ordered) {
+              lastCommittedSeqPerTabUntilRestart.delete(tab)
+              lastCommittedSeqPerTabUntilRestart.set(tab, seq as number)
+              if (lastCommittedSeqPerTabUntilRestart.size > 1000)
+                lastCommittedSeqPerTabUntilRestart.delete(
+                  lastCommittedSeqPerTabUntilRestart.keys().next().value!,
+                )
+            }
             return revisionInSameCommit
           }, context)
-          json(200, { ok: true, rev })
+          if (rev === undefined) json(UI_SUPERSEDED_STATUS, { ok: false, superseded: true })
+          else json(200, { ok: true, rev })
           return true
         }
         if (url.pathname === '/api/restart') {

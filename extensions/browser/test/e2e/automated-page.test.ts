@@ -27,7 +27,7 @@ it('leaves the shared selection alone when a plain Playwright page opens another
   cleanup.push(() => server.close())
   const created = async () => (await post(server, '/api/conversations', {})).data.id as number
   const [user, other] = [await created(), await created()]
-  await post(server, '/api/ui', { set: { 'shell.conversation': user } })
+  await post(server, '/api/ui', { ops: [{ key: 'shell.conversation', value: user }] })
   const shared = async () =>
     (await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context))?.['shell.conversation']
   expect(await shared()).toBe(user)

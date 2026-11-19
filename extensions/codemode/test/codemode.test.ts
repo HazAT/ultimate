@@ -684,7 +684,7 @@ it('lists conversations with their title and cwd', async () => {
   const open = await create('Parser work')
   const done = await create('Old work')
   // The conversations extension owns concluding; this fixture loads only codemode, so write its UI state directly.
-  await post(server, '/api/ui', { set: { 'ext.conversations.concluded': [done] } })
+  await post(server, '/api/ui', { ops: [{ key: 'ext.conversations.concluded', value: [done] }] })
   const result = await run(server, `return await ultimate.conversations()`)
   expect(result.data.isError).toBe(false)
   const listed = result.data.details.value as { id: number }[]
