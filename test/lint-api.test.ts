@@ -298,6 +298,14 @@ export { TaskChip } from '../plan/chip.tsx'`
   ])
 })
 
+it('lets Solid code reach another extension through its refs.ts, since its ui.tsx is React', () => {
+  const source = `import { ContextDoc } from '../conversations/refs.ts'
+import { ContextBar } from '../conversations/ui.tsx'`
+  expect(lint('api-only-imports', 'extensions/echo/status.solid.tsx', source)).toEqual([
+    'echo imports conversations/ui.tsx at runtime; reach conversations through its refs.ts (the refs of its documents and actions; its ui.tsx is React), import types with `import type`, or move a pure helper to lib/.',
+  ])
+})
+
 it('keeps React and Solid apart, and ui-sdk components behind the UI kit', () => {
   const solidSource = `/** @jsxImportSource @solidjs/web */
 import { useState } from 'react'

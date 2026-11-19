@@ -37,6 +37,8 @@ component reads documents, UI state and client state as accessors from `@/sdk/so
 - **`@/sdk/solid` in Solid files.** `@/sdk` is React's: its hooks throw or never update in Solid. Import types from it
   with `import type`, everything else from `@/sdk/solid`. Its readers return accessors: call them where you use them
   (`doc()?.title` in JSX or a memo), never once at the top of the component. Lint: `ultimate/ui-framework-boundaries`.
+- **Other extensions through their `refs.ts`.** A Solid file reaches another extension's documents and actions
+  through its `refs.ts` (browser-safe, renderer-free); its `ui.tsx` is React. Lint: `ultimate/api-only-imports`.
 - **ui-sdk only through the UI kit.** Components come from `@/components/ui`, which wraps ui-sdk once and carries our
   theme. For a behavior the kit lacks, build it with `definePrimitive` from `@ui-sdk/core` and add it to the kit.
   Lint: `ultimate/ui-framework-boundaries`, `ultimate/ui-kit-roles`.

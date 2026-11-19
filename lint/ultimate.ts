@@ -639,12 +639,16 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        // Server code reaches another extension through its api.ts, browser code through its ui.tsx.
+        // Server code reaches another extension through its api.ts, React code through its ui.tsx, Solid code through
+        // its refs.ts until extensions grow a Solid ui contract.
+        const solid = solidFile(context.filename)
         const browser = context.filename.endsWith('.tsx')
-        const allowed = browser ? 'ui.tsx' : 'api.ts'
-        const how = browser
-          ? 'its ui.tsx (components, hooks and the refs of its documents and actions)'
-          : 'its api.ts (a service, document or event token)'
+        const allowed = solid ? 'refs.ts' : browser ? 'ui.tsx' : 'api.ts'
+        const how = solid
+          ? 'its refs.ts (the refs of its documents and actions; its ui.tsx is React)'
+          : browser
+            ? 'its ui.tsx (components, hooks and the refs of its documents and actions)'
+            : 'its api.ts (a service, document or event token)'
         const check = (node: ImportNode) => {
           const source = node.source?.value
           if (typeof source !== 'string' || !source.startsWith('.')) return
