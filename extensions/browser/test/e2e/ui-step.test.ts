@@ -152,7 +152,7 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
   const value = await drive([
     { ui: 'snapshot' },
     {
-      eval: "(() => { const sent = []; const send = window.fetch; window.fetch = (url, init) => { if (String(url).endsWith('/api/ui')) sent.push({ keepalive: init?.keepalive === true, body: JSON.parse(init.body) }); return send(url, init) }; window.exitSent = sent; return true })()",
+      eval: "(() => { const sent = []; const send = window.fetch; const held = new Promise((release) => { window.releaseFlush = release }); window.fetch = (url, init) => { if (!String(url).endsWith('/api/ui')) return send(url, init); sent.push({ keepalive: init?.keepalive === true, body: JSON.parse(init.body) }); return init?.keepalive ? send(url, init) : held.then(() => send(url, init)) }; window.exitSent = sent; return true })()",
     },
     { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
     { press: ' ' },
@@ -160,12 +160,15 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
     {
       eval: "(() => { window.exitSent.length = 0; dispatchEvent(new PageTransitionEvent('pagehide')); return window.exitSent })()",
     },
+    { eval: 'window.releaseFlush()' },
   ])
   expect(value(6)).toEqual([
     {
       keepalive: true,
       body: expect.objectContaining({
-        ops: expect.arrayContaining([{ key: 'ext.digest.digest', value: true, who: 'person' }]),
+        ops: expect.arrayContaining([
+          { key: 'ext.digest.digest', value: true, who: 'person', seq: expect.any(Number) },
+        ]),
       }),
     },
   ])
