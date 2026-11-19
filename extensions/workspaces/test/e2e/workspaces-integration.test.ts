@@ -1450,7 +1450,7 @@ it.concurrent('reruns only the failing command of a group, reports its output tw
   await f.service.submit(id, 'None', context)
   const reports = await submitted(f, id)
   expect(reports.at(-1)).toContain('landed as')
-  expect(reports.at(-1)).toContain('Flaky: if [')
+  expect(reports.at(-1)).toMatch(/Flaky: if \[.* · exit 1\\n/)
   const flaky = (await landerLog(f)).log
   expect(flaky.findLast((line) => line.check)!.check).toMatchObject({
     result: 'flaky',

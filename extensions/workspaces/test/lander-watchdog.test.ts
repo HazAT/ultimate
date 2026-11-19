@@ -100,13 +100,16 @@ it('names the tests that failed before the watchdog fired, even when they left t
 
 it('names the failed tests of a check that exits nonzero', async () => {
   vi.mocked(runGroup).mockImplementation(async (_program, _args, options) => {
-    options.onOutput(' × test/models.test.ts > falls back on logout 12ms\n' + 'noise\n'.repeat(600))
+    options.onOutput(
+      ' × falls back on logout 12ms\n' +
+        'noise\n'.repeat(600) +
+        ' \u001b[41mFAIL\u001b[49m  \u001b[43m solid-dom \u001b[49m test/models.test.ts > falls back on logout\n',
+    )
     return { code: 1, outOfMemory: false }
   })
-  const failure = (await runLanderCheck('.', 'pnpm test', context)).failure!
-  expect(failure).toMatch(
-    /^exit 1\nFailed tests:\n× test\/models.test.ts > falls back on logout 12ms\nnoise/,
-  )
+  const { failure, cause } = await runLanderCheck('.', 'pnpm test', context)
+  expect(failure).toMatch(/^exit 1\nFailed tests:\n× falls back on logout 12ms\nFAIL {2} solid-dom/)
+  expect(cause).toBe('exit 1: solid-dom test/models.test.ts > falls back on logout')
 })
 
 const settings = (checks: unknown) =>
