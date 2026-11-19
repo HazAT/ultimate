@@ -108,6 +108,12 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
 - A person's click inside `data-agent-hidden` still changes the control, but the bridge reports nothing: a secret
   value an agent may fill goes in `data-agent-secret` instead.
 
+## Measuring the migration
+
+The migration must leave the front end more robust, faster, simpler and smaller. `docs/frontend-baseline.md` holds
+the baseline and how each number is measured (`node scripts/frontend-weight.ts`, the `measure-switch` skill); every
+step report shows its delta against it.
+
 ## Done means
 
 1. `pnpm check` passes.
