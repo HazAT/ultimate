@@ -21,6 +21,10 @@ it('lets an agent open Pause, set auto-play minutes, and pause the host', async 
   approval.given = true
   await act('Auto-play delay in minutes', 'setValue', [45])
   expect(actions).toContainEqual({ name: 'autoPlay', args: { minutes: 45 }, source: 'agent' })
+  approval.given = false
+  await act('Play by itself after', 'setChecked', [false], false)
+  expect(actions.filter((call) => call.name === 'autoPlay')).toHaveLength(1)
+  approval.given = true
   await act('Play by itself after', 'setChecked', [false])
   expect(actions).toContainEqual({ name: 'autoPlay', args: { minutes: null }, source: 'agent' })
   await act('Pause: stop starting new work', 'press')

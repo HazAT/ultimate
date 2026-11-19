@@ -390,15 +390,15 @@ export function useRestart(timeoutMs = 120000): Restart {
   const [state, setState] = useState<RestartPhase>({ phase: 'idle' })
   useEffect(() => {
     const next = restartPhase(state, system, open)
-    if (next !== state) {
-      setState(next)
-      return undefined
-    }
-    if (state.phase !== 'swapping') return undefined
-    return deadline(timeoutMs, () => setState(restartTimedOut(state.target, timeoutMs)))
-  }, [state, system, open, timeoutMs])
+    if (next !== state) setState(next)
+  }, [state, system, open])
+  const pending = state.phase === 'swapping' ? state.target : undefined
+  useEffect(() => {
+    if (pending === undefined) return undefined
+    return deadline(timeoutMs, () => setState(restartTimedOut(pending, timeoutMs)))
+  }, [pending, timeoutMs])
   return {
-    pending: state.phase === 'swapping' ? state.target : undefined,
+    pending,
     busy: state.phase !== 'idle',
     error: state.phase === 'idle' ? state.error : undefined,
     clear: () => setState({ phase: 'idle' }),

@@ -351,20 +351,21 @@ export function useRestart(timeoutMs = 120_000) {
     () => ({ current: state(), system: system(), open: connection().status === 'open' }),
     ({ current, system: info, open }) => {
       const next = restartPhase(current, info, open)
-      if (next !== current) {
-        setState(next)
-        return undefined
-      }
-      if (current.phase !== 'swapping') return undefined
-      return deadline(timeoutMs, () => setState(restartTimedOut(current.target, timeoutMs)))
+      if (next !== current) setState(next)
     },
+  )
+  const swapping = createMemo(() => {
+    const current = state()
+    return current.phase === 'swapping' ? current.target : undefined
+  })
+  createEffect(swapping, (target) =>
+    target === undefined
+      ? undefined
+      : deadline(timeoutMs, () => setState(restartTimedOut(target, timeoutMs))),
   )
   return {
     busy: () => state().phase !== 'idle',
-    pending: () => {
-      const value = state()
-      return value.phase === 'swapping' ? value.target : undefined
-    },
+    pending: swapping,
     error: () => {
       const value = state()
       return value.phase === 'idle' ? value.error : undefined
