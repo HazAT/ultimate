@@ -3,6 +3,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import type { ObservedChange } from '@ui-sdk/core/agent'
 import { elementOf } from '@ui-sdk/core/observe'
 import { batch } from '../../lib/timers.ts'
+import { inProcess, meansNone } from '../../lib/errors.ts'
 import { bounded, MAX_CHANGES, MAX_LABEL, MAX_NAME } from './limits.ts'
 import type { UiChange } from './refs.ts'
 
@@ -16,7 +17,6 @@ const CHOICE_COMPONENTS = new Set([
   'checkbox-group',
   'listbox',
   'menu',
-  'menubar',
   'navigation-menu',
   'radio',
   'segmented-control',
@@ -82,17 +82,27 @@ export function createRecorder(options: {
         batches.push({ ...where, changes: [change], ...(options.driven ? { driven: true } : {}) })
     }
     pending = []
-    const sends = batches.map((each) => options.send(each, keepalive))
-    for (const send of sends) {
-      const settled: Promise<unknown> = send.then(
-        () => inFlight.delete(settled),
-        () => inFlight.delete(settled),
+    for (const each of batches) {
+      const send = Promise.resolve().then(() => options.send(each, keepalive))
+      inFlight.add(send)
+      inProcess(
+        'a page forgets what it has not sent when it goes, and flush waits for this',
+        send.finally(() => inFlight.delete(send)).catch(meansNone),
       )
-      inFlight.add(settled)
     }
-    return Promise.all(sends)
   }
-  const scheduled = batch(BATCH_MS, () => void sendPending(false))
+  const settleInFlight = async () => {
+    const results = await Promise.allSettled(inFlight)
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed) throw failed.reason
+  }
+  const scheduled = batch(BATCH_MS, () => {
+    sendPending(false)
+    inProcess(
+      'a batch the timer sent belongs to this page; its failure surfaces like any unawaited action',
+      settleInFlight(),
+    )
+  })
   function queue(entry: { where: Location; change: UiChange }) {
     pending.push(entry)
     scheduled()
@@ -117,9 +127,8 @@ export function createRecorder(options: {
     },
     flush: (keepalive: boolean) => {
       scheduled.cancel()
-      const earlier = [...inFlight]
-      const now = sendPending(keepalive)
-      return Promise.allSettled([now, ...earlier]).then(() => now)
+      sendPending(keepalive)
+      return settleInFlight()
     },
   }
 }

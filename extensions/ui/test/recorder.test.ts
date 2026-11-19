@@ -121,30 +121,53 @@ it('keeps only flags, numbers and a choice control’s options, and withholds ev
   expect(JSON.stringify(sent)).not.toMatch(/typed/)
 })
 
-it('waits for every started send in flush, even when another one fails', async () => {
+function twoLocationsOneRefused() {
   const refused = Promise.withResolvers<void>()
   const pending = Promise.withResolvers<void>()
-  const sends: Promise<void>[] = [refused.promise, pending.promise]
+  const sends = [refused.promise, pending.promise]
+  let where: Location = { conversation: parseConversationId(7) }
   const recording = createRecorder({
     driven: false,
-    locate: () => ({}),
+    locate: () => where,
     send: () => sends.shift()!,
   })
   recording.observe(change('One', true))
-  await vi.advanceTimersByTimeAsync(500)
+  where = { conversation: parseConversationId(9) }
   recording.observe({ ...change('Two', true), ref: 'c2' })
-  let done = false
-  const flushed = recording.flush(false).finally(() => (done = true))
+  return { recording, refused, pending }
+}
 
-  const timerSendRefused = new Error('refused')
-  const reportedLikeAnyUnawaitedAction = new Promise((resolve) =>
-    process.once('unhandledRejection', resolve),
-  )
-  refused.reject(timerSendRefused)
-  expect(await reportedLikeAnyUnawaitedAction).toBe(timerSendRefused)
-  await vi.advanceTimersByTimeAsync(0)
-  expect(done).toBe(false)
-  pending.resolve()
-  await flushed
-  expect(done).toBe(true)
+it.each([
+  ['an explicit flush', false],
+  ['the timer', true],
+])(
+  'keeps a flush open until every send it waits on settles, even when one fails (dispatched by %s)',
+  async (_by, byTimer) => {
+    const { recording, refused, pending } = twoLocationsOneRefused()
+    if (byTimer) await vi.advanceTimersByTimeAsync(500)
+    let done = false
+    const outcome = recording.flush(false).then(
+      () => 'sent',
+      (error: unknown) => error,
+    )
+    const watched = outcome.finally(() => (done = true))
+    const failure = new Error('refused')
+    refused.reject(failure)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(done).toBe(false)
+    pending.resolve()
+    expect(await watched).toBe(failure)
+  },
+)
+
+it('runs every page flush even when one throws at once', async () => {
+  const { createUiAgent } = await import('../../../web/src/sdk/agent.ts')
+  const agent = createUiAgent(false)
+  const later = vi.fn<() => Promise<void>>(async () => {})
+  agent.onFlush(() => {
+    throw new Error('broken flush')
+  })
+  agent.onFlush(later)
+  await expect(agent.flush(false)).rejects.toThrow('broken flush')
+  expect(later).toHaveBeenCalledOnce()
 })

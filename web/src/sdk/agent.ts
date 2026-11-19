@@ -20,7 +20,7 @@ export function createUiAgent(driven: boolean) {
       }
     },
     async flush(keepalive: boolean) {
-      const results = await Promise.allSettled([...flushes].map((flush) => flush(keepalive)))
+      const results = await Promise.allSettled([...flushes].map(async (flush) => flush(keepalive)))
       const failed = results.find((result) => result.status === 'rejected')
       if (failed) throw failed.reason
     },
