@@ -212,3 +212,19 @@ it('clears the shown documents when show() switches conversations', async () => 
   flush()
   expect(doc()?.title).toBe('Nine')
 })
+
+it('reads a kind named like an Object method as missing, and releases its watch', async () => {
+  const odd = docRef<Board>('toString')
+  const dispose = createRoot((done) => {
+    const doc = useDoc(odd)
+    expect(doc()).toBeUndefined()
+    return done
+  })
+  flush()
+  await tick()
+  expect(source().docs).toContain('toString')
+  dispose()
+  flush()
+  await tick()
+  expect(source().docs).not.toContain('toString')
+})

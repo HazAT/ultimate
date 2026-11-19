@@ -41,8 +41,10 @@ type Doc = JsonValue | null | undefined
 const isObject = (value: Doc): value is { [key: string]: JsonValue } | JsonValue[] =>
   typeof value === 'object' && value !== null
 const replicaKey = (target: Target, kind: string) => `${target}:${kind}`
-const immutableDoc = (state: State, target: Target, kind: string): Doc =>
-  target === 'shown' ? state.docs[kind] : state.docsOf[target]?.[kind]
+const immutableDoc = (state: State, target: Target, kind: string): Doc => {
+  const docs = target === 'shown' ? state.docs : state.docsOf[target]
+  return docs && Object.hasOwn(docs, kind) ? docs[kind] : undefined
+}
 
 function createReplica() {
   const [docs, setDocs] = createStore<Record<string, Doc>>({})
