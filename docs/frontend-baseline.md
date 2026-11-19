@@ -25,11 +25,15 @@ node scripts/frontend-progress.ts ~/fw/<sha> --label 0.7 --snapshot ~/fw/snap/st
 ```
 
 Run it from the newest checkout: it measures the given tree with today's scripts, starts each server on a scratch home
-with a scripted model (no provider is called) and replaces that commit's entry. Per entry:
+outside the real home, with a scripted model, `claude-code` disabled and no provider credentials, refuses a snapshot
+copy that is not paused or a tree with uncommitted changes, and replaces only that commit's entry: entries are never
+dropped, so the file keeps every step. Per entry:
 
 - `lines`, `perExtension`, `bundleGzipKB` and `entryGzipKB` come from `frontend-weight.ts`.
 - `switch` is the `settledMs` median of three `switch.ts --rounds 3` runs on a copy of the paused snapshot (`cold` is
   round 0, `warm` rounds 1–2). Compare entries measured from one snapshot: a new snapshot has other conversations.
+  The backfill ran on 2026-11-20 under heavy machine load (load average 15–20 from parallel branches), so a run's
+  cold median spread up to 30% (585–790 ms at `a0638de4`); read the switch series as flat within that noise.
 - `stream` replaces the real model turn above: the scripted model streams one fixed 40-chunk reply, so every tree gets
   the same `ops` events (23–25), and three runs repeat to the unit (`median` 92, `p95` 127). It counts React components
   only.

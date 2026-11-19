@@ -1,24 +1,17 @@
 import { constants } from 'node:fs'
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
+import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import { isMissing } from '../lib/errors.ts'
 import { git } from '../lib/git.ts'
 import { spawnGroup, stopGroup } from '../lib/process-group.ts'
-import { pace } from '../lib/timers.ts'
+import { pace, within } from '../lib/timers.ts'
+import { median, runsFlag } from './measure.ts'
 
 const usage =
   'Usage: node scripts/frontend-progress.ts <tree> --label <label> [--snapshot <paused state.sqlite>] [--runs 3] [--only switch,stream,previews]'
@@ -31,7 +24,7 @@ const tree = args[0] && resolve(args[0])
 const label = flag('--label')
 if (!tree || !label) throw new Error(usage)
 const snapshot = flag('--snapshot')
-const runs = Number(flag('--runs') ?? 3)
+const runs = runsFlag(args)
 const only = new Set((flag('--only') ?? 'switch,stream,previews').split(','))
 const here = resolve(import.meta.dirname, '..')
 const skill = join(here, '.ultimate/skills/measure-switch')
@@ -43,16 +36,20 @@ const streamChunks = Array.from(
   (_, index) => `Paragraph ${Math.floor(index / 8) + 1}, sentence ${(index % 8) + 1}. `,
 )
 const streamBeatMs = 60
+const readyMs = 120_000
 
 const run = promisify(execFile)
-const median = (values: number[]) =>
-  values.toSorted((a, b) => a - b)[Math.floor((values.length - 1) / 2)]
 const node = (script: string, scriptArgs: string[], cwd = here) =>
   run(process.execPath, [script, ...scriptArgs], {
     cwd,
     maxBuffer: 64 * 1024 * 1024,
     timeout: 600_000,
   }).then(({ stdout }) => stdout)
+
+const commit = await git(tree, 'rev-parse', '--short=8', 'HEAD')
+if (await git(tree, 'status', '--porcelain', '--untracked-files=no'))
+  throw new Error(`${tree} has uncommitted changes; measure a clean checkout`)
+const committedAt = Number(await git(tree, 'log', '-1', '--format=%ct'))
 
 const chunk = (delta: object, finish: string | null = null) =>
   `data: ${JSON.stringify({
@@ -70,8 +67,8 @@ const textOf = (content: unknown) =>
       ? content.map((part: { text?: string }) => part.text ?? '').join('')
       : ''
 
-async function scriptedModel(dir: string) {
-  const server = createServer((request, response) => {
+function scriptedModel() {
+  return createServer((request, response) => {
     let body = ''
     request.on('data', (data) => (body += data))
     request.on('end', async () => {
@@ -88,8 +85,10 @@ async function scriptedModel(dir: string) {
       response.end('data: [DONE]\n\n')
     })
   })
-  await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening))
-  const { port } = server.address() as AddressInfo
+}
+
+async function writeAgentDir(dir: string, port: number) {
+  await mkdir(dir, { recursive: true })
   await writeFile(
     join(dir, 'models.json'),
     JSON.stringify({
@@ -107,62 +106,86 @@ async function scriptedModel(dir: string) {
     join(dir, 'settings.json'),
     JSON.stringify({ defaultProvider: 'scripted', defaultModel: 'scripted-1' }),
   )
-  return { close: () => new Promise<void>((closed) => server.close(() => closed())) }
 }
 
-async function serve(home: string, agentDir: string) {
+function assertPaused(database: string) {
+  const db = new DatabaseSync(database, { readOnly: true })
+  try {
+    const rows = db
+      .prepare(
+        `SELECT r.kind, r.content FROM document_revisions r JOIN documents d ON d.id = r.document_id
+         WHERE d.kind = '"pause.state"' AND d.scope_kind = 'conversation' AND d.owner_id = 1
+           AND d.retired_at IS NULL ORDER BY r.seq`,
+      )
+      .all() as { kind: string; content: string }[]
+    let paused = false
+    for (const { kind, content } of rows) {
+      const value = JSON.parse(content) as { paused?: boolean } | [string, string[], unknown][]
+      if (kind === 'base') paused = (value as { paused?: boolean }).paused === true
+      else
+        for (const [op, path, set] of value as [string, string[], unknown][])
+          if (path[0] === 'paused') paused = op === 's' && set === true
+    }
+    if (!paused)
+      throw new Error(`${database} is not paused: copy it with copy-paused.ts before measuring`)
+  } finally {
+    db.close()
+  }
+}
+
+async function serve(home: string, agentDir: string, use: (url: string) => Promise<unknown>) {
   const userHome = join(home, 'user')
   await mkdir(join(userHome, '.ultimate'), { recursive: true })
   await writeFile(join(userHome, '.ultimate/onboarding.json'), '{"firstRunDone":true}')
-  for (const name of await readdir(homedir()))
-    if (name !== '.ultimate' && !name.startsWith('.frontend-progress-'))
-      await symlink(join(homedir(), name), join(userHome, name))
-  const env = {
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(([key]) => !key.startsWith('ULTIMATE_')),
-    ),
-    ULTIMATE_HOME: home,
-    ULTIMATE_PROJECT: tree,
-    HOME: userHome,
-    ULTIMATE_USER_HOME: userHome,
-    ULTIMATE_PORT: '0',
-    ULTIMATE_NO_OPEN: '1',
-    ULTIMATE_MODEL: 'scripted/scripted-1',
-    PI_CODING_AGENT_DIR: agentDir,
-    TAILSCALE_COMMAND: join(home, 'no-tailscale'),
-  }
-  const group = spawnGroup(process.execPath, ['server/main.ts'], { cwd: tree, env })
-  let output = ''
-  const url = await new Promise<string>((ready, failed) => {
-    const read = (data: Buffer) => {
-      output += data.toString()
-      const match = /^Ultimate: (http:\/\/127\.0\.0\.1:\d+)\r?$/m.exec(output)
-      if (match) ready(match[1])
-    }
-    group.child.stdout.on('data', read)
-    group.child.stderr.on('data', read)
-    group.child.once('exit', () => failed(new Error(`Server exited before serving:\n${output}`)))
+  await writeFile(
+    join(userHome, '.ultimate/settings.json'),
+    JSON.stringify({ extensions: { disable: ['claude-code'] } }),
+  )
+  const group = spawnGroup(process.execPath, ['server/main.ts'], {
+    cwd: tree,
+    env: {
+      PATH: [dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
+      HOME: userHome,
+      ULTIMATE_HOME: home,
+      ULTIMATE_PROJECT: tree,
+      ULTIMATE_USER_HOME: userHome,
+      ULTIMATE_PORT: '0',
+      ULTIMATE_NO_OPEN: '1',
+      ULTIMATE_MODEL: 'scripted/scripted-1',
+      PI_CODING_AGENT_DIR: agentDir,
+      TAILSCALE_COMMAND: join(home, 'no-tailscale'),
+    },
   })
-  return { url, stop: () => stopGroup(group.child.pid!, { leader: group }) }
+  try {
+    let output = ''
+    const ready = new Promise<string>((serving, failed) => {
+      const read = (data: Buffer) => {
+        output += data.toString()
+        const match = /^Ultimate: (http:\/\/127\.0\.0\.1:\d+)\r?$/m.exec(output)
+        if (match) serving(match[1])
+      }
+      group.child.stdout.on('data', read)
+      group.child.stderr.on('data', read)
+      group.child.once('error', failed)
+      group.child.once('exit', () => failed(new Error(`Server exited before serving:\n${output}`)))
+    })
+    const url = await within(
+      readyMs,
+      ready,
+      () => new Error(`No server after ${readyMs} ms:\n${output}`),
+    )
+    return await use(url)
+  } finally {
+    if (group.child.pid) await stopGroup(group.child.pid, { leader: group })
+  }
 }
 
-async function measureSwitch(home: string, agentDir: string) {
-  await mkdir(home, { recursive: true })
-  await copyFile(snapshot!, join(home, 'state.sqlite'), constants.COPYFILE_FICLONE)
-  const server = await serve(home, agentDir)
-  try {
-    const state = await fetch(`${server.url}/api/extensions/pause/actions/state`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: server.url },
-      body: '{"args":null}',
-    }).then((response) => response.json() as Promise<{ result: { paused: boolean } }>)
-    if (!state.result.paused) throw new Error('The snapshot copy is not paused; stopped it')
+function measureSwitch(home: string, agentDir: string) {
+  return serve(home, agentDir, async (url) => {
     const cold: number[] = []
     const warm: number[] = []
     for (let index = 0; index < runs; index++) {
-      const rows = (
-        await node(join(skill, 'switch.ts'), [server.url, '1', switchIds, '--rounds', '3'])
-      )
+      const rows = (await node(join(skill, 'switch.ts'), [url, '1', switchIds, '--rounds', '3']))
         .split('\n')
         .filter((line) => line.startsWith('{"round"'))
         .map((line) => JSON.parse(line) as { round: number; settledMs: number })
@@ -171,18 +194,14 @@ async function measureSwitch(home: string, agentDir: string) {
       console.error(`switch run ${index + 1}: cold ${cold.at(-1)} warm ${warm.at(-1)}`)
     }
     return { cold: median(cold), warm: median(warm) }
-  } finally {
-    await server.stop()
-  }
+  })
 }
 
-async function measureStream(home: string, agentDir: string) {
-  await mkdir(home, { recursive: true })
-  const server = await serve(home, agentDir)
-  try {
-    const measured: { median: number; p95: number; max: number; taskMs: number; n: number }[] = []
+function measureStream(home: string, agentDir: string) {
+  return serve(home, agentDir, async (url) => {
+    const measured: Record<'median' | 'p95' | 'max' | 'taskMs' | 'events', number>[] = []
     for (let index = 0; index < runs; index++) {
-      const line = (await node(join(skill, 'renders.ts'), [server.url, '1', '--send', prompt]))
+      const line = (await node(join(skill, 'renders.ts'), [url, '1', '--send', prompt]))
         .split('\n')
         .find((row) => row.startsWith('{"ev":"ops"'))
       if (!line) throw new Error('The scripted turn streamed no ops events')
@@ -191,59 +210,70 @@ async function measureStream(home: string, agentDir: string) {
         taskMs: { median: number }
         renders: { median: number; p95: number; max: number }
       }
-      measured.push({ ...ops.renders, taskMs: ops.taskMs.median, n: ops.n })
+      measured.push({ ...ops.renders, taskMs: ops.taskMs.median, events: ops.n })
       console.error(`stream run ${index + 1}: ${JSON.stringify(measured.at(-1))}`)
     }
-    const of = (key: 'median' | 'p95' | 'max' | 'taskMs' | 'n') =>
-      median(measured.map((row) => row[key]))
+    const of = (key: keyof (typeof measured)[number]) => median(measured.map((row) => row[key]))
     return {
       median: of('median'),
       p95: of('p95'),
       max: of('max'),
       taskMs: of('taskMs'),
-      events: of('n'),
+      events: of('events'),
     }
-  } finally {
-    await server.stop()
-  }
+  })
 }
 
-async function measurePreviews(home: string, agentDir: string) {
-  await mkdir(home, { recursive: true })
-  const server = await serve(home, agentDir)
-  try {
-    return JSON.parse(
-      await node(join(here, 'scripts/preview-bench.ts'), [server.url, '--runs', String(runs)]),
-    ) as unknown
-  } finally {
-    await server.stop()
-  }
+function measurePreviews(home: string, agentDir: string) {
+  return serve(
+    home,
+    agentDir,
+    async (url) =>
+      JSON.parse(
+        await node(join(here, 'scripts/preview-bench.ts'), [url, '--runs', String(runs)]),
+      ) as unknown,
+  )
 }
 
 const weight = JSON.parse(await node(join(here, 'scripts/frontend-weight.ts'), [], tree)) as {
+  rev: string
+  dirty: boolean
   lines: { frontend: number; solid: number }
   perExtension: Record<string, { react: number; solid: number }>
   bundleKb: { jsGzip: number; entryAssetsGzip: number }
 }
-const scratch = await mkdtemp(join(homedir(), '.frontend-progress-'))
-const agentDir = join(scratch, 'pi')
-await mkdir(agentDir)
-const model = await scriptedModel(agentDir)
+const scratch = await mkdtemp(join(tmpdir(), 'frontend-progress-'))
+const model = scriptedModel()
 const measured: Record<string, unknown> = {}
 try {
-  if (only.has('switch') && snapshot)
-    measured.switch = await measureSwitch(join(scratch, 'switch'), agentDir)
+  await new Promise<void>((listening) => model.listen(0, '127.0.0.1', listening))
+  const agentDir = join(scratch, 'pi')
+  await writeAgentDir(agentDir, (model.address() as AddressInfo).port)
+  if (only.has('switch') && snapshot) {
+    const home = join(scratch, 'switch')
+    await mkdir(home)
+    await copyFile(snapshot, join(home, 'state.sqlite'), constants.COPYFILE_FICLONE)
+    assertPaused(join(home, 'state.sqlite'))
+    measured.switch = await measureSwitch(home, agentDir)
+  }
   if (only.has('stream')) measured.stream = await measureStream(join(scratch, 'stream'), agentDir)
   if (only.has('previews'))
     measured.previews = { scenarios: await measurePreviews(join(scratch, 'previews'), agentDir) }
 } finally {
-  await model.close()
+  await new Promise<void>((closed) => model.close(() => closed()))
   await rm(scratch, { recursive: true, force: true })
 }
+if (
+  weight.dirty ||
+  !commit.startsWith(weight.rev) ||
+  (await git(tree, 'rev-parse', '--short=8', 'HEAD')) !== commit
+)
+  throw new Error(`${tree} moved or changed while it was measured; nothing written`)
 const entry = {
-  commit: await git(tree, 'rev-parse', '--short=8', 'HEAD'),
+  commit,
   label,
-  date: await git(tree, 'log', '-1', '--format=%cs'),
+  date: new Date(committedAt * 1000).toISOString().slice(0, 10),
+  committedAt,
   lines: {
     total: weight.lines.frontend,
     solid: weight.lines.solid,
@@ -258,8 +288,7 @@ const stored = await readFile(progressFile, 'utf8').catch((error: unknown) => {
   throw error
 })
 type Entry = typeof entry & Record<string, unknown>
-const progress = JSON.parse(stored) as { entries: Entry[] }
-const order = async (commit: string) => Number(await git(here, 'log', '-1', '--format=%ct', commit))
+const progress = JSON.parse(stored) as Record<string, unknown> & { entries: Entry[] }
 const previous = progress.entries.find((item) => item.commit === entry.commit)
 const merged: Entry = {
   switch: null,
@@ -272,10 +301,9 @@ const merged: Entry = {
     ? { previews: { ...previous.previews, ...measured.previews } }
     : {}),
 }
-const entries = [...progress.entries.filter((item) => item.commit !== entry.commit), merged]
-const times = new Map(
-  await Promise.all(entries.map(async (item) => [item.commit, await order(item.commit)] as const)),
-)
-progress.entries = entries.toSorted((a, b) => times.get(a.commit)! - times.get(b.commit)!)
+progress.entries = [
+  ...progress.entries.filter((item) => item.commit !== entry.commit),
+  merged,
+].toSorted((a, b) => a.committedAt - b.committedAt)
 await writeFile(progressFile, `${JSON.stringify(progress, null, 2)}\n`)
 console.log(JSON.stringify(merged))

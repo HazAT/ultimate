@@ -2,14 +2,14 @@
   "entries": [
     {
       "switch": {
-        "cold": 500,
-        "warm": 205
+        "cold": 748.5,
+        "warm": 273.5
       },
       "stream": {
         "median": 92,
         "p95": 127,
         "max": 740,
-        "taskMs": 4.7,
+        "taskMs": 6.2,
         "events": 23
       },
       "previews": {
@@ -19,9 +19,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 133,
+              "kb": 132,
               "tokens": 3461,
-              "ms": 248,
+              "ms": 213,
               "ok": true
             },
             "ui": null
@@ -31,9 +31,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 138,
+              "kb": 139,
               "tokens": 3461,
-              "ms": 258,
+              "ms": 200,
               "ok": true
             },
             "ui": null
@@ -43,9 +43,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 148,
+              "kb": 147,
               "tokens": 3459,
-              "ms": 202,
+              "ms": 185,
               "ok": true
             },
             "ui": null
@@ -314,18 +314,19 @@
         }
       },
       "bundleGzipKB": 2823,
-      "entryGzipKB": 432
+      "entryGzipKB": 432,
+      "committedAt": 1795035148
     },
     {
       "switch": {
-        "cold": 534,
-        "warm": 227
+        "cold": 597,
+        "warm": 361
       },
       "stream": {
         "median": 92,
         "p95": 127,
-        "max": 739,
-        "taskMs": 4.8,
+        "max": 740,
+        "taskMs": 6,
         "events": 23
       },
       "previews": {
@@ -335,9 +336,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 132,
+              "kb": 130,
               "tokens": 3461,
-              "ms": 233,
+              "ms": 244,
               "ok": true
             },
             "ui": null
@@ -347,9 +348,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 139,
+              "kb": 136,
               "tokens": 3461,
-              "ms": 226,
+              "ms": 297,
               "ok": true
             },
             "ui": null
@@ -359,7 +360,7 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 147,
+              "kb": 146,
               "tokens": 3459,
               "ms": 183,
               "ok": true
@@ -624,18 +625,19 @@
         }
       },
       "bundleGzipKB": 2823,
-      "entryGzipKB": 432
+      "entryGzipKB": 432,
+      "committedAt": 1795084717
     },
     {
       "switch": {
-        "cold": 529,
-        "warm": 248
+        "cold": 800.5,
+        "warm": 375.5
       },
       "stream": {
         "median": 92,
         "p95": 127,
-        "max": 740,
-        "taskMs": 9.6,
+        "max": 739,
+        "taskMs": 6.7,
         "events": 23
       },
       "previews": {
@@ -645,9 +647,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 131,
+              "kb": 128,
               "tokens": 3461,
-              "ms": 196,
+              "ms": 239,
               "ok": true
             },
             "ui": null
@@ -657,9 +659,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 138,
+              "kb": 136,
               "tokens": 3461,
-              "ms": 213,
+              "ms": 251,
               "ok": true
             },
             "ui": null
@@ -669,9 +671,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 146,
+              "kb": 144,
               "tokens": 3459,
-              "ms": 173,
+              "ms": 170,
               "ok": true
             },
             "ui": null
@@ -934,18 +936,19 @@
         }
       },
       "bundleGzipKB": 2842,
-      "entryGzipKB": 432
+      "entryGzipKB": 432,
+      "committedAt": 1795088712
     },
     {
       "switch": {
-        "cold": 535,
-        "warm": 256
+        "cold": 585.5,
+        "warm": 206
       },
       "stream": {
         "median": 92,
         "p95": 127,
         "max": 723,
-        "taskMs": 5,
+        "taskMs": 4.7,
         "events": 23
       },
       "previews": {
@@ -957,7 +960,7 @@
               "screenshots": 2,
               "kb": 131,
               "tokens": 3461,
-              "ms": 280,
+              "ms": 249,
               "ok": true
             },
             "ui": {
@@ -966,7 +969,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 183,
-              "ms": 75,
+              "ms": 77,
               "ok": true
             }
           },
@@ -975,9 +978,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 138,
+              "kb": 135,
               "tokens": 3461,
-              "ms": 239,
+              "ms": 259,
               "ok": true
             },
             "ui": {
@@ -986,7 +989,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 79,
-              "ms": 19,
+              "ms": 34,
               "ok": false
             }
           },
@@ -995,9 +998,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 146,
+              "kb": 145,
               "tokens": 3459,
-              "ms": 222,
+              "ms": 206,
               "ok": true
             },
             "ui": {
@@ -1006,7 +1009,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 76,
-              "ms": 22,
+              "ms": 33,
               "ok": false
             }
           }
@@ -1272,18 +1275,19 @@
         }
       },
       "bundleGzipKB": 2922,
-      "entryGzipKB": 449
+      "entryGzipKB": 449,
+      "committedAt": 1795099753
     },
     {
       "switch": {
-        "cold": 569,
-        "warm": 248
+        "cold": 594.5,
+        "warm": 231.5
       },
       "stream": {
         "median": 92,
         "p95": 127,
-        "max": 722,
-        "taskMs": 5.2,
+        "max": 721,
+        "taskMs": 4.9,
         "events": 23
       },
       "previews": {
@@ -1293,9 +1297,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 130,
+              "kb": 129,
               "tokens": 3461,
-              "ms": 272,
+              "ms": 263,
               "ok": true
             },
             "ui": {
@@ -1304,7 +1308,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 183,
-              "ms": 109,
+              "ms": 101,
               "ok": true
             }
           },
@@ -1313,9 +1317,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 138,
+              "kb": 136,
               "tokens": 3461,
-              "ms": 262,
+              "ms": 217,
               "ok": true
             },
             "ui": {
@@ -1324,7 +1328,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 79,
-              "ms": 22,
+              "ms": 14,
               "ok": false
             }
           },
@@ -1333,9 +1337,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 146,
+              "kb": 144,
               "tokens": 3459,
-              "ms": 188,
+              "ms": 221,
               "ok": true
             },
             "ui": {
@@ -1344,7 +1348,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 76,
-              "ms": 11,
+              "ms": 16,
               "ok": false
             }
           }
@@ -1610,18 +1614,19 @@
         }
       },
       "bundleGzipKB": 2922,
-      "entryGzipKB": 450
+      "entryGzipKB": 450,
+      "committedAt": 1795119499
     },
     {
       "switch": {
-        "cold": 562,
-        "warm": 243
+        "cold": 668,
+        "warm": 297
       },
       "stream": {
         "median": 92,
         "p95": 127,
         "max": 722,
-        "taskMs": 4.8,
+        "taskMs": 5,
         "events": 23
       },
       "previews": {
@@ -1631,9 +1636,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 131,
+              "kb": 130,
               "tokens": 3461,
-              "ms": 240,
+              "ms": 220,
               "ok": true
             },
             "ui": {
@@ -1642,7 +1647,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 183,
-              "ms": 74,
+              "ms": 94,
               "ok": true
             }
           },
@@ -1651,9 +1656,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 138,
+              "kb": 134,
               "tokens": 3461,
-              "ms": 239,
+              "ms": 286,
               "ok": true
             },
             "ui": {
@@ -1662,7 +1667,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 79,
-              "ms": 19,
+              "ms": 16,
               "ok": false
             }
           },
@@ -1671,9 +1676,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 145,
+              "kb": 144,
               "tokens": 3459,
-              "ms": 188,
+              "ms": 208,
               "ok": true
             },
             "ui": {
@@ -1682,7 +1687,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 76,
-              "ms": 26,
+              "ms": 15,
               "ok": false
             }
           }
@@ -1948,18 +1953,19 @@
         }
       },
       "bundleGzipKB": 2922,
-      "entryGzipKB": 450
+      "entryGzipKB": 450,
+      "committedAt": 1795121670
     },
     {
       "switch": {
-        "cold": 550,
-        "warm": 226
+        "cold": 665,
+        "warm": 252.5
       },
       "stream": {
         "median": 92,
         "p95": 127,
-        "max": 722,
-        "taskMs": 5.1,
+        "max": 721,
+        "taskMs": 5.2,
         "events": 23
       },
       "previews": {
@@ -1969,9 +1975,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 132,
+              "kb": 131,
               "tokens": 3461,
-              "ms": 238,
+              "ms": 227,
               "ok": true
             },
             "ui": {
@@ -1980,7 +1986,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 183,
-              "ms": 71,
+              "ms": 93,
               "ok": true
             }
           },
@@ -1989,9 +1995,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 139,
+              "kb": 135,
               "tokens": 3461,
-              "ms": 231,
+              "ms": 289,
               "ok": true
             },
             "ui": {
@@ -2000,7 +2006,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 79,
-              "ms": 21,
+              "ms": 16,
               "ok": false
             }
           },
@@ -2009,9 +2015,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 147,
+              "kb": 145,
               "tokens": 3459,
-              "ms": 201,
+              "ms": 174,
               "ok": true
             },
             "ui": {
@@ -2020,7 +2026,7 @@
               "screenshots": 0,
               "kb": 0,
               "tokens": 76,
-              "ms": 12,
+              "ms": 16,
               "ok": false
             }
           }
@@ -2286,18 +2292,19 @@
         }
       },
       "bundleGzipKB": 2922,
-      "entryGzipKB": 450
+      "entryGzipKB": 450,
+      "committedAt": 1795124658
     },
     {
       "switch": {
-        "cold": 546,
-        "warm": 205
+        "cold": 685.5,
+        "warm": 250
       },
       "stream": {
         "median": 92,
         "p95": 127,
         "max": 651,
-        "taskMs": 5,
+        "taskMs": 5.3,
         "events": 23
       },
       "previews": {
@@ -2307,9 +2314,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 132,
+              "kb": 130,
               "tokens": 3461,
-              "ms": 279,
+              "ms": 309,
               "ok": true
             },
             "ui": {
@@ -2317,8 +2324,8 @@
               "steps": 2,
               "screenshots": 0,
               "kb": 1,
-              "tokens": 268,
-              "ms": 108,
+              "tokens": 292,
+              "ms": 113,
               "ok": true
             }
           },
@@ -2327,9 +2334,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 139,
+              "kb": 138,
               "tokens": 3461,
-              "ms": 247,
+              "ms": 221,
               "ok": true
             },
             "ui": {
@@ -2338,7 +2345,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 427,
-              "ms": 145,
+              "ms": 188,
               "ok": true
             }
           },
@@ -2347,9 +2354,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 147,
+              "kb": 146,
               "tokens": 3459,
-              "ms": 252,
+              "ms": 172,
               "ok": true
             },
             "ui": {
@@ -2358,7 +2365,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 288,
-              "ms": 68,
+              "ms": 96,
               "ok": true
             }
           }
@@ -2630,18 +2637,19 @@
         }
       },
       "bundleGzipKB": 2948,
-      "entryGzipKB": 454
+      "entryGzipKB": 454,
+      "committedAt": 1795125286
     }
   ],
   "previewUsage": [
     {
       "week": "2026-10-26",
-      "browserCalls": 638,
+      "browserCalls": 688,
       "uiSteps": 0,
-      "clickSteps": 464,
-      "evalSteps": 684,
-      "screenshots": 642,
-      "conversations": 77
+      "clickSteps": 532,
+      "evalSteps": 742,
+      "screenshots": 688,
+      "conversations": 85
     },
     {
       "week": "2026-11-02",
@@ -2663,12 +2671,12 @@
     },
     {
       "week": "2026-11-16",
-      "browserCalls": 417,
-      "uiSteps": 136,
-      "clickSteps": 440,
-      "evalSteps": 423,
-      "screenshots": 360,
-      "conversations": 40
+      "browserCalls": 432,
+      "uiSteps": 144,
+      "clickSteps": 531,
+      "evalSteps": 446,
+      "screenshots": 373,
+      "conversations": 41
     }
   ]
 }
