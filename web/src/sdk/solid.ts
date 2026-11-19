@@ -261,6 +261,8 @@ export const useConnection = selected((state) => state.connection)
 export const useSystem = selected((state) => state.system)
 /** Summaries of every conversation; an unchanged row keeps its identity. */
 export const useConversations = selected((state) => state.conversations)
+/** The live task graph of every conversation. */
+export const useTasks = selected((state) => state.tasks)
 
 const eventFeed = docRef<{ events: EventRecord[] }>(EVENT_FEED)
 
