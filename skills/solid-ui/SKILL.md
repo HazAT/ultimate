@@ -25,14 +25,14 @@ bugs. The skills that the libraries ship match the exact pinned versions: read t
 The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` file compiles with Solid and lints with the
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
-([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Kbd and KbdGroup,
-NumberInput, Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in
-`status-trigger.solid.tsx`), Switch and Tooltip. Import from `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component
-exists. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status
-chips of setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension
-renders (mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
-`const McpDetails = island(Details)`. Icons come
-from `@lucide/solid`.
+([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Collapsible,
+Command, Dialog, DropdownMenu, HoverCard, Kbd and KbdGroup, NumberInput, Popover, Row and Rows, SegmentedControl,
+Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch and Tooltip. Import from
+`@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component exists.
+`extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status chips of
+setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension renders
+(mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
+`const McpDetails = island(Details)`. Icons come from `@lucide/solid`.
 
 ## Ultimate's rules (on top of those skills)
 
@@ -97,7 +97,16 @@ from `@lucide/solid`.
     mounted (hidden when closed) so it can name an icon-only trigger before focus. In jsdom, dispatch a Tab `keydown`
     before `.focus()` to test the keyboard path, and `await settle()` for the deferred accessible name.
   - A closed popover hides its controls from the agent bridge: `snapshot()` shows only the popover, so open it first
-    (`setOpen(true)` through `act`).
+    (`setOpen(true)` through `act`). For a menu or dialog, `press` with an inner action's text can open it for you;
+    a destructive menu item needs a `confirm` sentence, which the bridge checks before pressing it.
+  - Put `DropdownMenuLabel` inside `DropdownMenuGroup` or `DropdownMenuRadioGroup`. The SDK's `MenuGroupLabel`
+    throws without one, unlike the React label.
+  - Menu and Command `onAction` details have an optional `event`, but no `source`; item `onSelect` takes only an
+    event. Their open, radio value and query change callbacks do carry `details.source`.
+  - The installed Solid SDK bundles Permissions into `docs/agents.md#permissions`. A refused `act` puts the message
+    in `result.error.message`, not in `steps` (only completed steps go there).
+  - Check modal Tab wrapping in a real browser: jsdom can verify initial focus, Escape and focus return, but does not
+    implement native tab navigation or enforce inertness.
   - Packages that ship raw JSX under the `solid` export condition (ui-sdk, `@lucide/solid`) must be in the Solid
     plugin's `include` in `vite.config.ts`, or Vite compiles them with React's runtime. After changing that list,
     delete `node_modules/.vitest-cache`.
