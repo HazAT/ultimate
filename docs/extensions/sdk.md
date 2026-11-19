@@ -47,6 +47,29 @@ Keep UI state that should survive a reload in `useExtensionUiState`; keep throwa
 `useState`. The shell keeps its own layout there too (`shell.conversation`, `shell.surface`, `shell.shownSurface`,
 `shell.panel`, `shell.panelOpen`, `shell.sidebarOpen`, `shell.dock.<surface>.<side>`).
 
+## Solid facets
+
+A contribution can render with Solid 2 instead of React. Write the component in a `*.solid.tsx` file (read the
+`solid-ui` skill first) and mount it from your `web.tsx` with `island`, the only place a React file may import it:
+
+```tsx
+import { defineWebExtension, island } from '@/sdk'
+import { Status } from './status.solid.tsx'
+
+export default defineWebExtension({ slots: { 'statusline.left': island(Status) } })
+```
+
+The island renders inside a `display: contents` element and remounts when its extension or conversation scope
+changes. Solid code imports `@/sdk/solid`, never `@/sdk` (types excepted), and gets accessors:
+
+| `@/sdk/solid`                                          | Returns                                                                                                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useDoc(ref)`, `useDocOf(() => conversation, ref)`     | An accessor of the document; a memo or JSX reading `doc()?.columns[0].title` reruns only when that path changes. `useDoc` follows the scope |
+| `useUiState(key, initial)`, `useExtensionUiState(…)`   | `[value, set]`: `value` is an accessor, `set` takes a value or an updater, as in React                                                      |
+| `useConnection()`, `useSystem()`, `useConversations()` | Accessors of the same client state the React hooks read                                                                                     |
+| `ExtensionName`, `ConversationScope`                   | The contexts `island` provides                                                                                                              |
+| `api`, `ROOT`, `docRef`, `actionRef`, `cn`, `format*`  | The same helpers `@/sdk` exports                                                                                                            |
+
 ## Rendering another conversation
 
 Wrap `<Conversation/>` in `<ConversationScope id={id}>` (both from `@/sdk`) to render another live conversation without
