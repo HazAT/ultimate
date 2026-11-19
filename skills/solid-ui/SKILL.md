@@ -94,8 +94,15 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   (`test/web/solid-harness.test.solid.tsx`). `act`'s `values` are keyed `"<ref> <label>"`. Use `expect(x)` without a
   message: the ui-sdk skill's `expect(x, message)` template fails `vitest/valid-expect`.
 - On a whole page, agents drive controls with the browser tool's `ui` steps (`snapshot`, `query`, `act`), which wait
-  for the page's first render; each control's change is recorded as a durable `ui.changed` event with its source
-  (`extensions/ui/README.md`). A text field records committed edits, never keystrokes, without its value by default.
+  for the page's first render and for every mounted read's first answer (a request that never reached the server
+  counts); each control's change is recorded as a durable `ui.changed` event with its source and the conversation of
+  the `ConversationScope` around it (`extensions/ui/README.md`). A text field never records its text (`"[text]"`, no
+  `previous`), and a person's typing only when the field commits it (blur, or Enter in an input). The browser tool
+  sends recorded changes and UI-state writes before it closes the page, whatever the last step was.
+- To type into a ui-sdk text field in jsdom, use `setRangeText` and dispatch `input`, as ui-sdk's own `type` helper
+  does: assigning `.value` counts as a program's write, not typing, and reports no `input-change`.
+- A Solid `useAction` with getter args: each read keeps the args its key was made from, so switching args mid-flight
+  never answers the old read with the new args.
 - A person's click inside `data-agent-hidden` still changes the control, but the bridge reports nothing: a secret
   value an agent may fill goes in `data-agent-secret` instead.
 
