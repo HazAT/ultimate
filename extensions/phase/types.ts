@@ -14,5 +14,9 @@ export type PhaseRow = {
   confidence?: number
   at?: number
   pending?: number
+  round?: number
+  classifiedAt?: number
+  due?: number
+  tools?: string[]
 }
 export type PhaseState = { conversations: Record<string, PhaseRow> }

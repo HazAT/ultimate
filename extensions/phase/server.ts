@@ -7,7 +7,14 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Cursor,
+  EntryId,
+  EntryRecord,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ClassifyApi } from '../classify/api.ts'
 import type { ClassifyQuestion, ClassifyResult } from '../classify/api.ts'
@@ -72,6 +79,14 @@ type Asked = {
   open: { epic: string; revision: number; criteria: OpenCriterion[] } | null
   at: number
   answers: ClassifyResult['answers']
+  tools?: string[]
+}
+function toolNames(entry: EntryRecord | undefined) {
+  const names = new Set<string>()
+  for (const message of entry?.model ?? [])
+    if (message.role === 'assistant')
+      for (const block of message.content) if (block.type === 'toolCall') names.add(block.name)
+  return [...names]
 }
 export function estimatesOf(
   criteria: readonly OpenCriterion[],
@@ -87,6 +102,10 @@ export function estimatesOf(
   }
   return estimates
 }
+export const MIN_INTERVAL_MS = 60_000
+export const SKIP_CONFIDENCE = 0.9
+export const SKIP_AT_MOST_MS = 120_000
+const MAX_SKIP_TOOLS = 20
 const terminal = {
   status: 'terminal' as const,
   outcome: { status: 'completed' as const, result: null },
@@ -107,6 +126,9 @@ export default function phase(
         const row = state.conversations[runtime.conversationId]
         if (row?.pending === task.id) {
           delete row.pending
+          delete row.due
+          delete row.classifiedAt
+          delete row.tools
           if (!row.phase) delete state.conversations[runtime.conversationId]
         }
         return terminal
@@ -114,6 +136,34 @@ export default function phase(
     },
     phases: {
       classify: async (task, runtime, context) => {
+        let at = task.input.at
+        let ask = !!(await runtime.memo<Asked>('asked', context))
+        if (!ask)
+          await runtime.commit(async (tx) => {
+            const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
+            const row = state.conversations[runtime.conversationId]
+            if (row?.pending !== task.id) return terminal
+            if (row.run !== task.input.run) {
+              delete row.pending
+              delete row.due
+              if (!row.phase) delete state.conversations[runtime.conversationId]
+              return terminal
+            }
+            const due = (row.classifiedAt ?? -Infinity) + MIN_INTERVAL_MS
+            if (due > runtime.now()) {
+              row.due = due
+              return {
+                status: 'sleeping',
+                until: due,
+                checkpoint: { phase: 'classify' },
+              }
+            }
+            delete row.due
+            at = row.round ?? at
+            ask = true
+            return undefined
+          }, context)
+        if (!ask) return
         let asked: Asked | undefined
         try {
           asked = await runtime.memo<Asked>('asked', context)
@@ -131,7 +181,7 @@ export default function phase(
               const page = await conversation.entries(
                 {
                   order: 'descending',
-                  ...(task.input.at ? { maxEntryId: task.input.at as EntryId } : {}),
+                  ...(at ? { maxEntryId: at as EntryId } : {}),
                 },
                 64,
                 cursor,
@@ -145,7 +195,6 @@ export default function phase(
               cursor = page.next
             } while (cursor !== undefined && !reachedCurrentRequestInput)
             entries.reverse()
-            const at = task.input.at ?? entries.at(-1)?.id ?? 0
             const result = await service.ask(
               {
                 state: phaseState(entries, [
@@ -167,7 +216,15 @@ export default function phase(
             )
             asked = await runtime.memo<Asked>(
               'asked',
-              { open, at, answers: result.answers },
+              {
+                open,
+                at: at ?? entries.at(-1)?.id ?? 0,
+                answers: result.answers,
+                tools: toolNames(entries.findLast((entry) => toolNames(entry).length > 0)).slice(
+                  0,
+                  MAX_SKIP_TOOLS,
+                ),
+              },
               context,
             )
           }
@@ -193,6 +250,17 @@ export default function phase(
           const row = state.conversations[runtime.conversationId]
           if (row?.pending === task.id) {
             delete row.pending
+            if (row.run === task.input.run) {
+              row.classifiedAt = runtime.now()
+              if (
+                answer?.type === 'choice' &&
+                answer.choice in question.criteria &&
+                answer.confidence >= SKIP_CONFIDENCE &&
+                asked?.tools?.length
+              )
+                row.tools = asked.tools
+              else delete row.tools
+            }
             if (
               row.run === task.input.run &&
               answer?.type === 'choice' &&
@@ -203,7 +271,8 @@ export default function phase(
               row.confidence = answer.confidence
               row.at = runtime.now()
             }
-            if (!row.phase) delete state.conversations[runtime.conversationId]
+            if (!row.phase && row.run !== task.input.run)
+              delete state.conversations[runtime.conversationId]
           }
           return terminal
         }, context)
@@ -216,27 +285,46 @@ export default function phase(
     hooks: [
       hook(GenerationTask, {
         beforeRequest: async (_request, api, context) => {
+          let trailing: number | undefined
           await host.harness().commit(async (tx) => {
             const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
             const row = state.conversations[api.conversationId]
             if (run === undefined || row?.run === run) return
+            if (row?.due !== undefined) trailing = row.pending
             state.conversations[api.conversationId] = {
               run,
-              ...(row?.pending !== undefined ? { pending: row.pending } : {}),
+              ...(row?.pending !== undefined && trailing === undefined
+                ? { pending: row.pending }
+                : {}),
             }
           }, context)
+          if (trailing !== undefined) await host.harness().abortTask(trailing as TaskId, context)
         },
         afterTools: async (assistant, results, api, context) => {
           if (!host.want(ClassifyApi)) return
           await host.harness().commit(async (tx) => {
             const run = await firstRunInput(tx, api.conversationId)
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
-            if (run === undefined || state.conversations[api.conversationId]?.pending !== undefined)
+            const row = state.conversations[api.conversationId]
+            const round = Math.max(assistant, ...results)
+            if (run === undefined) return
+            if (row?.pending !== undefined) {
+              row.round = round
               return
+            }
+            if (row?.run === run && row.tools && row.classifiedAt !== undefined) {
+              const tools = toolNames(await tx.entry(assistant))
+              if (
+                tools.length > 0 &&
+                tools.every((name) => row.tools!.includes(name)) &&
+                Date.now() - row.classifiedAt < SKIP_AT_MOST_MS
+              )
+                return
+            }
             const pending = await tx.createTask(
               ClassifyTask,
-              { run, at: Math.max(assistant, ...results) },
+              { run, at: round },
               {
                 ownership: { kind: 'conversation' },
                 conversationId: api.conversationId,
@@ -245,19 +333,27 @@ export default function phase(
               },
             )
             state.conversations[api.conversationId] = {
-              ...state.conversations[api.conversationId],
+              ...row,
               run,
               pending,
+              round,
             }
           }, context)
         },
         onYield: async (_answer, api, context) => {
+          let trailing: number | undefined
           await host.harness().commit(async (tx) => {
             const state = await tx.doc(Phases, ROOT_CONVERSATION_ID)
-            const pending = state.conversations[api.conversationId]?.pending
-            if (pending === undefined) delete state.conversations[api.conversationId]
-            else state.conversations[api.conversationId] = { pending }
+            const row = state.conversations[api.conversationId]
+            if (row?.due !== undefined) trailing = row.pending
+            if (row?.pending === undefined || trailing !== undefined)
+              delete state.conversations[api.conversationId]
+            else
+              state.conversations[api.conversationId] = {
+                pending: row.pending,
+              }
           }, context)
+          if (trailing !== undefined) await host.harness().abortTask(trailing as TaskId, context)
           return undefined
         },
       }),
