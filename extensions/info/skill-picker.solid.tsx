@@ -21,15 +21,25 @@ export function SkillPicker() {
   const [open, setOpen] = useDialog(skillDialog)
   const system = useSystem()
   const conversation = useConversationId()
+  let chosen = false
   function choose(name: string) {
-    setOpen(false)
     const id = conversation()
-    if (id === undefined) return
-    fillComposer(id, `/skill:${name} `)
-    focusComposer()
+    if (id !== undefined) {
+      fillComposer(id, `/skill:${name} `)
+      chosen = true
+    }
+    setOpen(false)
   }
   return (
-    <Dialog onOpenChange={setOpen} open={open()}>
+    <Dialog
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        if (isOpen || !chosen) return
+        chosen = false
+        focusComposer()
+      }}
+      open={open()}
+    >
       <DialogContent
         class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}

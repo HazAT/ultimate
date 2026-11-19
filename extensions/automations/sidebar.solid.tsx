@@ -8,7 +8,10 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import {
+  api,
   cn,
+  formatDuration,
+  formatTime,
   openPanel,
   showSurface,
   switchConversation,
@@ -49,7 +52,7 @@ export function AutomationsSection() {
   onSettled(() => {
     const update = () => setData(get().data)
     const unsubscribe = subscribe(update)
-    const release = want(5000)
+    const release = want(5000, api.action)
     update()
     return () => {
       unsubscribe()
@@ -128,7 +131,7 @@ function Row(props: { automation: Automation; now: number }) {
       data-sidebar-automation={props.automation.id}
       onClick={() => {
         const automation = props.automation
-        if (automation.script) return openAutomation(automation.id, shell)
+        if (automation.script) return openAutomation(automation.id, shell, api.action)
         const last = automation.runs.at(-1)
         const run =
           last?.status === 'running' || look() === 'failed' ? last?.conversationId : undefined
@@ -136,7 +139,7 @@ function Row(props: { automation: Automation; now: number }) {
         showSurface('agent')
         switchConversation(run)
       }}
-      title={`${props.automation.id} · ${props.automation.name}\n${looks[look()].word} · ${stateLine(props.automation, props.now)}`}
+      title={`${props.automation.id} · ${props.automation.name}\n${looks[look()].word} · ${stateLine(props.automation, props.now, formatTime, formatDuration)}`}
       type="button"
     >
       <Dot look={look()} />

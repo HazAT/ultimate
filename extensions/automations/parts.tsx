@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { cn, useUltimate } from '@/sdk'
+import { api, cn, formatTime, useUltimate } from '@/sdk'
 import { automationKind, clock, dotStatus, looks, statusLabel } from './looks.ts'
 import type { Look } from './looks.ts'
 import { openAutomation } from './navigation.ts'
@@ -18,7 +18,9 @@ import { get, subscribe, want } from './poll.ts'
 import type { Automation, Run, Schedule } from './refs.ts'
 
 export const words = (schedule: Schedule, description: string, now: number) =>
-  schedule.kind === 'at' ? `Once, ${clock(Date.parse(schedule.time), now)}` : description
+  schedule.kind === 'at'
+    ? `Once, ${clock(Date.parse(schedule.time), now, formatTime)}`
+    : description
 
 export const full = (at: number) =>
   new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' })
@@ -108,13 +110,13 @@ export function triggerWords(automation: Automation) {
 }
 
 export function useAutomations(ms: number | false) {
-  useEffect(() => want(ms), [ms])
+  useEffect(() => want(ms, api.action), [ms])
   return useSyncExternalStore(subscribe, get)
 }
 
 export function useOpenAutomation() {
   const shell = useUltimate()
-  return (id: string) => openAutomation(id, shell)
+  return (id: string) => openAutomation(id, shell, api.action)
 }
 
 export function Heading({

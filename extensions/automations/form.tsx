@@ -28,6 +28,7 @@ import {
   errorMessage,
   events,
   formatKeys,
+  formatTime,
   keepLast,
   useAction,
   useEvent,
@@ -304,7 +305,9 @@ function Preview({ schedule }: { schedule: string | undefined }) {
                 <span className="w-9 shrink-0 text-muted-foreground/60">
                   {index === 0 ? 'next' : 'then'}
                 </span>
-                <span className="text-foreground/85 tabular-nums">{clock(at, now)}</span>
+                <span className="text-foreground/85 tabular-nums">
+                  {clock(at, now, formatTime)}
+                </span>
                 {index === 0 && (
                   <span className={at <= now ? 'text-warning' : 'text-muted-foreground'}>
                     {at <= now ? 'passed: fires at once' : until(at, now)}

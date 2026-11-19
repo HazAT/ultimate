@@ -63,27 +63,27 @@ export function Switcher() {
               <span class={cn('flex-1 text-[13px]', !current() && 'text-brand')}>This project</span>
               <span class="font-mono text-[11px] text-muted-foreground">{port(location.href)}</span>
             </DropdownMenuItem>
-            <For each={running()}>
+            <For each={running()} keyed={(preview) => preview.id}>
               {(preview) => (
                 <DropdownMenuItem
                   class="gap-2 py-1.5"
-                  data-instance={preview.id}
-                  label={`#${preview.conversationId} ${title(preview) ?? ''}`.trim()}
-                  onSelect={() => show(preview)}
+                  data-instance={preview().id}
+                  label={`#${preview().conversationId} ${title(preview()) ?? ''}`.trim()}
+                  onSelect={() => show(preview())}
                 >
                   <span
                     class={cn(
                       'min-w-0 flex-1 truncate text-[13px]',
-                      current()?.id === preview.id && 'text-brand',
+                      current()?.id === preview().id && 'text-brand',
                     )}
                   >
-                    #{preview.conversationId}
-                    <Show when={title(preview)}>
+                    #{preview().conversationId}
+                    <Show when={title(preview())}>
                       {(name) => <span class="text-muted-foreground"> {name()}</span>}
                     </Show>
                   </span>
                   <span class="shrink-0 font-mono text-[11px] text-muted-foreground">
-                    {port(preview.url)}
+                    {port(preview().url)}
                   </span>
                 </DropdownMenuItem>
               )}

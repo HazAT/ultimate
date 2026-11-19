@@ -88,8 +88,8 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
   - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
   - For a polled list whose objects are replaced on each fetch, `<For keyed={(row) => row.id}>` keeps each row's DOM
     by id and gives the child an item accessor. The default keys by object identity.
-  - When extracting a browser helper to `.ts`, add it to `tsconfig.web.json`'s `include`. Use explicit `.ts` suffixes
-    on imports from `@/sdk/*` within the helper so the NodeNext project can resolve them too.
+  - When extracting a browser helper to `.ts`, add it to `tsconfig.web.json`'s `include`. A `.ts` helper shared by
+    React and Solid imports neither SDK entry nor its internals: pass SDK functions in from the caller or use `lib/`.
 - **ui-sdk facts that tripped agents here:**
   - Popups render in the browser's top layer, not a portal: they stay in their trigger's DOM tree and inherit its
     text styles (a status line's `whitespace-nowrap`, `font-mono`). Kit popups reset the inherited text styles.
@@ -110,8 +110,8 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
   - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it
     with `not-data-empty:hidden`; a padded empty part otherwise leaves a blank band above the list. Compare a moved
     usage with its React original side by side on the host before calling it the same.
-  - A command item whose content is not plain text needs `label` (its search text and agent label) and `keywords`;
-    without `label` the agent sees every text node run together.
+  - On a composed `CommandItem`, `label` is the text search matches and `keywords` are extra search terms. The
+    accessible name comes from the rendered text or `aria-label`; the agent bridge uses the rendered text.
   - The installed Solid SDK bundles Permissions into `docs/agents.md#permissions`. A refused `act` puts the message
     in `result.error.message`, not in `steps` (only completed steps go there).
   - Check modal Tab wrapping in a real browser: jsdom can verify initial focus, Escape and focus return, but does not

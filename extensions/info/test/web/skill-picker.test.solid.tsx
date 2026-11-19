@@ -59,12 +59,19 @@ it('lets an agent find a skill by its description and fill the composer with it'
   const agent = createAgent()
   const input = agent.snapshot().find((item) => item.label === 'Find a skill')
   expect(input?.actions).toEqual(expect.arrayContaining(['setQuery', 'run']))
-  const result = await agent.act({
-    steps: [
-      { ref: input!.ref, action: 'setQuery', args: ['screenshots'] },
-      { ref: input!.ref, action: 'run', args: ['verify-ui'] },
-    ],
+  const search = await agent.act({
+    steps: [{ ref: input!.ref, action: 'setQuery', args: ['screenshots'] }],
   })
+  expect(search.ok).toBe(true)
+  flush()
+  await settle()
+  const highlighted = container.querySelector('[data-slot="command-item"][data-highlighted]')
+  expect(highlighted?.textContent ?? '').toContain('verify-ui')
+  const nonmatching = [
+    ...container.querySelectorAll<HTMLElement>('[data-slot="command-item"]'),
+  ].find((item) => item.textContent?.includes('write-extension'))
+  expect(!nonmatching || nonmatching.hidden).toBe(true)
+  const result = await agent.act({ steps: [{ ref: input!.ref, action: 'run' }] })
   expect(result.ok).toBe(true)
   flush()
   await settle()

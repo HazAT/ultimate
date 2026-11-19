@@ -15,31 +15,47 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { getShown, polled } from '../../previews.ts'
 import { Switcher } from '../../switcher.solid.tsx'
 
-it('lets an agent show a running preview from the title bar and return to this project', async () => {
+it('keeps the highlighted preview across polls and lets an agent switch to it and back', async () => {
   const refetched = vi.fn<() => void>()
-  polled(
-    [
-      {
-        id: 'a',
-        url: 'http://127.0.0.1:41234',
-        conversationId: 12 as ConversationId,
-        running: true,
-      },
-      {
-        id: 'b',
-        url: 'http://127.0.0.1:41235',
-        conversationId: 13 as ConversationId,
-        running: false,
-      },
-    ],
-    refetched,
-  )
+  const previews = [
+    {
+      id: 'a',
+      url: 'http://127.0.0.1:41234',
+      conversationId: 12 as ConversationId,
+      running: true,
+    },
+    {
+      id: 'b',
+      url: 'http://127.0.0.1:41235',
+      conversationId: 13 as ConversationId,
+      running: false,
+    },
+  ]
+  polled(previews, refetched)
   const container = renderSolid(() => <Switcher />)
   flush()
   const trigger = container.querySelector('[aria-label="Switch to a preview"]')
   expect(trigger?.textContent).toBe('1 preview')
   const agent = createAgent()
   const menu = agent.snapshot().find((item) => item.label === 'Switch to a preview')
+  const opened = await agent.act({ steps: [{ ref: menu!.ref, action: 'setOpen', args: [true] }] })
+  expect(opened.ok).toBe(true)
+  const content = container.querySelector('[role="menu"]')!
+  for (const key of ['Home', 'ArrowDown']) {
+    content.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    flush()
+  }
+  await settle()
+  const highlighted = () => content.querySelector('[data-instance="a"][data-highlighted]')
+  const row = highlighted()
+  expect(row?.textContent).toContain('#12')
+  polled(
+    previews.map((preview) => ({ ...preview })),
+    refetched,
+  )
+  flush()
+  await settle()
+  expect(highlighted()).toBe(row)
   const shown = await agent.act({ steps: [{ ref: menu!.ref, action: 'press', args: ['#12'] }] })
   expect(shown.ok).toBe(true)
   flush()

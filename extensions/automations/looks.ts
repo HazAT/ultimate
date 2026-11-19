@@ -1,4 +1,3 @@
-import { formatDuration, formatTime } from '@/sdk/format.ts'
 import type { Automation, Run } from './refs.ts'
 
 export const spent = (automation: Automation, now: number) =>
@@ -30,7 +29,9 @@ function ago(at: number, now: number) {
   return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function clock(at: number, now: number) {
+type FormatTime = (at: Date, seconds: boolean) => string
+
+export function clock(at: number, now: number, formatTime: FormatTime) {
   const date = new Date(at)
   return date.toDateString() === new Date(now).toDateString()
     ? formatTime(date, true)
@@ -144,7 +145,12 @@ const fired = (automation: Automation, now: number) =>
     ? `fired ${automation.fires}${automation.lastFireAt ? ` · ${ago(automation.lastFireAt, now)}` : ''}`
     : undefined
 
-export function stateLine(automation: Automation, now: number): string {
+export function stateLine(
+  automation: Automation,
+  now: number,
+  formatTime: FormatTime,
+  formatDuration: (ms: number) => string,
+): string {
   const look = lookOf(automation, now)
   const script = automation.script
   const last = automation.runs.at(-1)
@@ -155,12 +161,12 @@ export function stateLine(automation: Automation, now: number): string {
         ? 'context not seen yet'
         : `${Math.round(condition.value)}% now`
       : condition.above <= 10
-        ? `won't re-arm${automation.lastFireAt ? ` · fired ${clock(automation.lastFireAt, now)}` : ''}`
-        : `${automation.lastFireAt ? `fired ${clock(automation.lastFireAt, now)} · ` : ''}re-arms below ${condition.above - 10}%`
+        ? `won't re-arm${automation.lastFireAt ? ` · fired ${clock(automation.lastFireAt, now, formatTime)}` : ''}`
+        : `${automation.lastFireAt ? `fired ${clock(automation.lastFireAt, now, formatTime)} · ` : ''}re-arms below ${condition.above - 10}%`
   }
   if (automation.event && !attention(look) && look !== 'working')
     return automation.fires
-      ? `fired ${automation.fires} ${automation.fires === 1 ? 'time' : 'times'}${automation.lastFireAt ? ` · last ${clock(automation.lastFireAt, now)}` : ''}`
+      ? `fired ${automation.fires} ${automation.fires === 1 ? 'time' : 'times'}${automation.lastFireAt ? ` · last ${clock(automation.lastFireAt, now, formatTime)}` : ''}`
       : 'never fired'
   const parts: (string | false | undefined)[] = []
   if (look === 'failed')

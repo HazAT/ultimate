@@ -28,6 +28,7 @@ import {
   cn,
   errorMessage,
   formatDuration,
+  formatTime,
   keepLast,
   shortenPath,
   useAction,
@@ -68,7 +69,7 @@ import {
   useAutomations,
   words,
 } from './parts.tsx'
-import { refreshAutomations } from './poll.ts'
+import { refreshAutomations as refreshList } from './poll.ts'
 import {
   DeleteAction,
   DescribeAction,
@@ -80,6 +81,8 @@ import {
 } from './refs.ts'
 import { RunLabel, WatcherLabel } from './types.ts'
 import type { Automation, AutomationListItem, Run, Schedule } from './refs.ts'
+
+const refreshAutomations = () => refreshList(api.action)
 
 export function useLive(overdue: boolean, now: number) {
   const graph = useTasks()
@@ -213,7 +216,7 @@ function RunRow({ run, now }: { run: Run; now: number }) {
         className="shrink-0 font-mono text-[11px] text-foreground/80 tabular-nums"
         title={`${full(run.firedAt)}\n${statusLabel(run.status)}${took}`}
       >
-        {clock(run.firedAt, now)}
+        {clock(run.firedAt, now, formatTime)}
       </span>
       <span
         className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground"
@@ -374,7 +377,7 @@ function AutomationRow({
       onDeleted()
     }).finally(() => setBusy(undefined))
   }
-  const line = stateLine(automation, now)
+  const line = stateLine(automation, now, formatTime, formatDuration)
   return (
     <li
       aria-label={automation.name}

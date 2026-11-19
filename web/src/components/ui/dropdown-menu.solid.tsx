@@ -17,8 +17,13 @@ import type { Accessor, ComponentProps } from 'solid-js'
 import { writingAs } from '@/sdk/solid'
 import { menuStyles } from './menu-styles.ts'
 
-function DropdownMenu(props: ComponentProps<typeof MenuRoot>) {
-  const rest = omit(props, 'onOpenChange')
+function DropdownMenu(
+  props: Omit<ComponentProps<typeof MenuRoot>, 'items' | 'itemShortcuts'> & {
+    items?: never
+    itemShortcuts?: never
+  },
+) {
+  const rest = omit(props, 'onOpenChange', 'items', 'itemShortcuts')
   return (
     <MenuRoot
       {...rest}
