@@ -183,21 +183,21 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
  * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again, and
  * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
  */
-export type UseActionOptions = {
+export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId
   onError?: (error: ActionError) => void
   on?: Accessor<unknown>
-  every?: number
+  every?: number | ((data: T | undefined) => number | undefined)
   focus?: boolean
 }
 
 /**
  * The server action `ref` names, called with `args` as `useAction` from `@/sdk` calls it and sharing its result: on
- * mount, when `on()` changes, every `every` ms, on focus with `focus`, and after a restart. Each field is an accessor.
+ * mount, when `on()` changes, every `every` ms (a number, or a function of the latest answer), on focus with `focus`, and after a restart. Each field is an accessor.
  */
 export function useAction<Args, T>(
   ref: ActionRef<Args, T>,
-  ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
+  ...[args, options = {}]: ActionArgs<Args, UseActionOptions<T>>
 ) {
   const { state } = shared()
   const scope = useContext(ConversationScope)
@@ -208,7 +208,20 @@ export function useAction<Args, T>(
     return reads.get(ref.extension, ref.name, args, conversation)
   })
   const [current, setCurrent] = createSignal<ReadState>(() => read().get())
-  const reader: Reader = { onError: options.onError, every: options.every, focus: options.focus }
+  const interval = createMemo(() =>
+    typeof options.every === 'function'
+      ? options.every(current().data as T | undefined)
+      : options.every,
+  )
+  const reader: Reader = { onError: options.onError, focus: options.focus }
+  createEffect(
+    () => ({ ms: interval(), read: read() }),
+    ({ ms, read: next }) => {
+      if (reader.every === ms) return
+      reader.every = ms
+      next.repoll()
+    },
+  )
   createEffect(read, (next) => {
     const unsubscribe = next.subscribe(() => setCurrent(next.get()))
     const release = next.use(reader)

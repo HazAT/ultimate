@@ -20,11 +20,14 @@ import { retryAfter } from '../../lib/timers.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 
+const settling = (servers: McpServerStatus[] | undefined) =>
+  servers?.some((server) => server.state === 'connecting') ? 2_000 : 60_000
+
 function useServers() {
   const { data: servers, refetch } = useAction(StatusAction, null, {
     conversation: ROOT,
     onError: keepLast,
-    every: 60_000,
+    every: settling,
   })
   const refresh = () => void refetch()
   const retryAt = createMemo(() =>
@@ -33,16 +36,7 @@ function useServers() {
   createEffect(retryAt, (at) =>
     at === Infinity ? undefined : retryAfter(Math.max(0, at - Date.now()) + 500, refresh),
   )
-  return {
-    servers,
-    refresh,
-    connecting: () => servers()?.some((server) => server.state === 'connecting'),
-  }
-}
-
-function FastPoll() {
-  useAction(StatusAction, null, { conversation: ROOT, onError: keepLast, every: 2_000 })
-  return null
+  return { servers, refresh }
 }
 
 const tone = { connected: 'bg-success', connecting: 'bg-muted-foreground/50', failed: 'bg-error' }
@@ -135,7 +129,7 @@ function Servers(props: { servers?: McpServerStatus[]; refresh: () => void }) {
 }
 
 export function Chip() {
-  const { servers, refresh, connecting } = useServers()
+  const { servers, refresh } = useServers()
   const connected = createMemo(
     () => servers()?.filter((server) => server.state === 'connected').length ?? 0,
   )
@@ -143,7 +137,6 @@ export function Chip() {
   const total = () => servers()?.length ?? 0
   return (
     <Show when={total()}>
-      {connecting() && <FastPoll />}
       <Popover>
         <StatusPopoverTrigger
           aria-label="MCP servers"
@@ -165,13 +158,12 @@ export function Chip() {
 }
 
 export function Details() {
-  const { servers, refresh, connecting } = useServers()
+  const { servers, refresh } = useServers()
   return (
     <Show
       when={servers()?.length}
       fallback={<p class="text-muted-foreground/70">no servers: add mcpServers to settings.json</p>}
     >
-      {connecting() && <FastPoll />}
       <Servers refresh={refresh} servers={servers()} />
     </Show>
   )
