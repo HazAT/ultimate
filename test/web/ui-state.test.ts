@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { createUiState } from '../../web/src/sdk/ui-state.ts'
+import { createUiState, tabWrites } from '../../web/src/sdk/ui-state.ts'
 import { UI_REVISION } from '../../shared/protocol.ts'
 import type { UiUpdateRequest, UiUpdateResponse } from '../../shared/protocol.ts'
 
@@ -303,5 +303,40 @@ describe('durable UI state', () => {
     state.receive({ 'shell.conversation': 43, 'shell.panel': 'info', [UI_REVISION]: 8 })
     expect(state.get('shell.conversation')).toBe(1)
     expect(state.get('shell.panel')).toBeUndefined()
+  })
+
+  it('lets an agent’s tab save its own changes but never move the user’s view', async () => {
+    const writes: UiUpdateRequest[] = []
+    const { shares, ...tabOnly } = tabWrites({ driven: true, detached: false, webdriver: true })
+    expect(shares).toBe(true)
+    const state = createUiState(
+      async (change) => {
+        writes.push(change)
+        return { ok: true, rev: 8 }
+      },
+      { delayMs: 5, ...tabOnly },
+    )
+    state.receive({ 'shell.conversation': 42, 'ext.keep-warm.open': false, [UI_REVISION]: 7 })
+    state.set('shell.conversation', 1)
+    state.set('shell.panelOpen', true)
+    state.set('ext.keep-warm.open', true)
+    await wait()
+    expect(writes).toEqual([{ set: { 'ext.keep-warm.open': true }, delete: [] }])
+    expect(state.get('shell.conversation')).toBe(1)
+    expect(state.get('shell.panelOpen')).toBe(true)
+    // The user moves their own view: the agent's tab keeps its own, and still follows the rest.
+    state.receive({ 'shell.conversation': 43, 'ext.keep-warm.open': true, [UI_REVISION]: 9 })
+    expect(state.get('shell.conversation')).toBe(1)
+    expect(state.get('ext.keep-warm.open')).toBe(true)
+    state.receive({ 'shell.conversation': 43, 'ext.keep-warm.open': false, [UI_REVISION]: 10 })
+    expect(state.get('ext.keep-warm.open')).toBe(false)
+  })
+
+  it('keeps a detached tab, or an automated one without the driven flag, from writing anything', () => {
+    expect(tabWrites({ driven: true, detached: true, webdriver: true }).shares).toBe(false)
+    expect(tabWrites({ driven: false, detached: false, webdriver: true }).shares).toBe(false)
+    expect(tabWrites({ driven: false, detached: false, webdriver: false })).toEqual({
+      shares: true,
+    })
   })
 })

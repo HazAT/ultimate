@@ -19,13 +19,30 @@ const revision = (values: UiValues) => {
   return typeof rev === 'number' ? rev : 0
 }
 
+const movesTheUsersView = (key: string) => key.startsWith('shell.')
+
+export function tabWrites(tab: { driven: boolean; detached: boolean; webdriver: boolean }) {
+  const automatedWithoutDrivenFlag = tab.webdriver && !tab.driven
+  return {
+    shares: !tab.detached && !automatedWithoutDrivenFlag,
+    ...(tab.driven ? { tabOnly: movesTheUsersView } : {}),
+  }
+}
+
 export function createUiState(
   write: ((change: UiUpdateRequest) => Promise<UiUpdateResponse>) | undefined,
-  options: { delayMs?: number; onError?: (error: unknown) => void } = {},
+  options: {
+    delayMs?: number
+    onError?: (error: unknown) => void
+    tabOnly?: (key: string) => boolean
+  } = {},
 ) {
   const listeners = new Set<() => void>()
   let streamSnapshot: UiValues = {}
   const unconfirmedLocalWrites = new Map<string, LocalWrite>()
+  const tabOnly = options.tabOnly ?? (() => false)
+  let tabOnlyAtLoad: UiValues | undefined
+  const tabOnlyWrites = new Map<string, JsonValue | undefined>()
   let values: UiValues = {}
 
   let lastSentBatch = 0
@@ -39,6 +56,14 @@ export function createUiState(
 
   function update() {
     const next: Record<string, JsonValue> = { ...streamSnapshot }
+    if (options.tabOnly) {
+      for (const key of Object.keys(next)) if (tabOnly(key)) delete next[key]
+      Object.assign(next, tabOnlyAtLoad)
+    }
+    for (const [key, value] of tabOnlyWrites) {
+      if (value === undefined) delete next[key]
+      else next[key] = value
+    }
     for (const [key, { value }] of unconfirmedLocalWrites) {
       if (value === undefined) delete next[key]
       else next[key] = value
@@ -105,6 +130,11 @@ export function createUiState(
   }
   function set(key: string, value: JsonValue | undefined) {
     if (same(values[key], value)) return
+    if (tabOnly(key)) {
+      tabOnlyWrites.set(key, value)
+      update()
+      return
+    }
     unconfirmedLocalWrites.set(key, { value })
     schedule(options.delayMs ?? 150)
     update()
@@ -127,6 +157,7 @@ export function createUiState(
       const rev = revision(next)
       if (rev < newestStreamRevision) return
       streamSnapshot = next
+      tabOnlyAtLoad ??= Object.fromEntries(Object.entries(next).filter(([key]) => tabOnly(key)))
       newestStreamRevision = rev
       awaitingRestartSnapshot = false
       releaseStreamConfirmedWrites()

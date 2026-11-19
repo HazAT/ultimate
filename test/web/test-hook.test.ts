@@ -27,7 +27,9 @@ function setup() {
     fetch,
   })
   store.start()
-  const hook = createTestHook(store, createApi(store, { fetch }))
+  const hook = createTestHook(store, createApi(store, { fetch }), () => {
+    throw new Error('no bridge in this test')
+  })
   const main = sources[0]
   main.open()
   server.of()!.send('view', {

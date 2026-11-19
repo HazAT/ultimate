@@ -110,7 +110,11 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts'])
+const rendererBridges = new Set([
+  'web/src/sdk/island.tsx',
+  'web/src/sdk/solid.ts',
+  'web/src/sdk/agent.ts',
+])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
 const solidSdk = 'web/src/sdk/solid.ts'
 const reactSdk = (module: string) => {
