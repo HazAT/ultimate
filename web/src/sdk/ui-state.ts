@@ -23,6 +23,7 @@ const revision = (values: UiValues) => {
 }
 
 const movesTheUsersView = (key: string) => key.startsWith('shell.')
+const KEEPALIVE_BYTES = 60 * 1024
 
 export function tabWrites(tab: { driven: boolean; detached: boolean; webdriver: boolean }) {
   const automatedWithoutDrivenFlag = tab.webdriver && !tab.driven
@@ -32,8 +33,14 @@ export function tabWrites(tab: { driven: boolean; detached: boolean; webdriver: 
   }
 }
 
+export type UiWrite = (
+  change: UiUpdateRequest,
+  who: UiWho,
+  options?: { keepalive: boolean },
+) => Promise<UiUpdateResponse>
+
 export function createUiState(
-  write: ((change: UiUpdateRequest, who: UiWho) => Promise<UiUpdateResponse>) | undefined,
+  write: UiWrite | undefined,
   options: {
     delayMs?: number
     onError?: (error: unknown) => void
@@ -50,13 +57,13 @@ export function createUiState(
 
   let lastSentBatch = 0
   let newestStreamRevision = 0
-  let batchInFlight = false
+  let inFlight: Promise<void> | undefined
 
   let serverProcessEpoch = 0
 
   let awaitingRestartSnapshot = false
   let cancelSend: Cancel | undefined
-  const writing = new Set<Promise<unknown>>()
+  const unsent = () => [...unconfirmedLocalWrites].filter(([, entry]) => entry.batch === undefined)
 
   function update() {
     const next: Record<string, JsonValue> = { ...streamSnapshot }
@@ -85,32 +92,31 @@ export function createUiState(
   function schedule(delay: number) {
     cancelSend ??= deadline(delay, () => {
       cancelSend = undefined
-      send(false)
+      inFlight ??= send()
     })
   }
 
-  function send(allowConcurrentBatchOnPageExit: boolean) {
-    if (!write || (batchInFlight && !allowConcurrentBatchOnPageExit)) return false
+  function send(keepaliveBudget?: { bytes: number }): Promise<void> | undefined {
+    const pending = unsent()
+    if (!write || pending.length === 0) return undefined
     const change: UiUpdateRequest = { set: {}, delete: [] }
-    const batch = lastSentBatch + 1
-    const who = [...unconfirmedLocalWrites.values()].find((entry) => entry.batch === undefined)?.who
-    if (!who) return false
-    for (const [, entry] of unconfirmedLocalWrites)
-      if (entry.batch === undefined && entry.who === who) entry.batch = batch
-    for (const [key, entry] of unconfirmedLocalWrites) {
-      if (entry.batch !== batch) continue
+    const batch = ++lastSentBatch
+    const who = pending[0][1].who
+    for (const [key, entry] of pending) {
+      if (entry.who !== who) break
+      entry.batch = batch
       if (entry.value === undefined) change.delete?.push(key)
       else if (change.set) change.set[key] = entry.value
     }
-    lastSentBatch = batch
-    batchInFlight = true
+    const bytes = new TextEncoder().encode(JSON.stringify(change)).byteLength
+    const keepalive = keepaliveBudget !== undefined && bytes <= keepaliveBudget.bytes
+    if (keepalive) keepaliveBudget.bytes -= bytes
     const sentInServerEpoch = serverProcessEpoch
     const settled = () => {
-      batchInFlight = false
-      if ([...unconfirmedLocalWrites.values()].some((entry) => entry.batch === undefined))
-        schedule(0)
+      if (inFlight === sent) inFlight = undefined
+      if (unsent().length > 0) schedule(0)
     }
-    const sent = write(change, who).then(
+    const sent: Promise<void> = write(change, who, keepalive ? { keepalive } : undefined).then(
       ({ rev }) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
         for (const entry of unconfirmedLocalWrites.values())
@@ -128,9 +134,7 @@ export function createUiState(
         options.onError?.(error)
       },
     )
-    writing.add(sent)
-    void sent.finally(() => writing.delete(sent))
-    return true
+    return sent
   }
   function set(key: string, value: JsonValue | undefined) {
     if (same(values[key], value)) return
@@ -139,6 +143,7 @@ export function createUiState(
       update()
       return
     }
+    unconfirmedLocalWrites.delete(key)
     unconfirmedLocalWrites.set(key, { value, who: writerNow() })
     schedule(options.delayMs ?? 150)
     update()
@@ -171,19 +176,28 @@ export function createUiState(
     restarted() {
       serverProcessEpoch++
       newestStreamRevision = 0
-      batchInFlight = false
+      inFlight = undefined
       awaitingRestartSnapshot = true
       for (const entry of unconfirmedLocalWrites.values())
         if (entry.batch !== undefined) entry.rev = 0
-      if ([...unconfirmedLocalWrites.values()].some((entry) => entry.batch === undefined))
-        schedule(0)
+      if (unsent().length > 0) schedule(0)
     },
 
-    flush: () => {
+    async flush({ keepalive = false } = {}) {
       cancelSend?.()
       cancelSend = undefined
-      while (send(true));
-      return Promise.all(writing).then(() => undefined)
+      if (!write) return
+      if (keepalive) {
+        const budget = { bytes: KEEPALIVE_BYTES }
+        const leaving = inFlight ? [inFlight] : []
+        for (let sent = send(budget); sent; sent = send(budget)) leaving.push(sent)
+        await Promise.all(leaving)
+        return
+      }
+      while (inFlight || unsent().length > 0) {
+        inFlight ??= send()
+        await inFlight
+      }
     },
   }
 }

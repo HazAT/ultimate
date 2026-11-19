@@ -2,6 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
 import { ActionError, createApi } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
+import { createUiState } from '../../web/src/sdk/ui-state.ts'
 import { actionRef } from '../../shared/extension-api.ts'
 
 function setup(respond: (url: string, init: RequestInit) => Response | Promise<Response>) {
@@ -55,6 +56,16 @@ describe('extension actions', () => {
       ActionError,
     )
     await expect(unavailable.api.updateUi({ set: {} })).rejects.toMatchObject({ status: 503 })
+  })
+
+  it('sends a page-exit UI-state flush to /api/ui with keepalive', async () => {
+    const { api, fetch } = setup(() => json(200, { ok: true, rev: 1 }))
+    const state = createUiState(api.updateUi)
+    state.set('ext.digest.on', true)
+    await state.flush({ keepalive: true })
+    expect(fetch.mock.calls.map(([url, init]) => [url, init?.keepalive])).toEqual([
+      ['/api/ui', true],
+    ])
   })
 
   it('passes an abort through as an abort, not an action failure', async () => {

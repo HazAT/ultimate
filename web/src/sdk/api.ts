@@ -163,8 +163,8 @@ export function createApi(store: Store, options: { fetch?: typeof fetch; driven?
       }
     },
 
-    updateUi: (change: UiUpdateRequest, who?: UiWho) =>
-      post<UiUpdateResponse>('/api/ui', change, { who }),
+    updateUi: (change: UiUpdateRequest, who?: UiWho, exit?: { keepalive: boolean }) =>
+      post<UiUpdateResponse>('/api/ui', change, { who, ...exit }),
   }
 }
 export type Api = ReturnType<typeof createApi>

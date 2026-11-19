@@ -340,6 +340,62 @@ describe('durable UI state', () => {
     })
   })
 
+  it('never sends past an outstanding batch: a flush waits for it, so the server sees A before B', async () => {
+    const { state, requests, commit, ack, start } = setup()
+    start({ panel: 'start' })
+    state.set('panel', 'A')
+    await wait()
+    expect(requests).toHaveLength(1)
+    state.set('panel', 'B')
+    const flushed = state.flush()
+    await wait()
+    expect(requests).toHaveLength(1)
+    const first = commit(0)
+    ack(0)
+    await wait(0)
+    expect(requests.map((request) => request.change.set)).toEqual([{ panel: 'A' }, { panel: 'B' }])
+    const second = commit(1)
+    ack(1)
+    await flushed
+    state.receive(first)
+    state.receive(second)
+    expect(state.get('panel')).toBe('B')
+  })
+
+  it('sends one writer’s run of edits at a time, in the order they were made', async () => {
+    const { state, requests, commit, ack } = setup()
+    state.set('a', 1)
+    writingAs('agent', () => state.set('b', 2))
+    state.set('c', 3)
+    const flushed = state.flush()
+    for (let index = 0; index < 3; index++) {
+      await wait(0)
+      expect(requests).toHaveLength(index + 1)
+      commit(index)
+      ack(index)
+    }
+    await flushed
+    expect(requests.map((request) => request.change.set)).toEqual([{ a: 1 }, { b: 2 }, { c: 3 }])
+  })
+
+  it('sends what is left with keepalive when the page goes, within keepalive’s 64 KB', async () => {
+    const writes: [UiUpdateRequest, { keepalive: boolean } | undefined][] = []
+    const state = createUiState(
+      async (change, _who, options) => {
+        writes.push([change, options])
+        return { ok: true, rev: writes.length }
+      },
+      { delayMs: 5 },
+    )
+    state.set('ext.digest.on', true)
+    writingAs('agent', () => state.set('ext.notes.text', 'x'.repeat(70 * 1024)))
+    await state.flush({ keepalive: true })
+    expect(writes.map(([change, options]) => [Object.keys(change.set ?? {}), options])).toEqual([
+      [['ext.digest.on'], { keepalive: true }],
+      [['ext.notes.text'], undefined],
+    ])
+  })
+
   it('sends each write with who made it, an agent’s and a person’s in separate requests', async () => {
     const writes: [UiUpdateRequest, string][] = []
     const state = createUiState(
