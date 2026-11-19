@@ -9,7 +9,7 @@ import { EventFeed } from '../../../../server/events.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { ChangedEvent } from '../../../../shared/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import { fauxServer, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -147,19 +147,27 @@ it('sends a final keypress’s UI-state write, with its event, before it closes 
   ])
 })
 
-it('sends a final keypress’s UI-state write on pagehide when the page goes', async () => {
-  const { drive, recorded, uiState } = await serve()
-  await drive([
+it('sends a final keypress’s UI-state write on pagehide in one keepalive request, before the page goes', async () => {
+  const { drive } = await serve()
+  const value = await drive([
     { ui: 'snapshot' },
+    {
+      eval: "(() => { const sent = []; const send = window.fetch; window.fetch = (url, init) => { if (String(url).endsWith('/api/ui')) sent.push({ keepalive: init?.keepalive === true, body: JSON.parse(init.body) }); return send(url, init) }; window.exitSent = sent; return true })()",
+    },
     { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
     { press: ' ' },
     { wait: '[aria-label="Weekly digest"][aria-checked="true"]' },
-    { eval: "document.documentElement.dataset.left = ''; location.href = '/'" },
-    { wait: 'html:not([data-left]) [aria-label="Weekly digest"]' },
+    {
+      eval: "(() => { window.exitSent.length = 0; dispatchEvent(new PageTransitionEvent('pagehide')); return window.exitSent })()",
+    },
   ])
-  await until(async () => (await uiState())['ext.digest.digest'] === true)
-  expect(await recorded()).toEqual([
-    expect.objectContaining({ key: 'ext.digest.digest', value: true, source: 'person' }),
+  expect(value(6)).toEqual([
+    {
+      keepalive: true,
+      body: expect.objectContaining({
+        ops: expect.arrayContaining([{ key: 'ext.digest.digest', value: true, who: 'person' }]),
+      }),
+    },
   ])
 })
 
