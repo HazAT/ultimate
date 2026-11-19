@@ -8,6 +8,7 @@ export const median = (values: number[]) => {
 export function runsFlag(argv: string[]) {
   const index = argv.indexOf('--runs')
   const runs = index < 0 ? 3 : Number(argv[index + 1])
-  if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs takes a whole number above 0')
+  if (!Number.isSafeInteger(runs) || runs < 1)
+    throw new Error('--runs takes a whole number above 0')
   return runs
 }

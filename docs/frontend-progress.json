@@ -2314,9 +2314,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 130,
+              "kb": 131,
               "tokens": 3461,
-              "ms": 309,
+              "ms": 239,
               "ok": true
             },
             "ui": {
@@ -2325,7 +2325,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 292,
-              "ms": 113,
+              "ms": 100,
               "ok": true
             }
           },
@@ -2336,7 +2336,7 @@
               "screenshots": 2,
               "kb": 138,
               "tokens": 3461,
-              "ms": 221,
+              "ms": 195,
               "ok": true
             },
             "ui": {
@@ -2345,7 +2345,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 427,
-              "ms": 188,
+              "ms": 167,
               "ok": true
             }
           },
@@ -2356,7 +2356,7 @@
               "screenshots": 2,
               "kb": 146,
               "tokens": 3459,
-              "ms": 172,
+              "ms": 182,
               "ok": true
             },
             "ui": {
@@ -2365,7 +2365,7 @@
               "screenshots": 0,
               "kb": 1,
               "tokens": 288,
-              "ms": 96,
+              "ms": 77,
               "ok": true
             }
           }

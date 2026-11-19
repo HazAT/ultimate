@@ -2,8 +2,10 @@ import { constants } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join, relative, resolve } from 'node:path'
+import { apply } from '@earendil-works/chord/delta'
+import type { JsonObject } from '@earendil-works/pi-durable'
 import { execFile } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
@@ -38,17 +40,36 @@ const streamChunks = Array.from(
 const streamBeatMs = 60
 const readyMs = 120_000
 
+const scratch = await mkdtemp(join(tmpdir(), 'frontend-progress-'))
+const outsideHome = relative(homedir(), scratch).startsWith('..')
+if (!outsideHome) {
+  await rm(scratch, { recursive: true, force: true })
+  throw new Error(`${scratch} is inside ${homedir()}; point TMPDIR elsewhere`)
+}
+const cleanEnv = (extra: Record<string, string>) => ({
+  PATH: [dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
+  HOME: join(scratch, 'home'),
+  TMPDIR: scratch,
+  ...extra,
+})
+
 const run = promisify(execFile)
 const node = (script: string, scriptArgs: string[], cwd = here) =>
   run(process.execPath, [script, ...scriptArgs], {
     cwd,
+    env: cleanEnv(cwd === tree ? { NODE_ENV: 'production' } : {}),
     maxBuffer: 64 * 1024 * 1024,
     timeout: 600_000,
   }).then(({ stdout }) => stdout)
 
-const commit = await git(tree, 'rev-parse', '--short=8', 'HEAD')
-if (await git(tree, 'status', '--porcelain', '--untracked-files=no'))
-  throw new Error(`${tree} has uncommitted changes; measure a clean checkout`)
+const full = await git(tree, 'rev-parse', 'HEAD')
+const unchanged = async () =>
+  (await git(tree, 'rev-parse', 'HEAD')) === full && !(await git(tree, 'status', '--porcelain'))
+if (!(await unchanged())) {
+  await rm(scratch, { recursive: true, force: true })
+  throw new Error(`${tree} has uncommitted or untracked changes; measure a clean checkout`)
+}
+const commit = full.slice(0, 8)
 const committedAt = Number(await git(tree, 'log', '-1', '--format=%ct'))
 
 const chunk = (delta: object, finish: string | null = null) =>
@@ -108,26 +129,24 @@ async function writeAgentDir(dir: string, port: number) {
   )
 }
 
-function assertPaused(database: string) {
+function assertManualPause(database: string) {
   const db = new DatabaseSync(database, { readOnly: true })
   try {
     const rows = db
       .prepare(
         `SELECT r.kind, r.content FROM document_revisions r JOIN documents d ON d.id = r.document_id
          WHERE d.kind = '"pause.state"' AND d.scope_kind = 'conversation' AND d.owner_id = 1
-           AND d.retired_at IS NULL ORDER BY r.seq`,
+           AND d.family = 0 AND d.retired_at IS NULL ORDER BY r.seq`,
       )
       .all() as { kind: string; content: string }[]
-    let paused = false
-    for (const { kind, content } of rows) {
-      const value = JSON.parse(content) as { paused?: boolean } | [string, string[], unknown][]
-      if (kind === 'base') paused = (value as { paused?: boolean }).paused === true
-      else
-        for (const [op, path, set] of value as [string, string[], unknown][])
-          if (path[0] === 'paused') paused = op === 's' && set === true
-    }
-    if (!paused)
-      throw new Error(`${database} is not paused: copy it with copy-paused.ts before measuring`)
+    let state: JsonObject = {}
+    for (const { kind, content } of rows)
+      state =
+        kind === 'base' ? (JSON.parse(content) as JsonObject) : apply(state, JSON.parse(content))
+    if (state.paused !== true || state.manual !== true)
+      throw new Error(
+        `${database} has no manual pause: copy it with copy-paused.ts before measuring`,
+      )
   } finally {
     db.close()
   }
@@ -143,8 +162,7 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
   )
   const group = spawnGroup(process.execPath, ['server/main.ts'], {
     cwd: tree,
-    env: {
-      PATH: [dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
+    env: cleanEnv({
       HOME: userHome,
       ULTIMATE_HOME: home,
       ULTIMATE_PROJECT: tree,
@@ -154,8 +172,10 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
       ULTIMATE_MODEL: 'scripted/scripted-1',
       PI_CODING_AGENT_DIR: agentDir,
       TAILSCALE_COMMAND: join(home, 'no-tailscale'),
-    },
+    }),
   })
+  const interrupted = () => void stopGroup(group.child.pid!, { leader: group })
+  process.once('SIGINT', interrupted)
   try {
     let output = ''
     const ready = new Promise<string>((serving, failed) => {
@@ -176,6 +196,7 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
     )
     return await use(url)
   } finally {
+    process.off('SIGINT', interrupted)
     if (group.child.pid) await stopGroup(group.child.pid, { leader: group })
   }
 }
@@ -235,39 +256,46 @@ function measurePreviews(home: string, agentDir: string) {
   )
 }
 
-const weight = JSON.parse(await node(join(here, 'scripts/frontend-weight.ts'), [], tree)) as {
+type Weight = {
   rev: string
   dirty: boolean
   lines: { frontend: number; solid: number }
   perExtension: Record<string, { react: number; solid: number }>
   bundleKb: { jsGzip: number; entryAssetsGzip: number }
 }
-const scratch = await mkdtemp(join(tmpdir(), 'frontend-progress-'))
+let weight: Weight | undefined
 const model = scriptedModel()
 const measured: Record<string, unknown> = {}
+const stopOnInterrupt = () => {
+  process.exitCode = 130
+  model.close()
+}
+process.once('SIGINT', stopOnInterrupt)
 try {
-  await new Promise<void>((listening) => model.listen(0, '127.0.0.1', listening))
+  weight = JSON.parse(await node(join(here, 'scripts/frontend-weight.ts'), [], tree)) as Weight
+  await new Promise<void>((listening, failed) => {
+    model.once('error', failed)
+    model.listen(0, '127.0.0.1', listening)
+  })
   const agentDir = join(scratch, 'pi')
   await writeAgentDir(agentDir, (model.address() as AddressInfo).port)
   if (only.has('switch') && snapshot) {
     const home = join(scratch, 'switch')
     await mkdir(home)
     await copyFile(snapshot, join(home, 'state.sqlite'), constants.COPYFILE_FICLONE)
-    assertPaused(join(home, 'state.sqlite'))
+    assertManualPause(join(home, 'state.sqlite'))
     measured.switch = await measureSwitch(home, agentDir)
   }
   if (only.has('stream')) measured.stream = await measureStream(join(scratch, 'stream'), agentDir)
   if (only.has('previews'))
     measured.previews = { scenarios: await measurePreviews(join(scratch, 'previews'), agentDir) }
 } finally {
-  await new Promise<void>((closed) => model.close(() => closed()))
+  process.off('SIGINT', stopOnInterrupt)
+  if (model.listening) await new Promise<void>((closed) => model.close(() => closed()))
   await rm(scratch, { recursive: true, force: true })
 }
-if (
-  weight.dirty ||
-  !commit.startsWith(weight.rev) ||
-  (await git(tree, 'rev-parse', '--short=8', 'HEAD')) !== commit
-)
+if (process.exitCode === 130 || !weight) throw new Error('Interrupted; nothing written')
+if (weight.dirty || !full.startsWith(weight.rev) || !(await unchanged()))
   throw new Error(`${tree} moved or changed while it was measured; nothing written`)
 const entry = {
   commit,

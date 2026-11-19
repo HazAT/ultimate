@@ -1,7 +1,10 @@
 import { chromium } from 'playwright-core'
 import type { Browser, Page } from 'playwright-core'
 import { browserBinary } from '../extensions/browser/server.ts'
+import { SetAction, StateAction as WarmStateAction } from '../extensions/keep-warm/refs.ts'
+import { PlayAction, StateAction as PauseStateAction } from '../extensions/pause/refs.ts'
 import { meansNone } from '../lib/errors.ts'
+import type { ActionRef } from '../shared/extension-api.ts'
 import { median, runsFlag } from './measure.ts'
 
 type Step =
@@ -13,7 +16,8 @@ type Scenario = {
   selectors: Call[]
   ui: Call[]
   done: (page: Page) => Promise<unknown>
-  restore: (base: string) => Promise<unknown>
+  ready: () => Promise<void>
+  restore: () => Promise<unknown>
 }
 export type Measured = {
   calls: number
@@ -34,14 +38,18 @@ const bytesPerToken = 4
 const pixelsPerImageToken = 750
 const stateMs = 5000
 
-const action = (extension: string, name: string, args: unknown) =>
-  fetch(`${base}/api/extensions/${extension}/actions/${name}`, {
+const action = async <Args, Result>(ref: ActionRef<Args, Result>, args: Args) => {
+  const response = await fetch(`${base}/api/extensions/${ref.extension}/actions/${ref.name}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: base },
     body: JSON.stringify({ args }),
-  }).then(async (response) => {
-    if (!response.ok) throw new Error(`${extension}.${name}: ${await response.text()}`)
   })
+  if (!response.ok) throw new Error(`${ref.extension}.${ref.name}: ${await response.text()}`)
+  return ((await response.json()) as { result: Result }).result
+}
+const expect = async (holds: Promise<boolean>, what: string) => {
+  if (!(await holds)) throw new Error(`Benchmark needs ${what} before it starts`)
+}
 
 const popover = '[data-slot="popover-content"], [role="dialog"]'
 const scenarios: Record<string, Scenario> = {
@@ -72,7 +80,12 @@ const scenarios: Record<string, Scenario> = {
       page.waitForSelector(`:is(${popover}) [role="switch"][aria-checked="false"]`, {
         timeout: stateMs,
       }),
-    restore: () => action('keep-warm', 'set', { on: true }),
+    ready: () =>
+      expect(
+        action(WarmStateAction, null).then((state) => state.on),
+        'keep-warm on',
+      ),
+    restore: () => action(SetAction, { on: true }),
   },
   pause: {
     selectors: [
@@ -98,7 +111,12 @@ const scenarios: Record<string, Scenario> = {
       },
     ],
     done: (page) => page.waitForSelector('[data-pause="paused"]', { timeout: stateMs }),
-    restore: () => action('pause', 'play', null),
+    ready: () =>
+      expect(
+        action(PauseStateAction, null).then((state) => !state.paused),
+        'a host that is not paused',
+      ),
+    restore: () => action(PlayAction, null),
   },
   'setup-read': {
     selectors: [
@@ -113,6 +131,7 @@ const scenarios: Record<string, Scenario> = {
       },
     ],
     done: (page) => page.waitForSelector(`:is(${popover}) :text("Decide")`, { timeout: stateMs }),
+    ready: async () => undefined,
     restore: async () => undefined,
   },
 }
@@ -142,6 +161,7 @@ async function once(browser: Browser, calls: Call[], scenario: Scenario): Promis
   let bytes = 0
   let imageBytes = 0
   let imageTokens = 0
+  await scenario.ready()
   try {
     for (const [index, call] of calls.entries()) {
       const { page, close } = await fresh(browser)
@@ -177,7 +197,7 @@ async function once(browser: Browser, calls: Call[], scenario: Scenario): Promis
       }
     }
   } finally {
-    await scenario.restore(base)
+    await scenario.restore()
   }
   return {
     ...measured,

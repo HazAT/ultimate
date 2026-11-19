@@ -152,6 +152,11 @@ await browser.close()
 
 const quantile = (values: number[], at: number) =>
   values.toSorted((a, b) => a - b)[Math.floor((values.length - 1) * at)]
+const median = (values: number[]) => {
+  const sorted = values.toSorted((a, b) => a - b)
+  const half = sorted.length / 2
+  return Number.isInteger(half) ? (sorted[half - 1] + sorted[half]) / 2 : sorted[Math.floor(half)]
+}
 const byEvent = Map.groupBy(events, (event) => event.ev)
 for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].length)) {
   const task = list.map((event) => event.task)
@@ -168,9 +173,9 @@ for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].leng
     JSON.stringify({
       ev,
       n: list.length,
-      taskMs: { median: +quantile(task, 0.5).toFixed(1), p95: +quantile(task, 0.95).toFixed(1) },
+      taskMs: { median: +median(task).toFixed(1), p95: +quantile(task, 0.95).toFixed(1) },
       renders: {
-        median: quantile(renders, 0.5),
+        median: median(renders),
         p95: quantile(renders, 0.95),
         max: Math.max(...renders),
       },
