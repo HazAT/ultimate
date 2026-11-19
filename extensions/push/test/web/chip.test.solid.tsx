@@ -5,10 +5,32 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
-const harness = vi.hoisted(() => ({
-  sources: [] as FakeSource[],
-  actions: [] as { name: string; args: unknown; source: string | null }[],
-}))
+const harness = vi.hoisted(() => {
+  const endpoint = 'https://push.example.test/device'
+  const unsubscribe = vi.fn<() => Promise<boolean>>(async () => true)
+  const subscription = { endpoint, unsubscribe, toJSON: () => ({ endpoint }) }
+  const pushManager = { getSubscription: async () => subscription }
+  class Registration {
+    get pushManager() {
+      return pushManager
+    }
+    async getNotifications() {
+      return []
+    }
+  }
+  vi.stubGlobal('ServiceWorkerRegistration', Registration)
+  vi.stubGlobal('Notification', { permission: 'granted' })
+  Object.defineProperty(navigator, 'serviceWorker', {
+    configurable: true,
+    value: Object.assign(new EventTarget(), { register: async () => new Registration() }),
+  })
+  return {
+    endpoint,
+    unsubscribe,
+    sources: [] as FakeSource[],
+    actions: [] as { name: string; args: unknown; source: string | null }[],
+  }
+})
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
@@ -44,11 +66,11 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { store } from '../../../../web/src/sdk/client.ts'
+import { Bell, Pusher } from '../../notifications.solid.tsx'
 
 const agent = createAgent()
 afterEach(() => {
   store.stop()
-  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -60,28 +82,7 @@ async function act(step: Parameters<typeof agent.act>[0]['steps'][number]) {
 }
 
 it('lets an agent open notifications and unsubscribe this device', async ({ onTestFinished }) => {
-  const endpoint = 'https://push.example.test/device'
-  const unsubscribe = vi.fn<() => Promise<boolean>>(async () => true)
-  const subscription = { endpoint, unsubscribe, toJSON: () => ({ endpoint }) }
-  const pushManager = { getSubscription: async () => subscription }
-  class Registration {
-    get pushManager() {
-      return pushManager
-    }
-    async getNotifications() {
-      return []
-    }
-  }
-  vi.stubGlobal('ServiceWorkerRegistration', Registration)
-  vi.stubGlobal('Notification', { permission: 'granted' })
-  Object.defineProperty(navigator, 'serviceWorker', {
-    configurable: true,
-    value: Object.assign(new EventTarget(), { register: async () => new Registration() }),
-  })
-  onTestFinished(() => {
-    Reflect.deleteProperty(navigator, 'serviceWorker')
-  })
-  const { Bell, Pusher } = await import('../../notifications.solid.tsx')
+  const { endpoint, unsubscribe } = harness
   vi.useFakeTimers()
   store.start()
   harness.sources[0].open()

@@ -11,7 +11,7 @@ const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
 const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
 const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
-const maxWorkers = 16
+const maxWorkers = 8
 const solidRules = Object.fromEntries(
   Object.entries(solidV2Strict.rules as Record<string, number>)
     .filter(([rule, level]) => rule.startsWith('solid/') && level > 0)

@@ -1450,7 +1450,7 @@ it.concurrent('reruns only the failing command of a group, reports its output tw
   await f.service.submit(id, 'None', context)
   const reports = await submitted(f, id)
   expect(reports.at(-1)).toContain('landed as')
-  expect(reports.at(-1)).toContain('Flaky: if [')
+  expect(reports.at(-1)).toMatch(/Flaky: if \[.* · exit 1\\n/)
   const flaky = (await landerLog(f)).log
   expect(flaky.findLast((line) => line.check)!.check).toMatchObject({
     result: 'flaky',
@@ -1462,7 +1462,7 @@ it.concurrent('reruns only the failing command of a group, reports its output tw
   })
   expect(flaky.at(-1)).toMatchObject({
     outcome: 'landed',
-    flaky: [expect.stringContaining('if [')],
+    flaky: [expect.stringMatching(/^if \[.* · exit 1$/)],
   })
   // Every run is one event, reruns included: the failing submission's, then the flaky one's.
   const checks = await f.host.eventLog.recent({ events: [CheckRan], limit: 20 })
@@ -1719,7 +1719,7 @@ it.concurrent('resumes checks after a restart without rerunning passed ones and 
   const [report] = await submitted(f, id)
   expect(await runs()).toBe('first\nsecond\nsecond\nsecond\n')
   expect(report).toContain('landed as')
-  expect(report).toContain(`Flaky: echo second`)
+  expect(report).toMatch(/Flaky: echo second.* · exit 1\\n/)
   expect(await git(f.projectRoot, 'rev-parse', 'main')).toBe(merged)
 })
 it.concurrent('starts a lander for queued submissions left by a lander task that ended', async () => {

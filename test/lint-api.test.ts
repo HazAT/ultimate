@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { parseSync } from 'vite-plus'
 import { expect, it } from 'vitest'
 import ultimate from '../lint/ultimate.ts'
@@ -426,12 +426,12 @@ import { Button } from '@/components/ui/button'`
 })
 
 it('resolves a directory import to its index file, and .ts before .tsx as Vite does', async () => {
-  const folder = await temp('lint-resolve-', resolve('extensions'))
+  const folder = await temp('lint-resolve-')
   await mkdir(join(folder, 'card'))
   await writeFile(join(folder, 'card/index.tsx'), '')
   await writeFile(join(folder, 'format.ts'), '')
   await writeFile(join(folder, 'format.tsx'), '')
-  const file = join(relative('.', folder), 'panel.solid.tsx')
+  const file = join(folder, 'panel.solid.tsx')
   const source = `/** @jsxImportSource @solidjs/web */
 import { Card } from './card'
 import { format } from './format'`
