@@ -3,9 +3,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App.tsx'
 import { loadExtensions } from './extensions.ts'
-import { store } from './sdk/client.ts'
+import { store, uiAgent } from './sdk/client.ts'
 
 store.start()
+uiAgent.bridge()
 function preventDroppedFileNavigation(event: DragEvent) {
   if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
 }

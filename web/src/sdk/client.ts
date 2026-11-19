@@ -7,6 +7,7 @@ import { linkedConversation } from './link.ts'
 import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
+import { createUiAgent } from './agent.ts'
 import type { TestHook } from './test-hook.ts'
 
 declare global {
@@ -14,7 +15,7 @@ declare global {
     ultimate?: TestHook
   }
 }
-import { createUiState } from './ui-state.ts'
+import { createUiState, tabWrites } from './ui-state.ts'
 
 const initialUrl = new URL(location.href)
 let initialUrlSelectionResolved = false
@@ -48,18 +49,25 @@ export const api = createApi(store)
 
 export const reads = createReads(api, store)
 
-const automatedOrDetachedTab =
-  navigator.webdriver || sessionStorage.getItem('ultimate.detached') === '1'
+const driven = sessionStorage.getItem('ultimate.driven') === '1'
+const { shares: followsSharedUiState, ...tabOnly } = tabWrites({
+  driven,
+  detached: sessionStorage.getItem('ultimate.detached') === '1',
+  webdriver: navigator.webdriver,
+})
 
-export const uiState = createUiState(automatedOrDetachedTab ? undefined : api.updateUi, {
+export const uiState = createUiState(followsSharedUiState ? api.updateUi : undefined, {
   onError: (error) =>
     store.notify({
       level: 'error',
       message: `UI state not saved: ${String(error)}`,
     }),
+  ...tabOnly,
 })
 
-if (sessionStorage.getItem('ultimate.driven') === '1') window.ultimate = createTestHook(store, api)
+export const uiAgent = createUiAgent(store, api, driven)
+
+if (driven) window.ultimate = createTestHook(store, api, uiAgent.bridge)
 
 export const registry = createRegistry()
 
@@ -123,7 +131,7 @@ store.subscribe(() => {
       if (linkedConversation(initialUrl, navigation?.type)) uiState.set('shell.surface', HOME)
       initialUrlSelectionResolved = true
       followSelection()
-    } else if (!automatedOrDetachedTab) uiState.receive(shared)
+    } else if (followsSharedUiState) uiState.receive(shared)
   }
 
   const { view, requested } = store.getState()
@@ -171,7 +179,10 @@ addEventListener('popstate', () => {
     replaceSelection = false
   }
 })
-addEventListener('pagehide', () => uiState.flush())
+addEventListener('pagehide', () => {
+  uiState.flush()
+  uiAgent.flush()
+})
 
 addEventListener('unhandledrejection', (event) => {
   if (!(event.reason instanceof ActionError)) return

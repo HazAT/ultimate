@@ -6,6 +6,7 @@ import { deadline } from '../../../lib/timers.ts'
 import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
+import type { UiAgent } from './agent.ts'
 import type { State, Store } from './store.ts'
 
 export type Condition =
@@ -27,7 +28,7 @@ interface Sent {
 
 const SENT_KEY = 'ultimate.sent'
 
-export function createTestHook(store: Store, api: Api) {
+export function createTestHook(store: Store, api: Api, bridge: () => UiAgent) {
   const saved = JSON.parse(sessionStorage.getItem(SENT_KEY) ?? '{"sent":[]}') as {
     sent: [ConversationId, Sent][]
     last?: ConversationId
@@ -101,6 +102,23 @@ export function createTestHook(store: Store, api: Api) {
 
   return {
     api,
+
+    ui: {
+      async snapshot() {
+        await firstSnapshotReady()
+        return bridge()
+          .snapshot()
+          .filter((component) => !component.offPage)
+      },
+      async query(input: Parameters<UiAgent['query']>[0]) {
+        await firstSnapshotReady()
+        return bridge().query(input)
+      },
+      async act(input: Parameters<UiAgent['act']>[0]) {
+        await firstSnapshotReady()
+        return bridge().act(input)
+      },
+    },
 
     async state() {
       await firstSnapshotReady()
