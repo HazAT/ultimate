@@ -64,7 +64,7 @@ export function Chip() {
               warm
             </StatusPopoverTrigger>
             <PopoverContent align="end" class="w-64 p-1 font-mono" side="top">
-              <label class="flex h-8 cursor-pointer items-center justify-between px-2 text-[12px]">
+              <label class="flex h-8 items-center justify-between px-2 text-[12px]">
                 Keep @ultimate warm
                 <Switch bind={[() => state().on, (on) => void toggle(on)]} />
               </label>

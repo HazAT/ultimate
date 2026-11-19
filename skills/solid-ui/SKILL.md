@@ -48,6 +48,9 @@ from `@lucide/solid`.
 - **Our theme, ui-sdk's states.** Style with our tokens (`text-muted-foreground`, `bg-muted`, `border-border/70`,
   `text-brand`) and ui-sdk's state attributes (`data-pressed:`, `data-checked:`, `data-open:`, `data-disabled:`), never
   inline styles for state. The UI stays dense and quiet, with `font-mono` for meta.
+- **The pointer cursor is a default.** `web/src/index.css` gives every clickable element (buttons, clickable roles,
+  links, labels of controls, `summary`, `select`) the pointer and a disabled one the default cursor; never add
+  `cursor-pointer` by hand.
 - **Name every control** with a visible label or `aria-label`: people using screen readers and agents both find
   controls by name.
 - **Say what agents may do**, as the ui-sdk skill's `references/agent-ready.md` describes:

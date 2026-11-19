@@ -40,7 +40,7 @@ function SegmentedControlItem(
     <SegmentedControlItemRoot
       {...rest}
       class={cn(
-        'flex h-6 cursor-pointer items-center gap-1 rounded-sm px-1.5 font-mono text-[11px] text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-accent data-checked:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-40',
+        'flex h-6 items-center gap-1 rounded-sm px-1.5 font-mono text-[11px] text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-accent data-checked:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-40',
         props.class,
       )}
     />

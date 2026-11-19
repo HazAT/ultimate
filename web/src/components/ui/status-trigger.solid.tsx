@@ -10,7 +10,7 @@ function StatusPopoverTrigger(props: ComponentProps<typeof PopoverTrigger> & { c
     <PopoverTrigger
       {...rest}
       class={cn(
-        '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground',
+        '-mx-1 flex items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground',
         props.class,
       )}
     />

@@ -179,6 +179,25 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Everything clickable shows the pointer; a disabled control keeps the default cursor. */
+  button,
+  [role='button'],
+  [role='checkbox'],
+  [role='switch'],
+  [role='tab'],
+  [role='menuitem'],
+  [role='option'],
+  [role='radio'],
+  a[href],
+  label[for],
+  label:has(button, input, select),
+  summary,
+  select {
+    cursor: pointer;
+  }
+  :is(button, [role], select):is(:disabled, [aria-disabled='true'], [data-disabled]) {
+    cursor: default;
+  }
   html {
     color-scheme: light;
   }
