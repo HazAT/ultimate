@@ -709,7 +709,7 @@ function CoordinatorPlan({
   const [focus, setFocus] = useState<DeepLinkFocus>()
   useEffect(() => {
     if (!request || plan === undefined) return
-    setExpanded(true)
+    writingAs('app', () => setExpanded(true))
     setFocus({ key: request.key })
     writingAs('app', settle)
   }, [request, plan, setExpanded, settle])
