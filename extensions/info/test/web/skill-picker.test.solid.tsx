@@ -55,7 +55,13 @@ it('lets an agent find a skill by its description and fill the composer with it'
   const container = renderSolid(() => (
     <ConversationScope value={conversation}>
       <button type="button">Open the palette</button>
-      <textarea aria-label="Composer" id="composer-input" />
+      <button type="button">Open it again</button>
+      <div inert>
+        <textarea aria-label="Composer" id="composer-input" />
+      </div>
+      <div data-composer-target>
+        <textarea aria-label="Side chat composer" />
+      </div>
       <SkillPicker />
     </ConversationScope>
   ))
@@ -92,6 +98,19 @@ it('lets an agent find a skill by its description and fill the composer with it'
   expect(getDraft(conversation).get().text).toBe('/skill:verify-ui ')
   expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
   expect(container.querySelector('[role="dialog"][data-open]')).toBeNull()
-  expect(document.activeElement?.id).toBe('composer-input')
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('Side chat composer')
+
+  const again = container.querySelectorAll('button')[1]
+  again.focus()
+  store.setUi({ dialogs: { [skillDialog]: true } })
+  flush()
+  await settle()
+  document.activeElement!.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+  )
+  flush()
+  await settle()
+  expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
+  expect(document.activeElement).toBe(again)
   store.stop()
 })

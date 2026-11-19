@@ -318,6 +318,8 @@ export function useCommands() {
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
 export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions
+/** The composer input a person can type into now, as a dialog's `finalFocus`: the main one or a side chat's. */
+export { uncoveredComposer } from './actions.ts'
 /** Replaces the draft in conversation `id`'s composer with `text`, as `fillComposer` from `@/sdk` does. */
 export { fillComposer } from '../app/drafts.ts'
 

@@ -13,7 +13,13 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { fillComposer, useConversationId, useDialog, useSystem } from '@/sdk/solid'
+import {
+  fillComposer,
+  uncoveredComposer,
+  useConversationId,
+  useDialog,
+  useSystem,
+} from '@/sdk/solid'
 
 export const skillDialog = 'info.skill'
 
@@ -30,14 +36,14 @@ export function SkillPicker() {
   }
   return (
     <Dialog
-      onOpenChange={(next) => {
-        if (next) chosen = false
-        setOpen(next)
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        if (isOpen) chosen = false
       }}
       open={open()}
     >
       <DialogContent
-        finalFocus={() => (chosen ? document.getElementById('composer-input') : undefined)}
+        finalFocus={() => (chosen ? uncoveredComposer() : undefined)}
         class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}
       >
