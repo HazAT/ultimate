@@ -3,7 +3,7 @@ import { For, Show } from 'solid-js'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
 import { ROOT, cn, useAction } from '@/sdk/solid'
 import { ProgressAction } from './refs.ts'
-import type { Entry, Live, Status } from './refs.ts'
+import type { Entry, Live, PreviewRun, PreviewWeek, Status } from './refs.ts'
 
 type Point = { label: string; value: number | null }
 type Metric = {
@@ -340,17 +340,152 @@ function Steps(props: { entries: Entry[] }) {
   )
 }
 
-function Previews() {
+function Run(props: { run: PreviewRun | null; base?: PreviewRun }) {
+  return (
+    <Show
+      fallback={
+        <td class="px-3 py-0.5 text-muted-foreground/50" colspan={4}>
+          no ui steps yet
+        </td>
+      }
+      when={props.run}
+    >
+      {(run) => (
+        <>
+          <td class="px-3 py-0.5 text-right tabular-nums">{run().calls}</td>
+          <td class="px-3 py-0.5 text-right tabular-nums">{run().screenshots}</td>
+          <td class="px-3 py-0.5 text-right tabular-nums">
+            {number(run().tokens)}
+            <Show when={props.base}>
+              {(base) => (
+                <span
+                  class={cn(
+                    'ml-1.5',
+                    run().tokens < base().tokens && 'text-emerald-600 dark:text-emerald-400',
+                    run().tokens > base().tokens && 'text-amber-700 dark:text-amber-300',
+                  )}
+                >
+                  {change(run().tokens, base().tokens)}
+                </span>
+              )}
+            </Show>
+          </td>
+          <td class={cn('px-3 py-0.5 text-right', !run().ok && 'text-red-500')}>
+            {run().ok ? 'ok' : 'failed'}
+          </td>
+        </>
+      )}
+    </Show>
+  )
+}
+
+function Usage(props: { weeks: PreviewWeek[] }) {
+  const max = () =>
+    Math.max(...props.weeks.map((week) => week.uiSteps + week.clickSteps + week.evalSteps), 1)
+  return (
+    <div class="space-y-1 px-3 py-2">
+      <div class="flex items-baseline gap-3 font-mono text-[11px]">
+        <span class="text-muted-foreground">browser steps per week, real use</span>
+        <span class="ml-auto flex items-center gap-1.5 text-muted-foreground">
+          <span class="size-2 rounded-sm bg-brand" /> ui
+        </span>
+        <span class="flex items-center gap-1.5 text-muted-foreground">
+          <span class="size-2 rounded-sm bg-muted-foreground/35" /> click
+        </span>
+        <span class="flex items-center gap-1.5 text-muted-foreground">
+          <span class="size-2 rounded-sm bg-muted-foreground/15" /> eval
+        </span>
+      </div>
+      <For each={props.weeks}>
+        {(week) => (
+          <div class="grid grid-cols-[5.5rem_minmax(0,1fr)_16rem] items-center gap-2 font-mono text-[11px]">
+            <span class="text-muted-foreground">{week.week}</span>
+            <div class="flex h-3 overflow-hidden rounded-sm">
+              <span class="bg-brand" style={{ width: `${(week.uiSteps / max()) * 100}%` }} />
+              <span
+                class="bg-muted-foreground/35"
+                style={{ width: `${(week.clickSteps / max()) * 100}%` }}
+              />
+              <span
+                class="bg-muted-foreground/15"
+                style={{ width: `${(week.evalSteps / max()) * 100}%` }}
+              />
+            </div>
+            <span class="text-right text-muted-foreground tabular-nums">
+              {week.conversations} conv · {number(week.browserCalls)} calls ·{' '}
+              {number(week.screenshots)} shots
+            </span>
+          </div>
+        )}
+      </For>
+    </div>
+  )
+}
+
+function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
+  const latest = () => props.entries.findLast((entry) => entry.previews)
+  const agent = () => props.entries.findLast((entry) => entry.previews?.agent)
   return (
     <div class="rounded-lg border border-border/70 bg-card/40">
-      <div class="border-b border-border/70 px-3 py-2">
+      <div class="flex items-baseline gap-3 border-b border-border/70 px-3 py-2 font-mono text-[11px]">
         <span class="section-label">Previews</span>
+        <span class="text-muted-foreground">
+          what an agent spends to check the UI: selectors and screenshots, or ui steps
+        </span>
+        <Show when={agent()}>
+          {(entry) => {
+            const run = () => entry().previews!.agent!
+            return (
+              <span class="ml-auto text-muted-foreground">
+                real agent at {entry().label}: {run().calls} calls · {run().screenshots} shots ·{' '}
+                {number(run().tokens)} tokens · {run().ok}/{run().runs} ok
+              </span>
+            )
+          }}
+        </Show>
       </div>
-      <p class="px-3 py-4 font-mono text-[11.5px] text-muted-foreground">
-        How efficient agent-driven browser previews are becoming: tool calls, screenshots, tokens
-        and success for `ui` steps against selector clicks, and a weekly trend of real use. Not
-        measured yet.
-      </p>
+      <Show
+        fallback={
+          <p class="px-3 py-4 font-mono text-[11.5px] text-muted-foreground">
+            Scripted preview tasks not measured yet.
+          </p>
+        }
+        when={latest()}
+      >
+        {(entry) => (
+          <table class="w-full font-mono text-[11.5px]">
+            <thead class="text-muted-foreground/70">
+              <tr>
+                <th class="px-3 py-1 text-left font-normal">task at {entry().label}</th>
+                <th class="px-3 py-1 text-right font-normal">calls</th>
+                <th class="px-3 py-1 text-right font-normal">shots</th>
+                <th class="px-3 py-1 text-right font-normal">tokens</th>
+                <th class="px-3 py-1 text-right font-normal">result</th>
+                <th class="px-3 py-1 text-right font-normal text-brand">ui calls</th>
+                <th class="px-3 py-1 text-right font-normal text-brand">shots</th>
+                <th class="px-3 py-1 text-right font-normal text-brand">tokens</th>
+                <th class="px-3 py-1 text-right font-normal">result</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={Object.entries(entry().previews!.scenarios)}>
+                {([name, scenario]) => (
+                  <tr class="border-t border-border/40">
+                    <td class="px-3 py-0.5">{name}</td>
+                    <Run run={scenario.selectors} />
+                    <Run base={scenario.selectors} run={scenario.ui} />
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        )}
+      </Show>
+      <Show when={props.weeks.length > 0}>
+        <div class="border-t border-border/70">
+          <Usage weeks={props.weeks} />
+        </div>
+      </Show>
     </div>
   )
 }
@@ -395,7 +530,7 @@ export function Progress() {
               <LinesBar entries={data().entries} />
               <Steps entries={data().entries} />
             </Show>
-            <Previews />
+            <Previews entries={data().entries} weeks={data().previewUsage} />
             <Extensions first={data().entries[0]} live={data().live} />
           </>
         )}

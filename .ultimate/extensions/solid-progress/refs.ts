@@ -18,7 +18,36 @@ export type Entry = {
   entryGzipKB: number | null
   switch: { cold: number; warm: number } | null
   stream: { median: number; p95: number; max: number; taskMs: number } | null
+  previews?: Previews | null
   coordinator?: number
+}
+
+/** One preview task's cost to the agent, medians of 3 fresh-page runs; `ok` when all 3 succeeded. */
+export type PreviewRun = {
+  calls: number
+  steps: number
+  screenshots: number
+  kb: number
+  tokens: number
+  ms: number
+  ok: boolean
+}
+
+/** Scripted preview tasks, old style (`selectors`) beside `ui` steps (null before they existed); `agent` a real worker. */
+export type Previews = {
+  scenarios: Record<string, { selectors: PreviewRun; ui: PreviewRun | null }>
+  agent: { runs: number; calls: number; screenshots: number; tokens: number; ok: number } | null
+}
+
+/** Real use of browser previews in one ISO week (Monday's date), from stored history. */
+export type PreviewWeek = {
+  week: string
+  conversations: number
+  browserCalls: number
+  uiSteps: number
+  clickSteps: number
+  evalSteps: number
+  screenshots: number
 }
 
 /** `react` while no Solid file exists, `solid` when every `.tsx` but `web.tsx` is Solid, `partly` between. */
@@ -28,7 +57,12 @@ export type Status = 'react' | 'partly' | 'solid'
 export type Live = { name: string; react: number; solid: number; status: Status }
 
 /** `entries` empty with `missing` set while the data file does not exist yet. */
-export type Progress = { entries: Entry[]; live: Live[]; missing?: string }
+export type Progress = {
+  entries: Entry[]
+  previewUsage: PreviewWeek[]
+  live: Live[]
+  missing?: string
+}
 
 /** No arguments → the series and the live split. */
 export const ProgressAction = actionRef<null, Progress>('solid-progress', 'progress')

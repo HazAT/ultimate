@@ -5,7 +5,7 @@ import { implementAction } from '../../../lib/actions.ts'
 import { isMissing, meansNone } from '../../../lib/errors.ts'
 import { git } from '../../../lib/git.ts'
 import { ProgressAction } from './refs.ts'
-import type { Entry, Live } from './refs.ts'
+import type { Entry, Live, PreviewWeek } from './refs.ts'
 
 export default defineExtension({ name: 'solid-progress' })
 
@@ -69,23 +69,33 @@ async function coordinators(root: string, commits: string[]) {
   return found.map((value) => (value && /^\d+$/.test(value) ? Number(value) : undefined))
 }
 
-async function series(root: string): Promise<Entry[] | undefined> {
+async function series(
+  root: string,
+): Promise<{ entries: Entry[]; previewUsage: PreviewWeek[] } | undefined> {
   const text = await readFile(join(root, DATA), 'utf8').catch((error: unknown) => {
     if (isMissing(error)) return undefined
     throw error
   })
   if (text === undefined) return undefined
-  const { entries } = JSON.parse(text) as { entries: Entry[] }
+  const { entries, previewUsage = [] } = JSON.parse(text) as {
+    entries: Entry[]
+    previewUsage?: PreviewWeek[]
+  }
   const ids = await coordinators(
     root,
     entries.map((entry) => entry.commit),
   )
-  return entries.map((entry, index) => ({ ...entry, coordinator: ids[index] }))
+  return {
+    entries: entries.map((entry, index) => ({ ...entry, coordinator: ids[index] })),
+    previewUsage,
+  }
 }
 
 export const actions = {
   progress: implementAction(ProgressAction, async (_args, { host }) => {
-    const [entries, split] = await Promise.all([series(host.projectRoot), live(host.projectRoot)])
-    return entries ? { entries, live: split } : { entries: [], live: split, missing: DATA }
+    const [data, split] = await Promise.all([series(host.projectRoot), live(host.projectRoot)])
+    return data
+      ? { ...data, live: split }
+      : { entries: [], previewUsage: [], live: split, missing: DATA }
   }),
 }
