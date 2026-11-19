@@ -2,7 +2,9 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 // "answer" on a question in To-dos opens the asker's conversation with the question's card at the top of the view. It
 // once left the view at the bottom: clearing the request re-ran the effect whose cleanup cancelled the reveal's frame.
 // The card must also land below the pinned prompt strip, which arrives after the jump, not at the top of the response
-// that asked, whose text comes first; a short question at the end needs room below it to get there. A link to a question,
+// that asked, whose text comes first; a short question at the end needs room below it to get there. That room once came a
+// render late: the scroll clamped at the bottom, and under load the stick-to-bottom lock took it before the hold moved
+// again, leaving the newest question below the strip. A link to a question,
 // `?conversation=<c>&message=<m>`, once opened the conversation at its end, leaving the question to look for.
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'

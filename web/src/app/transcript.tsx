@@ -392,6 +392,7 @@ function TranscriptEntries() {
       setTailSpace(tailSpace + move - scrollRoomBelow + rowGap(contentRef.current))
     adjustScrollWithoutReaderInput(move)
   })
+  useLayoutEffect(() => hold(), [tailSpace])
   useEffect(() => {
     const scroll = scrollRef.current
     const content = contentRef.current
