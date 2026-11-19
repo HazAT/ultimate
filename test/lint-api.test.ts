@@ -1,7 +1,9 @@
-import { resolve } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join, relative, resolve } from 'node:path'
 import { parseSync } from 'vite-plus'
 import { expect, it } from 'vitest'
 import ultimate from '../lint/ultimate.ts'
+import { temp } from './helpers.ts'
 
 type Rule = keyof typeof ultimate.rules
 type Located = { type: string; start: number; end: number; parent?: Located }
@@ -366,6 +368,21 @@ import { Button } from '@/components/ui/button'`
   expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', solidSource)).toEqual([
     'Replace @/app/card with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
     'Replace @/components/ui/button with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
+  ])
+})
+
+it('resolves a directory import to its index file, and .ts before .tsx as Vite does', async () => {
+  const folder = await temp('lint-resolve-', resolve('extensions'))
+  await mkdir(join(folder, 'card'))
+  await writeFile(join(folder, 'card/index.tsx'), '')
+  await writeFile(join(folder, 'format.ts'), '')
+  await writeFile(join(folder, 'format.tsx'), '')
+  const file = join(relative('.', folder), 'panel.solid.tsx')
+  const source = `/** @jsxImportSource @solidjs/web */
+import { Card } from './card'
+import { format } from './format'`
+  expect(lint('ui-framework-boundaries', file, source)).toEqual([
+    'Replace ./card with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
   ])
 })
 

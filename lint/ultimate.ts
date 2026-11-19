@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
 import { coreTier } from '../shared/extension-api.ts'
@@ -110,7 +110,6 @@ const repositoryPath = (filename: string) =>
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
-const sdkFile = (filename: string) => repositoryPath(filename).startsWith('web/src/sdk/')
 const reactOnly =
   /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
 const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
@@ -118,7 +117,7 @@ const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
 const solidJsxPragma = '@jsxImportSource @solidjs/web'
 const isSolidJsxPragma = (comment: Comment | undefined) =>
   comment?.type === 'Block' && comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma
-const moduleSuffixes = ['', '.tsx', '.ts', '/index.tsx', '/index.ts']
+const moduleSuffixes = ['', '.ts', '.tsx', '/index.ts', '/index.tsx']
 const localModule = (filename: string, source: string) => {
   const base = source.startsWith('@/')
     ? path.resolve(process.cwd(), 'web/src', source.slice(2))
@@ -126,7 +125,9 @@ const localModule = (filename: string, source: string) => {
       ? path.resolve(path.dirname(filename), source)
       : undefined
   if (base === undefined) return undefined
-  const found = moduleSuffixes.map((suffix) => base + suffix).find((file) => existsSync(file))
+  const found = moduleSuffixes
+    .map((suffix) => base + suffix)
+    .find((file) => existsSync(file) && statSync(file).isFile())
   return found ?? base
 }
 const staticString = (value: Node | null | undefined): unknown =>
@@ -318,7 +319,7 @@ export default {
               node,
               message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
             })
-          else if (!solid && !sdkFile(context.filename) && (solidOnly.test(source) || localSolid))
+          else if (!solid && !inSdk(context.filename) && (solidOnly.test(source) || localSolid))
             context.report({
               node,
               message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`,
@@ -326,7 +327,7 @@ export default {
           else if (
             uiSdkComponents.test(source) &&
             !uiKitFile(context.filename) &&
-            !sdkFile(context.filename)
+            !inSdk(context.filename)
           )
             context.report({
               node,
