@@ -45,12 +45,13 @@ export const store = createStore({
     uiState.delete('shell.conversation')
   },
 })
-/** Server commands; conversation commands default to the shown conversation. */
-export const api = createApi(store)
+const driven = sessionStorage.getItem('ultimate.driven') === '1'
+
+/** Server commands; conversation commands default to the shown conversation. Each write says who made it. */
+export const api = createApi(store, { driven })
 
 export const reads = createReads(api, store)
 
-const driven = sessionStorage.getItem('ultimate.driven') === '1'
 const { shares: followsSharedUiState, ...tabOnly } = tabWrites({
   driven,
   detached: sessionStorage.getItem('ultimate.detached') === '1',
@@ -66,14 +67,13 @@ export const uiState = createUiState(followsSharedUiState ? api.updateUi : undef
   ...tabOnly,
 })
 
-/** The page's one ui-sdk agent bridge, created at start so it hears every component; the `ui` facet records its changes. */
+/** The page's one ui-sdk agent bridge, created at start so it hears every component. */
 export const uiAgent = createUiAgent(driven)
-uiAgent.onFlush(() => uiState.flush())
 
 export const registry = createRegistry()
 
 if (driven)
-  window.ultimate = createTestHook(store, api, uiAgent, firstRender, (signal) =>
+  window.ultimate = createTestHook(store, api, uiAgent, uiState, firstRender, (signal) =>
     reads.settledInUse(signal),
   )
 
@@ -185,7 +185,7 @@ addEventListener('popstate', () => {
     replaceSelection = false
   }
 })
-addEventListener('pagehide', () => void uiAgent.flush(true))
+addEventListener('pagehide', () => void uiState.flush())
 
 addEventListener('unhandledrejection', (event) => {
   if (!(event.reason instanceof ActionError)) return

@@ -7,6 +7,7 @@ import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
 import type { UiAgent, UiAgentHandle } from './agent.ts'
+import type { UiState } from './ui-state.ts'
 import type { State, Store } from './store.ts'
 
 export type Condition =
@@ -32,6 +33,7 @@ export function createTestHook(
   store: Store,
   api: Api,
   agent: UiAgentHandle,
+  uiState: Pick<UiState, 'flush'>,
   rendered: Promise<void>,
   readsSettled: (signal: AbortSignal) => Promise<void>,
 ) {
@@ -140,7 +142,7 @@ export function createTestHook(
         await controlsMounted()
         return agent.bridge().act(input)
       },
-      flush: () => agent.flush(false),
+      flush: () => uiState.flush(),
     },
 
     async state() {

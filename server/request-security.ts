@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
-import type { Device } from '../shared/events.ts'
+import type { Device, UiSource } from '../shared/events.ts'
+import { DRIVEN_HEADER, SOURCE_HEADER } from '../shared/protocol.ts'
 import { meansNone } from '../lib/errors.ts'
 
 export interface AccessRule {
@@ -68,6 +69,13 @@ export async function admit(
 const tailscaleCgnatAndUlaRanges = new BlockList()
 tailscaleCgnatAndUlaRanges.addSubnet('100.64.0.0', 10, 'ipv4')
 tailscaleCgnatAndUlaRanges.addSubnet('fd7a:115c:a1e0::', 48, 'ipv6')
+
+export function sourceOf(headers: IncomingHttpHeaders): UiSource {
+  return {
+    source: headers[SOURCE_HEADER] === 'agent' ? 'agent' : 'person',
+    ...(headers[DRIVEN_HEADER] === '1' ? { driven: true as const } : {}),
+  }
+}
 
 export function deviceOf(headers: IncomingHttpHeaders): Device {
   const agent = headers['user-agent'] ?? ''

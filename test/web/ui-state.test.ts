@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { createUiState, tabWrites } from '../../web/src/sdk/ui-state.ts'
+import { writingAs } from '../../web/src/sdk/writer.ts'
 import { UI_REVISION } from '../../shared/protocol.ts'
 import type { UiUpdateRequest, UiUpdateResponse } from '../../shared/protocol.ts'
 
@@ -337,5 +338,23 @@ describe('durable UI state', () => {
     expect(tabWrites({ driven: false, detached: false, webdriver: false })).toEqual({
       shares: true,
     })
+  })
+
+  it('sends each write with who made it, an agent’s and a person’s in separate requests', async () => {
+    const writes: [UiUpdateRequest, string][] = []
+    const state = createUiState(
+      async (change, by) => {
+        writes.push([change, by])
+        return { ok: true, rev: writes.length }
+      },
+      { delayMs: 5 },
+    )
+    writingAs('agent', () => state.set('ext.digest.on', true))
+    state.set('ext.notes.view', 'list')
+    await state.flush()
+    expect(writes).toEqual([
+      [{ set: { 'ext.digest.on': true }, delete: [] }, 'agent'],
+      [{ set: { 'ext.notes.view': 'list' }, delete: [] }, 'person'],
+    ])
   })
 })

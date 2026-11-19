@@ -9,7 +9,7 @@ import type { WarmState } from '../../refs.ts'
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
-  actions: [] as { name: string; args: unknown }[],
+  actions: [] as { name: string; args: unknown; source?: string | null }[],
   state: undefined as WarmState | undefined,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
@@ -22,7 +22,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     const action = /^\/api\/extensions\/keep-warm\/actions\/(\w+)$/.exec(path)
     if (!action) return harness.server?.handle(path, init) ?? Response.json({ ok: true })
     const { args } = JSON.parse(init!.body as string) as { args: unknown }
-    harness.actions.push({ name: action[1], args })
+    const source = new Headers(init!.headers).get('x-ultimate-source')
+    harness.actions.push({ name: action[1], args, source })
     if (action[1] === 'set') harness.state = { ...harness.state!, on: (args as { on: boolean }).on }
     return Response.json({ result: harness.state })
   }
@@ -71,7 +72,7 @@ async function mountChip() {
   return container
 }
 
-it('shows the warm chip and opens its popover', async () => {
+it('shows the warm chip, opens its popover, and sends a person’s click as theirs', async () => {
   const container = await mountChip()
   const trigger = container.querySelector<HTMLButtonElement>(
     `button[aria-label="Keep @ultimate's cache warm"]`,
@@ -83,6 +84,9 @@ it('shows the warm chip and opens its popover', async () => {
   expect(trigger!.hasAttribute('data-open')).toBe(true)
   expect(container.textContent).toContain('Keep @ultimate warm')
   expect(container.textContent).toMatch(/Warm until/)
+  container.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(harness.actions).toContainEqual({ name: 'set', args: { on: false }, source: 'person' })
 })
 
 it('lets an agent open the popover and turn keep-warm off through the server', async ({
@@ -105,7 +109,7 @@ it('lets an agent open the popover and turn keep-warm off through the server', a
 
   const result = await act([{ ref: toggle!.ref, action: 'setChecked', args: [false] }])
   expect(result).toMatchObject({ ok: true })
-  expect(harness.actions).toContainEqual({ name: 'set', args: { on: false } })
+  expect(harness.actions).toContainEqual({ name: 'set', args: { on: false }, source: 'agent' })
   expect(changes).toHaveBeenCalledWith(
     expect.objectContaining({
       label: 'Keep @ultimate warm',

@@ -47,17 +47,17 @@ importers:
         specifier: 0.3.31
         version: 0.3.31
       '@lucide/solid':
-        specifier: 1.74.0
-        version: 1.74.0(solid-js@2.0.2)
+        specifier: 1.76.0
+        version: 1.76.0(solid-js@2.0.3)
       '@pierre/diffs':
         specifier: 1.5.2
         version: 1.5.2(@shikijs/themes@4.4.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@solidjs/vite-plugin':
         specifier: 3.0.1
-        version: 3.0.1(@solidjs/web@2.0.2(solid-js@2.0.2))(solid-js@2.0.2)(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
+        version: 3.0.1(@solidjs/web@2.0.3(solid-js@2.0.3))(solid-js@2.0.3)(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       '@solidjs/web':
-        specifier: 2.0.2
-        version: 2.0.2(solid-js@2.0.2)
+        specifier: 2.0.3
+        version: 2.0.3(solid-js@2.0.3)
       '@streamdown/code':
         specifier: 2.0.0
         version: 2.0.0(react@19.3.0)
@@ -65,11 +65,11 @@ importers:
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       '@ui-sdk/core':
-        specifier: 0.1.0-beta.10
-        version: 0.1.0-beta.10
+        specifier: 0.1.0-beta.13
+        version: 0.1.0-beta.13
       '@ui-sdk/solid':
-        specifier: 0.1.0-beta.10
-        version: 0.1.0-beta.10(@solidjs/web@2.0.2(solid-js@2.0.2))(@ui-sdk/core@0.1.0-beta.10)(solid-js@2.0.2)
+        specifier: 0.1.0-beta.13
+        version: 0.1.0-beta.13(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.13)(solid-js@2.0.3)
       '@vitejs/plugin-react':
         specifier: 6.1.1
         version: 6.1.1(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
@@ -116,8 +116,8 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
       solid-js:
-        specifier: 2.0.2
-        version: 2.0.2
+        specifier: 2.0.3
+        version: 2.0.3
       streamdown:
         specifier: 2.7.0
         version: 2.7.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -553,8 +553,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lucide/solid@1.74.0':
-    resolution: {integrity: sha512-ZtW9rtN4+j9rQImp4MJOJcpzeQ/46+tIQfT1q353k5InP797LRkF+LtglBz62PR/gu8gy4ckruX4WaYtLHvtog==}
+  '@lucide/solid@1.76.0':
+    resolution: {integrity: sha512-sv7Fhk7h5fA7rzRq8HNwi/Vv/YtCviN1WNWE+wF7RbelORVYUD3+HIreglG2b8PkMWpnTEdzDgZs8UxTKKIXNA==}
     peerDependencies:
       solid-js: ^2.0.0-rc.0
 
@@ -1818,8 +1818,8 @@ packages:
   '@solidjs/compiler@2.0.0':
     resolution: {integrity: sha512-Spgqz1+eojQ2pDl4yajnajIjX/kSusjTK/6mC6Fm7sAZ3YBI0yP4/epRR1hV08TU3YAH4xLBmZ6wjb1zC134Sw==}
 
-  '@solidjs/signals@2.0.2':
-    resolution: {integrity: sha512-2fz61amXyilWDNfL7EPcJ6WfH0XXMjuqHMaNPnlKjJDqFOuvQBHBGxZVgF53lZdooZenJKgYp0AWdd/uvI9BMg==}
+  '@solidjs/signals@2.0.3':
+    resolution: {integrity: sha512-M6+kiJflqSvJRHRcmdsdIXpPLPkQrY817zWKKfxZ3z3ZRE5eEtddtWPrDXY4IM1Wz3zAqG+3Fx/HQIkAtpRwnA==}
     engines: {node: '>=22.12.0'}
 
   '@solidjs/vite-plugin@3.0.1':
@@ -1843,11 +1843,11 @@ packages:
       '@testing-library/jest-dom':
         optional: true
 
-  '@solidjs/web@2.0.2':
-    resolution: {integrity: sha512-iot3dZUTjZVkMaPdZvhZkSRwPlynrLpuGusz1SWg5n7fYtrq3E2kn7BEOsP2EBDpAGP+FiB5zcseAi/VhAtouQ==}
+  '@solidjs/web@2.0.3':
+    resolution: {integrity: sha512-XYl9JGOtQ8yJSZRnd6uC+5gYXsYvnIRNxhn89m+F1v6D4d4ZFdTJY2Lq/8XJ3YcjckkCrK/mNfd3kIiqqgnG7w==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
-      solid-js: ^2.0.2
+      solid-js: ^2.0.3
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -2132,15 +2132,15 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@ui-sdk/core@0.1.0-beta.10':
-    resolution: {integrity: sha512-Rtm3QtuRT9U5nAlhIwKf2TzNIDZeOq3VmPzIiy55K3nFGeZokpPmHdF5ryaZmsByImNhOdRv5P7TOMro48NB+Q==}
+  '@ui-sdk/core@0.1.0-beta.13':
+    resolution: {integrity: sha512-URjk9hqdc/cZKDtw6Gb9NqjY48U8l0EgoP4d5ghlooa3av+GrR0iSmsav133UU4oelcuKIO1ZPJ4j7gIPMr1Vg==}
 
-  '@ui-sdk/solid@0.1.0-beta.10':
-    resolution: {integrity: sha512-7dQk7739/9NiTvCQEA7VFdVCZEhWENenAYP5XaCI0evIMmLNx2+gtBCzNH/3nCJveaUNV/D1LSSvY7/l+f/3Vg==}
+  '@ui-sdk/solid@0.1.0-beta.13':
+    resolution: {integrity: sha512-/YLOk1OGHzRvgVxmMpTXc4OSOCAucTbQ7XElaVAYlvcGqn6F8ALyc39nkcNAroREqyAKzbdxkVtYTLXPOVV13g==}
     peerDependencies:
-      '@solidjs/web': '>=2.0.0-rc.14 <3'
-      '@ui-sdk/core': ^0.1.0-beta.10
-      solid-js: '>=2.0.0-rc.14 <3'
+      '@solidjs/web': ^2.0.0
+      '@ui-sdk/core': ^0.1.0-beta.13
+      solid-js: ^2.0.0
 
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
@@ -3361,8 +3361,8 @@ packages:
     resolution: {integrity: sha512-aBY19bn/XA+hKOKX0qL7Z0UfdBsbQvc9hn993U8ALUjzxCvDcuZqLoRXjGJrUARWAlwMnsRVD9sw2AFNOYvalA==}
     engines: {node: '>=22'}
 
-  solid-js@2.0.2:
-    resolution: {integrity: sha512-0ubVj/v/uXsiA+Ia0I2ktn/nqUzgT29dvAt/pcvqXrVysTHJdG2vpcIEFcs3SqVb+Gr6O+e8dUyik4gBVZA7Pw==}
+  solid-js@2.0.3:
+    resolution: {integrity: sha512-XOHstv+GAJjfcSGZU9xfX5q6Mbqmv72IcdWh2JuMx3KvBbfpQPdy/Yl00A1ouk7A0etjqhNe799CPdr6i7koWg==}
     engines: {node: '>=22.12.0'}
 
   source-map-js@1.2.2:
@@ -4232,9 +4232,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@lucide/solid@1.74.0(solid-js@2.0.2)':
+  '@lucide/solid@1.76.0(solid-js@2.0.3)':
     dependencies:
-      solid-js: 2.0.2
+      solid-js: 2.0.3
 
   '@napi-rs/wasm-runtime@1.2.7(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)':
     dependencies:
@@ -5354,25 +5354,25 @@ snapshots:
       '@solidjs/compiler-wasm32-wasi': 2.0.0
       '@solidjs/compiler-win32-x64-msvc': 2.0.0
 
-  '@solidjs/signals@2.0.2': {}
+  '@solidjs/signals@2.0.3': {}
 
-  '@solidjs/vite-plugin@3.0.1(@solidjs/web@2.0.2(solid-js@2.0.2))(solid-js@2.0.2)(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))':
+  '@solidjs/vite-plugin@3.0.1(@solidjs/web@2.0.3(solid-js@2.0.3))(solid-js@2.0.3)(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@solidjs/compiler': 2.0.0
-      '@solidjs/web': 2.0.2(solid-js@2.0.2)
+      '@solidjs/web': 2.0.3(solid-js@2.0.3)
       magic-string: 0.30.21
       merge-anything: 5.1.7
-      solid-js: 2.0.2
+      solid-js: 2.0.3
       vite: 8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)
       vitefu: 1.1.4(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
 
-  '@solidjs/web@2.0.2(solid-js@2.0.2)':
+  '@solidjs/web@2.0.3(solid-js@2.0.3)':
     dependencies:
       csstype: 3.2.3
       seroval: 1.8.2
       seroval-plugins: 1.8.0(seroval@1.8.2)
-      solid-js: 2.0.2
+      solid-js: 2.0.3
 
   '@stablelib/base64@1.0.1': {}
 
@@ -5576,13 +5576,13 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@ui-sdk/core@0.1.0-beta.10': {}
+  '@ui-sdk/core@0.1.0-beta.13': {}
 
-  '@ui-sdk/solid@0.1.0-beta.10(@solidjs/web@2.0.2(solid-js@2.0.2))(@ui-sdk/core@0.1.0-beta.10)(solid-js@2.0.2)':
+  '@ui-sdk/solid@0.1.0-beta.13(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.13)(solid-js@2.0.3)':
     dependencies:
-      '@solidjs/web': 2.0.2(solid-js@2.0.2)
-      '@ui-sdk/core': 0.1.0-beta.10
-      solid-js: 2.0.2
+      '@solidjs/web': 2.0.3(solid-js@2.0.3)
+      '@ui-sdk/core': 0.1.0-beta.13
+      solid-js: 2.0.3
 
   '@ungap/structured-clone@1.4.0': {}
 
@@ -7097,9 +7097,9 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
-  solid-js@2.0.2:
+  solid-js@2.0.3:
     dependencies:
-      '@solidjs/signals': 2.0.2
+      '@solidjs/signals': 2.0.3
       seroval: 1.8.2
       seroval-plugins: 1.8.0(seroval@1.8.2)
 

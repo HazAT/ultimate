@@ -195,6 +195,8 @@ export interface UiUpdateRequest {
   delete?: string[]
 }
 export const UI_REVISION = 'ui.rev'
+export const SOURCE_HEADER = 'x-ultimate-source'
+export const DRIVEN_HEADER = 'x-ultimate-driven'
 type CommittedUiRevision = number
 export interface UiUpdateResponse {
   ok: true

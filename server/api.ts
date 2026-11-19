@@ -25,8 +25,8 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import { Metadata } from './metadata.ts'
 import { EVENT_LOG_LABEL, emit } from './events.ts'
-import { UserInputEvent } from '../shared/events.ts'
-import { admit, deviceOf } from './request-security.ts'
+import { ChangedEvent, UserInputEvent, uiChanged } from '../shared/events.ts'
+import { admit, deviceOf, sourceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
 import { shortTitle } from '../lib/title.ts'
@@ -147,6 +147,7 @@ async function runAction(
       id === undefined ? undefined : parseConversationId(id),
       'ui',
       deviceOf(request.headers),
+      sourceOf(request.headers),
     )
     reply(response, 200, { result })
   } catch (error) {
@@ -512,12 +513,24 @@ export async function createApi(
             throw new HttpError(400, 'Invalid UI key')
           if (UI_REVISION in set || remove.includes(UI_REVISION))
             throw new HttpError(400, 'The UI revision is the server’s')
+          const by = { ...sourceOf(request.headers), ...deviceOf(request.headers) }
           const rev = await root.commit(async (tx) => {
             const value = await tx.doc(UiState, root.id)
             const next = { ...value, ...(set as Record<string, JsonValue>) }
             for (const key of remove) delete next[key]
             if (Buffer.byteLength(JSON.stringify(next)) > 256 * 1024)
               throw new HttpError(413, 'UI state too large')
+            const stored = (record: Record<string, JsonValue>, key: string) =>
+              Object.hasOwn(record, key) ? record[key] : undefined
+            for (const key of new Set([...Object.keys(set), ...remove])) {
+              const before = stored(value, key)
+              const after = remove.includes(key)
+                ? undefined
+                : stored(set as Record<string, JsonValue>, key)
+              const unchanged = JSON.stringify(before) === JSON.stringify(after)
+              if (key.startsWith('shell.') || unchanged) continue
+              await emit(tx, ChangedEvent, uiChanged(by, { key, value: after, previous: before }))
+            }
             for (const [key, item] of Object.entries(set)) value[key] = item as JsonValue
             for (const key of remove) delete value[key]
             const previous = value[UI_REVISION]

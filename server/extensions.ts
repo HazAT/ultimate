@@ -39,7 +39,8 @@ import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
 import { secretMetadata } from '../lib/secrets.ts'
-import type { Device } from '../shared/events.ts'
+import { ChangedEvent, uiChanged } from '../shared/events.ts'
+import type { Device, UiSource } from '../shared/events.ts'
 import { inProcess, isMissing, meansNone } from '../lib/errors.ts'
 
 export type ExtensionHost = Pick<
@@ -302,6 +303,7 @@ export async function loadExtensions(
     conversationId?: ConversationId,
     caller = 'ui',
     device?: Device,
+    source: UiSource = { source: 'person' },
   ) {
     const table = actions.get(name)
     const fn = table && Object.hasOwn(table, action) ? table[action] : undefined
@@ -313,11 +315,15 @@ export async function loadExtensions(
       throw new Error('Invalid conversationId')
     const call = { caller, callee: name, name: `${name}/${action}`, args, conversationId }
     const poll = pollActions.get(name)?.includes(action)
+    const by = caller === 'agent' ? { source: 'agent' as const } : { ...source, ...device }
     return trace.run({ kind: 'action', ...call, ...(poll ? { poll } : {}) }, () =>
       fn(args, {
         host: facetHosts.get(name)!,
         conversationId,
         ...(device ? { device } : {}),
+        by,
+        uiChanged: (tx, change) =>
+          log.emit(tx, ChangedEvent, uiChanged(by, { ...change, conversation: conversationId })),
         signal,
         exec: async (command, commandArgs, options) => {
           const agent =

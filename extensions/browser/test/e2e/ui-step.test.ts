@@ -7,7 +7,7 @@ import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../../server/harness.ts'
 import { EventFeed } from '../../../../server/events.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
-import { ChangedEvent } from '../../../ui/refs.ts'
+import { ChangedEvent } from '../../../../shared/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
 import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
 
@@ -17,15 +17,20 @@ afterEach(async () => {
 })
 
 const panel = `/** @jsxImportSource @solidjs/web */
-import { Switch, SwitchThumb } from '@ui-sdk/solid/switch'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
+import { Switch } from '@/components/ui/switch.solid.tsx'
 import { useExtensionUiState } from '@/sdk/solid'
 
 export function Digest() {
-  const [on, setOn] = useExtensionUiState('digest', false)
+  const digest = useExtensionUiState('digest', false)
   return (
-    <Switch aria-label="Weekly digest" checked={on()} onCheckedChange={(value) => setOn(value)}>
-      <SwitchThumb />
-    </Switch>
+    <>
+      <Switch aria-label="Weekly digest" bind={digest} />
+      <Popover>
+        <PopoverTrigger aria-label="Digest details">details</PopoverTrigger>
+        <PopoverContent>Sent on Mondays</PopoverContent>
+      </Popover>
+    </>
   )
 }
 `
@@ -79,19 +84,21 @@ async function serve(settings?: object) {
       return JSON.parse(line.slice(prefix.length)) as unknown
     }
   }
-  const recorded = async () =>
+  const changes = async () =>
     ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
       .filter((event) => ChangedEvent.is(event))
       .map((event) => event.data)
+  const recorded = async () =>
+    (await changes()).filter((change) => change.key.startsWith('ext.digest.'))
   const uiState = async () =>
     (await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)) ?? {}
-  return { drive, recorded, uiState }
+  return { drive, changes, recorded, uiState }
 }
 
 const digest = { component: 'switch', label: 'Weekly digest', checked: false }
 
-it('snapshots, queries and acts on ui-sdk controls from the first step, and records the agent’s change before the page closes', async () => {
-  const { drive, recorded } = await serve()
+it('snapshots, queries and acts on ui-sdk controls from the first step, and the server records the agent’s write once', async () => {
+  const { drive, recorded, uiState } = await serve()
   const snapshot = await drive([{ ui: 'snapshot' }])
   const found = (snapshot(1) as Component[]).find((item) => item.label === 'Weekly digest')
   expect(found).toMatchObject({ ...digest, actions: ['setChecked'] })
@@ -104,21 +111,19 @@ it('snapshots, queries and acts on ui-sdk controls from the first step, and reco
   expect(queried).toMatchObject(digest)
   expect(value(2)).toMatchObject({ ok: true, values: { [`${queried!.ref} Weekly digest`]: true } })
 
+  expect(await uiState()).toMatchObject({ 'ext.digest.digest': true })
   expect(await recorded()).toEqual([
-    expect.objectContaining({
-      component: 'switch',
-      label: 'Weekly digest',
-      key: 'checked',
+    {
+      key: 'ext.digest.digest',
       value: true,
-      previous: false,
       source: 'agent',
       driven: true,
       device: expect.any(String),
-    }),
+    },
   ])
 })
 
-it('sends a final keypress’s recorded change and UI state before it closes the page, without pagehide', async () => {
+it('sends a final keypress’s UI-state write, with its event, before it closes the page, without pagehide', async () => {
   const { drive, recorded, uiState } = await serve()
   const value = await drive([
     { ui: 'snapshot' },
@@ -132,21 +137,24 @@ it('sends a final keypress’s recorded change and UI state before it closes the
     },
   ])
   expect(value(5)).toBe('true')
-  expect(await recorded()).toEqual([
-    expect.objectContaining({ label: 'Weekly digest', value: true, source: 'keyboard' }),
-  ])
   expect(await uiState()).toMatchObject({ 'ext.digest.digest': true })
+  expect(await recorded()).toEqual([
+    expect.objectContaining({
+      key: 'ext.digest.digest',
+      value: true,
+      source: 'person',
+      driven: true,
+    }),
+  ])
 })
 
-it('drives ui-sdk controls with the ui extension off, and records nothing', async () => {
-  const { drive, recorded } = await serve({ extensions: { disable: ['ui'] } })
+it('records nothing from the agent when it opens and closes a popover', async () => {
+  const { drive, changes } = await serve()
   const value = await drive([
-    { ui: 'act', steps: [{ ref: 'Weekly digest', action: 'setChecked', args: [true] }] },
-    {
-      eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
-    },
+    { ui: 'act', steps: [{ ref: 'Digest details', action: 'setOpen', args: [true] }] },
+    { ui: 'act', steps: [{ ref: 'Digest details', action: 'setOpen', args: [false] }] },
   ])
   expect(value(1)).toMatchObject({ ok: true })
-  expect(value(2)).toBe('true')
-  expect(await recorded()).toEqual([])
+  expect(value(2)).toMatchObject({ ok: true })
+  expect((await changes()).filter((change) => change.source === 'agent')).toEqual([])
 })

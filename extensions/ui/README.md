@@ -1,25 +1,31 @@
-The UI change log: every change to a ui-sdk component (a switch turned off, a select set), who made it (a person, with their device, or an agent) and where. Optional; turning it off stops the log and nothing else.
+The UI change log on the System surface: every change to stored UI state, who made it (a person, with their device, or an agent) and the value before and after. Optional; turning it off hides the tab, and the events are still recorded.
 
 ## How a change gets here
 
-Every page creates one agent bridge from `@ui-sdk/core/agent` at start (`uiAgent` from `@/sdk`, `web/src/sdk/agent.ts`). This extension's web facet (`Recorder` in `web.tsx`, batching in `recorder.ts`) subscribes to every change a component reports, from a person or an agent, notes the surface shown at that moment and the conversation of the control (the `ConversationScope` around it, such as a side chat's, or else the shown one), and sends them to `record` in batches of one location each: 500 ms after the first, on `pagehide`, and when the browser tool closes the page (`uiAgent.onFlush`); a flush waits for batches already on their way. Labels and names are cut to the server's limits (`limits.ts`) before they are queued, so one long name never loses a batch. Values inside `data-agent-secret` (and password, card and one-time-code fields) arrive as `"[redacted]"`; components inside `data-agent-hidden` report nothing. With this extension off, nothing records; the bridge and the browser tool's `ui` steps keep working.
+The server records it, in the commit that writes it (`ChangedEvent` in `shared/events.ts`, emitted by the core):
 
-Only flags, numbers and the option values of a choice control (`select`, `listbox`, `radio`, `tabs`, `segmented-control`, `menu`, `tree`, …) are recorded as they are; every other value, the text of an `input`, `textarea` or `token-input` and a select's search `query` included, is recorded as `"[value]"` (`"[redacted]"` for a secret field). A person's typing is recorded once, when the field commits it (its `change` event: blur, or Enter in an input); an agent's `setValue` is recorded at once. There is no opt-in for recording text.
+- a `/api/ui` post sets or deletes a key (every `useUiState`/`useExtensionUiState` write): one `ui.changed` per key whose stored value changed, except `shell.*` keys, the user's own navigation, which `ui.navigated` already covers;
+- an action's own write, when the action records it with `ctx.uiChanged(tx, { key, value, previous })` (keep-warm's `set` records `keep-warm.on`).
 
-The same bridge is what the browser tool's `ui` steps drive: `{ ui: 'snapshot' }`, `{ ui: 'query', … }` and `{ ui: 'act', steps }` (see `extensions/browser/README.md`). A change made that way has `source: 'agent'`.
+Opening and closing a popover, hover and focus change nothing stored, so they are never recorded. Nothing in the browser observes or batches changes: a write and its event cannot be lost apart.
+
+## Who
+
+Each page request says who caused it, in headers the server reads with `sourceOf` (`server/request-security.ts`):
+
+- `x-ultimate-source: agent` when a kit control's change handler ran for an agent's `act` (ui-sdk's `details.source === 'agent'`); the kit wraps its handlers in `writingAs(details.source, …)` from `@/sdk/solid`, and every write the handler starts synchronously carries it. Otherwise `person`.
+- `x-ultimate-driven: 1` from a tab an agent drives (the browser tool marks it `ultimate.driven`), on every write.
+
+The server adds the device (`deviceOf`). An agent's own server-side action call (`ultimate.action`) is `agent` without asking the page. The page's claim is an attribution label for the log, not a permission: any page could send either header, and nothing is allowed or refused because of it.
 
 ## Event
 
-`ui.changed` (`ChangedEvent` in `refs.ts`): `{ component, label?, key, value, previous?, source, reason?, surface?, conversation?, driven?, device, login?, address? }`.
+`ui.changed`: `{ key, value?, previous?, source, driven?, device, login?, address?, conversation? }`.
 
-- `source` is `agent` for a change an agent made through the bridge, otherwise how a person made it (`mouse`, `keyboard`, `touch`, `pen`, `virtual`, `programmatic`).
-- `driven: true` when the page was an agent's (the browser tool marks it `ultimate.driven`), so a click in an agent's tab is still the agent's tab.
-- `device` (and `login`, `address` through Tailscale Serve) is the browser that reported it, as for `ui.navigated`.
-
-## Action
-
-- `record { changes, surface?, conversation?, driven? }` → `{ recorded }` (user-only): one `ui.changed` per change, all in one commit. At most 50 changes; `component`, `key`, `source` and `reason` up to 64 characters, `label` up to 200; `value` is required (`null` for none); a `value` or `previous` over 2048 UTF-8 bytes of JSON is recorded as `"[too large]"`. User-only so an agent's codemode cannot write history in a person's name; pages the browser tool drives are UI pages and call it over HTTP like any other.
+- `value` is absent for a deleted key, `previous` for a new one; values over 2048 UTF-8 bytes of JSON read `"[too large]"`.
+- `source` is `agent` or `person`; `driven: true` when the page was an agent's, so a click in an agent's tab is still the agent's tab.
+- `conversation` is the conversation an action was called for.
 
 ## In the UI
 
-**UI changes**, a tab of the System surface (the `system.tab` point): the changes among the root's newest 100 events, newest first, one dense row each: time, who (`agent` in the brand colour, `agent tab` in a fainter brand colour for a person-like click in a driven page, or `person` with the device), the control's label, the key, and previous → value. Hovering a row shows its source, reason, surface and conversation.
+**UI changes**, a tab of the System surface (the `system.tab` point): the changes among the root's newest 100 events, newest first, one dense row each: time, who (`agent` in the brand colour, `agent tab` in a fainter brand colour for a person-like write in a driven page, or `person` with the device), the key, and previous → value. Hovering a row shows its source, device, login and conversation.

@@ -42,10 +42,16 @@ outside the caller's commit (Pi's compaction, the machine's health file, an uplo
 its own right after it. For debugging what the user did: `user.input` (a typed prompt, steer or follow-up, an
 answer or dismissal, a review: its conversation, entry or message and length, never the text) and
 `ui.navigated` (the surface or Agent's conversation changed, reported by the browser after a second and deduped) and
-`ui.changed` (a ui-sdk component changed, by a person or an agent, with its label, key and values; `extensions/ui`),
+`ui.changed` (core, `ChangedEvent` in `shared/events.ts`: stored UI state changed, in the commit that wrote it: a
+`/api/ui` key set or deleted, except `shell.*`, or an action's own write through `ctx.uiChanged(tx, …)`; with `key`,
+`value`, `previous`, `source` (`agent` or `person`), `driven` and values over 2 KB as `"[too large]"`; opening, closing,
+hover and focus are never stored, so never recorded; the System surface's UI changes tab, `extensions/ui`),
 each with the browser's `device` label and, through Tailscale Serve, the `login` and the client's tailnet `address`
 (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`, for example `100.64.0.2`; any other forwarded address is dropped). UI
-action calls get the same `Device` as `ctx.device`. A `beforeInput` hook gets no device: it sees only the input entry
+action calls get the same `Device` as `ctx.device`, and `ctx.by` says who made the call: `agent` for an agent's call
+on the server, or the page's `x-ultimate-source` header (`agent` while the page's agent bridge runs an `act`, else
+`person`) plus `x-ultimate-driven: 1` from a tab an agent drives. The page's claim is an attribution label, not a
+permission. A `beforeInput` hook gets no device: it sees only the input entry
 and runs for queued inputs too, so record the device from a UI action instead. A typed input and a review commit
 right after Pi admits them, which has no hook for queued inputs; answers commit with their reply. Something the user must see
 exactly once and that feeds the result the owner reports, like the lander waking a landed branch's starter, stays a
