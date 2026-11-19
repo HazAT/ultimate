@@ -25,8 +25,10 @@ bugs. The skills that the libraries ship match the exact pinned versions: read t
 The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` file compiles with Solid and lints with the
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
-([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit comes next: until it lands,
-`@/components/ui` is React-only, so check `web/src/components/ui/` before assuming a kit component exists.
+([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit is growing one component at a time
+(`popover.solid.tsx`, `switch.solid.tsx` so far): import it as `@/components/ui/<name>.solid.tsx`, and check
+`web/src/components/ui/` before assuming a component exists. `extensions/keep-warm/chip.solid.tsx` is the reference
+migration, with its agent test beside it. Icons come from `@lucide/solid`.
 
 ## Ultimate's rules (on top of those skills)
 
