@@ -173,12 +173,39 @@ function Overlay({
   )
 }
 
-export const [sidebarWidth, sidebarWidthBeyondPhone] = ['w-72', 'md:w-72'] as const
+export const sidebarWidthBeyondPhone = 'md:w-[var(--sidebar-width,18rem)]'
+
+const MIN_CONVERSATION_WIDTH = 360
+const regionWidths = {
+  sidebar: { key: shellKeys.sidebarWidth, initial: 288, min: 224, edge: 'right' },
+  panels: { key: shellKeys.panelWidth, initial: 352, min: 280, edge: 'left' },
+} as const
+
+function useRegionWidth(region: 'sidebar' | 'panels') {
+  const other = region === 'sidebar' ? 'panels' : 'sidebar'
+  const { key, initial, min, edge } = regionWidths[region]
+  const [stored, setStored] = useUiState<number>(key, initial)
+  const [otherWidth] = useUiState<number>(regionWidths[other].key, regionWidths[other].initial)
+  const viewport = useViewport()
+  const otherDocked = useRegionOpen(other) && !overlays(other, viewport)
+  const resize = useResize({
+    width: stored,
+    min,
+    max: window.innerWidth - MIN_CONVERSATION_WIDTH - (otherDocked ? otherWidth : 0),
+    edge,
+    onResize: setStored,
+  })
+  return { resize, reset: () => setStored(initial) }
+}
 
 export function Sidebar() {
   useMountRegionBeforePaint('sidebar')
   const open = useRegionOpen('sidebar')
   const viewport = useViewport()
+  const { resize, reset } = useRegionWidth('sidebar')
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-width', `${resize.width}px`)
+  }, [resize.width])
   const empty = slotItems(useExtensions(), 'sidebar').length === 0
   if (empty) return null
   const look = 'overflow-y-auto border-sidebar-border bg-sidebar text-sidebar-foreground'
@@ -190,9 +217,83 @@ export function Sidebar() {
     )
   if (!open) return null
   return (
-    <aside className={cn('flex shrink-0 flex-col border-r', sidebarWidth, look)}>
+    <aside
+      className={cn('relative flex shrink-0 flex-col border-r', look)}
+      style={{ width: resize.width }}
+    >
+      <ResizeHandle label="Resize sidebar" onReset={reset} resize={resize} />
       <Slot name="sidebar" />
     </aside>
+  )
+}
+
+function useResize({
+  width,
+  min,
+  max,
+  edge,
+  onResize,
+}: {
+  width: number
+  min: number
+  max: number
+  edge: 'left' | 'right'
+  onResize: (width: number) => void
+}) {
+  const [dragging, setDragging] = useState<number>()
+  const live = useRef<number | undefined>(undefined)
+  const clamp = (next: number) => Math.round(Math.min(Math.max(next, min), Math.max(min, max)))
+  const current = clamp(dragging ?? width)
+
+  const start = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    const from = event.clientX
+    handle.setPointerCapture(event.pointerId)
+    const move = (next: globalThis.PointerEvent) => {
+      const delta = edge === 'left' ? from - next.clientX : next.clientX - from
+      live.current = clamp(current + delta)
+      setDragging(live.current)
+    }
+    const up = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      if (live.current !== undefined) onResize(live.current)
+      live.current = undefined
+      setDragging(undefined)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+
+  return { width: current, dragging: dragging !== undefined, start, edge }
+}
+
+function ResizeHandle({
+  label,
+  resize,
+  onReset,
+}: {
+  label: string
+  resize: ReturnType<typeof useResize>
+  onReset: () => void
+}) {
+  return (
+    <div
+      aria-label={label}
+      aria-orientation="vertical"
+      className={cn(
+        'absolute inset-y-0 z-10 w-2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-brand/60 after:opacity-0 after:transition-opacity hover:after:opacity-100',
+        resize.edge === 'left' ? '-left-1' : '-right-1',
+        resize.dragging && 'after:opacity-100',
+      )}
+      onDoubleClick={onReset}
+      onPointerDown={resize.start}
+      role="separator"
+    />
   )
 }
 
@@ -353,6 +454,7 @@ export function Panels() {
   useMountRegionBeforePaint('panels')
   const { open, active, tabs } = usePanels()
   const viewport = useViewport()
+  const { resize, reset } = useRegionWidth('panels')
   if (!active) return null
   const overlay = overlays('panels', viewport)
   if (!open && !overlay) return null
@@ -383,7 +485,11 @@ export function Panels() {
       </Overlay>
     )
   return (
-    <aside className="flex w-[22rem] shrink-0 flex-col border-l border-border/70 bg-sidebar">
+    <aside
+      className="relative flex shrink-0 flex-col border-l border-border/70 bg-sidebar"
+      style={{ width: resize.width }}
+    >
+      <ResizeHandle label="Resize panel" onReset={reset} resize={resize} />
       {content}
     </aside>
   )
@@ -392,8 +498,6 @@ export function Panels() {
 const DOCK_WIDTH = 416
 const MIN_WIDTH = 280
 const MIN_SURFACE_WIDTH_BESIDE_DOCK_PX = 360
-const maxWidth = () => Math.max(MIN_WIDTH, window.innerWidth - MIN_SURFACE_WIDTH_BESIDE_DOCK_PX)
-const clamp = (width: number) => Math.round(Math.min(Math.max(width, MIN_WIDTH), maxWidth()))
 
 export function Dock({
   title = 'conversation',
@@ -410,10 +514,15 @@ export function Dock({
     { open: true, width: DOCK_WIDTH },
   )
   const open = stored.open !== false
-  const [dragging, setDragging] = useState<number>()
-  const live = useRef<number | undefined>(undefined)
   const { busy } = useConversation()
-  const width = clamp(dragging ?? (typeof stored.width === 'number' ? stored.width : DOCK_WIDTH))
+  const resize = useResize({
+    width: typeof stored.width === 'number' ? stored.width : DOCK_WIDTH,
+    min: MIN_WIDTH,
+    max: window.innerWidth - MIN_SURFACE_WIDTH_BESIDE_DOCK_PX,
+    edge: side === 'right' ? 'left' : 'right',
+    onResize: (width) => setStored({ open: true, width }),
+  })
+  const width = resize.width
   const border = side === 'right' ? 'border-l' : 'border-r'
   const setOpen = (next: boolean) => setStored({ open: next, width })
 
@@ -436,46 +545,15 @@ export function Dock({
       </aside>
     )
 
-  const resize = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    const handle = event.currentTarget
-    const start = event.clientX
-    handle.setPointerCapture(event.pointerId)
-    const move = (next: globalThis.PointerEvent) => {
-      const delta = side === 'right' ? start - next.clientX : next.clientX - start
-      live.current = clamp(width + delta)
-      setDragging(live.current)
-    }
-    const up = () => {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.removeEventListener('pointercancel', up)
-      if (live.current !== undefined) setStored({ open: true, width: live.current })
-      live.current = undefined
-      setDragging(undefined)
-    }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-    handle.addEventListener('pointercancel', up)
-  }
-
   return (
     <aside
       className={cn('relative flex shrink-0 flex-col border-border/70', border)}
       style={{ width }}
     >
-      <div
-        aria-label={`Resize ${title}`}
-        aria-orientation="vertical"
-        className={cn(
-          'absolute inset-y-0 z-10 w-2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-brand/60 after:opacity-0 after:transition-opacity hover:after:opacity-100',
-          side === 'right' ? '-left-1' : '-right-1',
-          dragging !== undefined && 'after:opacity-100',
-        )}
-        onDoubleClick={() => setStored({ open: true, width: DOCK_WIDTH })}
-        onPointerDown={resize}
-        role="separator"
+      <ResizeHandle
+        label={`Resize ${title}`}
+        onReset={() => setStored({ open: true, width: DOCK_WIDTH })}
+        resize={resize}
       />
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 pr-1 pl-3 font-mono text-[11.5px] text-muted-foreground">
         {title}
