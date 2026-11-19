@@ -35,6 +35,35 @@ function Settings() {
   )
 }
 
+it('stores nothing when the caller cancels the change', async () => {
+  const container = renderSolid(() => {
+    const digest = useUiState('test.canceled.digest', false)
+    const view = useUiState('test.canceled.view', 'list')
+    return (
+      <>
+        <Switch
+          aria-label="Canceled digest"
+          bind={digest}
+          onCheckedChange={(_on, details) => details.cancel()}
+        />
+        <SegmentedControl
+          aria-label="Canceled view"
+          bind={view}
+          onValueChange={(_value, details) => details.cancel()}
+        >
+          <SegmentedControlItem value="list">List</SegmentedControlItem>
+          <SegmentedControlItem value="grid">Grid</SegmentedControlItem>
+        </SegmentedControl>
+      </>
+    )
+  })
+  container.querySelector<HTMLButtonElement>('[aria-label="Canceled digest"]')!.click()
+  container.querySelectorAll<HTMLButtonElement>('[role="radio"]')[1].click()
+  flush()
+  expect(uiState.get('test.canceled.digest')).toBeUndefined()
+  expect(uiState.get('test.canceled.view')).toBeUndefined()
+})
+
 it('binds kit controls to stored UI state and sends each write with who made it', async () => {
   const agent = createAgent()
   const container = renderSolid(() => <Settings />)

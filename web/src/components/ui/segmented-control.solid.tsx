@@ -23,8 +23,8 @@ function SegmentedControl<T extends string>(props: SegmentedControlProps<T>) {
         const set = props.bind?.[1]
         const changed = props.onValueChange
         writingAs(details.source, () => {
-          if (value !== null) set?.(value)
           changed?.(value, details)
+          if (value !== null && !details.canceled) set?.(value)
         })
       }}
       value={props.bind ? props.bind[0]() : props.value}

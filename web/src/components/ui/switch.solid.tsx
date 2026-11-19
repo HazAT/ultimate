@@ -24,8 +24,8 @@ function Switch(props: SwitchProps) {
         const set = props.bind?.[1]
         const changed = props.onCheckedChange
         writingAs(details.source, () => {
-          set?.(on)
           changed?.(on, details)
+          if (!details.canceled) set?.(on)
         })
       }}
     >
