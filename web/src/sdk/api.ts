@@ -14,7 +14,7 @@ import type {
   UiUpdateRequest,
   UiUpdateResponse,
 } from '../../../shared/protocol.ts'
-import { DRIVEN_HEADER, SOURCE_HEADER } from '../../../shared/protocol.ts'
+import { SOURCE_HEADER } from '../../../shared/protocol.ts'
 import { writerNow } from './writer.ts'
 import type { UiWho } from './writer.ts'
 import type { ActionRef } from '../../../shared/extension-api.ts'
@@ -61,7 +61,7 @@ export class HttpError extends Error {
   }
 }
 
-export function createApi(store: Store, options: { fetch?: typeof fetch; driven?: boolean } = {}) {
+export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) {
   const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
   async function post<T>(
     path: string,
@@ -77,7 +77,6 @@ export function createApi(store: Store, options: { fetch?: typeof fetch; driven?
       headers: {
         'Content-Type': 'application/json',
         [SOURCE_HEADER]: who,
-        ...(options.driven ? { [DRIVEN_HEADER]: '1' } : {}),
       },
       body: JSON.stringify(body),
 

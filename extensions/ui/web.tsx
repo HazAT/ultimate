@@ -3,7 +3,7 @@ import { cn, defineWebExtension, formatTime, provide, useEvents } from '@/sdk'
 import { ChangedEvent } from '../../shared/events.ts'
 import { SystemTab } from '../system/ui.tsx'
 
-type VersionOne = { component?: string; label?: string }
+type VersionOne = { component?: string; label?: string; driven?: boolean }
 
 const shown = (value: JsonValue | undefined) =>
   value === undefined ? 'unset' : typeof value === 'string' ? value : JSON.stringify(value)
@@ -15,18 +15,14 @@ function Changes() {
       <ul className="flex flex-col py-1">
         {changes?.map(({ id, at, v, data }) => {
           const recordedByTheBrowser = v === 1 ? (data as VersionOne) : undefined
-          const agent = data.source === 'agent'
-          const who = agent
-            ? 'agent'
-            : data.driven
-              ? 'agent tab'
-              : `person${data.device ? ` · ${data.device}` : ''}`
+          const agent = data.source === 'agent' || recordedByTheBrowser?.driven === true
+          const who = agent ? 'agent' : `person${data.device ? ` · ${data.device}` : ''}`
           return (
             <li
               className="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[10.5px] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5"
               data-change={id}
               key={id}
-              title={`${data.source}${data.driven ? ' · driven tab' : ''}${data.device ? ` · ${data.device}` : ''}${data.login ? ` · ${data.login}` : ''}${data.conversation === undefined ? '' : ` · #${data.conversation}`}`}
+              title={`${data.source}${data.device ? ` · ${data.device}` : ''}${data.login ? ` · ${data.login}` : ''}${data.conversation === undefined ? '' : ` · #${data.conversation}`}`}
             >
               <time className="w-14 shrink-0 tabular-nums text-muted-foreground/60" dateTime={at}>
                 {formatTime(at, true)}
@@ -34,7 +30,7 @@ function Changes() {
               <span
                 className={cn(
                   'w-28 shrink-0 truncate',
-                  agent ? 'text-brand' : data.driven ? 'text-brand/70' : 'text-foreground/70',
+                  agent ? 'text-brand' : 'text-foreground/70',
                 )}
               >
                 {who}

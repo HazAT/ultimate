@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
 import type { Device, UiSource } from '../shared/events.ts'
-import { DRIVEN_HEADER, SOURCE_HEADER } from '../shared/protocol.ts'
+import { SOURCE_HEADER } from '../shared/protocol.ts'
 import { meansNone } from '../lib/errors.ts'
 
 export interface AccessRule {
@@ -78,7 +78,6 @@ export function sourceOf(headers: IncomingHttpHeaders): UiSource {
         : headers[SOURCE_HEADER] === 'app'
           ? 'app'
           : 'person',
-    ...(headers[DRIVEN_HEADER] === '1' ? { driven: true as const } : {}),
   }
 }
 

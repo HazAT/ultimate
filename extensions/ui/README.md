@@ -13,21 +13,20 @@ Opening and closing a popover, hover and focus change nothing stored, so they ar
 
 Each page request says who caused it, in headers the server reads with `sourceOf` (`server/request-security.ts`):
 
-- `x-ultimate-source: agent` when a kit control's change handler ran for an agent's `act` (ui-sdk's `details.source === 'agent'`); the kit wraps its handlers in `writingAs(details.source, …)` from `@/sdk/solid`, and every write the handler starts synchronously carries it. Otherwise `person`.
-- `x-ultimate-driven: 1` from a tab an agent drives (the browser tool marks it `ultimate.driven`), on every write.
+- `x-ultimate-source: agent` when a kit control's change handler ran for an agent's `act` (ui-sdk's `details.source === 'agent'`); the kit wraps its handlers in `writingAs(details.source, …)` from `@/sdk/solid`, and every write the handler starts synchronously carries it. `app` inside `writingAs('app', …)`. Otherwise `person`, or `agent` on a page an agent opened (the browser tool marks it `ultimate.driven`).
 
-The server adds the device (`deviceOf`). An agent's own server-side action call (`ultimate.action`) is `agent` without asking the page. The page's claim is an attribution label for the log, not a permission: any page could send either header, and nothing is allowed or refused because of it.
+The server adds the device (`deviceOf`). An agent's own server-side action call (`ultimate.action`) is `agent` without asking the page. The page's claim is an attribution label for the log, not a permission: any page could send any value, and nothing is allowed or refused because of it.
 
 ## Event
 
-`ui.changed`: `{ key, value?, previous?, source, driven?, device, login?, address?, conversation? }`.
+`ui.changed`: `{ key, value?, previous?, source, device, login?, address?, conversation? }`.
 
 - `value` is absent for a deleted key, `previous` for a new one; only a boolean, a number or null is kept as it is, anything else (a draft, an answer, an object) reads `"[value]"`, so no text a person typed reaches the permanent event history.
 - One decision, `uiChange` in `server/events.ts`, serves both paths: it skips `shell.*` keys, `app` writes and values that are structurally unchanged.
-- `source` is `agent` or `person`; `driven: true` when the page was an agent's, so a click in an agent's tab is still the agent's tab.
+- `source` is `agent` or `person`. Every write from a page an agent opened (the browser tool marks it `ultimate.driven`) is the agent's, a scripted click included: only the agent acts there.
 - The app's own bookkeeping writes (the sidebar marking a conversation seen) run inside `writingAs('app', …)`: they are stored, and record no `ui.changed`, like `shell.*` keys.
 - `conversation` is the conversation an action was called for.
 
 ## In the UI
 
-**UI changes**, a tab of the System surface (the `system.tab` point): the changes among the root's newest 100 events, newest first, one dense row each: time, who (`agent` in the brand colour, `agent tab` in a fainter brand colour for a person-like write in a driven page, or `person` with the device), the key, and previous → value. Hovering a row shows its source, device, login and conversation.
+**UI changes**, a tab of the System surface (the `system.tab` point): the changes among the root's newest 100 events, newest first, one dense row each: time, who (`agent` in the brand colour, or `person` with the device), the key, and previous → value. Hovering a row shows its source, device, login and conversation.

@@ -203,7 +203,6 @@ export interface UiUpdateRequest {
 }
 export const UI_REVISION = 'ui.rev'
 export const SOURCE_HEADER = 'x-ultimate-source'
-export const DRIVEN_HEADER = 'x-ultimate-driven'
 type CommittedUiRevision = number
 export type UiUpdateResponse = { ok: true; rev: CommittedUiRevision }
 type StreamHandshakeBeforeSubscriptions = { id: string }

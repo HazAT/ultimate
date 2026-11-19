@@ -116,7 +116,6 @@ it('snapshots, queries and acts on ui-sdk controls from the first step, and the 
       key: 'ext.digest.digest',
       value: true,
       source: 'agent',
-      driven: true,
       device: expect.any(String),
     },
   ])
@@ -141,8 +140,7 @@ it('sends a final keypress’s UI-state write, with its event, before it closes 
     expect.objectContaining({
       key: 'ext.digest.digest',
       value: true,
-      source: 'person',
-      driven: true,
+      source: 'agent',
     }),
   ])
 })
@@ -167,7 +165,7 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
       keepalive: true,
       body: expect.objectContaining({
         ops: expect.arrayContaining([
-          { key: 'ext.digest.digest', value: true, who: 'person', seq: expect.any(Number) },
+          { key: 'ext.digest.digest', value: true, who: 'agent', seq: expect.any(Number) },
         ]),
       }),
     },

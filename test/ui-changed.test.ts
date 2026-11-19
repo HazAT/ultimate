@@ -5,7 +5,7 @@ import { context } from '../server/harness.ts'
 import { EventFeed } from '../server/events.ts'
 import { ChangedEvent } from '../shared/events.ts'
 import { UiState } from '../shared/ui-state.ts'
-import { DRIVEN_HEADER, SOURCE_HEADER } from '../shared/protocol.ts'
+import { SOURCE_HEADER } from '../shared/protocol.ts'
 import { fauxServer, removeTemp, temp } from './helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
@@ -60,7 +60,7 @@ const deletes = (...keys: string[]) => keys.map((key) => ({ key }))
 
 it('records each stored UI-state change in the commit that writes it, with who, from where and the device', async () => {
   const { server, send, post, changes } = await serve()
-  const agent = { [SOURCE_HEADER]: 'agent', [DRIVEN_HEADER]: '1' }
+  const agent = { [SOURCE_HEADER]: 'agent' }
   await post('/api/ui', { ops: sets({ 'ext.digest.on': true, 'shell.panel': 'tasks' }) }, agent)
   await post('/api/ui', { ops: sets({ 'ext.digest.on': true }) })
   await post('/api/ui', {
@@ -73,7 +73,7 @@ it('records each stored UI-state change in the commit that writes it, with who, 
 
   const device = 'desktop firefox'
   expect(await changes()).toEqual([
-    { key: 'ext.digest.on', value: true, source: 'agent', driven: true, device },
+    { key: 'ext.digest.on', value: true, source: 'agent', device },
     { key: 'ext.notes.text', value: '[value]', source: 'person', device },
     { key: 'ext.digest.on', previous: true, source: 'person', device },
   ])

@@ -8,6 +8,7 @@ import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
 import { createUiAgent } from './agent.ts'
+import { agentsPage } from './writer.ts'
 import { firstRender } from './resume.ts'
 import type { TestHook } from './test-hook.ts'
 
@@ -46,9 +47,10 @@ export const store = createStore({
   },
 })
 const driven = sessionStorage.getItem('ultimate.driven') === '1'
+if (driven) agentsPage()
 
 /** Server commands; conversation commands default to the shown conversation. Each write says who made it. */
-export const api = createApi(store, { driven })
+export const api = createApi(store)
 
 export const reads = createReads(api, store)
 
