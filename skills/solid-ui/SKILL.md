@@ -88,9 +88,16 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   for deferred SDK work.
 - For SDK data, mock `web/src/sdk/client.ts` with a real `createStore` on a `FakeSource`, as
   `test/web/solid-sdk.test.solid.tsx` does, and send `doc`/`docOps` events through it.
-- Agent test: one `createAgent()` per file; find controls in `snapshot()` by name; subscribe before `act`; assert the
+- Agent test: one `createAgent()` (from `@ui-sdk/core/agent`) per file; find controls in `snapshot()` by label and act
+  on the ref it returns, never an assumed `c1`, since other controls may mount; subscribe before `act`; assert the
   result's `ok`, the DOM, `details.source === 'agent'` in your handlers, and the events the subscription saw
-  (`test/web/solid-harness.test.solid.tsx`).
+  (`test/web/solid-harness.test.solid.tsx`). `act`'s `values` are keyed `"<ref> <label>"`. Use `expect(x)` without a
+  message: the ui-sdk skill's `expect(x, message)` template fails `vitest/valid-expect`.
+- On a whole page, agents drive controls with the browser tool's `ui` steps (`snapshot`, `query`, `act`), which wait
+  for the page's first render; each control's change is recorded as a durable `ui.changed` event with its source
+  (`extensions/ui/README.md`). A text field records committed edits, never keystrokes, without its value by default.
+- A person's click inside `data-agent-hidden` still changes the control, but the bridge reports nothing: a secret
+  value an agent may fill goes in `data-agent-secret` instead.
 
 ## Done means
 
