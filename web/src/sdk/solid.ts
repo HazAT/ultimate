@@ -4,7 +4,6 @@
  */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { apply } from '@earendil-works/chord/delta'
 import {
   createContext,
   createEffect,
@@ -13,14 +12,16 @@ import {
   createSignal,
   createStore,
   onSettled,
+  reconcile,
   runWithOwner,
   useContext,
 } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { DocRef } from '../../../shared/extension-api.ts'
 import { store, uiState } from './client.ts'
-import type { Widen } from './hooks.ts'
-import type { DocEvent, State } from './store.ts'
+import { extensionUiKey, writeUiState } from './ui-state.ts'
+import type { UiUpdate, Widen } from './ui-state.ts'
+import type { State } from './store.ts'
 
 export { api } from './client.ts'
 export { ROOT } from './api.ts'
@@ -37,6 +38,8 @@ export const ConversationScope = createContext<ConversationId | null>(null)
 type Target = ConversationId | 'shown'
 type Doc = JsonValue | null | undefined
 
+const isObject = (value: Doc): value is { [key: string]: JsonValue } | JsonValue[] =>
+  typeof value === 'object' && value !== null
 const replicaKey = (target: Target, kind: string) => `${target}:${kind}`
 const immutableDoc = (state: State, target: Target, kind: string): Doc =>
   target === 'shown' ? state.docs[kind] : state.docsOf[target]?.[kind]
@@ -58,19 +61,15 @@ function createReplica() {
         })
     }
   })
-  store.onDocChange((conversation, kind, event: DocEvent) => {
-    const key = replicaKey(conversation ?? 'shown', kind)
+  store.onDocChange((conversation, kind) => {
+    const target = conversation ?? 'shown'
+    const key = replicaKey(target, kind)
     if (!watched.has(key)) return
-    if ('value' in event) {
-      setDocs((draft) => {
-        draft[key] = event.value
-      })
-      return
-    }
+    const next = immutableDoc(store.getState(), target, kind)
     setDocs((draft) => {
       const current = draft[key]
-      const next = apply(current ?? {}, event.ops)
-      if (next !== current) draft[key] = next
+      if (isObject(current) && isObject(next)) reconcile(next, null)(current)
+      else draft[key] = next
     })
   })
   uiState.subscribe(() => setUi(uiState.snapshot()))
@@ -147,21 +146,15 @@ export function useDocOf<T>(
 export function useUiState<T extends JsonValue>(
   key: string,
   initial: T,
-): [Accessor<Widen<T>>, (next: Widen<T> | ((previous: Widen<T>) => Widen<T>)) => void] {
+): [Accessor<Widen<T>>, (next: UiUpdate<T>) => void] {
   const { ui } = shared()
   const value = createMemo(() => (ui()[key] ?? initial) as Widen<T>)
-  const set = (next: Widen<T> | ((previous: Widen<T>) => Widen<T>)) => {
-    const previous = (uiState.get(key) ?? initial) as Widen<T>
-    uiState.set(key, typeof next === 'function' ? next(previous) : next)
-  }
-  return [value, set]
+  return [value, (next: UiUpdate<T>) => writeUiState(uiState, key, initial, next)]
 }
 
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
 export function useExtensionUiState<T extends JsonValue>(key: string, initial: T) {
-  const extension = useContext(ExtensionName)
-  if (!extension) throw new Error('useExtensionUiState works inside an extension contribution only')
-  return useUiState(`ext.${extension}.${key}`, initial)
+  return useUiState(extensionUiKey(useContext(ExtensionName), key), initial)
 }
 
 const selected =

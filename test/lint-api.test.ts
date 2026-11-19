@@ -304,6 +304,11 @@ import { ContextBar } from '../conversations/ui.tsx'`
   expect(lint('api-only-imports', 'extensions/echo/status.solid.tsx', source)).toEqual([
     'echo imports conversations/ui.tsx at runtime; reach conversations through its refs.ts (the refs of its documents and actions; its ui.tsx is React), import types with `import type`, or move a pure helper to lib/.',
   ])
+  const project = `import { BoardDoc } from '../board/refs.ts'
+import { columns } from '../board/columns.ts'`
+  expect(lint('api-only-imports', '.ultimate/extensions/echo/status.solid.tsx', project)).toEqual([
+    'echo imports board/columns.ts at runtime; reach board through its refs.ts (the refs of its documents and actions; its ui.tsx is React), import types with `import type`, or move a pure helper to lib/.',
+  ])
 })
 
 it('keeps React and Solid apart, and ui-sdk components behind the UI kit', () => {
@@ -356,6 +361,13 @@ import type { PanelProps } from './panel.solid.tsx'`
   ).toEqual([move('./panel.solid.tsx')])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/island.tsx', reactSource)).toEqual([])
+  const solidSdk = `import { useDoc } from '@/sdk/solid'
+import { useUiState } from '../../web/src/sdk/solid.ts'
+import type { Accessor } from '@/sdk/solid'`
+  expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', solidSdk)).toEqual([
+    move('@/sdk/solid'),
+    move('../../web/src/sdk/solid.ts'),
+  ])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/hooks.ts', reactSource)).toEqual([
     move('@solidjs/web'),
     move('solid-js'),
@@ -500,4 +512,13 @@ export type AbstractData = {
 MIT License — Copyright (c) 2025 Mario Zechner
 */`
   expect(lint('no-comments', 'extensions/entries/refs.ts', contract)).toEqual([])
+  const solidSdk = `/**
+ * The extension SDK for Solid facets.
+ */
+import { store } from './client.ts'
+/** Keyed per conversation and kind. */
+const replicaKey = (kind: string) => kind
+/** The document as an accessor. */
+export function useDoc() {}`
+  expect(lint('no-comments', 'web/src/sdk/solid.ts', solidSdk)).toHaveLength(1)
 })

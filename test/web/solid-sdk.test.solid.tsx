@@ -140,6 +140,58 @@ it('matches the immutable replica after every kind of op, and never writes into 
   })
 })
 
+it('tells length readers about an append at the end, and keeps a replace-then-edit batch out of the event', async () => {
+  const doc = mount(() => useDoc(board))
+  flush()
+  await tick()
+  source().send('doc', { kind: board.kind, value: initial })
+  const length = mount(() => createMemo(() => doc()?.columns[0].cards.length))
+  flush()
+  expect(length()).toBe(2)
+
+  source().send('docOps', { kind: board.kind, ops: [['s', ['columns', 0, 'cards', 2], 'c']] })
+  flush()
+  expect(length()).toBe(3)
+  expect(JSON.parse(JSON.stringify(doc()))).toEqual(store.getState().docs[board.kind])
+
+  const seen: unknown[] = []
+  const stop = store.onDocChange((_target, _kind, event) => seen.push(structuredClone(event)))
+  const replaced = { ...initial, note: 'start' }
+  source().send('docOps', {
+    kind: board.kind,
+    ops: [
+      ['r', replaced],
+      ['a', ['note'], '!'],
+    ],
+  })
+  stop()
+  flush()
+  expect(doc()?.note).toBe('start!')
+  expect(seen).toEqual([
+    {
+      kind: board.kind,
+      ops: [
+        ['r', replaced],
+        ['a', ['note'], '!'],
+      ],
+    },
+  ])
+})
+
+it('drops a shown document from the server subscription once its last reader is gone', async () => {
+  const dispose = createRoot((done) => {
+    useDoc(board)
+    return done
+  })
+  flush()
+  await tick()
+  expect(source().docs).toContain(board.kind)
+  dispose()
+  flush()
+  await tick()
+  expect(source().docs).not.toContain(board.kind)
+})
+
 it('clears the shown documents when show() switches conversations', async () => {
   const doc = mount(() => useDoc(board))
   flush()

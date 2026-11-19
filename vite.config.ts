@@ -255,6 +255,11 @@ export default defineConfig({
         rules: { 'ultimate/api-only-imports': 'error', 'ultimate/core-tier-deps': 'error' },
       },
       {
+        files: ['.ultimate/extensions/**/*.ts', '.ultimate/extensions/**/*.tsx'],
+        excludeFiles: ['.ultimate/extensions/*/test/**'],
+        rules: { 'ultimate/api-only-imports': 'error' },
+      },
+      {
         files: ['extensions/*/api.ts', 'extensions/*/refs.ts', 'extensions/*/ui.tsx'],
         rules: { 'ultimate/api-file-shape': 'error', 'ultimate/api-naming': 'error' },
       },

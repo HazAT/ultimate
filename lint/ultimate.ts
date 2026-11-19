@@ -66,7 +66,8 @@ interface Comment {
 }
 
 const extensionOf = (filename: string) => {
-  const [directory, extension] = path.relative(process.cwd(), filename).split(path.sep)
+  const parts = path.relative(process.cwd(), filename).split(path.sep)
+  const [directory, extension] = parts[0] === '.ultimate' ? parts.slice(1) : parts
   return directory === 'extensions' ? extension : undefined
 }
 /** The repository-relative path segments an import `source` of `filename` resolves to. */
@@ -259,9 +260,11 @@ const hasBody = (statement: Node) =>
 /** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
 const sdkEntry = (filename: string) =>
   ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
-/** Where JSDoc is a contract: the statements of a contract file or the Solid SDK, or those exporting the web SDK's public names. */
+/** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
 function contractStatements(filename: string, statements: Node[]) {
-  if (contractFile(filename) || repositoryPath(filename) === solidSdk) return statements
+  if (contractFile(filename)) return statements
+  if (repositoryPath(filename) === solidSdk)
+    return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
   const names = publicSdk()
   return statements.filter(
@@ -324,9 +327,13 @@ export default {
           if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
           const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
-          const localSolid = local !== undefined && solidFile(local)
+          const localSolid =
+            local !== undefined && (solidFile(local) || repositoryPath(local) === solidSdk)
           const islandComponent =
-            localSolid && node.type === 'ImportDeclaration' && extensionWebFacet(context.filename)
+            local !== undefined &&
+            solidFile(local) &&
+            node.type === 'ImportDeclaration' &&
+            extensionWebFacet(context.filename)
           if (solid && (reactOnly.test(source) || localReact))
             context.report({
               node,
@@ -653,7 +660,9 @@ export default {
           const source = node.source?.value
           if (typeof source !== 'string' || !source.startsWith('.')) return
           if (node.importKind === 'type' || node.exportKind === 'type') return
-          const [directory, extension, ...file] = resolved(context.filename, source)
+          const target = resolved(context.filename, source)
+          const [directory, extension, ...file] =
+            target[0] === '.ultimate' ? target.slice(1) : target
           if (directory === 'extensions' && extension !== own && file.join('/') !== allowed)
             context.report({
               node,

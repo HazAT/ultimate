@@ -58,8 +58,8 @@ component reads documents, UI state and client state as accessors from `@/sdk/so
     the server can go into a store without a copy.
   - A write inside an owned scope (a component body, a memo, `createRoot(() => …)`) throws
     `REACTIVE_WRITE_IN_OWNED_SCOPE`, tests included: create the store inside the root, write from outside it.
-  - An optional context defaults to `null`, not `undefined`: a provider passing `undefined` counts as missing and
-    throws.
+  - A context created without a default throws when nothing provides it, and a provider passing `undefined` counts as
+    nothing. For an optional context, declare a `null` default and provide `null`, as `ExtensionName` does.
   - `solid/reactivity` rejects memos built inside an array literal; give each memo its own name.
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a

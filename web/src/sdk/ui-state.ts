@@ -152,3 +152,27 @@ export function createUiState(
   }
 }
 export type UiState = ReturnType<typeof createUiState>
+
+export type Widen<T> = T extends boolean
+  ? boolean
+  : T extends string
+    ? string
+    : T extends number
+      ? number
+      : T
+export type UiUpdate<T> = Widen<T> | ((previous: Widen<T>) => Widen<T>)
+
+export function writeUiState<T extends JsonValue>(
+  state: UiState,
+  key: string,
+  initial: T,
+  next: UiUpdate<T>,
+) {
+  const previous = (state.get(key) ?? initial) as Widen<T>
+  state.set(key, typeof next === 'function' ? next(previous) : next)
+}
+
+export function extensionUiKey(extension: string | null | undefined, key: string) {
+  if (!extension) throw new Error('useExtensionUiState works inside an extension contribution only')
+  return `ext.${extension}.${key}`
+}
