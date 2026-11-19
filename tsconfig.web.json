@@ -24,6 +24,7 @@
     "shared/events.ts",
     "shared/extension-api.ts",
     "extensions/*/refs.ts",
+    ".ultimate/extensions/*/refs.ts",
     "extensions/*/entries.ts",
     "extensions/messages/caller.ts",
     "extensions/projects/links.ts",

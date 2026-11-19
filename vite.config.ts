@@ -294,8 +294,8 @@ export default defineConfig({
         },
       },
       {
-        files: ['web/src/**', 'extensions/**/*.tsx'],
-        excludeFiles: ['extensions/*/test/**', '**/*.solid.tsx'],
+        files: ['web/src/**', 'extensions/**/*.tsx', '.ultimate/extensions/**/*.tsx'],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', '**/*.solid.tsx'],
         rules: {
           'react/rules-of-hooks': 'error',
           'react/exhaustive-deps': 'error',
