@@ -1,6 +1,8 @@
 {
   "entries": [
     {
+      "commit": "a0638de4",
+      "sha": "a0638de40bd5e2c09497d5921c625549ce014ca8",
       "switch": {
         "cold": 748.5,
         "warm": 273.5
@@ -59,7 +61,6 @@
           "ok": 3
         }
       },
-      "commit": "a0638de4",
       "label": "pure React",
       "date": "2026-11-18",
       "lines": {
@@ -318,6 +319,8 @@
       "committedAt": 1795035148
     },
     {
+      "commit": "75d8f498",
+      "sha": "75d8f49894bedd2688081a804f0bdc55fb805ed2",
       "switch": {
         "cold": 597,
         "warm": 361
@@ -370,7 +373,6 @@
         },
         "agent": null
       },
-      "commit": "75d8f498",
       "label": "0.1",
       "date": "2026-11-19",
       "lines": {
@@ -629,6 +631,8 @@
       "committedAt": 1795084717
     },
     {
+      "commit": "a841737f",
+      "sha": "a841737f3404db3a4e666f256e58dddaf1aaef80",
       "switch": {
         "cold": 800.5,
         "warm": 375.5
@@ -681,7 +685,6 @@
         },
         "agent": null
       },
-      "commit": "a841737f",
       "label": "0.2",
       "date": "2026-11-19",
       "lines": {
@@ -940,6 +943,8 @@
       "committedAt": 1795088712
     },
     {
+      "commit": "1c5d0565",
+      "sha": "1c5d05658ac1b90e5ca962ca791985c48b03eaa2",
       "switch": {
         "cold": 585.5,
         "warm": 206
@@ -1016,7 +1021,6 @@
         },
         "agent": null
       },
-      "commit": "1c5d0565",
       "label": "0.3",
       "date": "2026-11-19",
       "lines": {
@@ -1279,6 +1283,8 @@
       "committedAt": 1795099753
     },
     {
+      "commit": "134703fb",
+      "sha": "134703fb37317e118916a99fc7030b13e23d21af",
       "switch": {
         "cold": 594.5,
         "warm": 231.5
@@ -1355,7 +1361,6 @@
         },
         "agent": null
       },
-      "commit": "134703fb",
       "label": "0.4",
       "date": "2026-11-19",
       "lines": {
@@ -1618,6 +1623,8 @@
       "committedAt": 1795119499
     },
     {
+      "commit": "a6efb2f9",
+      "sha": "a6efb2f9e0ae0c569bf61beaf2e7aa5200c4395c",
       "switch": {
         "cold": 668,
         "warm": 297
@@ -1694,7 +1701,6 @@
         },
         "agent": null
       },
-      "commit": "a6efb2f9",
       "label": "0.5",
       "date": "2026-11-19",
       "lines": {
@@ -1957,6 +1963,8 @@
       "committedAt": 1795121670
     },
     {
+      "commit": "cb5f342c",
+      "sha": "cb5f342c7c17ba331bfad14ba7ff1d7fd3f3ece5",
       "switch": {
         "cold": 665,
         "warm": 252.5
@@ -2033,7 +2041,6 @@
         },
         "agent": null
       },
-      "commit": "cb5f342c",
       "label": "main",
       "date": "2026-11-19",
       "lines": {
@@ -2296,6 +2303,8 @@
       "committedAt": 1795124658
     },
     {
+      "commit": "7b6e50ac",
+      "sha": "7b6e50acc9cd7ab7ecb6c6ad5a9a21bc5f48f9fb",
       "switch": {
         "cold": 685.5,
         "warm": 250
@@ -2378,7 +2387,6 @@
           "ok": 3
         }
       },
-      "commit": "7b6e50ac",
       "label": "0.6",
       "date": "2026-11-19",
       "lines": {

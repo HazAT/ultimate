@@ -1,14 +1,24 @@
 import { constants } from 'node:fs'
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { apply } from '@earendil-works/chord/delta'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { execFile } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
+import { browserBinary } from '../extensions/browser/server.ts'
 import { isMissing } from '../lib/errors.ts'
 import { git } from '../lib/git.ts'
 import { spawnGroup, stopGroup } from '../lib/process-group.ts'
@@ -40,16 +50,25 @@ const streamChunks = Array.from(
 const streamBeatMs = 60
 const readyMs = 120_000
 
-const scratch = await mkdtemp(join(tmpdir(), 'frontend-progress-'))
-const outsideHome = relative(homedir(), scratch).startsWith('..')
-if (!outsideHome) {
-  await rm(scratch, { recursive: true, force: true })
-  throw new Error(`${scratch} is inside ${homedir()}; point TMPDIR elsewhere`)
+const scratchParent = await realpath(tmpdir())
+const fromHome = relative(await realpath(homedir()), scratchParent)
+if (fromHome === '' || (fromHome.split(sep)[0] !== '..' && !isAbsolute(fromHome)))
+  throw new Error(`${scratchParent} is inside ${homedir()}; point TMPDIR elsewhere`)
+const chromium = await browserBinary()
+const interruption = new AbortController()
+const stops = new Set<() => unknown>()
+const interrupt = () => {
+  interruption.abort(new Error('Interrupted; nothing written'))
+  for (const stop of stops) stop()
 }
+process.on('SIGINT', interrupt)
+const stage = () => interruption.signal.throwIfAborted()
+const scratch = await mkdtemp(join(scratchParent, 'frontend-progress-'))
 const cleanEnv = (extra: Record<string, string>) => ({
   PATH: [dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
   HOME: join(scratch, 'home'),
   TMPDIR: scratch,
+  ULTIMATE_CHROMIUM: chromium,
   ...extra,
 })
 
@@ -58,17 +77,16 @@ const node = (script: string, scriptArgs: string[], cwd = here) =>
   run(process.execPath, [script, ...scriptArgs], {
     cwd,
     env: cleanEnv(cwd === tree ? { NODE_ENV: 'production' } : {}),
+    signal: interruption.signal,
+    killSignal: 'SIGKILL',
     maxBuffer: 64 * 1024 * 1024,
     timeout: 600_000,
   }).then(({ stdout }) => stdout)
 
 const full = await git(tree, 'rev-parse', 'HEAD')
 const unchanged = async () =>
-  (await git(tree, 'rev-parse', 'HEAD')) === full && !(await git(tree, 'status', '--porcelain'))
-if (!(await unchanged())) {
-  await rm(scratch, { recursive: true, force: true })
-  throw new Error(`${tree} has uncommitted or untracked changes; measure a clean checkout`)
-}
+  (await git(tree, 'rev-parse', 'HEAD')) === full &&
+  !(await git(tree, 'status', '--porcelain', '--untracked-files=all'))
 const commit = full.slice(0, 8)
 const committedAt = Number(await git(tree, 'log', '-1', '--format=%ct'))
 
@@ -174,9 +192,14 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
       TAILSCALE_COMMAND: join(home, 'no-tailscale'),
     }),
   })
-  const interrupted = () => void stopGroup(group.child.pid!, { leader: group })
-  process.once('SIGINT', interrupted)
+  const stop = () => stopGroup(group.child.pid!, { leader: group })
+  const stopOnInterrupt = () => {
+    stopping = stop()
+  }
+  let stopping: Promise<void> | undefined
+  stops.add(stopOnInterrupt)
   try {
+    stage()
     let output = ''
     const ready = new Promise<string>((serving, failed) => {
       const read = (data: Buffer) => {
@@ -196,8 +219,8 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
     )
     return await use(url)
   } finally {
-    process.off('SIGINT', interrupted)
-    if (group.child.pid) await stopGroup(group.child.pid, { leader: group })
+    stops.delete(stopOnInterrupt)
+    if (group.child.pid) await (stopping ?? stop())
   }
 }
 
@@ -266,13 +289,12 @@ type Weight = {
 let weight: Weight | undefined
 const model = scriptedModel()
 const measured: Record<string, unknown> = {}
-const stopOnInterrupt = () => {
-  process.exitCode = 130
-  model.close()
-}
-process.once('SIGINT', stopOnInterrupt)
+stops.add(() => model.close())
 try {
+  if (!(await unchanged()))
+    throw new Error(`${tree} has uncommitted or untracked changes; measure a clean checkout`)
   weight = JSON.parse(await node(join(here, 'scripts/frontend-weight.ts'), [], tree)) as Weight
+  stage()
   await new Promise<void>((listening, failed) => {
     model.once('error', failed)
     model.listen(0, '127.0.0.1', listening)
@@ -286,19 +308,21 @@ try {
     assertManualPause(join(home, 'state.sqlite'))
     measured.switch = await measureSwitch(home, agentDir)
   }
+  stage()
   if (only.has('stream')) measured.stream = await measureStream(join(scratch, 'stream'), agentDir)
+  stage()
   if (only.has('previews'))
     measured.previews = { scenarios: await measurePreviews(join(scratch, 'previews'), agentDir) }
+  stage()
 } finally {
-  process.off('SIGINT', stopOnInterrupt)
   if (model.listening) await new Promise<void>((closed) => model.close(() => closed()))
   await rm(scratch, { recursive: true, force: true })
 }
-if (process.exitCode === 130 || !weight) throw new Error('Interrupted; nothing written')
-if (weight.dirty || !full.startsWith(weight.rev) || !(await unchanged()))
+if (!weight || weight.dirty || !full.startsWith(weight.rev) || !(await unchanged()))
   throw new Error(`${tree} moved or changed while it was measured; nothing written`)
 const entry = {
   commit,
+  sha: full,
   label,
   date: new Date(committedAt * 1000).toISOString().slice(0, 10),
   committedAt,
@@ -317,7 +341,8 @@ const stored = await readFile(progressFile, 'utf8').catch((error: unknown) => {
 })
 type Entry = typeof entry & Record<string, unknown>
 const progress = JSON.parse(stored) as Record<string, unknown> & { entries: Entry[] }
-const previous = progress.entries.find((item) => item.commit === entry.commit)
+const same = (item: Entry) => (item.sha ? item.sha === full : full.startsWith(item.commit))
+const previous = progress.entries.find(same)
 const merged: Entry = {
   switch: null,
   stream: null,
@@ -329,9 +354,11 @@ const merged: Entry = {
     ? { previews: { ...previous.previews, ...measured.previews } }
     : {}),
 }
-progress.entries = [
-  ...progress.entries.filter((item) => item.commit !== entry.commit),
-  merged,
-].toSorted((a, b) => a.committedAt - b.committedAt)
-await writeFile(progressFile, `${JSON.stringify(progress, null, 2)}\n`)
+progress.entries = [...progress.entries.filter((item) => !same(item)), merged].toSorted(
+  (a, b) => a.committedAt - b.committedAt,
+)
+const staged = `${progressFile}.${process.pid}`
+await writeFile(staged, `${JSON.stringify(progress, null, 2)}\n`)
+await rename(staged, progressFile)
+process.off('SIGINT', interrupt)
 console.log(JSON.stringify(merged))

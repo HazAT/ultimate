@@ -85,7 +85,9 @@ const scenarios: Record<string, Scenario> = {
         action(WarmStateAction, null).then((state) => state.on),
         'keep-warm on',
       ),
-    restore: () => action(SetAction, { on: true }),
+    restore: async () => {
+      if (!(await action(WarmStateAction, null)).on) await action(SetAction, { on: true })
+    },
   },
   pause: {
     selectors: [
@@ -116,7 +118,9 @@ const scenarios: Record<string, Scenario> = {
         action(PauseStateAction, null).then((state) => !state.paused),
         'a host that is not paused',
       ),
-    restore: () => action(PlayAction, null),
+    restore: async () => {
+      if ((await action(PauseStateAction, null)).paused) await action(PlayAction, null)
+    },
   },
   'setup-read': {
     selectors: [
@@ -161,6 +165,7 @@ async function once(browser: Browser, calls: Call[], scenario: Scenario): Promis
   let bytes = 0
   let imageBytes = 0
   let imageTokens = 0
+  let acted = false
   await scenario.ready()
   try {
     for (const [index, call] of calls.entries()) {
@@ -172,6 +177,7 @@ async function once(browser: Browser, calls: Call[], scenario: Scenario): Promis
         try {
           for (const item of call.steps) {
             measured.steps++
+            acted ||= 'click' in item || item.ui === 'act'
             const value = await step(page, item)
             outcomes.push(
               `Step ${measured.steps}: OK${value === undefined ? '' : ` ${JSON.stringify(value)}`}`,
@@ -197,7 +203,7 @@ async function once(browser: Browser, calls: Call[], scenario: Scenario): Promis
       }
     }
   } finally {
-    await scenario.restore()
+    if (acted) await scenario.restore()
   }
   return {
     ...measured,

@@ -5,6 +5,7 @@
 import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { browserBinary } from '../../../extensions/browser/server.ts'
+import { median } from '../../../scripts/measure.ts'
 
 const args = process.argv.slice(2)
 const [base, id] = args
@@ -152,11 +153,6 @@ await browser.close()
 
 const quantile = (values: number[], at: number) =>
   values.toSorted((a, b) => a - b)[Math.floor((values.length - 1) * at)]
-const median = (values: number[]) => {
-  const sorted = values.toSorted((a, b) => a - b)
-  const half = sorted.length / 2
-  return Number.isInteger(half) ? (sorted[half - 1] + sorted[half]) / 2 : sorted[Math.floor(half)]
-}
 const byEvent = Map.groupBy(events, (event) => event.ev)
 for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].length)) {
   const task = list.map((event) => event.task)

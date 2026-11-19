@@ -68,7 +68,7 @@ try {
     JSON.stringify(
       {
         rev: await git(root, 'rev-parse', '--short', 'HEAD'),
-        dirty: (await git(root, 'status', '--porcelain')).length > 0,
+        dirty: (await git(root, 'status', '--porcelain', '--untracked-files=all')).length > 0,
         lines: {
           frontend: sum(counted),
           webSrc: sum(counted.filter(({ file }) => file.startsWith('web/src/'))),
