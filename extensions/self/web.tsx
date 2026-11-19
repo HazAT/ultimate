@@ -1,28 +1,21 @@
 import { deadline } from '../../lib/timers.ts'
-import { LoaderCircleIcon, RotateCwIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ZapIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
 import { Tool, ToolContent, ToolHeader, ToolOutput, ToolSection } from '@/components/ai/tool'
-import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  bundle,
-  cn,
   defineWebExtension,
-  formatTime,
+  island,
   switched,
   useEvents,
-  useNow,
-  useRestart,
-  useSystem,
   useToolDuration,
   useUltimate,
 } from '@/sdk'
 import type { ToolCallView } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { SubmissionLanded } from '../workspaces/ui.tsx'
+import { Build, CoreStale, Rebuild } from './status.solid.tsx'
 
 const short = (id: string | undefined) => id?.slice(0, 7)
 
@@ -97,207 +90,6 @@ function RestartCall({ call }: { call: ToolCallView }) {
   )
 }
 
-function CoreStale() {
-  const system = useSystem()
-  const restart = useRestart()
-  if (restart.error)
-    return (
-      <Popover onOpenChange={(open) => !open && restart.clear()}>
-        <PopoverTrigger asChild>
-          <button
-            className="-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 text-error transition-colors hover:bg-accent"
-            type="button"
-          >
-            <TriangleAlertIcon className="size-3" />
-            restart failed
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-[32rem] p-0 font-mono" side="top">
-          <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
-            The shared Ultimate host restart did not take.
-          </div>
-          <pre className="max-h-80 overflow-auto px-3 py-2 text-[11.5px] leading-[1.55] whitespace-pre-wrap text-error">
-            {restart.error}
-          </pre>
-          <div className="flex justify-end gap-2 border-t border-border/70 px-3 py-2">
-            <Button className="h-7 text-[12px]" onClick={restart.clear} size="sm" variant="ghost">
-              Dismiss
-            </Button>
-            <Button
-              className="h-7 text-[12px]"
-              onClick={() => {
-                restart.clear()
-                restart.run()
-              }}
-              size="sm"
-              variant="outline"
-            >
-              Try again
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
-    )
-  if (!system?.code.coreStale && !restart.busy) return null
-  const stale = (
-    <span>
-      <span className="max-md:hidden">core changed · </span>restart
-    </span>
-  )
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          className={cn(
-            '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors',
-            restart.busy ? 'text-brand' : 'text-warning hover:bg-accent',
-          )}
-          disabled={restart.busy}
-          onClick={restart.run}
-          type="button"
-        >
-          <RotateCwIcon className={cn('size-3', restart.busy && 'animate-spin')} />
-          {restart.pending !== undefined
-            ? `swapping to gen ${restart.pending}…`
-            : restart.busy
-              ? 'checking…'
-              : stale}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-80 font-mono text-[11px]" side="top">
-        server/ or shared/ changed since generation {system?.process.generation} booted. Restart
-        type-checks and boots a new core next to this one; if it fails, this one keeps serving.
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
-function Rebuild() {
-  const web = useSystem()?.web
-  const building = web?.building === true
-  const since = useRef(0)
-  if (building && since.current === 0) since.current = Date.now()
-  if (!building) since.current = 0
-  const now = useNow(1000, building)
-  if (!web) return null
-  if (web.id && bundle && web.id !== bundle)
-    return (
-      <span className="flex items-center gap-1.5 text-brand">
-        <ZapIcon className="size-3" />
-        ready · switching
-      </span>
-    )
-  if (building)
-    return (
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        <LoaderCircleIcon className="size-3 animate-spin" />
-        building… {Math.max(0, Math.floor((now - since.current) / 1000))}s
-      </span>
-    )
-  if (!web.error && !web.left) return null
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          className={cn(
-            '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent',
-            web.error ? 'text-error' : 'text-warning',
-          )}
-          type="button"
-        >
-          <TriangleAlertIcon className="size-3" />
-          {web.error
-            ? 'build failed'
-            : `${web.left!.length} ${web.left!.length === 1 ? 'facet' : 'facets'} left out`}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="w-[32rem] max-w-[calc(100vw-2rem)] p-0 font-mono"
-        side="top"
-      >
-        <div className="border-b border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
-          {web.error
-            ? 'The web UI did not build; this page keeps the previous bundle.'
-            : 'Left out of the web bundle; their cards show the error until a save fixes them.'}
-        </div>
-        <pre className="max-h-80 overflow-auto px-3 py-2 text-[11.5px] leading-[1.55] whitespace-pre-wrap text-error">
-          {web.error ?? web.left!.map((entry) => `${entry.file}\n${entry.error}`).join('\n\n')}
-        </pre>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function Build() {
-  const system = useSystem()
-  const id = system?.build.id
-  const [fresh, setFresh] = useState(switched !== undefined)
-  const last = useRef(id)
-  useEffect(() => {
-    if (!id || last.current === id) return
-    const first = last.current === undefined
-    last.current = id
-    if (!first) setFresh(true)
-  }, [id])
-  useEffect(() => {
-    if (!fresh) return undefined
-    return deadline(4000, () => setFresh(false))
-  }, [fresh])
-  if (!system) return null
-  const web = system.web
-  const rebuildReplacesBuildItem =
-    web.building || web.error || web.left || (web.id && bundle && web.id !== bundle)
-  if (rebuildReplacesBuildItem) return null
-  const { build } = system
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className={cn(
-            'transition-colors duration-700',
-            fresh ? 'text-brand' : 'text-muted-foreground/80',
-          )}
-        >
-          build {short(build.id)}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-[28rem] font-mono text-[11px]" side="top">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3">
-          <span className="opacity-60">build</span>
-          <span>
-            {build.id} · gen {build.generation}
-          </span>
-          <span className="opacity-60">core</span>
-          <span>{build.core.slice(0, 12)}</span>
-          {Object.entries(build.extensions).map(([name, hash]) => (
-            <span className="contents" key={name}>
-              <span className="opacity-60">{name}</span>
-              <span>{hash.slice(0, 12)}</span>
-            </span>
-          ))}
-        </div>
-        {build.history.length > 1 && (
-          <div className="mt-2 border-t border-current/20 pt-1.5">
-            {build.history
-              .toReversed()
-              .slice(0, 8)
-              .map((entry) => (
-                <div className="flex gap-2" key={`${entry.id}-${entry.at}`}>
-                  <span className="opacity-60">{formatTime(entry.at, true)}</span>
-                  <span>{short(entry.id)}</span>
-                  <span className="truncate opacity-80">
-                    {entry.changed.length ? entry.changed.join(', ') : `gen ${entry.generation}`}
-                  </span>
-                </div>
-              ))}
-          </div>
-        )}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
 const updateToastLifetimeMs = 4000
 
 const shortFile = (path: string) => path.split('/').slice(-2).join('/')
@@ -356,9 +148,9 @@ export default defineWebExtension({
   tools: { restart: RestartCall },
   slots: {
     'statusline.right': [
-      { component: CoreStale, phone: true },
-      { component: Rebuild, order: 1, phone: true },
-      { component: Build, order: 1 },
+      { component: island(CoreStale), phone: true },
+      { component: island(Rebuild), order: 1, phone: true },
+      { component: island(Build), order: 1 },
     ],
     overlay: Updated,
   },

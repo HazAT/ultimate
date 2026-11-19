@@ -26,9 +26,12 @@ The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` fil
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
 ([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Kbd and KbdGroup,
-Popover, Row and Rows, SegmentedControl, Skeleton, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch and
-Tooltip. Import from `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component
-exists. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it. Icons come
+NumberInput, Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in
+`status-trigger.solid.tsx`), Switch and Tooltip. Import from `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component
+exists. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status
+chips of setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension
+renders (mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
+`const McpDetails = island(Details)`. Icons come
 from `@lucide/solid`.
 
 ## Ultimate's rules (on top of those skills)
@@ -52,7 +55,11 @@ from `@lucide/solid`.
   links, labels of controls, `summary`, `select`) the pointer and a disabled one the default cursor; never add
   `cursor-pointer` by hand.
 - **Name every control** with a visible label or `aria-label`: people using screen readers and agents both find
-  controls by name.
+  controls by name. Names are unique on the whole page, not just in the component: an agent acts by name, and the
+  pause popover's "Play" button, the "Play" chip and "Play by itself after" all matched "Play". Name the action
+  (`Play paused work`, `Pause: stop starting new work`).
+- **A Solid file reaches another extension's helpers** through its `refs.ts` or a pure `lib/` module. A `.tsx` sibling
+  counts as React even without JSX: move data a Solid file needs into a `.ts` file (`extensions/sounds/variants.ts`).
 - **Say what agents may do**, as the ui-sdk skill's `references/agent-ready.md` describes:
   `data-agent-confirm="what it does"` on an action that needs a person; `data-agent-secret` on a field an agent may fill
   but never read (password, card and one-time-code fields already are); `data-agent-hidden` on a region agents should
@@ -73,6 +80,12 @@ from `@lucide/solid`.
     nothing. For an optional context, declare a `null` default and provide `null`, as `ExtensionName` does.
   - `solid/reactivity` rejects memos built inside an array literal; give each memo its own name. It also needs a named
     variable for merged props before you spread them in JSX.
+  - A signal a module shares between mounts (a service worker registration, a subscription) is created inside
+    `createRoot` at module scope (`solid/no-module-scope-reactive-primitive`).
+  - A value that depends on an answer is a function of it, not a signal an effect copies it into: `useAction`'s
+    `every` takes `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while a server connects), never a
+    second reader or an effect that writes the interval.
+  - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
 - **ui-sdk facts that tripped agents here:**
   - Popups render in the browser's top layer, not a portal: they stay in their trigger's DOM tree and inherit its
     text styles (a status line's `whitespace-nowrap`, `font-mono`). Kit popups reset the inherited text styles.
@@ -91,6 +104,11 @@ from `@lucide/solid`.
   - Under fake timers `agent.act` never settles: advance timers while it runs (`vi.advanceTimersByTimeAsync`), and do
     not `settle()` under fake timers.
   - Each kit form control a `<label>` wraps goes in `jsx-a11y/label-has-associated-control`'s `controlComponents`.
+  - `asChild` is `render`: `<Button render={(props) => <a {...props} href={url}>Open</a>} />`, with the text inside
+    the anchor (`jsx-a11y/anchor-has-content` cannot see Button's children).
+  - NumberInput's agent `setValue` fires `onValueChange`, not `onValueCommit`; Slider's agent action is `setValue` on
+    its labelled thumb.
+  - An inline `<svg>` drawing is named by `aria-label` and a `<title>`, not `role="img"` (`jsx-a11y/prefer-tag-over-role`).
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a
   report to the coordinator, with the code and the rule.
@@ -103,7 +121,11 @@ from `@lucide/solid`.
 - Reads lag writes: call `flush()` from `solid-js` before asserting, and `await settle()` from `@ui-sdk/core/testing`
   for deferred SDK work.
 - For SDK data, mock `web/src/sdk/client.ts` with a real `createStore` on a `FakeSource`, as
-  `test/web/solid-sdk.test.solid.tsx` does, and send `doc`/`docOps` events through it.
+  `test/web/solid-sdk.test.solid.tsx` does, and send `doc`/`docOps` events through it. A component that calls
+  `useCommands` also needs `registry: createRegistry()` in the mock. Import modules that touch mocked browser globals
+  before `vi.useFakeTimers()`.
+- The store drops a `system` event whose text equals the last one; a test of a restart or rollback sends a changed
+  `system` (a new `booted`), as the server does.
 - Agent test: one `createAgent()` (from `@ui-sdk/core/agent`) per file; find controls in `snapshot()` by label and act
   on the ref it returns, never an assumed `c1`, since other controls may mount; subscribe before `act`; assert the
   result's `ok`, the DOM, `details.source === 'agent'` in your handlers, and the events the subscription saw

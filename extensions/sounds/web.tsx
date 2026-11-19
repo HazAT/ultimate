@@ -1,22 +1,17 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
-import { AudioLinesIcon, PlayIcon, SquareIcon, Volume2Icon, VolumeOffIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Switch } from '@/components/ui/switch'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   api,
-  cn,
   defineWebExtension,
   docRef,
+  island,
   useConnection,
   useConversations,
   useDocOf,
   useEvents,
   switched,
   useExtensionUiState,
-  useNow,
 } from '@/sdk'
 import type { LiveState } from '@/sdk'
 import { MessagesDoc, emptyMessages } from '../messages/ui.tsx'
@@ -25,10 +20,11 @@ import { StandingDoc } from '../subagents/ui.tsx'
 import { Committed } from '../coding-tools/ui.tsx'
 import { CheckRan, SubmissionLanded } from '../workspaces/ui.tsx'
 import { Branched } from '../lineage/ui.tsx'
-import { listener, sounds } from './cues.ts'
+import { listener } from './cues.ts'
 import type { Cue, Sound } from './cues.ts'
-import { tracker, variants } from './agents.tsx'
-import type { Variant } from './agents.tsx'
+import { tracker } from './agents.tsx'
+import { Control } from './chip.solid.tsx'
+import { variantOf } from './variants.ts'
 import * as conductor from './conductor.ts'
 import * as tones from './tones.ts'
 import { spoken } from './narration.ts'
@@ -40,32 +36,19 @@ import { questionsSpoken } from './ui.tsx'
 const eventClaimKey = 'ultimate.sounds.played'
 
 function useSettings() {
-  const [muted, setMuted] = useExtensionUiState('muted', false)
-  const [off, setOff] = useExtensionUiState<Sound[]>('off', [])
-  const [volume, setVolume] = useExtensionUiState('volume', 0.8)
-
-  const [stored, setAgents] = useExtensionUiState<string>('agents', 'off')
-
-  const id = stored === 'ambient' ? 'chiptune' : stored
-  const agents: Variant | 'off' = variants.some((variant) => variant.id === id)
-    ? (id as Variant)
-    : 'off'
-
-  const [narrator, setNarrator] = useExtensionUiState('narrator', false)
-  const [branches, setBranches] = useExtensionUiState('narrateBranches', false)
+  const [muted] = useExtensionUiState('muted', false)
+  const [off] = useExtensionUiState<Sound[]>('off', [])
+  const [volume] = useExtensionUiState('volume', 0.8)
+  const [stored] = useExtensionUiState('agents', 'off')
+  const [narrator] = useExtensionUiState('narrator', false)
+  const [branches] = useExtensionUiState('narrateBranches', false)
   return {
     muted,
-    setMuted,
     off,
-    setOff,
     volume,
-    setVolume,
-    agents,
-    setAgents,
+    agents: variantOf(stored)?.id ?? ('off' as const),
     narrator,
-    setNarrator,
     branches,
-    setBranches,
   }
 }
 
@@ -251,204 +234,8 @@ function RoundOf({
   return null
 }
 
-const preview = (sound: Sound) =>
-  tones.play(sound).catch((error: unknown) => console.warn('Sound failed', error))
-
-const row = 'flex h-8 items-center justify-between gap-2 px-2 text-[12px]'
-const section = 'border-t border-border/70 pt-1'
-
-function Control() {
-  const {
-    muted,
-    setMuted,
-    off,
-    setOff,
-    volume,
-    setVolume,
-    agents,
-    setAgents,
-    narrator: narrating,
-    setNarrator,
-    branches,
-    setBranches,
-  } = useSettings()
-  const stage = useSyncExternalStore(conductor.subscribe, conductor.current)
-  const now = useNow(1000, stage.demoUntil !== undefined)
-  const playing = agents !== 'off' && !muted
-  const left =
-    stage.demoUntil === undefined
-      ? undefined
-      : Math.max(0, Math.ceil((stage.demoUntil - now) / 1000))
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          aria-label="Sounds"
-          className={cn(
-            '-mx-1 flex items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-            muted && 'text-muted-foreground/60',
-            playing && 'text-brand',
-          )}
-          type="button"
-        >
-          {muted ? (
-            <VolumeOffIcon className="size-3" />
-          ) : playing ? (
-            <AudioLinesIcon className="size-3 animate-pulse" />
-          ) : (
-            <Volume2Icon className="size-3" />
-          )}
-          sounds
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-1 font-mono" side="top">
-        <label className={cn(row, 'cursor-pointer')}>
-          Sounds
-          <Switch checked={!muted} onCheckedChange={(on) => setMuted(!on)} />
-        </label>
-        <label className={cn(row, muted && 'opacity-50')}>
-          <span className="text-muted-foreground">Volume</span>
-          <input
-            aria-label="Volume"
-            className="h-1 w-32 cursor-pointer accent-brand"
-            disabled={muted}
-            max={1}
-            min={0}
-            onChange={(event) => setVolume(Number(event.target.value))}
-            step={0.05}
-            type="range"
-            value={volume}
-          />
-        </label>
-        <div className={cn(section, muted && 'opacity-50')}>
-          <label className={cn(row, 'cursor-pointer')}>
-            Narrator
-            <Switch checked={narrating} disabled={muted} onCheckedChange={setNarrator} />
-          </label>
-          {narrating && (
-            <>
-              <label className="flex h-7 cursor-pointer items-center gap-2 px-2 text-[12px]">
-                <Checkbox
-                  checked={branches}
-                  disabled={muted}
-                  onCheckedChange={(on) => setBranches(on === true)}
-                />
-                Announce new branches
-              </label>
-              <div className="px-2 pt-0.5 pb-1 text-[11px] leading-4 text-muted-foreground">
-                Speaks questions, failures and landings after their sound, also while the tab is
-                hidden. OpenAI receives branch titles when that voice is used.
-              </div>
-            </>
-          )}
-        </div>
-        <div className={cn(section, muted && 'opacity-50')}>
-          <label className={cn(row, 'cursor-pointer')}>
-            Sound of agents
-            <Switch
-              checked={agents !== 'off'}
-              disabled={muted}
-              onCheckedChange={(on) => setAgents(on ? 'chiptune' : 'off')}
-            />
-          </label>
-          {agents !== 'off' && (
-            <>
-              <div
-                aria-label="Variant"
-                className="mx-2 mb-1 grid grid-cols-3 rounded-md border border-border/70 p-px"
-                role="radiogroup"
-              >
-                {variants.map((variant) => (
-                  <button
-                    aria-checked={agents === variant.id}
-                    className={cn(
-                      'h-6 cursor-pointer rounded-[5px] text-[11px] text-muted-foreground transition-colors hover:text-foreground',
-                      agents === variant.id && 'bg-accent text-foreground',
-                    )}
-                    disabled={muted}
-                    key={variant.id}
-                    onClick={() => setAgents(variant.id)}
-                    role="radio"
-                    title={variant.detail}
-                    type="button"
-                  >
-                    {variant.label}
-                  </button>
-                ))}
-              </div>
-              <div className="px-2 pb-1 text-[11px] leading-4 text-muted-foreground">
-                {variants.find((variant) => variant.id === agents)?.detail}
-              </div>
-              <button
-                className={cn(
-                  row,
-                  'w-full cursor-pointer rounded-sm whitespace-nowrap hover:bg-accent',
-                  left !== undefined && 'text-brand',
-                )}
-                disabled={muted}
-                onClick={() => (left === undefined ? conductor.startDemo() : conductor.stopDemo())}
-                type="button"
-              >
-                <span className="flex items-center gap-2">
-                  {left === undefined ? (
-                    <PlayIcon className="size-3" />
-                  ) : (
-                    <SquareIcon className="size-3" />
-                  )}
-                  {left === undefined ? 'Start demo' : 'Stop demo'}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {left === undefined ? '40s' : `${left}s`}
-                </span>
-              </button>
-              {stage.blocked && (
-                <div className="px-2 pb-1 text-[11px] text-warning">
-                  Click anywhere to start audio
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        <div className={section}>
-          {sounds.map(({ sound, label }) => (
-            <div
-              className={cn('flex h-7 items-center gap-2 px-2 text-[12px]', muted && 'opacity-50')}
-              key={sound}
-            >
-              <label className="flex flex-1 cursor-pointer items-center gap-2">
-                <Checkbox
-                  checked={!off.includes(sound)}
-                  disabled={muted}
-                  onCheckedChange={(on) => {
-                    setOff((previous) =>
-                      on ? previous.filter((other) => other !== sound) : [...previous, sound],
-                    )
-                    if (on) void preview(sound)
-                  }}
-                />
-                {label}
-              </label>
-              <button
-                aria-label={`Play ${label}`}
-                className="grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => void preview(sound)}
-                type="button"
-              >
-                <PlayIcon className="size-3" />
-              </button>
-            </div>
-          ))}
-          <div className="px-2 pt-0.5 pb-1 text-[11px] text-muted-foreground">
-            Landings from any branch; the rest from @ultimate only
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
 export default defineWebExtension({
-  slots: { overlay: [Player], 'statusline.right': [{ component: Control, order: -1 }] },
+  slots: { overlay: [Player], 'statusline.right': [{ component: island(Control), order: -1 }] },
   commands: [
     {
       id: 'sounds.demo',

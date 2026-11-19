@@ -75,6 +75,7 @@
     "lib/ago.ts",
     "lib/compare.ts",
     "lib/context-usage.ts",
+    "lib/conversation-ref.ts",
     "lib/entries.ts",
     "lib/families.ts",
     "lib/marks.ts",

@@ -4,6 +4,7 @@
 
 /* Classes used by extensions and by Streamdown's own renderers. */
 @source '../../extensions';
+@source '../../lib/conversation-ref.ts';
 @source '../../node_modules/streamdown/dist/*.js';
 @source '../../node_modules/@streamdown/code/dist/*.js';
 

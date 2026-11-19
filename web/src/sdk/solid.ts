@@ -18,16 +18,28 @@ import {
 } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
-import { every } from '../../../lib/timers.ts'
+import { docRef } from '../../../shared/extension-api.ts'
+import { EVENT_FEED } from '../../../shared/events.ts'
+import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
+import { deadline, every } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
+import { actions, allCommands } from './actions.ts'
+import type { CommandItem } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
-import { reads, store, uiState } from './client.ts'
+import { api as client, reads, registry, store, uiState } from './client.ts'
+import { events } from './events.ts'
+import { errorMessage } from './format.ts'
+import { restartAccepted, restartPhase, restartTimedOut } from './restart.ts'
+import type { RestartPhase } from './restart.ts'
 import type { ReadState, Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 
-export { api } from './client.ts'
+export { api, bundle, switched } from './client.ts'
+/** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
+export { events } from './events.ts'
 /**
  * `writingAs(details.source, write)` attributes each server write `write` starts synchronously (a UI-state set, an
  * action) to the agent when `source` is `agent`, the `details.source` a ui-sdk change handler receives; otherwise to
@@ -36,7 +48,14 @@ export { api } from './client.ts'
 export { writingAs } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
-export { formatAgo, formatBytes, formatDuration, formatTime, formatTokens } from './format.ts'
+export {
+  errorMessage,
+  formatAgo,
+  formatBytes,
+  formatDuration,
+  formatTime,
+  formatTokens,
+} from './format.ts'
 export { formatKeys } from './keys.ts'
 export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
@@ -167,21 +186,21 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
  * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again, and
  * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
  */
-export type UseActionOptions = {
+export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId
   onError?: (error: ActionError) => void
   on?: Accessor<unknown>
-  every?: number
+  every?: number | ((data: T | undefined) => number | undefined)
   focus?: boolean
 }
 
 /**
  * The server action `ref` names, called with `args` as `useAction` from `@/sdk` calls it and sharing its result: on
- * mount, when `on()` changes, every `every` ms, on focus with `focus`, and after a restart. Each field is an accessor.
+ * mount, when `on()` changes, every `every` ms (a number, or a function of the latest answer), on focus with `focus`, and after a restart. Each field is an accessor.
  */
 export function useAction<Args, T>(
   ref: ActionRef<Args, T>,
-  ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
+  ...[args, options = {}]: ActionArgs<Args, UseActionOptions<T>>
 ) {
   const { state } = shared()
   const scope = useContext(ConversationScope)
@@ -192,7 +211,20 @@ export function useAction<Args, T>(
     return reads.get(ref.extension, ref.name, args, conversation)
   })
   const [current, setCurrent] = createSignal<ReadState>(() => read().get())
-  const reader: Reader = { onError: options.onError, every: options.every, focus: options.focus }
+  const interval = createMemo(() =>
+    typeof options.every === 'function'
+      ? options.every(current().data as T | undefined)
+      : options.every,
+  )
+  const reader: Reader = { onError: options.onError, focus: options.focus }
+  createEffect(
+    () => ({ ms: interval(), read: read() }),
+    ({ ms, read: next }) => {
+      if (reader.every === ms) return
+      reader.every = ms
+      next.repoll()
+    },
+  )
   createEffect(read, (next) => {
     const unsubscribe = next.subscribe(() => setCurrent(next.get()))
     const release = next.use(reader)
@@ -242,3 +274,109 @@ export const useConnection = selected((state) => state.connection)
 export const useSystem = selected((state) => state.system)
 /** Summaries of every conversation; an unchanged row keeps its identity. */
 export const useConversations = selected((state) => state.conversations)
+/** The live task graph of every conversation. */
+export const useTasks = selected((state) => state.tasks)
+
+const eventFeed = docRef<{ events: EventRecord[] }>(EVENT_FEED)
+
+/**
+ * The newest durable events (`host.emit`), newest first and live, as `useEvents` from `@/sdk` reads them; only those of
+ * `events` when given. `undefined` until the root's feed arrives.
+ */
+export function useEvents<T extends EventToken = EventToken>(
+  options: { events?: readonly T[]; limit?: number } = {},
+): Accessor<readonly EventRecord<EventData<T>>[] | undefined> {
+  const feed = useDocOf(() => ROOT, eventFeed)
+  return createMemo(() => {
+    const value = feed()
+    if (value === undefined) return undefined
+    const wanted = options.events?.map((event) => event.kind)
+    return (value?.events ?? [])
+      .filter((event) => !wanted || wanted.includes(event.kind))
+      .toReversed()
+      .slice(0, options.limit ?? 20) as EventRecord<EventData<T>>[]
+  })
+}
+
+/** Calls `handler` with each `channel` event on the page's bus while the component is mounted. */
+export function useEvent(channel: string, handler: (data: unknown) => void) {
+  onSettled(() => events.on(channel, handler))
+}
+
+let commands: Accessor<CommandItem[]> | undefined
+
+/** Core and extension commands, as the palette lists them. */
+export function useCommands() {
+  return (commands ??= runWithOwner(null, () =>
+    createRoot(() => {
+      const [records, setRecords] = createSignal(registry.getSnapshot())
+      registry.subscribe(() => setRecords(registry.getSnapshot()))
+      return createMemo(() => allCommands(records()))
+    }),
+  ))
+}
+
+/** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
+export const { switchConversation, showSurface, runCommand } = actions
+
+/** Shows a notice in the page's notice stack, as a failed command does. */
+export const notify = (notice: Parameters<typeof store.notify>[0]) => store.notify(notice)
+
+/** `copy(text)` puts text on the clipboard; `copied()` is true for 1.2 s after, and a failure becomes an error notice. */
+export function useCopy() {
+  const [copied, setCopied] = createSignal(false)
+  const reset: { cancel?: Cancel } = {}
+  onSettled(() => () => reset.cancel?.())
+  const copy = (text: string) =>
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true)
+        reset.cancel?.()
+        reset.cancel = deadline(1200, () => setCopied(false))
+      })
+      .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
+  return { copied, copy }
+}
+
+/**
+ * `api.restart()` with its outcome, as `useRestart` from `@/sdk` reports it: `busy()` while asking or swapping,
+ * `pending()` the generation it waits for, `error()` why the last restart did not take.
+ */
+export function useRestart(timeoutMs = 120_000) {
+  const system = useSystem()
+  const connection = useConnection()
+  const [state, setState] = createSignal<RestartPhase>({ phase: 'idle' })
+  createEffect(
+    () => ({ current: state(), system: system(), open: connection().status === 'open' }),
+    ({ current, system: info, open }) => {
+      const next = restartPhase(current, info, open)
+      if (next !== current) setState(next)
+    },
+  )
+  const swapping = createMemo(() => {
+    const current = state()
+    return current.phase === 'swapping' ? current.target : undefined
+  })
+  createEffect(swapping, (target) =>
+    target === undefined
+      ? undefined
+      : deadline(timeoutMs, () => setState(restartTimedOut(target, timeoutMs))),
+  )
+  return {
+    busy: () => state().phase !== 'idle',
+    pending: swapping,
+    error: () => {
+      const value = state()
+      return value.phase === 'idle' ? value.error : undefined
+    },
+    clear: () => setState({ phase: 'idle' }),
+    run: () => {
+      setState({ phase: 'asking' })
+      client.restart().then(
+        (result) => setState(restartAccepted(result)),
+        (failure: unknown) => setState({ phase: 'idle', error: errorMessage(failure) }),
+      )
+    },
+  }
+}

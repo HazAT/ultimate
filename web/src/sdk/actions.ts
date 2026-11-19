@@ -1,6 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { registry, replaceNextSelection, store, uiState } from './client.ts'
 import { errorMessage } from './format.ts'
+import { writerNow, writingAs } from './writer.ts'
 import {
   HOME,
   commandApplies,
@@ -138,8 +139,9 @@ export const actions: UltimateActions = {
 export function runCommand(id: string, context: UltimateContext = currentContext()) {
   const command = allCommands().find((candidate) => candidate.id === id)
   if (!command || !applies(command, context)) return
+  const who = writerNow()
   void Promise.resolve()
-    .then(() => command.run(context))
+    .then(() => writingAs(who, () => command.run(context)))
     .catch((error: unknown) =>
       store.notify({
         level: 'error',
