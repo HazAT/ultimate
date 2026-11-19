@@ -84,6 +84,12 @@ const names = [
 
 const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
 type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
+export type DocEvent = ServerEvents['doc'] | ServerEvents['docOps']
+export type DocListener = (
+  watchedConversationOrShown: ConversationId | undefined,
+  kind: string,
+  event: DocEvent,
+) => void
 
 interface DocStream {
   kinds: string
@@ -117,6 +123,7 @@ export function createStore(options: StoreOptions = {}) {
     },
   }
   const listeners = new Set<() => void>()
+  const docListeners = new Set<DocListener>()
   const docKinds = new Map<string, number>()
 
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
@@ -207,7 +214,10 @@ export function createStore(options: StoreOptions = {}) {
         const event = data as ServerEvents['doc'] | ServerEvents['docOps']
         if (!docKinds.has(event.kind)) break
         const docs = applyDoc(state.docs, event)
-        if (docs !== state.docs) set({ docs })
+        if (docs !== state.docs) {
+          set({ docs })
+          for (const listener of docListeners) listener(undefined, event.kind, event)
+        }
         break
       }
       case 'tasks':
@@ -361,7 +371,10 @@ export function createStore(options: StoreOptions = {}) {
         if (!docWatchCountsByConversation.get(conversation)?.has(change.kind)) return
         const docs = state.docsOf[conversation] ?? {}
         const next = applyDoc(docs, change)
-        if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
+        if (next !== docs) {
+          set({ docsOf: { ...state.docsOf, [conversation]: next } })
+          for (const listener of docListeners) listener(conversation, change.kind, change)
+        }
       },
       (status) => {
         if (status !== STREAM_GONE_RECONNECT_RESUBSCRIBES)
@@ -425,6 +438,12 @@ export function createStore(options: StoreOptions = {}) {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
+      }
+    },
+    onDocChange: (listener: DocListener) => {
+      docListeners.add(listener)
+      return () => {
+        docListeners.delete(listener)
       }
     },
     start() {

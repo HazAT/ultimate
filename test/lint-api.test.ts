@@ -329,13 +329,47 @@ import { createSignal } from 'solid-js'
 import { Panel } from './panel.solid.tsx'
 import type { PanelProps } from './panel.solid.tsx'`
   const move = (source: string) =>
-    `Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`
+    `Move this code into a .solid.tsx file, or import the Solid component in your extension's web.tsx and contribute it as island(Component) from @/sdk instead of importing ${source} here.`
   expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', reactSource)).toEqual([
+    move('@solidjs/web'),
+    move('solid-js'),
+  ])
+  expect(lint('ui-framework-boundaries', 'extensions/echo/panel.tsx', reactSource)).toEqual([
     move('@solidjs/web'),
     move('solid-js'),
     move('./panel.solid.tsx'),
   ])
+  expect(
+    lint(
+      'ui-framework-boundaries',
+      'extensions/echo/web.tsx',
+      `export { Panel } from './panel.solid.tsx'`,
+    ),
+  ).toEqual([move('./panel.solid.tsx')])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
+  expect(lint('ui-framework-boundaries', 'web/src/sdk/island.tsx', reactSource)).toEqual([])
+  expect(lint('ui-framework-boundaries', 'web/src/sdk/hooks.ts', reactSource)).toEqual([
+    move('@solidjs/web'),
+    move('solid-js'),
+    move('./panel.solid.tsx'),
+  ])
+})
+
+it('gives Solid files the Solid SDK, and types alone from the React one', () => {
+  const source = `/** @jsxImportSource @solidjs/web */
+import { useDoc } from '@/sdk'
+import { useStore } from '@/sdk/hooks'
+import { store } from '../../web/src/sdk/client.ts'
+import { useDoc as useSolidDoc, cn } from '@/sdk/solid'
+import type { SystemInfo } from '@/sdk'
+export type { DocRef } from '@/sdk'`
+  const solidSdk = (module: string) =>
+    `Import the Solid bindings from @/sdk/solid instead of ${module}; types may still come from @/sdk with \`import type\`.`
+  expect(lint('ui-framework-boundaries', 'extensions/echo/status.solid.tsx', source)).toEqual([
+    solidSdk('@/sdk'),
+    solidSdk('@/sdk/hooks'),
+    solidSdk('../../web/src/sdk/client.ts'),
+  ])
 })
 
 it('asks every Solid file for a leading block Solid JSX pragma, and only Solid files', () => {
