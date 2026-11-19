@@ -11,9 +11,12 @@ export const UiState = defineDoc<Record<string, JsonValue>>({
   initial: () => ({}),
 })
 
+const writerDeltasBetweenBases = 100
+
 export const UiWriters = defineDoc<Record<string, number>>({
   kind: 'ultimate.ui-writers',
-  checkpointWhen: () => false,
+  checkpointWhen: (_value, _ops, { deltasSinceBase }) =>
+    deltasSinceBase >= writerDeltasBetweenBases,
   version: 1,
   scope: 'conversation',
   history: 'latest',

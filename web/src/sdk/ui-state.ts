@@ -224,8 +224,11 @@ export function createUiState(
       const together = [...copied, ...unsent]
       const requests = fitsKeepalive(together) ? [together] : [unsent, copied]
       const sent = requests.flatMap((ops) => send(ops, true) ?? [])
-      inFlight = sent.at(-1)
-      await Promise.all(sent.map((each) => each.done))
+      const all = Promise.all(sent.map((each) => each.done)).then(() => undefined)
+      const exiting = { ops: together, done: all }
+      inFlight = sent.length ? exiting : undefined
+      await all
+      if (inFlight === exiting) inFlight = undefined
     },
   }
 }

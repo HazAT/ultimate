@@ -180,3 +180,17 @@ it('keeps a tab’s last writers across a restart, so a late older op cannot rol
   const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
   expect(state).toMatchObject({ 'ext.panel': 'final' })
 })
+
+it('keeps the replay record of every key in a large exit batch, so the late original is still refused', async () => {
+  const { server, post, send } = await serve()
+  const others = Array.from({ length: 999 }, (_, index) => op(`ext.k${index}`, 'x', index + 3))
+  await post('/api/ui', {
+    ops: [op('ext.panel', 'A', 1), op('ext.panel', 'B', 2), ...others],
+    tab: 'tab-1',
+  })
+  await post('/api/ui', { ops: [op('ext.panel', 'A', 1)], tab: 'tab-1' })
+  const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+  expect(state).toMatchObject({ 'ext.panel': 'B' })
+  const tooMany = Array.from({ length: 1001 }, (_, index) => op(`ext.m${index}`, 'x', index + 1))
+  expect((await send('/api/ui', { ops: tooMany, tab: 'tab-2' })).status).toBe(413)
+})

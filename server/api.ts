@@ -528,6 +528,8 @@ export async function createApi(
         if (url.pathname === '/api/ui') {
           const { tab } = data
           const requested = uiOps(data.ops)
+          if (new Set(requested.map(({ key }) => key)).size > maxUiWriters)
+            throw new HttpError(413, 'Too many UI keys in one write')
           if (tab !== undefined && (typeof tab !== 'string' || tab.length > 64))
             throw new HttpError(400, 'Invalid UI tab')
           const by = { ...sourceOf(request.headers), ...deviceOf(request.headers) }
@@ -541,8 +543,10 @@ export async function createApi(
               writers[writer] = seq
               return true
             })
-            for (const writer of Object.keys(writers).slice(0, -maxUiWriters))
-              delete writers[writer]
+            const writtenNow = new Set(requested.map(({ key }) => `${tab} ${key}`))
+            const older = Object.keys(writers).filter((writer) => !writtenNow.has(writer))
+            const overCap = Object.keys(writers).length - maxUiWriters
+            for (const writer of older.slice(0, Math.max(0, overCap))) delete writers[writer]
             const value = await tx.doc(UiState, root.id)
             const written = new Map<string, JsonValue | undefined>()
             const stored = (key: string) =>

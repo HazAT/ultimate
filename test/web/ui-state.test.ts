@@ -520,6 +520,23 @@ describe('durable UI state', () => {
       expect(state.get('notes')).toBe('small')
     })
 
+  it('keeps a flush waiting until every request of a split exit settles', async () => {
+    const { state, sent } = arrivals()
+    state.set('notes', 'x'.repeat(70 * 1024))
+    await wait()
+    state.set('notes', 'small')
+    const exited = state.exit()
+    let flushed = false
+    const flushing = state.flush().then(() => (flushed = true))
+    sent[2].arrive()
+    sent[0].arrive()
+    await wait()
+    expect(flushed).toBe(false)
+    sent[1].arrive()
+    await Promise.all([flushing, exited])
+    expect(flushed).toBe(true)
+  })
+
   it('makes a tab id without crypto.randomUUID, which plain-HTTP origins lack', async () => {
     vi.stubGlobal('crypto', {
       getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
