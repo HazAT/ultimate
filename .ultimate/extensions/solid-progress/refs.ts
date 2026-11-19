@@ -7,7 +7,7 @@ export type Lines = { total: number; solid: number; react: number }
 /**
  * One measured commit of `docs/frontend-progress.json`, oldest first; a measure not taken is null. `summary` says what
  * the step did in one line, else the commit's subject. When the clone has the commit, `coordinator` is the conversation
- * in its `Ultimate-Conversation` trailer (none for the first, the baseline) and `statuses` each extension's status in its tree.
+ * in its `Ultimate-Conversation` trailer and `statuses` each extension's status in its tree.
  */
 export type Entry = {
   commit: string

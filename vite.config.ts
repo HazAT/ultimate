@@ -382,7 +382,11 @@ export default defineConfig({
         test: {
           name: 'solid-dom',
           environment: 'jsdom',
-          include: ['test/**/*.test.solid.tsx', 'extensions/*/test/**/*.test.solid.tsx'],
+          include: [
+            'test/**/*.test.solid.tsx',
+            'extensions/*/test/**/*.test.solid.tsx',
+            '.ultimate/extensions/*/test/**/*.test.solid.tsx',
+          ],
           exclude: excludeE2e,
           setupFiles: ['test/web/solid-dom-setup.ts'],
           maxWorkers,

@@ -52,13 +52,16 @@ async function live(root: string): Promise<Live[]> {
 }
 
 async function statuses(root: string, commit: string) {
-  const tree = (await git(root, 'ls-tree', '-r', '--name-only', commit, '--', 'extensions'))
-    .split('\n')
-    .filter(frontend)
+  const [listed, islands] = await Promise.all([
+    git(root, 'ls-tree', '-r', '--name-only', commit, '--', 'extensions'),
+    git(root, 'grep', '-l', 'island(', commit, '--', 'extensions/*/web.tsx').catch(meansNone),
+  ])
+  const tree = listed.split('\n').filter(frontend)
   const webs = await Promise.all(
-    tree
-      .filter((file) => file.endsWith('/web.tsx'))
-      .map(async (file) => [file, await git(root, 'show', `${commit}:${file}`)] as const),
+    (islands ? islands.split('\n') : []).map(async (found) => {
+      const file = found.slice(commit.length + 1)
+      return [file, await git(root, 'show', `${commit}:${file}`)] as const
+    }),
   )
   const glue = new Set(webs.filter(([file, text]) => isGlue(file, text)).map(([file]) => file))
   const byName = new Map<string, { solid: boolean; reactViews: number }>()
@@ -74,7 +77,7 @@ async function statuses(root: string, commit: string) {
   )
 }
 
-async function step(root: string, entry: Entry, baseline: boolean): Promise<Entry> {
+async function step(root: string, entry: Entry): Promise<Entry> {
   const log = await git(
     root,
     'log',
@@ -86,8 +89,8 @@ async function step(root: string, entry: Entry, baseline: boolean): Promise<Entr
   const [subject, trailer] = log.split('\0')
   return {
     ...entry,
-    summary: entry.summary ?? (baseline ? 'the baseline before the migration' : subject),
-    coordinator: !baseline && /^\d+$/.test(trailer) ? Number(trailer) : undefined,
+    summary: entry.summary ?? subject,
+    coordinator: /^\d+$/.test(trailer) ? Number(trailer) : undefined,
     statuses: await statuses(root, entry.commit),
   }
 }
@@ -105,7 +108,7 @@ async function series(
     previewUsage?: PreviewWeek[]
   }
   return {
-    entries: await Promise.all(entries.map((entry, index) => step(root, entry, index === 0))),
+    entries: await Promise.all(entries.map((entry) => step(root, entry))),
     previewUsage,
   }
 }
