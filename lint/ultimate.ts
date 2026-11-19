@@ -115,6 +115,19 @@ const reactOnly =
   /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
 const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
+const solidJsxPragma = '@jsxImportSource @solidjs/web'
+const localComponent = (filename: string, source: string) => {
+  if (source.startsWith('@/')) return `web/src/${source.slice(2)}`
+  if (source.startsWith('.')) return resolved(filename, source).join('/')
+  return undefined
+}
+const staticString = (value: Node | null | undefined): unknown =>
+  value?.type === 'JSXExpressionContainer'
+    ? staticString(value.expression)
+    : value?.type === 'TemplateLiteral' &&
+        (value as { expressions?: unknown[] }).expressions?.length === 0
+      ? (value as { quasis?: { value?: { cooked?: string } }[] }).quasis?.[0]?.value?.cooked
+      : value?.value
 const kitRoles = new Map([
   ['listbox', 'Listbox or Select'],
   ['menu', 'Menu'],
@@ -266,7 +279,9 @@ export default {
             for (const comment of context.sourceCode.getAllComments()) {
               if (
                 comment.type === 'Shebang' ||
-                /^\s*Pi upstream:|License — Copyright/.test(comment.value)
+                /^\s*Pi upstream:|License — Copyright/.test(comment.value) ||
+                (solidFile(context.filename) &&
+                  comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma)
               )
                 continue
               if (isJsDoc(comment) && contractDocs.has(comment.start)) continue
@@ -287,12 +302,21 @@ export default {
         const check = (node: ImportNode) => {
           const source = node.source?.value
           if (typeof source !== 'string') return
-          if (solid && reactOnly.test(source))
+          if (node.importKind === 'type' || node.exportKind === 'type') return
+          const local = localComponent(context.filename, source)
+          const localTsx =
+            local?.endsWith('.tsx') ||
+            (local?.startsWith('web/src/components/') && !local.endsWith('.ts'))
+          if (solid && (reactOnly.test(source) || (localTsx && !solidFile(local!))))
             context.report({
               node,
               message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
             })
-          else if (!solid && !sdkFile(context.filename) && solidOnly.test(source))
+          else if (
+            !solid &&
+            !sdkFile(context.filename) &&
+            (solidOnly.test(source) || (local !== undefined && solidFile(local)))
+          )
             context.report({
               node,
               message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`,
@@ -308,6 +332,22 @@ export default {
             })
         }
         return {
+          Program(program: Node) {
+            const first = context.sourceCode.getAllComments()[0] as Comment | undefined
+            const statements = (program.body as Node[] | undefined) ?? []
+            if (
+              solid &&
+              !(
+                first &&
+                first.value.trim().replace(/^\*\s*/, '') === solidJsxPragma &&
+                (statements.length === 0 || first.end <= statements[0].start!)
+              )
+            )
+              context.report({
+                node: program,
+                message: `A Solid file shares the type-check project with React files, so without the pragma its JSX is checked against React's types. Open the file with /** ${solidJsxPragma} */.`,
+              })
+          },
           ImportDeclaration: check,
           ImportExpression: check,
           ExportNamedDeclaration: check,
@@ -322,7 +362,7 @@ export default {
         return {
           JSXAttribute(node: Node & { name?: Node }) {
             if (node.name?.name !== 'role') return
-            const role = (node.value as Node | null | undefined)?.value
+            const role = staticString(node.value as Node | null | undefined)
             if (typeof role !== 'string') return
             const component = kitRoles.get(role)
             if (component)

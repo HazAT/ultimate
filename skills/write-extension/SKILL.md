@@ -42,9 +42,8 @@ composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`,
 
 - UI is moving to Solid 2.0 with ui-sdk: before writing or changing a `*.solid.tsx` file or anything in
   `web/src/components/ui`, read the `solid-ui` skill.
-
-- Import only `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `react`, `lucide-react`; never `fetch` your own
-  server, use actions. Another extension only through its `api.ts` (server) or `ui.tsx` (browser).
+- A React file (`*.tsx`) imports only `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `react`, `lucide-react`. A
+  Solid file (`*.solid.tsx`) imports what the `solid-ui` skill lists. Never `fetch` your own server, use actions. Another extension only through its `api.ts` (server) or `ui.tsx` (browser).
 - Ids (surface, command, dialog) start with the extension name.
 - Prompt sections stay stable between turns; anything that changes goes in a `beforeInput` note.
 - An outcome a user waits for gets a card that matches existing ones (`extensions/subagents/messages.tsx`,

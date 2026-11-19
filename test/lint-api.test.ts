@@ -297,29 +297,67 @@ export { TaskChip } from '../plan/chip.tsx'`
 })
 
 it('keeps React and Solid apart, and ui-sdk components behind the UI kit', () => {
-  const solidSource = `import { useState } from 'react'
+  const solidSource = `/** @jsxImportSource @solidjs/web */
+import { useState } from 'react'
 import { Bell } from 'lucide-react'
 import { createSignal } from 'solid-js'
 import { Switch } from '@ui-sdk/solid/switch'
 import { definePrimitive } from '@ui-sdk/core'
-import { Button } from '@/components/ui/button.solid.tsx'`
+import { Button } from '@/components/ui/button.solid.tsx'
+import { Tooltip } from '@/components/ui/tooltip'
+import { Row } from './row.tsx'
+import { format } from './format.ts'
+import type { Props } from './card.tsx'`
+  const replace = (source: string) =>
+    `Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`
   expect(lint('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', solidSource)).toEqual([
-    'Replace react with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
-    'Replace lucide-react with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
+    replace('react'),
+    replace('lucide-react'),
     'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.',
+    replace('@/components/ui/tooltip'),
+    replace('./row.tsx'),
   ])
   expect(
     lint('ui-framework-boundaries', 'web/src/components/ui/switch.solid.tsx', solidSource).length,
-  ).toBe(2)
+  ).toBe(4)
 
   const reactSource = `import { useState } from 'react'
 import { render } from '@solidjs/web'
-import { createSignal } from 'solid-js'`
+import { createSignal } from 'solid-js'
+import { Panel } from './panel.solid.tsx'
+import type { PanelProps } from './panel.solid.tsx'`
+  const move = (source: string) =>
+    `Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`
   expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', reactSource)).toEqual([
-    'Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing @solidjs/web.',
-    'Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing solid-js.',
+    move('@solidjs/web'),
+    move('solid-js'),
+    move('./panel.solid.tsx'),
   ])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
+})
+
+it('asks every Solid file for the Solid JSX pragma, and only Solid files', () => {
+  const missing = ['Open the file with /** @jsxImportSource @solidjs/web */.']
+  expect(
+    lint('ui-framework-boundaries', 'extensions/echo/a.solid.tsx', 'export const a = 1'),
+  ).toEqual(missing)
+  expect(
+    lint(
+      'ui-framework-boundaries',
+      'extensions/echo/a.solid.tsx',
+      'const a = 1\n/** @jsxImportSource @solidjs/web */',
+    ),
+  ).toEqual(missing)
+  expect(
+    lint(
+      'ui-framework-boundaries',
+      'extensions/echo/a.solid.tsx',
+      '/** @jsxImportSource @solidjs/web */\nexport const a = 1',
+    ),
+  ).toEqual([])
+  expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', 'export const a = 1')).toEqual(
+    [],
+  )
 })
 
 it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
@@ -327,12 +365,17 @@ it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
   <div role="listbox">
     <span role="option" />
     <span role="switch" />
+    <span role={'slider'} />
+    <span role={\`tab\`} />
     <span role={dynamic} />
+    <span role={\`\${kind}\`} />
   </div>
 )`
   expect(lint('ui-kit-roles', 'extensions/echo/list.solid.tsx', source)).toEqual([
     "Use the kit's Listbox or Select from @/components/ui.",
     "Use the kit's Switch from @/components/ui.",
+    "Use the kit's Slider from @/components/ui.",
+    "Use the kit's Tabs from @/components/ui.",
   ])
   expect(lint('ui-kit-roles', 'web/src/components/ui/listbox.solid.tsx', source)).toEqual([])
 })

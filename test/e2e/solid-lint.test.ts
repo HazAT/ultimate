@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
@@ -7,10 +7,14 @@ import { cleanEnv, temp } from '../helpers.ts'
 
 const run = promisify(execFile)
 
-const mistakes = `import { createSignal, createEffect, onMount } from 'solid-js'
+const solidMistakes = `/** @jsxImportSource @solidjs/web */
+import { createSignal, createEffect, onMount } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { useState } from 'react'
+import { readFileSync } from 'node:fs'
 import { Switch } from '@ui-sdk/solid/switch'
+import { Button } from '@/components/ui/button'
+import { Twin } from './twin.tsx'
 
 export function Bad({ name }: { name: string }) {
   const [count, setCount] = createSignal(0)
@@ -23,24 +27,42 @@ export function Bad({ name }: { name: string }) {
   s.a = 2
   if (count() > 1) return null
   return (
-    <div className="x" role="listbox" onClick={() => setCount(count() + 1)}>
+    <div className="x" role="listbox" on:click={() => setCount(count() + 1)}>
       {name}
       {x}
       {[1, 2].map((i) => <span>{i}</span>)}
       <Switch />
+      <Button />
+      <Twin />
+      <span role={'switch'} />
       <button />
+      {String(readFileSync)}
     </div>
   )
 }
 `
 
-it('lints Solid files with Solid 2 strict rules, accessibility and our framework boundaries', async () => {
+const reactMistakes = `import { useEffect, useState } from 'react'
+import { render } from '@solidjs/web'
+import { Panel } from './mistakes.solid.tsx'
+
+export function Twin() {
+  const [n, setN] = useState(0)
+  useEffect(() => setN(n + 1), [])
+  return <>{[1, 2].map((i) => <span>{i}</span>)}{String(render)}{String(Panel)}</>
+}
+`
+
+interface Diagnostic {
+  code: string
+  severity: string
+  filename: string
+}
+
+it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules on React files', async () => {
   const folder = await temp('solid-lint-', resolve('extensions'))
-  await mkdir(folder, { recursive: true })
-  const solidFile = join(folder, 'mistakes.solid.tsx')
-  const reactFile = join(folder, 'island.tsx')
-  await writeFile(solidFile, mistakes)
-  await writeFile(reactFile, "import { render } from '@solidjs/web'\nexport const mount = render\n")
+  await writeFile(join(folder, 'mistakes.solid.tsx'), solidMistakes)
+  await writeFile(join(folder, 'twin.tsx'), reactMistakes)
 
   const lint = await run(
     'pnpm',
@@ -49,9 +71,10 @@ it('lints Solid files with Solid 2 strict rules, accessibility and our framework
       env: cleanEnv(),
     },
   ).catch((error: { stdout: string }) => error)
-  const found = (
-    JSON.parse(lint.stdout) as { diagnostics: { code: string; filename: string }[] }
-  ).diagnostics.map((diagnostic) => `${relative(folder, diagnostic.filename)} ${diagnostic.code}`)
+  const diagnostics = (JSON.parse(lint.stdout) as { diagnostics: Diagnostic[] }).diagnostics
+  const found = diagnostics.map(
+    (diagnostic) => `${relative(folder, diagnostic.filename)} ${diagnostic.code}`,
+  )
 
   expect(found).toEqual(
     expect.arrayContaining([
@@ -62,12 +85,27 @@ it('lints Solid files with Solid 2 strict rules, accessibility and our framework
       'mistakes.solid.tsx solid(components-return-once)',
       'mistakes.solid.tsx solid(prefer-for)',
       'mistakes.solid.tsx solid(no-react-specific-props)',
+      'mistakes.solid.tsx solid(no-unknown-namespaces)',
       'mistakes.solid.tsx solid(reactivity)',
+      'mistakes.solid.tsx solid(no-single-arg-create-effect)',
       'mistakes.solid.tsx ultimate(ui-framework-boundaries)',
       'mistakes.solid.tsx ultimate(ui-kit-roles)',
       'mistakes.solid.tsx jsx-a11y(control-has-associated-label)',
-      'island.tsx ultimate(ui-framework-boundaries)',
+      'mistakes.solid.tsx eslint(no-restricted-imports)',
+      'twin.tsx ultimate(ui-framework-boundaries)',
+      'twin.tsx react-hooks(exhaustive-deps)',
+      'twin.tsx react(jsx-key)',
     ]),
   )
-  expect(found.filter((line) => line.includes('react('))).toEqual([])
+  expect(found.filter((line) => line.startsWith('mistakes.solid.tsx react('))).toEqual([])
+  expect(found.filter((line) => line.startsWith('twin.tsx solid('))).toEqual([])
+  expect(found.filter((line) => line.startsWith('mistakes.solid.tsx react-hooks('))).toEqual([])
+  expect(new Set(diagnostics.map((diagnostic) => diagnostic.severity))).toEqual(new Set(['error']))
+  expect(
+    found.filter((line) => line === 'mistakes.solid.tsx ultimate(ui-framework-boundaries)'),
+  ).toHaveLength(4)
+  expect(
+    found.filter((line) => line === 'twin.tsx ultimate(ui-framework-boundaries)'),
+  ).toHaveLength(2)
+  expect(found.filter((line) => line.endsWith('ultimate(ui-kit-roles)'))).toHaveLength(2)
 })

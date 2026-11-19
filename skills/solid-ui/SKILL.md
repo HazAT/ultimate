@@ -20,10 +20,18 @@ bugs. The skills that the libraries ship match the exact pinned versions: read t
 4. When dev mode prints a `[CODE]` diagnostic: its section in
    `node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`. Fix the cause, never suppress the code.
 
+## What ships today
+
+The toolchain, lint and these skills. A `*.solid.tsx` file compiles with Solid and lints with the rules below. The SDK's
+island mount, its Solid bindings and the Solid UI kit come in the next steps; until they land, `@/sdk` and
+`@/components/ui` are React-only, so a Solid file cannot yet be mounted as an extension facet or import a kit component.
+Check `web/src/components/ui/` and `web/src/sdk/` before assuming either exists.
+
 ## Ultimate's rules (on top of those skills)
 
-- **One renderer per file.** Solid code lives in `*.solid.tsx` and imports no React; React files import no Solid. The
-  two meet only in the SDK's island mount. Lint: `ultimate/ui-framework-boundaries`.
+- **One renderer per file.** Solid code lives in `*.solid.tsx` and imports no React, React components or React
+  libraries; React files import no Solid and no `*.solid.tsx`. The two meet only in `web/src/sdk`. Lint:
+  `ultimate/ui-framework-boundaries`.
 - **ui-sdk only through the UI kit.** Components come from `@/components/ui`, which wraps ui-sdk once and carries our
   theme. For a behavior the kit lacks, build it with `definePrimitive` from `@ui-sdk/core` and add it to the kit.
   Lint: `ultimate/ui-framework-boundaries`, `ultimate/ui-kit-roles`.
@@ -31,13 +39,16 @@ bugs. The skills that the libraries ship match the exact pinned versions: read t
   `text-brand`) and ui-sdk's state attributes (`data-pressed:`, `data-checked:`, `data-open:`, `data-disabled:`), never
   inline styles for state. The UI stays dense and quiet, with `font-mono` for meta.
 - **Name every control** with a visible label or `aria-label`: people using screen readers and agents both find
-  controls by name. Mark an action that needs a person with `data-agent-confirm="what it does"`, and keep secrets out
-  of agents' view with `secret`.
+  controls by name.
+- **Say what agents may do**, as the ui-sdk skill's `references/agent-ready.md` describes:
+  `data-agent-confirm="what it does"` on an action that needs a person; `data-agent-secret` on a field an agent may fill
+  but never read (password, card and one-time-code fields already are); `data-agent-hidden` on a region agents should
+  not see at all; and `agent: { secret: true }` in a `definePrimitive` whose value must never be read.
 - **State that should survive** a reload, a restart or a second tab is durable: bind it through `@/sdk` (UI state or a
-  document), not a local signal.
-- **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set as errors, plus
-  accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a report to the
-  coordinator, with the code and the rule.
+  document) once its Solid bindings exist, not a local signal.
+- **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
+  errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a
+  report to the coordinator, with the code and the rule.
 
 ## Done means
 
