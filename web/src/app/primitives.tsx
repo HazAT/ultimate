@@ -208,10 +208,15 @@ export function Sidebar() {
   }, [resize.width])
   const empty = slotItems(useExtensions(), 'sidebar').length === 0
   if (empty) return null
-  const look = 'overflow-y-auto border-sidebar-border bg-sidebar text-sidebar-foreground'
+  const look = 'border-sidebar-border bg-sidebar text-sidebar-foreground'
   if (overlays('sidebar', viewport))
     return (
-      <Overlay className={look} onClose={actions.toggleSidebar} open={open} side="left">
+      <Overlay
+        className={cn('overflow-y-auto', look)}
+        onClose={actions.toggleSidebar}
+        open={open}
+        side="left"
+      >
         <Slot name="sidebar" />
       </Overlay>
     )
@@ -222,7 +227,9 @@ export function Sidebar() {
       style={{ width: resize.width }}
     >
       <ResizeHandle label="Resize sidebar" onReset={reset} resize={resize} />
-      <Slot name="sidebar" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <Slot name="sidebar" />
+      </div>
     </aside>
   )
 }
