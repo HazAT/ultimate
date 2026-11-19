@@ -88,3 +88,22 @@ it('shows the new read’s cached data at once when its args switch to an alread
   expect(container.textContent).toBe('hello ada')
   release()
 })
+
+it('sends a read the args of its key, even when the args switch before its request goes', async () => {
+  const [name, setName] = createSignal('dee')
+  function Greeting() {
+    const action = useAction(Echo, {
+      get name() {
+        return name()
+      },
+    })
+    return <output>{action.data() ?? 'none'}</output>
+  }
+  renderSolid(() => <Greeting />)
+  flush()
+  setName('eve')
+  flush()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(reads.get('test', 'echo', { name: 'dee' }, ROOT).get().data).toBe('hello dee')
+  expect(harness.calls).toEqual([{ name: 'dee' }, { name: 'eve' }])
+})

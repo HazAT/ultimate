@@ -214,7 +214,8 @@ export function createReads(api: Api, store: Store) {
       const key = JSON.stringify([extension, name, args ?? null, conversationId ?? null])
       let read = reads.get(key)
       if (!read) {
-        read = create(key, extension, name, args, conversationId)
+        const [, , argsOfKey] = JSON.parse(key) as [string, string, unknown]
+        read = create(key, extension, name, argsOfKey, conversationId)
         reads.set(key, read)
         evictOldestIdleReads()
       }
