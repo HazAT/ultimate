@@ -18,6 +18,7 @@ import { Todos } from '../../todos/server.ts'
 import { Standing } from '../../subagents/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
+import { Hold } from '../../automations/api.ts'
 import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
 import { buildSeed } from '../seed.ts'
 import {
@@ -270,6 +271,38 @@ it("asks @ultimate to dream on a built-in's fire, beside the fire's own wake-up,
   await f.usage(75)
   await until(async () => (await f.record(id)).condition?.value === 75)
   expect(await f.requests()).toHaveLength(1)
+})
+
+it('holds both built-ins while a prepared chapter waits, and fires again once a new dream replaces it', async () => {
+  const f = await fixture()
+  const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  f.host.harness().resume()
+  const ready = { chapter: 'next', learned: ['one', 'two', 'three'], handoff: 'Open: none.' }
+  const prepared = await actions.prepare(ready, f.call)
+  await until(async () => (await f.requests()).length === 1)
+  await f.usage(71)
+  await until(async () => (await f.record(id)).condition?.value === 71)
+  await f.settle()
+  // Nothing fires: no run, no wake-up of @ultimate, no dream ask.
+  expect((await f.record(id)).fires).toBe(0)
+  expect(await f.requests()).toEqual([
+    { requestId: `dream.prepared:${prepared.at}`, type: 'write' },
+  ])
+  expect(await f.harness.commit((tx) => f.host.need(Hold).held(tx, pause), context)).toBe(true)
+  // The held crossing counted: an hour later, past its cooldown, a new dream replaces the prepared chapter and the
+  // next crossing fires as usual.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(Date.now() + 3600_000)
+  await f.harness.commit(async (tx) => {
+    const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+    doc.dream = { branch: 9 as ConversationId, requested: 1 as EntryId, at: prepared.at + 1 }
+  }, context)
+  await f.usage(50)
+  await f.usage(71)
+  await until(async () => (await f.requests()).length === 2)
+  expect((await f.record(id)).fires).toBe(1)
+  expect((await f.requests())[1]).toEqual({ requestId: `dream.requested:${id}:1`, type: 'write' })
 })
 
 it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and replaces it", async () => {
