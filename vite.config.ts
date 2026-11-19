@@ -7,7 +7,8 @@ import { defineConfig } from 'vite-plus'
 
 const solidFiles = /\.solid\.tsx$/
 const uiSdkSolidBuild = /\/@ui-sdk\/solid\/dist\/solid\/.*\.jsx$/
-const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild] })
+const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
+const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
 const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
 const maxWorkers = 16
@@ -318,7 +319,7 @@ export default defineConfig({
           'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
           'jsx-a11y/control-has-associated-label': 'error',
-          'jsx-a11y/label-has-associated-control': 'error',
+          'jsx-a11y/label-has-associated-control': ['error', { controlComponents: ['Switch'] }],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
           'jsx-a11y/interactive-supports-focus': 'error',
