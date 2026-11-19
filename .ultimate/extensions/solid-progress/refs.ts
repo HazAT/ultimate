@@ -5,8 +5,9 @@ import { actionRef } from '../../../shared/extension-api.ts'
 export type Lines = { total: number; solid: number; react: number }
 
 /**
- * One measured commit of `docs/frontend-progress.json`, oldest first; a measure not taken is null. `coordinator` is
- * the conversation in the commit's `Ultimate-Conversation` trailer, when the clone has the commit.
+ * One measured commit of `docs/frontend-progress.json`, oldest first; a measure not taken is null. The first is the
+ * baseline, with no coordinator. `summary` says what the step did in one line, or else is its coordinator's title. When the clone has the commit, `coordinator` is the conversation
+ * in its `Ultimate-Conversation` trailer and `statuses` each extension's status in its tree.
  */
 export type Entry = {
   commit: string
@@ -19,7 +20,9 @@ export type Entry = {
   switch: { cold: number; warm: number } | null
   stream: { median: number; p95: number; max: number; taskMs: number } | null
   previews?: Previews | null
+  summary?: string
   coordinator?: number
+  statuses?: Record<string, Status>
 }
 
 /** One preview task's cost to the agent, medians of 3 fresh-page runs; `ok` when all 3 succeeded. */

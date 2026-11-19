@@ -1,9 +1,13 @@
 /** @jsxImportSource @solidjs/web */
-import { For, Show } from 'solid-js'
+import { Play, Square } from '@lucide/solid'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
-import { ROOT, cn, useAction } from '@/sdk/solid'
+import { Slider } from '@/components/ui/slider.solid.tsx'
+import { ROOT, cn, useAction, useExtensionUiState, writingAs } from '@/sdk/solid'
+import { every } from '../../../lib/timers.ts'
 import { ProgressAction } from './refs.ts'
-import type { Entry, Live, PreviewRun, PreviewWeek, Status } from './refs.ts'
+import type { Entry, Progress as Data, PreviewRun, PreviewWeek, Status } from './refs.ts'
 
 type Point = { label: string; value: number | null }
 type Metric = {
@@ -17,6 +21,7 @@ const W = 260
 const H = 72
 const PAD = 6
 const BAND = 0.1
+const BEAT_MS = 1200
 
 const number = (value: number) => value.toLocaleString('en-US').replaceAll(',', ' ')
 
@@ -26,7 +31,7 @@ function change(now: number, base: number) {
   return `${percent > 0 ? '+' : ''}${percent.toFixed(Math.abs(percent) < 10 ? 1 : 0)}%`
 }
 
-function Chart(props: { points: Point[] }) {
+function Chart(props: { points: Point[]; at?: number }) {
   const values = () => props.points.flatMap((point) => (point.value === null ? [] : [point.value]))
   const scale = () => {
     const all = values()
@@ -72,9 +77,31 @@ function Chart(props: { points: Point[] }) {
         stroke-width="1.5"
         vector-effect="non-scaling-stroke"
       />
+      <Show when={props.at}>
+        {(at) => (
+          <line
+            class="stroke-foreground/30"
+            vector-effect="non-scaling-stroke"
+            x1={x(at())}
+            x2={x(at())}
+            y1={0}
+            y2={H}
+          />
+        )}
+      </Show>
       <For each={measured()}>
         {(point) => (
-          <circle class="fill-brand" cx={point.x} cy={point.y} r="2.5">
+          <circle
+            class={cn(
+              'fill-brand',
+              props.at !== undefined &&
+                props.points.indexOf(point.point) > props.at &&
+                'opacity-30',
+            )}
+            cx={point.x}
+            cy={point.y}
+            r={props.points.indexOf(point.point) === props.at ? 4 : 2.5}
+          >
             <title>
               {point.point.label}: {number(point.point.value ?? 0)}
             </title>
@@ -85,8 +112,11 @@ function Chart(props: { points: Point[] }) {
   )
 }
 
-function MetricCard(props: { metric: Metric }) {
-  const latest = () => props.metric.points.findLast((point) => point.value !== null)
+function MetricCard(props: { metric: Metric; at?: number }) {
+  const latest = () =>
+    props.at === undefined
+      ? props.metric.points.findLast((point) => point.value !== null)
+      : props.metric.points[props.at]
   const final = () => props.metric.points.at(-1)
   const base = () => props.metric.points[0]?.value ?? null
   const delta = () => {
@@ -122,13 +152,13 @@ function MetricCard(props: { metric: Metric }) {
         when={props.metric.points.some((point) => point.value !== null)}
       >
         <div class="mt-1">
-          <Chart points={props.metric.points} />
+          <Chart at={props.at} points={props.metric.points} />
         </div>
       </Show>
       <div class="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground/70">
         <For each={props.metric.points}>{(point) => <span>{point.label}</span>}</For>
       </div>
-      <Show when={latest() && final() && latest() !== final()}>
+      <Show when={props.at === undefined && latest() && final() && latest() !== final()}>
         <p class="mt-1 font-mono text-[10.5px] text-amber-700 dark:text-amber-300">
           {final()!.label} not measured
         </p>
@@ -167,7 +197,7 @@ function metrics(entries: Entry[]): Metric[] {
   ]
 }
 
-function LinesBar(props: { entries: Entry[] }) {
+function LinesBar(props: { entries: Entry[]; at?: number }) {
   const max = () => Math.max(...props.entries.map((entry) => entry.lines.total))
   return (
     <div class="rounded-lg border border-border/70 bg-card/40 px-3 py-2.5">
@@ -182,9 +212,21 @@ function LinesBar(props: { entries: Entry[] }) {
       </div>
       <div class="mt-2 space-y-1">
         <For each={props.entries}>
-          {(entry) => (
-            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)_9rem] items-center gap-2 font-mono text-[11px]">
-              <span class="truncate text-muted-foreground">{entry.label}</span>
+          {(entry, index) => (
+            <div
+              class={cn(
+                'grid grid-cols-[5.5rem_minmax(0,1fr)_9rem] items-center gap-2 font-mono text-[11px] transition-opacity',
+                props.at !== undefined && index() > props.at && 'opacity-25',
+              )}
+            >
+              <span
+                class={cn(
+                  'truncate text-muted-foreground',
+                  index() === props.at && 'text-foreground',
+                )}
+              >
+                {entry.label}
+              </span>
               <div class="flex h-3 overflow-hidden rounded-sm">
                 <span
                   class="bg-muted-foreground/35"
@@ -206,16 +248,32 @@ function LinesBar(props: { entries: Entry[] }) {
 
 const statusLabel: Record<Status, string> = { react: 'React', partly: 'partly', solid: 'Solid' }
 
-function Extensions(props: { live: Live[]; first?: Entry }) {
+type Row = { name: string; react: number; solid: number; status?: Status }
+
+const rowsAt = (entry: Entry): Row[] =>
+  Object.entries(entry.perExtension ?? {}).map(([name, lines]) => ({
+    name,
+    ...lines,
+    status: entry.statuses?.[name],
+  }))
+
+const bySize = (rows: Row[]) =>
+  rows.toSorted(
+    (a, b) =>
+      Number(a.status === 'react') - Number(b.status === 'react') ||
+      b.react + b.solid - (a.react + a.solid),
+  )
+
+function Extensions(props: { rows: Row[]; first?: Entry; title: string }) {
   const counts = () =>
     (['solid', 'partly', 'react'] as const).map(
       (status) =>
-        `${props.live.filter((item) => item.name !== 'web/src' && item.status === status).length} ${statusLabel[status]}`,
+        `${props.rows.filter((item) => item.name !== 'web/src' && item.status === status).length} ${statusLabel[status]}`,
     )
   return (
     <div class="rounded-lg border border-border/70 bg-card/40">
       <div class="flex items-baseline gap-3 border-b border-border/70 px-3 py-2 font-mono text-[11px]">
-        <span class="section-label">Per extension, working tree now</span>
+        <span class="section-label">Per extension, {props.title}</span>
         <span class="ml-auto text-muted-foreground">{counts().join(' · ')}</span>
       </div>
       <table class="w-full font-mono text-[11.5px]">
@@ -224,13 +282,13 @@ function Extensions(props: { live: Live[]; first?: Entry }) {
             <th class="px-3 py-1 text-left font-normal">extension</th>
             <th class="px-3 py-1 text-left font-normal">status</th>
             <th class="px-3 py-1 text-right font-normal">pure React</th>
-            <th class="px-3 py-1 text-right font-normal">React now</th>
-            <th class="px-3 py-1 text-right font-normal">Solid now</th>
+            <th class="px-3 py-1 text-right font-normal">React</th>
+            <th class="px-3 py-1 text-right font-normal">Solid</th>
             <th class="px-3 py-1 text-right font-normal">change</th>
           </tr>
         </thead>
         <tbody>
-          <For each={props.live}>
+          <For each={bySize(props.rows)}>
             {(item) => {
               const before = () => {
                 const lines = props.first?.perExtension?.[item.name]
@@ -248,7 +306,7 @@ function Extensions(props: { live: Live[]; first?: Entry }) {
                       item.status === 'solid' && 'text-brand',
                     )}
                   >
-                    {statusLabel[item.status]}
+                    {item.status ? statusLabel[item.status] : '–'}
                   </td>
                   <td class="px-3 py-0.5 text-right tabular-nums text-muted-foreground">
                     {before() === undefined ? '–' : number(before()!)}
@@ -282,11 +340,15 @@ function Extensions(props: { live: Live[]; first?: Entry }) {
   )
 }
 
-function Steps(props: { entries: Entry[] }) {
+function Steps(props: { entries: Entry[]; at?: number }) {
   const rows = () =>
     props.entries.map((entry, index) => {
       const previous = props.entries[index - 1]
-      return { entry, delta: previous ? entry.lines.total - previous.lines.total : undefined }
+      return {
+        entry,
+        index,
+        delta: previous ? entry.lines.total - previous.lines.total : undefined,
+      }
     })
   return (
     <div class="rounded-lg border border-border/70 bg-card/40">
@@ -297,7 +359,12 @@ function Steps(props: { entries: Entry[] }) {
         <tbody>
           <For each={rows().toReversed()}>
             {(row) => (
-              <tr class="border-t border-border/40 first:border-t-0">
+              <tr
+                class={cn(
+                  'border-t border-border/40 first:border-t-0',
+                  row.index === props.at && 'bg-muted/60',
+                )}
+              >
                 <td class="px-3 py-1 text-foreground">{row.entry.label}</td>
                 <td class="px-3 py-1 text-muted-foreground">{row.entry.commit.slice(0, 8)}</td>
                 <td class="px-3 py-1 text-muted-foreground">{row.entry.date}</td>
@@ -490,6 +557,123 @@ function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
   )
 }
 
+function useStep(data: () => Data) {
+  const [stored, store] = useExtensionUiState('step', 'live')
+  const last = () => data().entries.length
+  const step = createMemo(() => {
+    const index = data().entries.findIndex((entry) => entry.commit === stored())
+    return index === -1 ? last() : index
+  })
+  const set = (index: number) =>
+    store(index >= last() ? 'live' : (data().entries[index]?.commit ?? 'live'))
+  const [playing, setPlaying] = createSignal(false)
+  createEffect(playing, (on) => {
+    if (!on) return undefined
+    return every(BEAT_MS, () =>
+      writingAs('app', () => {
+        const next = step() + 1
+        set(next)
+        if (next >= last()) setPlaying(false)
+      }),
+    )
+  })
+  const play = () => {
+    if (!playing() && step() >= last()) set(0)
+    setPlaying(!playing())
+  }
+  return { step, set, last, playing, play }
+}
+
+function StepBar(props: { data: Data; step: ReturnType<typeof useStep> }) {
+  const chosen = (): Entry | undefined => props.data.entries[props.step.step()]
+  const labels = () => [...props.data.entries.map((item) => item.label), 'Live']
+  return (
+    <div class="rounded-lg border border-border/70 bg-card/40 px-3 py-2.5">
+      <div class="flex items-center gap-3">
+        <Button
+          aria-label={props.step.playing() ? 'Stop playing the steps' : 'Play the steps'}
+          class="size-6 rounded-sm text-muted-foreground"
+          onClick={props.step.play}
+          size="icon-xs"
+          variant="ghost"
+        >
+          {props.step.playing() ? <Square class="size-3" /> : <Play class="size-3" />}
+        </Button>
+        <div class="min-w-0 flex-1">
+          <Slider
+            aria-label="Migration step"
+            bind={[props.step.step, props.step.set]}
+            class="w-full"
+            max={props.step.last()}
+            min={0}
+            step={1}
+          />
+          <div class="flex justify-between font-mono text-[10px] text-muted-foreground/70">
+            <For each={labels()}>
+              {(label, index) => (
+                <span class={cn(index() === props.step.step() && 'text-foreground')}>{label}</span>
+              )}
+            </For>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 flex items-baseline gap-3 font-mono text-[11px]">
+        <Show
+          fallback={
+            <>
+              <span class="text-foreground">Live</span>
+              <span class="text-muted-foreground">
+                the working tree now; charts show every measured step
+              </span>
+            </>
+          }
+          when={chosen()}
+        >
+          {(entry) => (
+            <>
+              <span class="text-foreground">{entry().label}</span>
+              <span class="text-muted-foreground">{entry().commit.slice(0, 8)}</span>
+              <span class="text-muted-foreground">{entry().date}</span>
+              <Show when={entry().coordinator}>
+                {(id) => (
+                  <a class="text-brand hover:underline" href={`/?conversation=${id()}`}>
+                    #{id()}
+                  </a>
+                )}
+              </Show>
+              <span class="min-w-0 truncate text-muted-foreground">{entry().summary}</span>
+            </>
+          )}
+        </Show>
+      </div>
+    </div>
+  )
+}
+
+function Measured(props: { data: Data }) {
+  const step = useStep(() => props.data)
+  const at = () => (step.step() < step.last() ? step.step() : undefined)
+  const chosen = (): Entry | undefined => props.data.entries[step.step()]
+  return (
+    <>
+      <StepBar data={props.data} step={step} />
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <For each={metrics(props.data.entries)}>
+          {(metric) => <MetricCard at={at()} metric={metric} />}
+        </For>
+      </div>
+      <LinesBar at={at()} entries={props.data.entries} />
+      <Steps at={at()} entries={props.data.entries} />
+      <Previews entries={props.data.entries} weeks={props.data.previewUsage} />
+      <Extensions
+        first={props.data.entries[0]}
+        rows={chosen() ? rowsAt(chosen()!) : props.data.live}
+        title={chosen() ? `at ${chosen()!.label}` : 'working tree now'}
+      />
+    </>
+  )
+}
+
 export function Progress() {
   const progress = useAction(ProgressAction, null, { conversation: ROOT, focus: true })
   return (
@@ -509,29 +693,25 @@ export function Progress() {
             <p class="font-mono text-[11px] text-muted-foreground">
               Solid 2 + UI SDK migration: is the front end getting smaller and faster? Each chart
               runs from pure React (dashed line) through every measured step; percentages compare
-              the latest step with pure React, lower is better. Temporary: delete this extension
+              the chosen step with pure React, lower is better. Temporary: delete this extension
               when the migration ends.
             </p>
             <Show
               fallback={
-                <p class="rounded-lg border border-border/70 bg-card/40 px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground">
-                  {data().missing
-                    ? `No measurements yet: ${data().missing} does not exist.`
-                    : 'No measurements yet.'}
-                </p>
+                <>
+                  <p class="rounded-lg border border-border/70 bg-card/40 px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground">
+                    {data().missing
+                      ? `No measurements yet: ${data().missing} does not exist.`
+                      : 'No measurements yet.'}
+                  </p>
+                  <Previews entries={data().entries} weeks={data().previewUsage} />
+                  <Extensions rows={data().live} title="working tree now" />
+                </>
               }
               when={data().entries.length > 0}
             >
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <For each={metrics(data().entries)}>
-                  {(metric) => <MetricCard metric={metric} />}
-                </For>
-              </div>
-              <LinesBar entries={data().entries} />
-              <Steps entries={data().entries} />
+              <Measured data={data()} />
             </Show>
-            <Previews entries={data().entries} weeks={data().previewUsage} />
-            <Extensions first={data().entries[0]} live={data().live} />
           </>
         )}
       </Show>
