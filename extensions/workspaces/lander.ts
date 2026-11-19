@@ -178,7 +178,7 @@ export async function runLanderCheck(
   )
   const report = (reason: string, heading: string) => {
     const tests = [...failed].slice(-20)
-    const failedFiles = tests
+    const failedFiles = [...failed]
       .filter((test) => test.startsWith('FAIL'))
       .map((test) => test.slice('FAIL'.length).replace(/\s+/g, ' ').trim())
     return {
@@ -226,7 +226,9 @@ export async function runLanderCheck(
   }
 }
 
-type CheckRun = { failure?: string; cause?: string; summary?: string; timedOut?: boolean }
+type CheckRun =
+  | { failure?: undefined; summary?: string; timedOut?: undefined }
+  | { failure: string; cause: string; summary?: undefined; timedOut?: boolean }
 
 function createTempBeforeWatchdog(temp: string) {
   mkdirSync(temp, { recursive: true })
@@ -675,7 +677,7 @@ export function createLander(
                 )
               const runCheckWithOneDurableRerun = async (command: string, member: number) => {
                 const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
-                let memoizedFirstRun = await runtime.memo<'passed' | { cause: string }>(
+                let memoizedFirstRun = await runtime.memo<'passed' | 'failed'>(
                   attemptMemoKey,
                   context,
                 )
@@ -683,7 +685,9 @@ export function createLander(
                   await step(`checking: ${command}`, { runs: command })
                   const began = performance.now()
                   const ran = await run(command, member)
-                  const unmemoizedResult = ran.cause === undefined ? 'passed' : { cause: ran.cause }
+                  const unmemoizedResult = ran.failure === undefined ? 'passed' : 'failed'
+                  if (ran.failure !== undefined)
+                    await runtime.memo(`${attemptMemoKey}:cause`, ran.cause, context)
                   const logAttemptBeforeMemo = step
                   await logAttemptBeforeMemo(`checked: ${command}`, {
                     result: {
@@ -730,9 +734,9 @@ export function createLander(
                     context,
                   )
                 }
-                return rerun.failure === undefined
-                  ? { flaky: `${command} · ${memoizedFirstRun.cause}` }
-                  : { failure: rerun.failure }
+                if (rerun.failure !== undefined) return { failure: rerun.failure }
+                const cause = await runtime.memo<string>(`${attemptMemoKey}:cause`, context)
+                return { flaky: cause ? `${command} · ${cause}` : command }
               }
               const settledCheckGroup = await Promise.allSettled(
                 commands.map(runCheckWithOneDurableRerun),
