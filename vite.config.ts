@@ -263,8 +263,8 @@ export default defineConfig({
         rules: { 'ultimate/no-raw-stream': 'error' },
       },
       {
-        files: ['web/src/**', 'extensions/**/*.tsx'],
-        excludeFiles: ['extensions/*/test/**'],
+        files: ['web/src/**', 'extensions/**/*.tsx', '.ultimate/extensions/**/*.tsx'],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**'],
         rules: {
           // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
           // notice, and nothing can take the process down.
@@ -308,7 +308,9 @@ export default defineConfig({
         plugins: ['jsx-a11y'],
         rules: {
           ...noReactRules,
+          'no-unassigned-vars': 'off',
           ...solidRules,
+          'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': 'error',

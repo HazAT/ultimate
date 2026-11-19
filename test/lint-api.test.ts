@@ -336,28 +336,37 @@ import type { PanelProps } from './panel.solid.tsx'`
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
 })
 
-it('asks every Solid file for the Solid JSX pragma, and only Solid files', () => {
+it('asks every Solid file for a leading block Solid JSX pragma, and only Solid files', () => {
   const missing = ['Open the file with /** @jsxImportSource @solidjs/web */.']
-  expect(
-    lint('ui-framework-boundaries', 'extensions/echo/a.solid.tsx', 'export const a = 1'),
-  ).toEqual(missing)
+  const pragma = (source: string, file = 'extensions/echo/a.solid.tsx') =>
+    lint('solid-jsx-pragma', file, source)
+  expect(pragma('export const a = 1')).toEqual(missing)
+  expect(pragma('const a = 1\n/** @jsxImportSource @solidjs/web */')).toEqual(missing)
+  expect(pragma('// @jsxImportSource @solidjs/web\nexport const a = 1')).toEqual(missing)
+  expect(pragma('/** @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
+  expect(pragma('/* @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
+  expect(pragma('export const a = 1', 'extensions/echo/web.tsx')).toEqual([])
+  const header = '/** @jsxImportSource @solidjs/web */\nexport const a = 1'
+  expect(lint('no-comments', 'extensions/echo/a.solid.tsx', header)).toEqual([])
+  expect(lint('no-comments', 'extensions/echo/web.tsx', header)).toHaveLength(1)
   expect(
     lint(
-      'ui-framework-boundaries',
+      'no-comments',
       'extensions/echo/a.solid.tsx',
-      'const a = 1\n/** @jsxImportSource @solidjs/web */',
+      '// @jsxImportSource @solidjs/web\nexport const a = 1',
     ),
-  ).toEqual(missing)
-  expect(
-    lint(
-      'ui-framework-boundaries',
-      'extensions/echo/a.solid.tsx',
-      '/** @jsxImportSource @solidjs/web */\nexport const a = 1',
-    ),
-  ).toEqual([])
-  expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', 'export const a = 1')).toEqual(
-    [],
-  )
+  ).toHaveLength(1)
+})
+
+it('classifies local imports by the file they resolve to, not how they are spelled', () => {
+  const solidSource = `/** @jsxImportSource @solidjs/web */
+import { Card } from '@/app/card'
+import { resize } from '@/components/image-resize'
+import { Button } from '@/components/ui/button'`
+  expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', solidSource)).toEqual([
+    'Replace @/app/card with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
+    'Replace @/components/ui/button with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.',
+  ])
 })
 
 it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {

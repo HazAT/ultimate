@@ -116,10 +116,18 @@ const reactOnly =
 const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
 const solidJsxPragma = '@jsxImportSource @solidjs/web'
-const localComponent = (filename: string, source: string) => {
-  if (source.startsWith('@/')) return `web/src/${source.slice(2)}`
-  if (source.startsWith('.')) return resolved(filename, source).join('/')
-  return undefined
+const isSolidJsxPragma = (comment: Comment | undefined) =>
+  comment?.type === 'Block' && comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma
+const moduleSuffixes = ['', '.tsx', '.ts', '/index.tsx', '/index.ts']
+const localModule = (filename: string, source: string) => {
+  const base = source.startsWith('@/')
+    ? path.resolve(process.cwd(), 'web/src', source.slice(2))
+    : source.startsWith('.')
+      ? path.resolve(path.dirname(filename), source)
+      : undefined
+  if (base === undefined) return undefined
+  const found = moduleSuffixes.map((suffix) => base + suffix).find((file) => existsSync(file))
+  return found ?? base
 }
 const staticString = (value: Node | null | undefined): unknown =>
   value?.type === 'JSXExpressionContainer'
@@ -280,8 +288,7 @@ export default {
               if (
                 comment.type === 'Shebang' ||
                 /^\s*Pi upstream:|License — Copyright/.test(comment.value) ||
-                (solidFile(context.filename) &&
-                  comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma)
+                (solidFile(context.filename) && isSolidJsxPragma(comment))
               )
                 continue
               if (isJsDoc(comment) && contractDocs.has(comment.start)) continue
@@ -303,20 +310,15 @@ export default {
           const source = node.source?.value
           if (typeof source !== 'string') return
           if (node.importKind === 'type' || node.exportKind === 'type') return
-          const local = localComponent(context.filename, source)
-          const localTsx =
-            local?.endsWith('.tsx') ||
-            (local?.startsWith('web/src/components/') && !local.endsWith('.ts'))
-          if (solid && (reactOnly.test(source) || (localTsx && !solidFile(local!))))
+          const local = localModule(context.filename, source)
+          const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
+          const localSolid = local !== undefined && solidFile(local)
+          if (solid && (reactOnly.test(source) || localReact))
             context.report({
               node,
               message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
             })
-          else if (
-            !solid &&
-            !sdkFile(context.filename) &&
-            (solidOnly.test(source) || (local !== undefined && solidFile(local)))
-          )
+          else if (!solid && !sdkFile(context.filename) && (solidOnly.test(source) || localSolid))
             context.report({
               node,
               message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`,
@@ -332,26 +334,30 @@ export default {
             })
         }
         return {
-          Program(program: Node) {
-            const first = context.sourceCode.getAllComments()[0] as Comment | undefined
-            const statements = (program.body as Node[] | undefined) ?? []
-            if (
-              solid &&
-              !(
-                first &&
-                first.value.trim().replace(/^\*\s*/, '') === solidJsxPragma &&
-                (statements.length === 0 || first.end <= statements[0].start!)
-              )
-            )
-              context.report({
-                node: program,
-                message: `A Solid file shares the type-check project with React files, so without the pragma its JSX is checked against React's types. Open the file with /** ${solidJsxPragma} */.`,
-              })
-          },
           ImportDeclaration: check,
           ImportExpression: check,
           ExportNamedDeclaration: check,
           ExportAllDeclaration: check,
+        }
+      },
+    },
+    'solid-jsx-pragma': {
+      meta: { schema: [] },
+      create(context: Context) {
+        if (!solidFile(context.filename)) return {}
+        return {
+          Program(program: Node) {
+            const first = context.sourceCode.getAllComments()[0] as Comment | undefined
+            const statements = (program.body as Node[] | undefined) ?? []
+            if (
+              !isSolidJsxPragma(first) ||
+              (statements.length > 0 && first!.end > statements[0].start!)
+            )
+              context.report({
+                node: program,
+                message: `A Solid file shares the type-check project with React files, and TypeScript reads the JSX source only from a leading block comment, so without it the JSX is checked against React's types. Open the file with /** ${solidJsxPragma} */.`,
+              })
+          },
         }
       },
     },
