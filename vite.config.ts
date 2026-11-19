@@ -321,7 +321,7 @@ export default defineConfig({
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox'] },
+            { controlComponents: ['Switch', 'Checkbox', 'Slider'] },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',

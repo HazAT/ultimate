@@ -1,7 +1,8 @@
 import * as Tone from 'tone'
 import { deadline, pace } from '../../lib/timers.ts'
 import type { Sound } from './cues.ts'
-import type { Happening, Role, Tool, Variant } from './agents.tsx'
+import type { Happening, Role, Tool } from './agents.tsx'
+import type { Variant } from './variants.ts'
 
 export type Note = readonly [startSeconds: number, frequencyHz: number, lengthSeconds: number]
 
