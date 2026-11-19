@@ -10,3 +10,13 @@ export const UiState = defineDoc<Record<string, JsonValue>>({
   fork: 'asOf',
   initial: () => ({}),
 })
+
+export const UiWriters = defineDoc<Record<string, number>>({
+  kind: 'ultimate.ui-writers',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})

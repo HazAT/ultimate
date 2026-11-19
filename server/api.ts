@@ -16,13 +16,7 @@ import type {
   ConfigureRequest,
   UiOp,
 } from '../shared/protocol.ts'
-import {
-  UI_REVISION,
-  UI_SUPERSEDED_STATUS,
-  imageMimeTypes,
-  maxImageBytes,
-  maxImages,
-} from '../shared/protocol.ts'
+import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { hostDefault } from '../lib/agents.ts'
 import { expandSkillCommand } from './skills.ts'
@@ -31,7 +25,7 @@ import { context } from './harness.ts'
 import type { OpenHost, PreparedHost } from './harness.ts'
 import type { createSystem } from './system.ts'
 import { requestSwap } from './supervisor-protocol.ts'
-import { UiState } from '../shared/ui-state.ts'
+import { UiState, UiWriters } from '../shared/ui-state.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import { Metadata } from './metadata.ts'
@@ -87,14 +81,17 @@ function uiOps(ops: unknown): UiOp[] {
   return ops.map((op: unknown) => {
     if (!op || typeof op !== 'object' || Array.isArray(op))
       throw new HttpError(400, 'Invalid UI update')
-    const { key, value, who } = op as Record<string, unknown>
+    const { key, value, who, seq } = op as Record<string, unknown>
     if (!validUiKey(key)) throw new HttpError(400, 'Invalid UI key')
     if (key === UI_REVISION) throw new HttpError(400, 'The UI revision is the server’s')
     if (who !== undefined && who !== 'person' && who !== 'agent' && who !== 'app')
       throw new HttpError(400, 'Invalid UI writer')
-    return { key, value: value as JsonValue | undefined, who }
+    if (seq !== undefined && !Number.isSafeInteger(seq))
+      throw new HttpError(400, 'Invalid UI sequence')
+    return { key, value: value as JsonValue | undefined, who, seq: seq as number | undefined }
   })
 }
+const maxUiWriters = 1000
 const actionPath = /^\/api\/extensions\/([^/]+)\/actions\/([^/]+)$/
 const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)\/(\d+)$/
 const maxResentSummaryTitleCharacters = 200
@@ -195,7 +192,6 @@ export async function createApi(
   const { harness, root } = opened
   const streams = new Set<() => Promise<void>>()
   const connections = new Map<string, Connection>()
-  const lastCommittedSeqPerTabUntilRestart = new Map<string, number>()
   let onGraph = () => {}
   const latestCommitGraph: { tasks?: TaskGraph } = {}
   const graph = await harness.observeTaskGraph(
@@ -530,18 +526,23 @@ export async function createApi(
           return true
         }
         if (url.pathname === '/api/ui') {
-          const ops = uiOps(data.ops)
-          const { tab, seq } = data
-          const ordered = typeof tab === 'string' && Number.isSafeInteger(seq)
-          if ((tab !== undefined || seq !== undefined) && !ordered)
-            throw new HttpError(400, 'Invalid UI tab sequence')
+          const { tab } = data
+          const requested = uiOps(data.ops)
+          if (tab !== undefined && (typeof tab !== 'string' || tab.length > 64))
+            throw new HttpError(400, 'Invalid UI tab')
           const by = { ...sourceOf(request.headers), ...deviceOf(request.headers) }
           const rev = await root.commit(async (tx) => {
-            if (
-              ordered &&
-              (lastCommittedSeqPerTabUntilRestart.get(tab) ?? -Infinity) >= (seq as number)
-            )
-              return undefined
+            const writers = await tx.doc(UiWriters, root.id)
+            const ops = requested.filter(({ key, seq }) => {
+              if (tab === undefined || seq === undefined) return true
+              const writer = `${tab} ${key}`
+              if ((writers[writer] ?? -Infinity) >= seq) return false
+              delete writers[writer]
+              writers[writer] = seq
+              return true
+            })
+            for (const writer of Object.keys(writers).slice(0, -maxUiWriters))
+              delete writers[writer]
             const value = await tx.doc(UiState, root.id)
             const written = new Map<string, JsonValue | undefined>()
             const stored = (key: string) =>
@@ -570,18 +571,9 @@ export async function createApi(
             const previous = value[UI_REVISION]
             const revisionInSameCommit = (typeof previous === 'number' ? previous : 0) + 1
             value[UI_REVISION] = revisionInSameCommit
-            if (ordered) {
-              lastCommittedSeqPerTabUntilRestart.delete(tab)
-              lastCommittedSeqPerTabUntilRestart.set(tab, seq as number)
-              if (lastCommittedSeqPerTabUntilRestart.size > 1000)
-                lastCommittedSeqPerTabUntilRestart.delete(
-                  lastCommittedSeqPerTabUntilRestart.keys().next().value!,
-                )
-            }
             return revisionInSameCommit
           }, context)
-          if (rev === undefined) json(UI_SUPERSEDED_STATUS, { ok: false, superseded: true })
-          else json(200, { ok: true, rev })
+          json(200, { ok: true, rev })
           return true
         }
         if (url.pathname === '/api/restart') {

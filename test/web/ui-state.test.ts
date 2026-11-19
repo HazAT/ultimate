@@ -79,9 +79,9 @@ describe('durable UI state', () => {
     await wait()
     expect(requests.map((request) => request.change.ops)).toEqual([
       [
-        { key: 'shell.panelOpen', value: true, who: 'person' },
-        { key: 'shell.panel', value: 'info', who: 'person' },
-        { key: 'shell.surface', who: 'person' },
+        { key: 'shell.panelOpen', value: true, who: 'person', seq: 1 },
+        { key: 'shell.panel', value: 'info', who: 'person', seq: 2 },
+        { key: 'shell.surface', who: 'person', seq: 3 },
       ],
     ])
     const committed = commit(0)
@@ -436,50 +436,104 @@ describe('durable UI state', () => {
     const flushed = state.flush()
     await wait(0)
     expect(requests.map((request) => request.change.ops)).toEqual([
-      [{ key: 'panel', value: 'mine', who: 'person' }],
+      [{ key: 'panel', value: 'mine', who: 'person', seq: 1 }],
     ])
     requests[0].ack()
     await wait(0)
     expect(requests.map((request) => request.change.ops)).toEqual([
-      [{ key: 'panel', value: 'mine', who: 'person' }],
-      [{ key: 'panel', value: 'app', who: 'app' }],
+      [{ key: 'panel', value: 'mine', who: 'person', seq: 1 }],
+      [{ key: 'panel', value: 'app', who: 'app', seq: 2 }],
     ])
     requests[1].ack()
     await flushed
     expect(state.get('panel')).toBe('app')
   })
 
-  it('lets the page-exit request supersede a late in-flight batch, so the final edit wins', async () => {
-    let stored: string | undefined
-    const committed = new Map<string, number>()
-    const server = (change: UiUpdateRequest): UiUpdateResponse => {
-      if ((committed.get(change.tab!) ?? -1) >= change.seq!) return { ok: false, superseded: true }
-      committed.set(change.tab!, change.seq!)
-      for (const op of change.ops) stored = op.value as string
-      return { ok: true, rev: change.seq! }
-    }
-    const arrivals: (() => UiUpdateResponse)[] = []
+  /** A tab against a server that skips an op when its tab already committed a newer or equal `seq` to the key. */
+  function arrivals() {
+    const stored: Record<string, JsonValue | undefined> = {}
+    const writers = new Map<string, number>()
+    const sent: { change: UiUpdateRequest; keepalive?: boolean; arrive: () => void }[] = []
     const state = createUiState(
-      (change) =>
+      (change, _who, exit) =>
         new Promise<UiUpdateResponse>((resolve) =>
-          arrivals.push(() => {
-            const response = server(change)
-            resolve(response)
-            return response
+          sent.push({
+            change,
+            keepalive: exit?.keepalive,
+            arrive: () => {
+              for (const { key, value, seq } of change.ops) {
+                if ((writers.get(key) ?? 0) >= seq!) continue
+                writers.set(key, seq!)
+                stored[key] = value
+              }
+              resolve({ ok: true, rev: sent.length })
+            },
           }),
         ),
       { delayMs: 5 },
     )
-    state.set('panel', 'A')
-    await wait()
-    state.set('panel', 'B')
-    const exited = state.exit()
-    expect(arrivals).toHaveLength(2)
-    expect(arrivals[1]()).toEqual({ ok: true, rev: 2 })
-    expect(arrivals[0]()).toEqual({ ok: false, superseded: true })
-    await exited
-    expect(stored).toBe('B')
-    expect(state.get('panel')).toBe('B')
+    return { state, stored, sent }
+  }
+
+  for (const order of ['original first', 'page-exit copy first'])
+    it(`copies the in-flight ops into the page-exit request with their own seq, ${order}`, async () => {
+      const { state, stored, sent } = arrivals()
+      state.set('panel', 'A')
+      await wait()
+      state.set('panel', 'B')
+      state.set('view', 'list')
+      const exited = state.exit()
+      expect(sent.map(({ change, keepalive }) => [change.ops, keepalive])).toEqual([
+        [[{ key: 'panel', value: 'A', who: 'person', seq: 1 }], undefined],
+        [
+          [
+            { key: 'panel', value: 'A', who: 'person', seq: 1 },
+            { key: 'panel', value: 'B', who: 'person', seq: 2 },
+            { key: 'view', value: 'list', who: 'person', seq: 3 },
+          ],
+          true,
+        ],
+      ])
+      for (const { arrive } of order === 'original first' ? sent : sent.toReversed()) arrive()
+      await exited
+      expect(stored).toEqual({ panel: 'B', view: 'list' })
+    })
+
+  for (const order of ['original first', 'page-exit requests first'])
+    it(`sends a small edit with keepalive on its own when a large batch is in flight, ${order}`, async () => {
+      const { state, stored, sent } = arrivals()
+      const large = 'x'.repeat(70 * 1024)
+      state.set('notes', large)
+      await wait()
+      state.set('notes', 'small')
+      const exited = state.exit()
+      expect(
+        sent.map(({ change, keepalive }) => [change.ops.map(({ seq }) => seq), keepalive]),
+      ).toEqual([
+        [[1], undefined],
+        [[2], true],
+        [[1], false],
+      ])
+      for (const { arrive } of order === 'original first' ? sent : sent.toReversed()) arrive()
+      await exited
+      expect(stored).toEqual({ notes: 'small' })
+      expect(state.get('notes')).toBe('small')
+    })
+
+  it('makes a tab id without crypto.randomUUID, which plain-HTTP origins lack', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    })
+    try {
+      const { state, sent } = arrivals()
+      state.set('panel', 'A')
+      const exited = state.exit()
+      expect(sent[0].change.tab).toMatch(/^[0-9a-f]{32}$/)
+      sent[0].arrive()
+      await exited
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('sends each write with who made it, an agent’s and a person’s in separate requests', async () => {
@@ -495,8 +549,8 @@ describe('durable UI state', () => {
     state.set('ext.notes.view', 'list')
     await state.flush()
     expect(writes.map(([change, by]) => [change.ops, by])).toEqual([
-      [[{ key: 'ext.digest.on', value: true, who: 'agent' }], 'agent'],
-      [[{ key: 'ext.notes.view', value: 'list', who: 'person' }], 'person'],
+      [[{ key: 'ext.digest.on', value: true, who: 'agent', seq: 1 }], 'agent'],
+      [[{ key: 'ext.notes.view', value: 'list', who: 'person', seq: 2 }], 'person'],
     ])
   })
 })

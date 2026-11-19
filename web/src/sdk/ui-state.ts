@@ -12,10 +12,12 @@ interface PendingOp {
   key: string
   value: JsonValue | undefined
   who: UiWho
+  seq: number
 }
 
 interface SentWrite {
   value: JsonValue | undefined
+  seq: number
   batch: number
   rev?: number
 }
@@ -61,7 +63,9 @@ export function createUiState(
   const tabOnlyWrites = new Map<string, JsonValue | undefined>()
   let values: UiValues = {}
 
-  const tab = crypto.randomUUID()
+  const tab = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
   let lastSeq = 0
   let lastSentBatch = 0
   let newestStreamRevision = 0
@@ -109,33 +113,35 @@ export function createUiState(
     return pending.splice(0, end === -1 ? pending.length : end)
   }
 
+  const request = (ops: PendingOp[]): UiUpdateRequest => ({
+    ops: ops.map(({ key, value, who, seq }) => ({
+      key,
+      ...(value === undefined ? {} : { value }),
+      who,
+      seq,
+    })),
+    tab,
+  })
+  const fitsKeepalive = (ops: PendingOp[]) =>
+    new TextEncoder().encode(JSON.stringify(request(ops))).byteLength <= KEEPALIVE_BYTES
+
   function send(ops = oldestWriterRun(), exit = false) {
     if (!write || ops.length === 0) return undefined
     const batch = ++lastSentBatch
-    for (const { key, value } of ops) unconfirmedSentWrites.set(key, { value, batch })
-    const change: UiUpdateRequest = {
-      ops: ops.map(({ key, value, who }) => ({
-        key,
-        ...(value === undefined ? {} : { value }),
-        who,
-      })),
-      tab,
-      seq: ++lastSeq,
-    }
-    const fitsKeepalive =
-      new TextEncoder().encode(JSON.stringify(change)).byteLength <= KEEPALIVE_BYTES
+    for (const { key, value, seq } of ops)
+      if ((unconfirmedSentWrites.get(key)?.seq ?? 0) <= seq)
+        unconfirmedSentWrites.set(key, { value, seq, batch })
     const sentInServerEpoch = serverProcessEpoch
     const settled = () => {
       if (inFlight === sent) inFlight = undefined
       if (pending.length > 0) schedule(0)
     }
-    const done = write(change, ops[0].who, exit ? { keepalive: fitsKeepalive } : undefined).then(
+    const keepalive = exit ? { keepalive: fitsKeepalive(ops) } : undefined
+    const done = write(request(ops), ops[0].who, keepalive).then(
       (response) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
-        for (const [key, entry] of unconfirmedSentWrites)
-          if (entry.batch !== batch) continue
-          else if (response.ok) entry.rev = response.rev
-          else unconfirmedSentWrites.delete(key)
+        for (const entry of unconfirmedSentWrites.values())
+          if (entry.batch === batch) entry.rev = response.rev
         settled()
         releaseStreamConfirmedWrites()
         update()
@@ -162,7 +168,7 @@ export function createUiState(
     const who = writerNow()
     const newest = pending.at(-1)
     if (newest?.key === key && newest.who === who) newest.value = value
-    else pending.push({ key, value, who })
+    else pending.push({ key, value, who, seq: ++lastSeq })
     schedule(options.delayMs ?? 150)
     update()
   }
@@ -213,9 +219,13 @@ export function createUiState(
     async exit() {
       cancelSend?.()
       cancelSend = undefined
-      const ops = [...(inFlight?.ops ?? []), ...pending.splice(0)]
-      inFlight = send(ops, true)
-      await inFlight?.done
+      const copied = inFlight?.ops ?? []
+      const unsent = pending.splice(0)
+      const together = [...copied, ...unsent]
+      const requests = fitsKeepalive(together) ? [together] : [unsent, copied]
+      const sent = requests.flatMap((ops) => send(ops, true) ?? [])
+      inFlight = sent.at(-1)
+      await Promise.all(sent.map((each) => each.done))
     },
   }
 }

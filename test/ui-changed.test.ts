@@ -13,9 +13,12 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-async function serve() {
-  const home = await temp()
-  cleanup.push(() => removeTemp(home))
+async function serve(home?: string) {
+  if (!home) {
+    const made = await temp()
+    cleanup.push(() => removeTemp(made))
+    home = made
+  }
   const server = await fauxServer({
     ultimateRoot: resolve('.'),
     projectRoot: home,
@@ -23,7 +26,12 @@ async function serve() {
     home: `${home}/state`,
     port: 0,
   })
-  cleanup.push(() => server.close())
+  let open = true
+  const stop = async () => {
+    if (open) await server.close()
+    open = false
+  }
+  cleanup.push(stop)
   const send = (path: string, body: unknown, headers: Record<string, string> = {}) =>
     fetch(server.url + path, {
       method: 'POST',
@@ -44,7 +52,7 @@ async function serve() {
     ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
       .filter((event) => ChangedEvent.is(event))
       .map((event) => event.data)
-  return { server, send, post, changes }
+  return { server, send, post, changes, home, stop }
 }
 const sets = (set: Record<string, unknown>) =>
   Object.entries(set).map(([key, value]) => ({ key, value }))
@@ -146,13 +154,29 @@ it('applies ops in order and records each with its own writer, the header only t
   expect(state).toEqual({ 'ext.b': 2, 'ext.panel': 'app', 'ui.rev': 2 })
 })
 
-it('refuses a tab’s request whose sequence is not newer than its last commit, applying none of its ops', async () => {
-  const { server, send, post } = await serve()
-  await post('/api/ui', { ops: sets({ 'ext.panel': 'final' }), tab: 'tab-1', seq: 2 })
-  const late = await send('/api/ui', { ops: sets({ 'ext.panel': 'older' }), tab: 'tab-1', seq: 1 })
-  expect(late.status).toBe(409)
-  expect(await late.json()).toEqual({ ok: false, superseded: true })
-  await post('/api/ui', { ops: sets({ 'ext.other': 1 }), tab: 'tab-2', seq: 1 })
+const op = (key: string, value: string, seq: number) => ({ key, value, seq })
+
+for (const exitFirst of [false, true])
+  it(`applies a tab’s op to a key only when newer than its last one there, ${exitFirst ? 'the page-exit copy' : 'the original'} arriving first`, async () => {
+    const { server, post, changes } = await serve()
+    const original = { ops: [op('ext.panel', 'A', 1)], tab: 'tab-1' }
+    const exit = { ops: [op('ext.panel', 'A', 1), op('ext.view', 'B', 2)], tab: 'tab-1' }
+    await post('/api/ui', exitFirst ? exit : original)
+    await post('/api/ui', { ops: sets({ 'ext.panel': 'theirs' }), tab: 'tab-2' })
+    await post('/api/ui', exitFirst ? original : exit)
+    const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+    expect(state).toMatchObject({ 'ext.panel': 'theirs', 'ext.view': 'B' })
+    expect((await changes()).map(({ key }) => key)).toEqual(
+      exitFirst ? ['ext.panel', 'ext.view', 'ext.panel'] : ['ext.panel', 'ext.panel', 'ext.view'],
+    )
+  })
+
+it('keeps a tab’s last writers across a restart, so a late older op cannot roll a key back', async () => {
+  const first = await serve()
+  await first.post('/api/ui', { ops: [op('ext.panel', 'final', 2)], tab: 'tab-1' })
+  await first.stop()
+  const { server, post } = await serve(first.home)
+  await post('/api/ui', { ops: [op('ext.panel', 'older', 1)], tab: 'tab-1' })
   const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
-  expect(state).toEqual({ 'ext.panel': 'final', 'ext.other': 1, 'ui.rev': 2 })
+  expect(state).toMatchObject({ 'ext.panel': 'final' })
 })

@@ -77,14 +77,13 @@ it('binds kit controls to stored UI state and sends each write with who made it'
   await uiState.flush()
   expect(writes).toEqual([
     [
-      { ops: [{ key: 'test.view', value: 'grid', who: 'agent' }], tab: expect.any(String), seq: 1 },
+      { ops: [{ key: 'test.view', value: 'grid', who: 'agent', seq: 1 }], tab: expect.any(String) },
       'agent',
     ],
     [
       {
-        ops: [{ key: 'test.digest', value: true, who: 'person' }],
+        ops: [{ key: 'test.digest', value: true, who: 'person', seq: 2 }],
         tab: expect.any(String),
-        seq: 2,
       },
       'person',
     ],
