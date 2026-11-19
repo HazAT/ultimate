@@ -11,17 +11,6 @@ export type Happening =
   | { kind: 'tool'; role: Role; tool: Tool }
   | { kind: 'commit' | 'landed' | 'failed' }
 
-export const variants = [
-  {
-    id: 'chiptune',
-    label: 'Chiptune',
-    detail: '8-bit: coins for wins, a power-up when work lands',
-  },
-  { id: 'orchestra', label: 'Orchestra', detail: 'Each role an instrument, one key and tempo' },
-  { id: 'crazy', label: 'Crazy', detail: 'Drums and glitches for every call, crunchy and loud' },
-] as const
-export type Variant = (typeof variants)[number]['id']
-
 export function roleOf(label: string | undefined, standing: boolean): Role {
   if (standing) return 'ultimate'
   if (!label) return 'other'
