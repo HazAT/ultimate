@@ -48,7 +48,7 @@ function Chart(props: { points: Point[]; at?: number }) {
   }
   const measured = () =>
     props.points.flatMap((point, index) =>
-      point.value === null ? [] : [{ x: x(index), y: y(point.value), point }],
+      point.value === null ? [] : [{ x: x(index), y: y(point.value), point, index }],
     )
   const base = () => props.points[0]?.value ?? null
   return (
@@ -77,30 +77,26 @@ function Chart(props: { points: Point[]; at?: number }) {
         stroke-width="1.5"
         vector-effect="non-scaling-stroke"
       />
-      <Show when={props.at}>
-        {(at) => (
-          <line
-            class="stroke-foreground/30"
-            vector-effect="non-scaling-stroke"
-            x1={x(at())}
-            x2={x(at())}
-            y1={0}
-            y2={H}
-          />
-        )}
+      <Show when={props.at !== undefined}>
+        <line
+          class="stroke-foreground/30"
+          vector-effect="non-scaling-stroke"
+          x1={x(props.at!)}
+          x2={x(props.at!)}
+          y1={0}
+          y2={H}
+        />
       </Show>
       <For each={measured()}>
         {(point) => (
           <circle
             class={cn(
               'fill-brand',
-              props.at !== undefined &&
-                props.points.indexOf(point.point) > props.at &&
-                'opacity-30',
+              props.at !== undefined && point.index > props.at && 'opacity-30',
             )}
             cx={point.x}
             cy={point.y}
-            r={props.points.indexOf(point.point) === props.at ? 4 : 2.5}
+            r={point.index === props.at ? 4 : 2.5}
           >
             <title>
               {point.point.label}: {number(point.point.value ?? 0)}
@@ -129,7 +125,7 @@ function MetricCard(props: { metric: Metric; at?: number }) {
       <span class="section-label">{props.metric.title}</span>
       <div class="mt-1 flex items-baseline gap-1">
         <span class="text-[20px] font-medium tabular-nums">
-          {latest()?.value === undefined ? '–' : number(latest()!.value!)}
+          {(latest()?.value ?? null) === null ? '–' : number(latest()!.value!)}
         </span>
         <span class="font-mono text-[11px] text-muted-foreground">
           {props.metric.unit} at {latest()?.label ?? '–'}
@@ -664,7 +660,10 @@ function Measured(props: { data: Data }) {
       </div>
       <LinesBar at={at()} entries={props.data.entries} />
       <Steps at={at()} entries={props.data.entries} />
-      <Previews entries={props.data.entries} weeks={props.data.previewUsage} />
+      <Previews
+        entries={props.data.entries.slice(0, step.step() + 1)}
+        weeks={props.data.previewUsage}
+      />
       <Extensions
         first={props.data.entries[0]}
         rows={chosen() ? rowsAt(chosen()!) : props.data.live}
