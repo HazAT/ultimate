@@ -1,4 +1,5 @@
-/** ACP in the browser: registered external agents, their threads, and the user-only actions that drive them. Browser-safe. */
+/** ACP in the browser: registered external agents, the session of each ACP conversation, and the user-only actions that drive it. Browser-safe. */
+import type { JsonObject } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /** An external agent that speaks the Agent Client Protocol over stdio. */
@@ -21,68 +22,56 @@ export type ConfigOption = {
   value: string
   options: { value: string; name: string; description?: string }[]
 }
-/** One tool call as the agent reports it. */
-export type ToolItem = {
-  kind: 'tool'
-  id: string
-  title: string
-  toolKind?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed'
-  input?: string
-  output?: string
-  paths: string[]
-}
-/** One line of a thread, oldest first. */
-export type ThreadItem =
-  | { kind: 'user'; text: string; at: number }
-  | { kind: 'agent'; text: string }
-  | { kind: 'thought'; text: string }
-  | ToolItem
-  | { kind: 'plan'; entries: { content: string; status: string }[] }
-  | { kind: 'error'; text: string }
 /** A permission the agent waits for; only the user answers it. */
 export type PermissionAsk = {
   title: string
   options: { optionId: string; name: string; kind: string }[]
 }
-/** A conversation with one external agent, kept on conversation 1. */
-export type Thread = {
-  id: string
+/** The external agent behind one ACP conversation; its turns are the conversation's own entries. */
+export type AcpSession = {
   agent: string
   agentName: string
-  title: string
-  cwd: string
-  createdAt: number
   sessionId?: string
   /** `connecting` while the process starts, `running` during a prompt, `offline` when no process serves it. */
   status: 'connecting' | 'idle' | 'running' | 'offline' | 'error'
   agentInfo?: string
-  items: ThreadItem[]
   config: ConfigOption[]
   permission?: PermissionAsk
   usage?: { used: number; size: number }
   error?: string
 }
-/** `{ threads }` on conversation 1, newest last. */
-export const ThreadsDoc = docRef<{ threads: Thread[] }>('acp.threads')
+/**
+ * What the agent is still streaming: the open text or thinking block and the tool calls not yet finished. Each one
+ * becomes the conversation's own `pi.assistant` (and `pi.tool-result`) entry as it completes.
+ */
+export type LiveTurn = {
+  open?: { type: 'text' | 'thinking'; text: string }
+  tools: { [callId: string]: LiveTool }
+  order: string[]
+}
+/** A tool call still running: the call as Ultimate's own tool (a pi-ai `ToolCall`) and, once done, its `ToolResultMessage`. */
+export type LiveTool = {
+  call: JsonObject
+  status: 'pending' | 'running' | 'done' | 'error'
+  result?: JsonObject
+}
+/** `acp.turn` on an ACP conversation: its streaming tail. */
+export const TurnDoc = docRef<LiveTurn>('acp.turn')
+/** `acp.session` on an ACP conversation; `{}` on every other one. */
+export const SessionDoc = docRef<Partial<AcpSession>>('acp.session')
 
 /** No arguments → every registered agent with whether its command is installed. */
 export const AgentsAction = actionRef<null, AgentStatus[]>('acp', 'agents')
-/** `{ agent }` → the new thread's id, its agent started in the project. User-only. */
-export const StartAction = actionRef<{ agent: string }, { id: string }>('acp', 'start')
-/** `{ thread, text }` → null once the prompt is sent; the reply streams into the thread. User-only. */
-export const PromptAction = actionRef<{ thread: string; text: string }, null>('acp', 'prompt')
-/** `{ thread }` → null: cancel the running prompt and any permission it waits for. User-only. */
-export const CancelAction = actionRef<{ thread: string }, null>('acp', 'cancel')
-/** `{ thread, option }` → null: answer the pending permission with an option id, or `null` to reject it. User-only. */
-export const PermitAction = actionRef<{ thread: string; option: string | null }, null>(
+/** `{ agent, isolated? }` → the new conversation's id, its agent started in the project or in a new worktree. User-only. */
+export const StartAction = actionRef<{ agent: string; isolated?: boolean }, { id: number }>(
   'acp',
-  'permit',
+  'start',
 )
-/** `{ thread, option, value }` → null: set a session config option (model, mode, thinking). User-only. */
-export const ConfigAction = actionRef<{ thread: string; option: string; value: string }, null>(
-  'acp',
-  'config',
-)
-/** `{ thread }` → null: stop its agent and delete the thread. User-only. */
-export const DeleteAction = actionRef<{ thread: string }, null>('acp', 'delete')
+/** `{ text }` → null once the prompt is sent to the shown conversation's agent; the reply streams into its transcript. User-only. */
+export const PromptAction = actionRef<{ text: string }, null>('acp', 'prompt')
+/** No arguments → null: cancel the shown conversation's running prompt and any permission it waits for. User-only. */
+export const CancelAction = actionRef<null, null>('acp', 'cancel')
+/** `{ option }` → null: answer the pending permission with an option id, or `null` to reject it. User-only. */
+export const PermitAction = actionRef<{ option: string | null }, null>('acp', 'permit')
+/** `{ option, value }` → null: set a session config option (model, mode, thinking). User-only. */
+export const ConfigAction = actionRef<{ option: string; value: string }, null>('acp', 'config')

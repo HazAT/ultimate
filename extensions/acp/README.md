@@ -1,20 +1,29 @@
-Chat with external coding agents (Antigravity, OpenCode, Codex, Claude Code, any ACP agent) through the Agent Client Protocol.
+Conversations with external coding agents (Antigravity, OpenCode, Codex, Claude Code, any ACP agent) through the Agent Client Protocol.
 
-The **ACP** surface lists the registered agents and your threads with them. A thread starts the agent's own
-command (`agy acp`, `opencode acp`, …) in the project folder and speaks ACP to it over stdio. The agent runs its
-own loop, tools, model and login; Ultimate only shows the thread and passes on your messages, model and mode
-choices, cancellations and permission answers.
+**acp** in the header starts one: pick an agent, in the project or in a new worktree. It becomes an ordinary
+Ultimate conversation, labelled `acp`: it shows in the sidebar, keeps its transcript, and the transcript, tool cards
+(read, edit with its diff, bash) and composer are Ultimate's own. Behind it the agent's own command (`agy acp`,
+`opencode acp`, …) runs in the conversation's folder and speaks ACP over stdio. The agent runs its own loop, tools,
+model and login; Ultimate shows what it does and passes on your messages, model and mode choices, Stop (Esc) and
+permission answers.
+
+## How a turn is stored
+
+Each streamed update lands in `acp.turn` (the open text or thinking block and the calls still running), which the
+transcript shows live at its end. As a block or call completes it becomes the conversation's own entry: `pi.user`
+for your message, `pi.assistant` for thinking, text and each tool call, `pi.tool-result` for each result. ACP tool
+kinds map to Ultimate's tools (`read`, `edit` or `write` from a diff, `bash` for `execute`), so the coding-tools
+cards render them. The conversation's own model never runs: the composer sends to the agent instead.
 
 ## Rules it keeps
 
 - **You drive every turn.** Every action that touches an agent is user-only: no agent tool, no codemode call, no
   automation. That is what Google's Antigravity terms allow on a personal sign-in (single user, local,
   interactive), and it keeps every agent's subscription use inside its own client.
-- **No auto-approval.** Permission requests show as a card with the agent's own options; nothing answers them
-  for you.
-- **No credentials.** Each agent signs in with its own CLI (`agy acp --login`, `opencode auth login`, `codex
-  login`). Ultimate never reads or forwards tokens.
-- **No client capabilities.** Ultimate offers no file system or terminal to the agent; it uses its own tools.
+- **No auto-approval.** Permission requests show as a card with the agent's own options; nothing answers them for you.
+- **No credentials.** Each agent signs in with its own CLI (`agy acp --login`, `opencode auth login`, `codex login`,
+  `claude auth login`). Ultimate never reads or forwards tokens.
+- **No client capabilities.** Ultimate offers the agent no file system or terminal; it uses its own tools.
 
 ## Agents
 
@@ -32,12 +41,13 @@ Built in: `antigravity` (`agy acp`), `opencode` (`opencode acp`), `codex` (`npx 
 
 ## State
 
-Threads live in the `acp.threads` document on conversation 1 (newest 30, each up to 400 items). The agent processes
-belong to this server process: after a restart a thread shows `offline` and the next message starts the agent
-again and reloads its session (`session/load`) when the agent supports it.
+`acp.session` on the conversation holds the agent, its ACP session id, model and mode options, a pending permission
+and context usage. The agent process belongs to this server process: after a restart or an agent crash the
+conversation shows `offline`, and the next message starts the agent again and reloads its session (`session/load`)
+when the agent supports it.
 
 ## Actions
 
-`agents` lists the registered agents and whether their command is installed. User-only: `start { agent }`,
-`prompt { thread, text }`, `cancel { thread }`, `permit { thread, option }` (`null` rejects), `config { thread,
-option, value }`, `delete { thread }`.
+`agents` lists the registered agents and whether their command is installed. User-only: `start { agent, isolated? }`
+returns the new conversation; `prompt { text }`, `cancel`, `permit { option }` (`null` rejects) and
+`config { option, value }` act on the shown conversation.

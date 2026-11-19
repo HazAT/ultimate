@@ -78,6 +78,8 @@ export { Fold, useFold } from '../app/fold.tsx'
 export { setAsideIds } from '../app/compact.ts'
 /** A message's footer as the transcript shows it: details such as usage, time, copy, go back and a reference link. */
 export { MessageActions } from '../app/message-actions.tsx'
+/** A tool call as the transcript shows it, through every extension's tool renderer; for calls an extension streams itself. */
+export { ToolCallBlock } from '../app/tool-call.tsx'
 /** A turn of the user's as the transcript shows a typed one; `text` gives the words a delivered message carries. */
 export { UserText, UserView } from '../app/user-turn.tsx'
 export { useTranscriptScroll } from '../app/transcript.tsx'

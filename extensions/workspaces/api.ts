@@ -20,6 +20,8 @@ export type WorkspaceService = {
   get: Implementation['get']
   /** Give conversation `id` a new worktree of `cwd`'s repository inside `tx`; throws when `cwd` cannot be isolated. */
   create: Implementation['create']
+  /** Resolve once the worktree of `id` is prepared (recreating a removed one); returns kept work it could not restore. */
+  ready: Implementation['ready']
   /** Fast-forward the worktree of `id`'s owner to the worktree tip of subagent `id`; returns what landed. */
   land: Implementation['land']
   /** Remove the worktree of `id` without landing it. */

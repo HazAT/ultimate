@@ -166,6 +166,7 @@ function Inbox({ items }: { items: readonly InboxItem[] }) {
 export interface ComposerTarget {
   placeholder: string
   send: (text: string) => Promise<unknown>
+  toolbar?: ReactNode
 }
 const ComposerTargetContext = createContext<ComposerTarget | undefined>(undefined)
 export function ComposerRedirect({ to, children }: { to?: ComposerTarget; children: ReactNode }) {
@@ -519,7 +520,7 @@ function ComposerEditor({
         />
         <PromptInputFooter className="@container">
           <PromptInputTools className="overflow-hidden">
-            <Slot name="composer.toolbar" variant="inline" />
+            {target?.toolbar ?? <Slot name="composer.toolbar" variant="inline" />}
           </PromptInputTools>
           <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2">
             <span
