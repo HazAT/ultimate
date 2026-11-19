@@ -10,7 +10,7 @@ it('lets an agent continue all work from the dedicated Play chip', async () => {
   pause()
   await tick()
   expect(container.querySelector('[data-pause-play]')).not.toBeNull()
-  await act('Play', 'press')
+  await act('Play paused work', 'press')
   expect(actions).toContainEqual({ name: 'play', args: null, source: 'agent' })
   expect(container.querySelector('[data-pause-play]')).toBeNull()
 })

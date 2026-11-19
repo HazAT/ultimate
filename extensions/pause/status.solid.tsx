@@ -189,7 +189,9 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
       </div>
       <div class="flex justify-end border-t border-border/70 px-3 py-1.5">
         <Button
-          aria-label={state().paused ? 'Resume paused work' : 'Stop starting new work'}
+          aria-label={
+            state().paused ? 'Play: continue paused work' : 'Pause: stop starting new work'
+          }
           class="h-7 font-sans text-[12px]"
           data-pause-toggle
           onClick={props.toggle}
@@ -273,6 +275,7 @@ export function Play() {
     <Show when={doc()?.paused}>
       <Button
         class="-mx-1 flex gap-1.5 rounded-sm px-1 font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal text-brand transition-colors hover:bg-accent"
+        aria-label="Play paused work"
         data-pause-play
         onClick={() =>
           api

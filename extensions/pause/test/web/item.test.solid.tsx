@@ -19,7 +19,7 @@ it('lets an agent open Pause, set auto-play minutes, and pause the host', async 
   expect(actions).toContainEqual({ name: 'autoPlay', args: { minutes: 45 }, source: 'agent' })
   await act('Play by itself after', 'setChecked', [false])
   expect(actions).toContainEqual({ name: 'autoPlay', args: { minutes: null }, source: 'agent' })
-  await act('Stop starting new work', 'press')
+  await act('Pause: stop starting new work', 'press')
   expect(actions).toContainEqual({ name: 'pause', args: null, source: 'agent' })
   expect(container.querySelector('[data-pause="paused"]')).not.toBeNull()
 })
