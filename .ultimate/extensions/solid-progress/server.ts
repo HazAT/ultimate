@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../../lib/actions.ts'
-import { isMissing } from '../../../lib/errors.ts'
+import { isMissing, meansNone } from '../../../lib/errors.ts'
 import { git } from '../../../lib/git.ts'
 import { ProgressAction } from './refs.ts'
 import type { Entry, Live } from './refs.ts'
@@ -21,7 +21,10 @@ async function live(root: string): Promise<Live[]> {
   const byName = new Map<string, { react: number; solid: number; reactViews: number }>()
   await Promise.all(
     files.map(async (file) => {
-      const text = await readFile(join(root, file), 'utf8')
+      const text = await readFile(join(root, file), 'utf8').catch((error: unknown) => {
+        if (isMissing(error)) return ''
+        throw error
+      })
       const lines = text.split('\n').filter((line) => line.trim()).length
       const name = file.startsWith('web/src/') ? 'web/src' : file.split('/')[1]
       const counts = byName.get(name) ?? { react: 0, solid: 0, reactViews: 0 }
@@ -60,10 +63,10 @@ async function coordinators(root: string, commits: string[]) {
         '-1',
         '--format=%(trailers:key=Ultimate-Conversation,valueonly)',
         commit,
-      ).catch(() => ''),
+      ).catch(meansNone),
     ),
   )
-  return found.map((value) => (/^\d+$/.test(value.trim()) ? Number(value.trim()) : undefined))
+  return found.map((value) => (value && /^\d+$/.test(value) ? Number(value) : undefined))
 }
 
 async function series(root: string): Promise<Entry[] | undefined> {
@@ -72,8 +75,7 @@ async function series(root: string): Promise<Entry[] | undefined> {
     throw error
   })
   if (text === undefined) return undefined
-  const parsed = JSON.parse(text) as { entries: Entry[] } | Entry[]
-  const entries = Array.isArray(parsed) ? parsed : parsed.entries
+  const { entries } = JSON.parse(text) as { entries: Entry[] }
   const ids = await coordinators(
     root,
     entries.map((entry) => entry.commit),

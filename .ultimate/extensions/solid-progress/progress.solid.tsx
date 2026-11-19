@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { For, Show } from 'solid-js'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
-import { cn, useAction } from '@/sdk/solid'
+import { ROOT, cn, useAction } from '@/sdk/solid'
 import { ProgressAction } from './refs.ts'
 import type { Entry, Live, Status } from './refs.ts'
 
@@ -31,10 +31,9 @@ function Chart(props: { points: Point[] }) {
   const scale = () => {
     const all = values()
     const base = props.points[0]?.value ?? all[0]
-    return {
-      low: Math.min(...all, base * (1 - BAND)),
-      high: Math.max(...all, base * (1 + BAND)),
-    }
+    const low = Math.min(...all, base * (1 - BAND))
+    const high = Math.max(...all, base * (1 + BAND))
+    return high > low ? { low, high } : { low: low - 1, high: high + 1 }
   }
   const x = (index: number) =>
     props.points.length === 1 ? W / 2 : PAD + (index * (W - 2 * PAD)) / (props.points.length - 1)
@@ -54,18 +53,16 @@ function Chart(props: { points: Point[] }) {
       preserveAspectRatio="none"
       viewBox={`0 0 ${W} ${H}`}
     >
-      <Show when={base()}>
-        {(value) => (
-          <line
-            class="stroke-muted-foreground/40"
-            stroke-dasharray="2 3"
-            vector-effect="non-scaling-stroke"
-            x1={0}
-            x2={W}
-            y1={y(value())}
-            y2={y(value())}
-          />
-        )}
+      <Show when={base() !== null}>
+        <line
+          class="stroke-muted-foreground/40"
+          stroke-dasharray="2 3"
+          vector-effect="non-scaling-stroke"
+          x1={0}
+          x2={W}
+          y1={y(base()!)}
+          y2={y(base()!)}
+        />
       </Show>
       <polyline
         class="fill-none stroke-brand"
@@ -90,6 +87,7 @@ function Chart(props: { points: Point[] }) {
 
 function MetricCard(props: { metric: Metric }) {
   const latest = () => props.metric.points.findLast((point) => point.value !== null)
+  const final = () => props.metric.points.at(-1)
   const base = () => props.metric.points[0]?.value ?? null
   const delta = () => {
     const now = latest()?.value
@@ -130,6 +128,11 @@ function MetricCard(props: { metric: Metric }) {
       <div class="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground/70">
         <For each={props.metric.points}>{(point) => <span>{point.label}</span>}</For>
       </div>
+      <Show when={latest() && final() && latest() !== final()}>
+        <p class="mt-1 font-mono text-[10.5px] text-amber-700 dark:text-amber-300">
+          {final()!.label} not measured
+        </p>
+      </Show>
       <Show when={props.metric.note}>
         <p class="mt-1 font-mono text-[10.5px] text-muted-foreground/70">{props.metric.note}</p>
       </Show>
@@ -207,7 +210,7 @@ function Extensions(props: { live: Live[]; first?: Entry }) {
   const counts = () =>
     (['solid', 'partly', 'react'] as const).map(
       (status) =>
-        `${props.live.filter((item) => item.status === status).length} ${statusLabel[status]}`,
+        `${props.live.filter((item) => item.name !== 'web/src' && item.status === status).length} ${statusLabel[status]}`,
     )
   return (
     <div class="rounded-lg border border-border/70 bg-card/40">
@@ -337,8 +340,23 @@ function Steps(props: { entries: Entry[] }) {
   )
 }
 
+function Previews() {
+  return (
+    <div class="rounded-lg border border-border/70 bg-card/40">
+      <div class="border-b border-border/70 px-3 py-2">
+        <span class="section-label">Previews</span>
+      </div>
+      <p class="px-3 py-4 font-mono text-[11.5px] text-muted-foreground">
+        How efficient agent-driven browser previews are becoming: tool calls, screenshots, tokens
+        and success for `ui` steps against selector clicks, and a weekly trend of real use. Not
+        measured yet.
+      </p>
+    </div>
+  )
+}
+
 export function Progress() {
-  const progress = useAction(ProgressAction, null, { focus: true })
+  const progress = useAction(ProgressAction, null, { conversation: ROOT, focus: true })
   return (
     <div class="mx-auto max-w-6xl space-y-3 px-3 py-3 md:px-5">
       <Show
@@ -362,7 +380,9 @@ export function Progress() {
             <Show
               fallback={
                 <p class="rounded-lg border border-border/70 bg-card/40 px-3 py-6 text-center font-mono text-[11.5px] text-muted-foreground">
-                  No measurements yet: {data().missing} does not exist.
+                  {data().missing
+                    ? `No measurements yet: ${data().missing} does not exist.`
+                    : 'No measurements yet.'}
                 </p>
               }
               when={data().entries.length > 0}
@@ -375,6 +395,7 @@ export function Progress() {
               <LinesBar entries={data().entries} />
               <Steps entries={data().entries} />
             </Show>
+            <Previews />
             <Extensions first={data().entries[0]} live={data().live} />
           </>
         )}
