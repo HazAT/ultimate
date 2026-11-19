@@ -156,10 +156,10 @@ function metrics(entries: Entry[]): Metric[] {
     series('switch, cold', 'ms', (entry) => entry.switch?.cold, 'settledMs median'),
     series('switch, warm', 'ms', (entry) => entry.switch?.warm, 'settledMs median'),
     series(
-      'stream renders / event',
+      'React renders / streamed event',
       'components',
       (entry) => entry.stream?.median,
-      'median of a scripted stream',
+      'median of a scripted stream; Solid work is not counted',
     ),
   ]
 }

@@ -17,7 +17,7 @@ export type Entry = {
   bundleGzipKB: number | null
   entryGzipKB: number | null
   switch: { cold: number; warm: number } | null
-  stream: { median: number; p95: number; max: number } | null
+  stream: { median: number; p95: number; max: number; taskMs: number } | null
   coordinator?: number
 }
 
