@@ -46,14 +46,21 @@ it('lets an agent find a skill by its description and fill the composer with it'
     skills: [
       skill('verify-ui', 'Check a UI change with screenshots'),
       skill('write-extension', 'Build or change an extension'),
+      skill(
+        'how-ultimate-works',
+        'Walk a new user through five short beats, each ending with a card, before setup',
+      ),
     ],
   } as unknown as SystemInfo)
-  store.setUi({ dialogs: { [skillDialog]: true } })
   const container = renderSolid(() => (
     <ConversationScope value={conversation}>
+      <button type="button">Open the palette</button>
+      <textarea aria-label="Composer" id="composer-input" />
       <SkillPicker />
     </ConversationScope>
   ))
+  container.querySelector('button')!.focus()
+  store.setUi({ dialogs: { [skillDialog]: true } })
   flush()
   await settle()
   const agent = createAgent()
@@ -71,6 +78,13 @@ it('lets an agent find a skill by its description and fill the composer with it'
     ...container.querySelectorAll<HTMLElement>('[data-slot="command-item"]'),
   ].find((item) => item.textContent?.includes('write-extension'))
   expect(!nonmatching || nonmatching.hidden).toBe(true)
+  await agent.act({ steps: [{ ref: input!.ref, action: 'setQuery', args: ['verif'] }] })
+  flush()
+  await settle()
+  const shown = [...container.querySelectorAll<HTMLElement>('[data-slot="command-item"]')]
+    .filter((item) => !item.hidden)
+    .map((item) => item.querySelector('.text-brand')?.textContent)
+  expect(shown).toEqual(['verify-ui'])
   const result = await agent.act({ steps: [{ ref: input!.ref, action: 'run' }] })
   expect(result.ok).toBe(true)
   flush()
@@ -78,5 +92,6 @@ it('lets an agent find a skill by its description and fill the composer with it'
   expect(getDraft(conversation).get().text).toBe('/skill:verify-ui ')
   expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
   expect(container.querySelector('[role="dialog"][data-open]')).toBeNull()
+  expect(document.activeElement?.id).toBe('composer-input')
   store.stop()
 })

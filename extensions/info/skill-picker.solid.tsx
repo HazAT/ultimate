@@ -13,7 +13,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { fillComposer, focusComposer, useConversationId, useDialog, useSystem } from '@/sdk/solid'
+import { fillComposer, useConversationId, useDialog, useSystem } from '@/sdk/solid'
 
 export const skillDialog = 'info.skill'
 
@@ -24,23 +24,20 @@ export function SkillPicker() {
   let chosen = false
   function choose(name: string) {
     const id = conversation()
-    if (id !== undefined) {
-      fillComposer(id, `/skill:${name} `)
-      chosen = true
-    }
+    chosen = id !== undefined
+    if (id !== undefined) fillComposer(id, `/skill:${name} `)
     setOpen(false)
   }
   return (
     <Dialog
-      onOpenChange={setOpen}
-      onOpenChangeComplete={(isOpen) => {
-        if (isOpen || !chosen) return
-        chosen = false
-        focusComposer()
+      onOpenChange={(next) => {
+        if (next) chosen = false
+        setOpen(next)
       }}
       open={open()}
     >
       <DialogContent
+        finalFocus={() => (chosen ? document.getElementById('composer-input') : undefined)}
         class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}
       >
@@ -48,7 +45,7 @@ export function SkillPicker() {
         <DialogDescription class="sr-only">
           Pick a skill; the composer then holds its command for you to add a request and send.
         </DialogDescription>
-        <Command onAction={choose}>
+        <Command filter="contains" onAction={choose}>
           <CommandInput aria-label="Find a skill" class="text-[13px]" placeholder="Run a skill…" />
           <CommandEmpty class="py-6 text-center text-[12px] text-muted-foreground">
             No matching skill.

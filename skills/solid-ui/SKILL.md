@@ -107,6 +107,13 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     throws without one, unlike the React label.
   - Menu and Command `onAction` details have an optional `event`, but no `source`; item `onSelect` takes only an
     event. Their open, radio value and query change callbacks do carry `details.source`.
+  - Command's default filter is `fuzzy`: letters in order anywhere, keywords included, so `verif` matches a long
+    description that merely holds those letters. cmdk matched substrings. Pass `filter="contains"` to keep
+    cmdk's behaviour when items carry long `keywords`.
+  - To move focus somewhere other than the opener when a dialog closes (the composer after a choice), set
+    `DialogContent`'s `finalFocus` to a function that returns that element only then. Focusing in
+    `onOpenChangeComplete` loses to the SDK's own return to the trigger when there is no exit animation
+    (reduced motion, jsdom).
   - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it
     with `not-data-empty:hidden`; a padded empty part otherwise leaves a blank band above the list. Compare a moved
     usage with its React original side by side on the host before calling it the same.
