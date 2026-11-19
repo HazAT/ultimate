@@ -1,24 +1,17 @@
-import { ChevronDownIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react'
+import { ChevronRightIcon, ExternalLinkIcon } from 'lucide-react'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
 import { Tool, ToolContent, ToolHeader, ToolOutput, ToolSection } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   cn,
   defineWebExtension,
+  island,
   keepLast,
   provide,
   shortenPath,
   useAction,
-  useConversations,
   useStore,
   useSystem,
   useToolDuration,
@@ -26,8 +19,17 @@ import {
 import type { ToolCallView } from '@/sdk'
 import { PreviewUp } from '../sidebar/ui.tsx'
 import { at, label } from './links.ts'
+import {
+  canFrameLoopbackPreviews,
+  getPreviews,
+  getShown,
+  isLoopback,
+  polled,
+  show,
+  subscribe,
+} from './previews.ts'
 import { ListAction } from './refs.ts'
-import type { Preview } from './refs.ts'
+import { Switcher } from './switcher.solid.tsx'
 
 interface Instance {
   id: string
@@ -153,27 +155,8 @@ function InstanceCall({ call }: { call: ToolCallView }) {
   )
 }
 
-const isLoopback = (hostname: string) =>
-  /^(127\.0\.0\.1|localhost|\[::1\])$|\.localhost$/.test(hostname)
-const canFrameLoopbackPreviews = isLoopback(location.hostname)
-
-let previews: Preview[] | undefined
-let shown: { preview: Preview; url: string } | undefined
-let refetch = () => {}
-const listeners = new Set<() => void>()
-const changed = () => {
-  for (const listener of listeners) listener()
-}
-const subscribe = (listener: () => void) => {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-function show(preview: Preview | undefined, url = preview?.url) {
-  shown = preview && url ? { preview, url } : undefined
-  changed()
-}
-const useShown = () => useSyncExternalStore(subscribe, () => shown)
-const usePreviews = () => useSyncExternalStore(subscribe, () => previews)
+const useShown = () => useSyncExternalStore(subscribe, getShown)
+const usePreviews = () => useSyncExternalStore(subscribe, getPreviews)
 
 function Poll() {
   const { data, refetch: again } = useAction(ListAction, null, {
@@ -181,15 +164,8 @@ function Poll() {
     every: 5000,
   })
   useEffect(() => {
-    refetch = () => void again()
-  }, [again])
-  useEffect(() => {
-    if (!data) return
-    previews = data
-    if (shown && !data.some((preview) => preview.running && preview.id === shown?.preview.id))
-      shown = undefined
-    changed()
-  }, [data])
+    if (data) polled(data, () => void again())
+  }, [data, again])
   return null
 }
 
@@ -268,70 +244,6 @@ function PreviewLink({
   )
 }
 
-const port = (url: string) => `:${new URL(url).port}`
-
-function Switcher() {
-  const current = useShown()?.preview
-  const data = usePreviews()?.filter((preview) => preview.running)
-  const conversations = useConversations()
-  if (!data?.length) return null
-  const title = (preview: Preview) =>
-    conversations.find((conversation) => conversation.id === preview.conversationId)?.title
-  return (
-    <DropdownMenu modal={false} onOpenChange={(open) => open && refetch()}>
-      <DropdownMenuTrigger asChild>
-        <button
-          className={cn(
-            'flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent',
-            current && 'bg-brand/10',
-          )}
-          type="button"
-        >
-          {current ? (
-            <>
-              <span className="size-1.5 rounded-full bg-brand" />#{current.conversationId} ·{' '}
-              {port(current.url)}
-            </>
-          ) : (
-            <span className="max-md:hidden">
-              {data.length} {data.length === 1 ? 'preview' : 'previews'}
-            </span>
-          )}
-          <ChevronDownIcon className="size-3.5 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80" sideOffset={4}>
-        <DropdownMenuLabel className="px-2 pt-1 pb-1.5 section-label">Instances</DropdownMenuLabel>
-        <DropdownMenuItem className="gap-2 py-1.5" onSelect={() => show(undefined)}>
-          <span className={cn('flex-1 text-[13px]', !current && 'text-brand')}>This project</span>
-          <span className="font-mono text-[11px] text-muted-foreground">{port(location.href)}</span>
-        </DropdownMenuItem>
-        {data.map((preview) => (
-          <DropdownMenuItem
-            className="gap-2 py-1.5"
-            data-instance={preview.id}
-            key={preview.id}
-            onSelect={() => show(preview)}
-          >
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate text-[13px]',
-                current?.id === preview.id && 'text-brand',
-              )}
-            >
-              #{preview.conversationId}
-              {title(preview) && <span className="text-muted-foreground"> {title(preview)}</span>}
-            </span>
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-              {port(preview.url)}
-            </span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 function Embedded() {
   const current = useShown()
   const surface = useStore((state) => state.ui.surface?.id)
@@ -359,5 +271,8 @@ export default defineWebExtension({
   ],
   tools: { instance: InstanceCall },
   link: PreviewLink,
-  slots: { 'titlebar.left': canFrameLoopbackPreviews ? [Switcher] : [], overlay: [Poll, Embedded] },
+  slots: {
+    'titlebar.left': canFrameLoopbackPreviews ? [island(Switcher)] : [],
+    overlay: [Poll, Embedded],
+  },
 })

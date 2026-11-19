@@ -197,7 +197,6 @@ export function Composer({ dock }: { dock?: boolean }) {
   return <TranscriptContext value={entries}>{core}</TranscriptContext>
 }
 
-
 type Upload = typeof FileUpload.value
 function StableEditorUploadBridge({ value, set }: { value: Upload; set: (value: Upload) => void }) {
   useEffect(() => set(value), [value, set])
