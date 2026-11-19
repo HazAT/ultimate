@@ -41,7 +41,8 @@ posted: ids, `reply`, `steer`, never the text), `workspaces.check` (each lander 
 outside the caller's commit (Pi's compaction, the machine's health file, an upload, a git repository), so each commits on
 its own right after it. For debugging what the user did: `user.input` (a typed prompt, steer or follow-up, an
 answer or dismissal, a review: its conversation, entry or message and length, never the text) and
-`ui.navigated` (the surface or Agent's conversation changed, reported by the browser after a second and deduped),
+`ui.navigated` (the surface or Agent's conversation changed, reported by the browser after a second and deduped) and
+`ui.changed` (a ui-sdk component changed, by a person or an agent, with its label, key and values; `extensions/ui`),
 each with the browser's `device` label and, through Tailscale Serve, the `login` and the client's tailnet `address`
 (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`, for example `100.64.0.2`; any other forwarded address is dropped). UI
 action calls get the same `Device` as `ctx.device`. A `beforeInput` hook gets no device: it sees only the input entry
