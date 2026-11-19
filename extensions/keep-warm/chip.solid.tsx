@@ -1,7 +1,8 @@
 /** @jsxImportSource @solidjs/web */
 import { Flame } from '@lucide/solid'
 import { Show } from 'solid-js'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
+import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
+import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { ROOT, api, cn, formatAgo, keepLast, useAction, useDocOf, useNow } from '@/sdk/solid'
 import { failing, TTL } from './due.ts'
@@ -48,12 +49,9 @@ export function Chip() {
         const warm = () => state().lastRequest !== undefined && state().lastRequest! + TTL > now()
         return (
           <Popover>
-            <PopoverTrigger
+            <StatusPopoverTrigger
               aria-label="Keep @ultimate's cache warm"
-              class={cn(
-                '-mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-1 transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground',
-                !state().on && 'text-muted-foreground/60',
-              )}
+              class={cn(!state().on && 'text-muted-foreground/60')}
               data-keep-warm={state().on ? (warm() ? 'warm' : 'cold') : 'off'}
             >
               <Flame
@@ -64,7 +62,7 @@ export function Chip() {
                 )}
               />
               warm
-            </PopoverTrigger>
+            </StatusPopoverTrigger>
             <PopoverContent align="end" class="w-64 p-1 font-mono" side="top">
               <label class="flex h-8 cursor-pointer items-center justify-between px-2 text-[12px]">
                 Keep @ultimate warm
