@@ -20,12 +20,14 @@ export const skillDialog = 'info.skill'
 export function SkillPicker() {
   const [open, setOpen] = useDialog(skillDialog)
   const system = useSystem()
+  let composer: HTMLElement | undefined
   let filled: HTMLElement | undefined
   createEffect(open, (isOpen) => {
-    if (isOpen) filled = undefined
+    if (!isOpen) return
+    composer = uncoveredComposer()
+    filled = undefined
   })
   function choose(name: string) {
-    const composer = uncoveredComposer()
     const id = Number(composer?.dataset.conversation)
     filled = Number.isInteger(id) ? composer : undefined
     if (filled) fillComposer(id, `/skill:${name} `)
