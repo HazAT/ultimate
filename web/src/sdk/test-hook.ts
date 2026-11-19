@@ -33,7 +33,7 @@ export function createTestHook(
   api: Api,
   agent: UiAgentHandle,
   rendered: Promise<void>,
-  readsSettled: () => Promise<void>,
+  readsSettled: (signal: AbortSignal) => Promise<void>,
 ) {
   const saved = JSON.parse(sessionStorage.getItem(SENT_KEY) ?? '{"sent":[]}') as {
     sent: [ConversationId, Sent][]
@@ -91,15 +91,20 @@ export function createTestHook(
     })
   }
 
-  const controlsMounted = () =>
-    within(
+  const controlsMounted = () => {
+    const gaveUp = new AbortController()
+    return within(
       30_000,
-      rendered.then(readsSettled),
-      () =>
-        new Error(
+      rendered.then(() => readsSettled(gaveUp.signal)),
+      () => {
+        const error = new Error(
           'Timed out after 30s: the page never rendered its surface with the data its components read',
-        ),
+        )
+        gaveUp.abort(error)
+        return error
+      },
     )
+  }
 
   const firstSnapshotReady = (timeoutMs = 30_000) =>
     whenStoreConditionHolds(
@@ -143,7 +148,11 @@ export function createTestHook(
       const state = store.getState()
       return {
         shown: shown(state),
-        conversations: state.conversations.map(({ id, title, busy }) => ({ id, title, busy })),
+        conversations: state.conversations.map(({ id, title, busy }) => ({
+          id,
+          title,
+          busy,
+        })),
         entries: state.view?.entries.map((entry) => entry.kind) ?? [],
       }
     },

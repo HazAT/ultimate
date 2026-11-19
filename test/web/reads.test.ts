@@ -61,7 +61,11 @@ it('keeps a read quiet when its request never reached the server, and asks again
   await vi.waitFor(() => expect(read.get().data).toBe('first'))
   await read.refetch()
   expect(store.notify).not.toHaveBeenCalled()
-  expect(read.get()).toMatchObject({ data: 'first', error: undefined, loading: false })
+  expect(read.get()).toMatchObject({
+    data: 'first',
+    error: undefined,
+    loading: false,
+  })
 
   action.mockResolvedValueOnce('again')
   connect('reconnecting')
@@ -91,4 +95,46 @@ it('settles in-use reads once each mounted read has its first answer, so ui step
   answer.resolve('answer')
   await done
   expect(settled).toBe(true)
+})
+
+function readiness() {
+  const store = {
+    getState: () => ({ connection: { status: 'open' } }),
+    subscribe: () => () => {},
+    notify: vi.fn<(notice: unknown) => void>(),
+  }
+  const action = vi.fn<() => Promise<string>>()
+  return {
+    action,
+    reads: createReads({ action } as unknown as Api, store as never),
+  }
+}
+
+it('counts a read whose request never reached the server as done for ui steps, and keeps it unsettled', async () => {
+  const { action, reads } = readiness()
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
+  const read = reads.get('test', 'status', null)
+  read.use({})
+  await reads.settledInUse()
+  expect(read.get()).toMatchObject({ loading: false, settled: false })
+})
+
+it('rechecks readiness when the last reader of a pending read goes', async () => {
+  const { action, reads } = readiness()
+  action.mockReturnValue(new Promise<string>(() => {}))
+  const release = reads.get('test', 'status', null).use({})
+  await Promise.resolve()
+  const done = reads.settledInUse()
+  release()
+  await expect(done).resolves.toBeUndefined()
+})
+
+it('stops waiting for readiness when its signal aborts', async () => {
+  const { action, reads } = readiness()
+  action.mockReturnValue(new Promise<string>(() => {}))
+  reads.get('test', 'status', null).use({})
+  const stop = new AbortController()
+  const done = reads.settledInUse(stop.signal)
+  stop.abort(new Error('gave up'))
+  await expect(done).rejects.toThrow('gave up')
 })
