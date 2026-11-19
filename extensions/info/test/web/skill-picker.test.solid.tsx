@@ -24,7 +24,6 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { store } from '../../../../web/src/sdk/client.ts'
-import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { SkillPicker, skillDialog } from '../../skill-picker.solid.tsx'
 
@@ -38,7 +37,8 @@ const skill = (name: string, description: string) => ({
 })
 
 it('lets an agent find a skill by its description and fill the composer with it', async () => {
-  const conversation = 7 as ConversationId
+  const main = 7 as ConversationId
+  const side = 8 as ConversationId
   store.start()
   sources[0].open()
   sources[0].send('system', {
@@ -53,17 +53,17 @@ it('lets an agent find a skill by its description and fill the composer with it'
     ],
   } as unknown as SystemInfo)
   const container = renderSolid(() => (
-    <ConversationScope value={conversation}>
+    <>
       <button type="button">Open the palette</button>
       <button type="button">Open it again</button>
       <div inert>
-        <textarea aria-label="Composer" id="composer-input" />
+        <textarea aria-label="Composer" data-conversation={main} id="composer-input" />
       </div>
       <div data-composer-target>
-        <textarea aria-label="Side chat composer" />
+        <textarea aria-label="Side chat composer" data-conversation={side} />
       </div>
       <SkillPicker />
-    </ConversationScope>
+    </>
   ))
   container.querySelector('button')!.focus()
   store.setUi({ dialogs: { [skillDialog]: true } })
@@ -95,7 +95,8 @@ it('lets an agent find a skill by its description and fill the composer with it'
   expect(result.ok).toBe(true)
   flush()
   await settle()
-  expect(getDraft(conversation).get().text).toBe('/skill:verify-ui ')
+  expect(getDraft(side).get().text).toBe('/skill:verify-ui ')
+  expect(getDraft(main).get().text).toBe('')
   expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
   expect(container.querySelector('[role="dialog"][data-open]')).toBeNull()
   expect(document.activeElement?.getAttribute('aria-label')).toBe('Side chat composer')
@@ -105,6 +106,7 @@ it('lets an agent find a skill by its description and fill the composer with it'
   store.setUi({ dialogs: { [skillDialog]: true } })
   flush()
   await settle()
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('Find a skill')
   document.activeElement!.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
   )

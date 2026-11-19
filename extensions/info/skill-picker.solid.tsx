@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { For } from 'solid-js'
+import { createEffect, For } from 'solid-js'
 import {
   Command,
   CommandEmpty,
@@ -13,37 +13,28 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import {
-  fillComposer,
-  uncoveredComposer,
-  useConversationId,
-  useDialog,
-  useSystem,
-} from '@/sdk/solid'
+import { fillComposer, uncoveredComposer, useDialog, useSystem } from '@/sdk/solid'
 
 export const skillDialog = 'info.skill'
 
 export function SkillPicker() {
   const [open, setOpen] = useDialog(skillDialog)
   const system = useSystem()
-  const conversation = useConversationId()
-  let chosen = false
+  let filled: HTMLElement | undefined
+  createEffect(open, (isOpen) => {
+    if (isOpen) filled = undefined
+  })
   function choose(name: string) {
-    const id = conversation()
-    chosen = id !== undefined
-    if (id !== undefined) fillComposer(id, `/skill:${name} `)
+    const composer = uncoveredComposer()
+    const id = Number(composer?.dataset.conversation)
+    filled = Number.isInteger(id) ? composer : undefined
+    if (filled) fillComposer(id, `/skill:${name} `)
     setOpen(false)
   }
   return (
-    <Dialog
-      onOpenChange={setOpen}
-      onOpenChangeComplete={(isOpen) => {
-        if (isOpen) chosen = false
-      }}
-      open={open()}
-    >
+    <Dialog onOpenChange={setOpen} open={open()}>
       <DialogContent
-        finalFocus={() => (chosen ? uncoveredComposer() : undefined)}
+        finalFocus={() => filled}
         class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}
       >

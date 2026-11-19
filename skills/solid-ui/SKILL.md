@@ -112,10 +112,12 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     it on purpose with `filter="contains"`; choose that for items with long `keywords`.
   - To move focus somewhere other than the opener when a dialog closes (the composer after a choice), set
     `DialogContent`'s `finalFocus` to a function that returns that element only then, and an element a person
-    can reach (`uncoveredComposer()`, not `#composer-input` behind a side chat). Focusing in
-    `onOpenChangeComplete` loses to the SDK's own return to the trigger when there is no exit animation
-    (reduced motion, jsdom). Reset such a flag in `onOpenChangeComplete(true)`: a controlled `open` set from
-    outside (a command, `useDialog`) never calls `onOpenChange(true)`.
+    can reach (`uncoveredComposer()`, not `#composer-input` behind a side chat), and write to that element's
+    own conversation (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own
+    return to the trigger when there is no exit animation (reduced motion, jsdom). Clear the remembered
+    target in an effect on the controlled `open` accessor: a command or `useDialog` opening it never calls
+    `onOpenChange(true)`, and `onOpenChangeComplete(true)` comes only after the entrance transition, too late
+    for an Escape during it.
   - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it
     with `not-data-empty:hidden`; a padded empty part otherwise leaves a blank band above the list. Compare a moved
     usage with its React original side by side on the host before calling it the same.
