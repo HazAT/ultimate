@@ -56,7 +56,7 @@ export function useShortcuts() {
       if (exact && allowed(exact)) {
         event.preventDefault()
         if (sequence.length > 1) store.setUi({ paletteOpen: false })
-        runCommand(exact.command.id, context)
+        runCommand(exact.command.id, context, 'keys')
       }
       if (longer && (exact || !typing || /\b(mod|alt|ctrl)\+/.test(chord))) {
         if (!exact) event.preventDefault()

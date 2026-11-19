@@ -86,7 +86,7 @@ You coordinate the dream. You change nothing: no code, no memory, no settings. Y
    input; the transcripts are the evidence behind it, and a pass checks the handoff against them rather than taking
    it on trust.
 1. Run the six passes in parallel, each as a `dream-pass` subagent (background), with its pass name, the handoff and
-   the brief below.
+   the brief below; add the **usage** pass when an extension named `usage` is installed (`ultimate.extensions()`).
 2. Check each report against its evidence; drop what does not hold up.
 3. Answer @ultimate with the journal and the proposals:
    - three `learned` lines in Ultimate's own voice ("I learned…", "I keep…", "I'd like…");
@@ -141,3 +141,12 @@ tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation onl
   (`gh pr list --repo HazAT/ultimate --label feature`). It proposes; it builds nothing. When the project is Ultimate
   itself, leave Ultimate's tools and harness to the tools and codify passes and look only at the project's own work;
   say "nothing project-specific" when that is what you found.
+- **usage** (only with a `usage` extension) — where the user's own way through the UI costs them: read
+  `ultimate.action('usage', 'summary', { days: 30 })`, counts of views, how each was reached, round trips and how the
+  user came back, commands by palette or shortcut, UI-state keys and controls used most. Look for repeated detours
+  (a surface opened from another and left by the sidebar instead of a back), commands run from the palette that have a
+  shortcut or deserve one, a control used constantly that sits behind a menu, a sequence the user repeats that one
+  action could do, a choice always made the same way. Read the extension's README for what is recorded. Each
+  proposal quotes its counts and the days they cover, names the change (a button, a shortcut, a default, a remembered
+  state, a new surface or card) and where it goes: a user extension, the project's `.ultimate/`, or Ultimate itself.
+  Fewer than a week of data or nothing that repeats: say so and propose nothing.

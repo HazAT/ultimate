@@ -1,5 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { registry, replaceNextSelection, store, uiState } from './client.ts'
+import { events } from './events.ts'
 import { errorMessage } from './format.ts'
 import {
   HOME,
@@ -135,9 +136,24 @@ export const actions: UltimateActions = {
   setTheme: (theme) => store.setUi({ theme }),
 }
 
-export function runCommand(id: string, context: UltimateContext = currentContext()) {
+/**
+ * Run command `id` in `context`, reporting a failure as a notice; shortcuts pass the context of where they were typed.
+ * Emits `ultimate:command { id, extension, surface, via }` on the browser bus: `via` is how it was run, `keys` (a
+ * shortcut), `palette` or `call` (an extension's button or code).
+ */
+export function runCommand(
+  id: string,
+  context: UltimateContext = currentContext(),
+  via: 'keys' | 'palette' | 'call' = 'call',
+) {
   const command = allCommands().find((candidate) => candidate.id === id)
   if (!command || !applies(command, context)) return
+  events.emit('ultimate:command', {
+    id,
+    extension: command.extension,
+    surface: context.surface,
+    via,
+  })
   void Promise.resolve()
     .then(() => command.run(context))
     .catch((error: unknown) =>

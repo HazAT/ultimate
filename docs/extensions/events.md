@@ -82,8 +82,9 @@ function Receiver() {
 events.emit('hello:selected', { name: 'example' })
 ```
 
-The registry emits `ultimate:extension-loaded { name }` or `ultimate:extension-failed { name, error }` as each
-facet settles. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
+Each command run emits `ultimate:command { id, extension, surface, via }`, `via` being `keys` (a shortcut), `palette`
+or `call` (`runCommand` from code, such as a button). The registry emits `ultimate:extension-loaded { name }` or
+`ultimate:extension-failed { name, error }` as each facet settles. `ultimate:ready { failed, pending, timedOut }` fires once per page load when
 the current loader generation has settled (loaded or failed) and the first system snapshot has arrived, or after
 an 8 s deadline from the first loader map. Superseded imports do not determine readiness. `useReady()` returns
 `{ ready, timedOut, failed, pending }`, even for a subscriber mounted after the event. `ready` and `timedOut` stay
