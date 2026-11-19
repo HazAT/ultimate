@@ -34,7 +34,8 @@ The contribution:
 ## Layout
 
 The host renders the surface inside a column that fills the window (`flex h-dvh flex-col`), under its title bar: the
-brand, the project, the surfaces, and the palette button (none when Ultimate is embedded in an iframe).
+brand, the project, the surfaces, and the palette button (none when Ultimate is embedded in an iframe or the project's
+`.ultimate/settings.json` sets `"titleBar": false`, see [settings](../settings.md)).
 Compose the surface top to bottom, and make the middle row `flex min-h-0 flex-1` so it takes the rest and scrolls
 inside, not the page:
 
