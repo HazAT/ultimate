@@ -26,6 +26,26 @@ export function splitMentions(text: string) {
   return parts
 }
 
+const linkPattern =
+  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"]/g
+
+export function splitLinks(text: string) {
+  const parts: (string | { href: string; text: string })[] = []
+  let last = 0
+  for (const match of text.matchAll(linkPattern)) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    parts.push(match[2] ? { href: match[2], text: match[1] } : { href: match[0], text: match[0] })
+    last = match.index + match[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
+export const plainText = (text: string) =>
+  splitLinks(text)
+    .map((part) => (typeof part === 'string' ? part : part.text))
+    .join('')
+
 type Node = { type: string; value?: string; children?: Node[]; url?: string }
 
 export function remarkMentions() {

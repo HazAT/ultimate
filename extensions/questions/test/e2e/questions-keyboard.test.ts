@@ -51,7 +51,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-async function openCard() {
+async function openCard(asks = questions) {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
   const server = await fauxServer({
@@ -68,7 +68,7 @@ async function openCard() {
     const last = transcript.messages.at(-1)!
     return last.role === 'user' && last.content === 'ask'
       ? fauxAssistantMessage(
-          [fauxToolCall('message', { to: 'user', text: 'The preview is ready.', questions })],
+          [fauxToolCall('message', { to: 'user', text: 'The preview is ready.', questions: asks })],
           {
             stopReason: 'toolUse',
           },
@@ -186,6 +186,31 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     (await log())?.messages.filter((m) => m.re === second.id && m.from === 'user'),
   ).toHaveLength(1)
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+})
+
+// The bug (#226 review): Enter on a focused link in the open question's header took the pick instead of following it.
+it('leaves keys to a focused link in the open question', async () => {
+  const linked = [
+    { ...(questions[0] as object), text: 'Read [the spec](https://example.com/spec) first' },
+    ...questions.slice(1),
+  ]
+  const { log, asked, page, card } = await openCard(linked)
+  await page.evaluate(() =>
+    window.addEventListener('keydown', (event) => Object.assign(window, { lastKey: event }), {
+      capture: true,
+    }),
+  )
+  const claimed = () =>
+    page.evaluate(() => (window as unknown as { lastKey: KeyboardEvent }).lastKey.defaultPrevented)
+  // External links render as Streamdown's confirm button, not an <a>.
+  await card.getByRole('button', { name: 'the spec' }).focus()
+  await page.keyboard.press('b')
+  expect(await claimed()).toBe(false)
+  await page.keyboard.press('Enter')
+  expect(await claimed()).toBe(false)
+  expect(await card.locator('[aria-pressed=true]').count()).toBe(0)
+  expect(await card.getByText('0/3').count()).toBe(1)
+  expect((await log())?.messages.some((m) => m.re === asked.id)).toBe(false)
 })
 
 it('sends a held answer when the page is left inside the undo window', async () => {

@@ -512,8 +512,10 @@ function Card({
 
   useEffect(() => {
     if (!keys || phone || phase === 'sending' || phase === 'sent') return undefined
+    const fieldOrLinkOwnsKeys =
+      'input, textarea, select, a, [data-streamdown="link"], [contenteditable="true"]'
     const outsideControlOwnsKeys = (target: HTMLElement | null) =>
-      !root.current?.contains(target) && target?.closest('[data-questions-card], button, a')
+      !root.current?.contains(target) && target?.closest('[data-questions-card], button')
     const key = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (
@@ -522,7 +524,7 @@ function Card({
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
-        target?.closest('input, textarea, select, [contenteditable="true"]') ||
+        target?.closest(fieldOrLinkOwnsKeys) ||
         outsideControlOwnsKeys(target)
       )
         return

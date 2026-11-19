@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { plainText } from '@/components/ai/mentions'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -108,7 +109,7 @@ function Row({
   onSelect: () => void
 }) {
   const questions = entry.message?.questions
-  const gist = entry.item ? entry.item.gist : questions?.[0]?.text
+  const gist = entry.item ? entry.item.gist : questions?.[0] && plainText(questions[0].text)
   const more = (questions?.length ?? 0) > 1 ? ` +${questions!.length - 1}` : ''
   return (
     <button

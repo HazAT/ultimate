@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it, vi } from 'vitest'
-import { inboxItems, keyOf, selection } from '../../items.tsx'
+import { inboxItems, keyOf, lead, selection } from '../../items.tsx'
 import type { InboxItem } from '../../ui.tsx'
 import type { Message } from '../../../messages/refs.ts'
 
@@ -66,4 +66,11 @@ it('reads a link as a key, a plain number as a message id', () => {
   expect(keyOf(12)).toBe('message:12')
   expect(keyOf('shell:3')).toBe('shell:3')
   expect(keyOf('')).toBeUndefined()
+})
+
+it('titles a message by its lead without Markdown links', () => {
+  expect(lead('**Merge [ENG-11](https://tracker.example.com/issues/ENG-11)?** Body').title).toBe(
+    'Merge ENG-11?',
+  )
+  expect(lead('Ship [#42](https://code.example.com/pull/42) now\nmore').title).toBe('Ship #42 now')
 })

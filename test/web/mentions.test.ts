@@ -4,7 +4,9 @@ import { expect, it, vi } from 'vitest'
 import {
   mentionHref,
   parseMention,
+  plainText,
   remarkMentions,
+  splitLinks,
   splitMentions,
 } from '../../web/src/components/ai/mentions.ts'
 
@@ -46,6 +48,19 @@ it('round-trips a mention through its href', () => {
     entry: 158003,
   })
   expect(parseMention('https://example.com/?conversation=1')).toBeUndefined()
+})
+
+it('finds Markdown links and bare URLs in plain text, and strips links to their text', () => {
+  const text =
+    'Merge [ENG-11](https://tracker.example.com/issues/ENG-11), see https://code.example.com/pull/42. [x](ftp://a)'
+  expect(splitLinks(text)).toEqual([
+    'Merge ',
+    { href: 'https://tracker.example.com/issues/ENG-11', text: 'ENG-11' },
+    ', see ',
+    { href: 'https://code.example.com/pull/42', text: 'https://code.example.com/pull/42' },
+    '. [x](ftp://a)',
+  ])
+  expect(plainText(text)).toBe('Merge ENG-11, see https://code.example.com/pull/42. [x](ftp://a)')
 })
 
 type Node = { type: string; value?: string; url?: string; children?: Node[] }

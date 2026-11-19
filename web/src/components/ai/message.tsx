@@ -18,7 +18,7 @@ import {
   linkRenderers,
 } from '../../sdk/registry.ts'
 import { codePlugin } from './code-block.tsx'
-import { mentionHref, parseMention, remarkMentions, splitMentions } from './mentions.ts'
+import { mentionHref, parseMention, remarkMentions, splitLinks, splitMentions } from './mentions.ts'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & { from: 'user' | 'assistant' }
 
@@ -77,6 +77,18 @@ export function MentionText({ text }: { text: string }) {
       part
     ) : (
       <Link href={mentionHref(part.conversation, part.entry)} key={index}>
+        {part.text}
+      </Link>
+    ),
+  )
+}
+
+export function InlineText({ text }: { text: string }) {
+  return splitLinks(text).map((part, index) =>
+    typeof part === 'string' ? (
+      <MentionText key={index} text={part} />
+    ) : (
+      <Link href={part.href} key={index}>
         {part.text}
       </Link>
     ),
