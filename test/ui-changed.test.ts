@@ -54,6 +54,7 @@ it('records each stored UI-state change in the commit that writes it, with who, 
   await post('/api/ui', { set: { 'ext.digest.on': true } })
   await post('/api/ui', { set: { 'ext.notes.text': 'x'.repeat(3000) }, delete: ['ext.digest.on'] })
   await post('/api/ui', { delete: ['ext.never.set'] })
+  await post('/api/ui', { set: { 'ext.sidebar.seen': { 7: 1 } } }, { [SOURCE_HEADER]: 'app' })
   const refused = await send('/api/ui', { set: { 'ext.huge': 'x'.repeat(300 * 1024) } })
   expect(refused.status).toBe(413)
 
@@ -64,7 +65,7 @@ it('records each stored UI-state change in the commit that writes it, with who, 
     { key: 'ext.digest.on', previous: true, source: 'person', device },
   ])
   const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
-  expect(state).toMatchObject({ 'shell.panel': 'tasks', 'ui.rev': 4 })
+  expect(state).toMatchObject({ 'shell.panel': 'tasks', 'ext.sidebar.seen': { 7: 1 }, 'ui.rev': 5 })
   expect(state).not.toHaveProperty('ext.huge')
 })
 

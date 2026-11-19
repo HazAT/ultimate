@@ -20,6 +20,7 @@ import {
   useStore,
   useSystem,
   useTasks,
+  writingAs,
 } from '@/sdk'
 import {
   ConcludeAction,
@@ -685,7 +686,7 @@ export function Seen() {
       : undefined
   useEffect(() => {
     if (id === undefined || answerAt === undefined || seen[id] === answerAt) return
-    setSeen((previous) => ({ ...previous, [id]: answerAt }))
+    writingAs('app', () => setSeen((previous) => ({ ...previous, [id]: answerAt })))
   }, [id, answerAt, seen, setSeen])
   return null
 }

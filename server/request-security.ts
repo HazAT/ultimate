@@ -72,7 +72,12 @@ tailscaleCgnatAndUlaRanges.addSubnet('fd7a:115c:a1e0::', 48, 'ipv6')
 
 export function sourceOf(headers: IncomingHttpHeaders): UiSource {
   return {
-    source: headers[SOURCE_HEADER] === 'agent' ? 'agent' : 'person',
+    source:
+      headers[SOURCE_HEADER] === 'agent'
+        ? 'agent'
+        : headers[SOURCE_HEADER] === 'app'
+          ? 'app'
+          : 'person',
     ...(headers[DRIVEN_HEADER] === '1' ? { driven: true as const } : {}),
   }
 }

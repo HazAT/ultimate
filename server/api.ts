@@ -528,7 +528,8 @@ export async function createApi(
                 ? undefined
                 : stored(set as Record<string, JsonValue>, key)
               const unchanged = JSON.stringify(before) === JSON.stringify(after)
-              if (key.startsWith('shell.') || unchanged) continue
+              const bookkeeping = key.startsWith('shell.') || by.source === 'app'
+              if (bookkeeping || unchanged) continue
               await emit(tx, ChangedEvent, uiChanged(by, { key, value: after, previous: before }))
             }
             for (const [key, item] of Object.entries(set)) value[key] = item as JsonValue

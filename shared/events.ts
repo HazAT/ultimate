@@ -70,7 +70,7 @@ export const NavigatedEvent = defineEvent<
   { surface: string; conversation?: ConversationId } & Partial<Device>
 >('ui.navigated')
 
-export type UiSource = { source: 'person' | 'agent'; driven?: true }
+export type UiSource = { source: 'person' | 'agent' | 'app'; driven?: true }
 export type UiAttribution = UiSource & Partial<Device>
 
 export const ChangedEvent = defineEvent<

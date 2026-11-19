@@ -6,7 +6,7 @@ let writer: UiWho = 'person'
 
 export function writingAs<T>(source: string | undefined, write: () => T): T {
   const outer = writer
-  writer = source === 'agent' ? 'agent' : 'person'
+  writer = source === 'agent' ? 'agent' : source === 'app' ? 'app' : 'person'
   try {
     return write()
   } finally {

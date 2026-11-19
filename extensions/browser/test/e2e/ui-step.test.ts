@@ -88,8 +88,7 @@ async function serve(settings?: object) {
     ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
       .filter((event) => ChangedEvent.is(event))
       .map((event) => event.data)
-  const recorded = async () =>
-    (await changes()).filter((change) => change.key.startsWith('ext.digest.'))
+  const recorded = changes
   const uiState = async () =>
     (await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)) ?? {}
   return { drive, changes, recorded, uiState }
@@ -156,5 +155,5 @@ it('records nothing from the agent when it opens and closes a popover', async ()
   ])
   expect(value(1)).toMatchObject({ ok: true })
   expect(value(2)).toMatchObject({ ok: true })
-  expect((await changes()).filter((change) => change.source === 'agent')).toEqual([])
+  expect(await changes()).toEqual([])
 })

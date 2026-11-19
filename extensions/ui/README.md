@@ -24,6 +24,7 @@ The server adds the device (`deviceOf`). An agent's own server-side action call 
 
 - `value` is absent for a deleted key, `previous` for a new one; values over 2048 UTF-8 bytes of JSON read `"[too large]"`.
 - `source` is `agent` or `person`; `driven: true` when the page was an agent's, so a click in an agent's tab is still the agent's tab.
+- The app's own bookkeeping writes (the sidebar marking a conversation seen) run inside `writingAs('app', …)`: they are stored, and record no `ui.changed`, like `shell.*` keys.
 - `conversation` is the conversation an action was called for.
 
 ## In the UI

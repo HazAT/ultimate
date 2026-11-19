@@ -103,7 +103,8 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   writes a UI-state key or that an action marks with `ctx.uiChanged` (`extensions/ui/README.md`); opening, closing,
   hover and focus are never recorded. Who made it travels as a request header: kit controls run their change handlers
   in `writingAs(details.source, …)` from `@/sdk/solid`, so a write the handler starts synchronously during an agent's
-  `act` carries `agent`. A new kit control with a change callback does the same. The browser tool sends pending
+  `act` carries `agent`. A new kit control with a change callback does the same. A write no one made, the app's own bookkeeping in an effect,
+  runs in `writingAs('app', …)` and records nothing. The browser tool sends pending
   UI-state writes before it closes the page, whatever the last step was.
 - To type into a ui-sdk text field in jsdom, use `setRangeText` and dispatch `input`, as ui-sdk's own `type` helper
   does: assigning `.value` counts as a program's write, not typing, and reports no `input-change`.
