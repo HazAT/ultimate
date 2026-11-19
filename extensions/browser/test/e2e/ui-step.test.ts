@@ -153,6 +153,7 @@ it('sends a final keypress’s UI-state write on pagehide when the page goes', a
     { ui: 'snapshot' },
     { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
     { press: ' ' },
+    { wait: '[aria-label="Weekly digest"][aria-checked="true"]' },
     { eval: "document.documentElement.dataset.left = ''; location.href = '/'" },
     { wait: 'html:not([data-left]) [aria-label="Weekly digest"]' },
   ])
