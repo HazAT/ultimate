@@ -3,6 +3,8 @@ import { cn, defineWebExtension, formatTime, provide, useEvents } from '@/sdk'
 import { ChangedEvent } from '../../shared/events.ts'
 import { SystemTab } from '../system/ui.tsx'
 
+type VersionOne = { component?: string; label?: string }
+
 const shown = (value: JsonValue | undefined) =>
   value === undefined ? 'unset' : typeof value === 'string' ? value : JSON.stringify(value)
 
@@ -11,7 +13,8 @@ function Changes() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <ul className="flex flex-col py-1">
-        {changes?.map(({ id, at, data }) => {
+        {changes?.map(({ id, at, v, data }) => {
+          const recordedByTheBrowser = v === 1 ? (data as VersionOne) : undefined
           const agent = data.source === 'agent'
           const who = agent
             ? 'agent'
@@ -36,9 +39,18 @@ function Changes() {
               >
                 {who}
               </span>
-              <span className="min-w-0 shrink-0 truncate text-foreground/85 md:max-w-72">
-                {data.key}
-              </span>
+              {recordedByTheBrowser ? (
+                <>
+                  <span className="min-w-0 shrink-0 truncate font-sans text-[11px] text-foreground/85 md:max-w-56">
+                    {recordedByTheBrowser.label ?? recordedByTheBrowser.component}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground/70">{data.key}</span>
+                </>
+              ) : (
+                <span className="min-w-0 shrink-0 truncate text-foreground/85 md:max-w-72">
+                  {data.key}
+                </span>
+              )}
               <span className="min-w-0 flex-1 truncate">
                 {data.previous !== undefined && (
                   <span className="text-muted-foreground/60">{shown(data.previous)} → </span>
