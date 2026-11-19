@@ -23,9 +23,12 @@ minimumReleaseAgeExclude:
   - '@voidzero-dev/vite-plus-win32-x64-msvc@1.4.0'
   - vite-plus@1.4.0
   - '@earendil-works/pi-schema@1.5.2'
-  - '@solidjs/signals@2.0.2'
-  - '@solidjs/web@2.0.2'
-  - solid-js@2.0.2
+  - '@lucide/solid@1.76.0'
+  - '@solidjs/signals@2.0.3'
+  - '@solidjs/web@2.0.3'
+  - '@ui-sdk/core@0.1.0-beta.13'
+  - '@ui-sdk/solid@0.1.0-beta.13'
+  - solid-js@2.0.3
 # Pi upstream: @earendil-works/chord@1.5.2 dist/output.js — sanitizeOutput keeps numeric SGR colours, which 1.5.2 strips with the other escape sequences. Drop when Pi keeps SGR.
 # Pi upstream: @earendil-works/pi-durable@1.5.2 dist/harness/inbox.js — transactional beforeInput hook places entries before a new run’s first input. Drop when Pi ships input-placement hooks.
 # Pi upstream: @earendil-works/pi-durable@1.5.2 dist/harness/inbox.js, dist/types.d.ts — mark entries placed from input submissions. Drop when Pi ships input provenance.
