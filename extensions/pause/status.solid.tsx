@@ -83,7 +83,11 @@ function AutoPlay(props: { minutes?: number }) {
     if (next !== null && props.minutes !== undefined && next !== props.minutes) void save(next)
   }
   return (
-    <div class="space-y-1 border-t border-border/50 pt-2 text-muted-foreground" data-pause-autoplay>
+    <div
+      class="space-y-1 border-t border-border/50 pt-2 text-muted-foreground"
+      data-agent-confirm="Changes when paused work plays by itself after a rate limit."
+      data-pause-autoplay
+    >
       <div class="flex items-center gap-2">
         <label class="flex items-center gap-2">
           <Checkbox
@@ -193,6 +197,7 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
             state().paused ? 'Play: continue paused work' : 'Pause: stop starting new work'
           }
           class="h-7 font-sans text-[12px]"
+          data-agent-confirm={state().paused ? 'Continues all paused work.' : undefined}
           data-pause-toggle
           onClick={props.toggle}
           size="sm"
@@ -276,6 +281,7 @@ export function Play() {
       <Button
         class="-mx-1 flex gap-1.5 rounded-sm px-1 font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal text-brand transition-colors hover:bg-accent"
         aria-label="Play paused work"
+        data-agent-confirm="Continues all paused work."
         data-pause-play
         onClick={() =>
           api

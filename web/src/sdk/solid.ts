@@ -29,6 +29,8 @@ import type { ActionArgs, ActionError } from './api.ts'
 import { api as client, reads, registry, store, uiState } from './client.ts'
 import { events } from './events.ts'
 import { errorMessage } from './format.ts'
+import { restartAccepted, restartPhase, restartTimedOut } from './restart.ts'
+import type { RestartPhase } from './restart.ts'
 import type { ReadState, Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
@@ -345,49 +347,36 @@ export function useCopy() {
 export function useRestart(timeoutMs = 120_000) {
   const system = useSystem()
   const connection = useConnection()
-  const [busy, setBusy] = createSignal(false)
-  const [pending, setPending] = createSignal<number>()
-  const [error, setError] = createSignal<string>()
-  const own: { swap?: { target: number; dropped?: object; cancel: Cancel } } = {}
-  const finish = (failure?: string) => {
-    own.swap?.cancel()
-    own.swap = undefined
-    setBusy(false)
-    setPending(undefined)
-    setError(failure)
-  }
+  const [state, setState] = createSignal<RestartPhase>({ phase: 'idle' })
   createEffect(
-    () => ({ system: system(), open: connection().status === 'open' }),
-    (next) => {
-      const swap = own.swap
-      if (!swap) return
-      const serving = next.system?.process.generation ?? 0
-      if (serving >= swap.target) finish()
-      else if (!next.open) swap.dropped ??= next.system ?? {}
-      else if (swap.dropped && next.system && next.system !== swap.dropped)
-        finish(
-          `Generation ${swap.target} failed to activate and was rolled back; generation ${serving} keeps serving. The reason is in the supervisor's output.`,
-        )
+    () => ({ current: state(), system: system(), open: connection().status === 'open' }),
+    ({ current, system: info, open }) => {
+      const next = restartPhase(current, info, open)
+      if (next !== current) {
+        setState(next)
+        return undefined
+      }
+      if (current.phase !== 'swapping') return undefined
+      return deadline(timeoutMs, () => setState(restartTimedOut(current.target, timeoutMs)))
     },
   )
-  onSettled(() => () => own.swap?.cancel())
-  const run = () => {
-    finish()
-    setBusy(true)
-    client.restart().then(
-      (result) => {
-        const target = (result as { generation?: number } | undefined)?.generation
-        if (target === undefined) return finish()
-        const cancel = deadline(timeoutMs, () =>
-          finish(
-            `Generation ${target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
-          ),
-        )
-        own.swap = { target, cancel }
-        setPending(target)
-      },
-      (failure: unknown) => finish(errorMessage(failure)),
-    )
+  return {
+    busy: () => state().phase !== 'idle',
+    pending: () => {
+      const value = state()
+      return value.phase === 'swapping' ? value.target : undefined
+    },
+    error: () => {
+      const value = state()
+      return value.phase === 'idle' ? value.error : undefined
+    },
+    clear: () => setState({ phase: 'idle' }),
+    run: () => {
+      setState({ phase: 'asking' })
+      client.restart().then(
+        (result) => setState(restartAccepted(result)),
+        (failure: unknown) => setState({ phase: 'idle', error: errorMessage(failure) }),
+      )
+    },
   }
-  return { busy, pending, error, run, clear: () => finish() }
 }

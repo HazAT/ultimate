@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { expect, it } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { act, actions, agent, tick } from './status-harness.ts'
+import { act, actions, agent, approval, tick } from './status-harness.ts'
 import { Item } from '../../status.solid.tsx'
 
 it('lets an agent open Pause, set auto-play minutes, and pause the host', async () => {
@@ -15,6 +15,10 @@ it('lets an agent open Pause, set auto-play minutes, and pause the host', async 
   ).toEqual(['popover'])
   await act('Pause or continue all work', 'setOpen', [true])
   expect(container.querySelector('[data-pause-autoplay]')).not.toBeNull()
+  approval.given = false
+  await act('Auto-play delay in minutes', 'setValue', [45], false)
+  expect(actions.filter((call) => call.name === 'autoPlay')).toEqual([])
+  approval.given = true
   await act('Auto-play delay in minutes', 'setValue', [45])
   expect(actions).toContainEqual({ name: 'autoPlay', args: { minutes: 45 }, source: 'agent' })
   await act('Play by itself after', 'setChecked', [false])

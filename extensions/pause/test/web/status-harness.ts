@@ -54,7 +54,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { store } from '../../../../web/src/sdk/client.ts'
 import { PauseDoc } from '../../refs.ts'
 
-export const agent = createAgent()
+export const approval = { given: true }
+export const agent = createAgent({ allow: (step) => !step.confirm || approval.given })
 export const actions = harness.actions
 harness.server = fakeSubscriptions(harness.sources)
 const updateDoc = () => {
@@ -72,20 +73,21 @@ export const tick = async (ms = 10) => {
   await vi.advanceTimersByTimeAsync(ms)
   flush()
 }
-export async function act(label: string, action: string, args?: unknown[]) {
+export async function act(label: string, action: string, args?: unknown[], ok = true) {
   const entry = agent
     .snapshot()
     .find((item) => item.label === label && item.actions.includes(action))
   expect(entry).toBeDefined()
   const result = agent.act({ steps: [{ ref: entry!.ref, action, args }] })
   await tick(100)
-  expect(await result).toMatchObject({ ok: true })
+  expect(await result).toMatchObject({ ok })
 }
 
 beforeEach(async () => {
   vi.useFakeTimers()
   harness.sources.length = 0
   harness.actions.length = 0
+  approval.given = true
   harness.state = { paused: false, autoPlay: 30, running: [] }
   store.start()
   harness.sources[0].open()

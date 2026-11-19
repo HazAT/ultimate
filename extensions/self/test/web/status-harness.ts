@@ -38,7 +38,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { store } from '../../../../web/src/sdk/client.ts'
 
-export const agent = createAgent()
+export const approval = { given: true }
+export const agent = createAgent({ allow: (step) => !step.confirm || approval.given })
 export const restart = harness.restart
 harness.server = fakeSubscriptions(harness.sources)
 export const tick = async (ms = 10) => {
@@ -60,19 +61,20 @@ export function system(web: Partial<SystemInfo['web']> = {}, id = 'abc1234new', 
   } as unknown as SystemInfo)
   flush()
 }
-export async function act(label: string, action: string, args?: unknown[]) {
+export async function act(label: string, action: string, args?: unknown[], ok = true) {
   const entry = agent
     .snapshot()
     .find((item) => item.label === label && item.actions.includes(action))
   expect(entry).toBeDefined()
   const result = agent.act({ steps: [{ ref: entry!.ref, action, args }] })
   await tick(100)
-  expect(await result).toMatchObject({ ok: true })
+  expect(await result).toMatchObject({ ok })
 }
 
 beforeEach(async () => {
   vi.useFakeTimers()
   harness.sources.length = 0
+  approval.given = true
   harness.restart.mockReset()
   store.start()
   harness.sources[0].open()

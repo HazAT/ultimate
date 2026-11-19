@@ -68,7 +68,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { store } from '../../../../web/src/sdk/client.ts'
 import { Chip } from '../../chip.solid.tsx'
 
-const agent = createAgent()
+const approval = { given: false }
+const agent = createAgent({ allow: (step) => !step.confirm || approval.given })
 afterEach(() => {
   store.stop()
   vi.useRealTimers()
@@ -81,7 +82,7 @@ async function act(step: Parameters<typeof agent.act>[0]['steps'][number]) {
   return result
 }
 
-it('lets an agent open the update popover and update the clone', async () => {
+it('lets an agent open the update popover and update the clone once a person approves', async () => {
   vi.useFakeTimers()
   store.start()
   harness.sources[0].open()
@@ -98,6 +99,9 @@ it('lets an agent open the update popover and update the clone', async () => {
   const update = agent.snapshot().find((entry) => !entry.offPage && entry.label === 'Update now')
   expect(update).toMatchObject({ component: 'button' })
   expect(container.querySelector('[data-update-now]')).not.toBeNull()
+  expect(await act({ ref: update!.ref, action: 'press' })).toMatchObject({ ok: false })
+  expect(harness.actions.filter((call) => call.name === 'update')).toEqual([])
+  approval.given = true
   expect(await act({ ref: update!.ref, action: 'press' })).toMatchObject({ ok: true })
   expect(harness.actions).toContainEqual({ name: 'update', args: null, source: 'agent' })
   expect(container.textContent).toContain('Updated a1..b2 · 1 commit')

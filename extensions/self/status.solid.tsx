@@ -42,7 +42,13 @@ export function CoreStale() {
               <Button class="h-7 text-[12px]" onClick={restart.clear} size="sm" variant="ghost">
                 Dismiss
               </Button>
-              <Button class="h-7 text-[12px]" onClick={restart.run} size="sm" variant="outline">
+              <Button
+                class="h-7 text-[12px]"
+                data-agent-confirm="Restarts the shared Ultimate host."
+                onClick={restart.run}
+                size="sm"
+                variant="outline"
+              >
                 Try again
               </Button>
             </div>
@@ -59,6 +65,7 @@ export function CoreStale() {
                   '-mx-1 flex gap-1.5 rounded-sm px-1 font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal transition-colors data-disabled:opacity-100',
                   restart.busy() ? 'text-brand' : 'text-warning hover:bg-accent',
                 )}
+                data-agent-confirm="Restarts the shared Ultimate host."
                 disabled={restart.busy()}
                 focusableWhenDisabled
                 onClick={restart.run}

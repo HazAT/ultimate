@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { expect, it } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { act, restart, system, tick } from './status-harness.ts'
+import { act, approval, restart, system, tick } from './status-harness.ts'
 import { CoreStale } from '../../status.solid.tsx'
 
 it('lets an agent restart, check the failure, and retry', async () => {
@@ -12,6 +12,10 @@ it('lets an agent restart, check the failure, and retry', async () => {
   system({}, undefined, true)
   const container = renderSolid(() => <CoreStale />)
   await tick()
+  approval.given = false
+  await act('core changed · restart', 'press', undefined, false)
+  expect(restart).not.toHaveBeenCalled()
+  approval.given = true
   await act('core changed · restart', 'press')
   await act('restart failed', 'setOpen', [true])
   expect(container.textContent).toContain('core did not boot')

@@ -9,7 +9,7 @@ import { renderSolid } from './solid-dom-setup.ts'
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
-  restart: undefined as Response | undefined,
+  restart: undefined as Response | Promise<Response> | undefined,
 }))
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
@@ -19,7 +19,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createRegistry } = await import('../../web/src/sdk/registry.ts')
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    if (path === '/api/restart') return harness.restart!
+    if (path === '/api/restart') return await harness.restart!
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
   const store = createStore({
@@ -87,6 +87,19 @@ it('restarts until the new generation serves', async () => {
     undefined,
     undefined,
   ])
+})
+
+it('finishes when the new generation serves before the restart request answers', async () => {
+  let answer!: (response: Response) => void
+  harness.restart = new Promise<Response>((resolve) => (answer = resolve))
+  const restart = mountRestart()
+  restart.run()
+  harness.sources[0].send('system', system(2))
+  await vi.advanceTimersByTimeAsync(10)
+  answer(Response.json({ generation: 2 }))
+  await vi.advanceTimersByTimeAsync(10)
+  flush()
+  expect([restart.busy(), restart.error()]).toEqual([false, undefined])
 })
 
 it('reports a rollback when the stream comes back on the old generation', async () => {

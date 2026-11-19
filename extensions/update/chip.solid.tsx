@@ -163,14 +163,16 @@ function Popup(
               </ul>
               <Show when={state().compare}>
                 {(compare) => (
-                  <a
-                    class="text-muted-foreground hover:text-brand"
-                    href={compare()}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    DiffsHub ↗
-                  </a>
+                  <Button
+                    class="h-auto self-start p-0 font-normal text-muted-foreground hover:text-brand"
+                    render={(link) => (
+                      <a {...link} href={compare()} rel="noreferrer" target="_blank">
+                        DiffsHub ↗
+                      </a>
+                    )}
+                    size={null}
+                    variant={null}
+                  />
                 )}
               </Show>
               <Show when={state().layers}>
@@ -283,6 +285,7 @@ function Action(props: Controls) {
       <Match when={!state().behind && state().install}>
         <Button
           class={actionClass}
+          data-agent-confirm="Runs pnpm install in this Ultimate's clone."
           disabled={props.busy || !!state().refused}
           onClick={() => props.run()}
           size="sm"
@@ -329,6 +332,7 @@ function Action(props: Controls) {
       <Match when={state().behind !== 0}>
         <Button
           class={actionClass}
+          data-agent-confirm="Fast-forwards this Ultimate's clone to origin."
           data-update-now
           disabled={props.busy || !!state().refused}
           onClick={() => props.run()}
