@@ -9,7 +9,6 @@ import type { UpdateState } from '../../refs.ts'
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   actions: [] as { name: string; args: unknown; source: string | null }[],
-  requests: [] as { path: string; source: string | null }[],
   state: {
     root: '/home/user/ultimate',
     branch: 'main',
@@ -29,16 +28,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const server = fakeSubscriptions(harness.sources)
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    if (init?.method === 'POST' && !path.startsWith('/api/events/'))
-      harness.requests.push({ path, source: new Headers(init.headers).get('x-ultimate-source') })
-    if (path === '/api/restart') return Response.json({ generation: 2 })
     const action = /^\/api\/extensions\/update\/actions\/(\w+)$/.exec(path)
     if (!action) return server.handle(path, init) ?? Response.json({ ok: true })
     const { args } = JSON.parse(init!.body as string) as { args: unknown }
     const source = new Headers(init!.headers).get('x-ultimate-source')
     harness.actions.push({ name: action[1], args, source })
-    if (action[1] === 'merge') return Response.json({ result: { id: 9 } })
-    if (action[1] === 'update' && !harness.state.install) {
+    if (action[1] === 'update') {
       const updated = {
         ok: true,
         from: 'a1',
