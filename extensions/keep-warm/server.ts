@@ -317,11 +317,14 @@ export default function keepWarm(host: ExtensionHost) {
 
 export const actions = {
   state: implementAction(StateAction, (_args, { host }) => state(host)),
-  set: implementAction(SetAction, async (args, { host }) => {
+  set: implementAction(SetAction, async (args, action) => {
+    const { host } = action
     const on = (args as { on?: unknown } | null)?.on
     if (typeof on !== 'boolean') throw new Error('Expected { on: boolean }')
     await host.harness().commit(async (tx) => {
       const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+      if (on === !doc.off) return
+      await action.uiChanged(tx, { key: 'keep-warm.on', value: on, previous: !on })
       if (on) delete doc.off
       else doc.off = true
     }, context)

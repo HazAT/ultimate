@@ -3,11 +3,14 @@ import { UI_REVISION } from '../../../shared/protocol.ts'
 import { deadline } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { UiUpdateRequest, UiUpdateResponse } from '../../../shared/protocol.ts'
+import { writerNow } from './writer.ts'
+import type { UiWho } from './writer.ts'
 
 export type UiValues = Readonly<Record<string, JsonValue>>
 
 interface LocalWrite {
   value: JsonValue | undefined
+  who: UiWho
   batch?: number
   rev?: number
 }
@@ -30,7 +33,7 @@ export function tabWrites(tab: { driven: boolean; detached: boolean; webdriver: 
 }
 
 export function createUiState(
-  write: ((change: UiUpdateRequest) => Promise<UiUpdateResponse>) | undefined,
+  write: ((change: UiUpdateRequest, who: UiWho) => Promise<UiUpdateResponse>) | undefined,
   options: {
     delayMs?: number
     onError?: (error: unknown) => void
@@ -87,16 +90,13 @@ export function createUiState(
   }
 
   function send(allowConcurrentBatchOnPageExit: boolean) {
-    if (!write || (batchInFlight && !allowConcurrentBatchOnPageExit)) return
+    if (!write || (batchInFlight && !allowConcurrentBatchOnPageExit)) return false
     const change: UiUpdateRequest = { set: {}, delete: [] }
     const batch = lastSentBatch + 1
-    let count = 0
-    for (const [, entry] of unconfirmedLocalWrites) {
-      if (entry.batch !== undefined) continue
-      entry.batch = batch
-      count++
-    }
-    if (count === 0) return
+    const who = [...unconfirmedLocalWrites.values()].find((entry) => entry.batch === undefined)?.who
+    if (!who) return false
+    for (const [, entry] of unconfirmedLocalWrites)
+      if (entry.batch === undefined && entry.who === who) entry.batch = batch
     for (const [key, entry] of unconfirmedLocalWrites) {
       if (entry.batch !== batch) continue
       if (entry.value === undefined) change.delete?.push(key)
@@ -110,7 +110,7 @@ export function createUiState(
       if ([...unconfirmedLocalWrites.values()].some((entry) => entry.batch === undefined))
         schedule(0)
     }
-    const sent = write(change).then(
+    const sent = write(change, who).then(
       ({ rev }) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
         for (const entry of unconfirmedLocalWrites.values())
@@ -130,6 +130,7 @@ export function createUiState(
     )
     writing.add(sent)
     void sent.finally(() => writing.delete(sent))
+    return true
   }
   function set(key: string, value: JsonValue | undefined) {
     if (same(values[key], value)) return
@@ -138,7 +139,7 @@ export function createUiState(
       update()
       return
     }
-    unconfirmedLocalWrites.set(key, { value })
+    unconfirmedLocalWrites.set(key, { value, who: writerNow() })
     schedule(options.delayMs ?? 150)
     update()
   }
@@ -181,7 +182,7 @@ export function createUiState(
     flush: () => {
       cancelSend?.()
       cancelSend = undefined
-      send(true)
+      while (send(true));
       return Promise.all(writing).then(() => undefined)
     },
   }

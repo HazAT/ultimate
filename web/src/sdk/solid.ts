@@ -28,6 +28,12 @@ import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 
 export { api } from './client.ts'
+/**
+ * `writingAs(details.source, write)` attributes each server write `write` starts synchronously (a UI-state set, an
+ * action) to the agent when `source` is `agent`, the `details.source` a ui-sdk change handler receives; otherwise to
+ * the person. Kit controls run their change handlers in it; a write started after an `await` counts as the person's.
+ */
+export { writingAs } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export { formatAgo, formatBytes, formatDuration, formatTime, formatTokens } from './format.ts'

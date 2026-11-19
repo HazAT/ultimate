@@ -70,9 +70,45 @@ export const NavigatedEvent = defineEvent<
   { surface: string; conversation?: ConversationId } & Partial<Device>
 >('ui.navigated')
 
-export const CORE_EVENTS = [NoticeEvent, StartedEvent, UserInputEvent, NavigatedEvent].map(
-  (event) => event.name,
-)
+export type UiSource = { source: 'person' | 'agent'; driven?: true }
+export type UiAttribution = UiSource & Partial<Device>
+
+export const ChangedEvent = defineEvent<
+  {
+    key: string
+    value?: JsonValue
+    previous?: JsonValue
+    conversation?: ConversationId
+  } & UiAttribution
+>('ui.changed', { version: 2 })
+
+const MAX_UI_VALUE_BYTES = 2048
+const bounded = (value: JsonValue) =>
+  new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_UI_VALUE_BYTES
+    ? '[too large]'
+    : value
+
+export function uiChanged(
+  by: UiAttribution,
+  change: { key: string; value?: JsonValue; previous?: JsonValue; conversation?: ConversationId },
+): EventData<typeof ChangedEvent> {
+  const { key, value, previous, conversation } = change
+  return {
+    key,
+    ...(value === undefined ? {} : { value: bounded(value) }),
+    ...(previous === undefined ? {} : { previous: bounded(previous) }),
+    ...(conversation === undefined ? {} : { conversation }),
+    ...by,
+  }
+}
+
+export const CORE_EVENTS = [
+  NoticeEvent,
+  StartedEvent,
+  UserInputEvent,
+  NavigatedEvent,
+  ChangedEvent,
+].map((event) => event.name)
 
 export const EVENT_FEED = 'ultimate.event-feed'
 export const EVENT_FEED_SIZE = 100
