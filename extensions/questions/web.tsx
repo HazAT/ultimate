@@ -1,6 +1,6 @@
 import { ROOT } from '@/sdk'
 import { useEffect } from 'react'
-import { defineWebExtension, provide, useDocOf, useUiState } from '@/sdk'
+import { defineWebExtension, provide, useDocOf, useUiState, writingAs } from '@/sdk'
 import { MessageAnswers, MessagesDoc } from '../messages/ui.tsx'
 import { MessageQuestions } from './card.tsx'
 import { forgetSettled } from './open.tsx'
@@ -13,7 +13,8 @@ function CrossSurfaceDraftSweep() {
 
   useEffect(() => {
     const logAndStoredCardsLoaded = messages && Object.keys(cards).length
-    if (logAndStoredCardsLoaded) setCards((old) => forgetSettled(old, messages))
+    if (logAndStoredCardsLoaded)
+      writingAs('app', () => setCards((old) => forgetSettled(old, messages)))
   }, [cards, messages, setCards])
   return null
 }

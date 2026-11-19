@@ -8,6 +8,7 @@ import {
   useTranscript,
   useTranscriptScroll,
   useUiState,
+  writingAs,
 } from '@/sdk'
 import { plural } from '@/sdk'
 import { DiffBody, Header, signed } from './parts.tsx'
@@ -60,7 +61,9 @@ function ConversationPromptState({ id }: { id: number }) {
   )
   const current = conversationPrompt.data
   useEffect(() => {
-    if (acknowledgedPrompt === null && current?.at !== undefined) setAcknowledgedPrompt(current.at)
+    const at = current?.at
+    if (acknowledgedPrompt === null && at !== undefined)
+      writingAs('app', () => setAcknowledgedPrompt(at))
   }, [acknowledgedPrompt, current?.at, setAcknowledgedPrompt])
   const breakdown = useMemo((): Breakdown | undefined => {
     if (!current?.at) return undefined

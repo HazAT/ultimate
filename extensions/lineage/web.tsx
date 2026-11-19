@@ -46,6 +46,7 @@ import {
   useTranscript,
   useUiState,
   useUltimate,
+  writingAs,
 } from '@/sdk'
 import type { EntryRecord, ToolCallView } from '@/sdk'
 import { store } from '@/sdk/client'
@@ -485,7 +486,7 @@ function MemoryRow({
     if (requestedMemorySlug !== slug) return
     setOpen(true)
     row.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    consumeMemoryFocusRequest(null)
+    writingAs('app', () => consumeMemoryFocusRequest(null))
   }, [requestedMemorySlug, slug, consumeMemoryFocusRequest])
   return (
     <li className="group/memory min-w-0 rounded-md hover:bg-muted/40" data-memory={slug} ref={row}>

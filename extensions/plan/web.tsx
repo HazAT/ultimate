@@ -39,6 +39,7 @@ import {
   useToolDuration,
   useUiState,
   useUltimate,
+  writingAs,
 } from '@/sdk'
 import type { ConversationSummary, ToolCallView } from '@/sdk'
 import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
@@ -710,7 +711,7 @@ function CoordinatorPlan({
     if (!request || plan === undefined) return
     setExpanded(true)
     setFocus({ key: request.key })
-    settle()
+    writingAs('app', settle)
   }, [request, plan, setExpanded, settle])
   const shown = pillOf(plan?.epics ?? {})
   if (!shown && !expanded) return null
