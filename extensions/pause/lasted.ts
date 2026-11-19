@@ -4,3 +4,8 @@ export function lasted(ms: number) {
   const hours = Math.floor(minutes / 60)
   return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`
 }
+
+export const unwrappedProviderError = (error: string) =>
+  /upstream said: (.+)\)$/s.exec(error)?.[1] ??
+  /"message"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(error)?.[1]?.replaceAll('\\"', '"') ??
+  error
