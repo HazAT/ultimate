@@ -8,7 +8,7 @@ import { context } from '../../../../server/harness.ts'
 import { EventFeed } from '../../../../server/events.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { ChangedEvent } from '../../../ui/refs.ts'
-import { fauxServer, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -33,13 +33,16 @@ import { Digest } from './digest.solid.tsx'
 export default defineWebExtension({ slots: { 'statusline.left': island(Digest) } })
 `
 
-it('snapshots, queries and acts on ui-sdk controls, and records the agent’s change', async () => {
+type Component = { ref: string; label?: string; component: string }
+
+async function serve(settings?: object) {
   const home = await temp('ultimate-browser-ui-')
   cleanup.push(() => removeTemp(home))
   const folder = join(home, '.ultimate/extensions/digest')
   await mkdir(folder, { recursive: true })
   await writeFile(join(folder, 'digest.solid.tsx'), panel)
   await writeFile(join(folder, 'web.tsx'), web)
+  if (settings) await writeFile(join(home, '.ultimate/settings.json'), JSON.stringify(settings))
   const server = await fauxServer({
     ultimateRoot: resolve('.'),
     projectRoot: resolve('.'),
@@ -59,50 +62,45 @@ it('snapshots, queries and acts on ui-sdk controls, and records the agent’s ch
   } as unknown as ExtensionHost
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
-  const result = await browser.execute(
-    {
-      url: server.url,
-      screenshot: false,
-      steps: [
-        {
-          eval: `new Promise((found) => { const look = () => document.querySelector('[aria-label="Weekly digest"]') ? found(true) : requestAnimationFrame(look); look() })`,
-        },
-        { ui: 'snapshot' },
-        { ui: 'query', text: 'digest' },
-        { ui: 'act', steps: [{ ref: 'Weekly digest', action: 'setChecked', args: [true] }] },
-        {
-          eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
-        },
-      ],
-    },
-    api,
-    context,
-  )
-  expect(result).not.toHaveProperty('isError', true)
-  const { outcomes } = (result as unknown as { structuredContent: { outcomes: string[] } })
-    .structuredContent
-  const value = (n: number) => {
-    const prefix = `Step ${n}: OK `
-    const line = outcomes.find((outcome) => outcome.startsWith(prefix))
-    if (!line) throw new Error(`No step ${n} in:\n${outcomes.join('\n')}`)
-    return JSON.parse(line.slice(prefix.length)) as unknown
+  const drive = async (steps: object[]) => {
+    const result = await browser.execute(
+      { url: server.url, screenshot: false, steps: steps as never },
+      api,
+      context,
+    )
+    expect(result).not.toHaveProperty('isError', true)
+    const { outcomes } = (result as unknown as { structuredContent: { outcomes: string[] } })
+      .structuredContent
+    return (n: number) => {
+      const prefix = `Step ${n}: OK `
+      const line = outcomes.find((outcome) => outcome.startsWith(prefix))
+      if (!line) throw new Error(`No step ${n} in:\n${outcomes.join('\n')}`)
+      return JSON.parse(line.slice(prefix.length)) as unknown
+    }
   }
-  const digest = {
-    component: 'switch',
-    label: 'Weekly digest',
-    checked: false,
-    actions: ['setChecked'],
-  }
-  expect(value(2)).toEqual([expect.objectContaining(digest)])
-  expect(value(3)).toEqual([expect.objectContaining(digest)])
-  expect(value(4)).toMatchObject({ ok: true, values: { 'c1 Weekly digest': true } })
-  expect(value(5)).toBe('true')
-
   const recorded = async () =>
     ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
       .filter((event) => ChangedEvent.is(event))
       .map((event) => event.data)
-  await until(async () => (await recorded()).length > 0)
+  return { drive, recorded }
+}
+
+const digest = { component: 'switch', label: 'Weekly digest', checked: false }
+
+it('snapshots, queries and acts on ui-sdk controls from the first step, and records the agent’s change before the page closes', async () => {
+  const { drive, recorded } = await serve()
+  const snapshot = await drive([{ ui: 'snapshot' }])
+  const found = (snapshot(1) as Component[]).find((item) => item.label === 'Weekly digest')
+  expect(found).toMatchObject({ ...digest, actions: ['setChecked'] })
+
+  const value = await drive([
+    { ui: 'query', text: 'digest' },
+    { ui: 'act', steps: [{ ref: 'Weekly digest', action: 'setChecked', args: [true] }] },
+  ])
+  const queried = (value(1) as Component[]).find((item) => item.label === 'Weekly digest')
+  expect(queried).toMatchObject(digest)
+  expect(value(2)).toMatchObject({ ok: true, values: { [`${queried!.ref} Weekly digest`]: true } })
+
   expect(await recorded()).toEqual([
     expect.objectContaining({
       component: 'switch',
@@ -115,4 +113,17 @@ it('snapshots, queries and acts on ui-sdk controls, and records the agent’s ch
       device: expect.any(String),
     }),
   ])
+})
+
+it('drives ui-sdk controls with the ui extension off, and records nothing', async () => {
+  const { drive, recorded } = await serve({ extensions: { disable: ['ui'] } })
+  const value = await drive([
+    { ui: 'act', steps: [{ ref: 'Weekly digest', action: 'setChecked', args: [true] }] },
+    {
+      eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
+    },
+  ])
+  expect(value(1)).toMatchObject({ ok: true })
+  expect(value(2)).toBe('true')
+  expect(await recorded()).toEqual([])
 })

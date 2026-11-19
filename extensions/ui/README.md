@@ -2,7 +2,9 @@ The UI change log: every change to a ui-sdk component (a switch turned off, a se
 
 ## How a change gets here
 
-Every page creates one agent bridge from `@ui-sdk/solid/agent` at start (`web/src/sdk/agent.ts`). It subscribes to every change a component reports, from a person or an agent, and sends them in batches (500 ms after the first, and on `pagehide`) to `record`. Values inside `data-agent-secret` (and password, card and one-time-code fields) arrive as `"[redacted]"`; components inside `data-agent-hidden` report nothing. A page sends nothing while this extension's server facet is off.
+Every page creates one agent bridge from `@ui-sdk/core/agent` at start (`uiAgent` from `@/sdk`, `web/src/sdk/agent.ts`). This extension's web facet (`Recorder` in `web.tsx`, batching in `recorder.ts`) subscribes to every change a component reports, from a person or an agent, notes the surface and conversation shown at that moment, and sends them to `record` in batches of one location each: 500 ms after the first, on `pagehide`, and when the browser tool asks after a `ui` act step (`uiAgent.onFlush`). Labels and names are cut to the server's limits (`limits.ts`) before they are queued, so one long name never loses a batch. Values inside `data-agent-secret` (and password, card and one-time-code fields) arrive as `"[redacted]"`; components inside `data-agent-hidden` report nothing. With this extension off, nothing records; the bridge and the browser tool's `ui` steps keep working.
+
+A text field records committed edits (on blur or Enter), never keystrokes, and its value is omitted by default.
 
 The same bridge is what the browser tool's `ui` steps drive: `{ ui: 'snapshot' }`, `{ ui: 'query', … }` and `{ ui: 'act', steps }` (see `extensions/browser/README.md`). A change made that way has `source: 'agent'`.
 
@@ -16,7 +18,7 @@ The same bridge is what the browser tool's `ui` steps drive: `{ ui: 'snapshot' }
 
 ## Action
 
-- `record { changes, surface?, conversation?, driven? }` → `{ recorded }` (user-only): one `ui.changed` per change, all in one commit. At most 50 changes; `component`, `key`, `source` and `reason` up to 64 characters, `label` up to 200; a `value` or `previous` over 2 KB of JSON is recorded as `"[too large]"`. User-only so an agent's codemode cannot write history in a person's name; pages the browser tool drives are UI pages and call it over HTTP like any other.
+- `record { changes, surface?, conversation?, driven? }` → `{ recorded }` (user-only): one `ui.changed` per change, all in one commit. At most 50 changes; `component`, `key`, `source` and `reason` up to 64 characters, `label` up to 200; `value` is required (`null` for none); a `value` or `previous` over 2048 UTF-8 bytes of JSON is recorded as `"[too large]"`. User-only so an agent's codemode cannot write history in a person's name; pages the browser tool drives are UI pages and call it over HTTP like any other.
 
 ## In the UI
 

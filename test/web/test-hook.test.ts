@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApi } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
 import { createTestHook } from '../../web/src/sdk/test-hook.ts'
+import { createUiAgent } from '../../web/src/sdk/agent.ts'
 import type { ConversationSummary, SystemInfo } from '../../shared/protocol.ts'
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
@@ -27,9 +28,12 @@ function setup() {
     fetch,
   })
   store.start()
-  const hook = createTestHook(store, createApi(store, { fetch }), () => {
-    throw new Error('no bridge in this test')
-  })
+  const hook = createTestHook(
+    store,
+    createApi(store, { fetch }),
+    createUiAgent(true),
+    new Promise<void>(() => {}),
+  )
   const main = sources[0]
   main.open()
   server.of()!.send('view', {

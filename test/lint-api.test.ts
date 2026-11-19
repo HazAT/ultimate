@@ -361,11 +361,6 @@ import type { PanelProps } from './panel.solid.tsx'`
   ).toEqual([move('./panel.solid.tsx')])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/island.tsx', reactSource)).toEqual([])
-  const bridge = `import { createAgent } from '@ui-sdk/solid/agent'`
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/agent.ts', bridge)).toEqual([])
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/client.ts', bridge)).toEqual([
-    move('@ui-sdk/solid/agent'),
-  ])
   const solidSdk = `import { useDoc } from '@/sdk/solid'
 import { useUiState } from '../../web/src/sdk/solid.ts'
 import type { Accessor } from '@/sdk/solid'`

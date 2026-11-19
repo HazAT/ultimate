@@ -38,6 +38,10 @@ conversation.
 
 `api.cancelSubmission(submissionId, conversationId?)` withdraws one queued input without stopping the run.
 
+`uiAgent` is the page's one ui-sdk agent bridge: `bridge()` snapshots, queries, acts on and `subscribe`s to the
+page's ui-sdk components, `onFlush(flush)` registers work that must reach the server before the page goes or the
+browser tool closes it, and `driven` is true in a page an agent drives. The `ui` extension records its changes.
+
 Helpers: `cn()` for class names, `formatTokens`, `formatBytes`, `formatDuration`, `formatTime`, `formatAgo(at, now)`
 (`now`, `5m`, `3h`, `2d`, then a date; `{ ago: true }` reads `just now`, `5m ago`), `shortenPath(path, { cwd, home })`
 (`home` is `useSystem().machine.home`), `elidePath`, `formatKeys`, and `errorMessage(error)` for a caught value. Types

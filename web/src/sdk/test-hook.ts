@@ -2,11 +2,11 @@ import { parseConversationId } from '../../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 
 import type { EventRecord } from '../../../shared/events.ts'
-import { deadline } from '../../../lib/timers.ts'
+import { deadline, within } from '../../../lib/timers.ts'
 import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'
-import type { UiAgent } from './agent.ts'
+import type { UiAgent, UiAgentHandle } from './agent.ts'
 import type { State, Store } from './store.ts'
 
 export type Condition =
@@ -28,7 +28,12 @@ interface Sent {
 
 const SENT_KEY = 'ultimate.sent'
 
-export function createTestHook(store: Store, api: Api, bridge: () => UiAgent) {
+export function createTestHook(
+  store: Store,
+  api: Api,
+  agent: UiAgentHandle,
+  rendered: Promise<void>,
+) {
   const saved = JSON.parse(sessionStorage.getItem(SENT_KEY) ?? '{"sent":[]}') as {
     sent: [ConversationId, Sent][]
     last?: ConversationId
@@ -85,6 +90,13 @@ export function createTestHook(store: Store, api: Api, bridge: () => UiAgent) {
     })
   }
 
+  const controlsMounted = () =>
+    within(
+      30_000,
+      rendered,
+      () => new Error('Timed out after 30s: the page never rendered its surface'),
+    )
+
   const firstSnapshotReady = (timeoutMs = 30_000) =>
     whenStoreConditionHolds(
       (state) => (state.view && state.tasks ? true : undefined),
@@ -105,19 +117,21 @@ export function createTestHook(store: Store, api: Api, bridge: () => UiAgent) {
 
     ui: {
       async snapshot() {
-        await firstSnapshotReady()
-        return bridge()
+        await controlsMounted()
+        return agent
+          .bridge()
           .snapshot()
           .filter((component) => !component.offPage)
       },
       async query(input: Parameters<UiAgent['query']>[0]) {
-        await firstSnapshotReady()
-        return bridge().query(input)
+        await controlsMounted()
+        return agent.bridge().query(input)
       },
       async act(input: Parameters<UiAgent['act']>[0]) {
-        await firstSnapshotReady()
-        return bridge().act(input)
+        await controlsMounted()
+        return agent.bridge().act(input)
       },
+      flush: () => agent.flush(false),
     },
 
     async state() {

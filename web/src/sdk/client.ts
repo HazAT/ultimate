@@ -8,6 +8,7 @@ import { HOME, createRegistry } from './registry.ts'
 import { createStore } from './store.ts'
 import { createTestHook } from './test-hook.ts'
 import { createUiAgent } from './agent.ts'
+import { firstRender } from './resume.ts'
 import type { TestHook } from './test-hook.ts'
 
 declare global {
@@ -65,11 +66,12 @@ export const uiState = createUiState(followsSharedUiState ? api.updateUi : undef
   ...tabOnly,
 })
 
-export const uiAgent = createUiAgent(store, api, driven)
-
-if (driven) window.ultimate = createTestHook(store, api, uiAgent.bridge)
+/** The page's one ui-sdk agent bridge, created at start so it hears every component; the `ui` facet records its changes. */
+export const uiAgent = createUiAgent(driven)
 
 export const registry = createRegistry()
+
+if (driven) window.ultimate = createTestHook(store, api, uiAgent, firstRender)
 
 /** The web bundle this page runs (`server/web.ts` names it in the page). */
 export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content
@@ -181,7 +183,7 @@ addEventListener('popstate', () => {
 })
 addEventListener('pagehide', () => {
   uiState.flush()
-  uiAgent.flush()
+  void uiAgent.flush(true)
 })
 
 addEventListener('unhandledrejection', (event) => {

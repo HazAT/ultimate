@@ -90,6 +90,12 @@ export { island } from './island.tsx'
 export { Composer, ComposerRedirect, fillComposer, insertIntoComposer } from '../app/composer.tsx'
 export type { ComposerTarget } from '../app/composer.tsx'
 export { api, bundle, switched } from './client.ts'
+/**
+ * The page's ui-sdk agent bridge: `bridge()` drives and observes its components, `onFlush(flush)` registers work that
+ * must reach the server before the page goes or the browser tool closes it, `driven` is true in a page an agent drives.
+ */
+export { uiAgent } from './client.ts'
+export type { ObservedChange, UiAgent, UiFlush } from './agent.ts'
 export { ActionError } from './api.ts'
 export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'

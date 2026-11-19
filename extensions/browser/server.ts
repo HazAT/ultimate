@@ -312,7 +312,10 @@ export default function browserExtension(host: ExtensionHost) {
                                   within: uiStep.within,
                                   kind: uiStep.kind,
                                 })
-                              : ui.act({ steps: uiStep.steps })
+                              : ui.act({ steps: uiStep.steps }).then(async (result) => {
+                                  await ui.flush?.()
+                                  return result
+                                })
                         return work.then(
                           (result: unknown) => ({ result }),
                           (error: unknown) => ({ error: String(error) }),

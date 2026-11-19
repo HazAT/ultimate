@@ -7,6 +7,11 @@ const renderSettleLimitMs = 700
 const transcriptMutationOrScrollQuietMs = 120
 let covering = previousPageCover !== null
 let appHasRendered = false
+let markFirstRender: () => void = () => {}
+
+export const firstRender = new Promise<void>((resolve) => {
+  markFirstRender = resolve
+})
 
 /** True when this page load painted the previous page's view: a reload, not a fresh start. */
 export const resumed = previousPageCover !== null
@@ -77,6 +82,7 @@ function uncover() {
 export function rendered() {
   if (appHasRendered) return
   appHasRendered = true
+  markFirstRender()
   if (!covering) return
   const app = document.getElementById('app')!
   const wait = debounce(transcriptMutationOrScrollQuietMs, done)

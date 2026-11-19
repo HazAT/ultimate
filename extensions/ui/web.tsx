@@ -1,7 +1,43 @@
 import type { JsonValue } from '@earendil-works/chord/json'
-import { cn, defineWebExtension, formatTime, provide, useEvents } from '@/sdk'
+import { useEffect } from 'react'
+import {
+  api,
+  cn,
+  defineWebExtension,
+  formatTime,
+  getState,
+  provide,
+  uiAgent,
+  useEvents,
+} from '@/sdk'
 import { SystemTab } from '../system/ui.tsx'
-import { ChangedEvent } from './refs.ts'
+import { createRecorder } from './recorder.ts'
+import { ChangedEvent, RecordAction } from './refs.ts'
+
+function Recorder() {
+  useEffect(() => {
+    const recorder = createRecorder({
+      driven: uiAgent.driven,
+      locate: () => {
+        const { ui, view } = getState()
+        return {
+          ...(ui.surface ? { surface: ui.surface.id } : {}),
+          ...(view ? { conversation: view.conversation.id } : {}),
+        }
+      },
+      send: (batch, keepalive) =>
+        api.action(RecordAction, batch, { keepalive, conversationId: batch.conversation }),
+    })
+    const unsubscribe = uiAgent.bridge().subscribe(recorder.observe)
+    const unregister = uiAgent.onFlush(recorder.flush)
+    return () => {
+      unsubscribe()
+      unregister()
+      void recorder.flush(true)
+    }
+  }, [])
+  return null
+}
 
 const shown = (value: JsonValue | undefined) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? null)
@@ -64,5 +100,6 @@ function Changes() {
 const tab = { id: 'ui', title: 'UI changes', component: Changes }
 
 export default defineWebExtension({
+  slots: { overlay: [Recorder] },
   provides: [provide(SystemTab, () => tab)],
 })
