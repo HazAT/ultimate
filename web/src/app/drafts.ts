@@ -1,0 +1,75 @@
+import type { DraftFile } from '@/components/image-paste'
+import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
+import { spliced } from './queued.ts'
+
+export type Draft = {
+  text: string
+  images: { data: string; mimeType: string }[]
+  files: DraftFile[]
+  error?: string
+  sending: boolean
+  revision: number
+}
+
+const draftsAndSubmissions = new Map<number | undefined, ReturnType<typeof createDraft>>()
+function createDraft(id: number | undefined) {
+  const key = id === undefined ? undefined : `ultimate.draft.${id}`
+  let value: Draft = {
+    text: key ? (localStorage.getItem(key) ?? '') : '',
+    images: key ? storedImages(key) : [],
+    files: key ? storedFiles(key) : [],
+    sending: false,
+    revision: 0,
+  }
+  const listeners = new Set<() => void>()
+  return {
+    key,
+    get: () => value,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    set: (change: Partial<Draft>) => {
+      const { images, files } = value
+      value = { ...value, ...change }
+      if (key && value.images !== images) storeImages(key, value.images)
+      if (key && value.files !== files) storeFiles(key, value.files)
+      for (const listener of listeners) listener()
+    },
+  }
+}
+
+export type DraftStore = ReturnType<typeof createDraft>
+
+export function getDraft(id: number | undefined) {
+  if (!draftsAndSubmissions.has(id)) draftsAndSubmissions.set(id, createDraft(id))
+  return draftsAndSubmissions.get(id)!
+}
+
+export function fillComposer(id: number, text: string) {
+  const draft = getDraft(id)
+  draft.set({ text, revision: draft.get().revision + 1 })
+  if (draft.key) localStorage.setItem(draft.key, text)
+}
+
+export function insertIntoComposer(id: number, text: string) {
+  const draft = getDraft(id)
+  const current = draft.get().text
+  const editor = document.querySelector<HTMLTextAreaElement>(`textarea[data-conversation="${id}"]`)
+  const start = editor?.selectionStart ?? current.length
+  const end = editor?.selectionEnd ?? current.length
+  const { text: next, cursor } = spliced(current, start, end, text)
+  draft.set({ text: next, revision: draft.get().revision + 1 })
+  if (draft.key) localStorage.setItem(draft.key, next)
+  requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
+}
+
+export function clearDraft(draft: DraftStore, snapshot: { text: string; revision: number }) {
+  const stored = draft.key ? (localStorage.getItem(draft.key) ?? '') : ''
+  const editedAfterSubmission = draft.get().revision !== snapshot.revision
+  if (editedAfterSubmission) return
+  if (draft.key && stored === snapshot.text) localStorage.removeItem(draft.key)
+  draft.set({ text: stored === snapshot.text ? '' : stored })
+}
