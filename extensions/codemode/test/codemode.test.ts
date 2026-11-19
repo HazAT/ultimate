@@ -6,6 +6,7 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import { num, obj, opt, str } from '@earendil-works/pi-schema'
+import { createProvider } from '@earendil-works/pi-ai'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId, ToolExecutionResult } from '@earendil-works/pi-durable'
@@ -66,7 +67,7 @@ async function fixture() {
       .replace("'../../lib/agents.ts'", JSON.stringify(resolve('lib/agents.ts')))
       .replace("'../../lib/api-files.ts'", JSON.stringify(resolve('lib/api-files.ts'))),
   )
-  for (const file of ['api.ts', 'chapters.ts', 'projects.ts', 'refs.ts', 'summary.ts'])
+  for (const file of ['api.ts', 'chapters.ts', 'models.ts', 'projects.ts', 'refs.ts', 'summary.ts'])
     await cp(resolve('extensions/codemode', file), join(ultimateRoot, 'extensions/codemode', file))
   const options = {
     ultimateRoot,
@@ -241,6 +242,71 @@ async function run(
     },
   }
 }
+
+it('classifies through the harness models, with usage on the result and guidance once a classifier is available', async () => {
+  const { server } = await fixture()
+  const agent = await server.root.agent(context)
+  const [codemode, modelsSection] = server.host.registry.snapshot().extension('codemode')!.sections!
+  const input = { conversationId: server.root.id, agent } as Parameters<typeof codemode.render>[0]
+  const guidance = () => modelsSection.render(input, context)
+  expect(await codemode.render(input, context)).not.toContain('models.classify')
+  expect(await guidance()).toBeUndefined()
+  const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  const usage = { ...cost, input: 7, totalTokens: 7, cost: { ...cost, total: 0.007 } }
+  server.host.modelRuntime.registerNativeProvider(
+    createProvider({
+      id: 'acme',
+      auth: { apiKey: { name: 'Acme', resolve: async () => ({ auth: {} }) } },
+      models: [
+        {
+          type: 'classifier',
+          provider: 'acme',
+          id: 'judge',
+          name: 'Judge',
+          api: 'typesafe-system-one',
+          baseUrl: 'https://classifier.example.com',
+          headers: { authorization: 'Bearer secret-token' },
+          input: ['text'],
+          contextWindow: 1000,
+          cost,
+        },
+      ],
+      classifiers: {
+        'typesafe-system-one': {
+          classify: async (model, { state }) => ({
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            answers: { match: { type: 'bool', probability: state.n === 1 ? 0.9 : 0.1 } },
+            usage,
+            stopReason: 'stop',
+            timestamp: 0,
+          }),
+        },
+      },
+    }),
+  )
+  expect(await guidance()).toContain('models.classify')
+  const result = await run(
+    server,
+    `const jev = await models.getModelOfType('classifier', 'acme', 'judge');
+     const questions = { match: { type: 'bool', instructions: 'Is it one?', criteria: { true: 'yes', false: 'no' } } };
+     const all = await Promise.all([1, 2].map((n) => models.classify(jev, { state: { n }, questions })));
+     return { headers: 'headers' in jev, probabilities: all.map((res) => res.answers.match.probability) };`,
+  )
+  expect(result.data.isError).toBe(false)
+  expect(result.data.details.value).toEqual({ headers: false, probabilities: [0.9, 0.1] })
+  expect(result.data.details.calls).toMatchObject([
+    { name: 'models.getModelOfType', status: 'ok' },
+    { name: 'models.classify', args: ['acme/judge'], status: 'ok' },
+    { name: 'models.classify', args: ['acme/judge'], status: 'ok' },
+  ])
+  expect((result.data as { usage?: unknown }).usage).toMatchObject({
+    input: 14,
+    totalTokens: 14,
+    cost: { total: 0.014 },
+  })
+})
 
 /** Kind, caller and name of each call in a trace tree, nested like it. */
 const shape = (calls: CallTree[]): unknown[] =>
