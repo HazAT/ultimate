@@ -62,16 +62,14 @@ function createReplica() {
     const key = replicaKey(conversation ?? 'shown', kind)
     if (!watched.has(key)) return
     if ('value' in event) {
-      const value = structuredClone(event.value)
       setDocs((draft) => {
-        draft[key] = value
+        draft[key] = event.value
       })
       return
     }
-    const ops = structuredClone(event.ops)
     setDocs((draft) => {
       const current = draft[key]
-      const next = apply(current ?? {}, ops)
+      const next = apply(current ?? {}, event.ops)
       if (next !== current) draft[key] = next
     })
   })
@@ -92,7 +90,7 @@ function createReplica() {
       const reader = watched.get(key) ?? { target, kind, readers: 0 }
       if (reader.readers++ === 0) {
         watched.set(key, reader)
-        const value = structuredClone(immutableDoc(store.getState(), target, kind))
+        const value = immutableDoc(store.getState(), target, kind)
         setDocs((draft) => {
           draft[key] = value
         })
