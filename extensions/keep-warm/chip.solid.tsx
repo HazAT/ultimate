@@ -63,7 +63,7 @@ export function Chip() {
             <PopoverContent align="end" class="w-64 p-1 font-mono" side="top">
               <label class="flex h-8 cursor-pointer items-center justify-between px-2 text-[12px]">
                 Keep @ultimate warm
-                <Switch checked={state().on} onCheckedChange={(on) => void toggle(on)} />
+                <Switch bind={[() => state().on, (on) => void toggle(on)]} />
               </label>
               <div class="space-y-1 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
                 <div class="text-foreground/80">{cacheLine(state(), now())}</div>
