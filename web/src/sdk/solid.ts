@@ -18,16 +18,25 @@ import {
 } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
-import { every } from '../../../lib/timers.ts'
+import { docRef } from '../../../shared/extension-api.ts'
+import { EVENT_FEED } from '../../../shared/events.ts'
+import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
+import { deadline, every } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
+import { actions, allCommands } from './actions.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
-import { reads, store, uiState } from './client.ts'
+import { api as client, reads, registry, store, uiState } from './client.ts'
+import { events } from './events.ts'
+import { errorMessage } from './format.ts'
 import type { ReadState, Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 
-export { api } from './client.ts'
+export { api, bundle, switched } from './client.ts'
+/** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
+export { events } from './events.ts'
 /**
  * `writingAs(details.source, write)` attributes each server write `write` starts synchronously (a UI-state set, an
  * action) to the agent when `source` is `agent`, the `details.source` a ui-sdk change handler receives; otherwise to
@@ -36,7 +45,14 @@ export { api } from './client.ts'
 export { writingAs } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
-export { formatAgo, formatBytes, formatDuration, formatTime, formatTokens } from './format.ts'
+export {
+  errorMessage,
+  formatAgo,
+  formatBytes,
+  formatDuration,
+  formatTime,
+  formatTokens,
+} from './format.ts'
 export { formatKeys } from './keys.ts'
 export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
@@ -61,6 +77,8 @@ function createReplica() {
   const [docs, setDocs] = createStore<Record<string, Doc>>({})
   const [state, setState] = createSignal(store.getState())
   const [ui, setUi] = createSignal(uiState.snapshot())
+  const [extensions, setExtensions] = createSignal(registry.getSnapshot())
+  registry.subscribe(() => setExtensions(registry.getSnapshot()))
   const watched = new Map<string, { target: Target; kind: string; readers: number; seen: Doc }>()
 
   const follow = (key: string, next: Doc) =>
@@ -85,6 +103,7 @@ function createReplica() {
   return {
     state,
     ui,
+    extensions,
     read(target: Target, kind: string): Doc {
       const key = replicaKey(target, kind)
       const value = docs[key]
@@ -242,3 +261,113 @@ export const useConnection = selected((state) => state.connection)
 export const useSystem = selected((state) => state.system)
 /** Summaries of every conversation; an unchanged row keeps its identity. */
 export const useConversations = selected((state) => state.conversations)
+
+const eventFeed = docRef<{ events: EventRecord[] }>(EVENT_FEED)
+
+/**
+ * The newest durable events (`host.emit`), newest first and live, as `useEvents` from `@/sdk` reads them; only those of
+ * `events` when given. `undefined` until the root's feed arrives.
+ */
+export function useEvents<T extends EventToken = EventToken>(
+  options: { events?: readonly T[]; limit?: number } = {},
+): Accessor<readonly EventRecord<EventData<T>>[] | undefined> {
+  const feed = useDocOf(() => ROOT, eventFeed)
+  const wanted = options.events?.map((event) => event.kind)
+  const limit = options.limit ?? 20
+  return createMemo(() => {
+    const value = feed()
+    if (value === undefined) return undefined
+    return (value?.events ?? [])
+      .filter((event) => !wanted || wanted.includes(event.kind))
+      .toReversed()
+      .slice(0, limit) as EventRecord<EventData<T>>[]
+  })
+}
+
+/** Calls `handler` with each `channel` event on the page's bus while the component is mounted. */
+export function useEvent(channel: string, handler: (data: unknown) => void) {
+  onSettled(() => events.on(channel, handler))
+}
+
+/** Core and extension commands, as the palette lists them. */
+export function useCommands() {
+  const { extensions } = shared()
+  return createMemo(() => allCommands(extensions()))
+}
+
+/** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
+export const { switchConversation, showSurface, runCommand } = actions
+
+/** Shows a notice in the page's notice stack, as a failed command does. */
+export const notify = (notice: Parameters<typeof store.notify>[0]) => store.notify(notice)
+
+/** `copy(text)` puts text on the clipboard; `copied()` is true for 1.2 s after, and a failure becomes an error notice. */
+export function useCopy() {
+  const [copied, setCopied] = createSignal(false)
+  const reset: { cancel?: Cancel } = {}
+  onSettled(() => () => reset.cancel?.())
+  const copy = (text: string) =>
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true)
+        reset.cancel?.()
+        reset.cancel = deadline(1200, () => setCopied(false))
+      })
+      .catch((error: unknown) => store.notify({ level: 'error', message: errorMessage(error) }))
+  return { copied, copy }
+}
+
+/**
+ * `api.restart()` with its outcome, as `useRestart` from `@/sdk` reports it: `busy()` while asking or swapping,
+ * `pending()` the generation it waits for, `error()` why the last restart did not take.
+ */
+export function useRestart(timeoutMs = 120_000) {
+  const system = useSystem()
+  const connection = useConnection()
+  const [busy, setBusy] = createSignal(false)
+  const [pending, setPending] = createSignal<number>()
+  const [error, setError] = createSignal<string>()
+  const own: { swap?: { target: number; dropped?: object; cancel: Cancel } } = {}
+  const finish = (failure?: string) => {
+    own.swap?.cancel()
+    own.swap = undefined
+    setBusy(false)
+    setPending(undefined)
+    setError(failure)
+  }
+  createEffect(
+    () => ({ system: system(), open: connection().status === 'open' }),
+    (next) => {
+      const swap = own.swap
+      if (!swap) return
+      const serving = next.system?.process.generation ?? 0
+      if (serving >= swap.target) finish()
+      else if (!next.open) swap.dropped ??= next.system ?? {}
+      else if (swap.dropped && next.system && next.system !== swap.dropped)
+        finish(
+          `Generation ${swap.target} failed to activate and was rolled back; generation ${serving} keeps serving. The reason is in the supervisor's output.`,
+        )
+    },
+  )
+  onSettled(() => () => own.swap?.cancel())
+  const run = () => {
+    finish()
+    setBusy(true)
+    client.restart().then(
+      (result) => {
+        const target = (result as { generation?: number } | undefined)?.generation
+        if (target === undefined) return finish()
+        const cancel = deadline(timeoutMs, () =>
+          finish(
+            `Generation ${target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
+          ),
+        )
+        own.swap = { target, cancel }
+        setPending(target)
+      },
+      (failure: unknown) => finish(errorMessage(failure)),
+    )
+  }
+  return { busy, pending, error, run, clear: () => finish() }
+}
