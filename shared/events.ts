@@ -82,26 +82,6 @@ export const ChangedEvent = defineEvent<
   } & UiAttribution
 >('ui.changed', { version: 2 })
 
-const MAX_UI_VALUE_BYTES = 2048
-const bounded = (value: JsonValue) =>
-  new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_UI_VALUE_BYTES
-    ? '[too large]'
-    : value
-
-export function uiChanged(
-  by: UiAttribution,
-  change: { key: string; value?: JsonValue; previous?: JsonValue; conversation?: ConversationId },
-): EventData<typeof ChangedEvent> {
-  const { key, value, previous, conversation } = change
-  return {
-    key,
-    ...(value === undefined ? {} : { value: bounded(value) }),
-    ...(previous === undefined ? {} : { previous: bounded(previous) }),
-    ...(conversation === undefined ? {} : { conversation }),
-    ...by,
-  }
-}
-
 export const CORE_EVENTS = [
   NoticeEvent,
   StartedEvent,

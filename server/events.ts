@@ -2,11 +2,19 @@ import { parseEntryId, offsetEntryId } from '../lib/ids.ts'
 import type { EntryId, ConversationId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { isDeepStrictEqual } from 'node:util'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
 import { inProcess } from '../lib/errors.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
-import type { EventContext, EventData, EventRecord, EventToken } from '../shared/events.ts'
+import type {
+  ChangedEvent,
+  EventContext,
+  EventData,
+  EventRecord,
+  EventToken,
+  UiAttribution,
+} from '../shared/events.ts'
 import { Metadata } from './metadata.ts'
 import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
@@ -104,6 +112,25 @@ async function logOf(tx: Tx) {
     index.conversation = ownerlessLogConversationId
   }
   return index.conversation
+}
+
+const withheld = (value: JsonValue) =>
+  value === null || typeof value === 'boolean' || typeof value === 'number' ? value : '[value]'
+
+export function uiChange(
+  by: UiAttribution,
+  change: { key: string; value?: JsonValue; previous?: JsonValue; conversation?: ConversationId },
+): EventData<typeof ChangedEvent> | undefined {
+  const { key, value, previous, conversation } = change
+  if (key.startsWith('shell.') || by.source === 'app' || isDeepStrictEqual(value, previous))
+    return undefined
+  return {
+    key,
+    ...(value === undefined ? {} : { value: withheld(value) }),
+    ...(previous === undefined ? {} : { previous: withheld(previous) }),
+    ...(conversation === undefined ? {} : { conversation }),
+    ...by,
+  }
 }
 
 export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, data: D) {

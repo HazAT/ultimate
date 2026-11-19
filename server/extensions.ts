@@ -31,7 +31,7 @@ import { Metadata } from './metadata.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
-import { EventFeed, eventLog } from './events.ts'
+import { EventFeed, eventLog, uiChange } from './events.ts'
 import { contractOutline } from '../lib/api-files.ts'
 import type { EventHost } from './events.ts'
 import { extensionApis } from './extension-apis.ts'
@@ -39,7 +39,7 @@ import type { TraceReader } from './trace.ts'
 import type { Api, Catalogue } from '../shared/extension-api.ts'
 import { inExtensionTests } from '../shared/extension-api.ts'
 import { secretMetadata } from '../lib/secrets.ts'
-import { ChangedEvent, uiChanged } from '../shared/events.ts'
+import { ChangedEvent } from '../shared/events.ts'
 import type { Device, UiSource } from '../shared/events.ts'
 import { inProcess, isMissing, meansNone } from '../lib/errors.ts'
 
@@ -321,9 +321,10 @@ export async function loadExtensions(
         host: facetHosts.get(name)!,
         conversationId,
         ...(device ? { device } : {}),
-        by,
-        uiChanged: (tx, change) =>
-          log.emit(tx, ChangedEvent, uiChanged(by, { ...change, conversation: conversationId })),
+        uiChanged: async (tx, change) => {
+          const data = uiChange(by, { ...change, conversation: conversationId })
+          if (data) await log.emit(tx, ChangedEvent, data)
+        },
         signal,
         exec: async (command, commandArgs, options) => {
           const agent =

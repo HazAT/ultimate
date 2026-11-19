@@ -22,7 +22,8 @@ The server adds the device (`deviceOf`). An agent's own server-side action call 
 
 `ui.changed`: `{ key, value?, previous?, source, driven?, device, login?, address?, conversation? }`.
 
-- `value` is absent for a deleted key, `previous` for a new one; values over 2048 UTF-8 bytes of JSON read `"[too large]"`.
+- `value` is absent for a deleted key, `previous` for a new one; only a boolean, a number or null is kept as it is, anything else (a draft, an answer, an object) reads `"[value]"`, so no text a person typed reaches the permanent event history.
+- One decision, `uiChange` in `server/events.ts`, serves both paths: it skips `shell.*` keys, `app` writes and values that are structurally unchanged.
 - `source` is `agent` or `person`; `driven: true` when the page was an agent's, so a click in an agent's tab is still the agent's tab.
 - The app's own bookkeeping writes (the sidebar marking a conversation seen) run inside `writingAs('app', …)`: they are stored, and record no `ui.changed`, like `shell.*` keys.
 - `conversation` is the conversation an action was called for.

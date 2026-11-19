@@ -24,8 +24,8 @@ import { UiState } from '../shared/ui-state.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import { Metadata } from './metadata.ts'
-import { EVENT_LOG_LABEL, emit } from './events.ts'
-import { ChangedEvent, UserInputEvent, uiChanged } from '../shared/events.ts'
+import { EVENT_LOG_LABEL, emit, uiChange } from './events.ts'
+import { ChangedEvent, UserInputEvent } from '../shared/events.ts'
 import { admit, deviceOf, sourceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
@@ -527,10 +527,8 @@ export async function createApi(
               const after = remove.includes(key)
                 ? undefined
                 : stored(set as Record<string, JsonValue>, key)
-              const unchanged = JSON.stringify(before) === JSON.stringify(after)
-              const bookkeeping = key.startsWith('shell.') || by.source === 'app'
-              if (bookkeeping || unchanged) continue
-              await emit(tx, ChangedEvent, uiChanged(by, { key, value: after, previous: before }))
+              const change = uiChange(by, { key, value: after, previous: before })
+              if (change) await emit(tx, ChangedEvent, change)
             }
             for (const [key, item] of Object.entries(set)) value[key] = item as JsonValue
             for (const key of remove) delete value[key]

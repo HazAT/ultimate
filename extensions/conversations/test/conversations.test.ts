@@ -647,7 +647,6 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
     host,
     signal: new AbortController().signal,
     exec: actionExec('.', new AbortController().signal),
-    by: { source: 'person' as const },
     uiChanged: async () => undefined,
   }
   const results = await Promise.all([

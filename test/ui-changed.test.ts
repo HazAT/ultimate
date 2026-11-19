@@ -61,12 +61,38 @@ it('records each stored UI-state change in the commit that writes it, with who, 
   const device = 'desktop firefox'
   expect(await changes()).toEqual([
     { key: 'ext.digest.on', value: true, source: 'agent', driven: true, device },
-    { key: 'ext.notes.text', value: '[too large]', source: 'person', device },
+    { key: 'ext.notes.text', value: '[value]', source: 'person', device },
     { key: 'ext.digest.on', previous: true, source: 'person', device },
   ])
   const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
   expect(state).toMatchObject({ 'shell.panel': 'tasks', 'ext.sidebar.seen': { 7: 1 }, 'ui.rev': 5 })
   expect(state).not.toHaveProperty('ext.huge')
+})
+
+it('keeps drafts out of the event history: only booleans, numbers and null are recorded as they are', async () => {
+  const { server, post, changes } = await serve()
+  const draft = { 'ext.questions.cards': { 42: { answer: 'my private answer', step: 2 } } }
+  await post('/api/ui', { set: { 'ext.review.comment': 'a draft I never sent', ...draft } })
+  await post('/api/ui', {
+    set: { 'ext.questions.cards': { 42: { step: 2, answer: 'my private answer' } } },
+  })
+  await post('/api/ui', { set: { 'ext.count': 3, 'ext.picked': null } })
+  await post('/api/ui', { delete: ['ext.review.comment', 'ext.questions.cards'] })
+
+  const events = await changes()
+  expect(JSON.stringify(events)).not.toContain('private')
+  expect(JSON.stringify(events)).not.toContain('draft')
+  const device = 'desktop firefox'
+  expect(events).toEqual([
+    { key: 'ext.review.comment', value: '[value]', source: 'person', device },
+    { key: 'ext.questions.cards', value: '[value]', source: 'person', device },
+    { key: 'ext.count', value: 3, source: 'person', device },
+    { key: 'ext.picked', value: null, source: 'person', device },
+    { key: 'ext.review.comment', previous: '[value]', source: 'person', device },
+    { key: 'ext.questions.cards', previous: '[value]', source: 'person', device },
+  ])
+  const state = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+  expect(state).toMatchObject({ 'ext.count': 3 })
 })
 
 it('records keep-warm’s switch as a UI change in its own commit, by the agent only when the page says so', async () => {
@@ -76,6 +102,8 @@ it('records keep-warm’s switch as a UI change in its own commit, by the agent 
   await set(false, { [SOURCE_HEADER]: 'agent' })
   await set(false)
   await set(true)
+  await set(false, { [SOURCE_HEADER]: 'app' })
+  await set(true)
   expect(await changes()).toEqual([
     expect.objectContaining({ key: 'keep-warm.on', value: false, previous: true, source: 'agent' }),
     expect.objectContaining({
@@ -84,5 +112,6 @@ it('records keep-warm’s switch as a UI change in its own commit, by the agent 
       previous: false,
       source: 'person',
     }),
+    expect.objectContaining({ key: 'keep-warm.on', value: true, previous: false }),
   ])
 })

@@ -44,7 +44,8 @@ answer or dismissal, a review: its conversation, entry or message and length, ne
 `ui.navigated` (the surface or Agent's conversation changed, reported by the browser after a second and deduped) and
 `ui.changed` (core, `ChangedEvent` in `shared/events.ts`: stored UI state changed, in the commit that wrote it: a
 `/api/ui` key set or deleted, except `shell.*`, or an action's own write through `ctx.uiChanged(tx, …)`; with `key`,
-`value`, `previous`, `source` (`agent` or `person`), `driven` and values over 2 KB as `"[too large]"`; opening, closing,
+`value`, `previous` (a boolean, number or null as is, anything else as `"[value]"`), `source` (`agent` or `person`)
+and `driven`; an unchanged value and the app's own writes record nothing; opening, closing,
 hover and focus are never stored, so never recorded; the System surface's UI changes tab, `extensions/ui`),
 each with the browser's `device` label and, through Tailscale Serve, the `login` and the client's tailnet `address`
 (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`, for example `100.64.0.2`; any other forwarded address is dropped). UI
