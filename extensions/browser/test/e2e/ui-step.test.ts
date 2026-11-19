@@ -9,7 +9,7 @@ import { EventFeed } from '../../../../server/events.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { ChangedEvent } from '../../../../shared/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
+import { fauxServer, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -153,10 +153,10 @@ it('sends a final keypress’s UI-state write on pagehide when the page goes', a
     { ui: 'snapshot' },
     { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
     { press: ' ' },
-    { eval: "location.href = 'about:blank'" },
-    { wait: 'body' },
+    { eval: "document.documentElement.dataset.left = ''; location.href = '/'" },
+    { wait: 'html:not([data-left]) [aria-label="Weekly digest"]' },
   ])
-  expect(await uiState()).toMatchObject({ 'ext.digest.digest': true })
+  await until(async () => (await uiState())['ext.digest.digest'] === true)
   expect(await recorded()).toEqual([
     expect.objectContaining({ key: 'ext.digest.digest', value: true, source: 'person' }),
   ])

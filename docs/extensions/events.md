@@ -49,9 +49,10 @@ and `driven`; an unchanged value and the app's own writes record nothing; openin
 hover and focus are never stored, so never recorded; the System surface's UI changes tab, `extensions/ui`),
 each with the browser's `device` label and, through Tailscale Serve, the `login` and the client's tailnet `address`
 (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`, for example `100.64.0.2`; any other forwarded address is dropped). UI
-action calls get the same `Device` as `ctx.device`, and `ctx.by` says who made the call: `agent` for an agent's call
-on the server, or the page's `x-ultimate-source` header (`agent` while the page's agent bridge runs an `act`, else
-`person`) plus `x-ultimate-driven: 1` from a tab an agent drives. The page's claim is an attribution label, not a
+action calls get the same `Device` as `ctx.device`, and `ctx.uiChanged(tx, …)` records a change with who made the
+call: `agent` for an agent's call on the server, or the page's `x-ultimate-source` header (`agent` while the page's
+agent bridge runs an `act`, `app` inside `writingAs('app', …)`, else `person`) plus `x-ultimate-driven: 1` from a tab an
+agent drives. A `/api/ui` op's own `who` overrides the header, so one page-exit request carries several writers. The page's claim is an attribution label, not a
 permission. A `beforeInput` hook gets no device: it sees only the input entry
 and runs for queued inputs too, so record the device from a UI action instead. A typed input and a review commit
 right after Pi admits them, which has no hook for queued inputs; answers commit with their reply. Something the user must see
