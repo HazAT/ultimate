@@ -54,7 +54,12 @@ async function live(root: string): Promise<Live[]> {
 async function statuses(root: string, commit: string) {
   const [listed, islands] = await Promise.all([
     git(root, 'ls-tree', '-r', '--name-only', commit, '--', 'extensions'),
-    git(root, 'grep', '-l', 'island(', commit, '--', 'extensions/*/web.tsx').catch(meansNone),
+    git(root, 'grep', '-F', '-l', 'island(', commit, '--', 'extensions/*/web.tsx').catch(
+      (error: unknown) => {
+        if ((error as { code?: unknown }).code === 1) return undefined
+        throw error
+      },
+    ),
   ])
   const tree = listed.split('\n').filter(frontend)
   const webs = await Promise.all(

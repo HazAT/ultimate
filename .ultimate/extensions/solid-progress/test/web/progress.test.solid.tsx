@@ -1,4 +1,5 @@
 /** @jsxImportSource @solidjs/web */
+import { render } from '@solidjs/web'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -72,15 +73,16 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-async function mount() {
-  const container = renderSolid(() => (
-    <ExtensionName value="solid-progress">
-      <Progress />
-    </ExtensionName>
-  ))
+const page = () => (
+  <ExtensionName value="solid-progress">
+    <Progress />
+  </ExtensionName>
+)
+
+async function settled<T>(value: T) {
   await vi.advanceTimersByTimeAsync(10)
   flush()
-  return container
+  return value
 }
 
 async function act(steps: Parameters<typeof agent.act>[0]['steps']) {
@@ -94,16 +96,18 @@ const extensionRow = (container: HTMLElement) =>
   container.querySelector('tr[data-status]')?.textContent
 
 it('an agent scrubs to a step, the page follows and keeps it, and Play walks on to Live', async () => {
-  const first = await mount()
+  const first = document.body.appendChild(document.createElement('div'))
+  const dispose = await settled(render(page, first))
   expect(await act([{ ref: 'Migration step', action: 'setValue', args: [0] }])).toMatchObject({
     ok: true,
   })
   expect(uiState.get('ext.solid-progress.step')).toBe('aaaaaaaa')
   expect(first.textContent).toContain('pure React summary')
   expect(extensionRow(first)).toMatch(/^keep-warmReact/)
+  dispose()
   first.remove()
 
-  const container = await mount()
+  const container = await settled(renderSolid(page))
   expect(container.textContent).toContain('pure React summary')
   expect(await act([{ ref: 'Play the steps', action: 'press' }])).toMatchObject({ ok: true })
   await vi.advanceTimersByTimeAsync(1200)
