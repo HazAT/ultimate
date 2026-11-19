@@ -95,9 +95,11 @@ A solid purple dot means an unread reply, not ongoing work; only the pulsing dot
 
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
 **waits on you** (@ultimate or a branch with an open question to the user);
-**waits on <target>** (brand-colored, never on a subagent: an open agent or remote request, an enabled timer with
-its next fire time, or an unconcluded branch's starter). The primary is named `@ultimate`, other conversations `#N`;
-when @ultimate itself waits on a remote, its waiting branch shows `waits on @ultimate → <project>` (one hop).
+**waits on <target>** (brand-colored, never on a subagent: an open agent or remote request, or an enabled timer with
+its next fire time); **reported to <starter>** (brand-colored: an unconcluded branch that asked nothing, whose last
+answer went to its starter, which follows up or concludes it). The primary is named `@ultimate`, other conversations
+`#N`; when @ultimate itself waits on a remote, its branch shows `waits on @ultimate → <project>` or
+`reported to @ultimate → <project>` (one hop).
 Every row reads the recorded `board.started` starter, and counts busy subagents and a queued landing as working
 (`useUnderway`), so a working tree never reads as waiting. Labels truncate with
 the full text on hover. Truly idle conversations still say `idle`; **done** (green check, subagents only: it answered, and its answer went to its parent);
