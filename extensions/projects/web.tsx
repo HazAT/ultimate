@@ -15,7 +15,7 @@ import {
 } from '@/sdk'
 import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.tsx'
 import { shownPort, target } from './links.ts'
-import { ListAction, PinAction } from './refs.ts'
+import { ListAction, PinAction, ShownAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
 const RAIL = 56
@@ -29,6 +29,7 @@ const statusLineAlignedFooter =
   'flex h-7 shrink-0 items-center border-t border-border/70 font-mono text-[10px] text-muted-foreground/70 md:pointer-coarse:box-content md:pointer-coarse:pb-3'
 
 let pendingNavigation: string | undefined
+let stampedShown = false
 let cancelNavigationExpiry: Cancel | undefined
 const listeners = new Set<() => void>()
 const setOpening = (url: string | undefined) => {
@@ -253,6 +254,12 @@ function Rail() {
     enabled: !railOccupied,
   })
   useVisiblePoll(list.refetch, VISIBLE_PROJECTS_POLL_MS, railOccupied)
+  const refetch = list.refetch
+  useEffect(() => {
+    if (stampedShown) return
+    stampedShown = true
+    api.action(ShownAction).then(refetch).catch(keepLast)
+  }, [refetch])
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = useSharedPin(railOccupied)
   const [showHover] = useState(() => debounce(150, () => setHover(true)))

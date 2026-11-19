@@ -20,8 +20,11 @@ export type RunningProject = {
   tailnetPort?: number
 }
 
-/** No arguments → every running instance on this machine, this one included, in project order. */
+/** No arguments → every running instance on this machine, this one included: the instance shown most recently first, then the rest in project order. */
 export const ListAction = actionRef<null, RunningProject[]>('projects', 'list')
 
 /** `{ pinned? }` → whether the rail stays open, shared by every instance on this machine; `pinned` sets it first. */
 export const PinAction = actionRef<{ pinned?: boolean }, { pinned: boolean }>('projects', 'pin')
+
+/** No arguments → stamps this instance as the one the caller is showing, keyed by its `url` beside the pin; asks for it once per page load. */
+export const ShownAction = actionRef<null, { at: number }>('projects', 'shown')

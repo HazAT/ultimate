@@ -9,7 +9,7 @@ import type { GithubRepo } from '../../lib/project-identity.ts'
 import { postAction } from '../../lib/remote.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
-import { ListAction, PinAction } from './refs.ts'
+import { ListAction, PinAction, ShownAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
 const REMOTE_COUNTS_TIMEOUT_MS = 1_500
@@ -73,7 +73,7 @@ async function tailnetPorts(host: ExtensionHost) {
 
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   const tailnet = await tailnetPorts(host)
-  return Promise.all(
+  const instances = await Promise.all(
     (await host.projects()).flatMap(({ name, root, running, current }) => {
       const processOrLockUrl = current ? host.system().process.url : running?.url
       if (!processOrLockUrl) return []
@@ -94,14 +94,33 @@ export async function list(host: ExtensionHost, signal: AbortSignal): Promise<Ru
       ]
     }),
   )
+  return orderedByLastShown(instances, (await readRail(sharedRailPath(host))).shown)
 }
 
-const sharedRailPinPath = (host: ExtensionHost) =>
-  join(host.userHome, '.ultimate', 'projects-rail.json')
-const readPin = async (path: string) => {
-  const value = await readJson<{ pinned?: unknown }>(path, {})
-  return { pinned: value.pinned === true }
+export function orderedByLastShown<T extends { url: string }>(
+  rows: readonly T[],
+  shown: Readonly<Record<string, number>>,
+): T[] {
+  const stamped = rows.filter((row) => shown[row.url] !== undefined)
+  const rest = rows.filter((row) => shown[row.url] === undefined)
+  return [...stamped.toSorted((a, b) => shown[b.url] - shown[a.url]), ...rest]
 }
+
+const sharedRailPath = (host: ExtensionHost) =>
+  join(host.userHome, '.ultimate', 'projects-rail.json')
+
+type Rail = { pinned: boolean; shown: Record<string, number> }
+
+const readRail = async (path: string): Promise<Rail> => {
+  const value = await readJson<{ pinned?: unknown; shown?: unknown }>(path, {})
+  const shown: Record<string, number> = {}
+  if (value.shown && typeof value.shown === 'object' && !Array.isArray(value.shown))
+    for (const [url, at] of Object.entries(value.shown))
+      if (typeof at === 'number' && Number.isFinite(at)) shown[url] = at
+  return { pinned: value.pinned === true, shown }
+}
+
+const readPin = async (path: string) => ({ pinned: (await readRail(path)).pinned })
 
 export default function projects(host: ExtensionHost) {
   host.need(MessagesApi)
@@ -117,11 +136,18 @@ export const actions = {
       args && typeof args === 'object' && !Array.isArray(args) ? args.pinned : undefined
     if (pinned !== undefined && typeof pinned !== 'boolean')
       throw new Error('pinned must be a boolean')
-    const path = sharedRailPinPath(host)
+    const path = sharedRailPath(host)
     if (pinned !== undefined)
-      await updateJson(path, readPin, (value) => {
+      await updateJson(path, readRail, (value) => {
         value.pinned = pinned
       })
     return readPin(path)
+  }),
+  shown: implementAction(ShownAction, async (_args, { host }) => {
+    const at = Date.now()
+    await updateJson(sharedRailPath(host), readRail, (value) => {
+      value.shown[host.system().process.url] = at
+    })
+    return { at }
   }),
 }
