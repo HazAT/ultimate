@@ -1,5 +1,5 @@
 import { deadline } from '../../lib/timers.ts'
-import { LoaderCircleIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react'
+import { ArrowUpIcon, LoaderCircleIcon, MicIcon, SquareIcon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -8,18 +8,54 @@ import {
   defineWebExtension,
   errorMessage,
   events,
+  formatKeys,
+  getConversation,
   insertIntoComposer,
   useAction,
   useConversation,
   useEvent,
   useNow,
 } from '@/sdk'
+import type { UltimateContext } from '@/sdk'
 import { meansNone } from '../../lib/errors.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
 const uploadSafeRecordingMs = 5 * 60_000
 
 const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+
+const toggleShortcut = 'mod+alt+v'
+const toggleShortcutHint = formatKeys(toggleShortcut)[0].join('')
+
+type VoiceControls = { toggle: () => void; cancel: () => void; recording: boolean }
+const controlsByConversation = new Map<number, VoiceControls>()
+
+export function registerVoice(id: number, controls: VoiceControls): () => void {
+  controlsByConversation.set(id, controls)
+  return () => void controlsByConversation.delete(id)
+}
+
+function composerOffersVoice(context: UltimateContext) {
+  if (unsupported()) return false
+  const id = context.conversationId
+  return id !== undefined && controlsByConversation.has(id)
+}
+
+function toggleVoice(context: UltimateContext) {
+  const id = context.conversationId
+  if (id !== undefined) controlsByConversation.get(id)?.toggle()
+}
+
+function escapeCancelsRecording(context: UltimateContext) {
+  const id = context.conversationId
+  if (id === undefined || getConversation(id).busy) return false
+  return controlsByConversation.get(id)?.recording ?? false
+}
+
+function cancelVoice(context: UltimateContext) {
+  const id = context.conversationId
+  if (id !== undefined) controlsByConversation.get(id)?.cancel()
+}
 
 type Recording = {
   recorder: MediaRecorder
@@ -28,6 +64,33 @@ type Recording = {
   started: number
   chunks: Blob[]
   cancelled: boolean
+  send: boolean
+}
+
+export async function handleTranscription(
+  transcribe: () => Promise<{ text: string }>,
+  send: boolean,
+  effects: { insert: (text: string) => void; submit: () => void; error: (message: string) => void },
+) {
+  try {
+    const { text } = await transcribe()
+    if (!text) return effects.error('No speech heard')
+    effects.insert(text)
+    if (send) effects.submit()
+  } catch (failure) {
+    effects.error(errorMessage(failure))
+  }
+}
+
+export function entersSend(
+  event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey' | 'isComposing'>,
+  targetConversation: string | undefined,
+  id: number,
+  recording: boolean,
+): boolean {
+  if (!recording || event.key !== 'Enter' || event.isComposing) return false
+  if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
+  return targetConversation === String(id)
 }
 
 function unsupported(): string | undefined {
@@ -43,6 +106,15 @@ async function base64(blob: Blob) {
   for (let at = 0; at < bytes.length; at += 0x8000)
     binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
   return btoa(binary)
+}
+
+function submitComposerAfterRender(id: number) {
+  requestAnimationFrame(() => {
+    document
+      .querySelector<HTMLTextAreaElement>(`textarea[data-conversation="${id}"]`)
+      ?.closest('form')
+      ?.requestSubmit()
+  })
 }
 
 const clock = (ms: number) => {
@@ -110,25 +182,30 @@ function VoiceButton() {
     return deadline(8000, () => setError(undefined))
   }, [error])
 
-  function finish(active: Recording | undefined, cancel: boolean) {
+  function finish(active: Recording | undefined, cancel: boolean, send = false) {
     if (!active) return
     active.cancelled = cancel
+    active.send = send
     if (active.recorder.state !== 'inactive') active.recorder.stop()
     setRecording(undefined)
   }
+  const latestFinish = useRef(finish)
+  latestFinish.current = finish
 
-  async function transcribe(audio: Blob) {
+  async function transcribe(audio: Blob, send: boolean) {
     if (id === undefined) return
     setTranscribing(true)
     try {
-      const { text } = await api.action(TranscribeAction, {
-        audio: await base64(audio),
-        mimeType: audio.type,
-      })
-      if (text) insertIntoComposer(id, text)
-      else setError('No speech heard')
-    } catch (failure) {
-      setError(errorMessage(failure))
+      await handleTranscription(
+        async () =>
+          api.action(TranscribeAction, { audio: await base64(audio), mimeType: audio.type }),
+        send,
+        {
+          insert: (text) => insertIntoComposer(id, text),
+          submit: () => submitComposerAfterRender(id),
+          error: setError,
+        },
+      )
     } finally {
       setTranscribing(false)
     }
@@ -162,6 +239,7 @@ function VoiceButton() {
       started: Date.now(),
       chunks: [],
       cancelled: false,
+      send: false,
     }
     recorder.addEventListener('dataavailable', (event) => {
       if (event.data.size > 0) active.chunks.push(event.data)
@@ -170,7 +248,10 @@ function VoiceButton() {
       for (const track of stream.getTracks()) track.stop()
       audio?.close().catch(meansNone)
       if (active.cancelled || active.chunks.length === 0) return
-      void transcribe(new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }))
+      void transcribe(
+        new Blob(active.chunks, { type: recorder.mimeType || type || 'audio/webm' }),
+        active.send,
+      )
     })
     audio?.resume().catch(meansNone)
     recorder.start(1000)
@@ -182,6 +263,43 @@ function VoiceButton() {
   const missingKey = !unsupported() && status.data?.available === false
 
   const keepEditorFocus = (event: React.PointerEvent) => event.preventDefault()
+
+  function toggle() {
+    if (transcribing || status.loading) return
+    if (recording) return finish(recording, false)
+    if (missingKey) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+    if (blocked) return setError(blocked)
+    void start()
+  }
+  const latestToggle = useRef(toggle)
+  latestToggle.current = toggle
+
+  useEffect(() => {
+    if (id === undefined) return undefined
+    return registerVoice(id, {
+      toggle: () => latestToggle.current(),
+      cancel: () => finish(composerRecording.current, true),
+      get recording() {
+        return !!composerRecording.current
+      },
+    })
+  }, [id])
+
+  useEffect(() => {
+    if (id === undefined) return undefined
+    const conversationId = id
+    function captureEnterToSend(event: KeyboardEvent) {
+      const target = event.target
+      const conversation =
+        target instanceof HTMLTextAreaElement ? target.dataset.conversation : undefined
+      if (!entersSend(event, conversation, conversationId, !!composerRecording.current)) return
+      event.preventDefault()
+      event.stopPropagation()
+      latestFinish.current(composerRecording.current, false, true)
+    }
+    window.addEventListener('keydown', captureEnterToSend, true)
+    return () => window.removeEventListener('keydown', captureEnterToSend, true)
+  }, [id])
 
   if (recording)
     return (
@@ -211,6 +329,16 @@ function VoiceButton() {
         >
           <SquareIcon className="size-3 fill-current" />
         </button>
+        <button
+          aria-label="Send"
+          className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 pointer-coarse:size-9"
+          onClick={() => finish(recording, false, true)}
+          onPointerDown={keepEditorFocus}
+          title="Send (Enter)"
+          type="button"
+        >
+          <ArrowUpIcon className="size-4" />
+        </button>
       </div>
     )
 
@@ -239,13 +367,7 @@ function VoiceButton() {
                 'opacity-50 hover:bg-transparent hover:text-muted-foreground',
             )}
             data-voice={blocked ? 'blocked' : transcribing ? 'transcribing' : 'idle'}
-            onClick={() => {
-              if (transcribing || status.loading) return
-
-              if (missingKey) events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
-              else if (blocked) setError(blocked)
-              else void start()
-            }}
+            onClick={toggle}
             onPointerDown={keepEditorFocus}
             type="button"
           >
@@ -257,7 +379,7 @@ function VoiceButton() {
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          {blocked ?? 'Voice input: tap to record, tap again to transcribe'}
+          {blocked ?? `Voice input: tap to record, tap again to transcribe · ${toggleShortcutHint}`}
         </TooltipContent>
       </Tooltip>
     </div>
@@ -266,4 +388,22 @@ function VoiceButton() {
 
 export default defineWebExtension({
   slots: { 'composer.actions': [VoiceButton] },
+  commands: [
+    {
+      id: 'voice.toggle',
+      title: 'Voice input: start / stop recording',
+      keys: toggleShortcut,
+      whileTyping: true,
+      when: (context) => composerOffersVoice(context),
+      run: (context) => toggleVoice(context),
+    },
+    {
+      id: 'voice.cancel',
+      title: 'Voice input: cancel recording',
+      keys: 'escape',
+      whileTyping: true,
+      when: (context) => escapeCancelsRecording(context),
+      run: (context) => cancelVoice(context),
+    },
+  ],
 })
