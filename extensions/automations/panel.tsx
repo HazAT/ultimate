@@ -46,27 +46,29 @@ import {
 import { debounce, every } from '../../lib/timers.ts'
 import { AutomationForm } from './form.tsx'
 import {
+  attention,
+  clock,
+  lookOf,
+  looks,
+  since,
+  spent,
+  stateLine,
+  statusLabel,
+  worstFirst,
+} from './looks.ts'
+import {
   BusyDot,
   Dot,
   Heading,
   KindIcon,
   RunIcon,
   Tag,
-  attention,
-  clock,
   full,
-  lookOf,
-  looks,
-  refreshAutomations,
-  since,
-  spent,
-  stateLine,
-  statusLabel,
   triggerWords,
   useAutomations,
   words,
-  worstFirst,
 } from './parts.tsx'
+import { refreshAutomations } from './poll.ts'
 import {
   DeleteAction,
   DescribeAction,

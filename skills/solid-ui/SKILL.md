@@ -86,6 +86,10 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     `every` takes `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while a server connects), never a
     second reader or an effect that writes the interval.
   - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
+  - For a polled list whose objects are replaced on each fetch, `<For keyed={(row) => row.id}>` keeps each row's DOM
+    by id and gives the child an item accessor. The default keys by object identity.
+  - When extracting a browser helper to `.ts`, add it to `tsconfig.web.json`'s `include`. Use explicit `.ts` suffixes
+    on imports from `@/sdk/*` within the helper so the NodeNext project can resolve them too.
 - **ui-sdk facts that tripped agents here:**
   - Popups render in the browser's top layer, not a portal: they stay in their trigger's DOM tree and inherit its
     text styles (a status line's `whitespace-nowrap`, `font-mono`). Kit popups reset the inherited text styles.
@@ -122,6 +126,8 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     the anchor (`jsx-a11y/anchor-has-content` cannot see Button's children).
   - NumberInput's agent `setValue` fires `onValueChange`, not `onValueCommit`; Slider's agent action is `setValue` on
     its labelled thumb.
+  - Collapsible unmounts the panel's children when closed by default. Keep local state that should survive a collapse
+    in the owner outside the panel, or use `keepMounted` when the children themselves must survive.
   - An inline `<svg>` drawing is named by `aria-label` and a `<title>`, not `role="img"` (`jsx-a11y/prefer-tag-over-role`).
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a

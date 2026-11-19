@@ -1,14 +1,7 @@
 import { cn, useNow, useUltimate } from '@/sdk'
-import {
-  Dot,
-  active,
-  attention,
-  lookOf,
-  looks,
-  openAutomationsPanel,
-  useAutomations,
-  worstFirst,
-} from './parts.tsx'
+import { active, attention, lookOf, looks, worstFirst } from './looks.ts'
+import { openAutomationsPanel } from './navigation.ts'
+import { Dot, useAutomations } from './parts.tsx'
 
 export function Chip() {
   const shell = useUltimate()

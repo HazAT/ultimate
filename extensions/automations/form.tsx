@@ -35,7 +35,8 @@ import {
   useUltimate,
 } from '@/sdk'
 import { debounce } from '../../lib/timers.ts'
-import { clock, full, until, words } from './parts.tsx'
+import { clock, until } from './looks.ts'
+import { full, words } from './parts.tsx'
 import { DefinitionsAction } from '../subagents/ui.tsx'
 import { CreateAction, DescribeAction, EventsAction, UpdateAction } from './refs.ts'
 import type { Automation } from './refs.ts'

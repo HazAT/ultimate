@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import {
   cn,
   defineWebExtension,
+  island,
   renderEntry,
   Fold,
   useToolDuration,
@@ -28,9 +29,10 @@ import { FailedEntry, EscalatedEntry, WritingEntry } from './entries.ts'
 import type { ToolCallView } from '@/sdk'
 import { Chip } from './chip.tsx'
 import { AutomationsPanel } from './panel.tsx'
-import { Dot, looks, openAutomationsPanel, useOpenAutomation } from './parts.tsx'
-import type { Look } from './parts.tsx'
-import { AutomationsSection } from './sidebar.tsx'
+import { looks, type Look } from './looks.ts'
+import { openAutomationsPanel } from './navigation.ts'
+import { Dot, useOpenAutomation } from './parts.tsx'
+import { AutomationsSection } from './sidebar.solid.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { WaitTimers } from '../messages/ui.tsx'
 import { useAutomations, timerWaits } from './ui.tsx'
@@ -210,7 +212,7 @@ export default defineWebExtension({
   tools: { automation: AutomationCall },
   slots: {
     'statusline.right': [{ component: Chip, order: -2 }],
-    'sidebar.top': [{ component: AutomationsSection, order: -20 }],
+    'sidebar.top': [{ component: island(AutomationsSection), order: -20 }],
   },
   entries: {
     'automations.fired': renderEntry(FiredEntry, card('fired')),

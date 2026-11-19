@@ -17,6 +17,7 @@ vi.mock('react', async (original) => ({
   // Server rendering has no store to subscribe to: read each external store's current value.
   useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
 }))
+vi.mock('@/sdk/client.ts', () => ({ api: { action: shell.action } }))
 vi.mock('@/sdk', () => ({
   keepLast,
   api: { action: shell.action },
