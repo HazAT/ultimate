@@ -10,6 +10,12 @@ const str = (value: unknown) => (typeof value === 'string' ? value : undefined)
 
 type Diff = { path: string; oldText: string; newText: string }
 
+export const fileLinksAsPaths = (text: string) =>
+  text.replace(/\[([^\]]*)\]\(file:\/\/([^)\s]+)\)/g, (_link, label: string, path: string) => {
+    const decoded = decodeURI(path)
+    return !label || decoded.endsWith(label) ? `\`${decoded}\`` : `${label} (\`${decoded}\`)`
+  })
+
 function diffsOf(update: Record<string, unknown>): Diff[] {
   const content = Array.isArray(update.content) ? update.content : []
   return content.flatMap((item) => {

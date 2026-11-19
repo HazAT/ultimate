@@ -1,7 +1,7 @@
 Conversations with external coding agents (Antigravity, OpenCode, Codex, Claude Code, any ACP agent) through the Agent Client Protocol.
 
-**acp** in the header starts one: pick an agent, in the project or in a new worktree. It becomes an ordinary
-Ultimate conversation, labelled `acp`: it shows in the sidebar, keeps its transcript, and the transcript, tool cards
+The model picker in the composer lists them under **acp**: Enter starts one in the project, **worktree** in a new worktree. It becomes an ordinary
+Ultimate conversation, labelled `acp`: it shows under In flight in the sidebar until concluded, keeps its transcript, and the transcript, tool cards
 (read, edit with its diff, bash) and composer are Ultimate's own. Behind it the agent's own command (`agy acp`,
 `opencode acp`, …) runs in the conversation's folder and speaks ACP over stdio. The agent runs its own loop, tools,
 model and login; Ultimate shows what it does and passes on your messages, model and mode choices, Stop (Esc) and

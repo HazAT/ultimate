@@ -2,6 +2,7 @@ import type { ConversationId, EntryDraft, Tx } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { apply, settleTurn } from '../server.ts'
+import { fileLinksAsPaths } from '../tools.ts'
 
 const ID = 7 as ConversationId
 const metadata = { definition: { kind: 'ultimate.metadata', initial: () => ({}) } }
@@ -88,6 +89,12 @@ it('turns an ACP diff into an edit call whose result carries a patch for the dif
   const result = entries[1].model?.[0]
   const details = result?.role === 'toolResult' ? (result.details as { patch: string }) : undefined
   expect(details?.patch).toContain('-hi\n+hello')
+})
+
+it('shows file:// links, which the transcript blocks, as code paths', () => {
+  expect(
+    fileLinksAsPaths('See [neon.txt](file:///tmp/a%20b/neon.txt) and [the file](file:///x/y.ts).'),
+  ).toBe('See `/tmp/a b/neon.txt` and the file (`/x/y.ts`).')
 })
 
 it('closes a call the agent never finished when its turn ends, so no card stays running', async () => {

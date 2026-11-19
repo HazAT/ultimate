@@ -1,13 +1,7 @@
-import { BotIcon, GitBranchIcon, ShieldQuestionIcon } from 'lucide-react'
+import { BotIcon, ChevronDownIcon, GitBranchIcon, ShieldQuestionIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { CommandGroup, CommandItem } from '@/components/ui/command'
 import { Message, MessageResponse } from '@/components/ai/message'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai/reasoning'
 import { Shimmer } from '@/components/ai/shimmer'
@@ -39,6 +33,8 @@ import {
   StartAction,
   TurnDoc,
 } from './refs.ts'
+import { openPicker, PickerRows } from '../models/ui.tsx'
+import { parseConversationId } from '../../lib/ids.ts'
 import type { AcpSession, LiveTool, LiveTurn } from './refs.ts'
 
 const toolbarButton =
@@ -51,14 +47,21 @@ function useSession(): Partial<AcpSession> | undefined {
 
 function Pickers() {
   const session = useSession()
+  const actions = useUltimate()
   if (!session) return null
   const busy = session.status === 'running' || session.status === 'connecting'
   return (
     <>
-      <span className="flex h-7 shrink-0 items-center gap-1.5 px-1.5 font-mono text-[11.5px] text-muted-foreground">
-        <BotIcon className="size-3.5" />
+      <button
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11.5px] text-foreground/85 hover:bg-accent"
+        onClick={() => openPicker(actions)}
+        title={`${session.agentName} over ACP — pick another agent or model`}
+        type="button"
+      >
+        <BotIcon className="size-3.5 text-muted-foreground" />
         {session.agentName}
-      </span>
+        <ChevronDownIcon className="size-3 opacity-60" />
+      </button>
       {(session.config ?? []).map((option) => (
         <select
           aria-label={option.name}
@@ -223,56 +226,70 @@ function Stop() {
 const shownSessionRunning = () =>
   (getState().docs[SessionDoc.kind] as Partial<AcpSession> | undefined)?.status === 'running'
 
-function NewAcpConversation() {
+function useAgentRows({ query, close }: { query: string; close: () => void }): ReactNode {
   const agents = useAction(AgentsAction)
   const actions = useUltimate()
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const shown = (agents.data ?? []).filter((agent) =>
+    terms.every((term) => `acp ${agent.id} ${agent.name} external agent`.includes(term)),
+  )
+  if (!shown.length) return null
   const start = async (agent: string, isolated: boolean) => {
+    close()
     const { id } = await api.action(StartAction, { agent, isolated })
     actions.showSurface('agent')
-    actions.switchConversation(id as never)
+    actions.switchConversation(parseConversationId(id))
   }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Start a conversation with an external agent"
-          type="button"
-        >
-          <BotIcon className="size-3.5" />
+    <CommandGroup
+      heading={
+        <span className="flex items-center gap-2">
           acp
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel className="font-mono text-[11px] text-muted-foreground">
-          External agent, in this project
-        </DropdownMenuLabel>
-        {(agents.data ?? []).map((agent) => (
-          <DropdownMenuItem
-            disabled={!agent.installed}
-            key={agent.id}
-            onSelect={() => void start(agent.id, false)}
-          >
-            <BotIcon className="size-3.5" />
-            <span className="flex-1">{agent.name}</span>
-            {!agent.installed && (
-              <span className="font-mono text-[10px] text-muted-foreground">not installed</span>
+          <span className="truncate text-muted-foreground/60">
+            external agents · their own login, loop and tools
+          </span>
+          <span className="ml-auto text-muted-foreground/60">↵ opens a new conversation</span>
+        </span>
+      }
+    >
+      {shown.map((agent) => (
+        <CommandItem
+          className={cn('gap-2 py-1 font-mono text-[12px]', !agent.installed && 'opacity-60')}
+          disabled={!agent.installed}
+          key={agent.id}
+          onSelect={() => void start(agent.id, false)}
+          value={`acp/${agent.id}`}
+        >
+          <BotIcon className="size-3.5 text-muted-foreground" />
+          <span className="shrink-0 text-foreground">{agent.id}</span>
+          <span className="min-w-0 truncate font-sans text-[12px] text-muted-foreground/80">
+            {agent.name}
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-muted-foreground">
+            {agent.installed ? (
+              <button
+                className="flex items-center gap-1 rounded-sm px-1 hover:bg-accent hover:text-foreground"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void start(agent.id, true)
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                title={`Start ${agent.name} in a new worktree of this project`}
+                type="button"
+              >
+                <GitBranchIcon className="size-3" />
+                worktree
+              </button>
+            ) : (
+              <span className="text-warning/80">{agent.command} not installed</span>
             )}
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuLabel className="font-mono text-[11px] text-muted-foreground">
-          In a new worktree
-        </DropdownMenuLabel>
-        {(agents.data ?? [])
-          .filter((agent) => agent.installed)
-          .map((agent) => (
-            <DropdownMenuItem key={agent.id} onSelect={() => void start(agent.id, true)}>
-              <GitBranchIcon className="size-3.5" />
-              <span className="flex-1">{agent.name}</span>
-            </DropdownMenuItem>
-          ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <span className="text-muted-foreground/60">
+              {[agent.command, ...agent.args].join(' ')}
+            </span>
+          </span>
+        </CommandItem>
+      ))}
+    </CommandGroup>
   )
 }
 
@@ -287,7 +304,6 @@ export default defineWebExtension({
         </div>
       ),
     ],
-    'header.right': [NewAcpConversation],
   },
   commands: [
     {
@@ -300,6 +316,7 @@ export default defineWebExtension({
     },
   ],
   provides: [
+    provide(PickerRows, useAgentRows),
     provide(ConversationKind, (conversation) =>
       conversation?.label === 'acp' ? 'acp' : undefined,
     ),

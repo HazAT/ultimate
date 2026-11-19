@@ -216,14 +216,17 @@ function Tree({
     (branchesBySource.get(id) ?? [])
       .filter((branch) => !hiddenIds.has(branch.id))
       .flatMap((branch) => [branch, ...branchesBelow(branch.id)])
-  const openBranches = rootRows
-    .flatMap((root) => branchesBelow(root.id))
-    .filter(
-      (branch) =>
-        inFlight(branch, workspaceIndex) &&
-        stillOpen({ conversation: branch, working: working.has(branch.id) }, landings),
-    )
-    .toSorted(newestInputFirst)
+  const externalAgents = listed.filter((conversation) => conversation.label === 'acp')
+  const openBranches = [
+    ...rootRows
+      .flatMap((root) => branchesBelow(root.id))
+      .filter(
+        (branch) =>
+          inFlight(branch, workspaceIndex) &&
+          stillOpen({ conversation: branch, working: working.has(branch.id) }, landings),
+      ),
+    ...externalAgents,
+  ].toSorted(newestInputFirst)
   const rest = listed.filter(
     (conversation) =>
       !roots.has(conversation.id) &&

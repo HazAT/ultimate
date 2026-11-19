@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/command'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
-import { api, cn, errorMessage, useDialog, useUltimate } from '@/sdk'
+import { AllProvided, api, cn, errorMessage, useDialog, useUltimate } from '@/sdk'
+
 import { familyTitle } from '../../lib/families.ts'
 import {
   agentsPanel,
@@ -42,6 +43,7 @@ import {
   usePickerTarget,
 } from './state.tsx'
 import type { ModelInfo, ProviderInfo } from './state.tsx'
+import { PickerRows } from './points.tsx'
 
 const LIMIT = 150
 
@@ -251,6 +253,12 @@ export function ModelPicker() {
                 ))}
               </CommandGroup>
             )}
+            <AllProvided
+              input={{ query, conversation: id, close: () => setOpen(false) }}
+              point={PickerRows}
+            >
+              {(rows) => rows}
+            </AllProvided>
             {groups.map(([provider, items]) => (
               <Fragment key={provider}>
                 <CommandGroup

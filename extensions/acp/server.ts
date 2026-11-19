@@ -26,7 +26,7 @@ import {
   TurnDoc,
 } from './refs.ts'
 import type { AcpSession, AgentSpec, ConfigOption, LiveTool, LiveTurn } from './refs.ts'
-import { toolCall, toolResult } from './tools.ts'
+import { fileLinksAsPaths, toolCall, toolResult } from './tools.ts'
 
 const TEXT_LIMIT = 20_000
 
@@ -191,7 +191,7 @@ async function settleOpen(tx: Tx, id: ConversationId, turn: TurnState, agent: st
   const content: AssistantMessage['content'] =
     block.type === 'thinking'
       ? [{ type: 'thinking', thinking: block.text }]
-      : [{ type: 'text', text: block.text }]
+      : [{ type: 'text', text: fileLinksAsPaths(block.text) }]
   await tx.appendEntry(id, {
     kind: 'pi.assistant',
     model: [assistant(agent, await modelOf(tx, id), content)],
