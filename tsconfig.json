@@ -27,5 +27,5 @@
     "vite.config.ts"
   ],
   "exclude": ["test/web", "extensions/*/test/web"],
-  "references": [{ "path": "./tsconfig.web.json" }]
+  "references": [{ "path": "./tsconfig.web.json" }, { "path": "./tsconfig.solid.json" }]
 }

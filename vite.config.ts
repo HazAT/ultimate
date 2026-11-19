@@ -1,14 +1,29 @@
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import solid from '@solidjs/vite-plugin'
+import solidV2Strict from 'eslint-plugin-solid/configs/v2-strict'
 import { defineConfig } from 'vite-plus'
+
+const solidFiles = /\.solid\.tsx$/
+const uiSdkSolidBuild = /\/@ui-sdk\/solid\/dist\/solid\/.*\.jsx$/
+const solidRules = Object.fromEntries(
+  Object.entries(solidV2Strict.rules as Record<string, number>)
+    .filter(([rule, level]) => rule.startsWith('solid/') && level > 0)
+    .map(([rule]) => [rule, 'error' as const]),
+)
+
 export default defineConfig({
   root: 'web',
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react({ exclude: [solidFiles, /\/node_modules\//] }),
+    solid({ include: [solidFiles, uiSdkSolidBuild] }),
+    tailwindcss(),
+  ],
   resolve: { alias: { '@': fileURLToPath(new URL('web/src', import.meta.url)) } },
   lint: {
-    plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest', 'react'],
-    jsPlugins: ['./lint/ultimate.ts'],
+    plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest'],
+    jsPlugins: ['./lint/ultimate.ts', 'eslint-plugin-solid'],
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
@@ -41,10 +56,12 @@ export default defineConfig({
       },
       {
         files: ['extensions/instance/web.tsx'],
+        plugins: ['react'],
         rules: { 'react/iframe-missing-sandbox': 'off' },
       },
       {
         files: ['web/src/app/transcript.tsx'],
+        plugins: ['react'],
         rules: { 'react/immutability': 'off' },
       },
       {
@@ -201,7 +218,7 @@ export default defineConfig({
       },
       {
         files: ['web/src/**', 'extensions/**/*.tsx'],
-        excludeFiles: ['extensions/*/test/**'],
+        excludeFiles: ['extensions/*/test/**', '**/*.solid.tsx'],
         plugins: ['react'],
         rules: {
           // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
@@ -234,6 +251,27 @@ export default defineConfig({
             },
           ],
         },
+      },
+      {
+        files: ['**/*.solid.tsx'],
+        plugins: ['jsx-a11y'],
+        rules: {
+          ...solidRules,
+          'ultimate/ui-kit-roles': 'error',
+          'jsx-a11y/control-has-associated-label': 'error',
+          'jsx-a11y/label-has-associated-control': 'error',
+          'jsx-a11y/no-static-element-interactions': 'error',
+          'jsx-a11y/click-events-have-key-events': 'error',
+          'jsx-a11y/interactive-supports-focus': 'error',
+          'jsx-a11y/no-noninteractive-element-interactions': 'error',
+          'jsx-a11y/prefer-tag-over-role': 'error',
+          'jsx-a11y/no-autofocus': 'error',
+        },
+      },
+      {
+        files: ['web/**', 'extensions/**', '.ultimate/extensions/**'],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**'],
+        rules: { 'ultimate/ui-framework-boundaries': 'error' },
       },
       {
         // Replaces the browser restriction above for web/src, so it repeats it and adds extensions.

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.web.json",
+  "compilerOptions": {
+    "outDir": "node_modules/.cache/tsc-solid",
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web"
+  },
+  "include": [
+    "web/src/**/*.solid.tsx",
+    "extensions/**/*.solid.tsx",
+    ".ultimate/extensions/**/*.solid.tsx"
+  ],
+  "exclude": [],
+  "references": [{ "path": "./tsconfig.web.json" }]
+}

@@ -105,6 +105,33 @@ const membersOf = (declaration: Node): Node[] =>
   declaration.type === 'TSInterfaceDeclaration'
     ? (((declaration.body as Node | undefined)?.body as Node[] | undefined) ?? [])
     : literals(declaration.typeAnnotation)
+const repositoryPath = (filename: string) =>
+  path.relative(process.cwd(), filename).split(path.sep).join('/')
+const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
+const uiKitFile = (filename: string) =>
+  repositoryPath(filename).startsWith('web/src/components/ui/')
+const sdkFile = (filename: string) => repositoryPath(filename).startsWith('web/src/sdk/')
+const reactOnly =
+  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
+const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
+const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
+const kitRoles = new Map([
+  ['listbox', 'Listbox or Select'],
+  ['menu', 'Menu'],
+  ['menubar', 'Menubar'],
+  ['dialog', 'Dialog'],
+  ['alertdialog', 'AlertDialog'],
+  ['tablist', 'Tabs'],
+  ['tab', 'Tabs'],
+  ['separator', 'Separator'],
+  ['switch', 'Switch'],
+  ['slider', 'Slider'],
+  ['radiogroup', 'Radio'],
+  ['toolbar', 'Toolbar'],
+  ['tree', 'Tree'],
+  ['combobox', 'Combobox'],
+  ['tooltip', 'Tooltip'],
+])
 const onlyDefineEntry = (node: Node) =>
   node.source?.value === '@earendil-works/pi-durable' &&
   node.specifiers?.length === 1 &&
@@ -249,6 +276,60 @@ export default {
                   'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
               })
             }
+          },
+        }
+      },
+    },
+    'ui-framework-boundaries': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const solid = solidFile(context.filename)
+        const check = (node: ImportNode) => {
+          const source = node.source?.value
+          if (typeof source !== 'string') return
+          if (solid && reactOnly.test(source))
+            context.report({
+              node,
+              message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
+            })
+          else if (!solid && !sdkFile(context.filename) && solidOnly.test(source))
+            context.report({
+              node,
+              message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or mount a Solid component through @/sdk instead of importing ${source}.`,
+            })
+          else if (
+            uiSdkComponents.test(source) &&
+            !uiKitFile(context.filename) &&
+            !sdkFile(context.filename)
+          )
+            context.report({
+              node,
+              message: `ui-sdk is in beta and changes weekly, so its components are wrapped once in our UI kit, which also carries the theme. Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.`,
+            })
+        }
+        return {
+          ImportDeclaration: check,
+          ImportExpression: check,
+          ExportNamedDeclaration: check,
+          ExportAllDeclaration: check,
+        }
+      },
+    },
+    'ui-kit-roles': {
+      meta: { schema: [] },
+      create(context: Context) {
+        if (uiKitFile(context.filename)) return {}
+        return {
+          JSXAttribute(node: Node & { name?: Node }) {
+            if (node.name?.name !== 'role') return
+            const role = (node.value as Node | null | undefined)?.value
+            if (typeof role !== 'string') return
+            const component = kitRoles.get(role)
+            if (component)
+              context.report({
+                node,
+                message: `A hand-made role="${role}" lacks the keyboard, focus and ARIA behavior people and agents rely on, and the agent bridge cannot see it. Use the kit's ${component} from @/components/ui.`,
+              })
           },
         }
       },

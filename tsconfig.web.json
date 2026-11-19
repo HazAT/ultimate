@@ -87,5 +87,6 @@
     "extensions/subagents/types.ts",
     "test/web",
     "extensions/*/test/web"
-  ]
+  ],
+  "exclude": ["**/*.solid.tsx"]
 }
