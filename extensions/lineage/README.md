@@ -141,3 +141,7 @@ machine Ultimate runs on; hidden on touch devices), a GitHub link when `origin` 
 (`talkToUltimate`, like mod+0). Memory lives in the sidebar and the Memory surface; the palette's Compact runs
 `compact`. A root's transcript shows no summary or assessment lines; a genesis reset shows a collapsible **Context
 starts here** card, and old notes and inputs still render quietly.
+
+Notes are the agents' coordination, so every conversation folds them to one line: icon, sender, whether it is a note,
+a catch-up or a finished branch, and its first words, opened on click. The `note` call that left one folds the same
+way, naming where it went. A landing stays a full card: it is the tree's result.

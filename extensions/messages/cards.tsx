@@ -56,6 +56,7 @@ import {
   messageStatus,
   outgoingState,
   remoteLabel,
+  routedTo,
   sentBy,
   sentStatus,
 } from './data.tsx'
@@ -434,6 +435,7 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
   const Icon = toUser ? InboxIcon : SendIcon
   return (
     <Fold
+      always
       card={call.id}
       summary={
         <>
@@ -607,6 +609,7 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
   if (origin.from === 'user') return <UserTurn entry={entry} id={origin.id} text={origin.text} />
   return (
     <Fold
+      always
       card={entry.id}
       summary={
         <>
@@ -843,7 +846,12 @@ function ReplyFold({
 }) {
   const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
   const answered = answeredMessages(log.messages, entry.conversationId, entry.id)
-  if (!answered.length || answered.some((m) => !m.reply || m.from === 'user'))
+  const answersTheUser = answered.some((m) => !m.reply || m.from === 'user')
+  const routed = answered.length || answersTheUser ? [] : routedTo(log.messages, entry)
+  const recipients: { id: ConversationId | 'user' | 'remote'; remote?: Remote }[] = answered.length
+    ? answered.map((m) => ({ id: m.from, remote: m.remote }))
+    : routed.map((m) => ({ id: m.to, remote: m.remote }))
+  if (!recipients.length || answersTheUser)
     return text ? (
       <Bubble
         at={at}
@@ -859,10 +867,10 @@ function ReplyFold({
   return (
     <Collapsible className="group/reply">
       <CollapsibleTrigger className="flex cursor-pointer flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70 hover:text-muted-foreground">
-        replied to
-        {answered.map((m) => (
-          <span className="flex min-w-0" key={m.id}>
-            <Address id={m.from} remote={m.remote} />
+        {answered.length ? 'replied to' : 'answered'}
+        {recipients.map((recipient, index) => (
+          <span className="flex min-w-0" key={index}>
+            <Address id={recipient.id} remote={recipient.remote} />
           </span>
         ))}
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/reply:rotate-90" />

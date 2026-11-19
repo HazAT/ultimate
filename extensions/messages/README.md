@@ -172,7 +172,12 @@ There is no Messages surface: everything renders in transcripts. Every sender ha
 - **Cards:** typed messages and replies render as compact cards with Source / Return navigation, showing reply or
   one-way and the delivery mode. A `message` call renders as an outgoing card with its live state; a `branch` call as a
   branch-start card. Final answers name where they went, or "not sent".
+- **Agent traffic folds**, in every conversation and not only in compact mode: a message or reply from another agent,
+  a `message` call to one, an instruction or report from a subagent, a received note, a catch-up and a finished branch
+  fold to one line naming the sender, what it is and its first words, opened on click. Your own inputs and the messages
+  to you stay open, the latter with their answer cards.
 - **Compact mode** (@ultimate's conversation): tool calls and thinking fold into “worked · N steps” rows, while
   messages, branch starts, workspace outcomes, setup cards and answers stay. Its messages to you are bubbles in its
   accent with the answer card beneath; one sent from codemode is a bubble too, under a quiet “sent with codemode” line.
-  An answer routed back to branches folds to “replied to #id”.
+  An answer folds to one line naming where it went: “replied to #id” for the messages it answers, “answered #id” when
+  it was routed to branches; one that also answers you stays open.
