@@ -296,7 +296,7 @@ describe('durable UI state', () => {
     state.set('shell.conversation', 1)
     state.delete('shell.panel')
     await wait()
-    state.flush()
+    await state.flush()
     expect(state.get('shell.conversation')).toBe(1)
     expect(state.get('shell.panel')).toBeUndefined()
     // A later snapshot leaves the page's own writes in place.
@@ -324,7 +324,6 @@ describe('durable UI state', () => {
     expect(writes).toEqual([{ set: { 'ext.keep-warm.open': true }, delete: [] }])
     expect(state.get('shell.conversation')).toBe(1)
     expect(state.get('shell.panelOpen')).toBe(true)
-    // The user moves their own view: the agent's tab keeps its own, and still follows the rest.
     state.receive({ 'shell.conversation': 43, 'ext.keep-warm.open': true, [UI_REVISION]: 9 })
     expect(state.get('shell.conversation')).toBe(1)
     expect(state.get('ext.keep-warm.open')).toBe(true)

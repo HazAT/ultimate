@@ -53,6 +53,7 @@ export function createUiState(
 
   let awaitingRestartSnapshot = false
   let cancelSend: Cancel | undefined
+  const writing = new Set<Promise<unknown>>()
 
   function update() {
     const next: Record<string, JsonValue> = { ...streamSnapshot }
@@ -109,7 +110,7 @@ export function createUiState(
       if ([...unconfirmedLocalWrites.values()].some((entry) => entry.batch === undefined))
         schedule(0)
     }
-    write(change).then(
+    const sent = write(change).then(
       ({ rev }) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
         for (const entry of unconfirmedLocalWrites.values())
@@ -127,6 +128,8 @@ export function createUiState(
         options.onError?.(error)
       },
     )
+    writing.add(sent)
+    void sent.finally(() => writing.delete(sent))
   }
   function set(key: string, value: JsonValue | undefined) {
     if (same(values[key], value)) return
@@ -179,6 +182,7 @@ export function createUiState(
       cancelSend?.()
       cancelSend = undefined
       send(true)
+      return Promise.all(writing).then(() => undefined)
     },
   }
 }

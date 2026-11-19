@@ -8,6 +8,7 @@ import { context } from '../../../../server/harness.ts'
 import { EventFeed } from '../../../../server/events.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { ChangedEvent } from '../../../ui/refs.ts'
+import { UiState } from '../../../../shared/ui-state.ts'
 import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
@@ -16,11 +17,11 @@ afterEach(async () => {
 })
 
 const panel = `/** @jsxImportSource @solidjs/web */
-import { createSignal } from 'solid-js'
 import { Switch, SwitchThumb } from '@ui-sdk/solid/switch'
+import { useExtensionUiState } from '@/sdk/solid'
 
 export function Digest() {
-  const [on, setOn] = createSignal(false)
+  const [on, setOn] = useExtensionUiState('digest', false)
   return (
     <Switch aria-label="Weekly digest" checked={on()} onCheckedChange={(value) => setOn(value)}>
       <SwitchThumb />
@@ -82,7 +83,9 @@ async function serve(settings?: object) {
     ((await server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? [])
       .filter((event) => ChangedEvent.is(event))
       .map((event) => event.data)
-  return { drive, recorded }
+  const uiState = async () =>
+    (await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)) ?? {}
+  return { drive, recorded, uiState }
 }
 
 const digest = { component: 'switch', label: 'Weekly digest', checked: false }
@@ -113,6 +116,26 @@ it('snapshots, queries and acts on ui-sdk controls from the first step, and reco
       device: expect.any(String),
     }),
   ])
+})
+
+it('sends a final keypress’s recorded change and UI state before it closes the page, without pagehide', async () => {
+  const { drive, recorded, uiState } = await serve()
+  const value = await drive([
+    { ui: 'snapshot' },
+    {
+      eval: "addEventListener('pagehide', (event) => event.stopImmediatePropagation(), { capture: true })",
+    },
+    { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
+    { press: ' ' },
+    {
+      eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
+    },
+  ])
+  expect(value(5)).toBe('true')
+  expect(await recorded()).toEqual([
+    expect.objectContaining({ label: 'Weekly digest', value: true, source: 'keyboard' }),
+  ])
+  expect(await uiState()).toMatchObject({ 'ext.digest.digest': true })
 })
 
 it('drives ui-sdk controls with the ui extension off, and records nothing', async () => {

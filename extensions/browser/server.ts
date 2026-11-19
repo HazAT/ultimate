@@ -312,10 +312,7 @@ export default function browserExtension(host: ExtensionHost) {
                                   within: uiStep.within,
                                   kind: uiStep.kind,
                                 })
-                              : ui.act({ steps: uiStep.steps }).then(async (result) => {
-                                  await ui.flush?.()
-                                  return result
-                                })
+                              : ui.act({ steps: uiStep.steps })
                         return work.then(
                           (result: unknown) => ({ result }),
                           (error: unknown) => ({ error: String(error) }),
@@ -430,6 +427,7 @@ export default function browserExtension(host: ExtensionHost) {
   ) {
     const outcomes: string[] = []
     let isolated: BrowserContext | undefined
+    let page: Page | undefined
     const stepMs = args.timeoutMs ?? stepTimeoutMs
     const coldLaunchAndPageSetupMs = Math.max(stepMs, stepTimeoutMs)
     const totalMs = 4 * stepMs + waits
@@ -440,6 +438,11 @@ export default function browserExtension(host: ExtensionHost) {
         ? within(left, work, timeout(totalMs))
         : within(stepMs + extraMs, work)
     }
+    const sendWhatThePageRecorded = (shown: Page) =>
+      guard(shown.evaluate(() => window.ultimate?.ui.flush())).then(
+        () => [],
+        (error: unknown) => [`The page's last UI changes were not sent: ${String(error)}`],
+      )
     const abort = () => void closeContextOrRelaunchBrowser(isolated)
     try {
       const png = screenshotFile(host.home, api.env?.cwd ?? host.projectRoot, args.path)
@@ -488,7 +491,7 @@ export default function browserExtension(host: ExtensionHost) {
         }),
       )
       context.abortSignal?.addEventListener('abort', abort, { once: true })
-      const page = await within(coldLaunchAndPageSetupMs, isolated.newPage())
+      page = await within(coldLaunchAndPageSetupMs, isolated.newPage())
       deadline = Date.now() + totalMs
       page.setDefaultTimeout(stepMs)
       page.setDefaultNavigationTimeout(stepMs)
@@ -514,6 +517,7 @@ export default function browserExtension(host: ExtensionHost) {
       api.output(`Loading ${url}\n`)
       await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
       const result = await action(page, outcomes, png, guard)
+      outcomes.push(...(await sendWhatThePageRecorded(page)))
       const title = await guard(page.title())
       const maps = new Map()
       const readFromRedirectedOrigin = fetchAssets(new URL(page.url()).origin)
@@ -552,9 +556,13 @@ export default function browserExtension(host: ExtensionHost) {
         ],
       }
     } catch (error) {
+      const notSent =
+        page && !context.abortSignal?.aborted ? await sendWhatThePageRecorded(page) : []
       return {
         isError: true,
-        output: [{ type: 'text' as const, text: [String(error), ...outcomes].join('\n') }],
+        output: [
+          { type: 'text' as const, text: [String(error), ...outcomes, ...notSent].join('\n') },
+        ],
       }
     } finally {
       context.abortSignal?.removeEventListener('abort', abort)

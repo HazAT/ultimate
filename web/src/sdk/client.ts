@@ -68,6 +68,7 @@ export const uiState = createUiState(followsSharedUiState ? api.updateUi : undef
 
 /** The page's one ui-sdk agent bridge, created at start so it hears every component; the `ui` facet records its changes. */
 export const uiAgent = createUiAgent(driven)
+uiAgent.onFlush(() => uiState.flush())
 
 export const registry = createRegistry()
 
@@ -184,10 +185,7 @@ addEventListener('popstate', () => {
     replaceSelection = false
   }
 })
-addEventListener('pagehide', () => {
-  uiState.flush()
-  void uiAgent.flush(true)
-})
+addEventListener('pagehide', () => void uiAgent.flush(true))
 
 addEventListener('unhandledrejection', (event) => {
   if (!(event.reason instanceof ActionError)) return
