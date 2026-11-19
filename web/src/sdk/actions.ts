@@ -124,17 +124,17 @@ export const actions: UltimateActions = {
   close: (dialog) => store.setUi({ dialogs: { ...store.getState().ui.dialogs, [dialog]: false } }),
   openPalette: () => store.setUi({ paletteOpen: true }),
 
-  focusComposer: () =>
-    [
-      document.getElementById('composer-input'),
-      ...document.querySelectorAll('[data-composer-target] textarea'),
-    ]
-      .find(function isUncoveredComposer(input): input is HTMLElement {
-        return input instanceof HTMLElement && !input.closest('[inert]')
-      })
-      ?.focus(),
+  focusComposer: () => uncoveredComposer()?.focus(),
   setTheme: (theme) => store.setUi({ theme }),
 }
+
+export const uncoveredComposer = () =>
+  [
+    document.getElementById('composer-input'),
+    ...document.querySelectorAll('[data-composer-target] textarea'),
+  ].find(function isUncoveredComposer(input): input is HTMLElement {
+    return input instanceof HTMLElement && !input.closest('[inert]')
+  })
 
 export function runCommand(id: string, context: UltimateContext = currentContext()) {
   const command = allCommands().find((candidate) => candidate.id === id)

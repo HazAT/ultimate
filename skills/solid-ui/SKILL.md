@@ -25,14 +25,14 @@ bugs. The skills that the libraries ship match the exact pinned versions: read t
 The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` file compiles with Solid and lints with the
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
-([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Kbd and KbdGroup,
-NumberInput, Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in
-`status-trigger.solid.tsx`), Switch and Tooltip. Import from `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component
-exists. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status
-chips of setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension
-renders (mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
-`const McpDetails = island(Details)`. Icons come
-from `@lucide/solid`.
+([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Collapsible,
+Command, Dialog, DropdownMenu, HoverCard, Kbd and KbdGroup, NumberInput, Popover, Row and Rows, SegmentedControl,
+Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch and Tooltip. Import from
+`@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component exists.
+`extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status chips of
+setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension renders
+(mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
+`const McpDetails = island(Details)`. Icons come from `@lucide/solid`.
 
 ## Ultimate's rules (on top of those skills)
 
@@ -86,6 +86,10 @@ from `@lucide/solid`.
     `every` takes `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while a server connects), never a
     second reader or an effect that writes the interval.
   - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
+  - For a polled list whose objects are replaced on each fetch, `<For keyed={(row) => row.id}>` keeps each row's DOM
+    by id and gives the child an item accessor. The default keys by object identity.
+  - When extracting a browser helper to `.ts`, add it to `tsconfig.web.json`'s `include`. A `.ts` helper shared by
+    React and Solid imports neither SDK entry nor its internals: pass SDK functions in from the caller or use `lib/`.
 - **ui-sdk facts that tripped agents here:**
   - Popups render in the browser's top layer, not a portal: they stay in their trigger's DOM tree and inherit its
     text styles (a status line's `whitespace-nowrap`, `font-mono`). Kit popups reset the inherited text styles.
@@ -97,7 +101,36 @@ from `@lucide/solid`.
     mounted (hidden when closed) so it can name an icon-only trigger before focus. In jsdom, dispatch a Tab `keydown`
     before `.focus()` to test the keyboard path, and `await settle()` for the deferred accessible name.
   - A closed popover hides its controls from the agent bridge: `snapshot()` shows only the popover, so open it first
-    (`setOpen(true)` through `act`).
+    (`setOpen(true)` through `act`). For a menu or dialog, `press` with an inner action's text can open it for you;
+    a destructive menu item needs a `confirm` sentence, which the bridge checks before pressing it.
+  - Put `DropdownMenuLabel` inside `DropdownMenuGroup` or `DropdownMenuRadioGroup`. The SDK's `MenuGroupLabel`
+    throws without one, unlike the React label.
+  - Menu and Command `onAction` details have an optional `event`, but no `source`; item `onSelect` takes only an
+    event. Their open, radio value and query change callbacks do carry `details.source`.
+  - Command's default filter is `fuzzy`: letters in order anywhere, keywords included, so `verif` matches a long
+    description that merely holds those letters (cmdk's scorer did too, ranked lower). The skill picker narrows
+    it on purpose with `filter="contains"`; choose that for items with long `keywords`.
+  - To move focus somewhere other than the opener when a dialog closes (the composer after a choice), set
+    `DialogContent`'s `finalFocus` to a function that returns that element only then, and an element a person
+    can reach (`uncoveredComposer()`, not `#composer-input` behind a side chat), and write to that element's
+    own conversation (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own
+    return to the trigger when there is no exit animation (reduced motion, jsdom). Clear the remembered
+    target in an effect on the controlled `open` accessor, and look the target up there too, before the
+    modal makes the page inert (inside the dialog every outside element counts as covered; jsdom does not
+    apply that inertness, so check it in a browser). Remember an id (the conversation), never the element:
+    the composer remounts while a view loads, and a kept node is detached by the time you focus it. Resolve
+    the element inside `finalFocus`, and fall back to the shown conversation when no composer is mounted: a command or `useDialog` opening it never calls
+    `onOpenChange(true)`, and `onOpenChangeComplete(true)` comes only after the entrance transition, too late
+    for an Escape during it.
+  - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it
+    with `not-data-empty:hidden`; a padded empty part otherwise leaves a blank band above the list. Compare a moved
+    usage with its React original side by side on the host before calling it the same.
+  - On a composed `CommandItem`, `label` is the text search matches and `keywords` are extra search terms. The
+    accessible name comes from the rendered text or `aria-label`; the agent bridge uses the rendered text.
+  - The installed Solid SDK bundles Permissions into `docs/agents.md#permissions`. A refused `act` puts the message
+    in `result.error.message`, not in `steps` (only completed steps go there).
+  - Check modal Tab wrapping in a real browser: jsdom can verify initial focus, Escape and focus return, but does not
+    implement native tab navigation or enforce inertness.
   - Packages that ship raw JSX under the `solid` export condition (ui-sdk, `@lucide/solid`) must be in the Solid
     plugin's `include` in `vite.config.ts`, or Vite compiles them with React's runtime. After changing that list,
     delete `node_modules/.vitest-cache`.
@@ -108,6 +141,8 @@ from `@lucide/solid`.
     the anchor (`jsx-a11y/anchor-has-content` cannot see Button's children).
   - NumberInput's agent `setValue` fires `onValueChange`, not `onValueCommit`; Slider's agent action is `setValue` on
     its labelled thumb.
+  - Collapsible unmounts the panel's children when closed by default. Keep local state that should survive a collapse
+    in the owner outside the panel, or use `keepMounted` when the children themselves must survive.
   - An inline `<svg>` drawing is named by `aria-label` and a `<title>`, not `role="img"` (`jsx-a11y/prefer-tag-over-role`).
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a

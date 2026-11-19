@@ -317,7 +317,25 @@ export function useCommands() {
 }
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
-export const { switchConversation, showSurface, runCommand } = actions
+export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions
+/** The composer input a person can type into now (the main one or a side chat's); `dataset.conversation` is its conversation. */
+export { uncoveredComposer } from './actions.ts'
+/** Replaces the draft in conversation `id`'s composer with `text`, as `fillComposer` from `@/sdk` does. */
+export { fillComposer } from '../app/drafts.ts'
+
+/** The conversation `ConversationScope` gives, or the shown one once known. */
+export function useConversationId(): Accessor<ConversationId | undefined> {
+  const { state } = shared()
+  const scoped = useContext(ConversationScope)
+  return createMemo(() => scoped ?? state().view?.conversation.id)
+}
+
+/** Whether dialog `id` is open, and a setter, as `useDialog` from `@/sdk` gives them. */
+export function useDialog(id: string): [Accessor<boolean>, (open: boolean) => void] {
+  const { state } = shared()
+  const open = createMemo(() => state().ui.dialogs[id] === true)
+  return [open, (next) => (next ? actions.open(id) : actions.close(id))]
+}
 
 /** Shows a notice in the page's notice stack, as a failed command does. */
 export const notify = (notice: Parameters<typeof store.notify>[0]) => store.notify(notice)

@@ -89,7 +89,8 @@ export { scopeOf } from './conversation-scope.tsx'
 /** Mounts a Solid component (`*.solid.tsx`) where React renders; its code uses `@/sdk/solid`. */
 export { island } from './island.tsx'
 /** Sends what the composer inside it submits somewhere else, such as a new side chat; see `composer` renderers. */
-export { Composer, ComposerRedirect, fillComposer, insertIntoComposer } from '../app/composer.tsx'
+export { Composer, ComposerRedirect } from '../app/composer.tsx'
+export { fillComposer, insertIntoComposer } from '../app/drafts.ts'
 export type { ComposerTarget } from '../app/composer.tsx'
 export { api, bundle, switched } from './client.ts'
 /** The page's ui-sdk agent bridge: `bridge()` drives and observes its components. */
