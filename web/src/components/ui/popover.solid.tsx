@@ -14,7 +14,7 @@ function PopoverContent(props: ComponentProps<typeof PopoverContentRoot> & { cla
     <PopoverContentRoot
       {...rest}
       class={cn(
-        'z-50 w-72 origin-(--transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden',
+        'z-50 w-72 origin-(--transform-origin) rounded-md border bg-popover p-4 text-left font-sans text-[14px] font-normal tracking-normal whitespace-normal text-popover-foreground normal-case shadow-md outline-hidden',
         props.class,
       )}
     />

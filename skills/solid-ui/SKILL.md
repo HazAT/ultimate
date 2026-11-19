@@ -64,6 +64,17 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   - A context created without a default throws when nothing provides it, and a provider passing `undefined` counts as
     nothing. For an optional context, declare a `null` default and provide `null`, as `ExtensionName` does.
   - `solid/reactivity` rejects memos built inside an array literal; give each memo its own name.
+- **ui-sdk facts that tripped agents here:**
+  - Popups render in the browser's top layer, not a portal: they stay in their trigger's DOM tree and inherit its
+    text styles (a status line's `whitespace-nowrap`, `font-mono`). Kit popups reset the inherited text styles.
+  - A closed popover hides its controls from the agent bridge: `snapshot()` shows only the popover, so open it first
+    (`setOpen(true)` through `act`).
+  - Packages that ship raw JSX under the `solid` export condition (ui-sdk, `@lucide/solid`) must be in the Solid
+    plugin's `include` in `vite.config.ts`, or Vite compiles them with React's runtime. After changing that list,
+    delete `node_modules/.vitest-cache`.
+  - Under fake timers `agent.act` never settles: advance timers while it runs (`vi.advanceTimersByTimeAsync`), and do
+    not `settle()` under fake timers.
+  - Each kit form control a `<label>` wraps goes in `jsx-a11y/label-has-associated-control`'s `controlComponents`.
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a
   report to the coordinator, with the code and the rule.
