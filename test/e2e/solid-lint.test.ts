@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { cleanEnv, temp } from '../helpers.ts'
+import { cleanEnv, sourceCopy, temp } from '../helpers.ts'
 
 const run = promisify(execFile)
 
@@ -76,15 +76,17 @@ interface Diagnostic {
 }
 
 it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules on React files', async () => {
-  const folder = await temp('solid-lint-', resolve('extensions'))
+  const source = await sourceCopy(await temp())
+  const folder = join(source, 'extensions/solid-lint')
+  const testFolder = join(source, 'test/web/solid-lint')
+  const projectFolder = join(source, '.ultimate/extensions/solid-lint')
+  for (const created of [folder, testFolder, projectFolder])
+    await mkdir(created, { recursive: true })
   await writeFile(join(folder, 'mistakes.solid.tsx'), solidMistakes)
   await writeFile(join(folder, 'twin.tsx'), reactMistakes)
   await writeFile(join(folder, 'line-pragma.solid.tsx'), lineCommentPragma)
   await writeFile(join(folder, 'field.solid.tsx'), validRef)
-  const testFolder = await temp('solid-lint-', resolve('test/web'))
   await writeFile(join(testFolder, 'untyped.solid.tsx'), 'export const a = 1\n')
-  await mkdir(resolve('.ultimate/extensions'), { recursive: true })
-  const projectFolder = await temp('solid-lint-', resolve('.ultimate/extensions'))
   await writeFile(join(projectFolder, 'node.solid.tsx'), nodeImport)
 
   const lint = await run(
@@ -95,18 +97,19 @@ it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules
       'lint',
       '--format',
       'json',
-      relative('.', folder),
-      relative('.', testFolder),
-      relative('.', projectFolder),
+      relative(source, folder),
+      relative(source, testFolder),
+      relative(source, projectFolder),
     ],
     {
+      cwd: source,
       env: cleanEnv(),
     },
   ).catch((error: { stdout: string }) => error)
   const diagnostics = (JSON.parse(lint.stdout) as { diagnostics: Diagnostic[] }).diagnostics
   const name = (file: string) =>
     [folder, testFolder, projectFolder]
-      .map((root) => relative(root, file))
+      .map((root) => relative(root, resolve(source, file)))
       .find((path) => !path.startsWith('..'))
   const found = diagnostics.map((diagnostic) => `${name(diagnostic.filename)} ${diagnostic.code}`)
 
