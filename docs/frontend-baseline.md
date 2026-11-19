@@ -10,19 +10,21 @@ on one machine. Speed numbers drift with machine load: compare within one sessio
 ### Code and bundle: `node scripts/frontend-weight.ts`
 
 Non-blank lines of `web/src/**/*.{ts,tsx,css}` and every `extensions/*/**/*.tsx`, tests excluded; the production
-bundle as `server/web-build.ts` builds it for this checkout, with no user or project extensions.
+bundle as `server/web-build.ts` builds it for this checkout, with no user or project extensions. Entry assets
+(`entryAssetsGzip`) counts only the JS and CSS the HTML links; the facets the page loads at startup come on top, so it
+is not the whole first load.
 
-| Measure                           |  Baseline |
-| --------------------------------- | --------: |
-| Front-end lines                   |    50 526 |
-| of which `web/src`                |    10 793 |
-| of which `extensions/**/*.tsx`    |    39 733 |
-| of which Solid (`.solid.tsx`)     |       126 |
-| Files                             |       269 |
-| Bundle JS, all chunks             | 13 658 KB |
-| Bundle JS, all chunks, gzip       |  2 923 KB |
-| CSS, gzip                         |     24 KB |
-| First load (entry JS + CSS), gzip |    449 KB |
+| Measure                        |  Baseline |
+| ------------------------------ | --------: |
+| Front-end lines                |    50 526 |
+| of which `web/src`             |    10 793 |
+| of which `extensions/**/*.tsx` |    39 733 |
+| of which Solid (`.solid.tsx`)  |       126 |
+| Files                          |       269 |
+| Bundle JS, all chunks          | 13 658 KB |
+| Bundle JS, all chunks, gzip    |  2 923 KB |
+| CSS, gzip                      |     24 KB |
+| Entry assets (JS + CSS), gzip  |    449 KB |
 
 ### Conversation switching: the `measure-switch` skill
 

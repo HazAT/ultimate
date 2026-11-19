@@ -75,7 +75,7 @@ try {
           jsGzip: kb(bundle.jsGzip),
           css: kb(bundle.css),
           cssGzip: kb(bundle.cssGzip),
-          firstLoadGzip: kb(entryGzip),
+          entryAssetsGzip: kb(entryGzip),
         },
         heaviest: counted
           .toSorted((a, b) => b.lines - a.lines)
