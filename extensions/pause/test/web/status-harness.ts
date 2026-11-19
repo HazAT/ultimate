@@ -57,6 +57,9 @@ import { PauseDoc } from '../../refs.ts'
 export const approval = { given: true }
 export const agent = createAgent({ allow: (step) => !step.confirm || approval.given })
 export const actions = harness.actions
+export const state = () => harness.state
+export const server = () => harness.server!
+export const stream = () => harness.sources.at(-1)!
 harness.server = fakeSubscriptions(harness.sources)
 const updateDoc = () => {
   const { paused, autoPlay } = harness.state

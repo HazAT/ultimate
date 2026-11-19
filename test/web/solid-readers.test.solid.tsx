@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { flush } from 'solid-js'
+import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'
 import { defineEvent } from '../../shared/events.ts'
@@ -128,11 +128,17 @@ it('gives up when the new generation never serves', async () => {
   expect(restart.error()).toBe('Generation 2 did not start serving within 5 s.')
 })
 
-it('reads the newest events of the kinds asked for, newest first', async () => {
+it('reads the newest events of the kinds asked for, newest first, following the options', async () => {
   const Wanted = defineEvent<{ n: number }>('test.wanted')
+  const [limit, setLimit] = createSignal(2)
   let latest!: ReturnType<typeof useEvents<typeof Wanted>>
   renderSolid(() => {
-    latest = useEvents({ events: [Wanted], limit: 2 })
+    latest = useEvents({
+      events: [Wanted],
+      get limit() {
+        return limit()
+      },
+    })
     return null
   })
   await vi.advanceTimersByTimeAsync(10)
@@ -151,6 +157,9 @@ it('reads the newest events of the kinds asked for, newest first', async () => {
   await vi.advanceTimersByTimeAsync(10)
   flush()
   expect(latest()?.map((event) => event.data.n)).toEqual([4, 3])
+  setLimit(3)
+  flush()
+  expect(latest()?.map((event) => event.data.n)).toEqual([4, 3, 1])
 })
 
 it('hears bus events while mounted', () => {

@@ -24,6 +24,7 @@ import type { EventData, EventRecord, EventToken } from '../../../shared/events.
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import { actions, allCommands } from './actions.ts'
+import type { CommandItem } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
 import { api as client, reads, registry, store, uiState } from './client.ts'
@@ -286,15 +287,14 @@ export function useEvents<T extends EventToken = EventToken>(
   options: { events?: readonly T[]; limit?: number } = {},
 ): Accessor<readonly EventRecord<EventData<T>>[] | undefined> {
   const feed = useDocOf(() => ROOT, eventFeed)
-  const wanted = options.events?.map((event) => event.kind)
-  const limit = options.limit ?? 20
   return createMemo(() => {
     const value = feed()
     if (value === undefined) return undefined
+    const wanted = options.events?.map((event) => event.kind)
     return (value?.events ?? [])
       .filter((event) => !wanted || wanted.includes(event.kind))
       .toReversed()
-      .slice(0, limit) as EventRecord<EventData<T>>[]
+      .slice(0, options.limit ?? 20) as EventRecord<EventData<T>>[]
   })
 }
 
@@ -303,18 +303,17 @@ export function useEvent(channel: string, handler: (data: unknown) => void) {
   onSettled(() => events.on(channel, handler))
 }
 
-let installed: Accessor<ReturnType<typeof registry.getSnapshot>> | undefined
+let commands: Accessor<CommandItem[]> | undefined
 
 /** Core and extension commands, as the palette lists them. */
 export function useCommands() {
-  const extensions = (installed ??= runWithOwner(null, () =>
+  return (commands ??= runWithOwner(null, () =>
     createRoot(() => {
       const [records, setRecords] = createSignal(registry.getSnapshot())
       registry.subscribe(() => setRecords(registry.getSnapshot()))
-      return records
+      return createMemo(() => allCommands(records()))
     }),
   ))
-  return createMemo(() => allCommands(extensions()))
 }
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
