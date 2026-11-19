@@ -147,6 +147,21 @@ it('sends a final keypress’s UI-state write, with its event, before it closes 
   ])
 })
 
+it('sends a final keypress’s UI-state write on pagehide when the page goes', async () => {
+  const { drive, recorded, uiState } = await serve()
+  await drive([
+    { ui: 'snapshot' },
+    { eval: 'document.querySelector(\'[aria-label="Weekly digest"]\').focus()' },
+    { press: ' ' },
+    { eval: "location.href = 'about:blank'" },
+    { wait: 'body' },
+  ])
+  expect(await uiState()).toMatchObject({ 'ext.digest.digest': true })
+  expect(await recorded()).toEqual([
+    expect.objectContaining({ key: 'ext.digest.digest', value: true, source: 'person' }),
+  ])
+})
+
 it('records nothing from the agent when it opens and closes a popover', async () => {
   const { drive, changes } = await serve()
   const value = await drive([
