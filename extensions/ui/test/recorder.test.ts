@@ -81,3 +81,20 @@ it('cuts a long name to the server’s limit, so its batch is recorded with the 
     expect.objectContaining({ label: 'Also short' }),
   ])
 })
+
+it('waits in flush for a batch the timer already sent, so a closing page keeps it', async () => {
+  const delivered = Promise.withResolvers<void>()
+  const recording = createRecorder({
+    driven: false,
+    locate: () => ({}),
+    send: () => delivered.promise,
+  })
+  recording.observe(change('Keep warm', true))
+  await vi.advanceTimersByTimeAsync(500)
+  let flushed = false
+  const flushing = recording.flush(false).then(() => (flushed = true))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(flushed).toBe(false)
+  delivered.resolve()
+  await flushing
+})

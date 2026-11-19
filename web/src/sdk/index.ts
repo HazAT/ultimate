@@ -84,6 +84,8 @@ export { useTranscriptScroll } from '../app/transcript.tsx'
 /** Renders with the values other extensions provide for your point, or through them (`Rendered`); see `definePoint`. */
 export { AllProvided, Provided, Rendered } from '../app/boundary.tsx'
 export { ConversationScope } from './conversation-scope.tsx'
+/** The conversation of the `ConversationScope` around an element, or undefined outside every scope. */
+export { scopeOf } from './conversation-scope.tsx'
 /** Mounts a Solid component (`*.solid.tsx`) where React renders; its code uses `@/sdk/solid`. */
 export { island } from './island.tsx'
 /** Sends what the composer inside it submits somewhere else, such as a new side chat; see `composer` renderers. */

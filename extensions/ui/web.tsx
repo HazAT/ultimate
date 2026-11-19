@@ -7,6 +7,7 @@ import {
   formatTime,
   getState,
   provide,
+  scopeOf,
   uiAgent,
   useEvents,
 } from '@/sdk'
@@ -18,11 +19,12 @@ function Recorder() {
   useEffect(() => {
     const recorder = createRecorder({
       driven: uiAgent.driven,
-      locate: () => {
+      locate: (element) => {
         const { ui, view } = getState()
+        const conversation = scopeOf(element ?? null) ?? view?.conversation.id
         return {
           ...(ui.surface ? { surface: ui.surface.id } : {}),
-          ...(view ? { conversation: view.conversation.id } : {}),
+          ...(conversation === undefined ? {} : { conversation }),
         }
       },
       send: (batch, keepalive) =>

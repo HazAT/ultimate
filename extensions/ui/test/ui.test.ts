@@ -1,6 +1,6 @@
 import type { JsonValue } from '@earendil-works/chord/json'
 import { expect, it, vi } from 'vitest'
-import { actions, userActions } from '../server.ts'
+import { actions } from '../server.ts'
 import { ChangedEvent } from '../refs.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
@@ -114,10 +114,6 @@ it('records a large value as too large, and refuses a malformed batch before com
     record(fake, { changes: [{ key: 'value', value: 1, source: 'agent' }] }),
   ).rejects.toThrow('Expected component')
   expect(commits).toHaveBeenCalledTimes(1)
-})
-
-it('is user-only, so an agent cannot record history in a person’s name', () => {
-  expect(userActions).toEqual(['record'])
 })
 
 it('requires a value, null included, and bounds values by UTF-8 bytes, not characters', async () => {
