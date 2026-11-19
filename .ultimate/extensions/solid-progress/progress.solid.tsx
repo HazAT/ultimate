@@ -613,7 +613,7 @@ function StepBar(props: { data: Data; step: ReturnType<typeof useStep> }) {
           </div>
         </div>
       </div>
-      <div class="mt-2 flex items-baseline gap-3 font-mono text-[11px]">
+      <div class="mt-2 flex items-baseline gap-3 font-mono text-[11px] whitespace-nowrap">
         <Show
           fallback={
             <>
