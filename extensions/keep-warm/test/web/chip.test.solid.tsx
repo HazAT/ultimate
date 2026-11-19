@@ -93,10 +93,11 @@ it('shows the warm chip, opens its popover, and sends a person’s click as thei
 it('stays on screen and actable while the page switches to another conversation', async () => {
   const container = await mountChip()
   const calls = harness.actions.length
+  const chip = container.querySelector('[data-keep-warm]')
+  const trigger = agent.snapshot().find((entry) => entry.label === "Keep @ultimate's cache warm")
   store.show(parseConversationId(42))
   flush()
-  expect(container.querySelector('[data-keep-warm]')).not.toBeNull()
-  const trigger = agent.snapshot().find((entry) => entry.label === "Keep @ultimate's cache warm")
+  expect(container.querySelector('[data-keep-warm]')).toBe(chip)
   expect(await act([{ ref: trigger!.ref, action: 'setOpen', args: [true] }])).toMatchObject({
     ok: true,
   })

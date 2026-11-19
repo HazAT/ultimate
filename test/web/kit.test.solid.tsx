@@ -6,6 +6,8 @@ import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
+import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
+import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { actionRef, api, useUiState } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../shared/protocol.ts'
@@ -106,6 +108,52 @@ it('round-trips Checkbox binding through an agent change and a person click', as
   expect(
     request.mock.calls.map(([, init]) => new Headers(init?.headers).get(SOURCE_HEADER)),
   ).toEqual(['agent', 'person'])
+})
+
+it('lets an agent open a tooltip and a status popover by their names', async () => {
+  const container = renderSolid(() => (
+    <>
+      <Tooltip>
+        <TooltipTrigger aria-label="Archive help">
+          <Info aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent>About archiving</TooltipContent>
+      </Tooltip>
+      <Popover>
+        <StatusPopoverTrigger aria-label="Status details">status</StatusPopoverTrigger>
+        <PopoverContent>Everything is fine</PopoverContent>
+      </Popover>
+    </>
+  ))
+  await settle()
+  const result = await agent.act({
+    steps: [
+      { ref: refFor('Archive help'), action: 'setOpen', args: [true] },
+      { ref: refFor('Status details'), action: 'setOpen', args: [true] },
+    ],
+  })
+  expect(result.ok).toBe(true)
+  flush()
+  await settle()
+  expect(container.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+    'About archiving',
+  )
+  expect(container.querySelector('[aria-label="Status details"]')?.hasAttribute('data-open')).toBe(
+    true,
+  )
+  expect(container.textContent).toContain('Everything is fine')
+})
+
+it('dims a disabled button that stays focusable', () => {
+  const container = renderSolid(() => (
+    <Button disabled focusableWhenDisabled>
+      Archive
+    </Button>
+  ))
+  const button = container.querySelector('button')!
+  expect(button.disabled).toBe(false)
+  expect(button.hasAttribute('data-disabled')).toBe(true)
+  expect(button.className).toContain('data-disabled:opacity-50')
 })
 
 it('names an icon-only trigger before focus and opens its tooltip on focus', async () => {
