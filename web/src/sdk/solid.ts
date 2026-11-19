@@ -17,8 +17,12 @@ import {
   useContext,
 } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import type { DocRef } from '../../../shared/extension-api.ts'
-import { store, uiState } from './client.ts'
+import type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
+import { every } from '../../../lib/timers.ts'
+import { ROOT } from './api.ts'
+import type { ActionArgs, ActionError } from './api.ts'
+import { reads, store, uiState } from './client.ts'
+import type { ReadState, Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
@@ -28,6 +32,7 @@ export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export { formatAgo, formatBytes, formatDuration, formatTime, formatTokens } from './format.ts'
 export { formatKeys } from './keys.ts'
+export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
 
 /** The extension whose contribution renders here; `island` provides it. */
@@ -150,6 +155,68 @@ export function useUiState<T extends JsonValue>(
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
 export function useExtensionUiState<T extends JsonValue>(key: string, initial: T) {
   return useUiState(extensionUiKey(useContext(ExtensionName), key), initial)
+}
+
+/** Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again. */
+export type UseActionOptions = {
+  onError?: (error: ActionError) => void
+  on?: Accessor<unknown>
+  every?: number
+  focus?: boolean
+}
+
+/**
+ * The server action `ref` names, called with `args` as `useAction` from `@/sdk` calls it and sharing its result: on
+ * mount, when `on()` changes, every `every` ms, on focus with `focus`, and after a restart. Each field is an accessor.
+ */
+export function useAction<Args, T>(
+  ref: ActionRef<Args, T>,
+  ...[args, options = {}]: ActionArgs<Args, UseActionOptions>
+) {
+  const { state } = shared()
+  const scoped = useContext(ConversationScope)
+  const read = createMemo(() => {
+    const { view, requested } = state()
+    const conversation = scoped ?? view?.conversation.id ?? requested ?? ROOT
+    return reads.get(ref.extension, ref.name, args, conversation)
+  })
+  const [current, setCurrent] = createSignal<ReadState>(() => read().get())
+  const reader: Reader = { onError: options.onError, every: options.every, focus: options.focus }
+  createEffect(read, (next) => {
+    const unsubscribe = next.subscribe(() => setCurrent(next.get()))
+    const release = next.use(reader)
+    return () => {
+      unsubscribe()
+      release()
+    }
+  })
+  const on = createMemo(() => JSON.stringify(options.on?.() ?? null))
+  createEffect(
+    () => ({ read: read(), on: on() }),
+    (next, previous) => {
+      if (previous?.read === next.read && previous.on !== next.on) void next.read.refetch()
+    },
+  )
+  return {
+    data: () => current().data as T | undefined,
+    error: () => current().error,
+    loading: () => current().loading || !current().settled,
+    refetch: () => read().refetch() as Promise<T | undefined>,
+  }
+}
+
+/** The current time, updated every `intervalMs` while `active()`. */
+export function useNow(
+  intervalMs = 1000,
+  active: Accessor<boolean> = () => true,
+): Accessor<number> {
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(active, (on) => {
+    if (!on) return undefined
+    setNow(Date.now())
+    return every(intervalMs, () => setNow(Date.now()))
+  })
+  return now
 }
 
 const selected =
