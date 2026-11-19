@@ -319,7 +319,10 @@ export default defineConfig({
           'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
           'jsx-a11y/control-has-associated-label': 'error',
-          'jsx-a11y/label-has-associated-control': ['error', { controlComponents: ['Switch'] }],
+          'jsx-a11y/label-has-associated-control': [
+            'error',
+            { controlComponents: ['Switch', 'Checkbox'] },
+          ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
           'jsx-a11y/interactive-supports-focus': 'error',
