@@ -7,6 +7,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.ts'
+import { redactSecrets } from '../../lib/redact.ts'
 import {
   chapterFiles,
   chapterName,
@@ -119,25 +120,25 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
     ).map((row) => ({ ...row, avgMs: Math.round(row.avgMs) }))
     const groups = db
       .prepare(
-        "SELECT name, substr(error, 1, 160) AS error, count(*) AS count FROM calls WHERE kind = 'tool' AND ok = 0 GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20",
+        "SELECT name, substr(error, 1, 160) AS prefix, count(*) AS count FROM calls WHERE kind = 'tool' AND ok = 0 GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20",
       )
-      .all() as { name: string; error: string; count: number }[]
+      .all() as { name: string; prefix: string; count: number }[]
     const sample = db.prepare(
-      "SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
+      "SELECT conversation, entry, error FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
     )
-    const errors = groups.map((group) => ({
-      ...group,
-      examples: (
-        sample.all(group.name, group.error) as {
-          conversation: ConversationId | null
-          entry: number | null
-          args: string | null
-        }[]
-      ).map((row) => ({
-        at: `#${row.conversation ?? '?'}${row.entry === null ? '' : `/${row.entry}`}`,
-        args: row.args ?? '',
-      })),
-    }))
+    const errors = groups.map(({ name, prefix, count }) => {
+      const rows = sample.all(name, prefix) as {
+        conversation: ConversationId | null
+        entry: number | null
+        error: string
+      }[]
+      return {
+        name,
+        error: rows[0] ? redactSecrets(rows[0].error).slice(0, 160) : '',
+        count,
+        examples: rows.map(({ conversation, entry }) => ({ conversation, entry })),
+      }
+    })
     const used = new Set(tools.map((tool) => tool.name))
     return {
       ...(window.since === null ? {} : { since: window.since }),

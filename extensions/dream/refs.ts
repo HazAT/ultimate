@@ -87,12 +87,12 @@ export type ToolStats = {
   calls: number
   tools: { name: string; calls: number; failed: number; avgMs: number }[]
   unused: string[]
-  /** The most frequent errors, each with its two newest calls: `#<conversation>/<entry>` and the start of its args. */
+  /** The most frequent errors, secret-shaped text masked, each with its two newest calls as pointers, never their args. */
   errors: {
     name: string
     error: string
     count: number
-    examples: { at: string; args: string }[]
+    examples: { conversation: number | null; entry: number | null }[]
   }[]
 }
 /** No arguments → tool statistics from `trace.sqlite`, no model involved. */

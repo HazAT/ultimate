@@ -394,9 +394,59 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
         name: 'edit',
         error: 'Could not find the exact text',
         count: 1,
-        examples: [{ at: '#7/42', args: '{"path":"a.ts"}' }],
+        examples: [{ conversation: 7, entry: 42 }],
       },
     ],
   })
   expect(toolStats(join(await temp(), 'none.sqlite'), ['read']).unused).toEqual(['read'])
+})
+
+it('keeps failed calls out of dream stats: no args, and secrets in errors masked', async () => {
+  const file = join(await temp(), 'trace.sqlite')
+  const db = new DatabaseSync(file)
+  db.exec(
+    'CREATE TABLE calls (id TEXT, at REAL, ms REAL, kind TEXT, name TEXT, ok INTEGER, error TEXT, args TEXT, conversation INTEGER, entry INTEGER)',
+  )
+  const insert = db.prepare('INSERT INTO calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  insert.run(
+    '1',
+    100,
+    5,
+    'tool',
+    'bash',
+    0,
+    'Error: 401 for Authorization: Bearer abc.def.ghi with api_key=sk-test0123456789abcdef',
+    '{"command":"curl -H \'Authorization: Bearer abc.def.ghi\' https://x"}',
+    8,
+    9,
+  )
+  insert.run(
+    '2',
+    200,
+    5,
+    'tool',
+    'read',
+    0,
+    `${'.'.repeat(149)} ghp_${'abcdefghij'.repeat(4)}`,
+    null,
+    1,
+    2,
+  )
+  db.close()
+  const stats = toolStats(file, ['bash', 'read'])
+  expect(stats.errors).toEqual([
+    {
+      name: 'bash',
+      error: 'Error: 401 for Authorization: Bearer [redacted] with api_key=[redacted]',
+      count: 1,
+      examples: [{ conversation: 8, entry: 9 }],
+    },
+    {
+      name: 'read',
+      error: `${'.'.repeat(149)} [redacted]`,
+      count: 1,
+      examples: [{ conversation: 1, entry: 2 }],
+    },
+  ])
+  expect(JSON.stringify(stats)).not.toMatch(/abc\.def|sk-test|curl|ghp_/)
 })
