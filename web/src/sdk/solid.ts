@@ -77,8 +77,6 @@ function createReplica() {
   const [docs, setDocs] = createStore<Record<string, Doc>>({})
   const [state, setState] = createSignal(store.getState())
   const [ui, setUi] = createSignal(uiState.snapshot())
-  const [extensions, setExtensions] = createSignal(registry.getSnapshot())
-  registry.subscribe(() => setExtensions(registry.getSnapshot()))
   const watched = new Map<string, { target: Target; kind: string; readers: number; seen: Doc }>()
 
   const follow = (key: string, next: Doc) =>
@@ -103,7 +101,6 @@ function createReplica() {
   return {
     state,
     ui,
-    extensions,
     read(target: Target, kind: string): Doc {
       const key = replicaKey(target, kind)
       const value = docs[key]
@@ -291,9 +288,17 @@ export function useEvent(channel: string, handler: (data: unknown) => void) {
   onSettled(() => events.on(channel, handler))
 }
 
+let installed: Accessor<ReturnType<typeof registry.getSnapshot>> | undefined
+
 /** Core and extension commands, as the palette lists them. */
 export function useCommands() {
-  const { extensions } = shared()
+  const extensions = (installed ??= runWithOwner(null, () =>
+    createRoot(() => {
+      const [records, setRecords] = createSignal(registry.getSnapshot())
+      registry.subscribe(() => setRecords(registry.getSnapshot()))
+      return records
+    }),
+  ))
   return createMemo(() => allCommands(extensions()))
 }
 
