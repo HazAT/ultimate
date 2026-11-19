@@ -169,7 +169,11 @@ for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].leng
       ev,
       n: list.length,
       taskMs: { median: +quantile(task, 0.5).toFixed(1), p95: +quantile(task, 0.95).toFixed(1) },
-      renders: { median: quantile(renders, 0.5), max: Math.max(...renders) },
+      renders: {
+        median: quantile(renders, 0.5),
+        p95: quantile(renders, 0.95),
+        max: Math.max(...renders),
+      },
       owners: top.join(', '),
     }),
   )
