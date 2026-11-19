@@ -92,9 +92,9 @@ export { island } from './island.tsx'
 export { Composer, ComposerRedirect, fillComposer, insertIntoComposer } from '../app/composer.tsx'
 export type { ComposerTarget } from '../app/composer.tsx'
 export { api, bundle, switched } from './client.ts'
-/** The page's ui-sdk agent bridge: `bridge()` drives and observes its components, `driven` is true in a page an agent drives. */
+/** The page's ui-sdk agent bridge: `bridge()` drives and observes its components. */
 export { uiAgent } from './client.ts'
-export type { ObservedChange, UiAgent } from './agent.ts'
+export type { UiAgent } from './agent.ts'
 /** As in `@/sdk/solid`: attribute the server writes `write` starts to the agent when `source` is `agent`. */
 export { writingAs } from './writer.ts'
 export { ActionError } from './api.ts'

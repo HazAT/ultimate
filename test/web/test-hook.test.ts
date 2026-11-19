@@ -31,7 +31,7 @@ function setup() {
   const hook = createTestHook(
     store,
     createApi(store, { fetch }),
-    createUiAgent(true),
+    createUiAgent(),
     { flush: async () => undefined },
     new Promise<void>(() => {}),
     () => Promise.resolve(),

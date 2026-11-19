@@ -68,7 +68,7 @@ export const uiState = createUiState(followsSharedUiState ? api.updateUi : undef
 })
 
 /** The page's one ui-sdk agent bridge, created at start so it hears every component. */
-export const uiAgent = createUiAgent(driven)
+export const uiAgent = createUiAgent()
 
 export const registry = createRegistry()
 
