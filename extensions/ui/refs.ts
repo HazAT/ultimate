@@ -32,7 +32,8 @@ export const ChangedEvent = defineEvent<
 
 /**
  * `{ changes, surface?, conversation?, driven? }` → `{ recorded }`: the page reports a batch of component changes, and
- * each becomes one `ui.changed` event, all in one commit. At most 50 changes; values over 2 KB become `"[too large]"`.
+ * each becomes one `ui.changed` event, all in one commit. At most 50 changes; `value` is required (`null` for none);
+ * a `value` or `previous` over 2048 UTF-8 bytes of JSON becomes `"[too large]"`. Limits: `limits.ts`.
  */
 export const RecordAction = actionRef<
   { changes: UiChange[]; surface?: string; conversation?: ConversationId; driven?: boolean },

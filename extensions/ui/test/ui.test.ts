@@ -119,3 +119,28 @@ it('records a large value as too large, and refuses a malformed batch before com
 it('is user-only, so an agent cannot record history in a person’s name', () => {
   expect(userActions).toEqual(['record'])
 })
+
+it('requires a value, null included, and bounds values by UTF-8 bytes, not characters', async () => {
+  const { fake, emitted } = host()
+  await expect(
+    record(fake, { changes: [{ component: 'switch', key: 'checked', source: 'agent' }] }),
+  ).rejects.toThrow('Expected value')
+  const wide = 'é'.repeat(1500)
+  await record(fake, {
+    changes: [
+      { component: 'select', key: 'value', value: null, source: 'agent' },
+      { component: 'textarea', key: 'value', value: wide, previous: wide, source: 'keyboard' },
+    ],
+  })
+  expect(emitted.map((event) => event.data)).toEqual([
+    { component: 'select', key: 'value', value: null, source: 'agent', ...device },
+    {
+      component: 'textarea',
+      key: 'value',
+      value: '[too large]',
+      previous: '[too large]',
+      source: 'keyboard',
+      ...device,
+    },
+  ])
+})

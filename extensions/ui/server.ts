@@ -1,14 +1,9 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import type { JsonValue } from '@earendil-works/chord/json'
 import { parseConversationId } from '../../lib/ids.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { bounded, MAX_CHANGES, MAX_LABEL, MAX_NAME } from './limits.ts'
 import { ChangedEvent, RecordAction } from './refs.ts'
 import type { UiChange } from './refs.ts'
-
-const MAX_CHANGES = 50
-const MAX_VALUE_BYTES = 2048
-const MAX_NAME = 64
-const MAX_LABEL = 200
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -21,12 +16,11 @@ function name(value: unknown, field: string, max = MAX_NAME) {
   return value
 }
 
-const bounded = (value: unknown): JsonValue =>
-  JSON.stringify(value ?? null).length > MAX_VALUE_BYTES ? '[too large]' : (value as JsonValue)
-
 function change(value: unknown): UiChange {
-  const { component, label, key, source, reason } = record(value)
   const fields = record(value)
+  const { component, label, key, source, reason } = fields
+  if (!Object.hasOwn(fields, 'value') || fields.value === undefined)
+    throw new Error('Expected value (null for none)')
   return {
     component: name(component, 'component'),
     ...(label === undefined ? {} : { label: name(label, 'label', MAX_LABEL) }),
