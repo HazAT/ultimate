@@ -37,6 +37,9 @@ const REMOUNT_FRESHNESS_MS = 2000
 
 export function createReads(api: Api, store: Store) {
   const reads = new Map<string, Read & { readers: Set<Reader> }>()
+  const changed = new Set<() => void>()
+  const inUseReadsSettled = () =>
+    [...reads.values()].every((read) => !read.readers.size || read.get().settled)
 
   const networkFailedReads = new Set<Read & { readers: Set<Reader> }>()
   function retryNetworkFailedReads() {
@@ -91,6 +94,7 @@ export function createReads(api: Api, store: Store) {
     const set = (change: Partial<ReadState>) => {
       state = { ...state, ...change }
       for (const listener of listeners) listener()
+      for (const listener of changed) listener()
     }
     function repoll() {
       cancelPoll?.()
@@ -180,6 +184,17 @@ export function createReads(api: Api, store: Store) {
   }
 
   return {
+    settledInUse() {
+      return new Promise<void>((resolve) => {
+        const check = () => {
+          if (!inUseReadsSettled()) return
+          changed.delete(check)
+          resolve()
+        }
+        changed.add(check)
+        check()
+      })
+    },
     get(extension: string, name: string, args: unknown, conversationId?: ConversationId): Read {
       const key = JSON.stringify([extension, name, args ?? null, conversationId ?? null])
       let read = reads.get(key)

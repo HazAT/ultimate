@@ -33,6 +33,7 @@ function setup() {
     createApi(store, { fetch }),
     createUiAgent(true),
     new Promise<void>(() => {}),
+    () => Promise.resolve(),
   )
   const main = sources[0]
   main.open()

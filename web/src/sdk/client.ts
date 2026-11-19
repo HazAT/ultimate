@@ -71,7 +71,8 @@ export const uiAgent = createUiAgent(driven)
 
 export const registry = createRegistry()
 
-if (driven) window.ultimate = createTestHook(store, api, uiAgent, firstRender)
+if (driven)
+  window.ultimate = createTestHook(store, api, uiAgent, firstRender, () => reads.settledInUse())
 
 /** The web bundle this page runs (`server/web.ts` names it in the page). */
 export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content

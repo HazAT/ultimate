@@ -73,3 +73,22 @@ it('keeps a read quiet when its request never reached the server, and asks again
   await read.refetch()
   expect(store.notify).toHaveBeenCalledTimes(1)
 })
+
+it('settles in-use reads once each mounted read has its first answer, so ui steps see the controls it renders', async () => {
+  const store = {
+    getState: () => ({ connection: { status: 'open' } }),
+    subscribe: () => () => {},
+    notify: vi.fn<(notice: unknown) => void>(),
+  }
+  const answer = Promise.withResolvers<string>()
+  const reads = createReads({ action: () => answer.promise } as unknown as Api, store as never)
+  reads.get('test', 'idle', null)
+  reads.get('test', 'status', null).use({})
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  answer.resolve('answer')
+  await done
+  expect(settled).toBe(true)
+})

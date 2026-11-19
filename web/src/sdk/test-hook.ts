@@ -33,6 +33,7 @@ export function createTestHook(
   api: Api,
   agent: UiAgentHandle,
   rendered: Promise<void>,
+  readsSettled: () => Promise<void>,
 ) {
   const saved = JSON.parse(sessionStorage.getItem(SENT_KEY) ?? '{"sent":[]}') as {
     sent: [ConversationId, Sent][]
@@ -93,8 +94,11 @@ export function createTestHook(
   const controlsMounted = () =>
     within(
       30_000,
-      rendered,
-      () => new Error('Timed out after 30s: the page never rendered its surface'),
+      rendered.then(readsSettled),
+      () =>
+        new Error(
+          'Timed out after 30s: the page never rendered its surface with the data its components read',
+        ),
     )
 
   const firstSnapshotReady = (timeoutMs = 30_000) =>
