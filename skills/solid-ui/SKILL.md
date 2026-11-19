@@ -119,6 +119,9 @@ from `@lucide/solid`.
   UI-state writes before it closes the page, whatever the last step was.
 - To type into a ui-sdk text field in jsdom, use `setRangeText` and dispatch `input`, as ui-sdk's own `type` helper
   does: assigning `.value` counts as a program's write, not typing, and reports no `input-change`.
+- Read state where it lives. `useAction` follows the shown conversation, so on a fresh page its read switches when the
+  view arrives, starts unanswered, and a `<Show when={data()}>` unmounts what an agent was about to act on. State that
+  lives on the root reads `useAction(ref, args, { conversation: ROOT })` and `useDocOf(() => ROOT, ref)`.
 - A Solid `useAction` with getter args: each read keeps the args its key was made from, so switching args mid-flight
   never answers the old read with the new args.
 - A person's click inside `data-agent-hidden` still changes the control, but the bridge reports nothing: a secret
