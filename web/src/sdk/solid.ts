@@ -323,6 +323,13 @@ export { uncoveredComposer } from './actions.ts'
 /** Replaces the draft in conversation `id`'s composer with `text`, as `fillComposer` from `@/sdk` does. */
 export { fillComposer } from '../app/drafts.ts'
 
+/** The conversation `ConversationScope` gives, or the shown one once known. */
+export function useConversationId(): Accessor<ConversationId | undefined> {
+  const { state } = shared()
+  const scoped = useContext(ConversationScope)
+  return createMemo(() => scoped ?? state().view?.conversation.id)
+}
+
 /** Whether dialog `id` is open, and a setter, as `useDialog` from `@/sdk` gives them. */
 export function useDialog(id: string): [Accessor<boolean>, (open: boolean) => void] {
   const { state } = shared()

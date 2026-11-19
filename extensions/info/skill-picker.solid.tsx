@@ -13,30 +13,42 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { fillComposer, uncoveredComposer, useDialog, useSystem } from '@/sdk/solid'
+import {
+  fillComposer,
+  uncoveredComposer,
+  useConversationId,
+  useDialog,
+  useSystem,
+} from '@/sdk/solid'
 
 export const skillDialog = 'info.skill'
 
 export function SkillPicker() {
   const [open, setOpen] = useDialog(skillDialog)
   const system = useSystem()
-  let composer: HTMLElement | undefined
-  let filled: HTMLElement | undefined
+  const shown = useConversationId()
+  let typingIn: number | undefined
+  let filled: number | undefined
   createEffect(open, (isOpen) => {
     if (!isOpen) return
-    composer = uncoveredComposer()
+    const id = Number(uncoveredComposer()?.dataset.conversation)
+    typingIn = Number.isInteger(id) ? id : undefined
     filled = undefined
   })
   function choose(name: string) {
-    const id = Number(composer?.dataset.conversation)
-    filled = Number.isInteger(id) ? composer : undefined
-    if (filled) fillComposer(id, `/skill:${name} `)
+    filled = typingIn ?? shown()
+    if (filled !== undefined) fillComposer(filled, `/skill:${name} `)
     setOpen(false)
   }
   return (
     <Dialog onOpenChange={setOpen} open={open()}>
       <DialogContent
-        finalFocus={() => filled}
+        finalFocus={() =>
+          filled === undefined
+            ? undefined
+            : (document.querySelector<HTMLElement>(`textarea[data-conversation="${filled}"]`) ??
+              undefined)
+        }
         class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}
       >

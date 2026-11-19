@@ -115,9 +115,11 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
     can reach (`uncoveredComposer()`, not `#composer-input` behind a side chat), and write to that element's
     own conversation (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own
     return to the trigger when there is no exit animation (reduced motion, jsdom). Clear the remembered
-    target in an effect on the controlled `open` accessor, and look the element up there too, before the
+    target in an effect on the controlled `open` accessor, and look the target up there too, before the
     modal makes the page inert (inside the dialog every outside element counts as covered; jsdom does not
-    apply that inertness, so check it in a browser): a command or `useDialog` opening it never calls
+    apply that inertness, so check it in a browser). Remember an id (the conversation), never the element:
+    the composer remounts while a view loads, and a kept node is detached by the time you focus it. Resolve
+    the element inside `finalFocus`, and fall back to the shown conversation when no composer is mounted: a command or `useDialog` opening it never calls
     `onOpenChange(true)`, and `onOpenChangeComplete(true)` comes only after the entrance transition, too late
     for an Escape during it.
   - `CommandEmpty` stays mounted with `data-empty` only while nothing matches (cmdk's unmounts), so the kit hides it

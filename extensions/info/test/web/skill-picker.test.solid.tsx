@@ -25,6 +25,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { store } from '../../../../web/src/sdk/client.ts'
 import { getDraft } from '../../../../web/src/app/drafts.ts'
+import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { SkillPicker, skillDialog } from '../../skill-picker.solid.tsx'
 
 const skill = (name: string, description: string) => ({
@@ -114,5 +115,34 @@ it('lets an agent find a skill by its description and fill the composer with it'
   await settle()
   expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
   expect(document.activeElement).toBe(again)
+  store.stop()
+})
+
+it('fills the current conversation’s draft on a surface without a composer', async () => {
+  const current = 9 as ConversationId
+  store.start()
+  sources.at(-1)!.open()
+  sources.at(-1)!.send('system', {
+    process: { pid: 1, generation: 2, booted: 0 },
+    skills: [skill('verify-ui', 'Check a UI change with screenshots')],
+  } as unknown as SystemInfo)
+  renderSolid(() => (
+    <ConversationScope value={current}>
+      <SkillPicker />
+    </ConversationScope>
+  ))
+  store.setUi({ dialogs: { [skillDialog]: true } })
+  flush()
+  await settle()
+  const agent = createAgent()
+  const input = agent.snapshot().find((item) => item.label === 'Find a skill')
+  const result = await agent.act({
+    steps: [{ ref: input!.ref, action: 'run', args: ['verify-ui'] }],
+  })
+  expect(result.ok).toBe(true)
+  flush()
+  await settle()
+  expect(getDraft(current).get().text).toBe('/skill:verify-ui ')
+  expect(store.getState().ui.dialogs[skillDialog]).toBe(false)
   store.stop()
 })
