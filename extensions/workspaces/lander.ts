@@ -677,27 +677,28 @@ export function createLander(
                 )
               const runCheckWithOneDurableRerun = async (command: string, member: number) => {
                 const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
-                let memoizedFirstRun = await runtime.memo<'passed' | 'failed'>(
-                  attemptMemoKey,
-                  context,
-                )
+                const causeMemoKey = `${attemptMemoKey}:cause`
+                let memoizedFirstRun =
+                  (await runtime.memo<'passed' | 'failed'>(attemptMemoKey, context)) ??
+                  ((await runtime.memo<string>(causeMemoKey, context)) ? 'failed' : undefined)
                 if (!memoizedFirstRun) {
                   await step(`checking: ${command}`, { runs: command })
                   const began = performance.now()
                   const ran = await run(command, member)
+                  const ms = performance.now() - began
                   const unmemoizedResult = ran.failure === undefined ? 'passed' : 'failed'
-                  if (ran.failure !== undefined)
-                    await runtime.memo(`${attemptMemoKey}:cause`, ran.cause, context)
                   const logAttemptBeforeMemo = step
                   await logAttemptBeforeMemo(`checked: ${command}`, {
                     result: {
                       command,
-                      result: ran.failure === undefined ? 'passed' : 'failed',
+                      result: unmemoizedResult,
                       ...(ran.summary ? { summary: ran.summary } : {}),
                     },
                     output: ran.failure,
-                    ran: { ms: performance.now() - began, timedOut: ran.timedOut },
+                    ran: { ms, timedOut: ran.timedOut },
                   })
+                  if (ran.failure !== undefined)
+                    await runtime.memo(causeMemoKey, ran.cause, context)
                   memoizedFirstRun = await runtime.memo(attemptMemoKey, unmemoizedResult, context)
                 }
                 if (memoizedFirstRun === 'passed') return {}
@@ -735,7 +736,7 @@ export function createLander(
                   )
                 }
                 if (rerun.failure !== undefined) return { failure: rerun.failure }
-                const cause = await runtime.memo<string>(`${attemptMemoKey}:cause`, context)
+                const cause = await runtime.memo<string>(causeMemoKey, context)
                 return { flaky: cause ? `${command} · ${cause}` : command }
               }
               const settledCheckGroup = await Promise.allSettled(
