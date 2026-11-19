@@ -435,7 +435,7 @@ export function MessageCall({ call, core }: { call: ToolCallView; core: ReactNod
   const Icon = toUser ? InboxIcon : SendIcon
   return (
     <Fold
-      always
+      agent
       card={call.id}
       summary={
         <>
@@ -609,7 +609,7 @@ export function MessageInput({ entry }: { entry: EntryRecord }) {
   if (origin.from === 'user') return <UserTurn entry={entry} id={origin.id} text={origin.text} />
   return (
     <Fold
-      always
+      agent
       card={entry.id}
       summary={
         <>

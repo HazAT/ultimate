@@ -330,7 +330,7 @@ function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
   const catchup = source === 'main'
   return (
     <Fold
-      always
+      agent
       card={entry.id}
       summary={
         <>
@@ -381,7 +381,7 @@ function NoteCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   const text = typeof call.args.text === 'string' ? call.args.text : ''
   return (
     <Fold
-      always
+      agent
       card={call.id}
       summary={
         <>

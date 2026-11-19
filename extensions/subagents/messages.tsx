@@ -68,7 +68,7 @@ export function AgentInput({ entry }: { entry: EntryRecord }) {
   const body = origin.body
   return (
     <Fold
-      always
+      agent
       card={entry.id}
       summary={
         <>

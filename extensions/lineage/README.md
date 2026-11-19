@@ -144,4 +144,5 @@ starts here** card, and old notes and inputs still render quietly.
 
 Notes are the agents' coordination, so every conversation folds them to one line: icon, sender, whether it is a note,
 a catch-up or a finished branch, and its first words, opened on click. The `note` call that left one folds the same
-way, naming where it went. A landing stays a full card: it is the tree's result.
+way, naming where it went. A landing stays a full card: it is the tree's result. ⌘K's **Toggle folding
+agent-to-agent messages** (`messages.agentTraffic`) shows the notes in full again outside compact mode.

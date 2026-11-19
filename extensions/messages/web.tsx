@@ -9,6 +9,7 @@ import {
   defineWebExtension,
   events,
   provide,
+  toggleAgentTrafficFolds,
   useConversation,
   useDocOf,
   useEvent,
@@ -143,6 +144,13 @@ export default defineWebExtension({
     'pi.assistant': CompactAnswer,
   },
   tools: { message: MessageCall, branch: BranchCall },
+  commands: [
+    {
+      id: 'messages.agentTraffic',
+      title: 'Toggle folding agent-to-agent messages',
+      run: () => toggleAgentTrafficFolds(),
+    },
+  ],
   compact: {
     when: (conversation, docs) => ultimateCompact(conversation, docs[StandingDoc.kind]),
     tools: [

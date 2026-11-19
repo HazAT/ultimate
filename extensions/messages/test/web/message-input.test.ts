@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 import type { ToolCallView } from '@/sdk'
 
+const shell = vi.hoisted(() => ({ agentTraffic: true }))
+
 vi.mock('@/sdk', async () => ({
   AllProvided: () => null,
   Card: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
@@ -26,10 +28,14 @@ vi.mock('@/sdk', async () => ({
   useTranscript: () => [],
   useUltimate: () => ({ showSurface: () => {}, switchConversation: () => {} }),
 }))
-// Fold reads the conversation and whether it is compact through the sdk hooks.
+// Fold reads the conversation, whether it is compact and whether agent traffic folds through the sdk.
 vi.mock('../../../../web/src/sdk/hooks.ts', () => ({
   useCompact: () => undefined,
   useConversation: (select: (conversation: { id: number }) => unknown) => select({ id: 7 }),
+  useUiState: () => [shell.agentTraffic],
+}))
+vi.mock('../../../../web/src/sdk/client.ts', () => ({
+  uiState: { get: () => undefined, set: () => {} },
 }))
 vi.mock('@/components/ai/message', () => ({
   MessageResponse: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
@@ -94,4 +100,12 @@ it('keeps your own input and a message to you open', () => {
   expect(toYou).not.toContain('data-fold')
   expect(toYou).toContain('data-ui="message-card"')
   expect(toYou).toContain('Done: 3 tests pass')
+})
+
+it('leaves an agent’s message open once agent traffic is unfolded', () => {
+  shell.agentTraffic = false
+  const html = render(createElement(MessageInput, { entry: received(4, 'Rebased on main') }))
+  expect(html).not.toContain('data-fold')
+  expect(html).toContain('Rebased on main')
+  shell.agentTraffic = true
 })

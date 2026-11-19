@@ -175,7 +175,9 @@ There is no Messages surface: everything renders in transcripts. Every sender ha
 - **Agent traffic folds**, in every conversation and not only in compact mode: a message or reply from another agent,
   a `message` call to one, an instruction or report from a subagent, a received note, a catch-up and a finished branch
   fold to one line naming the sender, what it is and its first words, opened on click. Your own inputs and the messages
-  to you stay open, the latter with their answer cards.
+  to you stay open, the latter with their answer cards. ⌘K's **Toggle folding agent-to-agent messages**
+  (`messages.agentTraffic`) shows them in full again outside compact mode; the choice is durable UI state
+  (`fold.agentTraffic`), so it survives reloads and every tab shares it.
 - **Compact mode** (@ultimate's conversation): tool calls and thinking fold into “worked · N steps” rows, while
   messages, branch starts, workspace outcomes, setup cards and answers stay. Its messages to you are bubbles in its
   accent with the answer card beneath; one sent from codemode is a bubble too, under a quiet “sent with codemode” line.
