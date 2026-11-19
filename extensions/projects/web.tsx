@@ -2,8 +2,10 @@ import { debounce, deadline, every } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  AllProvided,
   api,
   cn,
   defineWebExtension,
@@ -17,6 +19,7 @@ import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.tsx'
 import { shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
+import { RailItems, rowBox, swatchColumn } from './ui.tsx'
 
 const RAIL = 56
 const WIDE = 272
@@ -143,7 +146,7 @@ function Row({
       aria-current={here ? 'page' : undefined}
       aria-label={title}
       className={cn(
-        'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        rowBox,
         here || unreachable ? 'cursor-default' : 'cursor-pointer',
         unreachable && 'opacity-45',
         wide && (here ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
@@ -171,13 +174,7 @@ function Row({
           pending && 'animate-pulse-dot',
         )}
       />
-      <span
-        className={cn(
-          'flex h-full w-11 shrink-0 justify-center',
-          !first && 'pt-px',
-          !last && 'pb-px',
-        )}
-      >
+      <span className={cn(swatchColumn, !first && 'pt-px', !last && 'pb-px')}>
         <span className={pixelAlignedAxis}>
           <ProjectSwatch
             className={cn(
@@ -228,7 +225,7 @@ function RailSkeleton({ wide }: { wide: boolean }) {
     <div aria-hidden className="pointer-events-none">
       {['w-24', 'w-32', 'w-20', 'w-28'].map((name) => (
         <span className="mx-1.5 flex h-10 items-center" key={name}>
-          <span className="flex h-full w-11 shrink-0 justify-center py-px">
+          <span className={cn(swatchColumn, 'py-px')}>
             <Skeleton className="h-full w-3 rounded-sm bg-sidebar-accent/60" />
           </span>
           {wide && (
@@ -260,14 +257,14 @@ function Rail() {
   const projects = list.data ?? []
   const loading = !list.data && !list.error
   const loadedAfterMount = useRef(loading).current
-  if (railOccupied || viewport === 'phone' || (!loading && projects.length < 2)) return null
+  if (railOccupied || viewport === 'phone') return null
 
   const wide = hover || pinned
   const family = projects.map((project) => project.name)
   const questions = projects.reduce((sum, project) => sum + (project.questions ?? 0), 0)
   const working = projects.filter((project) => (project.busy ?? 0) > 0).length
 
-  return (
+  const rail = (items: readonly ReactNode[]) => (
     <div className="relative shrink-0" style={{ width: pinned ? WIDE : RAIL }}>
       <nav
         aria-label="Projects"
@@ -326,6 +323,7 @@ function Rail() {
               )
             })}
           </div>
+          {!loading && items.length > 0 && <div className="mt-2 flex flex-col">{items}</div>}
         </div>
         <div className={statusLineAlignedFooter}>
           <span className="flex w-14 shrink-0 justify-center">
@@ -342,6 +340,15 @@ function Rail() {
         </div>
       </nav>
     </div>
+  )
+  return (
+    <AllProvided input={{ wide }} point={RailItems}>
+      {(provided) => {
+        const items = provided.filter(Boolean)
+        const nothingToSwitchTo = !loading && projects.length < 2 && items.length === 0
+        return nothingToSwitchTo ? null : rail(items)
+      }}
+    </AllProvided>
   )
 }
 
