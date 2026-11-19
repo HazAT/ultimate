@@ -32,6 +32,7 @@ function setup() {
     store,
     createApi(store, { fetch }),
     createUiAgent(true),
+    { flush: async () => undefined },
     new Promise<void>(() => {}),
     () => Promise.resolve(),
   )

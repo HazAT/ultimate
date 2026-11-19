@@ -438,10 +438,10 @@ export default function browserExtension(host: ExtensionHost) {
         ? within(left, work, timeout(totalMs))
         : within(stepMs + extraMs, work)
     }
-    const sendWhatThePageRecorded = (shown: Page) =>
+    const sendUnsavedUiState = (shown: Page) =>
       guard(shown.evaluate(() => window.ultimate?.ui.flush())).then(
         () => [],
-        (error: unknown) => [`The page's last UI changes were not sent: ${String(error)}`],
+        (error: unknown) => [`The page's last UI-state writes were not sent: ${String(error)}`],
       )
     const abort = () => void closeContextOrRelaunchBrowser(isolated)
     try {
@@ -517,7 +517,7 @@ export default function browserExtension(host: ExtensionHost) {
       api.output(`Loading ${url}\n`)
       await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
       const result = await action(page, outcomes, png, guard)
-      outcomes.push(...(await sendWhatThePageRecorded(page)))
+      outcomes.push(...(await sendUnsavedUiState(page)))
       const title = await guard(page.title())
       const maps = new Map()
       const readFromRedirectedOrigin = fetchAssets(new URL(page.url()).origin)
@@ -556,8 +556,7 @@ export default function browserExtension(host: ExtensionHost) {
         ],
       }
     } catch (error) {
-      const notSent =
-        page && !context.abortSignal?.aborted ? await sendWhatThePageRecorded(page) : []
+      const notSent = page && !context.abortSignal?.aborted ? await sendUnsavedUiState(page) : []
       return {
         isError: true,
         output: [

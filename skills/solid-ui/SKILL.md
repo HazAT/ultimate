@@ -26,7 +26,7 @@ The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` fil
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
 ([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit is growing one component at a time
-(`popover.solid.tsx`, `switch.solid.tsx` so far): import it as `@/components/ui/<name>.solid.tsx`, and check
+(`popover.solid.tsx`, `switch.solid.tsx`, `segmented-control.solid.tsx` so far): import it as `@/components/ui/<name>.solid.tsx`, and check
 `web/src/components/ui/` before assuming a component exists. `extensions/keep-warm/chip.solid.tsx` is the reference
 migration, with its agent test beside it. Icons come from `@lucide/solid`.
 
@@ -54,7 +54,11 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   but never read (password, card and one-time-code fields already are); `data-agent-hidden` on a region agents should
   not see at all; and `agent: { secret: true }` in a `definePrimitive` whose value must never be read.
 - **State that should survive** a reload, a restart or a second tab is durable: bind it with `useExtensionUiState` or a
-  document from `@/sdk/solid`, not a local signal.
+  document from `@/sdk/solid`, not a local signal. Kit controls take it whole: `<Switch bind={digest} />` with
+  `const digest = useExtensionUiState('digest', false)` called once in the component body: a Solid prop is a getter,
+  so a hook called inside a JSX prop runs again at every read, the change handler's included, and in the browser
+  tool's e2e the switch never changed. For an action, pass
+  `bind={[() => state().on, (on) => void toggle(on)]}`.
 - **Solid 2 facts that tripped agents here** (checked against the pinned version):
   - Stores are copy-on-write: a setter never mutates the object it wraps. But `reconcile` by position adopts the
     incoming objects, so reconciling a value that shares rows with the store's current value (an immutable replica's
@@ -95,12 +99,12 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
   message: the ui-sdk skill's `expect(x, message)` template fails `vitest/valid-expect`.
 - On a whole page, agents drive controls with the browser tool's `ui` steps (`snapshot`, `query`, `act`), which wait
   for the page's first render and for every mounted read's first answer (a request that never reached the server
-  counts); each control's change is recorded as a durable `ui.changed` event with its source and the conversation of
-  the `ConversationScope` around it (`extensions/ui/README.md`). Only flags, numbers and a choice control's option values
-  are recorded; any other value (typed text, tokens, a search query) is `"[value]"`, and a person's typing is recorded
-  only when the field commits it (blur, or Enter in an input). A new kit choice control goes in the recorder's
-  `CHOICE_COMPONENTS` (`extensions/ui/recorder.ts`) for its options to show. The browser tool
-  sends recorded changes and UI-state writes before it closes the page, whatever the last step was.
+  counts). A change is recorded only when it reaches stored state: the server emits `ui.changed` in the commit that
+  writes a UI-state key or that an action marks with `ctx.uiChanged` (`extensions/ui/README.md`); opening, closing,
+  hover and focus are never recorded. Who made it travels as a request header: kit controls run their change handlers
+  in `writingAs(details.source, …)` from `@/sdk/solid`, so a write the handler starts synchronously during an agent's
+  `act` carries `agent`. A new kit control with a change callback does the same. The browser tool sends pending
+  UI-state writes before it closes the page, whatever the last step was.
 - To type into a ui-sdk text field in jsdom, use `setRangeText` and dispatch `input`, as ui-sdk's own `type` helper
   does: assigning `.value` counts as a program's write, not typing, and reports no `input-change`.
 - A Solid `useAction` with getter args: each read keeps the args its key was made from, so switching args mid-flight
