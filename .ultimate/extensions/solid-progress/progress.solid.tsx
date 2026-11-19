@@ -124,10 +124,10 @@ function MetricCard(props: { metric: Metric; at?: number }) {
     <div class="rounded-lg border border-border/70 bg-card/40 px-3 py-2.5">
       <span class="section-label">{props.metric.title}</span>
       <div class="mt-1 flex items-baseline gap-1">
-        <span class="text-[20px] font-medium tabular-nums">
+        <span class="text-[20px] font-medium whitespace-nowrap tabular-nums">
           {(latest()?.value ?? null) === null ? '–' : number(latest()!.value!)}
         </span>
-        <span class="font-mono text-[11px] text-muted-foreground">
+        <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
           {props.metric.unit} at {latest()?.label ?? '–'}
         </span>
         <Show when={delta() !== undefined && base() !== null}>
