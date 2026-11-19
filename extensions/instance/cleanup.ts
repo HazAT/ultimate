@@ -33,7 +33,7 @@ export async function cleanPreview(home: string) {
       }
     }
     const previewCheckoutRepositories = new Set<string>()
-    for (const name of ['lander', 'worktrees']) {
+    for (const name of ['lander', 'worktrees', 'checkouts']) {
       const directory = join(home, name)
       const checkouts = await readdir(directory, { withFileTypes: true }).catch(
         (error: NodeJS.ErrnoException) => {

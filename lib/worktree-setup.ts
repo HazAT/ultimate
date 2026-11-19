@@ -1,5 +1,5 @@
 import type { JsonObject } from '@earendil-works/pi-durable'
-import { exec as execWithClosedInput } from '../../lib/exec.ts'
+import { exec as execWithClosedInput } from './exec.ts'
 
 export async function setup(
   source: string,

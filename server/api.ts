@@ -494,6 +494,10 @@ export async function createApi(
           json(200, await listModels(host.modelRuntime))
           return true
         }
+        if (request.method === 'GET' && url.pathname === '/api/pages') {
+          json(200, { pages: connections.size })
+          return true
+        }
         if (request.method !== 'POST') throw new HttpError(404, 'Unknown endpoint')
         const action = actionPath.exec(url.pathname)
         const mayCarryMedia = action || /^\/api\/conversations\/\d+\/submit$/.test(url.pathname)

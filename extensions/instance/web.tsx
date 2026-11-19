@@ -269,6 +269,7 @@ function PreviewLink({
 }
 
 const port = (url: string) => `:${new URL(url).port}`
+const name = (preview: Preview) => preview.label ?? `#${preview.conversationId}`
 
 function Switcher() {
   const current = useShown()?.preview
@@ -276,7 +277,9 @@ function Switcher() {
   const conversations = useConversations()
   if (!data?.length) return null
   const title = (preview: Preview) =>
-    conversations.find((conversation) => conversation.id === preview.conversationId)?.title
+    preview.conversationId === undefined
+      ? undefined
+      : conversations.find((conversation) => conversation.id === preview.conversationId)?.title
   return (
     <DropdownMenu modal={false} onOpenChange={(open) => open && refetch()}>
       <DropdownMenuTrigger asChild>
@@ -289,8 +292,11 @@ function Switcher() {
         >
           {current ? (
             <>
-              <span className="size-1.5 rounded-full bg-brand" />#{current.conversationId} ·{' '}
-              {port(current.url)}
+              <span className="size-1.5 shrink-0 rounded-full bg-brand" />
+              <span className="max-w-16 truncate" title={name(current)}>
+                {name(current)}
+              </span>{' '}
+              · {port(current.url)}
             </>
           ) : (
             <span className="max-md:hidden">
@@ -319,7 +325,7 @@ function Switcher() {
                 current?.id === preview.id && 'text-brand',
               )}
             >
-              #{preview.conversationId}
+              {name(preview)}
               {title(preview) && <span className="text-muted-foreground"> {title(preview)}</span>}
             </span>
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
@@ -345,7 +351,7 @@ function Embedded() {
         className="size-full border-0"
         key={preview.id}
         src={url}
-        title={`Preview #${preview.conversationId}`}
+        title={`Preview ${name(preview)}`}
       />
     </div>
   )
