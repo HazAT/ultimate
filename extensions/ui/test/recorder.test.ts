@@ -98,3 +98,53 @@ it('waits in flush for a batch the timer already sent, so a closing page keeps i
   delivered.resolve()
   await flushing
 })
+
+it('keeps only flags, numbers and a choice control’s options, and withholds every other value', async () => {
+  const { recording, sent } = recorder()
+  const observed = (component: string, key: string, value: unknown, previous: unknown) =>
+    recording.observe({ ...change('Field', true), component, key, value, previous })
+  observed('token-input', 'value', ['alpha', 'typed tag'], ['alpha'])
+  observed('select', 'query', '', 'typed query')
+  observed('select', 'value', 'eu-west', null)
+  observed('switch', 'checked', true, false)
+  observed('slider', 'value', 40, 30)
+  await vi.advanceTimersByTimeAsync(500)
+  expect(
+    sent[0].changes.map(({ component, key, value, previous }) => [component, key, value, previous]),
+  ).toEqual([
+    ['token-input', 'value', '[value]', '[value]'],
+    ['select', 'query', '[value]', '[value]'],
+    ['select', 'value', 'eu-west', null],
+    ['switch', 'checked', true, false],
+    ['slider', 'value', 40, 30],
+  ])
+  expect(JSON.stringify(sent)).not.toMatch(/typed/)
+})
+
+it('waits for every started send in flush, even when another one fails', async () => {
+  const refused = Promise.withResolvers<void>()
+  const pending = Promise.withResolvers<void>()
+  const sends: Promise<void>[] = [refused.promise, pending.promise]
+  const recording = createRecorder({
+    driven: false,
+    locate: () => ({}),
+    send: () => sends.shift()!,
+  })
+  recording.observe(change('One', true))
+  await vi.advanceTimersByTimeAsync(500)
+  recording.observe({ ...change('Two', true), ref: 'c2' })
+  let done = false
+  const flushed = recording.flush(false).finally(() => (done = true))
+
+  const timerSendRefused = new Error('refused')
+  const reportedLikeAnyUnawaitedAction = new Promise((resolve) =>
+    process.once('unhandledRejection', resolve),
+  )
+  refused.reject(timerSendRefused)
+  expect(await reportedLikeAnyUnawaitedAction).toBe(timerSendRefused)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(done).toBe(false)
+  pending.resolve()
+  await flushed
+  expect(done).toBe(true)
+})

@@ -96,8 +96,10 @@ migration, with its agent test beside it. Icons come from `@lucide/solid`.
 - On a whole page, agents drive controls with the browser tool's `ui` steps (`snapshot`, `query`, `act`), which wait
   for the page's first render and for every mounted read's first answer (a request that never reached the server
   counts); each control's change is recorded as a durable `ui.changed` event with its source and the conversation of
-  the `ConversationScope` around it (`extensions/ui/README.md`). A text field never records its text (`"[text]"`, no
-  `previous`), and a person's typing only when the field commits it (blur, or Enter in an input). The browser tool
+  the `ConversationScope` around it (`extensions/ui/README.md`). Only flags, numbers and a choice control's option values
+  are recorded; any other value (typed text, tokens, a search query) is `"[value]"`, and a person's typing is recorded
+  only when the field commits it (blur, or Enter in an input). A new kit choice control goes in the recorder's
+  `CHOICE_COMPONENTS` (`extensions/ui/recorder.ts`) for its options to show. The browser tool
   sends recorded changes and UI-state writes before it closes the page, whatever the last step was.
 - To type into a ui-sdk text field in jsdom, use `setRangeText` and dispatch `input`, as ui-sdk's own `type` helper
   does: assigning `.value` counts as a program's write, not typing, and reports no `input-change`.

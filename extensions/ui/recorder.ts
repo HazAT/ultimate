@@ -11,7 +11,21 @@ export type Batch = Location & { changes: UiChange[]; driven?: boolean }
 
 const BATCH_MS = 500
 const TEXT_COMPONENTS = new Set(['input', 'textarea'])
+const CHOICE_COMPONENTS = new Set([
+  'accordion',
+  'checkbox-group',
+  'listbox',
+  'menu',
+  'menubar',
+  'navigation-menu',
+  'radio',
+  'segmented-control',
+  'select',
+  'tabs',
+  'tree',
+])
 const REDACTED = '[redacted]'
+const WITHHELD = '[value]'
 
 const json = (value: unknown): JsonValue =>
   JSON.parse(JSON.stringify(value ?? null) ?? 'null') as JsonValue
@@ -23,16 +37,26 @@ const isText = (change: ObservedChange) =>
   typeof change.value === 'string' &&
   (TEXT_COMPONENTS.has(change.component) || change.reason === 'input-change')
 
+const chosenOption = (value: unknown) =>
+  typeof value === 'string' ||
+  value === null ||
+  (Array.isArray(value) && value.every((item) => typeof item === 'string'))
+
+function shown(change: ObservedChange, value: unknown): JsonValue {
+  if (value === REDACTED) return REDACTED
+  if (typeof value === 'boolean' || typeof value === 'number' || value === undefined)
+    return json(value)
+  const optionOfAChoiceControl =
+    change.key === 'value' && CHOICE_COMPONENTS.has(change.component) && chosenOption(value)
+  return optionOfAChoiceControl ? bounded(json(value)) : WITHHELD
+}
+
 const recorded = (change: ObservedChange): UiChange => ({
   component: clipped(change.component, MAX_NAME),
   ...(change.label ? { label: clipped(change.label, MAX_LABEL) } : {}),
   key: clipped(change.key, MAX_NAME),
-  ...(isText(change)
-    ? { value: change.value === REDACTED ? REDACTED : '[text]' }
-    : {
-        value: bounded(json(change.value)),
-        ...(change.previous === undefined ? {} : { previous: bounded(json(change.previous)) }),
-      }),
+  value: shown(change, change.value),
+  ...(change.previous === undefined ? {} : { previous: shown(change, change.previous) }),
   source: clipped(change.source, MAX_NAME),
   ...(change.reason ? { reason: clipped(change.reason, MAX_NAME) } : {}),
 })
@@ -58,10 +82,15 @@ export function createRecorder(options: {
         batches.push({ ...where, changes: [change], ...(options.driven ? { driven: true } : {}) })
     }
     pending = []
-    const sending = Promise.all(batches.map((each) => options.send(each, keepalive)))
-    const settled = Promise.allSettled([sending]).then(() => inFlight.delete(settled))
-    inFlight.add(settled)
-    return sending
+    const sends = batches.map((each) => options.send(each, keepalive))
+    for (const send of sends) {
+      const settled: Promise<unknown> = send.then(
+        () => inFlight.delete(settled),
+        () => inFlight.delete(settled),
+      )
+      inFlight.add(settled)
+    }
+    return Promise.all(sends)
   }
   const scheduled = batch(BATCH_MS, () => void sendPending(false))
   function queue(entry: { where: Location; change: UiChange }) {
@@ -89,7 +118,8 @@ export function createRecorder(options: {
     flush: (keepalive: boolean) => {
       scheduled.cancel()
       const earlier = [...inFlight]
-      return Promise.all([sendPending(keepalive), ...earlier])
+      const now = sendPending(keepalive)
+      return Promise.allSettled([now, ...earlier]).then(() => now)
     },
   }
 }

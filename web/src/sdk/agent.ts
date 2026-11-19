@@ -19,8 +19,11 @@ export function createUiAgent(driven: boolean) {
         flushes.delete(flush)
       }
     },
-    flush: (keepalive: boolean) =>
-      Promise.all([...flushes].map((flush) => flush(keepalive))).then(() => undefined),
+    async flush(keepalive: boolean) {
+      const results = await Promise.allSettled([...flushes].map((flush) => flush(keepalive)))
+      const failed = results.find((result) => result.status === 'rejected')
+      if (failed) throw failed.reason
+    },
   }
 }
 export type UiAgentHandle = ReturnType<typeof createUiAgent>
