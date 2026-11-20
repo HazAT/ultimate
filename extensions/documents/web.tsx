@@ -1,9 +1,10 @@
 import { BracesIcon, ChevronRightIcon, FileStackIcon } from 'lucide-react'
-import { JsonTree } from '@/components/json-tree'
+import { JsonTree as SolidJsonTree } from '@/components/json-tree.solid.tsx'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   ExtensionBoundary,
   defineWebExtension,
+  island,
   useConversations,
   useDocKind,
   useDocumentRenderers,
@@ -13,10 +14,12 @@ import {
 } from '@/sdk'
 import type { DocumentItem } from '@/sdk'
 
-function Json({ value }: { value: object }) {
+const JsonTree = island(SolidJsonTree)
+
+function Json({ value, kind }: { value: object; kind: string }) {
   if (Object.keys(value).length === 0)
     return <p className="px-3 font-mono text-[11.5px] text-muted-foreground/70">empty</p>
-  return <JsonTree className="px-2" open={1} value={value} />
+  return <JsonTree class="px-2" name={kind} open={1} value={value} />
 }
 
 function Document({
@@ -58,14 +61,14 @@ function Document({
         {Renderer ? (
           <ExtensionBoundary
             extension={renderer.extension}
-            fallback={<Json value={value} />}
+            fallback={<Json kind={kind} value={value} />}
             key={renderer.extension}
             version={renderer.version}
           >
             <Renderer conversationId={conversationId} value={value} />
           </ExtensionBoundary>
         ) : (
-          <Json value={value} />
+          <Json kind={kind} value={value} />
         )}
       </CollapsibleContent>
     </Collapsible>

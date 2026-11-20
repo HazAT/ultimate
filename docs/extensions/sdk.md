@@ -2,7 +2,7 @@
 
 Part of the [extension guide](../../extensions/README.md).
 
-`@/sdk/*` deep imports are core internals, not extension API, except `@/sdk/solid`, the SDK for Solid files ([Solid facets](#solid-facets)). Import only from `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `@/components/json-tree`, `react`, and `lucide-react`. Never call `fetch` or
+`@/sdk/*` deep imports are core internals, not extension API, except `@/sdk/solid`, the SDK for Solid files ([Solid facets](#solid-facets)). Import only from `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `@/components/json-tree.solid.tsx` (a Solid tree; React mounts it with `island`), `react`, and `lucide-react`. Never call `fetch` or
 open an `EventSource` yourself (`ultimate/no-raw-stream` fails lint on it in `extensions/**/*.tsx`): the SDK keeps one
 live stream per tab, carrying a subscription for the shown conversation plus one for each conversation whose documents
 are watched with `useDocOf` (the shown one included), replays their changes, and your server code is reached through

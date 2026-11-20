@@ -1,12 +1,15 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { DatabaseIcon } from 'lucide-react'
-import { JsonTree } from '@/components/json-tree'
 import { defineWebExtension, island, MessageReference, provide } from '@/sdk'
 import type { DocumentProps } from '@/sdk'
+import { JsonTree as SolidJsonTree } from '@/components/json-tree.solid.tsx'
 import { CodemodeCall, CodemodeLine } from './call.solid.tsx'
 
+const JsonTree = island(SolidJsonTree)
+
 function StoreDocument({ value }: DocumentProps) {
-  if (Object.keys(value).length > 0) return <JsonTree className="px-2" open={1} value={value} />
+  if (Object.keys(value).length > 0)
+    return <JsonTree class="px-2" name="codemode store" open={1} value={value} />
   return (
     <p className="px-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
       Empty. Codemode scripts keep values across runs with{' '}

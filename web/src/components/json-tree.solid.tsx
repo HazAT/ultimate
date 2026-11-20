@@ -58,22 +58,22 @@ function Node(props: { path: string; name?: string; value: Json; depth: number; 
       }
     >
       {(entries) => (
-        <Collapsible class="group/json" defaultOpen={props.depth < props.open}>
+        <Collapsible defaultOpen={props.depth < props.open}>
           <CollapsibleTrigger
             aria-label={`Inspect ${props.path}`}
-            class="flex w-full min-w-0 items-center gap-0.5 text-left hover:bg-accent/40"
+            class="group/json flex w-full min-w-0 items-center gap-0.5 text-left hover:bg-accent/40"
             style={{ 'padding-left': `${props.depth * 0.9}rem` }}
           >
             <ChevronRight
               aria-hidden="true"
-              class="size-3 shrink-0 text-muted-foreground transition-transform group-data-open/json:rotate-90"
+              class="size-3 shrink-0 text-muted-foreground transition-transform group-aria-expanded/json:rotate-90"
             />
             <span class="min-w-0 truncate">
               {label()}
-              <span class="text-muted-foreground group-data-open/json:hidden">
+              <span class="text-muted-foreground group-aria-expanded/json:hidden">
                 {preview(props.value)}
               </span>
-              <span class="hidden text-muted-foreground group-data-open/json:inline">
+              <span class="hidden text-muted-foreground group-aria-expanded/json:inline">
                 {Array.isArray(props.value) ? `[${entries().length}]` : `{${entries().length}}`}
               </span>
             </span>
