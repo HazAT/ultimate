@@ -2,10 +2,13 @@
 /** Workspaces for Solid code: Info's checkout summary and a landing's links to Review or DiffsHub. */
 import { ArrowUpRight } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, events, useAction, useExtensions } from '@/sdk/solid'
 import { GithubAction } from './refs.ts'
 
 export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
+
+const short = (range: string) => range.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
 
 /** The project's GitHub `owner/repo`, null when `origin` is not on GitHub, undefined until known. */
 export function useGithubRepo() {
@@ -13,10 +16,10 @@ export function useGithubRepo() {
   return repo.data
 }
 
-function External(props: { href: string; label?: string; class?: string }) {
+function External(props: { href: string; label?: string; range?: string; class?: string }) {
   return (
     <a
-      aria-label={props.label ? undefined : 'Compare on DiffsHub'}
+      aria-label={props.label ? undefined : `Compare ${short(props.range ?? '')} on DiffsHub`}
       class={cn(
         'inline-flex shrink-0 items-center gap-0.5 hover:text-foreground hover:underline',
         props.class,
@@ -57,15 +60,17 @@ export function CommitCount(props: {
   return (
     <Show fallback={plain()} when={reviewable()}>
       <span class={cn('inline-flex shrink-0 items-center gap-1', props.class)}>
-        <button
+        <Button
+          aria-label={`Review ${short(props.range!)}`}
           class="hover:text-foreground hover:underline"
           onClick={() => events.emit('review:open', props.range)}
-          title={`Review ${props.range!.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')}`}
-          type="button"
+          size={null}
+          title={`Review ${short(props.range!)}`}
+          variant={null}
         >
           {label()}
-        </button>
-        <Show when={props.href}>{(href) => <External href={href()} />}</Show>
+        </Button>
+        <Show when={props.href}>{(href) => <External href={href()} range={props.range} />}</Show>
       </span>
     </Show>
   )
