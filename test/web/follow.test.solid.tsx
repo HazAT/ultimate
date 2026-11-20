@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { follow } from '../../web/src/app/follow.ts'
 
 const observers: (() => void)[] = []
+const disposers: (() => void)[] = []
 vi.stubGlobal(
   'ResizeObserver',
   class {
@@ -14,6 +15,7 @@ vi.stubGlobal(
   },
 )
 afterEach(() => {
+  for (const dispose of disposers.splice(0)) dispose()
   observers.length = 0
   document.body.replaceChildren()
 })
@@ -54,6 +56,7 @@ function transcript(height: number) {
   document.body.append(scroll)
   const view = scroller(scroll, 700, height)
   const pinned = follow(scroll, content, () => {})
+  disposers.push(pinned.dispose)
   const layout = () => observers.forEach((observe) => observe())
   return { scroll, output, view, pinned, layout }
 }
@@ -71,7 +74,7 @@ it('stays at the bottom when rows settle after the view shows, even after a clic
   expect(view.top()).toBe(6507)
 })
 
-it('lets the reader leave with the wheel, a key or a drag, and come back with one key press', () => {
+it('lets the reader leave with the wheel, a key or a drag, and come back with one key press', async () => {
   const { scroll, view, pinned, layout } = transcript(5000)
   scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -200 }))
   view.moveTo(4100)
@@ -85,6 +88,7 @@ it('lets the reader leave with the wheel, a key or a drag, and come back with on
   expect(pinned.following()).toBe(true)
 
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp' }))
+  await Promise.resolve()
   view.moveTo(4000)
   view.resize(5600)
   layout()
@@ -108,4 +112,26 @@ it('leaves on a wheel up over a tool output at its top, which scrolls the transc
   output.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }))
   expect(pinned.following()).toBe(false)
   expect(view.top()).toBe(4300)
+})
+
+it('keeps following when a wheel or key has nothing to scroll, or a card took the key', async () => {
+  const { scroll, view, pinned } = transcript(600)
+  scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -200 }))
+  expect(pinned.following()).toBe(true)
+
+  view.resize(3000)
+  view.moveTo(2300)
+  const taken = new KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true })
+  taken.preventDefault()
+  window.dispatchEvent(taken)
+  await Promise.resolve()
+  expect(pinned.following()).toBe(true)
+
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true }))
+  await Promise.resolve()
+  expect(pinned.following()).toBe(false)
+  view.moveTo(2298)
+  view.moveTo(2299)
+  view.moveTo(2300)
+  expect(pinned.following()).toBe(true)
 })

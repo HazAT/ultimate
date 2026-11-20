@@ -26,7 +26,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   const onScroll = () => {
     const top = scroll.scrollTop
     if (left()) report({ following: false })
-    else if (!following && top > seen + 1 && distance() <= 1) report({ following: true })
+    else if (!following && top > seen && distance() <= 1) report({ following: true })
     else report({})
     seen = top
   }
@@ -42,12 +42,14 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     return false
   }
   const onWheel = (event: WheelEvent) => {
-    if (event.deltaY < 0 && !innerTakes(event.target)) report({ following: false })
+    if (event.deltaY < 0 && scroll.scrollHeight > scroll.clientHeight && !innerTakes(event.target))
+      report({ following: false })
   }
   const typing = (target: EventTarget | null) =>
     target instanceof HTMLElement &&
     (target.isContentEditable || !!target.closest('input, textarea'))
-  const upKeys = new Set(['ArrowUp', 'PageUp', 'Home'])
+  const upKey = (event: KeyboardEvent) =>
+    ['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)
   const reader = {
     pointerdown: () => (pressed = true),
     pointerup: () => (pressed = false),
@@ -57,7 +59,11 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     touchcancel: () => (touching = false),
     keydown: (event: Event) => {
       const key = event as KeyboardEvent
-      if (upKeys.has(key.key) && !typing(key.target)) report({ following: false })
+      if (!upKey(key) || typing(key.target)) return
+      queueMicrotask(() => {
+        if (!key.defaultPrevented && scroll.scrollHeight > scroll.clientHeight)
+          report({ following: false })
+      })
     },
   }
   const onTranscript = new Set(['pointerdown', 'touchstart'])

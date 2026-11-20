@@ -89,6 +89,8 @@ function ContributionError(props: { extension: string; error: unknown; inner: JS
 
 function Anchor(props: {
   href: string
+  at?: string
+  text?: string
   children: JSX.Element
   attributes: Record<string, unknown>
 }) {
@@ -97,7 +99,12 @@ function Anchor(props: {
     parseMention(props.href) ? (
       props.children
     ) : (
-      <ConfirmedLink attributes={props.attributes} href={props.href}>
+      <ConfirmedLink
+        at={props.at}
+        attributes={props.attributes}
+        href={props.href}
+        text={props.text ?? ''}
+      >
         {props.children}
       </ConfirmedLink>
     )
@@ -114,6 +121,8 @@ function Anchor(props: {
 
 function ConfirmedLink(props: {
   href: string
+  at?: string
+  text: string
   children: JSX.Element
   attributes: Record<string, unknown>
 }) {
@@ -130,7 +139,7 @@ function ConfirmedLink(props: {
     >
       <Button
         {...omitHref(props.attributes)}
-        aria-label={`Open link ${props.href}`}
+        aria-label={`Open link ${props.text} (${props.at ?? ''}: ${props.href})`}
         class="link inline h-auto rounded-none p-0 align-baseline text-[length:inherit] [font-weight:inherit] whitespace-normal"
         data-href={props.href}
         onClick={() => setOpen(true)}
@@ -185,11 +194,11 @@ function InlineCode(props: { code: string; attributes: Record<string, unknown> }
   )
 }
 
-function CopyCode(props: { code: string }) {
+function CopyCode(props: { code: string; at: string }) {
   const { copied, copy } = useCopy()
   return (
     <Button
-      aria-label={`Copy code: ${props.code.trim().split('\n')[0]?.slice(0, 80) ?? ''}`}
+      aria-label={`Copy code ${props.at}: ${props.code.trim().split('\n')[0]?.slice(0, 60) ?? ''}`}
       class="h-auto rounded-none p-1 font-normal text-muted-foreground hover:text-foreground"
       onClick={() => copy(props.code)}
       size={null}
@@ -241,7 +250,7 @@ export function HighlightedCode(props: { code: string; language: string; lineNum
   )
 }
 
-function CodeBlock(props: { code: string; language: string; incomplete: boolean }) {
+function CodeBlock(props: { code: string; language: string; incomplete: boolean; at: string }) {
   const renderers = createMemo(
     () => codeBlockRenderers(useExtensions()(), props.language) as Rendered[],
   )
@@ -253,7 +262,7 @@ function CodeBlock(props: { code: string; language: string; incomplete: boolean 
     >
       <div class="code-block-header">
         <span>{props.language}</span>
-        <CopyCode code={props.code} />
+        <CopyCode at={props.at} code={props.code} />
       </div>
       <pre class="shiki">
         <HighlightedCode code={props.code} language={props.language} />
@@ -288,7 +297,7 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-type Context = { openFences: readonly number[]; without?: readonly string[] }
+type Context = { openFences: readonly number[]; without?: readonly string[]; block: number }
 
 const fenceIncomplete = (node: Element, context: Context) =>
   context.openFences.includes(node.position?.start.offset ?? -1)
@@ -348,6 +357,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       <Match when={fencedCode(props.node)}>
         {(block) => (
           <CodeBlock
+            at={`${props.context.block}.${props.node.position?.start.offset ?? 0}`}
             code={block().code}
             incomplete={fenceIncomplete(props.node, props.context)}
             language={block().language}
@@ -355,7 +365,12 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
         )}
       </Match>
       <Match when={props.node.tagName === 'a'}>
-        <Anchor attributes={attributes()} href={hrefOf(props.node)}>
+        <Anchor
+          at={`${props.context.block}.${props.node.position?.start.offset ?? 0}`}
+          attributes={attributes()}
+          href={hrefOf(props.node)}
+          text={textOf(props.node)}
+        >
           {children()}
         </Anchor>
       </Match>
@@ -379,7 +394,12 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
   )
 }
 
-function Block(props: { source: string; streaming: boolean; without?: readonly string[] }) {
+function Block(props: {
+  source: string
+  streaming: boolean
+  index: number
+  without?: readonly string[]
+}) {
   const source = createMemo(() => (props.streaming ? closeUnfinished(props.source) : props.source))
   const tree = createProjection<{ nodes: ElementContent[]; openFences: number[] }>(
     (draft) => {
@@ -398,6 +418,9 @@ function Block(props: { source: string; streaming: boolean; without?: readonly s
         },
         get without() {
           return props.without
+        },
+        get block() {
+          return props.index
         },
       }}
       nodes={tree.nodes}
@@ -418,6 +441,7 @@ export function Markdown(props: {
       <For each={blocks()} keyed={false}>
         {(source, index) => (
           <Block
+            index={index}
             source={source()}
             streaming={!!props.streaming && index === blocks().length - 1}
             without={props.without}
