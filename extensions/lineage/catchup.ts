@@ -379,18 +379,19 @@ export async function tallyText(
   for (const activity of activities.values()) activity.title ??= activity.prompt
   const newest = [...activities.values()].toSorted((a, b) => b.last - a.last)
   const own = newest.length ? await reader?.files() : undefined
-  const concernsOwnWork = async (activity: Activity) => {
-    if (activity.notes.length) return true
+  const touchesOwnFiles = async (activity: Activity) => {
     for (const landing of activity.landings) if (await reader!.touched(landing, own!)) return true
     return false
   }
-  const blocks: { full?: string; line: string; relevant?: true }[] = []
+  const blocks: { full?: string; line: string; relevant?: true; touched?: true }[] = []
   for (const activity of newest) {
-    const relevant = !!own && (await concernsOwnWork(activity))
+    const touched = !!own && (await touchesOwnFiles(activity))
+    const relevant = touched || (!!own && activity.notes.length > 0)
     blocks.push({
       ...(!own || relevant ? { full: full(activity) } : {}),
-      line: `${relevant ? '- **Overlap** ' : ''}${relevant ? collapsed(activity).slice(2) : collapsed(activity)}`,
+      line: touched ? `- **Overlap** ${collapsed(activity).slice(2)}` : collapsed(activity),
       ...(relevant ? { relevant: true as const } : {}),
+      ...(touched ? { touched: true as const } : {}),
     })
   }
   const distilled =
@@ -442,7 +443,7 @@ export async function tallyText(
       continue
     }
     if (block.full) outgrewBudget = true
-    if (block.relevant) overlapCollapsed = true
+    if (block.touched) overlapCollapsed = true
     if (!lines.length && !dropped) used += tokensIncludingBlankLineSeparator(pointer)
     if (!dropped && used + tokensIncludingBlankLineSeparator(block.line) <= budget) {
       lines.unshift(block.line)
@@ -481,7 +482,9 @@ function readerOf(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx): 
   return {
     files: () =>
       (files ??= changedFiles(host, id, main, tx).catch((error: unknown) => {
-        host.notice(`Catch-up for #${id} lists every update in full: ${String(error)}`)
+        host.notice(
+          `Catch-up for #${id} could not read its changed files, so it lists every update in full without overlap marks: ${String(error)}`,
+        )
         return undefined
       })),
     touched: async (landing, own) => {
@@ -535,7 +538,7 @@ export async function catchup(
     : undefined
   const mainMoved =
     !!main && !!alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
-  const own = reader && mainMoved ? await reader.files() : undefined
+  const own = reader && mainMoved ? ((await reader.files()) ?? new Set<string>()) : undefined
   const commits =
     main && own && mainMoved
       ? await catchupText(
