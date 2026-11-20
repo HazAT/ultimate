@@ -44,6 +44,7 @@
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",
     "extensions/lineage/memory-chip.ts",
+    "extensions/system/tab.ts",
     "extensions/phase/types.ts",
     "extensions/plan/body.ts",
     "extensions/plan/progress.ts",

@@ -13,6 +13,7 @@ import {
 import type { SolidEntryProps } from '@/sdk/solid'
 import { cacheBusts } from '../../lib/context-usage.ts'
 import { ListAction } from './refs.ts'
+import { SYSTEM_TAB_KEY } from '../system/ui.solid.tsx'
 import type { WireSummary } from './refs.ts'
 import { WIRE_PICKED_KEY } from './state.ts'
 import type { Picked } from './state.ts'
@@ -33,7 +34,7 @@ export function WireLink(props: SolidEntryProps) {
   const transcript = useTranscript()
   const bust = createMemo(() => cacheBusts(transcript()).has(props.entry.id))
   const [, setPicked] = useUiState<Picked | null>(WIRE_PICKED_KEY, null)
-  const [, setTab] = useUiState('ext.system.tab', 'agents')
+  const [, setTab] = useUiState(SYSTEM_TAB_KEY, 'agents')
   const matchedCall = createMemo(() => {
     const message = props.entry.model?.[0]
     if (message?.role !== 'assistant' || (props.blocks && props.blocks[0] !== 0)) return undefined
