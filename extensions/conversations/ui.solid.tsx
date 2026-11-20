@@ -6,7 +6,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { icons } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
-import { ROOT, cn, useConversations, useDocOf } from '@/sdk/solid'
+import { ROOT, cn, useConversations, useDocOf, useUiState } from '@/sdk/solid'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
 import { agentMark, agentTitle } from './mark-style.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
@@ -14,6 +14,9 @@ import { MarksDoc, OverviewDoc } from './refs.ts'
 export { Unsummarized } from './points.ts'
 export { hiddenConversationIds } from './visible.ts'
 export { ConversationTaskChip } from './points.ts'
+
+/** Conversations that are currently concluded, excluding those that have been resumed. */
+export const useConcluded = () => useUiState<ConversationId[]>('ext.conversations.concluded', [])[0]
 
 export function useAgentTitle(name: () => string) {
   const marks = useDocOf(() => ROOT, MarksDoc)
@@ -26,8 +29,8 @@ export function AgentTitle(props: { name: string }) {
   return <>{title().title}</>
 }
 
-/** The agent's mark at the size used in transcript headers. */
-export function AgentMark(props: { name: string }) {
+/** The agent's mark for a transcript header, or large for the empty transcript. */
+export function AgentMark(props: { name: string; size?: 'lg' }) {
   const marks = useDocOf(() => ROOT, MarksDoc)
   const tile = createMemo(() => agentMark(props.name, marks(), icons))
   const Icon = dynamic(() => tile().Icon)
@@ -35,7 +38,10 @@ export function AgentMark(props: { name: string }) {
     <span
       aria-hidden="true"
       class={cn(
-        'relative inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[9.5px] ring-1 ring-inset',
+        'relative inline-flex shrink-0 items-center justify-center ring-1 ring-inset',
+        props.size === 'lg'
+          ? 'size-10 rounded-[8px] text-[18px]'
+          : 'size-4 rounded-[4px] text-[9.5px]',
         tile().tint,
       )}
       data-agent-mark={props.name}

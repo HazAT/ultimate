@@ -1,6 +1,7 @@
 import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, island, provide } from '@/sdk'
 import { SummaryModelDialog, summaryModelDialog } from './summary-model.solid.tsx'
-import { useStandingEmpty, useStandingPlaceholder } from './standing.tsx'
+import { StandingEmpty } from './standing.solid.tsx'
+import { useStandingPlaceholder } from './standing.tsx'
 import { HiddenIdentity, SummaryAction } from './summary-entry.solid.tsx'
 import { MentionLink } from './mention.solid.tsx'
 
@@ -9,7 +10,7 @@ const summary = island(SummaryAction)
 export default defineWebExtension({
   provides: [
     provide(ComposerPlaceholder, useStandingPlaceholder),
-    provide(EmptyTranscript, useStandingEmpty),
+    provide(EmptyTranscript, island(StandingEmpty)),
   ],
   link: MentionLink,
   entries: {
