@@ -68,6 +68,18 @@ const toHast = unified()
 
 const continuation = 'C1STREAMPROBE'
 
+function stillExtends(markdown: string, start: number) {
+  const lineStart = markdown.lastIndexOf('\n', start - 1) + 1
+  const container = markdown
+    .slice(lineStart, start)
+    .replace(/[-*+]|\d+[.)]/g, (marker) => ' '.repeat(marker.length))
+  const probed = `${markdown}${markdown.endsWith('\n') ? container : ''}${continuation}`
+  const fence = descendants(markdownTree.parse(probed)).find(
+    (node) => node.type === 'code' && node.position!.start.offset === start,
+  )
+  return fence !== undefined && fence.position!.end.offset! >= probed.length
+}
+
 function descendants(node: MdastNodes): MdastNodes[] {
   return 'children' in node ? node.children.flatMap((child) => [child, ...descendants(child)]) : []
 }
@@ -78,17 +90,9 @@ export function parse(markdown: string): { nodes: ElementContent[]; openFences: 
     descendants(tree).filter(
       (node): node is Code => node.type === 'code' && node.data?.fence === 'open',
     )
-  const lastLine = markdown.trimEnd().split('\n').at(-1) ?? ''
-  const prefix = markdown.endsWith('\n') ? (/^[ \t>]*/.exec(lastLine)?.[0] ?? '') : ''
-  const growing = new Map(
-    unclosed(markdownTree.parse(`${markdown}${prefix}${continuation}`)).map((node) => [
-      node.position!.start.offset!,
-      node.value,
-    ]),
-  )
   const openFences = unclosed(mdast)
-    .filter((node) => growing.get(node.position!.start.offset!)?.includes(continuation))
     .map((node) => node.position!.start.offset!)
+    .filter((start) => stillExtends(markdown, start))
   const tree = toHast.runSync(mdast, markdown)
   return { nodes: tree.children.filter((node) => node.type !== 'doctype'), openFences }
 }
