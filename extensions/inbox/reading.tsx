@@ -91,7 +91,7 @@ export function Reading({
 
   const answer = message ? (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
-      <AllProvided input={message} point={MessageExtras}>
+      <AllProvided input={{ message }} point={MessageExtras}>
         {(extras) => extras}
       </AllProvided>
       <MessageQuestions key={message.id} keys={!phone} message={message} />

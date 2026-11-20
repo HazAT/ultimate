@@ -69,10 +69,10 @@ import { MessageAnswers, MessageExtras } from './points.tsx'
 
 const Answers = ({ message }: { message: Message }) => (
   <>
-    <AllProvided input={message} point={MessageExtras}>
+    <AllProvided input={{ message }} point={MessageExtras}>
       {(extras) => extras}
     </AllProvided>
-    <Provided input={message} point={MessageAnswers}>
+    <Provided input={{ message }} point={MessageAnswers}>
       {(answers) => answers}
     </Provided>
   </>

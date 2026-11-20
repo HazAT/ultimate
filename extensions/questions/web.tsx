@@ -32,5 +32,5 @@ export default defineWebExtension({
       run: (context) => context.openPanel('todos'),
     },
   ],
-  provides: [provide(MessageAnswers, (message) => <MessageQuestions message={message} />)],
+  provides: [provide(MessageAnswers, ({ message }) => <MessageQuestions message={message} />)],
 })
