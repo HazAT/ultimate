@@ -148,5 +148,5 @@ it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules
   expect(
     found.filter((line) => line === 'twin.tsx ultimate(ui-framework-boundaries)'),
   ).toHaveLength(2)
-  expect(found.filter((line) => line.endsWith('ultimate(ui-kit-roles)'))).toHaveLength(2)
+  expect(found.filter((line) => line.endsWith('ultimate(ui-kit-roles)'))).toHaveLength(3)
 })
