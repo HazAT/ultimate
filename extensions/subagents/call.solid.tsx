@@ -119,11 +119,6 @@ export function SubagentCall(props: SolidToolProps) {
           class="min-w-0 flex-1"
           meta={
             <>
-              <Show when={childId()}>
-                {(id) => (
-                  <Provided input={{ conversation: id() }} last point={ConversationTaskChip} />
-                )}
-              </Show>
               <IsolateBadge childId={childId()} />
               <Show when={background()}>
                 <Tag>bg</Tag>
@@ -160,6 +155,9 @@ export function SubagentCall(props: SolidToolProps) {
             </Switch>
           }
         />
+        <Show when={childId()}>
+          {(id) => <Provided input={{ conversation: id() }} last point={ConversationTaskChip} />}
+        </Show>
         <Show when={childId()}>
           {(child) => (
             <Button
