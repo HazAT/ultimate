@@ -82,11 +82,7 @@ function StatusChip({ status }: { status: string }) {
 const time = (at: string) => formatTime(at)
 
 function LiteralPlanText({ children, className }: { children: string; className?: string }) {
-  return (
-    <MessageResponse className={className}>
-      {verbatim(children)}
-    </MessageResponse>
-  )
+  return <MessageResponse className={className}>{verbatim(children)}</MessageResponse>
 }
 
 type Checks = { epic: Epic; coordinator: number; estimates: Record<string, Estimate> }

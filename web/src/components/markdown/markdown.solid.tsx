@@ -4,7 +4,16 @@ import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { find, html } from 'property-information'
-import { createMemo, createProjection, createSignal, Errored, For, Match, Show, Switch } from 'solid-js'
+import {
+  createMemo,
+  createProjection,
+  createSignal,
+  Errored,
+  For,
+  Match,
+  Show,
+  Switch,
+} from 'solid-js'
 import type { Component } from 'solid-js'
 import { ExtensionName, useCopy, useExtensions } from '@/sdk/solid'
 import type { CodeBlockRenderer, InlineCodeRenderer, LinkRenderer } from '@/sdk'
@@ -27,7 +36,11 @@ function Contributed<P extends { core: JSX.Element }>(props: {
     const { extension, component } = props.renderers[index]
     const Renderer = component as Component<P>
     return (
-      <Errored fallback={(error) => <ContributionError extension={extension} error={error()} inner={wrap(index - 1)} />}>
+      <Errored
+        fallback={(error) => (
+          <ContributionError extension={extension} error={error()} inner={wrap(index - 1)} />
+        )}
+      >
         <ExtensionName value={extension}>
           <Renderer {...(props.props as P)} core={wrap(index - 1)} />
         </ExtensionName>
@@ -56,7 +69,11 @@ function ContributionError(props: { extension: string; error: unknown; inner: JS
   )
 }
 
-function Anchor(props: { href: string; children: JSX.Element; attributes: Record<string, unknown> }) {
+function Anchor(props: {
+  href: string
+  children: JSX.Element
+  attributes: Record<string, unknown>
+}) {
   const renderers = createMemo(() => linkRenderers(useExtensions()()) as Rendered[])
   const core = () =>
     parseMention(props.href) ? (
@@ -111,7 +128,10 @@ export function HighlightedCode(props: { code: string; language: string }) {
     const code = props.code.replace(/\n+$/, '')
     const known = loaded()
     if (known?.code === code) return known.lines
-    return highlight(code, props.language, (ready) => setLoaded({ code, lines: ready })) ?? plainLines(code)
+    return (
+      highlight(code, props.language, (ready) => setLoaded({ code, lines: ready })) ??
+      plainLines(code)
+    )
   })
   return (
     <code>
@@ -120,7 +140,9 @@ export function HighlightedCode(props: { code: string; language: string }) {
           <span class="block">
             <Show when={line().length} fallback={'\n'}>
               <For each={line()} keyed={false}>
-                {(token) => <span style={token().htmlStyle as JSX.CSSProperties}>{token().content}</span>}
+                {(token) => (
+                  <span style={token().htmlStyle}>{token().content}</span>
+                )}
               </For>
             </Show>
           </span>
@@ -131,9 +153,15 @@ export function HighlightedCode(props: { code: string; language: string }) {
 }
 
 function CodeBlock(props: { code: string; language: string; incomplete: boolean }) {
-  const renderers = createMemo(() => codeBlockRenderers(useExtensions()(), props.language) as Rendered[])
+  const renderers = createMemo(
+    () => codeBlockRenderers(useExtensions()(), props.language) as Rendered[],
+  )
   const core = () => (
-    <div class="code-block" data-incomplete={props.incomplete || undefined} data-language={props.language}>
+    <div
+      class="code-block"
+      data-incomplete={props.incomplete || undefined}
+      data-language={props.language}
+    >
       <div class="code-block-header">
         <span>{props.language}</span>
         <CopyCode code={props.code} />
@@ -166,9 +194,7 @@ function attributesOf(node: Element) {
     const info = find(html, property)
     attributes[info.attribute] = Array.isArray(value)
       ? value.join(info.commaSeparated ? ', ' : ' ')
-      : value === true
-        ? ''
-        : value
+      : value
   }
   return attributes
 }

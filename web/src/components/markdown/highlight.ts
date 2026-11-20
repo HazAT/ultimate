@@ -54,7 +54,9 @@ function load(language: string) {
   }).then((ready) => (highlighter = ready))
   let loaded = loading.get(language)
   if (!loaded) {
-    loaded = starting.then((ready) => (language === 'text' ? undefined : ready.loadLanguage(language as never)))
+    loaded = starting.then((ready) =>
+      language === 'text' ? undefined : ready.loadLanguage(language as never),
+    )
     loading.set(language, loaded)
   }
   return loaded

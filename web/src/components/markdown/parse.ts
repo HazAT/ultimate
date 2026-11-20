@@ -45,8 +45,8 @@ const toHast = unified()
 
 /** Markdown as the sanitized HTML tree the renderer draws: GFM, `#id` mentions, raw HTML kept within the allowlist. */
 export function parse(markdown: string): ElementContent[] {
-  const tree = toHast.runSync(toHast.parse(markdown)) as HastRoot
-  return tree.children.filter((node) => node.type !== 'doctype') as ElementContent[]
+  const tree = toHast.runSync(toHast.parse(markdown))
+  return tree.children.filter((node) => node.type !== 'doctype')
 }
 
 /** Closes what an unfinished stream leaves open (`**`, `` ` ``, a link), so the tail renders as it will end. */
@@ -61,10 +61,26 @@ export function openFence(markdown: string) {
   return fence !== undefined
 }
 
-const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'])
+const voidTags = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+])
 function openTags(html: string) {
   let open = 0
-  for (const [, closing, name, selfClosing] of html.matchAll(/<(\/?)([A-Za-z][\w:-]*)[^>]*?(\/?)>/g))
+  for (const [, closing, name, selfClosing] of html.matchAll(
+    /<(\/?)([A-Za-z][\w:-]*)[^>]*?(\/?)>/g,
+  ))
     if (!voidTags.has(name.toLowerCase()) && !selfClosing) open += closing ? -1 : 1
   return open
 }
@@ -73,7 +89,7 @@ const refersAcrossBlocks = (markdown: string) =>
   /\[\^[\w-]{1,200}\]/.test(markdown) || /^ {0,3}\[[^\]]+\]:/m.test(markdown)
 
 function split(markdown: string): string[] {
-  const tree = blocks.parse(markdown) as MdastRoot
+  const tree = blocks.parse(markdown)
   const starts = tree.children.map((node) => node.position!.start.offset!)
   const parts: string[] = []
   let open = 0
