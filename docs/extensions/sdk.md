@@ -59,9 +59,7 @@ A contribution can render with Solid 2 instead of React. Write the component in 
 import { defineWebExtension, island } from '@/sdk'
 import { Status } from './status.solid.tsx'
 
-export default defineWebExtension({
-  slots: { 'statusline.left': island(Status) },
-})
+export default defineWebExtension({ slots: { 'statusline.left': island(Status) } })
 ```
 
 The island renders inside a `display: contents` element and remounts when its extension or conversation scope

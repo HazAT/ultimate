@@ -113,12 +113,7 @@ function createReplica() {
     watch(target: Target, kind: string) {
       const release = target === 'shown' ? store.watchDoc(kind) : store.watchDocOf(target, kind)
       const key = replicaKey(target, kind)
-      const reader = watched.get(key) ?? {
-        target,
-        kind,
-        readers: 0,
-        seen: undefined,
-      }
+      const reader = watched.get(key) ?? { target, kind, readers: 0, seen: undefined }
       if (reader.readers++ === 0) {
         watched.set(key, reader)
         reader.seen = immutableDoc(store.getState(), target, kind)
@@ -390,11 +385,7 @@ export function useRestart(timeoutMs = 120_000) {
   const connection = useConnection()
   const [state, setState] = createSignal<RestartPhase>({ phase: 'idle' })
   createEffect(
-    () => ({
-      current: state(),
-      system: system(),
-      open: connection().status === 'open',
-    }),
+    () => ({ current: state(), system: system(), open: connection().status === 'open' }),
     ({ current, system: info, open }) => {
       const next = restartPhase(current, info, open)
       if (next !== current) setState(next)
