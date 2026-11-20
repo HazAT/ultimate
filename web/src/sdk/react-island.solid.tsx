@@ -112,14 +112,15 @@ export function Contribution(props: {
   props: Props
   fallback: (extension: string, error: unknown) => JSX.Element
 }) {
-  const item = createMemo(() => props.item, {
+  const mounted = createMemo(() => props.item, {
     equals: (a, b) => a.component === b.component && a.extension === b.extension,
   })
   return (
-    <For each={[item()]}>
+    <For each={[mounted()]}>
       {(current) => {
         const Solid = islandSolid(current.component) as Component<Props> | undefined
-        if (!Solid) return <MountReact render={() => contribution(item(), { ...props.props })} />
+        if (!Solid)
+          return <MountReact render={() => contribution(props.item, { ...props.props })} />
         return (
           <Errored fallback={(error) => props.fallback(current.extension, error())}>
             <ExtensionName value={current.extension}>

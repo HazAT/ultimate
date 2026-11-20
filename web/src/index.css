@@ -169,7 +169,6 @@
   }
 }
 
-/* A transcript row hidden while it shows nothing: no children, or only a React host whose renderers returned nothing. */
 @utility empty-row {
   &:empty,
   &:has(> [data-empty]:only-child) {

@@ -134,17 +134,23 @@ it('brings the question card to the top of the view below the pinned strip', asy
   }
   // After both reveals, the room a reveal added below the last row goes with the way back to the end.
   await page.locator('[aria-label="Scroll to bottom"]').click()
-  await until(
-    async () =>
-      await page.evaluate(() => {
-        const transcript = document.querySelector('[data-ui="transcript"]')!
-        const scroll = transcript.parentElement!
-        const rows = transcript.querySelectorAll(':scope > [data-entry-id]')
-        const last = rows[rows.length - 1].getBoundingClientRect().bottom
-        return scroll.getBoundingClientRect().bottom - last < 120
-      }),
-    5_000,
-  )
+  const end = () =>
+    page.evaluate(() => {
+      const transcript = document.querySelector('[data-ui="transcript"]')!
+      const scroll = transcript.parentElement!
+      const rows = transcript.querySelectorAll(':scope > [data-entry-id]')
+      return {
+        atEnd: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1,
+        below:
+          scroll.getBoundingClientRect().bottom -
+          rows[rows.length - 1].getBoundingClientRect().bottom,
+      }
+    })
+  await until(async () => (await end()).atEnd, 5_000)
+  // Below the last row is only the transcript's own bottom padding and the live line, never the reveal's room.
+  const { below } = await end()
+  expect(below).toBeGreaterThanOrEqual(0)
+  expect(below).toBeLessThan(120)
 })
 
 it('opens a question link at the question, once', async () => {

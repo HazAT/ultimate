@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act, useContext, useEffect } from 'react'
+import { readFileSync } from 'node:fs'
 import { createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
@@ -103,7 +104,7 @@ it('marks an empty React result so its row collapses, renders island(C) as Solid
   expect(container.innerHTML).toBe('<b>second x</b>')
 })
 
-it('keeps a chained row mounted while its streamed props change, and shows a text-only Solid row beside an empty React one', () => {
+it('keeps a chained row mounted while its streamed props change; hides an empty React row, not a text-only Solid one', () => {
   const mounts = vi.fn<() => void>()
   const ReactWrap = ({ core, call }: { core: unknown; call: { output: string } }) => {
     useEffect(() => mounts(), [])
@@ -130,6 +131,13 @@ it('keeps a chained row mounted while its streamed props change, and shows a tex
             ]}
           />
         </div>
+        <div class="empty-row" data-row="text">
+          <Contribution
+            fallback={failed}
+            item={{ extension: 'text', version: 1, component: SolidText }}
+            props={{ call: { output: 'plain' } }}
+          />
+        </div>
         <div class="empty-row" data-row="empty">
           <Contribution
             fallback={failed}
@@ -149,9 +157,13 @@ it('keeps a chained row mounted while its streamed props change, and shows a tex
   expect(container.querySelector('section')).toBe(section)
   expect(section?.textContent).toBe('react twotwo')
   expect(mounts).toHaveBeenCalledOnce()
-  const empty = container.querySelector('[data-row="empty"]')!
-  expect(empty.querySelector(':scope > [data-empty]:only-child')).not.toBeNull()
-  expect(container.querySelector('[data-row="chain"] > [data-empty]')).toBeNull()
+  const emptyRow = ':empty, :has(> [data-empty]:only-child)'
+  const row = (name: string) => container.querySelector(`[data-row="${name}"]`)!
+  expect(readFileSync('web/src/index.css', 'utf8')).toContain('&:has(> [data-empty]:only-child)')
+  expect(row('empty').matches(emptyRow)).toBe(true)
+  expect(row('text').textContent).toBe('plain')
+  expect(row('text').matches(emptyRow)).toBe(false)
+  expect(row('chain').matches(emptyRow)).toBe(false)
 })
 
 it('reads a provided value in Solid, follows its replacement, and unmounts without React taking it as a cleanup', async () => {
@@ -166,9 +178,8 @@ it('reads a provided value in Solid, follows its replacement, and unmounts witho
     }),
   })
   const [shown, setShown] = createSignal(true)
-  const [input, setInput] = createSignal(0)
   function Reader() {
-    const value = useProvided(Parked, () => (input(), null))
+    const value = useProvided(Parked, () => null)
     return <i>{[...(value() ?? [])].join()}</i>
   }
   let container!: HTMLElement
@@ -184,7 +195,6 @@ it('reads a provided value in Solid, follows its replacement, and unmounts witho
         default: { provides: [provide(Parked, () => current)] },
       }),
     })
-    setInput(1)
     flush()
   })
   expect(container.textContent).toBe('2')
@@ -193,6 +203,33 @@ it('reads a provided value in Solid, follows its replacement, and unmounts witho
     flush()
   })
   expect(console.error).not.toHaveBeenCalled()
+})
+
+it('recovers a React contribution that threw once its extension reloads with a new version', () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  let broken = true
+  const Flaky = () => {
+    if (broken) throw new Error('renderer broke')
+    return h('span', null, 'fixed')
+  }
+  const [version, setVersion] = createSignal(1)
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => (
+      <Contribution
+        fallback={failed}
+        item={{ extension: 'echo', version: version(), component: Flaky }}
+        props={{}}
+      />
+    ))
+  })
+  expect(container.querySelector('[data-extension-error="echo"]')).not.toBeNull()
+  broken = false
+  act(() => {
+    setVersion(2)
+    flush()
+  })
+  expect(container.textContent).toBe('fixed')
 })
 
 it('keeps the Solid host running when a React contribution throws', () => {
