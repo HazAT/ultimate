@@ -3,7 +3,7 @@ import { useUiState, writingAs } from '@/sdk'
 import { SELECTED, selectionAfterChange, shown } from './items.ts'
 import type { Entry, Selection } from './items.ts'
 
-type Handoff = { from: string; to: string }
+type Handoff = { from: string; to: string; departedKey?: string }
 
 export function useSelection(entries: readonly Entry[]) {
   const [selected, setSelected] = useUiState<Selection>(SELECTED, null)
@@ -11,13 +11,14 @@ export function useSelection(entries: readonly Entry[]) {
   useEffect(() => {
     const key = selected?.key
     const departedCameBack =
-      sent.current?.from === key && entries.some((entry) => entry.key === key)
+      sent.current?.departedKey === key && entries.some((entry) => entry.key === key)
     if (departedCameBack) sent.current = undefined
     const next = selectionAfterChange(entries, selected)
     if (!next || !key) return
-    const rolledBack = sent.current?.from === key && sent.current.to === next.key
+    const handoff = { from: JSON.stringify(selected), to: JSON.stringify(next) }
+    const rolledBack = sent.current?.from === handoff.from && sent.current.to === handoff.to
     if (rolledBack) return
-    sent.current = { from: key, to: next.key }
+    sent.current = { ...handoff, departedKey: next.key === key ? undefined : key }
     writingAs('app', () => setSelected(next))
   }, [entries, selected, setSelected])
   return { shown: shown(entries, selected), selected, setSelected }

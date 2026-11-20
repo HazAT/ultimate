@@ -11,7 +11,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     uiState: createUiState(
       async (request) => {
         harness.writes.push(request.ops[0].value)
-        if (harness.reject && harness.writes.length < 5) throw new Error('server down')
+        if (harness.reject && harness.failures < 4) throw new Error('server down')
         return { ok: true, rev: harness.writes.length }
       },
       { delayMs: 0, onError: () => harness.failures++ },
@@ -20,7 +20,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { uiState } from '../../../../web/src/sdk/client.ts'
-import { SELECTED } from '../../items.ts'
+import { SELECTED, UNLOADED } from '../../items.ts'
 import type { Selection } from '../../items.ts'
 import { useSelection } from '../../selection.tsx'
 
@@ -56,6 +56,16 @@ it('sends a rejected handoff once while mounted, and once more after a remount',
   expect(harness.writes).toHaveLength(2)
   expect(harness.failures).toBe(2)
   second.unmount()
+})
+
+it('sends a rejected repair of a late link’s age once while mounted', async () => {
+  harness.writes.length = 0
+  harness.failures = 0
+  uiState.receive({ [SELECTED]: { key: 'b', at: UNLOADED, open: true } })
+  const root = await mounted([a, b])
+  expect(harness.writes).toEqual([{ key: 'b', at: 20, open: true }])
+  expect(harness.failures).toBe(1)
+  root.unmount()
 })
 
 it('hands off again when the same entry comes back, is selected, and leaves again', async () => {
