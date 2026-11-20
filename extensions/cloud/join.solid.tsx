@@ -159,6 +159,12 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
     const value = result()
     return value !== 'running' && value?.ok ? value : undefined
   })
+  const replacing = () => {
+    const last = result()
+    const wroteSecrets =
+      last !== undefined && last !== 'running' && !last.ok && last.step === 'settings'
+    return wroteSecrets || props.state.missing.length < Object.keys(secretNames).length
+  }
   const ready = () =>
     !running() && [url(), machine(), token(), snapshotKey()].every((value) => value.trim())
 
@@ -234,8 +240,8 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
           <Button
             class="h-7 font-sans text-[12px]"
             data-agent-confirm={
-              props.state.missing.length < Object.keys(secretNames).length
-                ? 'Replaces the cloud secrets stored on this machine.'
+              replacing()
+                ? 'Replaces the cloud secrets stored on this machine and its cloud URL and name.'
                 : undefined
             }
             disabled={!ready()}
