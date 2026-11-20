@@ -10,7 +10,8 @@ import {
   useViewport,
 } from '@/sdk'
 import { SystemTab } from '../system/ui.tsx'
-import { useOpenWire, WireLink } from './link.tsx'
+import { WireLink } from './link.solid.tsx'
+import { useOpenWire } from './link.tsx'
 import { WireTab } from './tab.solid.tsx'
 
 const Tab = island(WireTab)
@@ -47,5 +48,5 @@ export default defineWebExtension({
   provides: [provide(SystemTab, () => tab)],
   commands: [{ id: 'wire.open', title: 'Open Wire', run: (context) => context.open(openDialog) }],
   slots: { overlay: [OpenOnCommand] },
-  entries: { 'pi.assistant': WireLink },
+  entries: { 'pi.assistant': island(WireLink) },
 })

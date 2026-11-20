@@ -1,42 +1,13 @@
-import { CalendarClockIcon, RadarIcon, TimerIcon, ZapIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { MessageResponse } from '@/components/ai/message'
-import {
-  Tool,
-  ToolContent,
-  ToolDiagnostics,
-  ToolHeader,
-  ToolOutput,
-  ToolSection,
-} from '@/components/ai/tool'
-import { Button } from '@/components/ui/button'
-import {
-  cn,
-  defineWebExtension,
-  island,
-  renderEntry,
-  Fold,
-  useToolDuration,
-  useUltimate,
-  useStore,
-  useViewport,
-  ROOT,
-  useDocOf,
-  provide,
-} from '@/sdk'
-import type { TypedEntry } from '@earendil-works/pi-durable'
-import type { AutomationInput } from './refs.ts'
-import { FiredEntry } from '../entries/ui.tsx'
-import { FailedEntry, EscalatedEntry, WritingEntry } from './entries.ts'
-import type { ToolCallView } from '@/sdk'
-import { Chip } from './chip.solid.tsx'
-import { AutomationsPanel } from './panel.solid.tsx'
-import { looks, type Look } from './looks.ts'
-import { openAutomationsPanel } from './navigation.ts'
-import { Dot, useOpenAutomation } from './parts.tsx'
-import { AutomationsSection } from './sidebar.solid.tsx'
-import { StandingDoc } from '../subagents/ui.tsx'
+import { TimerIcon } from 'lucide-react'
+import { defineWebExtension, island, provide, ROOT, useDocOf, useStore, useViewport } from '@/sdk'
 import { WaitTimers } from '../messages/ui.tsx'
+import { StandingDoc } from '../subagents/ui.tsx'
+import { AutomationCall } from './call.solid.tsx'
+import { Chip } from './chip.solid.tsx'
+import { Escalated, Failed, Fired, Writing } from './entry.solid.tsx'
+import { openAutomationsPanel } from './navigation.ts'
+import { AutomationsPanel } from './panel.solid.tsx'
+import { AutomationsSection } from './sidebar.solid.tsx'
 import { useAutomations, timerWaits } from './ui.tsx'
 
 const PanelIsland = island(AutomationsPanel)
@@ -54,184 +25,18 @@ function useWaitTimers() {
   return timerWaits(useAutomations(5000).data, useDocOf(ROOT, StandingDoc))
 }
 
-type Kind = 'fired' | 'failed' | 'escalated' | 'writing'
-const kinds: Record<Kind, { look: Look; word: string; border: string }> = {
-  fired: { look: 'watching', word: 'fired', border: 'border-l-success/70' },
-  failed: { look: 'investigating', word: 'failed', border: 'border-l-warning/70' },
-  escalated: { look: 'failed', word: 'escalated', border: 'border-l-error/70' },
-  writing: { look: 'writing', word: 'assigned', border: 'border-l-brand/60' },
-}
-
-function body(text: string) {
-  const trimmed = text.trim()
-  if (/^[[{]/.test(trimmed))
-    try {
-      return `\`\`\`json\n${JSON.stringify(JSON.parse(trimmed), null, 2)}\n\`\`\``
-    } catch {
-      return text
-    }
-  return text
-}
-
-const card = (kind: Kind) =>
-  function AutomationEntry({ entry }: { entry: TypedEntry<AutomationInput> }) {
-    const { id, name, text } = entry.data
-    const look = kinds[kind]
-    const open = useOpenAutomation()
-    const label: ReactNode = (
-      <>
-        <span className="shrink-0 text-muted-foreground">{id}</span>
-        <span className="min-w-0 truncate text-foreground" title={name}>
-          {name}
-        </span>
-        <span className={cn('shrink-0', looks[look.look].text)}>{look.word}</span>
-      </>
-    )
-    return (
-      <Fold
-        card={entry.id}
-        summary={
-          <>
-            <Dot look={look.look} />
-            <span className="flex min-w-0 items-center gap-1.5 text-foreground/80">{label}</span>
-          </>
-        }
-      >
-        <section
-          className={cn(
-            'min-w-0 rounded-md border border-l-2 border-border bg-muted/20',
-            look.border,
-          )}
-          data-automation-entry={kind}
-        >
-          <header className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px]">
-            <TimerIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="flex min-w-0 items-center gap-1.5">{label}</span>
-            <button
-              className="ml-auto shrink-0 cursor-pointer text-muted-foreground hover:text-foreground hover:underline"
-              onClick={() => open(id)}
-              title={`Show ${id} in Automations`}
-              type="button"
-            >
-              open {id}
-            </button>
-          </header>
-          {text && (
-            <div
-              className={cn(
-                'min-w-0 px-3 py-2.5 text-[13px] leading-relaxed',
-                kind === 'writing' && 'text-foreground/85',
-              )}
-            >
-              <MessageResponse>{kind === 'writing' ? text : body(text)}</MessageResponse>
-            </div>
-          )}
-        </section>
-      </Fold>
-    )
-  }
-
-const words = (value: unknown) => (typeof value === 'string' ? value : '')
-
-const touched = (call: ToolCallView) =>
-  words(call.args.id) || (/^(A\d+|[a-z][a-z0-9-]*) .+ — /.exec(call.output)?.[1] ?? '')
-
-export function AutomationCall({ call }: { call: ToolCallView }) {
-  const duration = useToolDuration(call)
-  const shell = useUltimate()
-  const open = useOpenAutomation()
-  const action = words(call.args.action) || '…'
-  const id = touched(call)
-  const name = words(call.args.name)
-  const schedule = words(call.args.schedule)
-  const ask = words(call.args.ask)
-  const prompt = words(call.args.prompt)
-  const reason = words(call.args.reason)
-  const Kind =
-    call.args.event || call.args.condition
-      ? ZapIcon
-      : ask
-        ? RadarIcon
-        : schedule
-          ? CalendarClockIcon
-          : TimerIcon
-  const title: ReactNode = (
-    <>
-      {action === 'run' ? 'run now' : action}
-      {id && <span className="text-foreground/85"> {id}</span>}
-      {name && <span className="text-foreground/85"> {name}</span>}
-      {action === 'abort' && words(call.args.runId) && ` run ${words(call.args.runId)}`}
-      {words(call.args.to) && ` → ${words(call.args.to)}`}
-    </>
-  )
-  return (
-    <Tool defaultOpen={call.status === 'error'}>
-      <div className="flex items-center">
-        <ToolHeader
-          className="min-w-0 flex-1"
-          meta={
-            <>
-              {schedule && <span className="max-w-48 truncate">{schedule}</span>}
-              {ask && <span>{call.args.once === false ? 'watch' : 'watch once'}</span>}
-              {duration && <span>{duration}</span>}
-            </>
-          }
-          name="automation"
-          state={call.status}
-          title={title}
-        />
-        <Button
-          className="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
-          onClick={() => (id ? open(id) : openAutomationsPanel(shell))}
-          size="sm"
-          title={id ? `Show ${id} in Automations` : 'Show Automations'}
-          variant="ghost"
-        >
-          <Kind className="size-3" />
-          {id || 'automations'}
-        </Button>
-      </div>
-      <ToolContent>
-        {ask && (
-          <ToolSection label="Watch for">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-              {ask}
-            </p>
-          </ToolSection>
-        )}
-        {prompt && (
-          <ToolSection label="Prompt">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-              {prompt}
-            </p>
-          </ToolSection>
-        )}
-        {reason && (
-          <ToolSection label="Reason">
-            <p className="font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-              {reason}
-            </p>
-          </ToolSection>
-        )}
-        <ToolOutput isError={call.status === 'error'} output={call.output} />
-        <ToolDiagnostics diagnostics={call.diagnostics} />
-      </ToolContent>
-    </Tool>
-  )
-}
-
 export default defineWebExtension({
   provides: [provide(WaitTimers, useWaitTimers)],
-  tools: { automation: AutomationCall },
+  tools: { automation: island(AutomationCall) },
   slots: {
     'statusline.right': [{ component: island(Chip), order: -2 }],
     'sidebar.top': [{ component: island(AutomationsSection), order: -20 }],
   },
   entries: {
-    'automations.fired': renderEntry(FiredEntry, card('fired')),
-    'automations.failed': renderEntry(FailedEntry, card('failed')),
-    'automations.escalated': renderEntry(EscalatedEntry, card('escalated')),
-    'automations.writing': renderEntry(WritingEntry, card('writing')),
+    'automations.fired': island(Fired),
+    'automations.failed': island(Failed),
+    'automations.escalated': island(Escalated),
+    'automations.writing': island(Writing),
   },
   panels: [
     {

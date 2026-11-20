@@ -1,4 +1,4 @@
-import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { LoaderCircleIcon, PauseIcon, PlayIcon, SquareIcon, Volume2Icon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
@@ -7,47 +7,20 @@ import {
   column,
   defineWebExtension,
   events,
+  island,
   useConversation,
   useExtensionUiState,
   useUltimate,
 } from '@/sdk'
+import { readAloudAction } from './action.solid.tsx'
 import * as player from './player.tsx'
+
+const ReadAloudAction = readAloudAction(player)
 
 const useReading = () => useSyncExternalStore(player.subscribe, player.current)
 
 const rowButton =
   'cursor-pointer rounded p-0.5 transition-colors hover:text-foreground [&_svg]:size-3'
-
-function ReadAloudAction({ entry, text }: { entry: EntryRecord; text: string }) {
-  const reading = useReading()
-  if (!text.trim() || entry.model?.[0]?.role === 'user') return null
-  const mine = reading?.conversation === entry.conversationId && reading.entry === entry.id
-  const label = !mine ? 'Read aloud' : reading.status === 'playing' ? 'Pause' : 'Resume'
-  return (
-    <button
-      aria-label={label}
-      className={cn(rowButton, mine && 'text-brand')}
-      data-read-aloud={entry.id}
-      onClick={() =>
-        !mine
-          ? player.read(entry.conversationId, entry.id, text)
-          : reading.status === 'playing'
-            ? player.pause()
-            : player.resume()
-      }
-      title={label}
-      type="button"
-    >
-      {mine && reading.status === 'loading' ? (
-        <LoaderCircleIcon className="motion-safe:animate-spin" />
-      ) : mine && reading.status === 'playing' ? (
-        <PauseIcon />
-      ) : (
-        <Volume2Icon />
-      )}
-    </button>
-  )
-}
 
 const speeds = [1, 1.25, 1.5, 1.75, 2, 0.75]
 
@@ -143,6 +116,6 @@ function ReadingStrip({ core, dock }: { core: ReactNode; dock?: boolean }) {
 }
 
 export default defineWebExtension({
-  messageActions: [ReadAloudAction],
+  messageActions: [island(ReadAloudAction)],
   composer: ReadingStrip,
 })
