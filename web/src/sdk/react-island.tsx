@@ -93,6 +93,8 @@ export const provided = <Input, Value>(
 )
 
 function Report<Value>({ value, report }: { value: Value; report: (value: Value) => void }) {
-  useLayoutEffect(() => report(value))
+  useLayoutEffect(() => {
+    report(value)
+  })
   return null
 }
