@@ -33,13 +33,20 @@ function Input(props: InputProps) {
   )
 }
 
-type TextareaProps = ComponentProps<typeof TextareaRoot> & { class?: string }
+type TextareaProps = Omit<ComponentProps<typeof TextareaRoot>, 'onSubmit'> & { class?: string }
 
+const pressSubmit = (event?: Event) => {
+  const form = (event?.target as HTMLTextAreaElement | null)?.form
+  form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click()
+}
+
+/** `submitShortcut` presses its form's submit Button, so the Button's `onClick` runs with who pressed. */
 function Textarea(props: TextareaProps) {
   const rest = omit(props, 'class', 'onValueChange')
   return (
     <TextareaRoot
       {...rest}
+      onSubmit={(_, details) => pressSubmit(details.event)}
       class={cn(field, 'h-auto resize-y py-2 font-sans text-[13px] leading-relaxed', props.class)}
       onValueChange={(value, details) => {
         const change = props.onValueChange

@@ -65,9 +65,7 @@ export function CommitCount(props: {
         <Button
           aria-label={`Review ${short(props.range!)}`}
           class="font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline"
-          onClick={(_, details) =>
-            events.emit('review:open', { spec: props.range, source: details.source })
-          }
+          onClick={() => events.emit('review:open', { spec: props.range })}
           size={null}
           title={`Review ${short(props.range!)}`}
           variant={null}

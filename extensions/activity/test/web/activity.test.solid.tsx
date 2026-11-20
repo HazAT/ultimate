@@ -55,6 +55,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName, ROOT, events } from '../../../../web/src/sdk/solid.ts'
+import { writerNow } from '../../../../web/src/sdk/writer.ts'
 import { ActivityPanel } from '../../panel.solid.tsx'
 
 const agent = createAgent()
@@ -187,11 +188,11 @@ it('renders the live rows and opens the landing at its entry, with Review using 
 
   await registry.setLoaders({ '/extensions/review/web.tsx': async () => ({ default: {} }) })
   flush()
-  const review = vi.fn<(value: unknown) => void>()
-  onTestFinished(events.on('review:open', review))
+  const review = vi.fn<(value: unknown, who: string) => void>()
+  onTestFinished(events.on('review:open', (value) => review(value, writerNow())))
   const landing = container.querySelector('li[data-activity="workspaces.landed"]')!
   await act('Review 9057c43...45a315f0', 'press')
-  expect(review).toHaveBeenCalledWith({ spec: '9057c43...45a315f0', source: 'agent' })
+  expect(review).toHaveBeenCalledWith({ spec: '9057c43...45a315f0' }, 'agent')
   expect(landing.querySelector('a')?.getAttribute('href')).toBe(compare)
 
   const open = vi.fn<(value: unknown) => void>()

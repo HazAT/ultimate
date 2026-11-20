@@ -35,7 +35,6 @@ function GoalForm(props: { close: () => void }) {
   const active = useOpenGoal()
   const [text, setText] = createSignal('')
   const [failure, setFailure] = createSignal<string>()
-  let submit: HTMLButtonElement | undefined
   const canStart = () => !active() && !!text().trim()
 
   async function start(source: string) {
@@ -72,7 +71,6 @@ function GoalForm(props: { close: () => void }) {
           class="min-h-24 bg-transparent"
           data-goal-text
           disabled={!!active()}
-          onSubmit={() => submit?.click()}
           onValueChange={setText}
           placeholder="Make the sidebar load instantly with 2,000 conversations. Stop by 8:00."
           rows={4}
@@ -110,7 +108,6 @@ function GoalForm(props: { close: () => void }) {
             disabled={!canStart()}
             onClick={(_, details) => start(details.source)}
             pendingAnnouncement="Starting hands-off goal"
-            ref={submit}
             size="sm"
             type="submit"
           >

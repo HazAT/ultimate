@@ -92,6 +92,8 @@ export { uiAgent } from './client.ts'
 export type { UiAgent } from './agent.ts'
 /** As in `@/sdk/solid`: attribute the server writes `write` starts to the agent when `source` is `agent`. */
 export { writingAs } from './writer.ts'
+/** Who the write being made now is attributed to, to carry past an `await` or a later effect. */
+export { writerNow } from './writer.ts'
 export { ActionError } from './api.ts'
 export type { ActionOptions, Api } from './api.ts'
 export type { UseActionOptions } from './hooks.ts'
