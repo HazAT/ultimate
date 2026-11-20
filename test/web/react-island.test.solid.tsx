@@ -18,44 +18,53 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import { ConversationIdContext } from '../../web/src/sdk/conversation-scope.tsx'
 import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
-import { reactIsland } from '../../web/src/sdk/react-island.solid.tsx'
-import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
+import { island } from '../../web/src/sdk/island.tsx'
+import { Contribution } from '../../web/src/sdk/react-island.solid.tsx'
+import { ConversationScope } from '../../web/src/sdk/solid.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('mounts a React component in Solid with its extension and conversation, updates props live and unmounts it', () => {
+const failed = (extension: string, error: unknown) => <i data-failed={extension}>{String(error)}</i>
+
+it('mounts a React contribution with its extension and scope, streams props without a remount, and unmounts it', () => {
   const mounted = vi.fn<(label: string) => void>()
   const unmounted = vi.fn<(label: string) => void>()
-  const Label = reactIsland(({ note }: { note: string }) => {
+  const Label = ({ note }: { note: string }) => {
     const label = `${useContext(ExtensionNameContext)}@${useContext(ConversationIdContext)}`
     useEffect(() => {
       mounted(label)
       return () => unmounted(label)
     }, [label])
     return h('span', null, `${label}:${note}`)
-  })
+  }
   const [note, setNote] = createSignal('a')
   const [shown, setShown] = createSignal(true)
   let container!: HTMLElement
   act(() => {
     container = renderSolid(() => (
-      <ExtensionName value="echo">
-        <ConversationScope value={7 as ConversationId}>
-          {shown() && <Label note={note()} />}
-        </ConversationScope>
-      </ExtensionName>
+      <ConversationScope value={7 as ConversationId}>
+        {shown() && (
+          <Contribution
+            fallback={failed}
+            item={{ extension: 'echo', version: 1, component: Label }}
+            props={{
+              get note() {
+                return note()
+              },
+            }}
+          />
+        )}
+      </ConversationScope>
     ))
   })
-  expect(container.innerHTML).toBe('<div class="contents"><span>echo@7:a</span></div>')
-
+  expect(container.textContent).toBe('echo@7:a')
   act(() => {
     setNote('b')
     flush()
   })
   expect(container.textContent).toBe('echo@7:b')
   expect(mounted).toHaveBeenCalledExactlyOnceWith('echo@7')
-
   act(() => {
     setShown(false)
     flush()
@@ -64,27 +73,50 @@ it('mounts a React component in Solid with its extension and conversation, updat
   expect(container.innerHTML).toBe('')
 })
 
-it('keeps the Solid parent running when the React child throws', () => {
-  vi.spyOn(console, 'error').mockImplementation(() => {})
-  const Broken = reactIsland(() => {
-    throw new Error('renderer broke')
-  })
-  const [count, setCount] = createSignal(0)
+it('marks an empty React result so its row collapses, renders island(C) as Solid, and swaps a replaced renderer', () => {
+  const Nothing = () => null
+  const First = island((props: { note: string }) => <b>first {props.note}</b>)
+  const Second = island((props: { note: string }) => <b>second {props.note}</b>)
+  const [component, setComponent] = createSignal<unknown>(() => Nothing)
   let container!: HTMLElement
   act(() => {
     container = renderSolid(() => (
-      <ExtensionName value="echo">
-        <p>count {count()}</p>
-        <Broken />
-      </ExtensionName>
+      <Contribution
+        fallback={failed}
+        item={{ extension: 'echo', version: 1, component: component() }}
+        props={{ note: 'x' }}
+      />
+    ))
+  })
+  expect(container.firstElementChild?.hasAttribute('data-empty')).toBe(true)
+  act(() => {
+    setComponent(() => First)
+    flush()
+  })
+  expect(container.innerHTML).toBe('<b>first x</b>')
+  act(() => {
+    setComponent(() => Second)
+    flush()
+  })
+  expect(container.innerHTML).toBe('<b>second x</b>')
+})
+
+it('keeps the Solid host running when a React contribution throws', () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const Broken = () => {
+    throw new Error('renderer broke')
+  }
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => (
+      <Contribution
+        fallback={failed}
+        item={{ extension: 'echo', version: 1, component: Broken }}
+        props={{}}
+      />
     ))
   })
   expect(container.querySelector('[data-extension-error="echo"]')?.textContent).toContain(
     'renderer broke',
   )
-  act(() => {
-    setCount(1)
-    flush()
-  })
-  expect(container.querySelector('p')?.textContent).toBe('count 1')
 })

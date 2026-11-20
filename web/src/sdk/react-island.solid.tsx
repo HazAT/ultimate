@@ -8,22 +8,19 @@ import {
   Errored,
   For,
   onCleanup,
-  Show,
   untrack,
   useContext,
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
-import type { ComponentType, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { islandSolid } from './island-mark.ts'
-import { chain, contribution, provisions, reactRoot, renderedPoint, slot } from './react-island.tsx'
+import { chain, contribution, provided, reactRoot, renderedPoint, slot } from './react-island.tsx'
 import type { Rendered } from './react-island.tsx'
-import { provisionOf, provisionsOf } from './registry.ts'
-import type { ExtensionRecord } from './registry.ts'
-import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
+import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
 import type { Point, SlotName } from './types.ts'
 
 function MountReact(props: { render: () => ReactNode }) {
-  const host = (<div class="contents" />) as HTMLDivElement
+  const host = (<div class="contents data-empty:hidden" />) as HTMLDivElement
   const root = reactRoot(host, {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
@@ -41,23 +38,6 @@ const solidHost = (children: () => JSX.Element) => {
   host.className = 'contents'
   insert(host, children)
   return host
-}
-
-/**
- * Temporary, for the core switch: C5 deletes it with React. The reverse of `island`: a Solid component that mounts the
- * React `component` in place, re-rendering it with each change of the Solid props without a remount. It renders inside
- * an `ExtensionName`. Only the core hosts in `web/src/app` import it.
- */
-export function reactIsland<P extends object = Record<string, never>>(
-  component: ComponentType<P>,
-): Component<P> {
-  return function ReactIsland(props: P) {
-    const extension = useContext(ExtensionName)
-    if (extension === null) throw new Error('reactIsland renders only inside an ExtensionName')
-    return (
-      <MountReact render={() => contribution({ extension, version: 0, component }, { ...props })} />
-    )
-  }
 }
 
 type Props = Record<string, unknown>
@@ -122,23 +102,22 @@ export function Contribution(props: {
   props: Props
   fallback: (extension: string, error: unknown) => JSX.Element
 }) {
-  const solid = createMemo(() => islandSolid(props.item.component) as Component<Props> | undefined)
+  const component = createMemo(() => props.item.component)
   return (
-    <Show
-      when={solid()}
-      fallback={<MountReact render={() => contribution(props.item, { ...props.props })} />}
-    >
-      {(Solid) => {
-        const Rendered = Solid()
+    <For each={[component()]}>
+      {(current) => {
+        const Solid = islandSolid(current) as Component<Props> | undefined
+        if (!Solid)
+          return <MountReact render={() => contribution(props.item, { ...props.props })} />
         return (
           <Errored fallback={(error) => props.fallback(props.item.extension, error())}>
             <ExtensionName value={props.item.extension}>
-              <Rendered {...props.props} />
+              <Solid {...props.props} />
             </ExtensionName>
           </Errored>
         )
       }}
-    </Show>
+    </For>
   )
 }
 
@@ -159,39 +138,15 @@ export function useProvided<Input, Value>(
   point: Point<Input, Value>,
   input: Accessor<Input>,
 ): Accessor<Value | undefined> {
-  const values = provided(input, (records) => {
-    const last = provisionOf(records, point.point)
-    return last ? [last] : []
-  })
-  return () => values()[0] as Value | undefined
-}
-
-export function useAllProvided<Input, Value>(
-  point: Point<Input, Value>,
-  input: Accessor<Input>,
-): Accessor<readonly Value[]> {
-  return provided(input, (records) => provisionsOf(records, point.point)) as Accessor<
-    readonly Value[]
-  >
-}
-
-function provided(
-  input: Accessor<unknown>,
-  which: (records: readonly ExtensionRecord[]) => ReturnType<typeof provisionsOf>,
-): Accessor<readonly unknown[]> {
-  const records = useExtensions()
-  const current = createMemo(() => which(records()))
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [values, setValues] = createSignal<readonly unknown[]>([])
+  const [found, setFound] = createSignal<Value | undefined>()
   const root = reactRoot(document.createElement('div'), {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
   })
   onCleanup(root.unmount)
-  createEffect(
-    () => ({ providers: current(), input: value() }),
-    ({ providers, input: next }) =>
-      root.render(provisions(providers, next, (found) => setValues(found))),
+  createEffect(value, (next) =>
+    root.render(provided(point, next, (latest) => setFound(() => latest))),
   )
-  return values
+  return found
 }

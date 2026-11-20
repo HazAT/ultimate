@@ -58,8 +58,21 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     seen = top
     placed = undefined
   }
+  const scrollsItself = (element: Element) =>
+    element.scrollHeight > element.clientHeight &&
+    /auto|scroll/.test(getComputedStyle(element).overflowY)
+  const ownerOf = (target: EventTarget | null) => {
+    for (
+      let element = target instanceof Element ? target : null;
+      element;
+      element = element.parentElement
+    )
+      if (element === scroll || scrollsItself(element)) return element
+    return null
+  }
   const onWheel = (event: WheelEvent) => {
-    if (event.deltaY < 0 && scroll.scrollHeight > scroll.clientHeight) report({ following: false })
+    if (event.deltaY < 0 && ownerOf(event.target) === scroll && scrollsItself(scroll))
+      report({ following: false })
   }
   const grow = new ResizeObserver(() => {
     if (following && !selecting()) place(bottom())

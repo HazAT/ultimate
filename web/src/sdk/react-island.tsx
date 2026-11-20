@@ -3,22 +3,25 @@ import { useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { ExtensionBoundary, Rendered as RenderedPoint, Slot } from '../app/boundary.tsx'
+import { ExtensionBoundary, Provided, Rendered as RenderedPoint, Slot } from '../app/boundary.tsx'
 import { TooltipProvider } from '../components/ui/tooltip.tsx'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
-import type { provisionsOf } from './registry.ts'
 import type { Point, SlotName } from './types.ts'
 import type { TranscriptFrame } from './transcript-frame.ts'
 
 export type Rendered = { extension: string; version: number; component: unknown }
+
+const markEmpty = (host: HTMLElement) => host.toggleAttribute('data-empty', !host.hasChildNodes())
 
 export function reactRoot(
   host: HTMLElement,
   context: { conversation?: ConversationId; transcript?: TranscriptFrame },
 ) {
   const root = createRoot(host)
+  const children = new MutationObserver(() => markEmpty(host))
+  children.observe(host, { childList: true })
   return {
-    render: (element: ReactNode) =>
+    render: (element: ReactNode) => {
       flushSync(() =>
         root.render(
           <TooltipProvider delayDuration={400}>
@@ -27,8 +30,13 @@ export function reactRoot(
             </ConversationIdContext>
           </TooltipProvider>,
         ),
-      ),
-    unmount: () => root.unmount(),
+      )
+      markEmpty(host)
+    },
+    unmount: () => {
+      children.disconnect()
+      root.unmount()
+    },
   }
 }
 
@@ -74,43 +82,17 @@ export const renderedPoint = <Input extends object>(
   </RenderedPoint>
 )
 
-export function provisions(
-  current: ReturnType<typeof provisionsOf>,
-  input: unknown,
-  report: (values: readonly unknown[]) => void,
-) {
-  const collected: unknown[] = []
-  return current.map((provision, index) => (
-    <ExtensionBoundary
-      extension={provision.extension}
-      fallback={null}
-      key={`${provision.extension}:${provision.version}`}
-      variant="inline"
-      version={provision.version}
-    >
-      <Provide
-        input={input}
-        report={(value) => {
-          if (index in collected && Object.is(collected[index], value)) return
-          collected[index] = value
-          report([...collected])
-        }}
-        use={provision.use as (input: unknown) => unknown}
-      />
-    </ExtensionBoundary>
-  ))
-}
+export const provided = <Input, Value>(
+  point: Point<Input, Value>,
+  input: Input,
+  report: (value: Value | undefined) => void,
+) => (
+  <Provided input={input} point={point}>
+    {(value) => <Report report={report} value={value} />}
+  </Provided>
+)
 
-function Provide({
-  use,
-  input,
-  report,
-}: {
-  use: (input: unknown) => unknown
-  input: unknown
-  report: (value: unknown) => void
-}) {
-  const value = use(input)
+function Report<Value>({ value, report }: { value: Value; report: (value: Value) => void }) {
   useLayoutEffect(() => report(value))
   return null
 }

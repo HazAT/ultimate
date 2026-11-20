@@ -187,6 +187,8 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   const [scroller, setScroller] = createSignal<Follow>()
   const [atBottom, setAtBottom] = createSignal(true)
   let tail!: HTMLDivElement
+  let held: Element | null = null
+  let maxPinnedCover = 0
   const [tailSpace, setTailSpaceSignal] = createSignal(0)
   const setTailSpace = (next: number | ((space: number) => number)) => {
     const space = typeof next === 'function' ? next(tailSpace()) : next
@@ -199,6 +201,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     transcript.mount({ scroll, content })
     const controller = follow(scroll, content, () => {
       setAtBottom(controller.atBottom())
+      transcript.setAtBottom(controller.atBottom())
       scroll.style.overflowAnchor = controller.following() ? 'none' : ''
     })
     scroll.style.overflowAnchor = 'none'
@@ -217,13 +220,19 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   createEffect(tailSpace, (space) => {
     if (space === 0) return undefined
     const releaseTail = () => {
+      if (held) return
       const bottom = scroll.scrollHeight - scroll.clientHeight
       const removingTailCannotClampReader = scroll.scrollTop <= bottom - space - rowGap(content)
       if (removingTailCannotClampReader || scroll.scrollTop >= bottom - 1) setTailSpace(0)
     }
+    const grown = new ResizeObserver(releaseTail)
+    grown.observe(content)
     scroll.addEventListener('scroll', releaseTail)
     releaseTail()
-    return () => scroll.removeEventListener('scroll', releaseTail)
+    return () => {
+      grown.disconnect()
+      scroll.removeEventListener('scroll', releaseTail)
+    }
   })
 
   const indexed = createMemo(() => indexTools(history.entries()))
@@ -369,8 +378,6 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     },
   )
 
-  let held: Element | null = null
-  let maxPinnedCover = 0
   const hold = () => {
     const element = held
     const follower = scroller()
@@ -382,7 +389,9 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     maxPinnedCover = Math.max(maxPinnedCover, pinned.offsetHeight)
     const move =
       element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - maxPinnedCover
-    const roomBelow = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
+    const contentBottom =
+      content.getBoundingClientRect().bottom - scroll.getBoundingClientRect().top
+    const roomBelow = contentBottom - scroll.clientHeight
     if (move > roomBelow) setTailSpace(tailSpace() + move - roomBelow + rowGap(content))
     follower.place(scroll.scrollTop + move)
   }
@@ -480,7 +489,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
       when={'work' in row.row ? row.row : undefined}
       fallback={
         <div
-          class={cn('empty:hidden', row.faded)}
+          class={cn('empty-row', row.faded)}
           data-conversation-id={id}
           data-entry-id={(row.row as CompactPart).entry.id}
         >
@@ -496,7 +505,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     >
       {(run) => (
         <div
-          class={cn('empty:hidden', row.faded)}
+          class={cn('empty-row', row.faded)}
           data-conversation-id={id}
           data-entry-id={run().work[0].entry.id}
           data-run-last={run().work.at(-1)!.entry.id}
@@ -565,7 +574,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     <TranscriptScope value={transcript.frame}>
       <div class="relative min-h-0 flex-1 overflow-y-hidden" role="log">
         <div
-          class="h-full w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+          class="h-full w-full overflow-y-auto md:[scrollbar-gutter:stable_both-edges]"
           ref={scroll}
         >
           <div
@@ -633,6 +642,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
                             group={group()}
                             onOpen={() => setBetween(group(), !shown())}
                             open={shown()}
+                            summary={compact()?.summary}
                             working={busy() && last()}
                           />
                           <Show when={shown()}>
@@ -729,8 +739,8 @@ function BetweenLine(props: {
   open: boolean
   onOpen: () => void
   working: boolean
+  summary: { extension: string; version: number; component: unknown } | undefined
 }) {
-  const compact = useCompact()
   const flat = () => props.group.between.flatMap((row) => ('aside' in row ? row.aside : [row]))
   const rows = createMemo(() =>
     flat().flatMap((row) => ('work' in row ? [] : [{ entry: row.entry, calls: shownCalls(row) }])),
@@ -753,7 +763,7 @@ function BetweenLine(props: {
       variant={null}
     >
       <span class="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
-        <Show when={compact()?.summary} fallback={fallback()}>
+        <Show when={props.summary} fallback={fallback()}>
           {(summary) => (
             <Contribution
               fallback={(extension, error) => (
@@ -839,7 +849,7 @@ function WorkRow(props: {
       >
         <For each={props.run.work} keyed={partKey}>
           {(part) => (
-            <div class="empty:hidden" data-entry-id={part().entry.id}>
+            <div class="empty-row" data-entry-id={part().entry.id}>
               <EntryView
                 blocks={part().blocks}
                 busy={props.busy}

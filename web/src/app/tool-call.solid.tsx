@@ -18,7 +18,7 @@ export function ToolCallBlock(props: { call: ToolCallView }) {
   const extensions = useExtensions()
   const renderers = createMemo(() => toolRenderers(extensions(), props.call.name))
   return (
-    <div class="empty:hidden" data-tool-call-id={props.call.id}>
+    <div class="empty-row" data-tool-call-id={props.call.id}>
       <Contributed
         core={() => <GenericToolCall call={props.call} />}
         fallback={(extension, error, inner) => (

@@ -300,10 +300,21 @@ export function useTranscript(): readonly EntryRecord[] {
 }
 const noFrame = () => () => {}
 
-/** The scroll element and content element of the transcript around a contribution, once mounted. */
+/**
+ * The transcript around a contribution: its scroll element, the element whose children are its rows, once mounted, and
+ * whether it follows its newest row.
+ */
 export function useTranscriptScroll() {
   const frame = useContext(TranscriptContext)
-  return { scrollRef: frame?.scroll ?? noElement, contentRef: frame?.content ?? noElement }
+  const atBottom = useSyncExternalStore(
+    frame?.subscribe ?? noFrame,
+    frame?.atBottom ?? (() => true),
+  )
+  return {
+    scrollRef: frame?.scroll ?? noElement,
+    contentRef: frame?.content ?? noElement,
+    atBottom,
+  }
 }
 const noElement = { current: null }
 

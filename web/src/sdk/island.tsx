@@ -2,17 +2,17 @@ import { render } from '@solidjs/web'
 import { createComponent, createStore } from 'solid-js'
 import type { Component } from 'solid-js'
 import { useContext, useEffect, useEffectEvent, useRef } from 'react'
-import { ConversationIdContext } from './conversation-scope.tsx'
+import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
 import { ExtensionNameContext } from './hooks.ts'
 import { markIsland } from './island-mark.ts'
-import { ConversationScope, ExtensionName } from './solid.ts'
+import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
 
 type Props = Record<string, unknown>
 
 /**
  * A React component that mounts the Solid `component` (from a `*.solid.tsx`) in place, so a `web.tsx` can contribute it
- * anywhere it contributes React: `slots: { 'statusline.left': island(Status) }`. The Solid tree gets the extension name
- * and the conversation scope around it, and remounts when either changes. React props reach the Solid component as
+ * anywhere it contributes React: `slots: { 'statusline.left': island(Status) }`. The Solid tree gets the extension name,
+ * the conversation scope and the transcript around it, and remounts when one changes. React props reach the Solid component as
  * live props: a React wrapper can hand it what only React reads (`<Panel count={entries.length} />` with
  * `const Panel = island(List)`), and a new value updates it without a remount. It mounts in a `display: contents`
  * `<div>`, or a `<span>` with `{ inline: true }` for a component that renders inside text. A Solid host (the
@@ -27,6 +27,7 @@ export function island<P extends object = Record<string, never>>(
     const host = useRef<HTMLElement>(null)
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
+    const transcript = useContext(TranscriptContext) ?? null
     const committed = useEffectEvent(() => ({ ...(props as Props) }))
     const live = useRef<(next: Props) => void>(undefined)
     useEffect(() => live.current?.(props as Props))
@@ -45,7 +46,12 @@ export function island<P extends object = Record<string, never>>(
               return createComponent(ConversationScope, {
                 value: conversation,
                 get children() {
-                  return createComponent(component, store as P)
+                  return createComponent(Transcript, {
+                    value: transcript,
+                    get children() {
+                      return createComponent(component, store as P)
+                    },
+                  })
                 },
               })
             },
@@ -56,7 +62,7 @@ export function island<P extends object = Record<string, never>>(
         live.current = undefined
         dispose()
       }
-    }, [extension, conversation])
+    }, [extension, conversation, transcript])
     const Host = inline ? 'span' : 'div'
     return <Host ref={host as never} className="contents" />
   }
