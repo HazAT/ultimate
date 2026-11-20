@@ -28,6 +28,7 @@ import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { SkillPicker, skillDialog } from '../../skill-picker.solid.tsx'
 
+const agent = createAgent()
 const skill = (name: string, description: string) => ({
   name,
   description,
@@ -70,8 +71,7 @@ it('lets an agent find a skill by its description and fill the composer with it'
   store.setUi({ dialogs: { [skillDialog]: true } })
   flush()
   await settle()
-  const agent = createAgent()
-  const input = agent.snapshot().find((item) => item.label === 'Find a skill')
+  const input = agent.snapshot().find((item) => !item.offPage && item.label === 'Find a skill')
   expect(input?.actions).toEqual(expect.arrayContaining(['setQuery', 'run']))
   const search = await agent.act({
     steps: [{ ref: input!.ref, action: 'setQuery', args: ['screenshots'] }],
@@ -134,8 +134,7 @@ it('fills the current conversation’s draft on a surface without a composer', a
   store.setUi({ dialogs: { [skillDialog]: true } })
   flush()
   await settle()
-  const agent = createAgent()
-  const input = agent.snapshot().find((item) => item.label === 'Find a skill')
+  const input = agent.snapshot().find((item) => !item.offPage && item.label === 'Find a skill')
   const result = await agent.act({
     steps: [{ ref: input!.ref, action: 'run', args: ['verify-ui'] }],
   })

@@ -48,7 +48,7 @@ export function Control() {
   return (
     <Popover>
       <StatusPopoverTrigger
-        aria-label="Sounds"
+        aria-label="Sound settings"
         class={cn(muted() && 'text-muted-foreground/60', playing() && 'text-brand')}
       >
         {muted() ? (

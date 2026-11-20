@@ -41,6 +41,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { useUiState } from '@/sdk/solid'
 import type { UiUpdateRequest } from '../../shared/protocol.ts'
 import { uiState } from '../../web/src/sdk/client.ts'
+import { expectDistinctAgentNames } from './agent-names.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const writes = vi.hoisted(() => [] as [UiUpdateRequest, string][])
@@ -57,10 +58,14 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
-const agent = createAgent()
+let approval: string | undefined
+const allow = vi.fn<NonNullable<NonNullable<Parameters<typeof createAgent>[0]>['allow']>>(
+  (request) => !request.confirm || request.confirm === approval,
+)
+const agent = createAgent({ allow })
 
-function refFor(label: string, bridge = agent) {
-  const matches = bridge.snapshot().filter((item) => !item.offPage && item.label === label)
+function refFor(label: string) {
+  const matches = agent.snapshot().filter((item) => !item.offPage && item.label === label)
   expect(matches).toHaveLength(1)
   return matches[0].ref
 }
@@ -88,6 +93,7 @@ it('opens Dialog and presses its inner button as the agent', async ({ onTestFini
   expect(open.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   const dialog = container.querySelector('[role="dialog"][data-open]')
   expect(dialog?.textContent).toContain('Manage the current project')
   expect(container.querySelector('[data-slot="dialog-backdrop"][data-open]')).not.toBeNull()
@@ -126,6 +132,7 @@ it('opens DropdownMenu to press an item by text', async ({ onTestFinished }) => 
   expect(result.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   expect(container.querySelector('[role="menu"][data-open] [role="menuitem"]')?.textContent).toBe(
     'Rename file',
   )
@@ -155,6 +162,7 @@ it('filters Command and runs the match as the agent', async ({ onTestFinished })
   ))
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
+  expectDistinctAgentNames(agent)
   const ref = refFor('Search project commands')
   const query = await agent.act({ steps: [{ ref, action: 'setQuery', args: ['logs'] }] })
   expect(query.ok).toBe(true)
@@ -191,6 +199,7 @@ it('attributes the durable Collapsible write to the agent', async ({ onTestFinis
   })
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
+  expectDistinctAgentNames(agent)
   const result = await agent.act({
     steps: [{ ref: refFor('Advanced settings'), action: 'setOpen', args: [true] }],
   })
@@ -236,6 +245,7 @@ it('opens HoverCard by the link text', async ({ onTestFinished }) => {
   expect(result.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   expect(container.querySelector('a[data-open]')?.getAttribute('href')).toBe('/people/ada')
   expect(container.querySelector('[data-slot="hover-card-content"][data-open]')?.textContent).toBe(
     'Project owner',
@@ -246,7 +256,9 @@ it('opens HoverCard by the link text', async ({ onTestFinished }) => {
   )
 })
 
-it('asks a person before pressing a destructive item in a closed menu', async () => {
+it('asks a person before pressing a destructive item in a closed menu', async ({
+  onTestFinished,
+}) => {
   const confirm = 'Permanently deletes the project and all its files.'
   const acted = vi.fn<(value: string, details: { event?: Event }) => void>()
   const container = renderSolid(() => (
@@ -259,20 +271,20 @@ it('asks a person before pressing a destructive item in a closed menu', async ()
       </DropdownMenuContent>
     </DropdownMenu>
   ))
+  expectDistinctAgentNames(agent)
   const step = { action: 'press', args: ['Delete permanently'] }
   const refused = await agent.act({ steps: [{ ref: refFor('Project actions'), ...step }] })
   expect(refused.ok).toBe(false)
-  expect(refused.error?.message).toContain('Needs a person')
+  expect(refused.error?.message).toBe(`The person said no to "${confirm}".`)
   expect(acted).not.toHaveBeenCalled()
   expect(container.querySelector('[role="menu"][data-open]')).toBeNull()
 
-  const allow = vi.fn<NonNullable<NonNullable<Parameters<typeof createAgent>[0]>['allow']>>(
-    (request) => !request.confirm || request.confirm === confirm,
-  )
-  const approved = createAgent({ allow })
-  const result = await approved.act({
-    steps: [{ ref: refFor('Project actions', approved), ...step }],
+  allow.mockClear()
+  approval = confirm
+  onTestFinished(() => {
+    approval = undefined
   })
+  const result = await agent.act({ steps: [{ ref: refFor('Project actions'), ...step }] })
   expect(result.ok).toBe(true)
   expect(allow).toHaveBeenCalledWith(expect.objectContaining({ confirm }), expect.anything())
   expect(acted).toHaveBeenCalledExactlyOnceWith('delete', expect.any(Object))
@@ -308,6 +320,7 @@ it('binds the selected radio item and names the group with the menu label', asyn
   expect(result.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   expect(container.querySelector('[role="menuitemradio"][aria-checked="true"]')?.textContent).toBe(
     'Grid view',
   )

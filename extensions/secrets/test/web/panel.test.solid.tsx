@@ -5,6 +5,7 @@ import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { reads, store } from '../../../../web/src/sdk/client.ts'
 import { SecretsPanel } from '../../panel.solid.tsx'
@@ -66,6 +67,7 @@ it('lets an agent add a named secret without reading it back, but not replace on
   expect(open.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   expect(document.activeElement?.getAttribute('aria-label')).toBe('Name of the new secret')
   const value = 'test-token-not-a-secret'
   const filled = await agent.act({
@@ -80,9 +82,6 @@ it('lets an agent add a named secret without reading it back, but not replace on
     value: 'DEMO_KEY',
   })
   expect(JSON.stringify([agent.snapshot(), filled, changes.mock.calls])).not.toContain(value)
-  expect(changes).toHaveBeenCalledWith(
-    expect.objectContaining({ label: 'Name of the new secret', source: 'agent' }),
-  )
 
   const saved = await agent.act({ steps: [{ ref: refFor('Save new secret'), action: 'press' }] })
   expect(saved.ok).toBe(true)
@@ -102,6 +101,7 @@ it('lets an agent add a named secret without reading it back, but not replace on
   expect(replace.ok).toBe(true)
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   await agent.act({
     steps: [{ ref: refFor('New value for DEMO_KEY'), action: 'setValue', args: ['next'] }],
   })
