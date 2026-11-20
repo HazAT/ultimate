@@ -232,11 +232,10 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
             )}
           </For>
           <Button
-            aria-label="Save cloud connection"
             class="h-7 font-sans text-[12px]"
             data-agent-confirm={
-              props.state.joined
-                ? "Replaces this machine's cloud URL, name and both cloud secrets."
+              props.state.missing.length < Object.keys(secretNames).length
+                ? 'Replaces the cloud secrets stored on this machine.'
                 : undefined
             }
             disabled={!ready()}
@@ -247,7 +246,7 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
             <Show when={running()}>
               <LoaderCircle class="size-3.5 animate-spin" />
             </Show>
-            Join
+            Save cloud connection
           </Button>
         </form>
       </Show>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @solidjs/web */
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
@@ -14,7 +15,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   requests: [] as { path: string; args: unknown; source: string | null }[],
   state: { status: 'on', name: 'example' } as CloudState,
-  join: { machine: 'old-machine', missing: [] } as JoinState,
+  join: undefined as unknown as JoinState,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
@@ -64,7 +65,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 
-import { store } from '../../../../web/src/sdk/client.ts'
+import { reads, store } from '../../../../web/src/sdk/client.ts'
 import { JoinDialog, joinDialog } from '../../join.solid.tsx'
 import { CloudStatus } from '../../status.solid.tsx'
 
@@ -72,11 +73,25 @@ const endpoint = (ref: { extension: string; name: string }) =>
   `/api/extensions/${ref.extension}/actions/${ref.name}`
 const subscriptions = fakeSubscriptions(harness.sources)
 const agent = createAgent()
+async function openJoinDialog() {
+  await reads
+    .get(JoinStateAction.extension, JoinStateAction.name, null, 1 as ConversationId)
+    .refetch()
+  const container = renderSolid(() => <JoinDialog />)
+  store.setUi({ dialogs: { [joinDialog]: true } })
+  flush()
+  await settle()
+  return container
+}
 const control = (label: string) =>
   agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
 
 beforeEach(({ onTestFinished }) => {
   harness.requests.length = 0
+  harness.join = {
+    machine: 'old-machine',
+    missing: ['ULTIMATE_CLOUD_TOKEN', 'ULTIMATE_CLOUD_SNAPSHOT_KEY'],
+  }
   store.start()
   onTestFinished(() => store.stop())
   harness.sources.at(-1)!.open()
@@ -126,13 +141,30 @@ it('lets an agent open Cloud backup and back up now, then refreshes the status',
   expect(container.querySelector('progress')?.value).toBe(20)
 })
 
+it('refuses an agent replacing a stored cloud secret without a person confirming', async () => {
+  harness.join = { machine: 'old-machine', missing: ['ULTIMATE_CLOUD_TOKEN'] }
+  await openJoinDialog()
+  const before = harness.requests.length
+  const filled = await agent.act({
+    steps: [
+      { ref: 'Cloud URL', action: 'setValue', args: ['wss://next.example.test'] },
+      { ref: 'ULTIMATE_CLOUD_TOKEN', action: 'setValue', args: ['fake-token'] },
+      { ref: 'ULTIMATE_CLOUD_SNAPSHOT_KEY', action: 'setValue', args: ['fake-key'] },
+    ],
+  })
+  expect(filled.ok).toBe(true)
+  flush()
+  const saved = await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
+  expect(saved.ok).toBe(false)
+  expect(saved.error?.message).toContain('Replaces the cloud secrets stored on this machine')
+  await settle()
+  expect(harness.requests.slice(before).map(({ path }) => path)).not.toContain(endpoint(JoinAction))
+})
+
 it('lets an agent fill the four join fields and submits the exact JoinAction args without exposing the secrets', async ({
   onTestFinished,
 }) => {
-  const container = renderSolid(() => <JoinDialog />)
-  store.setUi({ dialogs: { [joinDialog]: true } })
-  flush()
-  await settle()
+  const container = await openJoinDialog()
   const args = {
     url: 'wss://cloud.example.test',
     machine: 'new-machine',
@@ -169,36 +201,4 @@ it('lets an agent fill the four join fields and submits the exact JoinAction arg
     '1 project in the cloud',
   )
   expect(container.querySelector('[data-cloud-join] input')).toBeNull()
-})
-
-it("refuses an agent replacing a joined machine's cloud settings without a person confirming", async () => {
-  harness.join = {
-    machine: 'old-machine',
-    missing: [],
-    joined: { url: 'wss://old.example.test', host: 'old.example.test', machine: 'old-machine' },
-  }
-  renderSolid(() => <JoinDialog />)
-  store.setUi({ dialogs: { [joinDialog]: true } })
-  flush()
-  await settle()
-  expect((await agent.act({ steps: [{ ref: 'Change cloud settings', action: 'press' }] })).ok).toBe(
-    true,
-  )
-  flush()
-  await settle()
-  const before = harness.requests.length
-  const filled = await agent.act({
-    steps: [
-      { ref: 'Cloud URL', action: 'setValue', args: ['wss://next.example.test'] },
-      { ref: 'ULTIMATE_CLOUD_TOKEN', action: 'setValue', args: ['fake-token'] },
-      { ref: 'ULTIMATE_CLOUD_SNAPSHOT_KEY', action: 'setValue', args: ['fake-key'] },
-    ],
-  })
-  expect(filled.ok).toBe(true)
-  flush()
-  const saved = await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
-  expect(saved.ok).toBe(false)
-  expect(saved.error?.message).toContain("Replaces this machine's cloud URL")
-  await settle()
-  expect(harness.requests.slice(before).map(({ path }) => path)).not.toContain(endpoint(JoinAction))
 })
