@@ -1,11 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { useExtensionUiState, useUltimate } from '@/sdk'
+import { useEvent, useExtensionUiState, useUltimate, writingAs } from '@/sdk'
 
 export const useSpec = () => useExtensionUiState<string>('spec', 'uncommitted')
 
 export type ReviewTarget = { file: string; line: number; side?: 'old' | 'new' }
 
-type Request = { spec: string; at?: ReviewTarget }
+type Request = { spec: string; at?: ReviewTarget; source?: string }
 
 const listeners = new Set<() => void>()
 const subscribe = (listener: () => void) => {
@@ -36,8 +36,8 @@ function fromAddress(): Request | undefined {
 let pendingReviewRequest = fromAddress()
 let unreachedLineTarget: ReviewTarget | undefined
 
-export function openReview(spec: string, at?: ReviewTarget) {
-  pendingReviewRequest = { spec, ...(at && { at }) }
+export function openReview(spec: string, at?: ReviewTarget, source?: string) {
+  pendingReviewRequest = { spec, ...(at && { at }), ...(source && { source }) }
   notify()
 }
 
@@ -52,12 +52,18 @@ export function ReviewLink() {
   const wanted = useSyncExternalStore(subscribe, () => pendingReviewRequest)
   const [spec, setSpec] = useSpec()
   const { surface, showSurface } = useUltimate()
+  useEvent('review:open', (data) => {
+    const { spec: requested, source } = data as { spec: string; source?: string }
+    openReview(requested, undefined, source)
+  })
   useEffect(() => {
     if (wanted === undefined) return
     pendingReviewRequest = undefined
     unreachedLineTarget = wanted.at
-    setSpec(wanted.spec)
-    showSurface('review')
+    writingAs(wanted.source, () => {
+      setSpec(wanted.spec)
+      showSurface('review')
+    })
     notify()
   }, [wanted, setSpec, showSurface])
   useEffect(() => {

@@ -35,7 +35,7 @@ export const ConversationEpic = definePoint<
 export { ConversationRef, FeatureTag, useOverview, useStandingName } from './feature.tsx'
 export { AgentMark, AgentTitle, useAgentTitle } from './marks.tsx'
 export type { Presence } from './marks.tsx'
-export { hiddenConversationIds } from './visible.tsx'
+export { hiddenConversationIds } from './visible.ts'
 
 /**
  * Since when each conversation counts as concluded: forever while it is, else when it was last concluded (kept when
