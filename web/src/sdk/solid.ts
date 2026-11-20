@@ -2,7 +2,12 @@
  * The extension SDK for Solid facets (`*.solid.tsx`): live documents, durable UI state and client state as accessors.
  * Mount a Solid component from a `web.tsx` with `island` from `@/sdk`; docs/extensions/sdk.md#solid-facets.
  */
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type {
+  AgentState,
+  ConversationId,
+  EntryRecord,
+  UsageState,
+} from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import {
   createContext,
@@ -49,12 +54,14 @@ export { writingAs } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export {
+  elidePath,
   errorMessage,
   formatAgo,
   formatBytes,
   formatDuration,
   formatTime,
   formatTokens,
+  shortenPath,
 } from './format.ts'
 export { formatKeys } from './keys.ts'
 export { keepLast } from '../../../lib/errors.ts'
@@ -335,6 +342,39 @@ export function useDialog(id: string): [Accessor<boolean>, (open: boolean) => vo
   const { state } = shared()
   const open = createMemo(() => state().ui.dialogs[id] === true)
   return [open, (next) => (next ? actions.open(id) : actions.close(id))]
+}
+
+/** `GET /api/models`: providers with auth status, models with context window and cost; undefined until it arrives. */
+export const useModels = selected((state) => state.models)
+
+const noUsage: UsageState = { models: {}, tools: {} }
+
+/**
+ * The conversation `ConversationScope` gives, or the shown one, as `useConversation` from `@/sdk` reads it: `id`,
+ * `loading`, its streamed `entries` (oldest first), `agent` (`pi.agent`) and `usage` (`pi.usage`).
+ */
+export type ConversationState = {
+  id?: ConversationId
+  loading: boolean
+  entries: readonly EntryRecord[]
+  agent: AgentState
+  usage: UsageState
+}
+
+export function useConversation(): Accessor<ConversationState> {
+  const { state } = shared()
+  const scoped = useContext(ConversationScope)
+  const view = createMemo(() => (scoped === null ? state().view : state().viewsOf[scoped]))
+  return createMemo((): ConversationState => {
+    const shown = view()
+    return {
+      id: shown?.conversation.id,
+      loading: !shown,
+      entries: shown?.entries ?? [],
+      agent: shown?.docs['pi.agent'] ?? {},
+      usage: (shown?.docs['pi.usage'] ?? noUsage) as UsageState,
+    }
+  })
 }
 
 /** Shows a notice in the page's notice stack, as a failed command does. */

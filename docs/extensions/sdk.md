@@ -63,13 +63,16 @@ export default defineWebExtension({ slots: { 'statusline.left': island(Status) }
 ```
 
 The island renders inside a `display: contents` element and remounts when its extension or conversation scope
-changes. Solid code imports `@/sdk/solid`, never `@/sdk` (types excepted), and gets accessors:
+changes. Its React props reach the Solid component as live props, so a React wrapper can pass in what only React reads
+(another extension's React point) without remounting it. Solid code imports `@/sdk/solid`, never `@/sdk` (types
+excepted), and gets accessors:
 
 | `@/sdk/solid`                                                                     | Returns                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `useDoc(ref)`, `useDocOf(() => conversation, ref)`                                | An accessor of the document; a memo or JSX reading `doc()?.columns[0].title` reruns only when that path changes. `useDoc` follows the scope                                                                 |
 | `useUiState(key, initial)`, `useExtensionUiState(…)`                              | `[value, set]`: `value` is an accessor, `set` takes a value or an updater, as in React                                                                                                                      |
-| `useConnection()`, `useSystem()`, `useConversations()`                            | Accessors of the same client state the React hooks read                                                                                                                                                     |
+| `useConnection()`, `useSystem()`, `useConversations()`, `useModels()`             | Accessors of the same client state the React hooks read                                                                                                                                                     |
+| `useConversation()`                                                               | An accessor of the scoped or shown conversation: `id`, `loading`, `entries`, `agent` (`pi.agent`), `usage` (`pi.usage`)                                                                                     |
 | `useAction(ref, args?, options?)`                                                 | `{ data, error, loading, refetch }`, the first three accessors, sharing React's call and result; `on` takes an accessor, such as a document's; `conversation: ROOT` calls it on the root, not the shown one |
 | `useNow(ms, () => active)`                                                        | An accessor of the current time, ticking every `ms` while `active`                                                                                                                                          |
 | `useEvents(options?)`, `useCommands()`                                            | Accessors of the durable event feed and the command list, as the React hooks read them                                                                                                                      |
