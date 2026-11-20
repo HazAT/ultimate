@@ -268,7 +268,7 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` and `@/sdk/parts.solid.tsx` for Solid. */
+/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
 const sdkEntry = (filename: string) =>
   ['web/src/sdk/index.ts', solidSdk, solidParts].includes(repositoryPath(filename))
 /** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */

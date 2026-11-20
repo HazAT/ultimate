@@ -10,6 +10,8 @@ import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
 
 type Props = Record<string, unknown>
 
+type IslandProps<P> = { [K in keyof P]: K extends 'core' ? ReactNode : P[K] }
+
 /**
  * A React component that mounts the Solid `component` (from a `*.solid.tsx`) in place, so a `web.tsx` can contribute it
  * anywhere it contributes React: `slots: { 'statusline.left': island(Status) }`. The Solid tree gets the extension name,
@@ -68,5 +70,5 @@ export function island<P extends object = Record<string, never>>(
     return <Host ref={host as never} className="contents" />
   }
   markIsland(Island, component)
-  return Island as (props: Omit<P, 'core'> & { core?: unknown }) => ReactNode
+  return Island as (props: IslandProps<P>) => ReactNode
 }

@@ -2,7 +2,7 @@
 import { createElement as h, act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { flush } from 'solid-js'
+import { createStore as createSolidStore, flush, useContext } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
 vi.mock('../../web/src/sdk/client.ts', async () => {
@@ -20,7 +20,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import { AllProvided } from '../../web/src/app/boundary.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
+import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
 import { island } from '../../web/src/sdk/island.tsx'
+import { ExtensionName } from '../../web/src/sdk/solid.ts'
 import { Provided } from '../../web/src/sdk/parts.solid.tsx'
 import { definePoint, provide } from '../../web/src/sdk/types.ts'
 import type { Point } from '../../web/src/sdk/types.ts'
@@ -81,5 +83,59 @@ it('renders every provider of a point in discovery order, Solid islands and Reac
     ),
   )
   expect(host.textContent).toBe('solid 5react 5')
+  act(() => root.unmount())
+})
+
+const Status = definePoint<{ message: { state: string } }, unknown>('test.status')
+
+it('updates a React provider when a nested input field changes in place, and gives an island provider its own extension name under a React host', async () => {
+  const Named = island((props: { message: { state: string } }) => (
+    <b>
+      {useContext(ExtensionName)}:{props.message.state}
+    </b>
+  ))
+  await registry.setLoaders({
+    'extensions/chip/web.tsx': async () => ({ default: { provides: [provide(Status, Named)] } }),
+    'extensions/text/web.tsx': async () => ({
+      default: {
+        provides: [
+          provide(Status, (input: { message: { state: string } }) =>
+            h('i', null, `react:${input.message.state}`),
+          ),
+        ],
+      },
+    }),
+  })
+  const [board, setBoard] = createSolidStore({ message: { state: 'delivered' } })
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => <Provided input={{ message: board.message }} point={Status} />)
+    flush()
+  })
+  expect(container.textContent).toBe('chip:deliveredreact:delivered')
+  act(() => {
+    setBoard((draft) => {
+      draft.message.state = 'answered'
+    })
+    flush()
+  })
+  expect(container.textContent).toBe('chip:answeredreact:answered')
+
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  act(() =>
+    root.render(
+      h(
+        ExtensionNameContext.Provider,
+        { value: 'caller' },
+        h(AllProvided<{ message: { state: string } }, ReactNode>, {
+          point: Status as Point<{ message: { state: string } }, ReactNode>,
+          input: { message: { state: 'sent' } },
+          children: (values) => values.map((value, index) => h('u', { key: index }, value)),
+        }),
+      ),
+    ),
+  )
+  expect(host.textContent).toBe('chip:sentreact:sent')
   act(() => root.unmount())
 })
