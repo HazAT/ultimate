@@ -9,7 +9,7 @@ import {
   useConversationId,
   useConversationSummary,
   useTranscript,
-  useTranscriptScroll,
+  useTranscriptElements,
   useUiState,
   writingAs,
 } from '@/sdk/solid'
@@ -18,14 +18,22 @@ import { CurrentPromptAction } from './refs.ts'
 import type { Breakdown } from './types.ts'
 
 function useStartInView() {
-  const { scroll, content } = useTranscriptScroll()
+  const { scroll, content } = useTranscriptElements()
   const entries = useTranscript()
   const [inView, setInView] = createSignal(false)
-  createEffect(entries, () => {
-    const column = content()
-    if (!column) return undefined
+  const mounted = createMemo(
+    (): { column: HTMLElement; root: HTMLElement | null } | undefined => {
+      entries()
+      const column = content()
+      return column ? { column, root: scroll() } : undefined
+    },
+    { equals: (a, b) => a?.column === b?.column && a?.root === b?.root },
+  )
+  createEffect(mounted, (elements) => {
+    if (!elements) return undefined
+    const { column, root } = elements
     const observer = new IntersectionObserver(([seen]) => setInView(seen.isIntersecting), {
-      root: scroll(),
+      root,
     })
     let start: Element | null = null
     const observeStart = () => {

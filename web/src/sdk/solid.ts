@@ -430,17 +430,14 @@ export function useConversationSummary(
 }
 
 /**
- * The transcript around a contribution, as `useTranscriptScroll` from `@/sdk`: its scroll element, the element whose
- * children are its rows (`data-entry-id`), both once mounted, and whether it follows its newest row.
+ * The transcript around a contribution, as `useTranscriptScroll` from `@/sdk` gives them: its scroll element and the
+ * element whose children are its rows (`data-entry-id`); null outside a transcript or before it mounts.
  */
-export function useTranscriptScroll() {
+export function useTranscriptElements() {
   const frame = useContext(Transcript)
-  const [atBottom, setAtBottom] = createSignal(frame?.atBottom() ?? true)
-  onSettled(() => frame?.subscribe(() => setAtBottom(frame.atBottom())))
   return {
     scroll: () => frame?.scroll.current ?? null,
     content: () => frame?.content.current ?? null,
-    atBottom,
   }
 }
 
