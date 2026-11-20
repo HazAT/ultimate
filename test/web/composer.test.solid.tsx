@@ -12,6 +12,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   posts: [] as { path: string; body: unknown; source: string | null }[],
+  failSubmit: false,
 }))
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
@@ -30,6 +31,8 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
       body: init?.body ? JSON.parse(init.body as string) : undefined,
       source: new Headers(init?.headers).get('x-ultimate-source'),
     })
+    if (harness.failSubmit && path.endsWith('/submit'))
+      return Response.json({ error: 'model offline' }, { status: 503 })
     return Response.json({ ok: true, submissionId: 1 })
   }
   const store = createStore({
@@ -62,6 +65,7 @@ const agent = createAgent()
 beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
   harness.posts.length = 0
+  harness.failSubmit = false
   localStorage.clear()
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -160,6 +164,100 @@ it('steers on Enter, queues a follow-up on Alt+Enter, cancels a queued input and
   ])
 })
 
+it('withdraws a queued steer into the next steer, and restores both when the submit fails', async () => {
+  await show(12, {
+    'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },
+    'pi.inbox': { items: [{ id: 120, mode: 'steer', content: 'first steer' }] },
+  })
+  renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  harness.failSubmit = true
+  await act([
+    { ref: 'Prompt for conversation #12', action: 'setValue', args: ['second steer'] },
+    { ref: 'Send prompt to conversation #12', action: 'press' },
+  ])
+  expect(harness.posts.map(({ path, body, source }) => [path, body, source])).toEqual([
+    ['/api/conversations/12/inbox/120/cancel', {}, 'agent'],
+    [
+      '/api/conversations/12/submit',
+      { text: 'first steer\nsecond steer', whenBusy: 'steer', images: [] },
+      'agent',
+    ],
+  ])
+  expect(getDraft(12).get()).toMatchObject({
+    text: 'first steer\nsecond steer',
+    error: 'model offline',
+  })
+})
+
+it('shows a draft another tab changed while the composer was away, and sends that text', async () => {
+  await show(13)
+  renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  await act([{ ref: 'Prompt for conversation #13', action: 'setValue', args: ['mine'] }])
+  await show(14)
+  localStorage.setItem('ultimate.draft.13', 'from the other tab')
+  await show(13)
+  await settle()
+  flush()
+  expect(document.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe(
+    'from the other tab',
+  )
+  await act([{ ref: 'Send prompt to conversation #13', action: 'press' }])
+  expect(submits().map((post) => post.body)).toEqual([{ text: 'from the other tab', images: [] }])
+})
+
+it('leaves no live editor when a React composer wrapper replaces the composer', async () => {
+  await registry.setLoaders({
+    '/extensions/dock/web.tsx': async () => ({
+      default: { composer: () => h('div', { 'data-dock': '' }, 'docked') },
+    }),
+  })
+  await show(15)
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  expect(container.querySelector('[data-dock]')).not.toBeNull()
+  const drop = new Event('drop', { bubbles: true }) as DragEvent
+  const image = new File(['x'], 'shot.png', { type: 'image/png' })
+  Object.defineProperty(drop, 'dataTransfer', {
+    value: { types: ['Files'], files: [image] },
+  })
+  document.body.dispatchEvent(drop)
+  await settle()
+  expect(getDraft(15).get().error).toBeUndefined()
+  expect(getDraft(15).get().images).toEqual([])
+  await registry.setLoaders({})
+})
+
+it('keeps the queued row and its cancel when a React inbox renderer throws', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await registry.setLoaders({
+    '/extensions/broken/web.tsx': async () => ({
+      default: {
+        inbox: () => {
+          throw new Error('broken renderer')
+        },
+      },
+    }),
+  })
+  await show(16, {
+    'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },
+    'pi.inbox': { items: [{ id: 160, mode: 'followUp', content: 'still here' }] },
+  })
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  expect(container.textContent).toContain('still here')
+  expect(
+    await act([{ ref: 'Cancel queued input 160: still here', action: 'press' }]),
+  ).toMatchObject({ ok: true })
+  expect(harness.posts.at(-1)?.path).toBe('/api/conversations/16/inbox/160/cancel')
+  await registry.setLoaders({})
+})
+
 it('mounts a React inbox renderer through the bridge, with the core row as its core', async () => {
   await registry.setLoaders({
     '/extensions/legacy/web.tsx': async () => ({
@@ -182,19 +280,17 @@ it('mounts a React inbox renderer through the bridge, with the core row as its c
   await registry.setLoaders({})
 })
 
-it('keeps a typed draft per conversation across a remount', async () => {
+it('keeps a typed draft per conversation across a switch', async () => {
   await show(9)
-  const first = renderSolid(() => <Composer />)
+  const container = renderSolid(() => <Composer />)
   await settle()
   flush()
   await act([{ ref: 'Prompt for conversation #9', action: 'setValue', args: ['half a thought'] }])
   expect(localStorage.getItem('ultimate.draft.9')).toBe('half a thought')
-  first.remove()
   await show(10)
-  const second = renderSolid(() => <Composer />)
-  await settle()
-  flush()
-  expect(second.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe('')
+  expect(container.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe('')
   await show(9)
-  expect(second.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe('half a thought')
+  expect(container.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe(
+    'half a thought',
+  )
 })

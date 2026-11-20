@@ -90,6 +90,25 @@ async function mount() {
   return container
 }
 
+it('keeps an outer composer redirect while side chat mode is off', async () => {
+  const outer = { placeholder: 'Sent elsewhere', send: async () => undefined }
+  const container = renderSolid(() => (
+    <ComposerRedirect value={() => outer}>
+      <ComposerFrame core={<Core />} />
+    </ComposerRedirect>
+  ))
+  await settle()
+  harness.server!.of(1)!.send('doc', {
+    kind: 'ultimate.standing-agents',
+    value: { ultimate: main },
+  })
+  flush()
+  expect(container.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
+  expect(container.querySelector<HTMLTextAreaElement>('#composer-input')!.placeholder).toBe(
+    'Sent elsewhere',
+  )
+})
+
 it('makes main’s composer inert while a side chat is in front, with Back to main outside it', async () => {
   const container = await mount()
   harness.server!.of(main)!.send('doc', {

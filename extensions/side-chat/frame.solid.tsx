@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { ArrowLeft, GitFork } from '@lucide/solid'
 import { cn } from 'cn'
-import { createMemo, createRoot, createSignal, For, Show } from 'solid-js'
+import { createMemo, createRoot, createSignal, For, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
@@ -39,6 +39,7 @@ export function ComposerFrame(props: SolidComposerProps) {
   )
   const parked = createMemo(() => sides().filter((item) => item.id !== covering()?.id))
   const on = () => sideMode() && active()
+  const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
     on()
       ? {
@@ -52,7 +53,7 @@ export function ComposerFrame(props: SolidComposerProps) {
             })
           },
         }
-      : undefined,
+      : outer(),
   )
   const onKeyDown = (event: KeyboardEvent) => {
     if (!active() || !(event.target instanceof HTMLTextAreaElement)) return

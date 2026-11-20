@@ -4,19 +4,30 @@ import type { JSX } from '@solidjs/web'
 import {
   createEffect,
   createMemo,
+  createRoot,
   createSignal,
   Errored,
   For,
+  getOwner,
   onCleanup,
   onSettled,
+  runWithOwner,
   untrack,
   useContext,
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
 import type { ReactNode } from 'react'
 import { islandSolid } from './island-mark.ts'
-import { chain, contribution, provided, reactRoot, renderedPoint, slot } from './react-island.tsx'
-import type { Rendered } from './react-island.tsx'
+import {
+  allProvided,
+  chain,
+  contribution,
+  provided,
+  reactRoot,
+  renderedPoint,
+  slot,
+} from './react-island.tsx'
+import type { Rendered, SolidPart } from './react-island.tsx'
 import { slotItems } from './registry.ts'
 import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
 import type { Point, SlotName } from './types.ts'
@@ -44,12 +55,17 @@ function MountReact(props: { render: () => ReactNode }) {
   return host
 }
 
-const solidHost = (children: () => JSX.Element) => {
-  const host = document.createElement('div')
-  host.className = 'contents'
-  host.dataset.solidHost = ''
-  insert(host, children)
-  return host
+const solidPart = (children: () => JSX.Element): SolidPart => {
+  const owner = getOwner()
+  return {
+    mount: (host) =>
+      runWithOwner(owner, () =>
+        createRoot((dispose) => {
+          insert(host, children)
+          return dispose
+        }),
+      ),
+  }
 }
 
 type Props = Record<string, unknown>
@@ -94,7 +110,7 @@ export function Contributed(props: {
     const inner = () => wrap(index - 1)
     if (!link.solid) {
       const run = link.run
-      const core = solidHost(inner)
+      const core = solidPart(inner)
       return <MountReact render={() => chain(run, { ...props.props }, core)} />
     }
     const Solid = link.solid
@@ -109,10 +125,6 @@ export function Contributed(props: {
   return <For each={[links()]}>{(current) => wrap(current.length - 1)}</For>
 }
 
-/**
- * One contribution: an `island(C)` one renders as Solid with `props`; a React one mounts through the bridge, its
- * `elements` (Solid parts it places, such as `core`) each made once into a host element it receives as a node.
- */
 export function Contribution(props: {
   item: Rendered
   props: Props
@@ -128,12 +140,10 @@ export function Contribution(props: {
         const Solid = islandSolid(current.component) as Component<Props> | undefined
         const elements = props.elements ?? {}
         if (!Solid) {
-          const hosts = Object.fromEntries(
-            Object.entries(elements).map(([key, element]) => [key, solidHost(element)]),
+          const parts = Object.fromEntries(
+            Object.entries(elements).map(([key, element]) => [key, solidPart(element)]),
           )
-          return (
-            <MountReact render={() => contribution(props.item, { ...props.props, ...hosts })} />
-          )
+          return <MountReact render={() => contribution(props.item, { ...props.props }, parts)} />
         }
         const solidElements = Object.fromEntries(
           Object.keys(elements).map((key) => [key, elements[key]()]),
@@ -176,7 +186,7 @@ export function RenderedPoint<Input extends object>(props: {
   input: Input
   staticCore: () => JSX.Element
 }) {
-  const core = solidHost(props.staticCore)
+  const core = solidPart(props.staticCore)
   return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 
@@ -193,6 +203,23 @@ export function useProvided<Input, Value>(
   onCleanup(root.unmount)
   createEffect(value, (next) =>
     root.render(provided(point, next, (latest) => setFound(() => latest))),
+  )
+  return found
+}
+
+export function useAllProvided<Input, Value>(
+  point: Point<Input, Value>,
+  input: Accessor<Input>,
+): Accessor<readonly Value[]> {
+  const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
+  const [found, setFound] = createSignal<readonly Value[]>([])
+  const root = reactRoot(document.createElement('div'), {
+    conversation: useContext(ConversationScope) ?? undefined,
+    transcript: useContext(Transcript) ?? undefined,
+  })
+  onCleanup(root.unmount)
+  createEffect(value, (next) =>
+    root.render(allProvided(point, next, (latest) => setFound(() => latest))),
   )
   return found
 }

@@ -3,7 +3,13 @@ import { useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { ExtensionBoundary, Provided, Rendered as RenderedPoint, Slot } from '../app/boundary.tsx'
+import {
+  AllProvided,
+  ExtensionBoundary,
+  Provided,
+  Rendered as RenderedPoint,
+  Slot,
+} from '../app/boundary.tsx'
 import { TooltipProvider } from '../components/ui/tooltip.tsx'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
 import type { Point, SlotName } from './types.ts'
@@ -32,29 +38,24 @@ export function reactRoot(
   }
 }
 
-export function SolidNode({ node }: { node: HTMLElement }) {
+export type SolidPart = { mount: (host: HTMLElement) => () => void }
+
+export function SolidNode({ part }: { part: SolidPart }) {
   const host = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    host.current!.append(node)
-    return () => node.remove()
-  }, [node])
+  useLayoutEffect(() => part.mount(host.current!), [part])
   return <div className="contents" ref={host} />
 }
 
-const reactProps = (props: object) =>
-  Object.fromEntries(
-    Object.entries(props).map(([key, value]) => [
-      key,
-      value instanceof HTMLElement && value.dataset.solidHost !== undefined ? (
-        <SolidNode key={key} node={value} />
-      ) : (
-        value
-      ),
-    ]),
-  )
-
-export function contribution(item: Rendered, props: object, fallback: ReactNode = null) {
+export function contribution(
+  item: Rendered,
+  props: object,
+  parts: Record<string, SolidPart> = {},
+  fallback: ReactNode = parts.core ? <SolidNode part={parts.core} /> : null,
+) {
   const Renderer = item.component as ComponentType<object>
+  const placed = Object.fromEntries(
+    Object.entries(parts).map(([key, part]) => [key, <SolidNode key={key} part={part} />]),
+  )
   return (
     <ExtensionBoundary
       extension={item.extension}
@@ -62,15 +63,15 @@ export function contribution(item: Rendered, props: object, fallback: ReactNode 
       key={item.extension}
       version={item.version}
     >
-      <Renderer {...reactProps(props)} />
+      <Renderer {...props} {...placed} />
     </ExtensionBoundary>
   )
 }
 
-export function chain(run: readonly Rendered[], props: object, core: HTMLElement) {
+export function chain(run: readonly Rendered[], props: object, core: SolidPart) {
   return run.reduce<ReactNode>(
-    (inner, item) => contribution(item, { ...props, core: inner }, inner),
-    <SolidNode node={core} />,
+    (inner, item) => contribution(item, { ...props, core: inner }, {}, inner),
+    <SolidNode part={core} />,
   )
 }
 
@@ -79,10 +80,10 @@ export const slot = (name: SlotName) => <Slot name={name} />
 export const renderedPoint = <Input extends object>(
   point: Point<Input & { core: ReactNode }, ReactNode>,
   input: Input,
-  core: HTMLElement,
+  core: SolidPart,
 ) => (
   <RenderedPoint input={input} point={point}>
-    <SolidNode node={core} />
+    <SolidNode part={core} />
   </RenderedPoint>
 )
 
@@ -94,6 +95,16 @@ export const provided = <Input, Value>(
   <Provided input={input} point={point}>
     {(value) => <Report report={report} value={value} />}
   </Provided>
+)
+
+export const allProvided = <Input, Value>(
+  point: Point<Input, Value>,
+  input: Input,
+  report: (values: readonly Value[]) => void,
+) => (
+  <AllProvided input={input} point={point}>
+    {(values) => <Report report={report} value={values} />}
+  </AllProvided>
 )
 
 function Report<Value>({ value, report }: { value: Value; report: (value: Value) => void }) {

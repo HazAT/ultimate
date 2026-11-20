@@ -301,11 +301,12 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
 )
 /**
  * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
- * a standing agent with `title: Coach`). The last provider in discovery order answers; undefined keeps the core's text.
- * A `ComposerRedirect`'s placeholder comes first.
+ * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
+ * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;
+ * a `ComposerRedirect`'s placeholder comes first.
  */
 export const ComposerPlaceholder = definePoint<
-  { conversation: ConversationId | undefined; busy: boolean },
+  { conversation: ConversationId; busy: boolean },
   string | undefined
 >('ultimate.composerPlaceholder')
 /**

@@ -175,7 +175,7 @@ export function Attached(props: {
           )}
         </For>
         <For each={props.files} keyed={(file) => file.id}>
-          {(file) => (
+          {(file, index) => (
             <FileChip
               busy={!file().path}
               mimeType={file().mimeType}
@@ -188,7 +188,7 @@ export function Attached(props: {
               title={file().path || file().name}
             >
               <Button
-                aria-label={`Remove ${file().name}`}
+                aria-label={`Remove file ${index() + 1}: ${file().name}`}
                 class={removeClass}
                 disabled={props.disabled}
                 onClick={() => props.removeFile(file().id)}

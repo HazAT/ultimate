@@ -14,8 +14,6 @@ import {
   useDocOf,
   useModels,
   useSystem,
-  writerNow,
-  writingAs,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
 import { MemoryDoc, RootsDoc } from '../lineage/refs.ts'
@@ -71,10 +69,9 @@ function StartHere(props: { dock?: boolean }) {
     return at
   })
   const run = (action: () => Promise<unknown>) => {
-    const who = writerNow()
     setSending(true)
     setError(undefined)
-    return writingAs(who, action)
+    return action()
       .catch((failure: unknown) => setError(errorMessage(failure)))
       .finally(() => setSending(false))
   }

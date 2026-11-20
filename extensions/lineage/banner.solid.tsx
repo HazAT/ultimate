@@ -15,6 +15,8 @@ import {
   switchConversation,
   useConversationId,
   useDocOf,
+  writerNow,
+  writingAs,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
 import { StandingAction } from '../subagents/refs.ts'
@@ -38,9 +40,12 @@ export function RootComposer(props: SolidComposerProps) {
 function HistoryBanner(props: { id: number; dock?: boolean }) {
   const github = useGithubRepo()
   const backToUltimate = async () => {
+    const who = writerNow()
     const id = await api.action(StandingAction, { name: 'ultimate' })
-    switchConversation(id)
-    showSurface('agent')
+    writingAs(who, () => {
+      switchConversation(id)
+      showSurface('agent')
+    })
   }
   return (
     <div class={cn(column(props.dock), 'pb-3')}>

@@ -28,15 +28,8 @@ import {
   useUltimate,
 } from '@/sdk'
 import type { ExtensionInfo, SystemInfo } from '@/sdk'
-import {
-  Heading,
-  Line,
-  Segmented,
-  projectDialog,
-  projectLists,
-  sources,
-  useDescribed,
-} from './parts.tsx'
+import { Heading, Line, Segmented, projectLists, sources, useDescribed } from './parts.tsx'
+import { projectDialog } from './dialogs.ts'
 import { ExtensionDetails } from './ui.tsx'
 import { AdoptProjectSetupAction, DecideAction, DetailsAction, SetExtensionAction } from './refs.ts'
 import { switchScope } from './choices.tsx'

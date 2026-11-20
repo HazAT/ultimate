@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import type { AgentState, InboxItem } from '@earendil-works/pi-durable'
+import type { AgentState, ConversationId, InboxItem } from '@earendil-works/pi-durable'
 import {
   CornerDownRight,
   ListPlus,
@@ -12,7 +12,16 @@ import {
 import { Portal } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createMemo, createSignal, For, onSettled, Show, useContext } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onSettled,
+  Show,
+  useContext,
+} from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
@@ -43,7 +52,13 @@ import {
 } from '@/sdk/solid'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
-import { Contributed, Contribution, Slot, useProvided } from '../sdk/react-island.solid.tsx'
+import {
+  Contributed,
+  Contribution,
+  Slot,
+  useAllProvided,
+  useProvided,
+} from '../sdk/react-island.solid.tsx'
 import { Attached, createAttach } from './attach.solid.tsx'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
@@ -187,6 +202,23 @@ function Inbox(props: { items: readonly InboxItem[] }) {
   )
 }
 
+function Placeholder(props: {
+  conversation: ConversationId
+  busy: boolean
+  report: (text: string | undefined) => void
+}) {
+  const answers = useAllProvided(ComposerPlaceholder, () => ({
+    conversation: props.conversation,
+    busy: props.busy,
+  }))
+  createEffect(
+    () => answers().findLast((text) => text !== undefined),
+    (text) => props.report(text),
+  )
+  onCleanup(() => props.report(undefined))
+  return null
+}
+
 function QueuedRow(props: { item: InboxItem; cancel: JSX.Element }) {
   const parts = createMemo(() => previewParts(inboxText(props.item)))
   return (
@@ -216,10 +248,11 @@ function createDraftState(id: () => number | undefined) {
     return draft().get()
   })
   createEffect(draft, (current) => {
+    const unsubscribe = current.subscribe(() => setChanges((n) => n + 1))
     const stored = (current.key ? localStorage.getItem(current.key) : null) ?? ''
     if (stored !== current.get().text)
       current.set({ text: stored, revision: current.get().revision + 1 })
-    return current.subscribe(() => setChanges((n) => n + 1))
+    return unsubscribe
   })
   return { draft, value }
 }
@@ -239,10 +272,7 @@ function ComposerEditor(props: { dock?: boolean }) {
   const files = () => value().files
   const sending = () => value().sending
   const upload = useProvided(FileUpload, () => null)
-  const placeholder = useProvided(ComposerPlaceholder, () => ({
-    conversation: id(),
-    busy: busy(),
-  }))
+  const [placeholder, setPlaceholder] = createSignal<string>()
   const models = useModels()
   const viewport = useViewport()
   const [foldTarget, setFoldTarget] = createSignal(statusTarget())
@@ -428,6 +458,11 @@ function ComposerEditor(props: { dock?: boolean }) {
       data-composer-target={scoped === null ? 'conversation' : 'scope'}
       data-ui="composer"
     >
+      <Show when={id()} keyed>
+        {(conversationId) => (
+          <Placeholder busy={busy()} conversation={conversationId} report={setPlaceholder} />
+        )}
+      </Show>
       <Inbox items={inbox()} />
       <Form
         class={cn(

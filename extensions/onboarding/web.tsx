@@ -26,7 +26,7 @@ import { FirstRun, GitCard, ProjectCard, Recommended } from './pages.tsx'
 import { IsolationAction } from '../workspaces/ui.tsx'
 import { StartComposer } from './survey.solid.tsx'
 import { ExtensionsPanel } from './panel.tsx'
-import { firstRunDialog, gitDialog, projectDialog } from './parts.tsx'
+import { firstRunDialog, gitDialog, projectDialog } from './dialogs.ts'
 import {
   ChooseAction,
   HelpAction,

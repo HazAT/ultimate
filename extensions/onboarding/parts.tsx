@@ -3,8 +3,6 @@ import { cn, useAction, useSystem } from '@/sdk'
 import type { ExtensionInfo, SystemInfo } from '@/sdk'
 import { ExtensionsAction } from './refs.ts'
 
-export { firstRunDialog, gitDialog, projectDialog } from './dialogs.ts'
-
 export const sources: Record<ExtensionInfo['source'], string> = {
   builtin: 'built-in',
   user: 'yours',

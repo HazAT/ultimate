@@ -166,7 +166,7 @@ ran on another model or thinking level than the one before it this way.
 
 ## Inbox renderers
 
-An optional `inbox` renderer wraps each queued composer input with `{ item, core, cancel }`. Return `core` for inputs you do not own; when replacing it, include `cancel` to retain core cancellation. Like entry renderers, the last facet in discovery order wins and runs behind an extension boundary with core fallback. Keep provenance and domain-specific UI in the extension.
+An optional `inbox` renderer wraps each queued composer input with `{ item, core, cancel }`. Return `core` for inputs you do not own; when replacing it, include `cancel` to retain core cancellation. Like entry renderers, the last facet in discovery order wins and runs behind an extension boundary with core fallback. Keep provenance and domain-specific UI in the extension. Contribute a Solid one as `island(C)` with `C` typed `SolidInboxProps` (`extensions/subagents/inbox.solid.tsx`); a React one still works.
 
 ## Composer renderers
 
@@ -175,8 +175,11 @@ narrow side region). Render `core` to preserve the existing composer, optionally
 discovery order: each receives the previous rendering as `core`, behind its own extension boundary with that rendering
 as fallback. These renderers can use `useTranscript()` for the shown conversation's current entries.
 Lineage uses this to show a root's read-only History banner, with the way back to @ultimate, instead of a composer.
-To send what the composer submits elsewhere, wrap `core` in `<ComposerRedirect to={{ placeholder, send }}>` (from `@/sdk`):
-while `to` is set, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
+The composer is Solid: contribute a wrapper as `island(C)` with `C` typed `SolidComposerProps`; a React one mounts
+through the core's bridge and its `core` is placed only where it renders it. To send what the composer submits
+elsewhere, wrap `core` in `<ComposerRedirect value={target}>` (from `@/sdk/solid`, `target` an accessor of
+`{ placeholder, send }`, inheriting the outer one with `useContext(ComposerRedirect)` while it has nothing of its own):
+while it gives a target, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
 sending states (side-chat forks @ultimate this way). A redirect also sets aside images, `composer.actions` and steer
 and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
 `provide(ComposerPlaceholder, ({ conversation, busy }) => (conversation === mine ? 'Ask the coach…' : undefined))`.
