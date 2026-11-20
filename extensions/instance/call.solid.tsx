@@ -36,7 +36,7 @@ function result(output: string): unknown {
   }
 }
 
-function Card(props: { instance: Instance; status: string }) {
+function Card(props: { instance: Instance; status: string; call: string }) {
   const system = useSystem()
   const target = usePreviewTarget(() => props.instance.url, true)
   const frame = () => {
@@ -82,7 +82,7 @@ function Card(props: { instance: Instance; status: string }) {
             >
               {(open) => (
                 <Button
-                  aria-label={`Show preview ${props.instance.url} (${props.instance.id.slice(0, 8)})`}
+                  aria-label={`Show preview ${props.instance.url} (call ${props.call.slice(-8)})`}
                   class="h-auto p-0 font-mono text-[12px] font-normal text-brand hover:underline"
                   onClick={(event) => open()(event)}
                   size={null}
@@ -189,7 +189,7 @@ export function InstanceCall(props: SolidToolProps) {
         <Show when={started()}>
           {(instance) => (
             <ToolSection>
-              <Card instance={instance()} status="started" />
+              <Card call={props.call.id} instance={instance()} status="started" />
             </ToolSection>
           )}
         </Show>
@@ -198,7 +198,9 @@ export function InstanceCall(props: SolidToolProps) {
             <ToolSection label={`${instances().length} running`}>
               <div class="flex flex-col gap-1.5">
                 <For each={instances()} keyed={(instance) => instance.id}>
-                  {(instance) => <Card instance={instance()} status="running" />}
+                  {(instance) => (
+                    <Card call={props.call.id} instance={instance()} status="running" />
+                  )}
                 </For>
               </div>
             </ToolSection>

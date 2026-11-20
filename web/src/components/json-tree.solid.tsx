@@ -79,14 +79,14 @@ function Node(props: { path: string; name?: string; value: Json; depth: number; 
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <For each={entries()}>
+            <For each={entries()} keyed={(entry) => entry[0]}>
               {(entry) => (
                 <Node
                   depth={props.depth + 1}
-                  name={entry[0]}
+                  name={entry()[0]}
                   open={props.open}
-                  path={`${props.path}.${entry[0]}`}
-                  value={entry[1]}
+                  path={`${props.path}[${JSON.stringify(entry()[0])}]`}
+                  value={entry()[1]}
                 />
               )}
             </For>
