@@ -90,6 +90,8 @@
     "extensions/wire/json.ts",
     "extensions/wire/state.ts",
     "extensions/workspaces/types.ts",
+    "extensions/workspaces/landing-points.ts",
+    "extensions/workspaces/steps.ts",
     "extensions/review/comments.ts",
     "extensions/review/types.ts",
     "extensions/review/drafts.ts",

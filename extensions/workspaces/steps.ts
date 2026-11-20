@@ -3,6 +3,9 @@ import type { LanderStep } from './types.ts'
 export const superseded = (row: LanderStep, later: readonly LanderStep[]) =>
   row.runs !== undefined && later.some((next) => next.check?.command === row.runs)
 
+export const visibleSteps = (steps: readonly LanderStep[]) =>
+  steps.filter((row, index) => !superseded(row, steps.slice(index + 1)))
+
 const checkGroupStillRunning = (row: LanderStep, later: readonly LanderStep[]) =>
   row.runs !== undefined &&
   later.every((next) => next.check !== undefined || next.runs !== undefined)

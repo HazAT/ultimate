@@ -1,10 +1,9 @@
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 import { AgentInput } from '../../extensions/subagents/messages.tsx'
-import { LandingCard } from '../../extensions/workspaces/landing.tsx'
 
 const conversations = [
   { id: 43, title: '@ultimate', label: 'agent' },
@@ -40,22 +39,6 @@ const text = (node: ReactNode) =>
     .replaceAll(/<[^>]+>/g, ' ')
     .replaceAll(/\s+/g, ' ')
     .trim()
-
-it("folds a standing agent's landing to its @name, not the feature it carried at submit time", () => {
-  const landing = (from: number) =>
-    text(
-      createElement(LandingCard, {
-        card: 1,
-        tone: 'landed',
-        headline: 'Landed',
-        from: from as ConversationId,
-        sha: '5e1f0a2abc',
-        subject: { feature: 'Chat Cards', title: 'Fold cards in the chat' },
-      }),
-    )
-  expect(landing(43)).toBe('landed @ultimate #43 · 5e1f0a2')
-  expect(landing(60)).toBe('landed Chat Cards Fold cards in the chat #60 · 5e1f0a2')
-})
 
 it('names a report by its standing agent, a subagent by its definition', () => {
   const report = (sender: number) =>

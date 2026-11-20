@@ -144,6 +144,8 @@ export function code(value: string) {
   return `${delimiterLongerThanContentBackticks}${pad}${escapedControlCharacters}${pad}${delimiterLongerThanContentBackticks}`
 }
 
+export const shortSpec = (spec: string) => spec.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
+
 export const location = (comment: Pick<ReviewComment, 'file' | 'start' | 'end'>) =>
   `${comment.file}:${comment.start}${comment.end === comment.start ? '' : `-${comment.end}`}`
 
