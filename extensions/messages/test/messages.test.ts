@@ -1764,55 +1764,58 @@ it("sends @ultimate's answer to a branch it concluded to the agent whose request
     }),
   ])
 })
-it("sends @ultimate's answer to a run its automation woke to the agent whose request the automation served", async () => {
-  // ultimate-eval #53: @ultimate answered "I've started the A/B" to another Ultimate's request and made automation A8;
-  // the result, written in the run A8's fire woke (#53/5281), reached no one.
-  const f = await fixture()
-  await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
-    reply: false,
-  })
-  await until(f.holding)
-  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
-  f.hold.release()
-  const request = async () =>
-    (await f.log())!.messages.find((m) => m.from === f.recipient.id && m.to === 1)
-  // @ultimate's early answer ("started") settles the request.
-  await until(async () => {
-    const id = (await request())?.id
-    return id !== undefined && (await f.log())!.messages.some((m) => m.re === id)
-  })
-  const asked = (await request())!
-  const fired = (tellUser = false) =>
-    f.opened.root.submit(
-      {
-        type: 'input',
-        // It tells the user first: that message must not end the run before its answer to the asker.
-        content: `Automation A8 "ab done" fired: AB-DONE${tellUser ? ' TELLUSER' : ''}`,
-        entry: {
-          kind: 'automations.fired',
-          data: {
-            id: 'A8',
-            name: 'ab done',
-            text: 'AB-DONE',
+it.each(['automations.fired', 'automations.finished'])(
+  "sends @ultimate's answer to a run its automation woke (%s) to the agent whose request the automation served",
+  async (kind) => {
+    // ultimate-eval #53: @ultimate answered "I've started the A/B" to another Ultimate's request and made automation A8;
+    // the result, written in the run A8's fire woke (#53/5281), reached no one.
+    const f = await fixture()
+    await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
+      reply: false,
+    })
+    await until(f.holding)
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
+    f.hold.release()
+    const request = async () =>
+      (await f.log())!.messages.find((m) => m.from === f.recipient.id && m.to === 1)
+    // @ultimate's early answer ("started") settles the request.
+    await until(async () => {
+      const id = (await request())?.id
+      return id !== undefined && (await f.log())!.messages.some((m) => m.re === id)
+    })
+    const asked = (await request())!
+    const fired = (tellUser = false) =>
+      f.opened.root.submit(
+        {
+          type: 'input',
+          // It tells the user first: that message must not end the run before its answer to the asker.
+          content: `Automation A8 "ab done" fired: AB-DONE${tellUser ? ' TELLUSER' : ''}`,
+          entry: {
+            kind,
+            data: {
+              id: 'A8',
+              name: 'ab done',
+              text: 'AB-DONE',
+            },
           },
         },
-      },
-      context,
+        context,
+      )
+    await (await fired(true)).wait(context)
+    await until(async () =>
+      (await f.log())!.messages.some((m) => m.from === 1 && m.to === f.recipient.id && m.routed),
     )
-  await (await fired(true)).wait(context)
-  await until(async () =>
-    (await f.log())!.messages.some((m) => m.from === 1 && m.to === f.recipient.id && m.routed),
-  )
-  await (await fired()).wait(context)
-  await f.opened.root.waitForIdle(context)
-  expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toEqual([
-    expect.objectContaining({
-      to: f.recipient.id,
-      reply: false,
-      text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
-    }),
-  ])
-})
+    await (await fired()).wait(context)
+    await f.opened.root.waitForIdle(context)
+    expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toEqual([
+      expect.objectContaining({
+        to: f.recipient.id,
+        reply: false,
+        text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
+      }),
+    ])
+  },
+)
 it("routes the answer of a run an automation woke to the branches whose report the automation's creating run read", async () => {
   // #626775: @ultimate read the branch's reply, made check-back A3 and told it to hold; the branch held (an echo). A3's
   // run answered with the A/B result in prose, which reached no one, and the branch waited 44 minutes.

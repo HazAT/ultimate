@@ -26,7 +26,7 @@ import {
 } from '@/sdk'
 import type { TypedEntry } from '@earendil-works/pi-durable'
 import type { AutomationInput } from './refs.ts'
-import { FiredEntry } from '../entries/ui.tsx'
+import { FiredEntry, FinishedEntry } from '../entries/ui.tsx'
 import { FailedEntry, EscalatedEntry, WritingEntry } from './entries.ts'
 import type { ToolCallView } from '@/sdk'
 import { Chip } from './chip.solid.tsx'
@@ -54,9 +54,10 @@ function useWaitTimers() {
   return timerWaits(useAutomations(5000).data, useDocOf(ROOT, StandingDoc))
 }
 
-type Kind = 'fired' | 'failed' | 'escalated' | 'writing'
+type Kind = 'fired' | 'finished' | 'failed' | 'escalated' | 'writing'
 const kinds: Record<Kind, { look: Look; word: string; border: string }> = {
   fired: { look: 'watching', word: 'fired', border: 'border-l-success/70' },
+  finished: { look: 'watching', word: 'finished', border: 'border-l-success/70' },
   failed: { look: 'investigating', word: 'failed', border: 'border-l-warning/70' },
   escalated: { look: 'failed', word: 'escalated', border: 'border-l-error/70' },
   writing: { look: 'writing', word: 'assigned', border: 'border-l-brand/60' },
@@ -76,7 +77,7 @@ function body(text: string) {
 const card = (kind: Kind) =>
   function AutomationEntry({ entry }: { entry: TypedEntry<AutomationInput> }) {
     const { id, name, text } = entry.data
-    const look = kinds[kind]
+    const look = kinds[kind === 'finished' && text.startsWith('Run failed:') ? 'failed' : kind]
     const open = useOpenAutomation()
     const label: ReactNode = (
       <>
@@ -229,6 +230,7 @@ export default defineWebExtension({
   },
   entries: {
     'automations.fired': renderEntry(FiredEntry, card('fired')),
+    'automations.finished': renderEntry(FinishedEntry, card('finished')),
     'automations.failed': renderEntry(FailedEntry, card('failed')),
     'automations.escalated': renderEntry(EscalatedEntry, card('escalated')),
     'automations.writing': renderEntry(WritingEntry, card('writing')),

@@ -34,7 +34,9 @@ Each automation has one or both:
   nonempty FIRE text is appended as `\n\nFired: <text>`. Runs record status and the first answer line; the ledger keeps
   the last 50 per automation.
 - `subscribers` wakes existing conversations with an `automations.fired` input `{id, name, text}`. A subscriber is
-  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters.
+  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters. With a
+  `prompt`, subscribers are woken when each run ends instead, with an `automations.finished` input whose text is the
+  run's answer (or `Run failed: …`); an aborted run wakes no one.
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,

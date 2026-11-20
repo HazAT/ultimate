@@ -240,6 +240,33 @@ it('fires a subscriber-only schedule without creating a run conversation', async
   }
 })
 
+it("delivers a prompt run's answer to its subscribers when the run ends", async () => {
+  // A daily briefing's subscriber got only the empty fire notice; the answer stayed in the run conversation.
+  const f = await fixture()
+  const target = await f.opened.harness.commit(async (tx) => {
+    const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+    await configure(tx, child.id, {})
+    return child
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Briefing',
+    prompt: 'Brief me',
+    schedule: 'every 1d',
+    subscribers: [target.id],
+  })) as Automation
+  await f.action('run', { id: a.id })
+  const delivered = async () => {
+    const conversation = (await f.opened.harness.conversation(target.id, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === target.id && e.kind.startsWith('automations.'),
+    )
+  }
+  await until(async () => (await delivered()).length > 0)
+  expect((await delivered()).map((e) => [e.kind, e.data])).toEqual([
+    ['automations.finished', { id: a.id, name: 'Briefing', text: 'Answer: Brief me\nSecond line' }],
+  ])
+})
+
 it('skips the recorded lander conversation whatever its label says', async () => {
   const f = await fixture()
   const [lander, other] = await f.opened.harness.commit(async (tx) => {

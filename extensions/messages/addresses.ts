@@ -9,7 +9,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { FiredEntry, FinishedEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry, WorkspacesApi } from '../workspaces/api.ts'
 import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -78,7 +78,7 @@ export async function ownerOutput(
   to: ConversationId,
   entry: EntryRecord | undefined,
 ): Promise<{ owner: Owner; source: string } | undefined> {
-  if (FiredEntry.is(entry))
+  if (FiredEntry.is(entry) || FinishedEntry.is(entry))
     return {
       owner: { kind: 'automation', id: entry.data.id },
       source: `automation ${entry.data.id} "${entry.data.name}"`,
