@@ -287,7 +287,14 @@ export function AutomationRow(props: {
           <span class="min-w-0 truncate pl-1 font-mono text-[10.5px] text-muted-foreground/60">
             {actions(item())}
           </span>
-          <DropdownMenu modal={false}>
+          <DropdownMenu
+            modal={false}
+            onAction={(value) => {
+              if (value === 'run') return run()
+              if (value === 'edit') return props.onEdit(menu ?? null)
+              return setConfirming(true)
+            }}
+          >
             <DropdownMenuTrigger
               aria-label={`Actions for ${item().name}`}
               class="ml-auto grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-open:bg-accent"
@@ -303,7 +310,7 @@ export function AutomationRow(props: {
               <DropdownMenuItem
                 class="text-[12.5px]"
                 disabled={script() ? script()?.state === 'writing' : running()}
-                onSelect={run}
+                value="run"
               >
                 <Show
                   when={script()}
@@ -316,13 +323,10 @@ export function AutomationRow(props: {
                   <RotateCw /> Restart
                 </Show>
               </DropdownMenuItem>
-              <DropdownMenuItem class="text-[12.5px]" onSelect={() => props.onEdit(menu ?? null)}>
+              <DropdownMenuItem class="text-[12.5px]" value="edit">
                 <Pencil /> Edit…
               </DropdownMenuItem>
-              <DropdownMenuItem
-                class="text-[12.5px] text-error"
-                onSelect={() => setConfirming(true)}
-              >
+              <DropdownMenuItem class="text-[12.5px] text-error" value="delete">
                 <Trash2 /> Delete…
               </DropdownMenuItem>
             </DropdownMenuContent>

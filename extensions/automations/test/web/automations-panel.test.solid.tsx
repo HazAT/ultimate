@@ -170,7 +170,7 @@ it('pauses, runs, and requires a person’s confirmation before deleting', async
   expect(control('Enable Morning reports')).toMatchObject({ checked: false })
 
   expect((await act('Actions for Morning reports', 'press', 'Run now')).ok).toBe(true)
-  expect(harness.actions.at(-1)).toMatchObject({ name: 'run', args: { id: 'A1' } })
+  expect(harness.actions.at(-1)).toEqual({ name: 'run', args: { id: 'A1' }, source: 'agent' })
   await settle()
   expect(view.textContent).toContain('No runs yet')
 
