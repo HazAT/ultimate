@@ -8,4 +8,6 @@ export { SetExtensionAction, StartAction, StatusAction } from './refs.ts'
  * More of an open row in the Extensions panel, below its tools and contract (`mcp` lists its servers there). Input is
  * the extension's name; the provider returns null for the others.
  */
-export const ExtensionDetails = definePoint<string, ReactNode>('onboarding.extension-details')
+export const ExtensionDetails = definePoint<{ name: string }, ReactNode>(
+  'onboarding.extension-details',
+)

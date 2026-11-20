@@ -374,7 +374,7 @@ function Details({ extension }: { extension: ExtensionInfo }) {
         <Field label="prompt">{[prompt, hooks].filter(Boolean).join(' · ')}</Field>
       )}
       {extension.enabled && (
-        <Provided input={extension.name} point={ExtensionDetails}>
+        <Provided input={{ name: extension.name }} point={ExtensionDetails}>
           {(part) => part}
         </Provided>
       )}
