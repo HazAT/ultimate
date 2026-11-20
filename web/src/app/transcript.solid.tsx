@@ -186,7 +186,13 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   let sentinel: HTMLDivElement | undefined
   const [scroller, setScroller] = createSignal<Follow>()
   const [atBottom, setAtBottom] = createSignal(true)
-  const [tailSpace, setTailSpace] = createSignal(0)
+  let tail!: HTMLDivElement
+  const [tailSpace, setTailSpaceSignal] = createSignal(0)
+  const setTailSpace = (next: number | ((space: number) => number)) => {
+    const space = typeof next === 'function' ? next(tailSpace()) : next
+    tail.style.height = space > 0 ? `${space + rowGap(content)}px` : ''
+    setTailSpaceSignal(space)
+  }
   const restored = useStore((state) => state.restored)
 
   onSettled(() => {
@@ -377,14 +383,9 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     const move =
       element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - maxPinnedCover
     const roomBelow = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
-    if (move > roomBelow) {
-      const grown = tailSpace() + move - roomBelow + rowGap(content)
-      setTailSpace(grown)
-      tailElement?.style.setProperty('height', `${grown}px`)
-    }
+    if (move > roomBelow) setTailSpace(tailSpace() + move - roomBelow + rowGap(content))
     follower.place(scroll.scrollTop + move)
   }
-  let tailElement: HTMLDivElement | undefined
   onSettled(() => {
     const resize = new ResizeObserver(hold)
     for (const element of [scroll, content, pinned]) resize.observe(element)
@@ -666,16 +667,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
             </Show>
             <ReactSlot name="transcript.end" />
             <LiveStatus busy={busy()} id={id} live={live()} partial={partial()} />
-            <Show when={tailSpace() > 0}>
-              <div
-                aria-hidden="true"
-                data-history-anchor-space
-                ref={(element) => {
-                  tailElement = element
-                }}
-                style={{ height: `${tailSpace()}px` }}
-              />
-            </Show>
+            <div aria-hidden="true" class="-mt-3 shrink-0" data-history-anchor-space ref={tail} />
           </div>
         </div>
         <Show when={!atBottom()}>

@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react'
 import { useLayoutEffect, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ExtensionBoundary, Rendered as RenderedPoint, Slot } from '../app/boundary.tsx'
@@ -18,12 +19,14 @@ export function reactRoot(
   const root = createRoot(host)
   return {
     render: (element: ReactNode) =>
-      root.render(
-        <TooltipProvider delayDuration={400}>
-          <ConversationIdContext value={context.conversation}>
-            <TranscriptContext value={context.transcript}>{element}</TranscriptContext>
-          </ConversationIdContext>
-        </TooltipProvider>,
+      flushSync(() =>
+        root.render(
+          <TooltipProvider delayDuration={400}>
+            <ConversationIdContext value={context.conversation}>
+              <TranscriptContext value={context.transcript}>{element}</TranscriptContext>
+            </ConversationIdContext>
+          </TooltipProvider>,
+        ),
       ),
     unmount: () => root.unmount(),
   }

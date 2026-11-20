@@ -36,6 +36,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   const place = (top: number) => {
     scroll.scrollTop = top
     placed = scroll.scrollTop
+    seen = placed
   }
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
   const left = () => readerLeft({ top: scroll.scrollTop, seen, placed, distance: distance() })
@@ -49,9 +50,9 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
     const top = scroll.scrollTop
-    const ours = top === placed
-    if (!ours && left()) report({ following: false })
-    else if (!ours && !following && top > seen && distance() <= nearBottomPx)
+    const readerMoved = placed === undefined || Math.abs(top - placed) > 1
+    if (readerMoved && left()) report({ following: false })
+    else if (readerMoved && !following && top > seen + 1 && distance() <= 1)
       report({ following: true })
     else report({})
     seen = top
