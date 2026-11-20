@@ -80,6 +80,13 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **Durable state:** `const digest = useExtensionUiState('digest', false)` once in the body, then
   `<Switch bind={digest} />`. Never call a hook inside a JSX prop: a Solid prop is a getter, so it runs again at every
   read. For an action: `bind={[() => state().on, (on) => void toggle(on)]}`.
+- **Whose key:** `useExtensionUiState` takes the extension name of where it renders, so a part rendered through another
+  extension's point (a System tab, the sidebar's `UnderUltimate`) writes under that extension's name: wire's tab once
+  wrote its own state over `ext.system.tab`. Such a part uses `useUiState` with an explicit `ext.<own name>.<key>`
+  from a `.ts` file that its React and Solid sides share (`extensions/wire/state.ts`).
+- **A durable selection names what is shown.** When the selected row leaves, store the row that took its place, not
+  just a rule for finding it again, or a later arrival takes over the pane under the person's cursor
+  (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action, args and conversation. `every` takes ms or
   `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). Every read in use refetches after a
   restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.
