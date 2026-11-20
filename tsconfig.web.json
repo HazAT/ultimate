@@ -31,6 +31,7 @@
     "extensions/automations/poll.ts",
     "extensions/messages/caller.ts",
     "extensions/projects/links.ts",
+    "extensions/sidebar/colour.ts",
     "extensions/cloud/types.ts",
     "extensions/conversations/types.ts",
     "extensions/dream/stage.ts",
