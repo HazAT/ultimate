@@ -3,7 +3,7 @@ import { Check } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Input } from '@/components/ui/input.solid.tsx'
+import { Textarea } from '@/components/ui/input.solid.tsx'
 import { cn } from '@/sdk/solid'
 import type { Question } from '../messages/refs.ts'
 import { answerOf, choices, keyOf, position } from './state.ts'
@@ -13,7 +13,7 @@ const mark =
   'size-3 transition-[scale,opacity] duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] starting:scale-40 starting:opacity-0'
 const ring = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
 
-type FieldKey = KeyboardEvent & { currentTarget: HTMLInputElement }
+type FieldKey = KeyboardEvent & { currentTarget: HTMLTextAreaElement }
 
 function Field(props: {
   value: string
@@ -24,7 +24,7 @@ function Field(props: {
   onChange: (value: string) => void
   onKey: (event: FieldKey) => void
 }) {
-  let input!: HTMLInputElement
+  let input!: HTMLTextAreaElement
   createEffect(
     () => props.focus,
     (focus) => {
@@ -32,17 +32,18 @@ function Field(props: {
     },
   )
   return (
-    <Input
+    <Textarea
       ref={input}
       aria-label={props.label}
       placeholder={props.placeholder}
+      rows={1}
       value={props.value}
       disabled={props.disabled}
       onValueChange={(value) => props.onChange(value)}
       onKeyDown={(event) => props.onKey(event)}
       autocomplete="on"
       spellcheck
-      class="h-auto min-h-9 rounded-md border-border px-2.5 py-1.5 font-sans text-[13px] transition-colors placeholder:text-muted-foreground/70 focus-visible:border-brand/60 focus-visible:ring-0 disabled:opacity-100 max-md:min-h-11"
+      class="field-sizing-content max-h-40 min-h-9 resize-none rounded-md border-border px-2.5 py-1.5 leading-snug transition-colors placeholder:text-muted-foreground/70 focus-visible:border-brand/60 focus-visible:ring-0 disabled:opacity-100 max-md:min-h-11"
     />
   )
 }

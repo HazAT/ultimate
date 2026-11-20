@@ -9,6 +9,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
+import type { Locator } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { Messages } from '../../../messages/api.ts'
@@ -51,7 +52,14 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-async function openCard() {
+async function openEvery(card: Locator) {
+  const headers = card.locator('fieldset button[aria-expanded]')
+  for (let index = 0; index < (await headers.count()); index++) await headers.nth(index).click()
+  // The last question unfolds over 200 ms, moving Send down while it does.
+  await card.page().waitForTimeout(400)
+}
+
+async function openCard(asking: JsonValue[] = questions) {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
   const server = await fauxServer({
@@ -68,7 +76,13 @@ async function openCard() {
     const last = transcript.messages.at(-1)!
     return last.role === 'user' && last.content === 'ask'
       ? fauxAssistantMessage(
-          [fauxToolCall('message', { to: 'user', text: 'The preview is ready.', questions })],
+          [
+            fauxToolCall('message', {
+              to: 'user',
+              text: 'The preview is ready.',
+              questions: asking,
+            }),
+          ],
           {
             stopReason: 'toolUse',
           },
@@ -97,7 +111,10 @@ async function openCard() {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${ultimate}`)
   const card = page.locator(`[data-questions-card="message:${asked.id}"]`)
-  await card.locator('fieldset').nth(2).waitFor()
+  await card
+    .locator('fieldset')
+    .nth(asking.length - 1)
+    .waitFor()
   return { conversation, log, ask, asked, page, card }
 }
 
@@ -169,6 +186,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   const second = (await ask())!
   const next = page.locator(`[data-questions-card="message:${second.id}"]`)
   await next.locator('fieldset').nth(2).waitFor()
+  await openEvery(next)
   const sendNext = next.getByRole('button', {
     name: `Send: answer to message ${second.id}`,
     exact: true,
@@ -195,8 +213,60 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
 
+// The bug: every question came with a pick, so Enter in question 2's own answer sent the card with questions 3 and 4
+// never opened. Enter now opens the next question, and sending asks first while a question was never opened.
+it('opens the next question on Enter, and asks before sending with a question never opened', async () => {
+  const { log, asked, page, card } = await openCard([
+    ...questions,
+    {
+      text: 'Tell the team',
+      kind: 'choice',
+      ref: '4',
+      options: [
+        { label: 'yes', key: 'a', recommended: true },
+        { label: 'no', key: 'b' },
+      ],
+    },
+  ])
+  const opened = () => card.locator('fieldset[data-current] legend').textContent()
+  // Jumping to the last question skips 2 and 3: Enter there asks, and Review opens question 2.
+  await card.locator('fieldset button[aria-expanded]').nth(3).click()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('Enter')
+  const ask = card.getByRole('group', { name: 'Send with questions not opened' })
+  await ask.getByText("You haven't opened questions 2, 3").waitFor()
+  expect(await card.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+  // Review takes focus, so a second Enter reviews instead of sending.
+  await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe('Review')
+  await page.keyboard.press('Enter')
+  await until(async () => (await opened()) === "Boxer's copied agents/ultimate.md")
+  // In question 2's own answer ⇧Enter breaks a line and Enter opens question 3, never sending.
+  await card
+    .locator('fieldset[data-current]')
+    .getByRole('button', { name: /Something else/ })
+    .click()
+  await page.keyboard.type('Ask first')
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.type('then send')
+  await page.keyboard.press('Enter')
+  await until(async () => (await opened()) === 'Land it')
+  expect(await card.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('Enter')
+  await until(async () => (await opened()) === 'Tell the team')
+  await page.keyboard.press('Enter')
+  await card.getByRole('button', { name: 'Undo' }).waitFor()
+  const answer = async () =>
+    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  await until(async () => !!(await answer()))
+  expect((await answer())!.text).toMatch(
+    /^1a\. .+\n\n2: Ask first\nthen send\n\n3a\. .+\n\n4a\. Tell the team: yes$/,
+  )
+})
+
 it('sends a held answer when the page is left inside the undo window', async () => {
   const { log, asked, page, card } = await openCard()
+  await openEvery(card)
   await card
     .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
     .click()

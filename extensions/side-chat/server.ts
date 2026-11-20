@@ -558,16 +558,19 @@ const draftAnswersTool = (host: ExtensionHost) =>
         const card = cardKey(message.id)
         const previous = cardOf(cards, card, questions)
         const drafts = { ...previous.drafts }
+        const seen = new Set(previous.seen)
         const lines: string[] = []
         for (const { question, answer } of answers) {
           const index = questionIndex(questions, question)
           drafts[index] = draftFor(questions[index], answer)
+          seen.add(index)
           lines.push(`${position(questions[index], index)}: ${[answer].flat().join(', ')}`)
         }
         if (text !== undefined) lines.push(`answer: ${text}`)
         const next: CardState = {
           ...previous,
           drafts,
+          seen: [...seen],
           ...(note === undefined ? {} : { note }),
           ...(text === undefined ? {} : { text }),
         }

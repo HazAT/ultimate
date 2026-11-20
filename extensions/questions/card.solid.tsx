@@ -11,6 +11,7 @@ import {
   cn,
   errorMessage,
   ROOT,
+  touchKeyboard,
   useConversationId,
   useDocOf,
   useUiState,
@@ -39,10 +40,17 @@ import {
   choiceForKey,
   choices,
   keyOf,
+  position,
 } from './state.ts'
 import type { CardState, Draft } from './state.ts'
 
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
+
+const opening = (old: CardState, index: number): CardState => ({
+  ...old,
+  current: index,
+  seen: old.seen?.includes(old.current) ? old.seen : [...(old.seen ?? []), old.current],
+})
 
 export const CardActions: Point<Message, ReactNode> = { point: 'questions.card-actions' }
 
@@ -156,7 +164,14 @@ function AnswerCard(props: CardProps & { id: number }) {
   const note = () => heldDraft()?.note ?? state().note
   const current = () => state().current
   const ready = createMemo(() => answered(questions(), drafts()))
+  const unopened = createMemo(() =>
+    questions().flatMap((_, index) =>
+      index === current() || state().seen?.includes(index) ? [] : [index],
+    ),
+  )
+  const [asking, setAsking] = createSignal<{ immediately: boolean }>()
   const locked = () => phase() !== 'answering'
+  const confirming = () => (locked() || !unopened().length ? undefined : asking())
   const disabled = () => busy() || locked()
   const word = (i: number) => answerOf(questions()[i], drafts()[i])
   const left = () => questions().length - ready().length
@@ -172,11 +187,12 @@ function AnswerCard(props: CardProps & { id: number }) {
   const go = (index: number, automatic = false) => {
     advance?.()
     const next = Math.min(questions().length - 1, Math.max(0, index))
-    change((old) => ({ ...old, current: next }), automatic)
+    setAsking(undefined)
+    change((old) => opening(old, next), automatic)
     if (questions()[next]?.kind === 'text')
       requestAnimationFrame(() =>
         root
-          .querySelector<HTMLInputElement>(`[data-question="${next}"] input`)
+          .querySelector<HTMLTextAreaElement>(`[data-question="${next}"] textarea`)
           ?.focus({ preventScroll: true }),
       )
   }
@@ -189,6 +205,7 @@ function AnswerCard(props: CardProps & { id: number }) {
     const question = questions()[index]
     const choice = question && choices(question)[option]
     if (!choice) return
+    setAsking(undefined)
     change((old) => {
       const previous = old.drafts[index] ?? { chosen: [] }
       const next =
@@ -202,7 +219,7 @@ function AnswerCard(props: CardProps & { id: number }) {
                   : [...previous.chosen, option].toSorted((a, b) => a - b),
               }
           : { ...previous, chosen: choice.custom ? [] : [option], other: !!choice.custom }
-      return { ...old, current: index, drafts: { ...old.drafts, [index]: next } }
+      return { ...opening(old, index), drafts: { ...old.drafts, [index]: next } }
     })
     advance?.()
     if (question.kind !== 'multi' && click && !choice.custom && index < questions().length - 1)
@@ -223,13 +240,18 @@ function AnswerCard(props: CardProps & { id: number }) {
     waiting?.cancel()
     waiting?.fire(keepalive)
   }
-  const send = (immediately = false, source?: string) => {
+  const send = (immediately = false, source?: string, anyway = false) => {
     const extra = note().trim()
     const answers = ready()
     if ((!answers.length && !extra) || committed || busy()) return
+    advance?.()
+    if (unopened().length && !anyway) {
+      setAsking({ immediately })
+      return
+    }
+    setAsking(undefined)
     const reply = answerRequest()
     committed = true
-    advance?.()
     setHeldDraft({ drafts: drafts(), note: note() })
     const fire = (keepalive = false) => {
       waiting = undefined
@@ -254,20 +276,25 @@ function AnswerCard(props: CardProps & { id: number }) {
   const enter = () => {
     if (phase() === 'undo') return flushAnswer()
     if (locked()) return
-    if (beforeLast() && left()) go(current() + 1)
+    if (beforeLast()) go(current() + 1)
     else send()
   }
-  const fieldKey = (event: KeyboardEvent & { currentTarget: HTMLInputElement }) => {
+  const review = () => go(unopened()[0] ?? current())
+  const fieldKey = (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
     if (event.isComposing) return
-    if (event.key === 'Enter') {
+    const field = event.currentTarget
+    const touchReturnInsertsNewline = touchKeyboard()
+    if (event.key === 'Enter' && !event.shiftKey && !touchReturnInsertsNewline) {
       event.preventDefault()
       event.stopPropagation()
-      if (event.shiftKey) send(true)
-      else enter()
+      enter()
     } else if (event.key === 'Escape') {
       event.preventDefault()
-      event.currentTarget.blur()
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      field.blur()
+    } else if (
+      (event.key === 'ArrowUp' && field.selectionEnd === 0) ||
+      (event.key === 'ArrowDown' && field.selectionStart === field.value.length)
+    ) {
       event.preventDefault()
       event.currentTarget.blur()
       go(current() + (event.key === 'ArrowDown' ? 1 : -1))
@@ -286,6 +313,13 @@ function AnswerCard(props: CardProps & { id: number }) {
       (!root.contains(target) && target?.closest('[data-questions-card], button, a'))
     )
       return
+    if (confirming()) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        review()
+      }
+      return
+    }
     if (phase() === 'undo') {
       if (event.key === 'Escape' || event.key === 'u') {
         event.preventDefault()
@@ -457,7 +491,12 @@ function AnswerCard(props: CardProps & { id: number }) {
               </span>
             </span>
           </Show>
-          <Show when={hints() && !locked()}>
+          <Show when={hints() && confirming()}>
+            <span class="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
+              <Key>esc</Key> review
+            </span>
+          </Show>
+          <Show when={hints() && !locked() && !confirming()}>
             <span class="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
               <Show when={shownKeys().length}>
                 <span class="flex items-center gap-1">
@@ -472,7 +511,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               </Show>
               <span class="flex items-center gap-1">
                 <Key>↵</Key>
-                {beforeLast() && left() ? 'next' : 'send'}
+                {beforeLast() ? 'next' : 'send'}
               </span>
               <Show when={questions()[current()] && word(current())}>
                 <span class="flex items-center gap-1">
@@ -481,18 +520,55 @@ function AnswerCard(props: CardProps & { id: number }) {
               </Show>
             </span>
           </Show>
-          <span class="ml-auto flex items-center gap-1.5">
-            <Actions disabled={disabled()} class="max-md:h-11" />
-            <SendButton
-              messageId={props.id}
-              phase={phase()}
-              disabled={(!locked() && !ready().length && !note().trim()) || busy()}
-              label={sendLabel()}
-              onSend={(source) => send(false, source)}
-              onSendNow={() => send(true)}
-              onUndo={undo}
-            />
-          </span>
+          <Show
+            when={confirming()}
+            keyed
+            fallback={
+              <span class="ml-auto flex items-center gap-1.5">
+                <Actions disabled={disabled()} class="max-md:h-11" />
+                <SendButton
+                  messageId={props.id}
+                  phase={phase()}
+                  disabled={(!locked() && !ready().length && !note().trim()) || busy()}
+                  label={sendLabel()}
+                  onSend={(source) => send(false, source)}
+                  onSendNow={() => send(true)}
+                  onUndo={undo}
+                />
+              </span>
+            }
+          >
+            {(asked) => (
+              <fieldset
+                aria-label="Send with questions not opened"
+                class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 border-0 p-0"
+              >
+                <span class="mr-1 text-[12px] text-muted-foreground max-md:w-full max-md:text-right">
+                  You haven't opened {unopened().length === 1 ? 'question' : 'questions'}{' '}
+                  {unopened()
+                    .map((index) => position(questions()[index], index))
+                    .join(', ')}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(_event, details) => send(asked.immediately, details.source, true)}
+                  class="max-md:h-11"
+                >
+                  Send anyway
+                </Button>
+                <Button
+                  ref={(button: HTMLButtonElement) => requestAnimationFrame(() => button.focus())}
+                  variant="outline"
+                  size="sm"
+                  onClick={review}
+                  class="max-md:h-11"
+                >
+                  Review
+                </Button>
+              </fieldset>
+            )}
+          </Show>
           {alert()}
         </div>
       </div>

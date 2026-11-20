@@ -43,20 +43,25 @@ labels) and `text` (a field); options offer “Something else…” with an inli
 shows beside the options for the hovered or chosen one. Recommended options (@ultimate's picks, also on a branch's card) carry a “my pick” chip and
 come already chosen: the card opens with them in its draft, on the first question without a pick. Under the questions,
 a note field is always there: whatever it holds goes after the answer lines, or on its own (“Send note”), and never
-changes a pick. Send sends what is answered (“Send 2 of 5”). Sending locks the card as it is and turns Send into
+changes a pick. Send sends what is answered (“Send 2 of 5”). While a question was never opened (a pick counts as
+answered, not as seen), every way of sending first asks inline “You haven't opened questions 2, 3”: **Review** (focused, or
+Esc) opens the first of them, **Send anyway** goes on as asked; opened questions left unanswered never ask. A question
+filled through side-chat's `fill` counts as opened. Sending locks the card as it is and turns Send into
 **Undo**, which fills over a 3 s window before the answer goes out; Undo keeps the picks and the note. Holding Send for
 1 s fills it and sends at once, with no window; released earlier it is a plain click. With Reduce Motion the fills
 advance in steps. Dismiss closes the message without an answer. Beside it, the `questions.card-actions` point
 (`CardActions`) takes another extension's control: side-chat's **Talk it through**. A card in a layer marked
 `data-receded` (a transcript behind a side chat's sheet) takes no keys. A message without questions gets a one-line answer
 field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
-for Something else) chooses, ↑/↓ moves between questions, Enter goes to the next question while one is unanswered,
-and sends from the last one or once all are answered; ⇧Enter sends at once, like a held Send; `/` focuses the note field, where Enter sends and
+for Something else) chooses, ↑/↓ moves between questions, Enter opens the next question and sends from the last one;
+in a typed answer Enter does the same and ⇧Enter breaks a line (a touch keyboard's return breaks a line, like the
+composer), and ↑/↓ leave it only from its first or last character. Opening another question closes the ask.
+Elsewhere ⇧Enter sends at once, like a held Send; `/` focuses the note field, where Enter sends and
 ⇧Enter breaks a line; Esc clears an answer, leaves the note field or, while Undo fills, undoes (so does `u`; Enter sends at once). Only the shown
 conversation's newest open card takes these keys; they leave alone input/textarea editing and keys pressed in another
 card, on another control or in the panel, whose cards take no global keys.
 
-What the user picked and typed on a card lives in durable UI state, by message (`ext.questions.cards`), so leaving a
+What the user picked and typed on a card, and which questions they opened, lives in durable UI state, by message (`ext.questions.cards`), so leaving a
 surface for another, a reload or another window or device shows it again where they left it; it goes as soon as the
 message settles (answered, dismissed, or settled for them by @ultimate).
 
