@@ -109,6 +109,7 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
     )
   }
   const cwd = (await tx.doc(AgentDoc, id)).cwd ?? host.projectRoot
+  const top = await git(main.cwd, 'rev-parse', '--show-toplevel')
   const files = new Set<string>()
   let cursor
   do {
@@ -122,7 +123,7 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
           const path = part.arguments.path
           if (typeof path !== 'string') continue
           const absolute = isAbsolute(path) ? path : resolve(cwd, path)
-          files.add(relative(main.cwd, absolute))
+          files.add(relative(top, absolute))
         }
       }
     }
@@ -157,7 +158,7 @@ async function catchupText(
   if (!count) return undefined
   const ownFilePathspecForBoundedMergeNames = [...changed]
     .slice(0, MAX_PATHS_WITH_OVERLAP_MARKS)
-    .map((path) => (main.workspace ? `:(top,literal)${path}` : `:(literal)${path}`))
+    .map((path) => `:(top,literal)${path}`)
   const overlapMarksOrEmpty = ownFilePathspecForBoundedMergeNames.length
     ? await firstParentTargetLogBoundedByRows(
         '--name-only',
@@ -250,6 +251,7 @@ type Activity = {
   abstract?: { at: number; text: string }
   landings: {
     sha: string
+    base?: string
     target: string
     at: number
     paths: string[]
@@ -300,7 +302,7 @@ export async function tallyText(
   baseline: EntryId,
   tx: Tx,
   budget = TALLY_BUDGET,
-  own?: ReadonlySet<string>,
+  reader?: Reader,
 ) {
   const { root } = tree
   const marker = await tx.latestHeadMarker(root)
@@ -364,6 +366,7 @@ export async function tallyText(
           sha: data.sha as string,
           target: data.target as string,
           at: data.at as number,
+          ...(typeof data.base === 'string' ? { base: data.base } : {}),
           paths: Array.isArray(data.paths) ? (data.paths as string[]) : [],
           divergence: (data.divergence as string | undefined) ?? 'not stated',
           ...(state ? { state: { at: state.at, text: state.text } } : {}),
@@ -375,13 +378,21 @@ export async function tallyText(
   }
   for (const activity of activities.values()) activity.title ??= activity.prompt
   const newest = [...activities.values()].toSorted((a, b) => b.last - a.last)
-  const concernsOwnWork = (activity: Activity) =>
-    activity.notes.length > 0 ||
-    activity.landings.some((landing) => landing.paths.some((path) => own!.has(path)))
-  const blocks: { full?: string; line: string }[] = newest.map((activity) => ({
-    ...(!own || concernsOwnWork(activity) ? { full: full(activity) } : {}),
-    line: collapsed(activity),
-  }))
+  const own = newest.length ? await reader?.files() : undefined
+  const concernsOwnWork = async (activity: Activity) => {
+    if (activity.notes.length) return true
+    for (const landing of activity.landings) if (await reader!.touched(landing, own!)) return true
+    return false
+  }
+  const blocks: { full?: string; line: string; relevant?: true }[] = []
+  for (const activity of newest) {
+    const relevant = !!own && (await concernsOwnWork(activity))
+    blocks.push({
+      ...(!own || relevant ? { full: full(activity) } : {}),
+      line: `${relevant ? '- **Overlap** ' : ''}${relevant ? collapsed(activity).slice(2) : collapsed(activity)}`,
+      ...(relevant ? { relevant: true as const } : {}),
+    })
+  }
   const distilled =
     marker && marker.id > baseline && marker.model
       ? marker.model.flatMap((message) =>
@@ -402,9 +413,14 @@ export async function tallyText(
     })
   if (!blocks.length) return { tip }
   const header = `Meanwhile in #${root}'s tree:`
-  const pointer = own
-    ? `Not touching your files, one line each (read them in full with codemode \`ultimate.entries(${root})\`):`
-    : `Earlier, collapsed (read them in full with codemode \`ultimate.entries(${root})\`):`
+  const read = `read them in full with codemode \`ultimate.entries(${root})\``
+  const pointerFor = (overlapCollapsed: boolean) =>
+    !own
+      ? `Earlier, collapsed (${read}):`
+      : overlapCollapsed
+        ? `One line each, **Overlap** where a landing touched your files (${read}):`
+        : `Not touching your files, one line each (${read}):`
+  const pointer = pointerFor(true)
   let used =
     tokensIncludingBlankLineSeparator(header) +
     tokensIncludingBlankLineSeparator(`- and ${blocks.length} more`)
@@ -412,7 +428,10 @@ export async function tallyText(
   const lines: string[] = []
   let dropped = 0
   let outgrewBudget = false
+  let relevant = false
+  let overlapCollapsed = false
   for (const block of blocks) {
+    relevant ||= !!block.relevant
     if (
       block.full &&
       !outgrewBudget &&
@@ -423,6 +442,7 @@ export async function tallyText(
       continue
     }
     if (block.full) outgrewBudget = true
+    if (block.relevant) overlapCollapsed = true
     if (!lines.length && !dropped) used += tokensIncludingBlankLineSeparator(pointer)
     if (!dropped && used + tokensIncludingBlankLineSeparator(block.line) <= budget) {
       lines.unshift(block.line)
@@ -431,14 +451,57 @@ export async function tallyText(
   }
   return {
     tip,
-    relevant: kept.length > 0,
+    relevant,
     text: [
       header,
       ...(lines.length || dropped
-        ? [[pointer, ...(dropped ? [`- and ${dropped} more`] : []), ...lines].join('\n')]
+        ? [
+            [
+              pointerFor(overlapCollapsed),
+              ...(dropped ? [`- and ${dropped} more`] : []),
+              ...lines,
+            ].join('\n'),
+          ]
         : []),
       ...kept,
     ].join('\n\n'),
+  }
+}
+
+export type Reader = {
+  files: () => Promise<ReadonlySet<string> | undefined>
+  touched: (
+    landing: { sha: string; base?: string; paths: string[] },
+    own: ReadonlySet<string>,
+  ) => Promise<boolean>
+}
+
+function readerOf(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx): Reader {
+  let files: Promise<ReadonlySet<string> | undefined> | undefined
+  return {
+    files: () =>
+      (files ??= changedFiles(host, id, main, tx).catch((error: unknown) => {
+        host.notice(`Catch-up for #${id} lists every update in full: ${String(error)}`)
+        return undefined
+      })),
+    touched: async (landing, own) => {
+      if (landing.paths.some((path) => own.has(path))) return true
+      if (!landing.base || !own.size) return false
+      const pathspecs = [...own]
+        .slice(0, MAX_PATHS_WITH_OVERLAP_MARKS)
+        .map((path) => `:(top,literal)${path}`)
+      const touched = await git(
+        main.cwd,
+        'diff',
+        '--name-only',
+        '--no-renames',
+        landing.base,
+        landing.sha,
+        '--',
+        ...pathspecs,
+      ).catch(() => '')
+      return touched.trim().length > 0
+    },
   }
 }
 
@@ -459,7 +522,7 @@ export async function catchup(
   const main = await mainOf(host, conversationId, ctx, tx)
   const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
-  const own = main && !ultimate ? await changedFiles(host, conversationId, main, tx) : undefined
+  const reader = main && !ultimate ? readerOf(host, conversationId, main, tx) : undefined
   const meanwhile = tree
     ? await tallyText(
         conversationId,
@@ -467,16 +530,19 @@ export async function catchup(
         alwaysAdvancedBaseline.tally ?? tree.since,
         tx,
         TALLY_BUDGET,
-        own,
+        reader,
       )
     : undefined
+  const mainMoved =
+    !!main && !!alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
+  const own = reader && mainMoved ? await reader.files() : undefined
   const commits =
-    main && own && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
+    main && own && mainMoved
       ? await catchupText(
           host,
           main,
           {
-            main: alwaysAdvancedBaseline.main,
+            main: alwaysAdvancedBaseline.main!,
             at: alwaysAdvancedBaseline.at,
           },
           own,
