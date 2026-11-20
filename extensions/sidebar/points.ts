@@ -1,10 +1,10 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { ReactNode } from 'react'
 import { definePoint } from '../../web/src/sdk/types.ts'
 
-export const UnderUltimate = definePoint<{ conversation: ConversationId | undefined }, ReactNode>(
-  'sidebar.under-ultimate',
-)
+export const UnderUltimate = definePoint<
+  { conversation: ConversationId | undefined },
+  import('react').ReactNode
+>('sidebar.under-ultimate')
 export const Unlisted = definePoint<ConversationId | undefined, ReadonlySet<number>>(
   'sidebar.unlisted',
 )

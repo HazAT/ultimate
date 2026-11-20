@@ -5,6 +5,3 @@ export { PreviewUp } from './points.ts'
 export { UnderUltimate } from './points.ts'
 /** Conversations hidden from the top-level lists; the sidebar takes the union of the providers' sets. */
 export { Unlisted } from './points.ts'
-
-export { colourOf, stemOf } from './colour.ts'
-export { GithubMark, ProjectSwatch, RepoLabel } from './tile.tsx'
