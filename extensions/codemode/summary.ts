@@ -23,6 +23,9 @@ const READS: Record<string, (args: unknown[]) => string> = {
   'ultimate.agents': () => 'Listed the agent definitions',
   'ultimate.doc': ([kind, id]) =>
     `Read the ${str(kind)} doc${id === undefined ? '' : ` of #${str(id)}`}`,
+  'models.getModelsOfType': ([type]) => `Listed the ${str(type)} models`,
+  'models.getAvailableOfType': ([type]) => `Listed the available ${str(type)} models`,
+  'models.getModelOfType': ([, provider, id]) => `Looked up ${str(provider)}/${str(id)}`,
 }
 const READ_TOOLS: Record<string, (args: Record<string, unknown>) => string> = {
   read: (args) => `Read ${typeof args.path === 'string' ? args.path.split('/').at(-1) : 'a file'}`,

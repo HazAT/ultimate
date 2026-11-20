@@ -65,6 +65,17 @@ Normal actions remain callable. This dispatch restriction is not a sandbox again
 
 Entry/search limits default to 100 and must be 1–1000. Pagination of raw entries uses the oldest returned entry ID as `before`. Other writes go through normal tools. Action side effects, like nested tool side effects, are not rolled back if the script fails or yields.
 
+## Models
+
+Scripts get the same `models` global as Pi's codemode (`models.ts`), over the harness model API (`api.models`), so Pi rules and skills that classify or generate images run unchanged:
+
+- `models.getModelsOfType(type, provider?)`, `models.getAvailableOfType(type, provider?)` (providers with auth only) and `models.getModelOfType(type, provider, id)` read the catalog; `type` is `chat`, `image` or `classifier`. Results drop provider `headers`, which can hold credentials.
+- `models.classify(model, { state, images?, questions })` resolves to the provider's `{ answers, stopReason, errorMessage?, usage? }`; `models.generateImages(model, { input })` to `{ output, stopReason, errorMessage?, usage? }`. Both look the model up again by `provider` and `id` only, so a script-supplied `baseUrl` or `headers` never receives the credentials, and check the context shape first, failing with the expected shape. They take the sandbox abort signal, and at most 4 run at once per script; more wait, and a waiting call never starts once the script has ended.
+
+Each `models.*` call is logged in `details.calls` like an `ultimate.*` call; a classify or image call logs only the model (`provider/id`), never its state, questions or prompt, so neither the log nor the summary model sees them. The usage of the script's model calls is added up and returned as the tool result's `usage`, which Pi Durable stores on the result and in `pi.usage.tools`. Like nested tool calls, model calls are not replayed: an interrupted script never runs again.
+
+The `models` description is its own prompt section, `codemode-models`, shown only while a classifier or image model has auth, so other users pay no prompt cost. It checks the auth of only the providers that list a classifier or image model, at each model request; a failed check drops only that section, never the codemode guidance. Data a script classifies, or an image prompt, goes to that model's provider: classify only what may leave the machine.
+
 ## Durable store
 
 `store(key, value)` / `load(key)` use the conversation document `codemode.store` (rewindable, fork as-of). Values are loaded before every script. Store writes are saved only when the script finishes successfully; a yielded wait discards them. The document is exported in `docs` for SSE subscriptions.

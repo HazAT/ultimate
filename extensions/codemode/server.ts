@@ -51,6 +51,8 @@ import type { CallSummary } from './refs.ts'
 import { PendingDoc, SummaryDoc } from './api.ts'
 import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryInput } from './summary.ts'
 import type { Call } from './summary.ts'
+import { combineUsage, modelGlobals, modelsAvailable, MODELS_DESCRIPTION } from './models.ts'
+import type { Usage } from '@earendil-works/pi-ai'
 
 export const Store = defineDoc({
   kind: 'codemode.store',
@@ -493,6 +495,10 @@ export default function codemode(host: ExtensionHost) {
           streamSettledCall(name, call)
         }
       }
+      let usage: Usage | undefined
+      const addUsage = (spent: Usage) => {
+        usage = usage ? combineUsage(usage, spent) : spent
+      }
       const controller = new AbortController()
       const terminateSandboxBeforeYield = () => controller.abort()
       const sandboxContext = withAbortSignal(controller.signal, context)
@@ -593,7 +599,10 @@ export default function codemode(host: ExtensionHost) {
         const saved = await api.snapshot(Store, api.conversationId, context)
         const sandbox = new CodemodeSandbox({
           tools,
-          globals: globals(host, api.conversationId, sandboxContext, record),
+          globals: [
+            ...globals(host, api.conversationId, sandboxContext, record),
+            ...modelGlobals(api.models, record, addUsage),
+          ],
           timeoutMs: parsed.options.timeoutMs ?? 60000,
           memoryLimitBytes: 256 * 1024 * 1024,
         })
@@ -653,6 +662,7 @@ export default function codemode(host: ExtensionHost) {
           return {
             output: content,
             details: { calls, yielded: true, pendingSubagents } as JsonObject,
+            ...(usage && { usage }),
           }
         await labelOnceBeforeToolSettlement(
           api,
@@ -676,11 +686,17 @@ export default function codemode(host: ExtensionHost) {
               subagentAnswers: [...subagentAnswers],
               ...(result.value === undefined ? {} : { value: result.value }),
             } as JsonObject,
+            ...(usage && { usage }),
           }
         }
         const error = result.error.stack ?? `${result.error.kind}: ${result.error.message}`
         content.push({ type: 'text', text: error })
-        return { output: content, isError: true, details: { calls, error } as JsonObject }
+        return {
+          output: content,
+          isError: true,
+          details: { calls, error } as JsonObject,
+          ...(usage && { usage }),
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         await labelOnceBeforeToolSettlement(api, context, calls, message)
@@ -688,6 +704,7 @@ export default function codemode(host: ExtensionHost) {
           output: [{ type: 'text', text: `Script failed\n${message}` }],
           isError: true,
           details: { calls, error: message } as JsonObject,
+          ...(usage && { usage }),
         }
       }
     },
@@ -801,6 +818,12 @@ export default function codemode(host: ExtensionHost) {
             declarations(agent.tools)
               .map((tool) => tool.name)
               .join(', ')
+          : undefined,
+      ),
+      section('codemode-models', async ({ agent }, context) =>
+        agent.tools.some((tool) => tool.name === 'codemode') &&
+        (await modelsAvailable(host.modelRuntime, context.abortSignal))
+          ? MODELS_DESCRIPTION
           : undefined,
       ),
     ],
