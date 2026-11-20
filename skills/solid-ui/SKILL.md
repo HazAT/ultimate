@@ -49,7 +49,13 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **What moves now:** slot items, panels and overlays of an extension's own (`component: island(SecretsPanel)`). A React
   point another extension renders stays React and returns an island (`provide(ExtensionDetails, …)` in
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
-  wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`).
+  wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
+  a moved part would render (`Review` in a commit count) gets a page-bus event its provider also listens to
+  (`events.emit('review:open', spec)`), never a Solid copy of the point.
+- **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
+  own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
+  `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
+  (`extensions/activity/events.ts`).
 - **What waits for the core switch:** tool, entry, code-block and user-bubble renderers, message actions and details,
   the composer wrapper, `link`, `provide` hooks, and anything that hosts other extensions' React. The full list is
   `docs/solid-core-switch.md`; keep it current when you leave a part React.
@@ -65,7 +71,7 @@ bare `<form>`s).
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Button                                                                         | `onClick(event, details)`; return the Promise so it shows pending. `render` replaces `asChild`.                                                      |
 | Form                                                                           | Never navigates; its `type="submit"` Button's `onClick` submits, which Enter in a field presses too.                                                 |
-| Input, SecretInput (`input.solid.tsx`)                                         | A secret field agents may fill but never read.                                                                                                       |
+| Input, SecretInput, Textarea (`input.solid.tsx`)                               | A secret field agents may fill but never read; Textarea takes `submitShortcut`.                                                                      |
 | Checkbox, Switch, SegmentedControl, Slider, NumberInput                        | Take `bind`. Checkbox may report `"indeterminate"`; NumberInput's agent `setValue` fires `onValueChange`; Slider's agent acts on its labelled thumb. |
 | Collapsible                                                                    | Unmounts its panel when closed; `keepMounted` keeps it.                                                                                              |
 | Popover, StatusPopoverTrigger (`status-trigger.solid.tsx`), HoverCard, Tooltip | Popups in the top layer; Tooltip needs no provider.                                                                                                  |
@@ -94,7 +100,9 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). A write the
   person didn't make with this action (a URL, a timer, an effect) runs in `writingAs('app', …)` and records nothing.
 - **Forms:** the kit `Form`, with the change started in its submit Button's `onClick`, which receives `details.source`.
-  A native `onSubmit` has no source, so an agent's submit would be recorded as the person's.
+  A native `onSubmit` has no source, so an agent's submit would be recorded as the person's. A `Textarea` with
+  `submitShortcut` submits the form, which skips the Button's `onClick`: pass `onSubmit={() => submit?.click()}` with a
+  ref to the submit Button (`extensions/goal/dialog.solid.tsx`).
 - **One row per id:** `mapArray(ids, (id) => …)` gives each id its own owner and reads, disposed when it leaves. A
   polled list whose objects are replaced on each fetch keeps its DOM with `<For keyed={(row) => row.id}>`.
 - **Derived values:** a value that depends on an answer is a function of it, never a signal an effect copies it into.
@@ -185,7 +193,8 @@ Tooling:
 - **SDK data:** mock `web/src/sdk/client.ts` with a real `createStore` on a `FakeSource` and `fakeSubscriptions`
   (`test/web/fake-source.ts`), and send `doc`/`docOps` to the subscription that reads the kind. Add `registry:
   createRegistry()` for `useCommands`. The store drops a `system` event equal to the last one: a restart test sends a
-  changed one. Shared reads outlive a test: seed or refetch per case.
+  changed one. Shared reads outlive a test: seed or refetch per case. A component calling `useAction` needs `reads:
+  createReads(api, store)` in the mock (`extensions/info/test/web/panel.test.solid.tsx`).
 - **Agents:** one `createAgent()` (from `@ui-sdk/solid/agent`) per file. Find controls in `snapshot()` by label among
   live entries (`!entry.offPage`) and act on the ref it returns; subscribe before `act`. Assert `ok`, the DOM, the
   request's source and the events seen. `act`'s `values` are keyed `"<ref> <label>"`. Call
@@ -193,7 +202,8 @@ Tooling:
   open). Use `expect(x)` without a message (`vitest/valid-expect`).
 - **jsdom limits:** type into a field with `setRangeText` and an `input` event (assigning `.value` is a program's
   write). For keyboard focus on a Tooltip, dispatch a Tab `keydown` before `.focus()`. Modal Tab wrapping, inertness
-  and Enter submitting a form need a real browser.
+  and Enter submitting a form need a real browser. `switchConversation` and `showSurface` read `matchMedia`: stub it
+  with `vi.stubGlobal` in a test that navigates.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every
   mounted read's first answer, or its first network failure (it stays unsettled): ready to interact does not mean the
   server answered. A change is recorded only when it reaches stored state (`ui.changed`, see
