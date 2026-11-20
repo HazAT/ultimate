@@ -22,13 +22,16 @@ its `source` (`#conversation/entry`) is the starting point.
 The conversation may live in an earlier chapter: in codemode, try `ultimate.entries(id)` and then
 `ultimate.entries(id, {chapter})` for each chapter name from `ultimate.conversations` errors or the handoff.
 `ultimate.search('"branch":<id>', {chapter, kinds: ['lineage.branched'], full: true})` finds its
-`lineage.branched` event, stored in the root: `data.at` (the
-entry in the starter that started it), `data.intent` (the prompt's opening), and its text names the starter
-(`#<id> started by #<starter> … from #<root>/<at>`).
+`lineage.branched` entry, stored in the root. Its text names the starter
+(`#<id> started by #<starter> … from #<root>/<at>`), `data.intent` is the branch's title or its prompt's opening, and
+the entry's own `id` marks when the branch started (entry ids grow across conversations). `data.at` is only the fork
+point: the root's tip whose history the branch inherits, not an entry in the starter.
 
 ## 3. From the intent to the decision
 
-Read the starter's entries just before `at` (`ultimate.entries(starter, {before: at + 1, limit: 40, chapter})`):
+Find the starter's `branch` call: read the starter's entries just before the `lineage.branched` entry's `id`
+(`ultimate.entries(starter, {before: id + 1, limit: 40, chapter})`). The newest `branch` tool call with that title or
+prompt started it; the entries before that call show why:
 
 - a `pi.user` input: the user asked, quote it;
 - a question-card answer (`1a. …` lines): the user decided; name the question and the option;
