@@ -1,13 +1,14 @@
 import { cn } from 'cn'
 import { MessageSquareShareIcon, PuzzleIcon, TriangleAlertIcon } from 'lucide-react'
 import { Component, Fragment, useContext } from 'react'
-import type { ErrorInfo, ReactNode, Ref } from 'react'
+import type { ComponentType, ErrorInfo, ReactNode, Ref } from 'react'
 import { createPortal } from 'react-dom'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import type { SystemInfo } from '../../../shared/protocol.ts'
 import { errorMessage, shortenPath } from '../sdk/format.ts'
 import { ExtensionNameContext, useExtensions, useSystem } from '../sdk/hooks.ts'
 import { provisionOf, provisionsOf, slotItems } from '../sdk/registry.ts'
+import { islandSolid } from '../sdk/island-mark.ts'
 import { ErrorReport } from '../sdk/types.ts'
 import type { Point, SlotName } from '../sdk/types.ts'
 
@@ -314,7 +315,9 @@ function Provide<Input, Value>({
   input: Input
   render: (value: Value) => ReactNode
 }) {
-  return render(use(input))
+  if (!islandSolid(use)) return render(use(input))
+  const Island = use as unknown as ComponentType<Input & object>
+  return render((<Island {...(input as Input & object)} />) as Value)
 }
 
 export function Slot({

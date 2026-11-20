@@ -1,5 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { createElement as h, act } from 'react'
+import type { ReactNode } from 'react'
+import { createRoot } from 'react-dom/client'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
@@ -16,10 +18,12 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
+import { AllProvided } from '../../web/src/app/boundary.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
 import { island } from '../../web/src/sdk/island.tsx'
 import { Provided } from '../../web/src/sdk/parts.solid.tsx'
 import { definePoint, provide } from '../../web/src/sdk/types.ts'
+import type { Point } from '../../web/src/sdk/types.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -64,4 +68,18 @@ it('renders every provider of a point in discovery order, Solid islands and Reac
   expect(text('[data-last]')).toBe('react 4')
   expect(text('[data-broken]')).toContain('solid -1')
   expect(container.querySelector('[data-broken] [data-extension-error="b"]')).not.toBeNull()
+
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  act(() =>
+    root.render(
+      h(AllProvided<{ id: number }, ReactNode>, {
+        point: Extras as Point<{ id: number }, ReactNode>,
+        input: { id: 5 },
+        children: (values) => values.map((value, index) => h('u', { key: index }, value)),
+      }),
+    ),
+  )
+  expect(host.textContent).toBe('solid 5react 5')
+  act(() => root.unmount())
 })
