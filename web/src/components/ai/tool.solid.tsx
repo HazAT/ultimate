@@ -4,7 +4,7 @@ import type { LucideIcon } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createMemo, For, omit, Show } from 'solid-js'
+import { For, omit, Show } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
 import { HighlightedCode } from '@/components/markdown/markdown.solid.tsx'
 import {
@@ -13,7 +13,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog.solid.tsx'
-import { ansiHtml } from './ansi.ts'
+import { AnsiOutput } from './ansi-output.solid.tsx'
 
 export type ToolState = 'streaming' | 'pending' | 'running' | 'done' | 'error' | 'interrupted'
 
@@ -100,8 +100,8 @@ function ToolTrigger(props: Omit<ToolHeaderProps, 'action'>) {
       <ToolStatusIcon aria-hidden="true" icon={props.icon} state={props.state} />
       <Show when={props.name}>
         <span class="shrink-0 font-medium text-foreground">{props.name}</span>
-      </Show>{' '}
-      <span class="min-w-0 flex-1 truncate text-muted-foreground">{props.title}</span>{' '}
+      </Show>
+      <span class="min-w-0 flex-1 truncate text-muted-foreground">{props.title}</span>
       <Show when={props.meta}>
         {(meta) => (
           <span class="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
@@ -163,45 +163,10 @@ export function ToolOutput(props: SectionProps & { output: string; isError?: boo
             props.isError ? 'text-error' : 'text-foreground/90',
           )}
         >
-          <AnsiText output={props.output} />
+          <AnsiOutput output={props.output} />
         </pre>
       </ToolSection>
     </Show>
-  )
-}
-
-function AnsiText(props: { output: string }) {
-  const parts = createMemo(() => {
-    const doc = new DOMParser().parseFromString(
-      `<span>${ansiHtml(props.output)}</span>`,
-      'text/html',
-    )
-    return Array.from(doc.body.firstElementChild?.childNodes ?? [], (node) => {
-      const text = node.textContent ?? ''
-      if (!(node instanceof HTMLSpanElement)) return { text }
-      return {
-        text,
-        style: {
-          color: node.style.color,
-          'background-color': node.style.backgroundColor,
-          'font-weight': node.style.fontWeight,
-          'font-style': node.style.fontStyle,
-          opacity: node.style.opacity,
-          'text-decoration': node.style.textDecoration,
-        },
-      }
-    })
-  })
-  return (
-    <span>
-      <For each={parts()} keyed={false}>
-        {(part) => (
-          <Show when={part().style} fallback={part().text}>
-            {(style) => <span style={style()}>{part().text}</span>}
-          </Show>
-        )}
-      </For>
-    </span>
   )
 }
 
