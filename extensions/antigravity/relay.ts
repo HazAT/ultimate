@@ -291,12 +291,20 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
     if (!sameSecret(req.headers['x-goog-api-key'] as string | undefined, keyBytes))
       throw new RelayError(401, 'Unknown caller')
     if (draining) throw new RelayError(503, 'Antigravity relay was replaced; retry')
-    const turn = fromPi(req, res, decodeURIComponent(fromPiPath[1]))
+    const flushed = new Promise<void>((resolve) => {
+      res.once('finish', resolve)
+      res.once('close', resolve)
+    })
+    const handled = fromPi(req, res, decodeURIComponent(fromPiPath[1]))
+    const turn = settled(handled).then(() => flushed)
     turns.add(turn)
     try {
-      return await turn
+      return await handled
     } finally {
-      turns.delete(turn)
+      inProcess(
+        'a turn leaves the drain set once its response has flushed',
+        turn.then(() => turns.delete(turn)),
+      )
     }
   }
   const server = createServer((req, res) =>
