@@ -57,8 +57,14 @@ The libraries ship skills that match the pinned versions: read them, not your me
   own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
   `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
   (`extensions/activity/events.ts`).
-- **What waits for the core switch:** tool, entry, code-block and user-bubble renderers, message actions and details,
-  the composer wrapper, `link`, `provide` hooks, and anything that hosts other extensions' React. The full list is
+- **Markdown is Solid** (`web/src/components/markdown/`, step C1): the `link`, `inlineCode` and `codeBlocks` renderers
+  are Solid components passed straight to `web.tsx`, without `island` (`extensions/diagrams/mermaid.solid.tsx`).
+  React code shows Markdown through `MessageResponse` and `MentionText` from `@/components/ai/message`, islands of the
+  Solid renderer (`web/src/sdk/markdown.tsx`); a component an island mounts inside text takes `island(C, { inline:
+  true })`, which mounts in a `<span>`. A test that renders React to static markup sees an island empty (it mounts in
+  an effect): mock `web/src/sdk/markdown.tsx` there.
+- **What waits for the core switch:** tool, entry and user-bubble renderers, message actions and details, the
+  composer wrapper, `provide` hooks, and anything that hosts other extensions' React. The full list is
   `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
 ## The UI kit
@@ -155,6 +161,12 @@ Solid 2:
   `REACTIVE_WRITE_IN_OWNED_SCOPE`, tests included: create the store in the root, write from outside it.
 - A context without a default throws when nothing provides it, and providing `undefined` counts as nothing. An optional
   context declares a `null` default (`ExtensionName`).
+- A tree that is re-derived from text (parsed Markdown, a fetched list without ids) keeps its DOM through
+  `createProjection(fn, seed, { key: null })`: each parse reconciles into the store by position, so only the nodes that
+  changed update, with `<For keyed={false}>` over it. A streamed delta then costs about one DOM mutation
+  (`web/src/components/markdown/markdown.solid.tsx`).
+- An attribute built from untrusted input is set as one property, never as a string another value can extend:
+  `style={{ 'text-align': align }}`, not ``style={`text-align:${align}`}``.
 - `reconcile` by position adopts incoming objects: reconcile a `structuredClone` when the value shares rows with the
   store's current one (as `@/sdk/solid` does).
 - `solid/reactivity` rejects memos inside an array literal and spreading unnamed merged props: name each.

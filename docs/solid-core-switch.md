@@ -4,16 +4,17 @@ The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in ext
 the React core or is a React hook the core calls, so it can only move once that core is Solid. This is the input for
 planning the core switch; nothing here has moved. Keep it current when a batch leaves a part React.
 
-**Summary (0.9 step-back):** 44 rows (a row is one part or a group of one extension's parts) in 27 extensions. By
+**Summary (0.9 step-back):** 44 rows (42 after C1, which moved Markdown, the `mermaid` code block and preview links to
+Solid) (a row is one part or a group of one extension's parts) in 27 extensions. By
 core host:
 
-| Core host                                                                | Rows | Extensions |
-| ------------------------------------------------------------------------ | ---- | ---------- |
-| The transcript (tool and entry renderers, Markdown, message bar, bubble) | 28   | 22         |
-| The sidebar (React rows and sections other extensions provide)           | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views             | 9    | 6          |
-| The composer                                                             | 1    | 1          |
-| React points of other extensions (onboarding, workspaces' landing card)  | 3    | 3          |
+| Core host                                                               | Rows | Extensions |
+| ----------------------------------------------------------------------- | ---- | ---------- |
+| The transcript (tool and entry renderers, message bar, bubble)          | 26   | 21         |
+| The sidebar (React rows and sections other extensions provide)          | 3    | 3          |
+| Panel and surface hosts, System's tab host, documents' views            | 9    | 6          |
+| The composer                                                            | 1    | 1          |
+| React points of other extensions (onboarding, workspaces' landing card) | 3    | 3          |
 
 The transcript blocks the most: two thirds of the rows, and it hosts most of the rest indirectly (inbox's reading pane
 and the landing card render its message parts). Switch it first.
@@ -40,8 +41,6 @@ and the landing card render its message parts). Switch it first.
 | todos       | entry `todos.note` (model-only)                                                                    | `todos/web.tsx`             | entries                      |
 | watchdog    | entry `watchdog.failure`                                                                           | `watchdog/web.tsx`          | entries                      |
 | wire        | entry `pi.assistant` (`WireLink`)                                                                  | `wire/web.tsx`              | entries                      |
-| diagrams    | code block `mermaid`                                                                               | `diagrams/web.tsx`          | Markdown                     |
-| instance    | `link` (preview links in messages)                                                                 | `instance/web.tsx`          | Markdown                     |
 | read-aloud  | message action                                                                                     | `read-aloud/web.tsx`        | message bar                  |
 | status-line | message detail `MessageUsage`                                                                      | `status-line/web.tsx`       | message bar                  |
 | codemode    | provided `MessageReference`                                                                        | `codemode/web.tsx`          | message actions              |
