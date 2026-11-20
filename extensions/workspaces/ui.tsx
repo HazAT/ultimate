@@ -16,7 +16,6 @@ export {
   useGithubRepo,
   useProjectRepo,
 } from './landing.tsx'
-export { Workspaces, useWorkspacesMeta } from './panel.tsx'
 export {
   CheckRan,
   InfoAction,
