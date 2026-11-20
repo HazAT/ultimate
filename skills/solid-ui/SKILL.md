@@ -51,7 +51,7 @@ The libraries ship skills that match the pinned versions: read them, not your me
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
   wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
   a moved part would render (`Review` in a commit count) gets a page-bus event its provider also listens to
-  (`events.emit('review:open', spec)`), never a Solid copy of the point.
+  (`events.emit('review:open', { spec, source })`), never a Solid copy of the point.
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
   own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
   `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments

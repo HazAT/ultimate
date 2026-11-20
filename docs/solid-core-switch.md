@@ -1,6 +1,6 @@
 # What waits for the core switch
 
-The React parts that the Solid migration's batches (0.8 A, B and C) left in extensions on purpose: each renders inside
+The React parts that the Solid migration's batches (0.8 A, B and C, 0.9 D) left in extensions on purpose: each renders inside
 the React core (the transcript, the composer, the panel and surface hosts) or is a React hook the core calls, so it
 can only move once that core is Solid. This is the input for planning the core switch; nothing here has moved.
 
@@ -44,15 +44,15 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 
 A provided value is a React hook the core or another React extension calls during its render.
 
-| Extension | Point                          | Where                             | Called by                                                                                                        |
-| --------- | ------------------------------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| phase     | `ConversationPhase`            | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live                                                                             |
-| codemode  | `MessageReference`             | `extensions/codemode/web.tsx:253` | the transcript's message actions                                                                                 |
-| instance  | `PreviewUp`                    | `extensions/instance/web.tsx:267` | the React sidebar's preview marks                                                                                |
-| pause     | `ParkedRuns`                   | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system                                                                        |
-| mcp       | `ExtensionDetails`             | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island)                                                                   |
-| tasks     | `RunStart`                     | `extensions/tasks/web.tsx:16`     | the transcript's run timer                                                                                       |
-| review    | `workspaces.review` (`Review`) | `extensions/review/web.tsx:41`    | the React sidebar and landing card; Solid code emits `review:open` instead, so the point retires once those move |
+| Extension | Point                          | Where                             | Called by                                                                                                                                    |
+| --------- | ------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| phase     | `ConversationPhase`            | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live                                                                                                         |
+| codemode  | `MessageReference`             | `extensions/codemode/web.tsx:253` | the transcript's message actions                                                                                                             |
+| instance  | `PreviewUp`                    | `extensions/instance/web.tsx:267` | the React sidebar's preview marks                                                                                                            |
+| pause     | `ParkedRuns`                   | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system                                                                                                    |
+| mcp       | `ExtensionDetails`             | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island)                                                                                               |
+| tasks     | `RunStart`                     | `extensions/tasks/web.tsx:16`     | the transcript's run timer                                                                                                                   |
+| review    | `workspaces.review` (`Review`) | `extensions/review/web.tsx:41`    | the React sidebar and landing card; Solid code emits `review:open` to the React `ReviewLink` overlay instead, so both retire once those move |
 
 ## Contracts that stay React until then
 

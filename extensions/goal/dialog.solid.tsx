@@ -105,6 +105,7 @@ function GoalForm(props: { close: () => void }) {
           </Button>
           <Button
             class="group/goal-start"
+            data-agent-confirm="Hands decisions to @ultimate until the goal ends."
             data-goal-start
             disabled={!canStart()}
             onClick={(_, details) => start(details.source)}

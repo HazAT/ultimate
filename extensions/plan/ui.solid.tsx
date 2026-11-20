@@ -34,7 +34,7 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
   }
   return (
     <Button
-      aria-label={`Open task ${props.task.key}: ${props.task.title}`}
+      aria-label={`Open task #${props.task.coordinator}/${props.task.key}: ${props.task.title}`}
       class={cn(
         'inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
         props.class,

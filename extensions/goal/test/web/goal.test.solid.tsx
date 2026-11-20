@@ -47,7 +47,8 @@ import { shellKeys } from '../../../../web/src/sdk/actions.ts'
 const { store, uiState, server } = client as typeof client & {
   server: ReturnType<typeof fakeSubscriptions>
 }
-const agent = createAgent()
+let approved = true
+const agent = createAgent({ allow: (step) => !step.confirm || approved })
 const label = 'Go hands-off'
 const field = 'The goal'
 const goal: Goal = {
@@ -86,6 +87,20 @@ async function openDialog() {
   await publish()
   return view
 }
+
+it('asks the person before an agent hands decisions to @ultimate', async () => {
+  await openDialog()
+  approved = false
+  const refused = await agent.act({
+    steps: [
+      { ref: control(field)!.ref, action: 'setValue', args: [goal.text] },
+      { ref: control(label)!.ref, action: 'press' },
+    ],
+  })
+  approved = true
+  expect(refused.ok).toBe(false)
+  expect(harness.action).not.toHaveBeenCalled()
+})
 
 it('starts the goal an agent enters, closes the dialog, and opens @ultimate as that agent', async ({
   onTestFinished,

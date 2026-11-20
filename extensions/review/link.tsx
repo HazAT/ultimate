@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { useEvent, useExtensionUiState, useUltimate } from '@/sdk'
+import { useEvent, useExtensionUiState, useUltimate, writingAs } from '@/sdk'
 
 export const useSpec = () => useExtensionUiState<string>('spec', 'uncommitted')
 
@@ -52,7 +52,15 @@ export function ReviewLink() {
   const wanted = useSyncExternalStore(subscribe, () => pendingReviewRequest)
   const [spec, setSpec] = useSpec()
   const { surface, showSurface } = useUltimate()
-  useEvent('review:open', (requested) => openReview(String(requested)))
+  useEvent('review:open', (data) => {
+    const { spec: requested, source } = data as { spec: string; source?: string }
+    writingAs(source, () => {
+      unreachedLineTarget = undefined
+      setSpec(requested)
+      showSurface('review')
+    })
+    notify()
+  })
   useEffect(() => {
     if (wanted === undefined) return
     pendingReviewRequest = undefined

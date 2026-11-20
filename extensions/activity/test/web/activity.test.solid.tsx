@@ -190,8 +190,8 @@ it('renders the live rows and opens the landing at its entry, with Review using 
   const review = vi.fn<(value: unknown) => void>()
   onTestFinished(events.on('review:open', review))
   const landing = container.querySelector('li[data-activity="workspaces.landed"]')!
-  landing.querySelector<HTMLButtonElement>('button[title^="Review "]')!.click()
-  expect(review).toHaveBeenCalledWith('9057c43...45a315f0')
+  await act('Review 9057c43...45a315f0', 'press')
+  expect(review).toHaveBeenCalledWith({ spec: '9057c43...45a315f0', source: 'agent' })
   expect(landing.querySelector('a')?.getAttribute('href')).toBe(compare)
 
   const open = vi.fn<(value: unknown) => void>()

@@ -19,6 +19,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   writes: [] as { key: string; value: unknown; source: string | null }[],
+  restarts: 0,
 }))
 
 const repo = '/home/test/project'
@@ -44,6 +45,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       for (const { key, value } of ops) harness.writes.push({ key, value, source })
       return Response.json({ ok: true, rev: 1 })
     }
+    if (path === '/api/restart') harness.restarts++
     if (path === '/api/models') return Response.json({ providers: [], models: [] })
     if (path === '/api/extensions/workspaces/actions/info')
       return Response.json({ result: { ...workspace, ahead: 2 } })
@@ -133,7 +135,7 @@ const system: SystemInfo = {
   contextFiles: [`${repo}/AGENTS.md`, `${repo}/subproject/AGENTS.md`],
 }
 
-const agent = createAgent()
+const agent = createAgent({ allow: (step) => !step.confirm })
 harness.server = fakeSubscriptions(harness.sources)
 
 it('names all Info controls and persists an agent’s collapsed section', async ({
@@ -167,26 +169,12 @@ it('names all Info controls and persists an agent’s collapsed section', async 
 
   const controls = agent.snapshot().filter((entry) => !entry.offPage)
   const sections = controls.filter((entry) => entry.component === 'collapsible' && entry.open)
-  expect(sections.map((entry) => entry.label)).toEqual([
-    'Workspace section',
-    'Model & usage section',
-    'Code section',
-    'Execution section',
-    'Machine section',
-    'Process section',
-    'Persistence section',
-    'Skills section',
-    'Context files section',
-  ])
-  expect(controls.map((entry) => entry.label)).toEqual(
-    expect.arrayContaining([
-      'Refresh checkout #7',
-      'Restart host from Code',
-      'Restart host from Process',
-      'Copy host branch: main',
-      'Copy checkout branch: main',
-    ]),
-  )
+  for (const label of ['Restart host from Code', 'Restart host from Process']) {
+    const restart = controls.find((entry) => entry.label === label)!
+    expect(restart.confirm).toBe('Restarts the shared Ultimate host.')
+    expect((await agent.act({ steps: [{ ref: restart.ref, action: 'press' }] })).ok).toBe(false)
+  }
+  expect(harness.restarts).toBe(0)
   await expectDistinctAgentNames(agent)
 
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()

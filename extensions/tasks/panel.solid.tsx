@@ -24,6 +24,7 @@ import {
   formatDuration,
   switchConversation,
   useConversationId,
+  useConnection,
   useConversations,
   useDocOf,
   useNow,
@@ -49,27 +50,32 @@ function useTaskFacts<T>(
   ids: Accessor<number[]>,
 ) {
   const [known, setKnown] = createStore<Record<string, T | undefined>>({})
+  const connection = useConnection()
   const requested = new Set<number>()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
-  createEffect(ids, (all) => {
-    const missing = all.filter((id) => !requested.has(id))
-    if (!missing.length) return
-    for (const id of missing) requested.add(id)
-    void api
-      .action(ref, { ids: missing }, { conversationId: ROOT, signal: controller.signal })
-      .then(
-        (data) =>
-          setKnown((draft) => {
-            Object.assign(draft, data)
-          }),
-        (error: unknown) => {
-          if (controller.signal.aborted) return
-          for (const id of missing) requested.delete(id)
-          console.warn('Task graph:', error)
-        },
-      )
-  })
+  createEffect(
+    () => ({ all: ids(), open: connection().status === 'open' }),
+    ({ all, open }) => {
+      if (!open) return
+      const missing = all.filter((id) => !requested.has(id))
+      if (!missing.length) return
+      for (const id of missing) requested.add(id)
+      void api
+        .action(ref, { ids: missing }, { conversationId: ROOT, signal: controller.signal })
+        .then(
+          (data) =>
+            setKnown((draft) => {
+              Object.assign(draft, data)
+            }),
+          (error: unknown) => {
+            if (controller.signal.aborted) return
+            for (const id of missing) requested.delete(id)
+            console.warn('Task graph:', error)
+          },
+        )
+    },
+  )
   return known
 }
 

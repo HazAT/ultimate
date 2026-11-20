@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   calls: [] as Array<{ action: string; ids: number[] }>,
   writes: [] as UiUpdateRequest['ops'],
+  fail: false,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -30,6 +31,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       args: { ids },
     } = JSON.parse(init!.body as string) as { args: { ids: number[] } }
     harness.calls.push({ action, ids })
+    if (harness.fail) return Response.json({ error: 'server restarting' }, { status: 503 })
     const facts = action === 'describe' && ids.includes(8) ? { 8: { tool: 'Inspect' } } : {}
     return Response.json({ result: facts })
   }
@@ -76,6 +78,7 @@ const live = (label: string) =>
 beforeEach(() => {
   harness.calls.length = 0
   harness.writes.length = 0
+  harness.fail = false
   store.start()
   stream().open()
   store.show(root)
@@ -139,6 +142,27 @@ it('continues a rail past a nested child only when its ancestor has a following 
     [[7, 8, 9], [10]],
   )
   expect(rows[1].textContent).toContain('Inspect')
+})
+
+it('asks again for facts that failed once the connection comes back, and only for those', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  harness.fail = true
+  sendTasks(task(7), task(8, { kind: 'pi.tool' }))
+  const panel = renderSolid(() => <TasksPanel />)
+  await settle()
+  flush()
+  harness.fail = false
+  harness.calls.length = 0
+  stream().drop()
+  flush()
+  stream().open()
+  await settle()
+  flush()
+  expect(harness.calls.map((call) => call.ids)).toEqual([
+    [7, 8],
+    [7, 8],
+  ])
+  expect(panel.querySelector('[data-graph-task="8"]')?.textContent).toContain('Inspect')
 })
 
 it('lets an agent open the conversation without opening its linked plan task', async () => {
