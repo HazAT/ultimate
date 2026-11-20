@@ -243,6 +243,10 @@ const parseCheck = (value: unknown): Check | undefined => {
   if (timeout === undefined) return { command }
   return typeof timeout === 'number' && timeout > 0 ? { command, timeout } : undefined
 }
+export const landerOff = async (host: Pick<Host, 'projectSettings'>) =>
+  (await host.projectSettings()).lander === false
+export const landerOffReason =
+  'Landing is off in this project ("lander": false in .ultimate/settings.json): commit your verified work in this worktree and finish the way the project\'s instructions say'
 export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promise<Settings> => {
   const lander = (await host.projectSettings()).lander as
     | { checks?: unknown; push?: unknown }

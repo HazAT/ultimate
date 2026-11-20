@@ -185,12 +185,15 @@ function Tree({
   const labelOf = (conversation: Parameters<typeof conversationWait>[0]) =>
     waitLabel(conversationWait(conversation, log, timers), ultimateId, primaryWait, remote.data)
   const ultimate = topLevel.find((conversation) => conversation.id === ultimateId)
+  const workspaceIndex = useWorkspaceIndex()
   const agents = topLevel
     .filter(
-      (conversation) => neverConcludedStandingAgent(conversation) && conversation.id !== ultimateId,
+      (conversation) =>
+        neverConcludedStandingAgent(conversation) &&
+        conversation.id !== ultimateId &&
+        !(conversation.label === 'lander' && workspaceIndex.landerOff),
     )
     .toSorted((a, b) => Number(b.label === 'lander') - Number(a.label === 'lander') || a.id - b.id)
-  const workspaceIndex = useWorkspaceIndex()
   const listed = topLevel
     .filter(
       (conversation) =>

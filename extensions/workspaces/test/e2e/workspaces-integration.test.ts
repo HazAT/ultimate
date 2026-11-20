@@ -1783,6 +1783,29 @@ it.concurrent('refuses input to the model-free lander conversation', async () =>
     conversation.submit({ type: 'input', content: 'What landed?' }, context),
   ).rejects.toThrow('The lander runs no model; its conversation is the landing log')
 })
+it.concurrent('a project that turns the lander off keeps worktrees but refuses submit and says why', async () => {
+  const f = await fixture()
+  const index = async () =>
+    (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+  f.host.projectSettings = async () => ({ lander: false })
+  await f.reopen()
+  expect((await index()).landerOff).toBe(true)
+  const id = await f.create()
+  await f.service.ready(id, context)
+  expect((await f.service.get(id, context))!.state).toBe('ready')
+  const conversation = (await f.opened.harness.conversation(id, context))!
+  await (
+    await conversation.submit({ type: 'input', content: 'ASK how do I finish?' }, context)
+  ).wait(context)
+  expect(JSON.stringify(f.asked.at(-1)!.messages)).toContain('Landing is off in this project')
+  const refused = await f.call(id, 'workspace', { action: 'submit', divergence: 'None' })
+  expect(refused?.role === 'toolResult' && refused.isError).toBe(true)
+  expect(JSON.stringify(refused)).toContain('Landing is off in this project')
+  expect((await index()).queue).toEqual([])
+  f.host.projectSettings = async () => ({})
+  await f.reopen()
+  expect((await index()).landerOff).toBeUndefined()
+})
 it.concurrent('gives the standing lander a checkout at the target tip before any submission', async () => {
   const f = await lander({})
   const { id, cwd } = await landerLog(f)

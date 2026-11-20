@@ -88,6 +88,7 @@ export type WorkspaceIndex = {
   queue: QueueEntry[]
   landers: Record<SourceCheckout, TaskId>
   landerConversations: Record<SourceCheckout, ConversationId>
+  landerOff?: true
   results: Record<
     string,
     LanderOutcome & {
