@@ -41,11 +41,11 @@ export function previewTarget(
   }
 }
 
-function usePreviewTarget(href: () => string) {
+export function usePreviewTarget(href: () => string, isPreviewOwnUrl = false) {
   const [previews, setPreviews] = createSignal(getPreviews())
   onSettled(() => subscribe(() => setPreviews(getPreviews())))
   const system = useSystem()
-  return createMemo(() => previewTarget(href(), previews(), system()?.process.url))
+  return createMemo(() => previewTarget(href(), previews(), system()?.process.url, isPreviewOwnUrl))
 }
 
 const chipClass =

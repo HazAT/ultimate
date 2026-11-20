@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronRight, ExternalLink } from '@lucide/solid'
-import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import {
   Tool,
@@ -14,12 +14,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { useToolDuration } from '@/sdk/parts.solid.tsx'
 import { cn, shortenPath, useSystem } from '@/sdk/solid'
 import type { SolidToolProps } from '@/sdk/solid'
-import { previewTarget } from './link.solid.tsx'
+import { usePreviewTarget } from './link.solid.tsx'
 import { label } from './links.ts'
-import { getPreviews, subscribe } from './previews.ts'
 
 interface Instance {
   id: string
@@ -38,11 +38,11 @@ function result(output: string): unknown {
 
 function Card(props: { instance: Instance; status: string }) {
   const system = useSystem()
-  const [previews, setPreviews] = createSignal(getPreviews())
-  onSettled(() => subscribe(() => setPreviews(getPreviews())))
-  const target = createMemo(() =>
-    previewTarget(props.instance.url, previews(), system()?.process.url, true),
-  )
+  const target = usePreviewTarget(() => props.instance.url, true)
+  const frame = () => {
+    const link = target()
+    return link?.kind === 'frame' ? link.open : undefined
+  }
   const offline = () => {
     const link = target()
     return link?.kind === 'off' ? link.reason : undefined
@@ -64,18 +64,34 @@ function Card(props: { instance: Instance; status: string }) {
         <Show
           when={offline()}
           fallback={
-            <a
-              class="flex items-center gap-1 text-brand hover:underline"
-              href={target()?.href ?? props.instance.url}
-              onClick={(event) => target()?.open?.(event)}
-              rel="noreferrer"
-              target={target()?.kind === 'tailnet' ? '_blank' : undefined}
+            <Show
+              when={frame()}
+              fallback={
+                <a
+                  class="flex items-center gap-1 text-brand hover:underline"
+                  href={target()?.href ?? props.instance.url}
+                  rel="noreferrer"
+                  target={target()?.kind === 'tailnet' ? '_blank' : undefined}
+                >
+                  {urlLabel()}
+                  <Show when={target()?.kind === 'tailnet'}>
+                    <ExternalLink aria-hidden="true" class="size-3" />
+                  </Show>
+                </a>
+              }
             >
-              {urlLabel()}
-              <Show when={target()?.kind === 'tailnet'}>
-                <ExternalLink aria-hidden="true" class="size-3" />
-              </Show>
-            </a>
+              {(open) => (
+                <Button
+                  aria-label={`Show preview ${props.instance.url} (${props.instance.id.slice(0, 8)})`}
+                  class="h-auto p-0 font-mono text-[12px] font-normal text-brand hover:underline"
+                  onClick={(event) => open()(event)}
+                  size={null}
+                  variant={null}
+                >
+                  {urlLabel()}
+                </Button>
+              )}
+            </Show>
           }
         >
           {(reason) => (
