@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { map, obj, opt, str, unknown } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
@@ -16,10 +16,12 @@ import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { retryAfter, type Cancel } from '../../lib/timers.ts'
+import { readJson, updateJson } from '../../lib/json-file.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
+import { decisionRoot } from '../../lib/project-setup.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { ReconnectAction, StatusAction } from './refs.ts'
+import { ChooseAction, ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 import { rebuiltOnOpen } from '../../lib/errors.ts'
 
@@ -113,7 +115,33 @@ const redact = (server: Server, error: unknown) =>
     error instanceof Error ? error.message : String(error),
   )
 
+type Choice = { only?: string[]; off?: string[] }
+type Choices = { servers?: Record<string, Choice> }
+
+const choicesPath = (host: ExtensionHost) => join(host.userHome, '.ultimate/mcp.json')
+
+const enabledIn = (choice: Choice, project: string) =>
+  choice.only ? choice.only.includes(project) : !choice.off?.includes(project)
+
+const without = (paths: string[] | undefined, project: string) =>
+  (paths ?? []).filter((path) => path !== project)
+
+export function choose(
+  choice: Choice,
+  project: string,
+  change: { enabled: boolean } | { only: boolean },
+): Choice {
+  if ('only' in change) return change.only ? { only: [project] } : {}
+  const { enabled } = change
+  if (choice.only)
+    return { only: [...without(choice.only, project), ...(enabled ? [project] : [])] }
+  const off = [...without(choice.off, project), ...(enabled ? [] : [project])]
+  return off.length ? { off } : {}
+}
+
 async function configured(host: ExtensionHost) {
+  const choices = (await readJson<Choices>(choicesPath(host), {})).servers ?? {}
+  const project = decisionRoot(host.projectRoot)
   const layers: [McpServerStatus['source'], JsonObject][] = [
     ['user', await readSettings(userSettingsPath(host.userHome))],
     ['project', await host.projectSettings()],
@@ -127,13 +155,17 @@ async function configured(host: ExtensionHost) {
       servers.delete(name)
       if (isObject(value) && value.disabled === true) continue
       const entry = entryOf(value)
+      const choice = choices[name] ?? {}
       servers.set(name, {
         name,
         source,
         transport: isObject(value) && typeof value.url === 'string' ? 'http' : 'stdio',
-        ...(typeof entry === 'string'
-          ? { state: 'failed', error: `Invalid entry: ${entry}` }
-          : { state: 'connecting', entry }),
+        ...(choice.only?.length ? { only: true } : {}),
+        ...(!enabledIn(choice, project)
+          ? { state: 'off' }
+          : typeof entry === 'string'
+            ? { state: 'failed', error: `Invalid entry: ${entry}` }
+            : { state: 'connecting', entry }),
         tools: [],
         attempts: 0,
         resolvedSecretsForRedaction: [],
@@ -178,6 +210,32 @@ export const actions: Record<string, ExtensionAction> = {
     if (!view || typeof name !== 'string') throw new Error('reconnect: name is required')
     await view.reconnect(name)
     return view.status()
+  }),
+  choose: implementAction(ChooseAction, async (args, { host }) => {
+    if (!isObject(args) || typeof args.name !== 'string')
+      throw new Error('choose: name is required')
+    const { name } = args
+    const change =
+      typeof args.enabled === 'boolean'
+        ? { enabled: args.enabled }
+        : typeof args.only === 'boolean'
+          ? { only: args.only }
+          : undefined
+    if (!change) throw new Error('choose: enabled or only is required')
+    const project = decisionRoot(host.projectRoot)
+    await updateJson(
+      choicesPath(host),
+      (path) => readJson<Choices>(path, {}),
+      (file) => {
+        const servers = file.servers ?? {}
+        const choice = choose(servers[name] ?? {}, project, change)
+        if (Object.keys(choice).length) servers[name] = choice
+        else delete servers[name]
+        file.servers = servers
+      },
+    )
+    await host.reloadSelf()
+    return null
   }),
 }
 
@@ -308,6 +366,7 @@ export default async function mcp(host: ExtensionHost) {
         source: server.source,
         transport: server.transport,
         state: server.state,
+        ...(server.only ? { only: true } : {}),
         ...(server.state === 'connected' ? { tools: server.tools.length } : {}),
         ...(server.error ? { error: server.error } : {}),
         ...(server.missing ? { missing: server.missing } : {}),
@@ -333,7 +392,7 @@ export default async function mcp(host: ExtensionHost) {
     await Promise.all([...servers.values()].map((server) => close(server.client)))
   })
 
-  const names = [...servers.keys()]
+  const names = [...servers.values()].filter((server) => server.state !== 'off').map((s) => s.name)
   return defineExtension({
     name: 'mcp',
     tools: names.length

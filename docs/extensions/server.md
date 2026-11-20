@@ -38,6 +38,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 - `projectExtensions()`: a read-only inventory of the project's extension folders, including replacements of active extensions.
 - `setProjectDecision(local)`: remember the local/global choice and apply it through the live settings reload.
 - `reloadExtensions()`: apply settings writes to the registry, browser facets and styles before returning.
+- `reloadSelf()`: reinstall only this extension's server facet, for state it keeps in its own file; the web bundle is not rebuilt. Like any reload it closes the facet first, so its in-flight work ends.
 - `invoke(name, action, args, signal, conversationId?)`: call an installed extension action on behalf of a conversation; rejects user-only actions.
 - `harness()`, `uiState(context)`, `doc(kind)`: durable harness, root UI snapshot and exported conversation document token.
 - `implement(api, value)`, `need(api)`, `want(api)`, `catalogue()`: publish and use typed process-local services; see [contracts](contracts.md). Registrations are staged until installation succeeds, replaced on reload, and removed when the facet is disabled, removed or closed; a failed replacement keeps the old provider.

@@ -1,9 +1,10 @@
 /** @jsxImportSource @solidjs/web */
-import { LoaderCircle, Plug, RefreshCw } from '@lucide/solid'
+import { LoaderCircle, Pin, Plug, RefreshCw } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
+import { Switch } from '@/components/ui/switch.solid.tsx'
 import {
   ROOT,
   api,
@@ -17,7 +18,7 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import { retryAfter } from '../../lib/timers.ts'
-import { ReconnectAction, StatusAction } from './refs.ts'
+import { ChooseAction, ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 
 const settling = (servers: McpServerStatus[] | undefined) =>
@@ -39,7 +40,12 @@ function useServers() {
   return { servers, refresh }
 }
 
-const tone = { connected: 'bg-success', connecting: 'bg-muted-foreground/50', failed: 'bg-error' }
+const tone = {
+  connected: 'bg-success',
+  connecting: 'bg-muted-foreground/50',
+  failed: 'bg-error',
+  off: 'border border-muted-foreground/60',
+}
 
 function Row(props: { server: McpServerStatus; refresh: () => void }) {
   const [busy, setBusy] = createSignal(false)
@@ -47,17 +53,26 @@ function Row(props: { server: McpServerStatus; refresh: () => void }) {
   const now = useNow(1_000, () => props.server.retryAt !== undefined)
   const retry = () => Math.max(0, Math.ceil((props.server.retryAt! - now()) / 1000))
   const connecting = () => busy() || props.server.state === 'connecting'
-  const reconnect = async () => {
+  const off = () => props.server.state === 'off'
+  const run = async (work: () => Promise<unknown>) => {
     setBusy(true)
     setError(undefined)
     try {
-      await api.action(ReconnectAction, { name: props.server.name }, { conversationId: ROOT })
+      await work()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
       setBusy(false)
       props.refresh()
     }
+  }
+  const reconnect = () => {
+    const name = props.server.name
+    return run(() => api.action(ReconnectAction, { name }, { conversationId: ROOT }))
+  }
+  const choose = (change: { enabled: boolean } | { only: boolean }) => {
+    const name = props.server.name
+    void run(() => api.action(ChooseAction, { name, ...change }, { conversationId: ROOT }))
   }
   useEvent('secrets:changed', (data) => {
     if (
@@ -70,7 +85,11 @@ function Row(props: { server: McpServerStatus; refresh: () => void }) {
     <li class="px-2 py-1.5" data-mcp-server={props.server.name} data-state={props.server.state}>
       <div class="flex items-center gap-2 text-[12px]">
         <span class={cn('size-1.5 shrink-0 rounded-full', tone[props.server.state])} />
-        <span class="min-w-0 truncate text-foreground/90">{props.server.name}</span>
+        <span
+          class={cn('min-w-0 truncate', off() ? 'text-muted-foreground' : 'text-foreground/90')}
+        >
+          {props.server.name}
+        </span>
         <span class="shrink-0 text-[10.5px] text-muted-foreground/70">
           {props.server.transport}
           {props.server.source === 'project' && ' · project'}
@@ -80,19 +99,46 @@ function Row(props: { server: McpServerStatus; refresh: () => void }) {
             ? `${props.server.tools} ${props.server.tools === 1 ? 'tool' : 'tools'}`
             : props.server.state}
         </span>
-        <Button
-          aria-label={`Reconnect ${props.server.name}`}
-          class="-mr-1 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-          disabled={connecting()}
-          onClick={reconnect}
-          size={null}
-          title="Reconnect"
-          variant={null}
-        >
-          <Show when={connecting()} fallback={<RefreshCw class="size-3" />}>
-            <LoaderCircle class="size-3 animate-spin" />
-          </Show>
-        </Button>
+        <Show when={!off()}>
+          <Button
+            aria-label={`Only in this project: ${props.server.name}`}
+            aria-pressed={props.server.only ? 'true' : 'false'}
+            class={cn(
+              'rounded-sm p-0.5 transition-colors hover:bg-accent hover:text-foreground',
+              props.server.only ? 'text-foreground' : 'text-muted-foreground/70',
+            )}
+            disabled={busy()}
+            onClick={() => choose({ only: !props.server.only })}
+            size={null}
+            title={
+              props.server.only
+                ? 'Pinned to its projects: click to run everywhere'
+                : 'Only in this project'
+            }
+            variant={null}
+          >
+            <Pin class={cn('size-3', props.server.only && 'fill-current')} />
+          </Button>
+          <Button
+            aria-label={`Reconnect ${props.server.name}`}
+            class="rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+            disabled={connecting()}
+            onClick={reconnect}
+            size={null}
+            title="Reconnect"
+            variant={null}
+          >
+            <Show when={connecting()} fallback={<RefreshCw class="size-3" />}>
+              <LoaderCircle class="size-3 animate-spin" />
+            </Show>
+          </Button>
+        </Show>
+        <Switch
+          aria-label={`${props.server.name} in this project`}
+          checked={!off()}
+          disabled={busy()}
+          onCheckedChange={(enabled) => choose({ enabled })}
+        />
       </div>
       <Show when={error() ?? props.server.error}>
         <p class="mt-0.5 line-clamp-3 pl-3.5 text-[11px] leading-snug break-words text-error/85">
@@ -134,17 +180,25 @@ export function Chip() {
     () => servers()?.filter((server) => server.state === 'connected').length ?? 0,
   )
   const failed = createMemo(() => servers()?.some((server) => server.state === 'failed'))
-  const total = () => servers()?.length ?? 0
+  const total = () => servers()?.filter((server) => server.state !== 'off').length ?? 0
   return (
-    <Show when={total()}>
+    <Show when={servers()?.length}>
       <Popover>
         <StatusPopoverTrigger
           aria-label="MCP servers"
           class={cn(failed() && 'text-error')}
-          data-mcp={failed() ? 'failed' : connected() === total() ? 'connected' : 'connecting'}
+          data-mcp={
+            failed()
+              ? 'failed'
+              : !total()
+                ? 'off'
+                : connected() === total()
+                  ? 'connected'
+                  : 'connecting'
+          }
         >
           <Plug class="size-3" />
-          mcp {connected()}/{total()}
+          {total() ? `mcp ${connected()}/${total()}` : 'mcp off'}
         </StatusPopoverTrigger>
         <PopoverContent align="end" class="w-80 max-w-[calc(100vw-1rem)] p-1" side="top">
           <Servers refresh={refresh} servers={servers()} />

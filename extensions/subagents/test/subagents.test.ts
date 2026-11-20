@@ -202,6 +202,7 @@ async function fixture(
         throw new Error('Not used')
       },
       reloadExtensions: async () => {},
+      reloadSelf: async () => {},
       projectSetup: async () => ({ config: false, decision: null }),
       projectSettings: async () => ({}),
       projectExtensions: async () => [],

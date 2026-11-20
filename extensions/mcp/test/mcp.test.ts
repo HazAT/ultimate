@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import mcp, { actions, secrets } from '../server.ts'
@@ -164,4 +164,50 @@ it('declares each ${NAME} of the configured servers as a secret, missing until i
 
   await writeSecret(root, 'CF_ACCESS_CLIENT_ID', 'id')
   expect(await list()).toMatchObject([{ name: 'CF_ACCESS_CLIENT_ID', set: true }])
+})
+
+it('leaves a server switched off for a project out of that project, with no mcp tool there', async () => {
+  const home = await temp()
+  cleanup.push(() => removeTemp(home))
+  const here = join(home, 'here')
+  const elsewhere = join(home, 'elsewhere')
+  await mkdir(here)
+  await mkdir(elsewhere)
+  await mkdir(join(home, '.ultimate'))
+  const settings = JSON.stringify({ mcpServers: { echo: { command: 'true' } } })
+  await writeFile(join(home, '.ultimate/settings.json'), settings)
+  const load = async (projectRoot: string) => {
+    const host = {
+      userHome: home,
+      projectRoot,
+      projectSettings: async () => ({}),
+      onOpen: () => {},
+      onClose: () => {},
+      reloadSelf: async () => {},
+    } as unknown as ExtensionHost
+    const extension = await mcp(host)
+    return {
+      tools: extension.tools?.map((tool) => tool.name) ?? [],
+      status: actions.status(null, { host } as never) as unknown as McpServerStatus[],
+      choose: (args: object) => actions.choose({ name: 'echo', ...args }, { host } as never),
+    }
+  }
+
+  await (await load(here)).choose({ only: true })
+  expect(await load(here)).toMatchObject({ tools: ['mcp'], status: [{ only: true }] })
+  expect(await load(elsewhere)).toMatchObject({ tools: [], status: [{ state: 'off' }] })
+
+  await (await load(here)).choose({ enabled: false })
+  expect((await load(here)).tools).toEqual([])
+  await (await load(here)).choose({ only: false })
+  expect((await load(elsewhere)).tools).toEqual(['mcp'])
+
+  await (await load(here)).choose({ enabled: false })
+  expect((await load(here)).tools).toEqual([])
+  expect((await load(elsewhere)).tools).toEqual(['mcp'])
+  await (await load(here)).choose({ enabled: true })
+  expect(JSON.parse(await readFile(join(home, '.ultimate/mcp.json'), 'utf8'))).toEqual({
+    servers: {},
+  })
+  expect(await readFile(join(home, '.ultimate/settings.json'), 'utf8')).toBe(settings)
 })
