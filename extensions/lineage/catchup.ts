@@ -136,10 +136,9 @@ const MAX_PATHS_WITH_OVERLAP_MARKS = 1000
 
 async function catchupText(
   host: ExtensionHost,
-  id: ConversationId,
   main: Main,
   since: { main: string; at?: number },
-  tx: Tx,
+  changed: ReadonlySet<string>,
 ) {
   const range = `${since.main}..${main.sha}`
   const firstParentTargetLogBoundedByRows = (...args: string[]) =>
@@ -151,10 +150,9 @@ async function catchupText(
       '--format=%x1e%H%x00%s%x00%(trailers:key=Ultimate-Conversation,valueonly)%x00',
       ...args,
     )
-  const [count, recent, changed] = await Promise.all([
+  const [count, recent] = await Promise.all([
     git(main.cwd, 'rev-list', '--first-parent', '--count', range).then(Number),
     firstParentTargetLogBoundedByRows(range),
-    changedFiles(host, id, main, tx),
   ])
   if (!count) return undefined
   const ownFilePathspecForBoundedMergeNames = [...changed]
@@ -180,6 +178,23 @@ async function catchupText(
         return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
       })
   const overlaps = parse(overlapMarksOrEmpty)
+  const behind = main.workspace
+    ? Number(
+        await git(main.workspace, 'rev-list', '--first-parent', '--count', `HEAD..${main.sha}`),
+      )
+    : 0
+  const behindLine = behind
+    ? [`Your workspace is ${behind} commits behind ${main.target}; merge it before continuing.`]
+    : []
+  const landedLine = `Since you last worked (${new Date(since.at ?? Date.now()).toISOString()}), ${count} commits landed on ${main.target}`
+  if (!overlaps.length)
+    return {
+      overlap: false,
+      text: [
+        `${landedLine}, none touching your files (\`git log --first-parent ${range}\`).`,
+        ...behindLine,
+      ].join('\n\n'),
+    }
   const listed = new Set(overlaps.map((commit) => commit.sha))
   const commits = [...overlaps, ...parse(recent).filter((commit) => !listed.has(commit.sha))]
     .map(({ sha, subject, trailer, paths: overlap }) => {
@@ -194,21 +209,17 @@ async function catchupText(
       }
     })
     .slice(0, COMMIT_ROWS_OVERLAPS_FIRST)
-  const behind = main.workspace
-    ? Number(
-        await git(main.workspace, 'rev-list', '--first-parent', '--count', `HEAD..${main.sha}`),
-      )
-    : 0
-  return [
-    `Since you last worked (${new Date(since.at ?? Date.now()).toISOString()}), ${count} commits landed on ${main.target}:`,
-    ...commits.map((commit) => commit.row),
-    ...(count > commits.length
-      ? [`and ${count - commits.length} more (\`git log --first-parent ${range}\`).`]
-      : []),
-    ...(behind
-      ? [`Your workspace is ${behind} commits behind ${main.target}; merge it before continuing.`]
-      : []),
-  ].join('\n\n')
+  return {
+    overlap: true,
+    text: [
+      `${landedLine}:`,
+      ...commits.map((commit) => commit.row),
+      ...(count > commits.length
+        ? [`and ${count - commits.length} more (\`git log --first-parent ${range}\`).`]
+        : []),
+      ...behindLine,
+    ].join('\n\n'),
+  }
 }
 
 async function firstInput(tx: Tx, id: ConversationId, forkedAt = parseEntryId(0)) {
@@ -241,6 +252,7 @@ type Activity = {
     sha: string
     target: string
     at: number
+    paths: string[]
     divergence: string
     state?: { at: number; text: string }
   }[]
@@ -288,6 +300,7 @@ export async function tallyText(
   baseline: EntryId,
   tx: Tx,
   budget = TALLY_BUDGET,
+  own?: ReadonlySet<string>,
 ) {
   const { root } = tree
   const marker = await tx.latestHeadMarker(root)
@@ -351,6 +364,7 @@ export async function tallyText(
           sha: data.sha as string,
           target: data.target as string,
           at: data.at as number,
+          paths: Array.isArray(data.paths) ? (data.paths as string[]) : [],
           divergence: (data.divergence as string | undefined) ?? 'not stated',
           ...(state ? { state: { at: state.at, text: state.text } } : {}),
         })
@@ -361,7 +375,13 @@ export async function tallyText(
   }
   for (const activity of activities.values()) activity.title ??= activity.prompt
   const newest = [...activities.values()].toSorted((a, b) => b.last - a.last)
-  const blocks = newest.map((activity) => ({ full: full(activity), line: collapsed(activity) }))
+  const concernsOwnWork = (activity: Activity) =>
+    activity.notes.length > 0 ||
+    activity.landings.some((landing) => landing.paths.some((path) => own!.has(path)))
+  const blocks: { full?: string; line: string }[] = newest.map((activity) => ({
+    ...(!own || concernsOwnWork(activity) ? { full: full(activity) } : {}),
+    line: collapsed(activity),
+  }))
   const distilled =
     marker && marker.id > baseline && marker.model
       ? marker.model.flatMap((message) =>
@@ -382,23 +402,27 @@ export async function tallyText(
     })
   if (!blocks.length) return { tip }
   const header = `Meanwhile in #${root}'s tree:`
-  const pointer = `Earlier, collapsed (read them in full with codemode \`ultimate.entries(${root})\`):`
+  const pointer = own
+    ? `Not touching your files, one line each (read them in full with codemode \`ultimate.entries(${root})\`):`
+    : `Earlier, collapsed (read them in full with codemode \`ultimate.entries(${root})\`):`
   let used =
     tokensIncludingBlankLineSeparator(header) +
     tokensIncludingBlankLineSeparator(`- and ${blocks.length} more`)
   const kept: string[] = []
   const lines: string[] = []
   let dropped = 0
+  let outgrewBudget = false
   for (const block of blocks) {
     if (
-      !lines.length &&
-      !dropped &&
+      block.full &&
+      !outgrewBudget &&
       used + tokensIncludingBlankLineSeparator(block.full) <= budget
     ) {
       kept.unshift(block.full)
       used += tokensIncludingBlankLineSeparator(block.full)
       continue
     }
+    if (block.full) outgrewBudget = true
     if (!lines.length && !dropped) used += tokensIncludingBlankLineSeparator(pointer)
     if (!dropped && used + tokensIncludingBlankLineSeparator(block.line) <= budget) {
       lines.unshift(block.line)
@@ -407,6 +431,7 @@ export async function tallyText(
   }
   return {
     tip,
+    relevant: kept.length > 0,
     text: [
       header,
       ...(lines.length || dropped
@@ -433,21 +458,28 @@ export async function catchup(
   const tree = await treeOf(tx, conversationId)
   const main = await mainOf(host, conversationId, ctx, tx)
   const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
-  const meanwhile = tree
-    ? await tallyText(conversationId, tree, alwaysAdvancedBaseline.tally ?? tree.since, tx)
-    : undefined
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
+  const own = main && !ultimate ? await changedFiles(host, conversationId, main, tx) : undefined
+  const meanwhile = tree
+    ? await tallyText(
+        conversationId,
+        tree,
+        alwaysAdvancedBaseline.tally ?? tree.since,
+        tx,
+        TALLY_BUDGET,
+        own,
+      )
+    : undefined
   const commits =
-    main && !ultimate && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
+    main && own && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
       ? await catchupText(
           host,
-          conversationId,
           main,
           {
             main: alwaysAdvancedBaseline.main,
             at: alwaysAdvancedBaseline.at,
           },
-          tx,
+          own,
         ).catch((error: unknown) => {
           host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
           return undefined
@@ -461,8 +493,10 @@ export async function catchup(
   if (!meanwhile?.text && !commits) return undefined
   const text = [
     ...(meanwhile?.text ? [meanwhile.text] : []),
-    ...(commits ? [commits] : []),
-    'Check whether any of this already covers or changes what you are about to do.',
+    ...(commits ? [commits.text] : []),
+    ...(meanwhile?.relevant || commits?.overlap
+      ? ['Check whether any of this already covers or changes what you are about to do.']
+      : []),
   ].join('\n\n')
   return {
     entries: [
