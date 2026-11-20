@@ -362,7 +362,10 @@ it('stops a recurring script that prints DONE and exits 0 without waking anyone;
     ).entries
       .filter((e) => e.conversationId === id && e.kind.startsWith('automations.'))
       .map((e) => e.kind)
-  const done = () => eventHost(() => app.harness, 'test').eventLog.recent({ events: [Done] })
+  const done = async () =>
+    (await eventHost(() => app.harness, 'test').eventLog.recent({ events: [Done] })).filter(
+      (e) => e.data.id === sub.id,
+    )
   // Each run counts itself in its state folder, fires the count and stops itself.
   await writeRun(
     folder(sub.id),
