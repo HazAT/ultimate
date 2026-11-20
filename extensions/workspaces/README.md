@@ -167,7 +167,9 @@ lander's sidebar row shows the feature it lands or landed last.
    `{ "command": "pnpm test", "timeout": 180 }`.
    A failing check
    reruns once: passing then is reported as flaky, failing again reports the output tail to the submitter once every
-   command of its group settled. Each command keeps its own memo, steps and flaky note; the note names what failed on the
+   command of its group settled, with the machine's load when the rerun failed: one line on the card (`load 21.7 on
+   12 cores`, as the outcome's `load`) and the five processes using the most CPU (pid, %CPU, command) in the report,
+   so a failure caused by a busy machine shows as one. Each command keeps its own memo, steps and flaky note; the note names what failed on the
    first run (`pnpm test · exit 1: test/a.test.ts > its name`, or `Out of memory: exit 137`). A passed or flaky check records its last
    output line (ANSI stripped, at most 200 characters) as `summary`, shown muted after the command on its step row.
    A failed run's log entry keeps its output tail as `output` (not in `steps`), under a collapsed "Output" in the

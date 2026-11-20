@@ -1209,6 +1209,13 @@ it.concurrent('wakes only the submitter on a failed landing and leaves it open',
   const { id: submission } = await f.service.submit(id, 'None', context)
   const [report] = await submitted(f, id)
   expect(report).toContain('was not landed: check failed twice: exit 1')
+  // Three rejections in a row were machine load, and nobody looked at the CPU until asked.
+  expect(report).toMatch(/load \d+\.\d on \d+ cores\\nTop CPU \(pid %cpu command\):\\n {2}\d+ /)
+  expect(
+    (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!.results[
+      submission
+    ].load,
+  ).toMatch(/^load \d+\.\d on \d+ cores$/)
   expect(await f.host.eventLog.recent({ events: [SubmissionFailed] })).toMatchObject([
     {
       fails: 'workspaces.landed',

@@ -18,6 +18,7 @@ type LastOutputLine = string
 type TargetTipBeforeLanding = string
 type PushedRemoteBranch = string
 type OutputTail = string
+type LoadAtFailure = string
 type UnixMilliseconds = number
 
 export type QueueEntry = {
@@ -68,6 +69,7 @@ export type LanderOutcome = {
   reason?: string
   output?: OutputTail
   hint?: string
+  load?: LoadAtFailure
 }
 export type LanderEntry = {
   submission: string
