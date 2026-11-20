@@ -1,13 +1,14 @@
 /** @jsxImportSource @solidjs/web */
 /** Model catalog rows for other extensions' Solid command pickers. The Command owns selection and attribution. */
 import { Brain, Check } from '@lucide/solid'
-import { Show } from 'solid-js'
+import { createMemo, Show } from 'solid-js'
 import { CommandItem } from '@/components/ui/command.solid.tsx'
 import { cn } from '@/sdk/solid'
-import { formatWindow, modelKey, price } from './state.ts'
+import { modelFacts, modelKey } from './state.ts'
 import type { ModelInfo } from './state.ts'
 
 export function ModelRow(props: { model: ModelInfo; current: boolean; disabled?: boolean }) {
+  const facts = createMemo(() => modelFacts(props.model))
   return (
     <CommandItem
       class={cn('gap-2 py-1 font-mono text-[12px]', !props.model.available && 'opacity-60')}
@@ -28,24 +29,22 @@ export function ModelRow(props: { model: ModelInfo; current: boolean; disabled?:
         class="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-muted-foreground tabular-nums"
         aria-hidden="true"
       >
-        {props.model.provider === 'anthropic' && <span class="text-warning/80">paid API</span>}
-        <Show
-          when={props.model.reasoning}
-          fallback={<span class="text-muted-foreground/40">no thinking</span>}
+        {facts().paid && <span class="text-warning/80">{facts().paid}</span>}
+        <span
+          class={cn(
+            'flex items-center gap-1',
+            !facts().thinkingTitle && 'text-muted-foreground/40',
+          )}
+          title={facts().thinkingTitle}
         >
-          <span
-            class="flex items-center gap-1"
-            title={`thinking: ${props.model.thinkingLevels.join(' ')}`}
-          >
-            <Brain class="size-3" />
-            {props.model.thinkingLevels.filter((level) => level !== 'off').at(-1)}
-          </span>
-        </Show>
+          {facts().thinkingTitle && <Brain class="size-3" />}
+          {facts().thinking}
+        </span>
         <span class="w-11 text-right" title="context window">
-          {formatWindow(props.model.contextWindow)}
+          {facts().context}
         </span>
         <span class="w-20 text-right max-sm:hidden" title="$ per million input / output tokens">
-          ${price(props.model.cost.input)}/{price(props.model.cost.output)}
+          {facts().cost}
         </span>
       </span>
     </CommandItem>

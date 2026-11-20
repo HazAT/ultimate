@@ -53,13 +53,25 @@ export function nextThinking(current: ThinkingLevel | undefined, model: ModelInf
   return levels[(levels.indexOf(current ?? 'off') + 1) % levels.length]
 }
 
-export function formatWindow(tokens: number) {
+function formatWindow(tokens: number) {
   if (tokens >= 1_000_000) return `${+(tokens / 1_000_000).toFixed(1)}M`
   return `${Math.round(tokens / 1000)}k`
 }
 
-export const price = (dollarsPerMillionTokens: number) =>
+const price = (dollarsPerMillionTokens: number) =>
   dollarsPerMillionTokens === 0 ? '0' : String(+dollarsPerMillionTokens.toFixed(3))
+
+export function modelFacts(model: ModelInfo) {
+  return {
+    paid: model.provider === 'anthropic' ? 'paid API' : undefined,
+    thinking: model.reasoning
+      ? model.thinkingLevels.filter((level) => level !== 'off').at(-1)
+      : 'no thinking',
+    thinkingTitle: model.reasoning ? `thinking: ${model.thinkingLevels.join(' ')}` : undefined,
+    context: formatWindow(model.contextWindow),
+    cost: `$${price(model.cost.input)}/${price(model.cost.output)}`,
+  }
+}
 
 export const termsOf = (query: string) => query.toLowerCase().split(/\s+/).filter(Boolean)
 
