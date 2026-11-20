@@ -66,9 +66,15 @@ The libraries ship skills that match the pinned versions: read them, not your me
   Solid renderer (`web/src/sdk/markdown.tsx`); a component an island mounts inside text takes `island(C, { inline:
   true })`, which mounts in a `<span>`. A test that renders React to static markup sees an island empty (it mounts in
   an effect): mock `web/src/sdk/markdown.tsx` there.
-- **What waits for the core switch:** tool, entry and user-bubble renderers, message actions and details, the
-  composer wrapper, `provide` hooks, and anything that hosts other extensions' React. The full list is
-  `docs/solid-core-switch.md`; keep it current when you leave a part React.
+- **The transcript is Solid (step C2).** Its renderer points keep their framework: a tool, entry, tool-line, message
+  action, message detail, answer label, user bubble or compact summary contributed as `island(C)` renders as plain
+  Solid there (`islandSolid` in `web/src/sdk/island-mark.ts`); any other is React and mounts through the temporary
+  bridge `web/src/sdk/react-island*.tsx` (C5 deletes it), consecutive React renderers sharing one root around the Solid
+  `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` taking `{ entry, core, blocks }` as Solid
+  props. React rows read `useTranscript()` and `useTranscriptScroll()` from one `TranscriptFrame` whose identity stays,
+  so a streamed update re-renders none of them; Solid ones read `useTranscript()` from `@/sdk/solid`.
+- **What waits for the core switch:** the composer wrapper, `provide` hooks, and anything that hosts other extensions'
+  React. The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
 ## The UI kit
 
@@ -168,6 +174,14 @@ Solid 2:
   `createProjection(fn, seed, { key: null })`: each parse reconciles into the store by position, so only the nodes that
   changed update, with `<For keyed={false}>` over it. A streamed delta then costs about one DOM mutation
   (`web/src/components/markdown/markdown.solid.tsx`).
+- A memo over a list a registry rebuilds on every read (`entryRenderers(...)`, `toolRenderers(...)`) changes identity
+  each time: give it `equals` comparing the items, or every row below it remounts on each streamed update (C2 found
+  11 remounts per row for one short reply with a DOM mutation observer).
+- React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
+  (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
+- A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
+  never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
+  `node.remove()` breaks on a Solid return that is not one element.
 - An attribute built from untrusted input is set as one property, never as a string another value can extend:
   `style={{ 'text-align': align }}`, not ``style={`text-align:${align}`}``.
 - `reconcile` by position adopts incoming objects: reconcile a `structuredClone` when the value shares rows with the

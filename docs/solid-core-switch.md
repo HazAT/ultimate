@@ -1,22 +1,32 @@
 # What waits for the core switch
 
 The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in extensions on purpose: each renders inside
-the React core or is a React hook the core calls, so it can only move once that core is Solid. This is the input for
-planning the core switch; nothing here has moved. Keep it current when a batch leaves a part React.
+the React core or is a React hook the core calls, so it can only move once that core is Solid. Keep it current when a
+batch leaves a part React.
 
-**Summary (C1):** 51 rows (a row is one part or a group of one extension's parts) in 29 extensions. By
-core host:
+**Done: the transcript host (C2).** `web/src/app/transcript.solid.tsx` and its rows (tool calls, user turns, message
+actions, folds, work runs, the live status) are Solid, with its own scroll-to-bottom (`web/src/app/follow.ts`). Its
+renderer points keep their framework: a tool, entry, tool-line, message-action, message-detail, answer-label,
+user-bubble or compact-summary renderer contributed as `island(C)` renders as Solid directly; any other is React and
+mounts through the temporary bridge in `web/src/sdk/react-island*.tsx`, which C5 deletes. The rows below under "The
+transcript" are what P2 and P3 move, each by writing `island(C)` in its `web.tsx`: `rg -n "(tools|entries|toolLines|
+messageActions|messageDetails|answerLabels|userBubble):" extensions/*/web.tsx` lists what is left. Points the host reads
+(`ParkedRuns`, `RunStart`, `MessageReference`, `FileUpload`, `EmptyTranscript`) and the `transcript.*` slots run their
+React providers through the same bridge until C4.
+
+**Summary (C2):** 51 rows (a row is one part or a group of one extension's parts) in 29 extensions. By core host:
 
 | Core host                                                               | Rows | Extensions |
 | ----------------------------------------------------------------------- | ---- | ---------- |
-| The transcript (tool and entry renderers, message bar, bubble)          | 31   | 24         |
+| The transcript's renderers (P2/P3; host done in C2)                     | 31   | 24         |
 | The sidebar (React rows and sections other extensions provide)          | 3    | 3          |
 | Panel and surface hosts, System's tab host, documents' views            | 10   | 7          |
 | The composer                                                            | 2    | 2          |
 | React points of other extensions (onboarding, workspaces' landing card) | 5    | 5          |
 
-The transcript blocks the most: two thirds of the rows, and it hosts most of the rest indirectly (inbox's reading pane
-and the landing card render its message parts). Switch it first.
+User extensions outside this repository (`~/.ultimate/extensions`) contribute React renderers too: pr-triage's
+`pr-triage.request` entry, shell's `shell` tool and `shell.result` entry. They mount through the bridge unchanged; C5
+breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
