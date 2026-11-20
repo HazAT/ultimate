@@ -7,6 +7,7 @@ import type {
   ConversationId,
   EntryId,
   EntryRecord,
+  InboxItem,
   LiveState,
   UsageState,
 } from '@earendil-works/pi-durable'
@@ -61,6 +62,8 @@ export { events } from './events.ts'
  * the person. Kit controls run their change handlers in it; a write started after an `await` counts as the person's.
  */
 export { writingAs } from './writer.ts'
+/** Who the write being made now is attributed to, to carry past an `await`: `writingAs(who, …)` at the later write. */
+export { writerNow } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export {
@@ -469,7 +472,8 @@ const noEntries: readonly EntryRecord[] = []
 /**
  * The conversation `ConversationScope` gives, or the shown one, as `useConversation` from `@/sdk` reads it: `id`,
  * `loading`, its streamed `entries` (oldest first), the `older` history cursor, `agent` (`pi.agent`), `usage`
- * (`pi.usage`), `live` (`pi.live`) and `busy` while a run is in progress.
+ * (`pi.usage`), `live` (`pi.live`), `inbox` (`pi.inbox`: queued steers, follow-ups and writes) and `busy` while a run is
+ * in progress.
  */
 export type ConversationState = {
   id?: ConversationId
@@ -479,6 +483,7 @@ export type ConversationState = {
   agent: AgentState
   usage: UsageState
   live: LiveState
+  inbox: readonly InboxItem[]
   busy: boolean
 }
 
@@ -501,10 +506,12 @@ export function useConversation(): Accessor<ConversationState> {
       agent: shown?.docs['pi.agent'] ?? {},
       usage: (shown?.docs['pi.usage'] ?? noUsage) as UsageState,
       live,
+      inbox: (shown?.docs['pi.inbox'] as { items?: InboxItem[] } | undefined)?.items ?? noInbox,
       busy: !!live.run,
     }
   })
 }
+const noInbox: readonly InboxItem[] = []
 
 /**
  * How the scoped or shown conversation folds when it uses compact mode (`compact` contributions), else undefined:
