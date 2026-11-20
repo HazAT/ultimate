@@ -93,7 +93,7 @@ it('opens Dialog and presses its inner button as the agent', async ({ onTestFini
   expect(open.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const dialog = container.querySelector('[role="dialog"][data-open]')
   expect(dialog?.textContent).toContain('Manage the current project')
   expect(container.querySelector('[data-slot="dialog-backdrop"][data-open]')).not.toBeNull()
@@ -132,7 +132,7 @@ it('opens DropdownMenu to press an item by text', async ({ onTestFinished }) => 
   expect(result.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.querySelector('[role="menu"][data-open] [role="menuitem"]')?.textContent).toBe(
     'Rename file',
   )
@@ -162,7 +162,7 @@ it('filters Command and runs the match as the agent', async ({ onTestFinished })
   ))
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const ref = refFor('Search project commands')
   const query = await agent.act({ steps: [{ ref, action: 'setQuery', args: ['logs'] }] })
   expect(query.ok).toBe(true)
@@ -199,7 +199,7 @@ it('attributes the durable Collapsible write to the agent', async ({ onTestFinis
   })
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const result = await agent.act({
     steps: [{ ref: refFor('Advanced settings'), action: 'setOpen', args: [true] }],
   })
@@ -245,7 +245,7 @@ it('opens HoverCard by the link text', async ({ onTestFinished }) => {
   expect(result.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.querySelector('a[data-open]')?.getAttribute('href')).toBe('/people/ada')
   expect(container.querySelector('[data-slot="hover-card-content"][data-open]')?.textContent).toBe(
     'Project owner',
@@ -271,7 +271,7 @@ it('asks a person before pressing a destructive item in a closed menu', async ({
       </DropdownMenuContent>
     </DropdownMenu>
   ))
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const step = { action: 'press', args: ['Delete permanently'] }
   const refused = await agent.act({ steps: [{ ref: refFor('Project actions'), ...step }] })
   expect(refused.ok).toBe(false)
@@ -324,7 +324,7 @@ it('binds the selected radio item and names the group with the menu label', asyn
   expect(result.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.querySelector('[role="menuitemradio"][aria-checked="true"]')?.textContent).toBe(
     'Grid view',
   )

@@ -89,7 +89,7 @@ async function openJoinDialog() {
   store.setUi({ dialogs: { [joinDialog]: true } })
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   return container
 }
 const control = (label: string) =>
@@ -114,7 +114,7 @@ it('lets an agent open Cloud backup and back up now, then refreshes the status',
   expect(
     (await agent.act({ steps: [{ ref: 'Cloud backup', action: 'setOpen', args: [true] }] })).ok,
   ).toBe(true)
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
 
   const backup = control('Back up now')
   expect(backup?.actions).toContain('press')

@@ -96,7 +96,7 @@ it('stays on screen and actable while the page switches to another conversation'
   expect(await act([{ ref: trigger!.ref, action: 'setOpen', args: [true] }])).toMatchObject({
     ok: true,
   })
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(harness.actions.slice(calls)).toEqual([])
 })
 
@@ -114,7 +114,7 @@ it('lets an agent open the popover and turn keep-warm off through the server', a
 
   const opened = await act([{ ref: closed[0].ref, action: 'setOpen', args: [true] }])
   expect(opened).toMatchObject({ ok: true })
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.textContent).toMatch(/Warm until/)
   const toggle = agent
     .snapshot()

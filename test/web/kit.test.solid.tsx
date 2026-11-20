@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { actionRef, api, useUiState } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../shared/protocol.ts'
 import { uiState } from '../../web/src/sdk/client.ts'
+import { expectDistinctAgentNames } from './agent-names.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const request = vi.hoisted(() =>
@@ -174,6 +175,24 @@ it('lets an agent fill a text field and a secret it can never read back', async 
   expect(field.type).toBe('text')
   expect(field.value).toBe('hunter2')
   expect(JSON.stringify(agent.snapshot())).not.toContain('hunter2')
+})
+
+it('fails on a name the bridge would also resolve to another control, and passes on distinct ones', async () => {
+  renderSolid(() => (
+    <>
+      <Button>Save</Button>
+      <Button>Quick save</Button>
+    </>
+  ))
+  await expect(expectDistinctAgentNames(agent)).rejects.toThrow('Quick save')
+  document.body.replaceChildren()
+  renderSolid(() => (
+    <>
+      <Button>Run</Button>
+      <Button>Runner</Button>
+    </>
+  ))
+  await expectDistinctAgentNames(agent)
 })
 
 it('dims a disabled button that stays focusable', () => {

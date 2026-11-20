@@ -1,28 +1,19 @@
+import type { createAgent } from '@ui-sdk/solid/agent'
 import { expect } from 'vitest'
 
-const words = (text: string) =>
-  ` ${text
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[ßẞ]/g, 'ss')} `.replace(/[^\p{L}\p{N}]+/gu, ' ')
+type Agent = ReturnType<typeof createAgent>
 
 /**
- * Fails when one mounted control's name would also name another for the agent bridge, which resolves a name as whole
- * words of a label or row text, regardless of case and accents: "Save" also names "Quick save", "Run" not "Runner".
+ * Fails when a mounted control's name also names another for the agent bridge: asks the bridge's own `query`, which
+ * matches labels and row text as the bridge resolves a step's name, for each label.
  */
-export function expectDistinctAgentNames(agent: {
-  snapshot(): { label?: string; row?: string; offPage?: boolean }[]
-}) {
+export async function expectDistinctAgentNames(agent: Agent) {
   const live = agent.snapshot().filter((entry) => !entry.offPage && entry.label)
-  const clashes = live.flatMap((entry) =>
-    live
-      .filter(
-        (other) =>
-          other !== entry &&
-          words(`${other.label} ${other.row ?? ''}`).includes(words(entry.label!)),
-      )
-      .map((other) => [entry.label, other.label]),
-  )
+  const clashes: string[][] = []
+  for (const { label, ref } of live) {
+    const found = await agent.query({ text: label! })
+    const others = Array.isArray(found) ? found.filter((other) => other.ref !== ref) : []
+    if (others.length) clashes.push([label!, ...others.map((other) => other.label ?? other.ref)])
+  }
   expect(clashes).toEqual([])
 }

@@ -67,7 +67,7 @@ it('lets an agent add a named secret without reading it back, but not replace on
   expect(open.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(document.activeElement?.getAttribute('aria-label')).toBe('Name of the new secret')
   const value = 'test-token-not-a-secret'
   const filled = await agent.act({
@@ -101,7 +101,7 @@ it('lets an agent add a named secret without reading it back, but not replace on
   expect(replace.ok).toBe(true)
   flush()
   await settle()
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   await agent.act({
     steps: [{ ref: refFor('New value for DEMO_KEY'), action: 'setValue', args: ['next'] }],
   })

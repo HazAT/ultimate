@@ -124,7 +124,7 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   expect(container.querySelector('[data-todo-inbox]')?.textContent).toContain('Inbox · 2')
   expect(container.textContent).toContain('2 in Inbox')
 
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const ticked = await agent.act({
     steps: [
       {

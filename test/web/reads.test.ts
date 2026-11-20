@@ -160,6 +160,54 @@ it('drops a hung call once a reader with a timeout joins it, forgets the answer 
   expect(read.get().data).toBe('second')
 })
 
+it('lets a call run on once the only reader with a timeout leaves it', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+  const { action, reads } = readiness()
+  let answer: (value: string) => void = () => undefined
+  action.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+  const read = reads.get('test', 'rate', null)
+  read.use({})
+  await vi.advanceTimersByTimeAsync(0)
+  const release = read.use({ timeout: 5000 })
+  release()
+  await vi.advanceTimersByTimeAsync(6000)
+  answer('late')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(read.get().data).toBe('late')
+})
+
+it('asks a remounted read again at once when the server restarted while nobody read it', async () => {
+  const listeners = new Set<() => void>()
+  let system: unknown
+  const store = {
+    getState: () => ({ system, connection: { status: 'open' } }),
+    subscribe: (listener: () => void) => (
+      listeners.add(listener),
+      () => listeners.delete(listener)
+    ),
+    notify: vi.fn<(notice: unknown) => void>(),
+  }
+  const serve = (generation: number) => {
+    system = { process: { pid: 1, generation } }
+    for (const listener of listeners) listener()
+  }
+  const action = vi.fn<() => Promise<string>>(async () => 'answer')
+  const reads = createReads({ action } as unknown as Api, store as never)
+  serve(1)
+  const read = reads.get('test', 'rate', null)
+  const release = read.use({})
+  await vi.waitFor(() => expect(read.get().answeredBy).toBe('1:1'))
+  release()
+  serve(2)
+  expect(action).toHaveBeenCalledTimes(1)
+  read.use({})
+  await vi.waitFor(() => expect(read.get().answeredBy).toBe('1:2'))
+  expect(action).toHaveBeenCalledTimes(2)
+})
+
 it('stops waiting for readiness when its signal aborts', async () => {
   const { action, reads } = readiness()
   action.mockReturnValue(new Promise<string>(() => {}))

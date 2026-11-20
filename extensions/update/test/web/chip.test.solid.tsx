@@ -110,7 +110,7 @@ async function mountChip(state: Partial<UpdateState> = {}) {
   expect(
     await act({ ref: 'Updates to the Ultimate clone', action: 'setOpen', args: [true] }),
   ).toMatchObject({ ok: true })
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   return container
 }
 

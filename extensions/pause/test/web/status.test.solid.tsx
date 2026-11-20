@@ -32,7 +32,7 @@ async function mountStatus() {
 
 async function openPause() {
   await act('Pause or continue all work', 'setOpen', [true])
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
 }
 
 it('lets an agent open Pause, set auto-play minutes, and pause the host', async () => {

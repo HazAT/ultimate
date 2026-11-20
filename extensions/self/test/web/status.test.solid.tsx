@@ -10,7 +10,7 @@ it('lets an agent read the build details in the tooltip', async () => {
   const container = renderSolid(() => <Build />)
   await tick()
   await act('build abc1234', 'setOpen', [true])
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const details = container.querySelector('[role="tooltip"][data-open]')
   expect(details?.textContent).toContain('abc1234new · gen 3')
   expect(details?.textContent).toContain('self-long-ha')
@@ -30,7 +30,7 @@ it('lets an agent restart, check the failure, and retry', async () => {
   approval.given = true
   await act('core changed · restart', 'press')
   await act('restart failed', 'setOpen', [true])
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.textContent).toContain('core did not boot')
   approval.given = false
   await act('Try again', 'press', undefined, false)
@@ -46,6 +46,6 @@ it('lets an agent inspect the facets left out of the build', async () => {
   system({ left: [{ file: 'example/web.tsx', error: 'an import was missing' }] })
   await tick()
   await act('1 facet left out', 'setOpen', [true])
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   expect(container.querySelector('pre')?.textContent).toBe('example/web.tsx\nan import was missing')
 })

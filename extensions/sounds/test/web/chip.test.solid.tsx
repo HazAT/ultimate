@@ -67,7 +67,7 @@ it('lets an agent open Sounds, set the variant and volume, and turn sounds off',
     steps: [{ ref: control('Sound settings', 'popover').ref, action: 'setOpen', args: [true] }],
   })
   expect(opened).toMatchObject({ ok: true })
-  expectDistinctAgentNames(agent)
+  await expectDistinctAgentNames(agent)
   const variant = control('Variant', 'segmented-control')
   expect(variant).toMatchObject({ value: 'chiptune' })
   const orchestra = variant.items?.find((item) => item.label === 'Orchestra')

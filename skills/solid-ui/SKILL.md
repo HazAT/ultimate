@@ -82,9 +82,10 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   read. For an action: `bind={[() => state().on, (on) => void toggle(on)]}`.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action and args. `every` takes ms or
   `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). With `timeout`, a call that does not
-  answer in time is dropped and `data` is only the live server's answer: forgotten on a timeout, a failure or a restart
-  (`extensions/status-line/status.solid.tsx`). Every read refetches after a restart; on reconnect only reads whose
-  request never reached the server retry. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
+  answer in time is dropped and `data` is only the serving process's answer: forgotten on a timeout or a failure,
+  hidden after a restart until the new process answers (`extensions/status-line/status.solid.tsx`). Every read in use
+  refetches after a restart, and a remounted one whose answer came from an earlier process; on reconnect only active
+  reads that failed with a network error retry. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
   since a plain read follows the shown conversation and starts unanswered when the view arrives. A read with getter
   args keeps the args its key was made from.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
