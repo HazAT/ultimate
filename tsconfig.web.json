@@ -39,6 +39,8 @@
     "extensions/messages/caller.ts",
     "extensions/messages/data.ts",
     "extensions/messages/points.ts",
+    "extensions/messages/waiting.ts",
+    "extensions/messages/working.ts",
     "extensions/projects/links.ts",
     "extensions/sidebar/colour.ts",
     "extensions/cloud/types.ts",
