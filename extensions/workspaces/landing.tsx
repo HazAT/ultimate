@@ -93,7 +93,9 @@ export const LandedNote = definePoint<
   ReactNode | undefined
 >('workspaces.landed-note')
 
-export const LandingExtras = definePoint<ConversationId, ReactNode>('workspaces.landing-extras')
+export const LandingExtras = definePoint<{ conversation: ConversationId }, ReactNode>(
+  'workspaces.landing-extras',
+)
 
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
@@ -271,7 +273,7 @@ export function LandingCard({
             </Provided>
           )}
           {tone !== 'failed' && (
-            <AllProvided input={from} point={LandingExtras}>
+            <AllProvided input={{ conversation: from }} point={LandingExtras}>
               {(extras) => extras}
             </AllProvided>
           )}

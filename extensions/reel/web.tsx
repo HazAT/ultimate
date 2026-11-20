@@ -123,11 +123,11 @@ const asksTheUser = (message: Message) =>
 
 export default defineWebExtension({
   provides: [
-    provide(MessageExtras, (message) =>
+    provide(MessageExtras, ({ message }) =>
       asksTheUser(message) ? (
         <RoundChip
           answer={
-            <Provided input={message} point={MessageAnswers}>
+            <Provided input={{ message }} point={MessageAnswers}>
               {(answers) => answers}
             </Provided>
           }
@@ -135,6 +135,6 @@ export default defineWebExtension({
         />
       ) : null,
     ),
-    provide(LandingExtras, (from) => <BranchChip conversation={from} />),
+    provide(LandingExtras, ({ conversation }) => <BranchChip conversation={conversation} />),
   ],
 })
