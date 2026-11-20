@@ -8,39 +8,43 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 
 ## Transcript
 
-| Extension   | Part                                                                | Where                               | Rendered by                    |
-| ----------- | ------------------------------------------------------------------- | ----------------------------------- | ------------------------------ |
-| browser     | tool renderers `screenshot`, `browser`                              | `extensions/browser/web.tsx:238`    | the transcript's tool calls    |
-| codemode    | tool renderer `codemode`                                            | `extensions/codemode/web.tsx:254`   | the transcript's tool calls    |
-| codemode    | tool line `codemode`                                                | `extensions/codemode/web.tsx:255`   | the transcript's compact lines |
-| instance    | tool renderer `instance`                                            | `extensions/instance/web.tsx:272`   | the transcript's tool calls    |
-| instance    | `link` (preview links in messages)                                  | `extensions/instance/web.tsx:273`   | the transcript's Markdown      |
-| self        | tool renderer `restart`                                             | `extensions/self/web.tsx:83`        | the transcript's tool calls    |
-| todos       | tool renderer `todo`                                                | `extensions/todos/web.tsx:15`       | the transcript's tool calls    |
-| todos       | entry `todos.note` (model-only, renders nothing)                    | `extensions/todos/web.tsx:16`       | the transcript's entries       |
-| watchdog    | entry `watchdog.failure`                                            | `extensions/watchdog/web.tsx:8`     | the transcript's entries       |
-| prompt      | entry `prompt.build`                                                | `extensions/prompt/web.tsx:65`      | the transcript's entries       |
-| setup       | entry `setup.note` (model-only)                                     | `extensions/setup/web.tsx:8`        | the transcript's entries       |
-| recall      | entry of recalled memories (model-only)                             | `extensions/recall/web.tsx:92`      | the transcript's entries       |
-| recall      | user bubble `RecallBubble`                                          | `extensions/recall/web.tsx:91`      | the transcript's user message  |
-| pause       | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held` | `extensions/pause/web.tsx:194`      | the transcript's entries       |
-| diagrams    | code block `mermaid`                                                | `extensions/diagrams/web.tsx:16`    | the transcript's Markdown      |
-| read-aloud  | message action                                                      | `extensions/read-aloud/web.tsx:146` | the transcript's message bar   |
-| status-line | message detail `MessageUsage`                                       | `extensions/status-line/web.tsx:97` | the transcript's message bar   |
+| Extension   | Part                                                                   | Where                               | Rendered by                    |
+| ----------- | ---------------------------------------------------------------------- | ----------------------------------- | ------------------------------ |
+| browser     | tool renderers `screenshot`, `browser`                                 | `extensions/browser/web.tsx:238`    | the transcript's tool calls    |
+| codemode    | tool renderer `codemode`                                               | `extensions/codemode/web.tsx:254`   | the transcript's tool calls    |
+| codemode    | tool line `codemode`                                                   | `extensions/codemode/web.tsx:255`   | the transcript's compact lines |
+| instance    | tool renderer `instance`                                               | `extensions/instance/web.tsx:272`   | the transcript's tool calls    |
+| instance    | `link` (preview links in messages)                                     | `extensions/instance/web.tsx:273`   | the transcript's Markdown      |
+| self        | tool renderer `restart`                                                | `extensions/self/web.tsx:83`        | the transcript's tool calls    |
+| todos       | tool renderer `todo`                                                   | `extensions/todos/web.tsx:15`       | the transcript's tool calls    |
+| todos       | entry `todos.note` (model-only, renders nothing)                       | `extensions/todos/web.tsx:16`       | the transcript's entries       |
+| watchdog    | entry `watchdog.failure`                                               | `extensions/watchdog/web.tsx:8`     | the transcript's entries       |
+| prompt      | entry `prompt.build`                                                   | `extensions/prompt/web.tsx:65`      | the transcript's entries       |
+| setup       | entry `setup.note` (model-only)                                        | `extensions/setup/web.tsx:8`        | the transcript's entries       |
+| recall      | entry of recalled memories (model-only)                                | `extensions/recall/web.tsx:92`      | the transcript's entries       |
+| recall      | user bubble `RecallBubble`                                             | `extensions/recall/web.tsx:91`      | the transcript's user message  |
+| pause       | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held`    | `extensions/pause/web.tsx:194`      | the transcript's entries       |
+| diagrams    | code block `mermaid`                                                   | `extensions/diagrams/web.tsx:16`    | the transcript's Markdown      |
+| read-aloud  | message action                                                         | `extensions/read-aloud/web.tsx:146` | the transcript's message bar   |
+| status-line | message detail `MessageUsage`                                          | `extensions/status-line/web.tsx:97` | the transcript's message bar   |
 | context     | transcript slots `Start`, `PinnedPrompt` (reads `useTranscriptScroll`) | `extensions/context/web.tsx:147`    | the transcript's start and top |
-| context     | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`    | `extensions/context/web.tsx:148`    | the transcript's entries       |
-| context     | point `CacheRebuiltLine` (`<Rendered>` with React `core`)           | `extensions/context/ui.tsx:9`       | the transcript's entries       |
-| wire        | entry `pi.assistant` (`WireLink`)                                   | `extensions/wire/web.tsx`           | the transcript's entries       |
+| context     | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`       | `extensions/context/web.tsx:148`    | the transcript's entries       |
+| context     | point `CacheRebuiltLine` (`<Rendered>` with React `core`)              | `extensions/context/ui.tsx:9`       | the transcript's entries       |
+| wire        | entry `pi.assistant` (`WireLink`)                                      | `extensions/wire/web.tsx`           | the transcript's entries       |
 
 ## Composer, panels and surfaces
 
-| Extension  | Part                                                                                          | Where                               | Rendered by                                            |
-| ---------- | --------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------ |
-| read-aloud | composer wrapper `ReadingStrip`                                                               | `extensions/read-aloud/web.tsx:147` | the composer                                           |
-| codemode   | document view `codemode.store`                                                                | `extensions/codemode/web.tsx:256`   | the Documents panel                                    |
-| documents  | the Documents panel                                                                           | `extensions/documents/web.tsx:127`  | hosts other extensions' React document views           |
-| agent      | the `agent` surface and the title bar's panel buttons                                         | `extensions/agent/web.tsx:67`       | is the conversation view: transcript, composer, panels |
-| todos      | the panel's React wrapper (`Todos`), reading inbox's React `Waiting` point for the Solid list | `extensions/todos/web.tsx:10`       | inbox's `Waiting` is React                             |
+| Extension  | Part                                                                                                                        | Where                               | Rendered by                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------ |
+| read-aloud | composer wrapper `ReadingStrip`                                                                                             | `extensions/read-aloud/web.tsx:147` | the composer                                           |
+| codemode   | document view `codemode.store`                                                                                              | `extensions/codemode/web.tsx:256`   | the Documents panel                                    |
+| documents  | the Documents panel                                                                                                         | `extensions/documents/web.tsx:127`  | hosts other extensions' React document views           |
+| agent      | the `agent` surface and the title bar's panel buttons                                                                       | `extensions/agent/web.tsx:67`       | is the conversation view: transcript, composer, panels |
+| todos      | the panel's React wrapper (`Todos`), reading inbox's React `Waiting` point for the Solid list                               | `extensions/todos/web.tsx:10`       | inbox's `Waiting` is React                             |
+| inbox      | the surface frame (`Surface`: core `Sidebar`, `Header`, the `QuestionPane` takeover)                                        | `extensions/inbox/web.tsx:35`       | the surface host; side-chat's React pane               |
+| inbox      | the reading pane (`Reading`): messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, a provided item's `pane` | `extensions/inbox/reading.tsx:12`   | hosts other extensions' React                          |
+| inbox      | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                                   | `extensions/inbox/ui.tsx`           | React points other extensions provide                  |
+| wire       | the tab's React wrapper, docking the core `Conversation`                                                                    | `extensions/wire/web.tsx`           | System's tab host; the core dock                       |
 
 ## Hooks the core calls (`provide`)
 
@@ -53,6 +57,7 @@ A provided value is a React hook the core or another React extension calls durin
 | instance  | `PreviewUp`         | `extensions/instance/web.tsx:267` | the React sidebar's preview marks              |
 | pause     | `ParkedRuns`        | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system      |
 | mcp       | `ExtensionDetails`  | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island) |
+| inbox     | `UnderUltimate`     | `extensions/inbox/web.tsx:85`     | the React sidebar (returns an island)          |
 
 ## Contracts that stay React until then
 
