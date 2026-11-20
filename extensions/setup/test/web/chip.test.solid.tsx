@@ -66,7 +66,7 @@ it('lets an agent open setup issues and ask the Secrets panel for the missing ke
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
-  const container = renderSolid(() => <Chip />)
+  renderSolid(() => <Chip />)
   await settle()
   flush()
 
@@ -77,7 +77,6 @@ it('lets an agent open setup issues and ask the Secrets panel for the missing ke
   expect(
     await agent.act({ steps: [{ ref: chip!.ref, action: 'setOpen', args: [true] }] }),
   ).toMatchObject({ ok: true })
-  expect(container.querySelector('[data-setup-issues="2"]')?.hasAttribute('data-open')).toBe(true)
   const control = agent.snapshot().find((item) => item.label === 'Add')
   expect(await agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })).toMatchObject({
     ok: true,

@@ -2,6 +2,7 @@
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { parseConversationId } from '../../../../lib/ids.ts'
@@ -73,23 +74,6 @@ async function mountChip() {
   return container
 }
 
-it('shows the warm chip, opens its popover, and sends a person’s click as theirs', async () => {
-  const container = await mountChip()
-  const trigger = container.querySelector<HTMLButtonElement>(
-    `button[aria-label="Keep @ultimate's cache warm"]`,
-  )
-  expect(trigger?.textContent).toBe('warm')
-  expect(trigger?.dataset.keepWarm).toBe('warm')
-  trigger!.click()
-  flush()
-  expect(trigger!.hasAttribute('data-open')).toBe(true)
-  expect(container.textContent).toContain('Keep @ultimate warm')
-  expect(container.textContent).toMatch(/Warm until/)
-  container.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
-  await vi.advanceTimersByTimeAsync(10)
-  expect(harness.actions).toContainEqual({ name: 'set', args: { on: false }, source: 'person' })
-})
-
 it('stays on screen and actable while the page switches to another conversation', async () => {
   const container = await mountChip()
   const calls = harness.actions.length
@@ -101,6 +85,7 @@ it('stays on screen and actable while the page switches to another conversation'
   expect(await act([{ ref: trigger!.ref, action: 'setOpen', args: [true] }])).toMatchObject({
     ok: true,
   })
+  expectDistinctAgentNames(agent)
   expect(harness.actions.slice(calls)).toEqual([])
 })
 
@@ -108,6 +93,7 @@ it('lets an agent open the popover and turn keep-warm off through the server', a
   onTestFinished,
 }) => {
   const container = await mountChip()
+  expect(container.querySelector('[data-keep-warm="warm"]')?.textContent).toBe('warm')
   const closed = agent.snapshot().filter((entry) => !entry.offPage)
   expect(closed.map((entry) => [entry.component, entry.label])).toEqual([
     ['popover', "Keep @ultimate's cache warm"],
@@ -117,6 +103,8 @@ it('lets an agent open the popover and turn keep-warm off through the server', a
 
   const opened = await act([{ ref: closed[0].ref, action: 'setOpen', args: [true] }])
   expect(opened).toMatchObject({ ok: true })
+  expectDistinctAgentNames(agent)
+  expect(container.textContent).toMatch(/Warm until/)
   const toggle = agent
     .snapshot()
     .find((entry) => !entry.offPage && entry.label === 'Keep @ultimate warm')

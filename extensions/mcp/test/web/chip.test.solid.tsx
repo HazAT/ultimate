@@ -2,7 +2,7 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { McpServerStatus } from '../../refs.ts'
@@ -55,10 +55,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { store } from '../../../../web/src/sdk/client.ts'
+import { ROOT } from '../../../../web/src/sdk/api.ts'
+import { reads, store } from '../../../../web/src/sdk/client.ts'
 import { Chip } from '../../chip.solid.tsx'
+import { StatusAction } from '../../refs.ts'
 
 const agent = createAgent()
+
+beforeEach(() => {
+  harness.sources.length = 0
+  harness.requests.length = 0
+})
 
 it('lets an agent reconnect a failed MCP server from the status chip', async ({
   onTestFinished,
@@ -75,12 +82,12 @@ it('lets an agent reconnect a failed MCP server from the status chip', async ({
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
+  await reads.get(StatusAction.extension, StatusAction.name, null, ROOT).refetch()
   const container = renderSolid(() => <Chip />)
   await settle()
   flush()
 
   const chip = agent.snapshot().find((item) => item.label === 'MCP servers')
-  expect(chip).toMatchObject({ component: 'popover' })
   expect(
     await agent.act({ steps: [{ ref: chip!.ref, action: 'setOpen', args: [true] }] }),
   ).toMatchObject({ ok: true })
@@ -99,4 +106,33 @@ it('lets an agent reconnect a failed MCP server from the status chip', async ({
   expect(container.querySelector('[data-mcp-server="example"]')?.getAttribute('data-state')).toBe(
     'connected',
   )
+})
+
+it('polls every 2 s while a server connects, then every minute', async ({ onTestFinished }) => {
+  vi.useFakeTimers()
+  onTestFinished(() => {
+    store.stop()
+    vi.useRealTimers()
+  })
+  harness.servers = [{ name: 'example', source: 'user', state: 'connecting', transport: 'stdio' }]
+  store.start()
+  harness.sources[0].open()
+  await reads.get(StatusAction.extension, StatusAction.name, null, ROOT).refetch()
+  renderSolid(() => <Chip />)
+  const polls = () => harness.requests.filter((request) => request.name === 'status').length
+  await vi.advanceTimersByTimeAsync(2_100)
+  flush()
+  const connecting = polls()
+  await vi.advanceTimersByTimeAsync(4_000)
+  flush()
+  expect(polls()).toBe(connecting + 2)
+
+  harness.servers = [{ ...harness.servers[0], state: 'connected', tools: 1 }]
+  await vi.advanceTimersByTimeAsync(2_100)
+  flush()
+  const settled = polls()
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(polls()).toBe(settled)
+  await vi.advanceTimersByTimeAsync(30_100)
+  expect(polls()).toBe(settled + 1)
 })

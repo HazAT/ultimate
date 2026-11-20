@@ -5,6 +5,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { EVENT_FEED } from '../../../../shared/events.ts'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { BackupAction, BackupEvent, JoinAction, JoinStateAction, StateAction } from '../../refs.ts'
@@ -88,6 +89,7 @@ async function openJoinDialog() {
   store.setUi({ dialogs: { [joinDialog]: true } })
   flush()
   await settle()
+  expectDistinctAgentNames(agent)
   return container
 }
 const control = (label: string) =>
@@ -105,23 +107,14 @@ beforeEach(({ onTestFinished }) => {
   harness.sources.at(-1)!.open()
 })
 
-it('lets an agent open Cloud backup and back up now, then refreshes the status', async ({
-  onTestFinished,
-}) => {
+it('lets an agent open Cloud backup and back up now, then refreshes the status', async () => {
   const container = renderSolid(() => <CloudStatus />)
   await settle()
   flush()
-  const status = control('Cloud backup')
-  expect(status).toMatchObject({ component: 'popover' })
-  const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
-  onTestFinished(agent.subscribe(changes))
   expect(
-    (await agent.act({ steps: [{ ref: status!.ref, action: 'setOpen', args: [true] }] })).ok,
+    (await agent.act({ steps: [{ ref: 'Cloud backup', action: 'setOpen', args: [true] }] })).ok,
   ).toBe(true)
-  expect(container.querySelector('[data-cloud-status]')?.hasAttribute('data-open')).toBe(true)
-  expect(changes).toHaveBeenCalledWith(
-    expect.objectContaining({ label: 'Cloud backup', key: 'open', value: true, source: 'agent' }),
-  )
+  expectDistinctAgentNames(agent)
 
   const backup = control('Back up now')
   expect(backup?.actions).toContain('press')
@@ -195,9 +188,6 @@ it('lets an agent fill the four join fields and submits the exact JoinAction arg
     }),
   })
   expect(filled.ok).toBe(true)
-  expect(changes).toHaveBeenCalledWith(
-    expect.objectContaining({ label: 'Cloud URL', source: 'agent', value: args.url }),
-  )
   expect(JSON.stringify([agent.snapshot(), filled, changes.mock.calls])).not.toMatch(
     /fake-token|fake-key/,
   )

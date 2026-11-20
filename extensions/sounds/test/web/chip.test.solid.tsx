@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
@@ -63,9 +64,10 @@ it('lets an agent open Sounds, set the variant and volume, and turn sounds off',
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
   const opened = await agent.act({
-    steps: [{ ref: control('Sounds', 'popover').ref, action: 'setOpen', args: [true] }],
+    steps: [{ ref: control('Sound settings', 'popover').ref, action: 'setOpen', args: [true] }],
   })
   expect(opened).toMatchObject({ ok: true })
+  expectDistinctAgentNames(agent)
   const variant = control('Variant', 'segmented-control')
   expect(variant).toMatchObject({ value: 'chiptune' })
   const orchestra = variant.items?.find((item) => item.label === 'Orchestra')

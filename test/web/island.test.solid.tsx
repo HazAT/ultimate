@@ -58,28 +58,6 @@ it('mounts a Solid component in React with its extension and conversation, and d
   container.remove()
 })
 
-it('hands React props to the Solid component and updates them without a remount', () => {
-  const mounted = vi.fn<() => void>()
-  const Count = island((props: { count: number }) => {
-    onSettled(mounted)
-    return <span>{props.count}</span>
-  })
-  const container = document.createElement('div')
-  document.body.append(container)
-  const react = createRoot(container)
-
-  act(() => react.render(h(Count, { count: 1 })))
-  expect(container.textContent).toBe('1')
-
-  act(() => react.render(h(Count, { count: 2 })))
-  flush()
-  expect(container.textContent).toBe('2')
-  expect(mounted).toHaveBeenCalledOnce()
-
-  act(() => react.unmount())
-  container.remove()
-})
-
 it('drops a prop React stops passing, and a scope remount starts from the props of that render', () => {
   const mounts = vi.fn<() => void>()
   const setup: string[] = []
@@ -108,9 +86,13 @@ it('drops a prop React stops passing, and a scope remount starts from the props 
 
   render(1, { note: 'a', toString: stale })
   expect(container.textContent).toBe('1:a+stale')
+  render(1, { note: 'updated' })
+  flush()
+  expect(container.textContent).toBe('1:updated')
   render(1, {})
   flush()
   expect(container.textContent).toBe('1:none')
+  expect(mounts).toHaveBeenCalledOnce()
 
   render(2, { note: 'b' })
   expect(container.textContent).toBe('2:b')

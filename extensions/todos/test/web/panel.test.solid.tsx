@@ -7,6 +7,7 @@ import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { Todo } from '../../refs.ts'
 
@@ -123,6 +124,7 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   expect(container.querySelector('[data-todo-inbox]')?.textContent).toContain('Inbox · 2')
   expect(container.textContent).toContain('2 in Inbox')
 
+  expectDistinctAgentNames(agent)
   const ticked = await agent.act({
     steps: [
       {

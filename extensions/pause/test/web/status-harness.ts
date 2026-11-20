@@ -51,8 +51,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { store } from '../../../../web/src/sdk/client.ts'
-import { PauseDoc } from '../../refs.ts'
+import { ROOT } from '../../../../web/src/sdk/api.ts'
+import { reads, store } from '../../../../web/src/sdk/client.ts'
+import { PauseDoc, StateAction } from '../../refs.ts'
 
 export const approval = { given: true }
 export const agent = createAgent({ allow: (step) => !step.confirm || approval.given })
@@ -76,12 +77,11 @@ export const tick = async (ms = 10) => {
   await vi.advanceTimersByTimeAsync(ms)
   flush()
 }
+export function refetchState() {
+  return reads.get(StateAction.extension, StateAction.name, null, ROOT).refetch()
+}
 export async function act(label: string, action: string, args?: unknown[], ok = true) {
-  const entry = agent
-    .snapshot()
-    .find((item) => item.label === label && item.actions.includes(action))
-  expect(entry).toBeDefined()
-  const result = agent.act({ steps: [{ ref: entry!.ref, action, args }] })
+  const result = agent.act({ steps: [{ ref: label, action, args }] })
   await tick(100)
   expect(await result).toMatchObject({ ok })
 }

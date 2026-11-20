@@ -46,25 +46,54 @@ export const tick = async (ms = 10) => {
   await vi.advanceTimersByTimeAsync(ms)
   flush()
 }
-export function system(web: Partial<SystemInfo['web']> = {}, id = 'abc1234new', coreStale = false) {
+export function system({
+  coreStale = false,
+  left,
+}: { coreStale?: boolean; left?: SystemInfo['web']['left'] } = {}) {
+  const root = '/projects/ultimate'
+  const at = '2026-01-01T00:00:00Z'
   harness.sources[0].send('system', {
-    code: { coreStale },
-    process: { generation: 3 },
-    web: { id: 'browser-build', changed: [], ...web },
+    code: { ultimateRoot: root, branch: 'main', sha: 'abc1234new', dirty: false, coreStale },
+    process: { pid: 100, node: 'v26', startedAt: at, generation: 3, url: 'http://localhost' },
+    web: { id: 'browser-build', changed: [], left },
     build: {
-      id,
+      id: 'abc1234new',
+      at,
       generation: 3,
+      changed: [],
       core: 'core-long-hash',
+      lib: 'lib-long-hash',
       extensions: { self: 'self-long-hash' },
       history: [],
     },
-  } as unknown as SystemInfo)
+    machine: {
+      hostname: 'test-host',
+      home: '/home/user',
+      platform: 'linux',
+      release: 'test',
+      arch: 'x64',
+      cpuModel: 'test',
+      cpuCount: 1,
+      totalMemory: 0,
+      freeMemory: 0,
+      user: 'user',
+    },
+    access: { origins: [] },
+    persistence: { kind: 'sqlite', path: ':memory:', sizeBytes: 0, walBytes: 0 },
+    execution: { kind: 'node-local', defaultCwd: root },
+    project: { root, name: 'ultimate', config: false, decision: null, settings: {} },
+    extensionDiagnostics: [],
+    extensions: [],
+    skills: [],
+    skillDiagnostics: [],
+    contextFiles: [],
+  })
   flush()
 }
 export async function act(label: string, action: string, args?: unknown[], ok = true) {
   const entry = agent
     .snapshot()
-    .find((item) => item.label === label && item.actions.includes(action))
+    .find((item) => !item.offPage && item.label === label && item.actions.includes(action))
   expect(entry).toBeDefined()
   const result = agent.act({ steps: [{ ref: entry!.ref, action, args }] })
   await tick(100)
