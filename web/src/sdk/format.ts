@@ -52,7 +52,6 @@ export function elidePath(path: string, max = 40): string {
   return `${head}/…/${tail}`
 }
 
-/** A project folder as people read it: `my-app` → `My App`. */
 export function prettyName(folder: string) {
   return folder
     .split(/[-_]+/)

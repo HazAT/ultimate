@@ -59,13 +59,7 @@ export {
   StatusLine,
 } from '../app/primitives.tsx'
 /** The title bar's project chip, for an extension that replaces it in `titlebar.project` with a menu. */
-export {
-  prettyName,
-  ProjectChip,
-  projectHeading,
-  projectTitle,
-  Wordmark,
-} from '../app/titlebar.tsx'
+export { ProjectChip, projectHeading, projectTitle, Wordmark } from '../app/titlebar.tsx'
 /** Isolates another extension's component you render, such as a document renderer: it throws into an error card. */
 export { ExtensionBoundary } from '../app/boundary.tsx'
 /** The transcript's and composer's reading column classes, for a card that sits in that column. */
@@ -155,6 +149,7 @@ export {
   formatTime,
   formatTokens,
   plural,
+  prettyName,
   shortenPath,
 } from './format.ts'
 /** Class names joined, Tailwind conflicts resolved: `cn('px-2', active && 'bg-accent')`. */
