@@ -6,6 +6,7 @@ import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { RunningProject } from '../../refs.ts'
+import { parseConversationId } from '../../../../lib/ids.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -15,6 +16,7 @@ const harness = vi.hoisted(() => ({
   projects: [] as RunningProject[],
   slowPinReads: false,
   failPinWrites: false,
+  failUnpins: false,
   failPinReads: false,
   release: [] as (() => void)[],
   wide: true,
@@ -33,7 +35,10 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     harness.calls.push(action)
     if (action === 'list') return Response.json({ result: harness.projects })
     const { args } = JSON.parse(init!.body as string) as { args: { pinned?: boolean } }
-    if (args.pinned !== undefined && harness.failPinWrites)
+    if (
+      args.pinned !== undefined &&
+      (harness.failPinWrites || (harness.failUnpins && !args.pinned))
+    )
       return Response.json({ error: 'pin file is read-only' }, { status: 500 })
     if (args.pinned === undefined && harness.failPinReads)
       return Response.json({ error: 'pin file is unreadable' }, { status: 500 })
@@ -102,6 +107,7 @@ beforeEach(async () => {
   harness.pinned = false
   harness.slowPinReads = false
   harness.failPinWrites = false
+  harness.failUnpins = false
   harness.failPinReads = false
   resize(true)
   harness.projects = [
@@ -231,6 +237,32 @@ it('falls back to the stored pin when writing it fails', async () => {
   expect(pinnedOpen(container)).toBe(true)
 })
 
+it('holds a pressed control until its write settles, so a second press waits for the first', async () => {
+  const container = await mount()
+  await openRail(container)
+  const button = pinButton(container, 'Pin the projects rail open')
+  button.click()
+  button.click()
+  await advance(10)
+  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
+  expect(pinnedOpen(container)).toBe(true)
+  await closeRail(container)
+})
+
+it('reads the machine-wide pin once, whichever conversation is shown', async () => {
+  const container = await mount()
+  harness.failPinReads = true
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  await closeRail(container)
+  const reads = calls('pin')
+  store.show(parseConversationId(42))
+  await advance(100)
+  expect(calls('pin')).toBe(reads)
+  expect(pinnedOpen(container)).toBe(true)
+})
+
 it('polls the list every 4 s and the shared pin every 30 s, only while the tab is shown', async () => {
   visibility = 'hidden'
   harness.projects = harness.projects.slice(0, 1)
@@ -253,7 +285,9 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   expect(calls('list')).toBe(hidden[0] + 1)
   await advance(1)
   expect(calls('list')).toBe(hidden[0] + 2)
-  await advance(25_999)
+  await advance(4_000)
+  expect(calls('list')).toBe(hidden[0] + 3)
+  await advance(21_999)
   expect(calls('pin')).toBe(hidden[1] + 1)
   await advance(1)
   expect(calls('pin')).toBe(hidden[1] + 2)

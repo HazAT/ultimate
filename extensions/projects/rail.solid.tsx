@@ -3,7 +3,16 @@ import { Pin, PinOff } from '@lucide/solid'
 import { createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
-import { api, cn, keepLast, prettyName, useAction, useExtensions, useViewport } from '@/sdk/solid'
+import {
+  ROOT,
+  api,
+  cn,
+  keepLast,
+  prettyName,
+  useAction,
+  useExtensions,
+  useViewport,
+} from '@/sdk/solid'
 import { deadline, debounce } from '../../lib/timers.ts'
 import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.solid.tsx'
 import { shownPort, target } from './links.ts'
@@ -41,8 +50,6 @@ export function OpeningBar() {
     </Show>
   )
 }
-
-type Write = { pinned: boolean; savedOver?: { answer: { pinned: boolean } | undefined } }
 
 const [visible, setVisible] = createRoot(() => createSignal(true))
 const shownNow = () => document.visibilityState === 'visible'
@@ -84,26 +91,22 @@ function ProjectsRail() {
   const shared = useAction(
     PinAction,
     {},
-    { onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
+    { conversation: ROOT, onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
   )
   refetchWhenShown(list, shared)
-  const [write, setWrite] = createSignal<Write>()
+  const [writing, setWriting] = createSignal<boolean>()
+  const [saved, setSaved] = createSignal<{ pinned: boolean; over: unknown }>()
   const pinned = () => {
-    const pending = write()
+    const ack = saved()
     const answer = shared.data()
-    const answeredSince = pending?.savedOver && answer !== pending.savedOver.answer
-    return pending && !answeredSince ? pending.pinned : (answer?.pinned ?? false)
+    return writing() ?? (ack && answer === ack.over ? ack.pinned : (answer?.pinned ?? false))
   }
   const pin = async (next: boolean) => {
-    const pending: Write = { pinned: next }
-    setWrite(pending)
-    const saved = await api.action(PinAction, { pinned: next }).then(() => true, keepLast)
-    if (write() !== pending) return
-    if (!saved) {
-      setWrite()
-      return
-    }
-    setWrite({ pinned: next, savedOver: { answer: shared.data() } })
+    setWriting(next)
+    await api
+      .action(PinAction, { pinned: next })
+      .then((answer) => setSaved({ pinned: answer.pinned, over: shared.data() }), keepLast)
+    setWriting()
     await shared.refetch()
   }
 
