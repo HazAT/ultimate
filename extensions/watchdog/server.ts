@@ -35,8 +35,17 @@ async function isTally(tx: Tx, id: ConversationId) {
   return (await tx.doc(Tally, id)).since !== undefined
 }
 
-const TEMPORARY_FAILURE_RETRY_DELAY_MS = 60_000
+export const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000]
 export const FAILURE_LIMIT = 20
+
+const continuedFailure = (input: SubmissionRecord) =>
+  input.requestId?.startsWith('watchdog-retry:')
+    ? Number(input.requestId.slice('watchdog-retry:'.length))
+    : undefined
+const retriesOf = (input: { retried: boolean; retries?: number }) =>
+  input.retries ?? (input.retried ? 1 : 0)
+const retryDelay = (retries: number) =>
+  RETRY_DELAYS_MS[Math.min(retries, RETRY_DELAYS_MS.length - 1)]
 
 const Reported = defineDoc<{ failures: ReportedFailure[] }>({
   kind: 'watchdog.reported',
@@ -140,6 +149,26 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
   }
 }
 
+async function retriesBefore(tx: Tx, recipient: ConversationId, runInputs: SubmissionRecord[]) {
+  const continued = runInputs.map(continuedFailure).find((id) => id !== undefined)
+  if (continued === undefined) return 0
+  if (!Number.isInteger(continued)) return 1
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanTasks(
+      { conversationId: recipient, kind: 'watchdog.failure' },
+      500,
+      cursor,
+    )
+    const previous = page.items.find(
+      (task) => (task.input as { failedTask?: number }).failedTask === continued,
+    )
+    if (previous) return retriesOf(previous.input as { retried: boolean; retries?: number }) + 1
+    cursor = page.next
+  } while (cursor)
+  return 1
+}
+
 type Generation = TaskRecord<JsonValue, JsonValue, JsonValue>
 const sharedOrderTaskEntryBoundary = (id: Generation['id']) => parseEntryId(Number(id))
 
@@ -210,27 +239,39 @@ export default function watchdog(host: ExtensionHost) {
   >({
     name: 'watchdog.failure',
     version: 1,
-    initial: (input) => ({ phase: input.temporary && !input.retried ? 'wait' : 'report' }),
+    initial: (input) => ({
+      phase: input.temporary && retriesOf(input) < RETRY_DELAYS_MS.length ? 'wait' : 'report',
+    }),
     phases: {
       wait: (task, runtime, ctx) => runtime.sleepUntil(task.input.until, { phase: 'retry' }, ctx),
       retry: async (task, runtime, ctx) => {
         const { conversation, failedTask, error } = task.input
+        const request = `watchdog-retry:${failedTask}`
         const child = (await runtime.conversation(conversation, ctx))!
         let retryAlreadySubmitted = false
-        let busy = false
+        let movedOn = false
         await runtime.commit(async (tx) => {
-          retryAlreadySubmitted = !!(await tx.submissionByRequest(
-            child.id,
-            `watchdog-retry:${failedTask}`,
-          ))
-          busy = (await tx.doc(LiveDoc, child.id)).run !== undefined
+          retryAlreadySubmitted = !!(await tx.submissionByRequest(child.id, request))
+          const newest = (
+            await tx.scanTasks(
+              {
+                conversationId: child.id,
+                kind: GenerationTask.definition.name,
+                order: 'descending',
+              },
+              1,
+            )
+          ).items[0]
+          movedOn =
+            (await tx.doc(LiveDoc, child.id)).run !== undefined ||
+            (newest !== undefined && newest.id > failedTask)
         }, ctx)
-        if (!retryAlreadySubmitted && !busy)
+        if (!retryAlreadySubmitted && !movedOn)
           await child.submit(
             {
               type: 'input',
               content: `Your previous run stopped with a provider error (${error}). Continue from where you left off; check what you already did and do not redo it.`,
-              requestId: `watchdog-retry:${failedTask}`,
+              requestId: request,
               whenBusy: 'followUp',
             },
             ctx,
@@ -238,17 +279,18 @@ export default function watchdog(host: ExtensionHost) {
         await runtime.commit(() => terminal, ctx)
       },
       report: async (task, runtime, ctx) => {
-        const { conversation, title, error, step, hint, retried, failedTask, recipient } =
-          task.input
+        const { conversation, title, error, step, hint, failedTask, recipient } = task.input
+        const retries = retriesOf(task.input)
         const data: Failure = {
           conversation,
           title,
           error,
           step,
-          retried,
+          retried: retries > 0,
+          ...(retries > 1 ? { retries } : {}),
           ...(hint ? { hint } : {}),
         }
-        const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
+        const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retries ? ` After ${retries === 1 ? 'one automatic retry' : `${retries} automatic retries`}.` : ''}${hint ? ` ${hint}.` : ''}`
         if (recipient === conversation && !task.input.delivery) {
           host.notice(content)
         } else {
@@ -268,7 +310,7 @@ export default function watchdog(host: ExtensionHost) {
           const reported = await tx.doc(Reported, ROOT_CONVERSATION_ID)
           reported.failures.push({
             ...data,
-            at: task.input.until - TEMPORARY_FAILURE_RETRY_DELAY_MS,
+            at: task.input.until - retryDelay(retries),
           })
           reported.failures.sort((a, b) => b.at - a.at)
           reported.failures.splice(FAILURE_LIMIT)
@@ -319,7 +361,7 @@ export default function watchdog(host: ExtensionHost) {
           retried: false,
           temporary: false,
           delivery: true,
-          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          until: (task.endedAt ?? Date.now()) + retryDelay(0),
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )
@@ -377,6 +419,7 @@ export default function watchdog(host: ExtensionHost) {
       if (task.state.status !== 'terminal' || task.state.outcome.status !== 'failed') return
       const error = task.state.outcome.error.message
       const { hint, temporary } = diagnose(error, info.assistant)
+      const retries = await retriesBefore(tx, recipient, runInputs)
       await tx.createTask(
         Watchdog,
         {
@@ -387,9 +430,10 @@ export default function watchdog(host: ExtensionHost) {
           error,
           step: info.step,
           ...(hint ? { hint } : {}),
-          retried: runInputs.some((input) => input.requestId?.startsWith('watchdog-retry:')),
+          retried: retries > 0,
+          retries,
           temporary,
-          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          until: (task.endedAt ?? Date.now()) + retryDelay(retries),
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )

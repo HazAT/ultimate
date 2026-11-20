@@ -27,7 +27,11 @@ export default defineWebExtension({
             <p className="font-mono text-[11px] text-muted-foreground">last step: {failure.step}</p>
             {failure.hint && <MessageResponse>{failure.hint}</MessageResponse>}
             {failure.retried && (
-              <p className="text-[11px] text-muted-foreground">after one automatic retry</p>
+              <p className="text-[11px] text-muted-foreground">
+                {failure.retries
+                  ? `after ${failure.retries} automatic retries`
+                  : 'after one automatic retry'}
+              </p>
             )}
           </div>
         </section>
