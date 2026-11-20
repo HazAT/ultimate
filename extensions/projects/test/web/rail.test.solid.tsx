@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
   slowPinReads: false,
   failPinWrites: false,
   failUnpins: false,
+  rejected: [] as boolean[],
   slowWrites: [] as (() => void)[],
   holdWrites: false,
   failPinReads: false,
@@ -40,8 +41,10 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (
       args.pinned !== undefined &&
       (harness.failPinWrites || (harness.failUnpins && !args.pinned))
-    )
+    ) {
+      harness.rejected.push(args.pinned)
       return Response.json({ error: 'pin file is read-only' }, { status: 500 })
+    }
     if (args.pinned === undefined && harness.failPinReads)
       return Response.json({ error: 'pin file is unreadable' }, { status: 500 })
     if (args.pinned !== undefined && harness.holdWrites)
@@ -112,6 +115,7 @@ beforeEach(async () => {
   harness.slowPinReads = false
   harness.failPinWrites = false
   harness.failUnpins = false
+  harness.rejected.length = 0
   harness.holdWrites = false
   harness.slowWrites.length = 0
   harness.failPinReads = false
@@ -266,6 +270,7 @@ it('keeps an acknowledged pin when the unpin after it fails', async () => {
   pinButton(container, 'Unpin the projects rail').click()
   await advance(10)
   await closeRail(container)
+  expect(harness.rejected).toEqual([false])
   expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
   expect(pinnedOpen(container)).toBe(true)
 })
