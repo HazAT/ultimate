@@ -608,7 +608,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
             <Show when={!props.loading && visible().length === 0 && !partial()}>
               <Show when={id !== undefined} fallback={<EmptyState />}>
                 <RenderedPoint
-                  core={() => <EmptyState />}
+                  staticCore={() => <EmptyState />}
                   input={{ conversation: id! }}
                   point={EmptyTranscript}
                 />

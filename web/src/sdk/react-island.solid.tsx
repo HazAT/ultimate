@@ -149,9 +149,9 @@ export function ReactSlot(props: { name: SlotName }) {
 export function RenderedPoint<Input extends object>(props: {
   point: Point<Input & { core: ReactNode }, ReactNode>
   input: Input
-  core: () => JSX.Element
+  staticCore: () => JSX.Element
 }) {
-  const core = solidHost(props.core)
+  const core = solidHost(props.staticCore)
   return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 
