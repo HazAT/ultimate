@@ -58,6 +58,7 @@ export function createUiState(
   let streamSnapshot: UiValues = {}
   const pending: PendingOp[] = []
   const unconfirmedSentWrites = new Map<string, SentWrite>()
+  const rejectedAppWrites = new Map<string, JsonValue | undefined>()
   const tabOnly = options.tabOnly ?? (() => false)
   let tabOnlyAtLoad: UiValues | undefined
   const tabOnlyWrites = new Map<string, JsonValue | undefined>()
@@ -148,6 +149,7 @@ export function createUiState(
       },
       (error: unknown) => {
         if (sentInServerEpoch !== serverProcessEpoch) return
+        for (const { key, value, who } of ops) if (who === 'app') rejectedAppWrites.set(key, value)
         for (const [key, entry] of unconfirmedSentWrites)
           if (entry.batch === batch) unconfirmedSentWrites.delete(key)
         settled()
@@ -166,6 +168,8 @@ export function createUiState(
       return
     }
     const who = writerNow()
+    if (who !== 'app') rejectedAppWrites.delete(key)
+    else if (rejectedAppWrites.has(key) && same(rejectedAppWrites.get(key), value)) return
     const newest = pending.at(-1)
     if (newest?.key === key && newest.who === who) newest.value = value
     else pending.push({ key, value, who, seq: ++lastSeq })
@@ -189,6 +193,8 @@ export function createUiState(
       if (next === streamSnapshot) return
       const rev = revision(next)
       if (rev < newestStreamRevision) return
+      for (const key of rejectedAppWrites.keys())
+        if (!same(next[key], streamSnapshot[key])) rejectedAppWrites.delete(key)
       streamSnapshot = next
       tabOnlyAtLoad ??= Object.fromEntries(Object.entries(next).filter(([key]) => tabOnly(key)))
       newestStreamRevision = rev
@@ -199,6 +205,7 @@ export function createUiState(
 
     restarted() {
       serverProcessEpoch++
+      rejectedAppWrites.clear()
       newestStreamRevision = 0
       inFlight = undefined
       awaitingRestartSnapshot = true

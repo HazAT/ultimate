@@ -300,6 +300,35 @@ describe('durable UI state', () => {
     expect(values(requests[1].change)).toEqual({ panel: 'second' })
   })
 
+  it('never resends an app write the server refused until the key changes or someone writes it', async () => {
+    const { state, requests, start, other } = setup()
+    start({ selected: 'b' })
+    writingAs('app', () => state.set('selected', 'a'))
+    await wait()
+    requests[0].fail(new Error('Invalid UI value'))
+    await wait()
+    expect(state.get('selected')).toBe('b')
+    writingAs('app', () => state.set('selected', 'a'))
+    await wait()
+    expect(requests).toHaveLength(1)
+
+    state.receive(other({ unrelated: 1 }))
+    writingAs('app', () => state.set('selected', 'a'))
+    await wait()
+    expect(requests).toHaveLength(1)
+
+    state.receive(other({ selected: 'c' }))
+    writingAs('app', () => state.set('selected', 'a'))
+    await wait()
+    expect(requests).toHaveLength(2)
+    requests[1].fail(new Error('Invalid UI value'))
+    await wait()
+    state.set('selected', 'a')
+    await wait()
+    expect(requests).toHaveLength(3)
+    expect(requests[2].change.ops[0]).toMatchObject({ key: 'selected', value: 'a', who: 'person' })
+  })
+
   it('keeps a detached page’s writes to itself: applied, kept, never sent', async () => {
     // A page an agent drives: its `?conversation=1` must not move the user's tabs.
     const state = createUiState(undefined, { delayMs: 5 })
