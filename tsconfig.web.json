@@ -40,6 +40,8 @@
     "extensions/projects/links.ts",
     "extensions/sidebar/colour.ts",
     "extensions/cloud/types.ts",
+    "extensions/conversations/mark-style.ts",
+    "extensions/conversations/points.ts",
     "extensions/conversations/types.ts",
     "extensions/conversations/visible.ts",
     "extensions/dream/stage.ts",

@@ -5,6 +5,7 @@ import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import type { EntryRecord, ToolCallView } from '@/sdk'
 import { ConversationScope, events, ROOT } from '@/sdk/solid'
+import { provide } from '@/sdk/types.ts'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
@@ -13,6 +14,7 @@ import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { writerNow } from '../../../../web/src/sdk/writer.ts'
 import { WorkspaceCall } from '../../call.solid.tsx'
 import { LandingNote } from '../../landing-note.solid.tsx'
+import { Review } from '../../landing-points.ts'
 import { LandingCard } from '../../landing.solid.tsx'
 import { WorkspacesDoc } from '../../refs.ts'
 import type { LanderStep, WorkspaceIndex } from '../../types.ts'
@@ -210,17 +212,31 @@ it('lets an agent open the review range, expand the landing state, and switch to
   } as unknown as EntryRecord
   const container = renderSolid(() => <LandingNote core={null} entry={entry} />)
   await settle()
-  const control = (label: string) =>
-    agent.snapshot().find((item) => !item.offPage && item.label === label)!.ref
-  await expectDistinctAgentNames(agent)
-  const requests: { data: unknown; source: string | undefined }[] = []
-  onTestFinished(events.on('review:open', (data) => requests.push({ data, source: writerNow() })))
-  expect(
-    await agent.act({
-      steps: [{ ref: control('Review landing #89: 1234567...abcdef0'), action: 'press' }],
+  const findControl = (label: string) =>
+    agent.snapshot().find((item) => !item.offPage && item.label === label)
+  const reviewLabel = 'Review landing #89: 1234567...abcdef0'
+  expect(findControl(reviewLabel)).toBeUndefined()
+  expect(findControl('Compare landing #89: 1234567...abcdef0 on DiffsHub')).toBeDefined()
+
+  const open = vi.fn<(spec: string, source: string) => void>()
+  await registry.setLoaders({
+    'extensions/local-review/web.tsx': async () => ({
+      default: { provides: [provide(Review, (spec) => () => open(spec, writerNow()))] },
     }),
-  ).toMatchObject({ ok: true })
-  expect(requests).toEqual([{ data: { spec: '1234567...abcdef0' }, source: 'agent' }])
+  })
+  await settle()
+  await expectDistinctAgentNames(agent)
+  const emitted = vi.fn<() => void>()
+  onTestFinished(events.on('review:open', emitted))
+  const control = (label: string) => findControl(label)!.ref
+  expect(findControl(reviewLabel)).toBeDefined()
+  expect(
+    await agent.act({ steps: [{ ref: control(reviewLabel), action: 'press' }] }),
+  ).toMatchObject({
+    ok: true,
+  })
+  expect(open).toHaveBeenCalledExactlyOnceWith('1234567...abcdef0', 'agent')
+  expect(emitted).not.toHaveBeenCalled()
   expect(
     await agent.act({
       steps: [{ ref: control('State at landing #89'), action: 'setOpen', args: [true] }],

@@ -50,7 +50,7 @@ export function Address(props: {
       </Match>
       <Match when={props.mark && name() === 'ultimate'}>
         <span class="flex items-center gap-1.5" title="@ultimate">
-          <AgentMark name="ultimate" size="sm" />
+          <AgentMark name="ultimate" />
           <Show
             when={ultimate().brand}
             fallback={<span class="font-sans text-[12px] font-semibold">{ultimate().title}</span>}
@@ -68,7 +68,7 @@ export function Address(props: {
         {(agent) => (
           <span class="flex items-center gap-1.5">
             <Show when={props.mark}>
-              <AgentMark name={agent()} size="sm" />
+              <AgentMark name={agent()} />
             </Show>
             @{agent()}
           </span>

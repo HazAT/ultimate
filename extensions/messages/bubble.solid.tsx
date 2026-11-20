@@ -120,7 +120,7 @@ export function BubbleHeader(props: {
       >
         {(agent) => (
           <span class="flex shrink-0 items-center gap-2" title={`@${agent()}`}>
-            <AgentMark name={agent()} size="sm" />
+            <AgentMark name={agent()} />
             <span
               class={cn('font-sans text-[13px] font-semibold tracking-[-0.005em]', accent().name)}
             >

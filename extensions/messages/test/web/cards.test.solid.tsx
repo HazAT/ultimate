@@ -140,7 +140,7 @@ it('opens the delivered message in the recipient conversation from the agent con
 })
 
 it('names each bubble of one codemode script by its board message, so an agent can copy either', async () => {
-  const entry = {
+  const script = {
     id: parseEntryId(54),
     conversationId: sender,
     kind: 'pi.assistant',
@@ -148,9 +148,9 @@ it('names each bubble of one codemode script by its board message, so an agent c
   } as unknown as EntryRecord
   renderSolid(() => (
     <>
-      <Bubble entry={entry} from={sender} message={message} running={false} text="One" />
+      <Bubble entry={script} from={sender} message={message} running={false} text="One" />
       <Bubble
-        entry={entry}
+        entry={script}
         from={sender}
         message={{ ...message, id: 2 }}
         running={false}

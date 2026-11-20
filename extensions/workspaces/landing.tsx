@@ -4,7 +4,8 @@ import { ArrowUpRightIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { api, definePoint, plural, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import { api, plural, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import { Review } from './landing-points.ts'
 import { GithubAction, RepoAction } from './refs.ts'
 import type { GithubRepo } from './refs.ts'
 
@@ -67,8 +68,6 @@ export function useProjectRepo() {
   }, [])
   return value
 }
-
-export const Review = definePoint<string, (() => void) | undefined>('workspaces.review')
 
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
