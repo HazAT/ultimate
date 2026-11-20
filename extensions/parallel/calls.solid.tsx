@@ -231,11 +231,27 @@ function Notes(props: { results?: Results }) {
   )
 }
 
+const webAddress = (url: string) => {
+  const parsed = URL.parse(url)
+  return parsed && /^https?:$/.test(parsed.protocol) ? parsed.href : undefined
+}
+
 function Link(props: { url: string; class: string; children: JSX.Element }) {
   return (
-    <a class={props.class} href={props.url} rel="noreferrer" target="_blank" title={props.url}>
-      {props.children}
-    </a>
+    <Show
+      when={webAddress(props.url)}
+      fallback={
+        <span class={props.class} title={props.url}>
+          {props.children}
+        </span>
+      }
+    >
+      {(href) => (
+        <a class={props.class} href={href()} rel="noreferrer" target="_blank" title={props.url}>
+          {props.children}
+        </a>
+      )}
+    </Show>
   )
 }
 
