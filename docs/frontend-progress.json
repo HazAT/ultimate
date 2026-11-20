@@ -4355,6 +4355,346 @@
       "bundleGzipKB": 3012,
       "entryGzipKB": 458,
       "summary": "Step-back after 0.8: a Solid ConversationRef contract (self's toast moves), kit Form, two lint rules, agent-name helper, 38→29 Solid test files, skill rewrite. Measured with a useAction timeout that review then dropped (status-line keeps its poll); the numbers barely move without it"
+    },
+    {
+      "switch": {
+        "cold": 649,
+        "warm": 190
+      },
+      "stream": {
+        "median": 92,
+        "p95": 94,
+        "max": 592,
+        "taskMs": 4.7,
+        "events": 23
+      },
+      "previews": {
+        "scenarios": {
+          "keep-warm": {
+            "selectors": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 2,
+              "kb": 129,
+              "tokens": 3461,
+              "ms": 245,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 1,
+              "tokens": 351,
+              "ms": 110,
+              "ok": true
+            }
+          },
+          "pause": {
+            "selectors": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 2,
+              "kb": 133,
+              "tokens": 3461,
+              "ms": 254,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 2,
+              "tokens": 511,
+              "ms": 132,
+              "ok": true
+            }
+          },
+          "setup-read": {
+            "selectors": {
+              "calls": 2,
+              "steps": 1,
+              "screenshots": 2,
+              "kb": 143,
+              "tokens": 3459,
+              "ms": 183,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 1,
+              "tokens": 371,
+              "ms": 59,
+              "ok": true
+            }
+          }
+        }
+      },
+      "commit": "e552fc46",
+      "sha": "e552fc469d477d1a616a21a1278917f1fdb83556",
+      "label": "0.9 E",
+      "date": "2026-11-20",
+      "committedAt": 1795143338,
+      "lines": {
+        "total": 51645,
+        "solid": 6217,
+        "react": 45428
+      },
+      "perExtension": {
+        "activity": {
+          "react": 547,
+          "solid": 0
+        },
+        "agent": {
+          "react": 150,
+          "solid": 0
+        },
+        "attachments": {
+          "react": 17,
+          "solid": 0
+        },
+        "automations": {
+          "react": 2367,
+          "solid": 185
+        },
+        "browser": {
+          "react": 229,
+          "solid": 0
+        },
+        "claude-code": {
+          "react": 22,
+          "solid": 61
+        },
+        "cloud": {
+          "react": 9,
+          "solid": 583
+        },
+        "codemode": {
+          "react": 246,
+          "solid": 0
+        },
+        "coding-tools": {
+          "react": 745,
+          "solid": 0
+        },
+        "context": {
+          "react": 798,
+          "solid": 0
+        },
+        "conversations": {
+          "react": 626,
+          "solid": 52
+        },
+        "diagrams": {
+          "react": 14,
+          "solid": 0
+        },
+        "documents": {
+          "react": 139,
+          "solid": 0
+        },
+        "dream": {
+          "react": 1545,
+          "solid": 0
+        },
+        "entries": {
+          "react": 2,
+          "solid": 0
+        },
+        "fast": {
+          "react": 5,
+          "solid": 58
+        },
+        "goal": {
+          "react": 533,
+          "solid": 0
+        },
+        "health": {
+          "react": 2,
+          "solid": 0
+        },
+        "inbox": {
+          "react": 665,
+          "solid": 0
+        },
+        "info": {
+          "react": 554,
+          "solid": 89
+        },
+        "instance": {
+          "react": 268,
+          "solid": 94
+        },
+        "keep-warm": {
+          "react": 5,
+          "solid": 87
+        },
+        "lineage": {
+          "react": 1252,
+          "solid": 0
+        },
+        "mcp": {
+          "react": 9,
+          "solid": 163
+        },
+        "messages": {
+          "react": 1879,
+          "solid": 0
+        },
+        "models": {
+          "react": 1874,
+          "solid": 0
+        },
+        "notices": {
+          "react": 3,
+          "solid": 54
+        },
+        "onboarding": {
+          "react": 1790,
+          "solid": 0
+        },
+        "parallel": {
+          "react": 380,
+          "solid": 0
+        },
+        "pause": {
+          "react": 208,
+          "solid": 294
+        },
+        "phase": {
+          "react": 82,
+          "solid": 0
+        },
+        "plan": {
+          "react": 1034,
+          "solid": 0
+        },
+        "projects": {
+          "react": 5,
+          "solid": 355
+        },
+        "prompt": {
+          "react": 61,
+          "solid": 0
+        },
+        "push": {
+          "react": 8,
+          "solid": 256
+        },
+        "questions": {
+          "react": 1190,
+          "solid": 0
+        },
+        "read-aloud": {
+          "react": 279,
+          "solid": 0
+        },
+        "recall": {
+          "react": 89,
+          "solid": 0
+        },
+        "reel": {
+          "react": 408,
+          "solid": 0
+        },
+        "review": {
+          "react": 1325,
+          "solid": 0
+        },
+        "secrets": {
+          "react": 25,
+          "solid": 410
+        },
+        "self": {
+          "react": 88,
+          "solid": 299
+        },
+        "setup": {
+          "react": 7,
+          "solid": 113
+        },
+        "share": {
+          "react": 3,
+          "solid": 85
+        },
+        "side-chat": {
+          "react": 782,
+          "solid": 0
+        },
+        "sidebar": {
+          "react": 2550,
+          "solid": 45
+        },
+        "sounds": {
+          "react": 25,
+          "solid": 416
+        },
+        "splash": {
+          "react": 1148,
+          "solid": 0
+        },
+        "status-line": {
+          "react": 99,
+          "solid": 311
+        },
+        "subagents": {
+          "react": 2133,
+          "solid": 0
+        },
+        "system": {
+          "react": 1260,
+          "solid": 0
+        },
+        "tailscale": {
+          "react": 12,
+          "solid": 314
+        },
+        "tasks": {
+          "react": 498,
+          "solid": 0
+        },
+        "theme": {
+          "react": 11,
+          "solid": 0
+        },
+        "todos": {
+          "react": 85,
+          "solid": 265
+        },
+        "ui": {
+          "react": 70,
+          "solid": 0
+        },
+        "update": {
+          "react": 5,
+          "solid": 454
+        },
+        "voice-live": {
+          "react": 1762,
+          "solid": 0
+        },
+        "voice": {
+          "react": 3,
+          "solid": 277
+        },
+        "watchdog": {
+          "react": 41,
+          "solid": 0
+        },
+        "wire": {
+          "react": 1158,
+          "solid": 0
+        },
+        "workspaces": {
+          "react": 1184,
+          "solid": 0
+        }
+      },
+      "bundleGzipKB": 3014,
+      "entryGzipKB": 458,
+      "summary": "Batch E: projects rail and voice mic move to Solid (useExtensions, useViewport, prettyName in @/sdk/solid; sidebar ui.solid.tsx); reel and parallel stay React for the core switch"
     }
   ],
   "previewUsage": [
