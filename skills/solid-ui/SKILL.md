@@ -73,7 +73,7 @@ The libraries ship skills that match the pinned versions: read them, not your me
   `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` typed `SolidEntryProps` (`SolidToolProps`
   for a tool) from `@/sdk/solid`. React rows read `useTranscript()` and `useTranscriptScroll()` from one
   `TranscriptFrame` whose identity stays, so a streamed update re-renders none of them; Solid ones read `useTranscript()`
-  and `useTranscriptElements()` (the scroll and row elements, no follow state) from `@/sdk/solid`. An entry narrowed by
+  and `useTranscriptElements()` (the scroll element and the container whose children are rows, no follow state) from `@/sdk/solid`. An entry narrowed by
   its token is `island(renderEntry(Token, Card))` with `renderEntry` from `@/sdk/parts.solid.tsx`; a model-only entry
   still gets a Solid null renderer (a `.solid.tsx` returning `null`), or it mounts React to render nothing.
 - **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx` (P2): `Card`, `Fold` (its `label` names
@@ -232,8 +232,8 @@ Solid 2:
   (`web/src/components/json-tree.solid.tsx`). Then the row is an accessor (`entry()`).
 - A `group` state class on a recursive part (`group-data-open/json`) reaches every descendant: an open ancestor
   restyles closed children. Put the group on the node's own trigger and read its `aria-expanded`.
-- `import('@lucide/solid/icons')` puts the whole icon set (about 190 KB gzipped) in the page's entry even though it
-  is dynamic. Name icons statically, or load one by name from
+- `import('@lucide/solid/icons')` put the whole icon set (about 190 KB gzipped, measured before P2 landed) in the page's
+  entry even though it is dynamic; conversations' `AgentMark` imports `icons` statically today, which C5 trims. Name icons statically, or load one by name from
   `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
 - A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
   subagent card's task chip sits next to its open button.
@@ -287,8 +287,8 @@ ui-sdk:
 Tooling:
 
 - A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. A `.ts` helper shared by React and Solid
-  imports neither SDK entry: pass SDK functions in or use `lib/`. Another extension reaches it through the owner's
-  `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), never by importing the `.ts` file.
+  imports neither SDK entry: pass SDK functions in or use `lib/`. Another extension's Solid code reaches it through the owner's
+  `ui.solid.tsx` (its React code through `ui.tsx`) (a re-export is enough: `extensions/system/ui.solid.tsx`), never by importing the `.ts` file.
 - Check the entry bundle after a move (`node scripts/frontend-weight.ts`, `entryAssetsGzip`); measure each commit in a
   throwaway detached worktree to find the one that grew it.
 
