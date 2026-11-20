@@ -46,7 +46,7 @@ import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 import { compactDocs, compactTools } from './registry.ts'
-import type { CompactRow } from './types.ts'
+import type { CompactRow, ComposerTarget } from './types.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import type { TranscriptFrame } from './transcript-frame.ts'
@@ -78,11 +78,15 @@ export {
   prettyName,
   shortenPath,
 } from './format.ts'
-export { formatKeys } from './keys.ts'
+export { formatKeys, isMac } from './keys.ts'
+/** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
+export { touchKeyboard } from './viewport.ts'
 /** The installed link, inline-code and code-block renderers of Markdown, in discovery order (`useExtensions()` records). */
 export {
   codeBlockRenderers,
+  composerRenderers,
   entryRenderers,
+  inboxRenderer,
   inlineCodeRenderers,
   linkRenderers,
   messageItems,
@@ -91,20 +95,43 @@ export {
   toolRenderers,
 } from './registry.ts'
 /** Typed props of Solid tool and entry renderers contributed as `island(Component)`. */
-export type { SolidEntryProps, SolidToolProps, ToolCallView } from './types.ts'
-/** The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty transcript. */
-export { EmptyTranscript, FileUpload, MessageReference, ParkedRuns, RunStart } from './types.ts'
+export type {
+  ComposerTarget,
+  SolidComposerProps,
+  SolidEntryProps,
+  SolidToolProps,
+  ToolCallView,
+} from './types.ts'
+/**
+ * The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty
+ * transcript, the composer's placeholder.
+ */
+export {
+  ComposerPlaceholder,
+  EmptyTranscript,
+  FileUpload,
+  MessageReference,
+  ParkedRuns,
+  RunStart,
+} from './types.ts'
 /** True while the previous page's picture still covers this one after a reload. */
 export { covered } from './resume.ts'
 /** A transcript's shared frame: its entries and scroll elements, for the contributions it renders. */
 export { createTranscriptFrame } from './transcript-frame.ts'
 export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
+/** The transcript's and composer's reading column classes, for a card that sits in that column. */
+export { column } from '../app/layout.ts'
 
 /** The extension whose contribution renders here; `island` provides it. */
 export const ExtensionName = createContext<string | null>(null)
 /** The conversation `useDoc` reads, as React's `ConversationScope` gives it; null reads the shown conversation. */
 export const ConversationScope = createContext<ConversationId | null>(null)
+/**
+ * Sends what the composer inside it submits somewhere else, such as a new side chat: `value` reads the target, or
+ * undefined to send to the conversation; a composer renderer provides it around its `core`.
+ */
+export const ComposerRedirect = createContext<Accessor<ComposerTarget | undefined>>(() => undefined)
 /** The transcript around a contribution: its loaded entries and its scroll elements; null outside one. */
 export const Transcript = createContext<TranscriptFrame | null>(null)
 

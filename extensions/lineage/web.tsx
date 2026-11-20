@@ -1,12 +1,9 @@
 import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import {
-  ArrowLeftIcon,
   BrainIcon,
   ChevronRightIcon,
   CircleCheckIcon,
-  CodeIcon,
-  ExternalLinkIcon,
   GitBranchIcon,
   GitForkIcon,
   ScrollTextIcon,
@@ -18,9 +15,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MentionText, MessageResponse } from '@/components/ai/message'
-import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   api,
@@ -34,13 +29,12 @@ import {
   provide,
   Provided,
   formatAgo,
-  formatKeys,
   formatTime,
   formatTokens,
   Header,
+  island,
   Sidebar,
   StatusLine,
-  useConversation,
   useDocOf,
   useNow,
   useTranscript,
@@ -50,13 +44,12 @@ import {
 } from '@/sdk'
 import type { EntryRecord, ToolCallView } from '@/sdk'
 import { store } from '@/sdk/client'
+import { RootComposer } from './banner.solid.tsx'
 import { ConversationRef, Unsummarized } from '../conversations/ui.tsx'
-import { talkToUltimate } from '../subagents/ui.tsx'
-import { Open, useGithubRepo } from '../workspaces/ui.tsx'
+import { Open } from '../workspaces/ui.tsx'
 import {
   ForgetAction,
   MemoryDoc,
-  OpenEditorAction,
   TallyDoc,
   AbstractEntry,
   FinishedEntry,
@@ -368,76 +361,6 @@ function Reset({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   return core
 }
 
-function RootComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
-  const id = useConversation((conversation) => conversation.id)
-  const roots = useRoots()
-  if (id === undefined || !roots?.includes(id)) return core
-  return <HistoryBanner dock={dock} id={id} />
-}
-
-function HistoryBanner({ id, dock }: { id: ConversationId; dock?: boolean }) {
-  const actions = useUltimate()
-  const github = useGithubRepo()
-  return (
-    <div className={cn(column(dock), 'pb-3')}>
-      <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-lg border border-border/70 border-l-2 border-l-brand/50 bg-muted/30 px-3.5 py-3"
-        data-lineage-history={id}
-      >
-        <ScrollTextIcon className="size-4 shrink-0 text-brand" />
-        <div className="min-w-56 flex-1">
-          <p className="text-[13.5px] font-medium text-foreground">
-            You're reading the project's history
-          </p>
-          <p className="text-[12.5px] leading-snug text-muted-foreground">
-            Every branch, abstract and landing so far, read-only. To change anything, talk to
-            @ultimate.
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            className="pointer-coarse:hidden"
-            onClick={() =>
-              void api
-                .action(OpenEditorAction)
-                .catch((error: unknown) =>
-                  store.notify({ level: 'error', message: errorMessage(error) }),
-                )
-            }
-            title="Open the project folder in Zed, on the machine Ultimate runs on"
-            variant="ghost"
-          >
-            <CodeIcon />
-            Open in Zed
-          </Button>
-          {github && (
-            <Button asChild size="icon" variant="ghost">
-              <a
-                aria-label="Open on GitHub"
-                href={`https://${github}`}
-                rel="noreferrer"
-                target="_blank"
-                title={`The code as it landed, on ${github}`}
-              >
-                <ExternalLinkIcon />
-              </a>
-            </Button>
-          )}
-          <Button onClick={() => void talkToUltimate(actions)}>
-            <ArrowLeftIcon />
-            Back to @ultimate
-            <KbdGroup className="hidden sm:inline-flex pointer-coarse:hidden">
-              {formatKeys('mod+0')[0].map((key) => (
-                <Kbd key={key}>{key}</Kbd>
-              ))}
-            </KbdGroup>
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function MemorySource({ source }: { source: string }) {
   const { switchConversation, showSurface } = useUltimate()
   const [conversationSource, entrySource] = source.slice(1).split('/')
@@ -710,7 +633,7 @@ export default defineWebExtension({
     'pi.reset': Reset,
   },
   messageActions: [GoBackAction],
-  composer: RootComposer,
+  composer: island(RootComposer),
   surfaces: [
     {
       id: MEMORY_SURFACE,

@@ -13,7 +13,7 @@ export function useStandingPlaceholder({
   conversation,
   busy,
 }: {
-  conversation: ConversationId
+  conversation: ConversationId | undefined
   busy: boolean
 }) {
   const { name, title } = useStandingAgent(conversation)

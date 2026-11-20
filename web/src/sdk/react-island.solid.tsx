@@ -17,7 +17,8 @@ import type { ReactNode } from 'react'
 import { islandSolid } from './island-mark.ts'
 import { chain, contribution, provided, reactRoot, renderedPoint, slot } from './react-island.tsx'
 import type { Rendered } from './react-island.tsx'
-import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
+import { slotItems } from './registry.ts'
+import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
 import type { Point, SlotName } from './types.ts'
 
 function MountReact(props: { render: () => ReactNode }) {
@@ -135,6 +136,23 @@ export function Contribution(props: {
 
 export function ReactSlot(props: { name: SlotName }) {
   return <MountReact render={() => slot(props.name)} />
+}
+
+export function Slot(props: {
+  name: SlotName
+  fallback: (extension: string, error: unknown) => JSX.Element
+}) {
+  const extensions = useExtensions()
+  const items = createMemo(() => slotItems(extensions(), props.name), {
+    equals: (a, b) =>
+      a.length === b.length &&
+      a.every((item, at) => item.key === b[at].key && item.version === b[at].version),
+  })
+  return (
+    <For each={items()} keyed={(item) => `${item.key}:${item.version}`}>
+      {(item) => <Contribution fallback={props.fallback} item={item()} props={{}} />}
+    </For>
+  )
 }
 
 export function RenderedPoint<Input extends object>(props: {

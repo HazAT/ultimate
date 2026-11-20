@@ -141,10 +141,28 @@ export type CodeBlockRenderer = SolidComponent<{
   core: SolidElement
 }>
 
-export type InboxRenderer = ComponentType<{ item: InboxItem; core: ReactNode; cancel: ReactNode }>
+/**
+ * A queued input above the composer, a Solid component: `item`, `core`, the core's row, and `cancel`, its cancel button.
+ * Return `core` for items you leave alone.
+ */
+export type InboxRenderer = SolidComponent<{
+  item: InboxItem
+  core: SolidElement
+  cancel: SolidElement
+}>
 
-/** Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. */
+/**
+ * Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. Contribute a Solid one
+ * as `island(C)` with `C` typed `SolidComposerProps`; a React one mounts through the core's bridge.
+ */
 export type ComposerRenderer = ComponentType<{ core: ReactNode; dock?: boolean }>
+export type SolidComposerProps = { core: SolidElement; dock?: boolean }
+
+/** Where a `ComposerRedirect` sends what the composer inside it submits, and what its empty composer says. */
+export interface ComposerTarget {
+  placeholder: string
+  send: (text: string) => Promise<unknown>
+}
 
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
 export interface DocumentProps {
@@ -285,12 +303,11 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
 )
 /**
  * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
- * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
- * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;
- * a `ComposerRedirect`'s placeholder comes first.
+ * a standing agent with `title: Coach`). The last provider in discovery order answers; undefined keeps the core's text.
+ * A `ComposerRedirect`'s placeholder comes first.
  */
 export const ComposerPlaceholder = definePoint<
-  { conversation: ConversationId; busy: boolean },
+  { conversation: ConversationId | undefined; busy: boolean },
   string | undefined
 >('ultimate.composerPlaceholder')
 /**

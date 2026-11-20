@@ -1,17 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { ImageContent, UserMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import {
-  File,
-  FileArchive,
-  FileAudio,
-  FileCode,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-} from '@lucide/solid'
-import { dynamic } from '@solidjs/web'
 import { cn } from 'cn'
 import { createMemo, For, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
@@ -22,7 +11,8 @@ import {
   ToolImage,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import { fileChipClass, fileKind, typeLabel } from '@/components/file-kind.ts'
+import { FileChip } from '@/components/file-chip.solid.tsx'
+import { typeLabel } from '@/components/file-kind.ts'
 import { Markdown, MentionText } from '@/components/markdown/markdown.solid.tsx'
 import { FileUpload, formatAgo, messageItems, useExtensions } from '@/sdk/solid'
 import { Contribution, useProvided } from '../sdk/react-island.solid.tsx'
@@ -57,17 +47,6 @@ function SkillRun(props: { name: string; location: string; body: string }) {
   )
 }
 
-const icons = {
-  image: FileImage,
-  audio: FileAudio,
-  video: FileVideo,
-  archive: FileArchive,
-  sheet: FileSpreadsheet,
-  code: FileCode,
-  text: FileText,
-  file: File,
-}
-
 function SentFile(props: { file: AttachedFile; at?: number }) {
   const upload = useProvided(FileUpload, () => null)
   const uploaded = () => uploadedAt(props.file.path) ?? props.at
@@ -76,25 +55,18 @@ function SentFile(props: { file: AttachedFile; at?: number }) {
     const at = uploaded()
     return kept !== undefined && at !== undefined && Date.now() - at > kept
   }
-  const Icon = dynamic(() => icons[fileKind(props.file.name, props.file.mimeType)])
   return (
-    <div
-      class={cn(fileChipClass, gone() && 'opacity-60')}
-      data-ui="file-chip"
-      title={`${props.file.path}${uploaded() ? `\nattached ${formatAgo(uploaded()!, Date.now(), { ago: true })}` : ''}`}
-    >
-      <div class="flex h-14 w-full items-center justify-center text-muted-foreground">
-        <Icon aria-hidden="true" class="size-7" stroke-width={1.5} />
-      </div>
-      <p class="w-full truncate px-1 text-center text-[12px] leading-4 text-foreground/90">
-        {props.file.name}
-      </p>
-      <p class="mt-0.5 w-full truncate pb-0.5 text-center text-[11px] leading-4 text-muted-foreground">
-        {gone()
+    <FileChip
+      gone={gone()}
+      mimeType={props.file.mimeType}
+      name={props.file.name}
+      note={
+        gone()
           ? `Removed after ${Math.round(upload()!.keptMs / 86_400_000)} days`
-          : `${props.file.size} · ${typeLabel(props.file.name, props.file.mimeType)}`}
-      </p>
-    </div>
+          : `${props.file.size} · ${typeLabel(props.file.name, props.file.mimeType)}`
+      }
+      title={`${props.file.path}${uploaded() ? `\nattached ${formatAgo(uploaded()!, Date.now(), { ago: true })}` : ''}`}
+    />
   )
 }
 
