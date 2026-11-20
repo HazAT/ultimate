@@ -84,8 +84,8 @@ export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
 export const MergeAction = actionRef<null, { id: ConversationId }>('update', 'merge')
 
 /**
- * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages were
- * installed. The clone lives outside storage, so this commits on its own right after the change.
+ * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `needsRestart` is true when it changed
+ * server/, shared/, patches/ or pnpm-lock.yaml (`lib/layers.ts`); `install` says whether packages were installed. The clone lives outside storage, so this commits on its own right after the change.
  */
 export const Applied = defineEvent<{
   root: string
@@ -93,6 +93,7 @@ export const Applied = defineEvent<{
   to: string
   commits: number
   layers: Layers
+  needsRestart: boolean
   install: 'done' | 'failed' | 'skipped'
 }>('update.applied')
 /** Update was refused for `reason` (uncommitted changes, another branch, diverged, the lander landing). */
