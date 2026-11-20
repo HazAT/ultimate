@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import mcp, { actions, secrets } from '../server.ts'
 import { actions as secretActions } from '../../secrets/server.ts'
 import { writeSecret } from '../../secrets/store.ts'
@@ -14,8 +14,10 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-/** A Streamable HTTP MCP server with one `echo` tool, answering only requests that carry the token. */
+/** A Streamable HTTP MCP server with one `echo` tool, answering only requests that carry the token. Its first call with
+ * `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does. */
 async function serve(token: string) {
+  let refusedBusy = false
   const server = createServer((request, response) => {
     if (request.method !== 'POST') {
       response.writeHead(405).end()
@@ -33,6 +35,17 @@ async function serve(token: string) {
       const args = params.arguments ?? {}
       if (message.id === undefined) {
         response.writeHead(202).end()
+        return
+      }
+      if (args.text === 'busy' && !refusedBusy) {
+        refusedBusy = true
+        response.writeHead(429, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            result: { content: [{ type: 'text', text: 'ratelimited' }], isError: true },
+          }),
+        )
         return
       }
       const results: Record<string, unknown> = {
@@ -113,6 +126,19 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: false,
   })
   expect(await run({ server: 'echo', tool: 'echo', args: {} })).toMatchObject({ isError: true })
+  vi.useFakeTimers({ toFake: ['setTimeout'] })
+  cleanup.push(async () => void vi.useRealTimers())
+  const busy = run({ server: 'echo', tool: 'echo', args: { text: 'busy' } })
+  let settled = false
+  const markSettled = () => (settled = true)
+  void busy.then(markSettled, markSettled)
+  await until(
+    () => settled,
+    5000,
+    () => vi.advanceTimersByTimeAsync(250),
+  )
+  expect(await busy).toEqual({ output: [{ type: 'text', text: 'echo: busy' }], isError: false })
+  expect(status()[0]).toMatchObject({ name: 'echo', state: 'connected' })
   expect(await run({ server: 'locked', tool: 'echo' })).toMatchObject({
     isError: true,
     output: [{ text: expect.stringContaining('MCP server locked is failed') }],
