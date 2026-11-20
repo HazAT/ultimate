@@ -36,6 +36,7 @@ export const SeedState = defineDoc<{
   applied?: number
   automations: string[]
   branches?: Record<string, ConversationId>
+  uncarried?: ConversationId[]
   scripts?: string[]
   questions?: string[]
   announce?: true
@@ -476,7 +477,11 @@ async function carryBranches(host: ExtensionHost, seed: Seed) {
   const lineage = host.need(LineageApi)
   for (const branch of seed.branches ?? []) {
     const receipt = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
-    if (receipt?.branches?.[String(branch.id)] !== undefined) continue
+    if (
+      receipt?.branches?.[String(branch.id)] !== undefined ||
+      receipt?.uncarried?.includes(branch.id)
+    )
+      continue
     const prompt = carriedPrompt(seed, branch)
     const forkCommittedBeforeItsReceipt = await harness.commit(async (tx) => {
       let cursor
@@ -511,9 +516,10 @@ async function carryBranches(host: ExtensionHost, seed: Seed) {
     await harness.commit(async (tx) => {
       const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       saved.branches ??= {}
-      if (saved.branches[String(branch.id)] !== undefined) return
+      if (saved.branches[String(branch.id)] !== undefined || saved.uncarried?.includes(branch.id))
+        return
       if (typeof forked === 'string') {
-        saved.branches[String(branch.id)] = 0 as ConversationId
+        saved.uncarried = [...(saved.uncarried ?? []), branch.id]
         const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
         todos.items.push({
           owner: 'ultimate',
@@ -536,6 +542,5 @@ async function carryBranches(host: ExtensionHost, seed: Seed) {
       })
     }, context)
   }
-  const carried = (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.branches ?? {}
-  return Object.fromEntries(Object.entries(carried).filter(([, id]) => id))
+  return (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.branches ?? {}
 }
