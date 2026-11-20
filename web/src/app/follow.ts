@@ -20,7 +20,9 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
   let pressed = false
   let touching = false
-  const steering = () => pressed || touching
+  let key: KeyboardEvent | undefined
+  const keyScrolls = () => !!key && !key.defaultPrevented && !activates(key.target)
+  const steering = () => pressed || touching || keyScrolls()
   const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
@@ -45,11 +47,10 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     if (event.deltaY < 0 && scroll.scrollHeight > scroll.clientHeight && !innerTakes(event.target))
       report({ following: false })
   }
-  const typing = (target: EventTarget | null) =>
+  const activates = (target: EventTarget | null) =>
     target instanceof HTMLElement &&
-    (target.isContentEditable || !!target.closest('input, textarea'))
-  const upKey = (event: KeyboardEvent) =>
-    ['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)
+    (target.isContentEditable ||
+      !!target.closest('input, textarea, select, button, a[href], [role="button"]'))
   const reader = {
     pointerdown: () => (pressed = true),
     pointerup: () => (pressed = false),
@@ -57,14 +58,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     touchstart: () => (touching = true),
     touchend: () => (touching = false),
     touchcancel: () => (touching = false),
-    keydown: (event: Event) => {
-      const key = event as KeyboardEvent
-      if (!upKey(key) || typing(key.target)) return
-      queueMicrotask(() => {
-        if (!key.defaultPrevented && scroll.scrollHeight > scroll.clientHeight)
-          report({ following: false })
-      })
-    },
+    keydown: (event: Event) => (key = event as KeyboardEvent),
   }
   const onTranscript = new Set(['pointerdown', 'touchstart'])
   const grow = new ResizeObserver(() => {
@@ -72,6 +66,8 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     report({})
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
+  const keyScrolled = () => (key = undefined)
+  scroll.addEventListener('scrollend', keyScrolled, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
   for (const [type, listener] of Object.entries(reader))
     (onTranscript.has(type) ? scroll : window).addEventListener(type, listener, { passive: true })
@@ -92,6 +88,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     dispose: () => {
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
+      scroll.removeEventListener('scrollend', keyScrolled)
       scroll.removeEventListener('wheel', onWheel)
       for (const [type, listener] of Object.entries(reader))
         (onTranscript.has(type) ? scroll : window).removeEventListener(type, listener)

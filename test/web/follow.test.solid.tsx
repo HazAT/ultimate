@@ -74,7 +74,7 @@ it('stays at the bottom when rows settle after the view shows, even after a clic
   expect(view.top()).toBe(6507)
 })
 
-it('lets the reader leave with the wheel, a key or a drag, and come back with one key press', async () => {
+it('lets the reader leave with the wheel, a key or a drag, and come back with one key press', () => {
   const { scroll, view, pinned, layout } = transcript(5000)
   scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -200 }))
   view.moveTo(4100)
@@ -85,11 +85,12 @@ it('lets the reader leave with the wheel, a key or a drag, and come back with on
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }))
   view.moveTo(4400)
   view.moveTo(4700)
+  scroll.dispatchEvent(new Event('scrollend'))
   expect(pinned.following()).toBe(true)
 
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp' }))
-  await Promise.resolve()
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
   view.moveTo(4000)
+  scroll.dispatchEvent(new Event('scrollend'))
   view.resize(5600)
   layout()
   expect([pinned.following(), view.top()]).toEqual([false, 4000])
@@ -114,24 +115,38 @@ it('leaves on a wheel up over a tool output at its top, which scrolls the transc
   expect(view.top()).toBe(4300)
 })
 
-it('keeps following when a wheel or key has nothing to scroll, or a card took the key', async () => {
-  const { scroll, view, pinned } = transcript(600)
+it('keeps following when a wheel has nothing to scroll, a card took the key, or a button pressed Space', () => {
+  const { scroll, view, pinned, layout } = transcript(600)
   scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -200 }))
   expect(pinned.following()).toBe(true)
 
   view.resize(3000)
+  layout()
+  const card = (event: KeyboardEvent) => event.preventDefault()
+  window.addEventListener('keydown', card)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true }))
+  view.moveTo(2250)
+  scroll.dispatchEvent(new Event('scrollend'))
+  window.removeEventListener('keydown', card)
+  view.resize(3100)
+  layout()
+  expect([pinned.following(), view.top()]).toEqual([true, 2400])
+
+  const button = document.createElement('button')
+  document.body.append(button)
+  button.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true, bubbles: true }))
   view.moveTo(2300)
-  const taken = new KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true })
-  taken.preventDefault()
-  window.dispatchEvent(taken)
-  await Promise.resolve()
+  scroll.dispatchEvent(new Event('scrollend'))
   expect(pinned.following()).toBe(true)
 
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true }))
-  await Promise.resolve()
+  document.body.dispatchEvent(
+    new KeyboardEvent('keydown', { key: ' ', shiftKey: true, bubbles: true }),
+  )
+  view.moveTo(1800)
   expect(pinned.following()).toBe(false)
-  view.moveTo(2298)
-  view.moveTo(2299)
-  view.moveTo(2300)
+  scroll.dispatchEvent(new Event('scrollend'))
+  view.moveTo(2498)
+  view.moveTo(2499)
+  view.moveTo(2500)
   expect(pinned.following()).toBe(true)
 })

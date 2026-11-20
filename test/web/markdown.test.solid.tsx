@@ -30,7 +30,12 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import type { CodeBlockRenderer } from '../../web/src/sdk/types.ts'
 import { Markdown } from '../../web/src/components/markdown/markdown.solid.tsx'
+import { createAgent } from '@ui-sdk/solid/agent'
+import { settle } from '@ui-sdk/core/testing'
 import { renderSolid } from './solid-dom-setup.ts'
+import { expectDistinctAgentNames } from './agent-names.ts'
+
+const agent = createAgent()
 
 function stream(chunks: string[], { end = false } = {}) {
   const [text, setText] = createSignal('')
@@ -47,10 +52,12 @@ function stream(chunks: string[], { end = false } = {}) {
   return view
 }
 
+const withoutNames = (html: string) => html.replace(/ aria-label="[^"]*"/g, '')
+
 const finished = (text: string) => {
   const view = renderSolid(() => <Markdown text={text} />)
   flush()
-  return view.innerHTML
+  return withoutNames(view.innerHTML)
 }
 
 it('streams into the last block only, closing what it leaves open', () => {
@@ -89,9 +96,9 @@ it('ends a stream as the whole text renders, wherever its chunks broke', () => {
   ]
   for (const text of texts)
     for (let cut = 1; cut < text.length; cut++)
-      expect(stream([text.slice(0, cut), text.slice(cut)], { end: true }).innerHTML).toBe(
-        finished(text),
-      )
+      expect(
+        withoutNames(stream([text.slice(0, cut), text.slice(cut)], { end: true }).innerHTML),
+      ).toBe(finished(text))
 })
 
 it('tells a code block renderer only its own fence is unfinished', () => {
@@ -220,4 +227,23 @@ it('keeps sanitized raw HTML and drops what could run', () => {
   expect(view.querySelector('details summary')?.textContent).toBe('More')
   expect(view.querySelector('details strong')?.textContent).toBe('bold')
   expect(view.querySelector('script, [onerror]')).toBeNull()
+})
+
+it('names each copy and link button apart, across replies that repeat a fence or a link', async () => {
+  const reply = '[docs](https://example.com/docs)\n\n```sh\nnpm test\n```'
+  renderSolid(() => (
+    <>
+      <Markdown text={reply} />
+      <Markdown text={reply} />
+    </>
+  ))
+  flush()
+  await settle()
+  await expectDistinctAgentNames(agent)
+  expect(
+    agent
+      .snapshot()
+      .filter((entry) => !entry.offPage)
+      .map((entry) => entry.label),
+  ).toHaveLength(4)
 })

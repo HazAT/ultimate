@@ -297,7 +297,9 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-type Context = { openFences: readonly number[]; without?: readonly string[]; block: number }
+let unpositioned = 0
+
+type Context = { openFences: readonly number[]; without?: readonly string[]; block: string }
 
 const fenceIncomplete = (node: Element, context: Context) =>
   context.openFences.includes(node.position?.start.offset ?? -1)
@@ -357,7 +359,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       <Match when={fencedCode(props.node)}>
         {(block) => (
           <CodeBlock
-            at={`${props.context.block}.${props.node.position?.start.offset ?? 0}`}
+            at={`${props.context.block}.${props.node.position?.start.offset ?? `x${++unpositioned}`}`}
             code={block().code}
             incomplete={fenceIncomplete(props.node, props.context)}
             language={block().language}
@@ -366,7 +368,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       </Match>
       <Match when={props.node.tagName === 'a'}>
         <Anchor
-          at={`${props.context.block}.${props.node.position?.start.offset ?? 0}`}
+          at={`${props.context.block}.${props.node.position?.start.offset ?? `x${++unpositioned}`}`}
           attributes={attributes()}
           href={hrefOf(props.node)}
           text={textOf(props.node)}
@@ -398,6 +400,7 @@ function Block(props: {
   source: string
   streaming: boolean
   index: number
+  markdown: number
   without?: readonly string[]
 }) {
   const source = createMemo(() => (props.streaming ? closeUnfinished(props.source) : props.source))
@@ -420,7 +423,7 @@ function Block(props: {
           return props.without
         },
         get block() {
-          return props.index
+          return `${props.markdown}.${props.index}`
         },
       }}
       nodes={tree.nodes}
@@ -428,12 +431,15 @@ function Block(props: {
   )
 }
 
+let markdowns = 0
+
 export function Markdown(props: {
   text: string
   streaming?: boolean
   without?: readonly string[]
   class?: string
 }) {
+  const markdown = ++markdowns
   const split = blockSplitterKeepingFinishedBlocks()
   const blocks = createMemo(() => split(props.text))
   return (
@@ -442,6 +448,7 @@ export function Markdown(props: {
         {(source, index) => (
           <Block
             index={index}
+            markdown={markdown}
             source={source()}
             streaming={!!props.streaming && index === blocks().length - 1}
             without={props.without}
