@@ -95,6 +95,36 @@ it('plays the question cue once when @ultimate asks the user something new', asy
   expect(harness.played).toEqual(['input'])
 })
 
+it('plays the finished cue when only the run state of @ultimate’s existing row changes', async () => {
+  uiState.receive({})
+  renderSolid(() => (
+    <ExtensionName value="sounds">
+      <Player />
+    </ExtensionName>
+  ))
+  flush()
+  await tick()
+  root().send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: agent } })
+  root().send('doc', { kind: EVENT_FEED, value: { events: [] } })
+  root().send('doc', { kind: 'board', value: { messages: [], next: 1 } })
+  root().send('doc', {
+    kind: 'ultimate.conversation-overview',
+    value: { conversations: { [agent]: { runState: 'working', inputId: 9 } } },
+  })
+  flush()
+  await tick()
+  root().send('docOps', {
+    kind: 'ultimate.conversation-overview',
+    ops: [
+      ['s', ['conversations', String(agent), 'runState'], 'answered'],
+      ['s', ['conversations', String(agent), 'answerId'], 10],
+    ],
+  })
+  flush()
+  await tick()
+  expect(harness.played).toEqual(['finished'])
+})
+
 it('plays a busy worker’s new tool call in the sound of agents, once', async () => {
   uiState.receive({ 'ext.sounds.agents': 'chiptune' })
   const worker = 12
@@ -124,5 +154,19 @@ it('plays a busy worker’s new tool call in the sound of agents, once', async (
   live([{ callId: 'a', name: 'bash' }])
   flush()
   await tick()
-  expect(harness.hits).toEqual([{ kind: 'tool', role: 'worker', tool: 'bash' }])
+  const check = (id: number, result: string) => ({
+    id,
+    kind: 'event.workspaces.check',
+    name: 'workspaces.check',
+    v: 1,
+    at: '',
+    data: { submission: 's', command: 'pnpm test', result, ms: 1 },
+  })
+  root().send('doc', {
+    kind: EVENT_FEED,
+    value: { events: [check(20, 'passed'), check(21, 'failed')] },
+  })
+  flush()
+  await tick()
+  expect(harness.hits).toEqual([{ kind: 'tool', role: 'worker', tool: 'bash' }, { kind: 'failed' }])
 })

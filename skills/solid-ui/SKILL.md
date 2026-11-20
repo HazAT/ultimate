@@ -90,9 +90,10 @@ Icons come from `@lucide/solid`.
     second reader or an effect that writes the interval.
   - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
   - An effect's apply half is untracked, so reading a store-backed doc or an accessor there trips
-    `STRICT_READ_UNTRACKED` and reads a value that never updates. Build a plain value in the compute half (`snapshot()`
-    a doc row, map messages to the fields you need, call `catchingUp()` there) and hand only that to the apply half,
-    as `extensions/sounds/player.solid.tsx` does.
+    `STRICT_READ_UNTRACKED` and reads a value that never updates. Build a plain value in the compute half by reading
+    each field you use (`{ runState, answerId } = row`, messages mapped to the fields you need, `catchingUp()`), and
+    hand only that to the apply half, as `extensions/sounds/player.solid.tsx` does. Never `snapshot()` there: it
+    subscribes to nothing nested, and a doc row the SDK keeps by identity changes a field without the effect rerunning.
   - A row per item of a changing id list (one doc read per busy conversation) is `mapArray(ids, (id) => …)`: each id
     gets its own owner and reads, disposed when it leaves; no child components reporting up through callbacks.
   - A form's native `onSubmit` loses the agent's attribution: start the request from the kit Button's `onClick`, which

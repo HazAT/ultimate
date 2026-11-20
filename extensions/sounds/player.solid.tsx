@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { createEffect, createMemo, mapArray, onSettled, Show, snapshot } from 'solid-js'
+import { createEffect, createMemo, mapArray, onSettled, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import type { LiveState } from '@/sdk'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/sdk/solid'
 import { Committed } from '../coding-tools/refs.ts'
 import { OverviewDoc } from '../conversations/refs.ts'
+import type { OverviewRow } from '../conversations/types.ts'
 import { Branched } from '../lineage/refs.ts'
 import { MessagesDoc } from '../messages/refs.ts'
 import { StandingDoc } from '../subagents/refs.ts'
@@ -64,6 +65,12 @@ function resumeSwitchedNarrator() {
   const narrate = speaker(sayLine, sessionStorage)
   narrate.resume(Boolean(switched))
   return narrate.add
+}
+
+function rowOf(row: OverviewRow | undefined): OverviewRow | undefined {
+  if (!row) return undefined
+  const { runState, inputId, answerId, internalInput } = row
+  return { runState, inputId, answerId, internalInput }
 }
 
 function catchingUpFor(narrateWhileHidden: Accessor<boolean>) {
@@ -126,7 +133,7 @@ export function Player() {
       return {
         watched: {
           agent,
-          row: snapshot(rows.conversations[agent]),
+          row: rowOf(rows.conversations[agent]),
           messages: (log()?.messages ?? []).map(({ id, from, to, reply }) => ({
             id,
             from,
@@ -198,8 +205,22 @@ function Band(props: { ownsLanding: boolean }) {
         conversations: conversations(),
         standing: new Set(Object.values(agents)),
         tools: Object.fromEntries(rounds().flatMap((round) => round())),
-        runs: snapshot(runs),
-        events: snapshot(happened),
+        runs: Object.fromEntries(
+          Object.entries(runs).map(([id, run]) => [
+            id,
+            { runState: run.runState, inputId: run.inputId },
+          ]),
+        ),
+        events: happened.flatMap((event) => {
+          const kind = Committed.is(event)
+            ? 'commit'
+            : SubmissionLanded.is(event)
+              ? 'landed'
+              : CheckRan.is(event) && event.data.result === 'failed'
+                ? 'failed'
+                : undefined
+          return kind ? [{ id: event.id, kind } as const] : []
+        }),
         ownsLanding: props.ownsLanding,
         catchingUp: catchingUp(),
       }

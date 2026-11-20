@@ -1,5 +1,4 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { EventRecord } from '../../shared/events.ts'
 
 export type Role = 'ultimate' | 'coordinator' | 'worker' | 'scout' | 'reviewer' | 'lander' | 'other'
 
@@ -34,7 +33,7 @@ export type Snapshot = {
   standing: ReadonlySet<number>
   tools: Readonly<Record<string, { name: string; conversationId: ConversationId }>>
   runs: Readonly<Record<string, { runState: string; inputId?: number }>>
-  events: readonly EventRecord[]
+  events: readonly { id: number; kind: 'commit' | 'landed' | 'failed' }[]
 }
 
 export function tracker() {
@@ -63,18 +62,8 @@ export function tracker() {
     for (const [id, call] of Object.entries(snapshot.tools))
       if (markHeardAndShouldPlay(`tool:${id}`))
         happenings.push({ kind: 'tool', role: role(call.conversationId), tool: toolOf(call.name) })
-    for (const event of snapshot.events) {
-      const kind =
-        event.kind === 'event.coding-tools.committed'
-          ? 'commit'
-          : event.kind === 'event.workspaces.landed'
-            ? 'landed'
-            : event.kind === 'event.workspaces.check' &&
-                (event.data as { result?: string }).result === 'failed'
-              ? 'failed'
-              : undefined
-      if (kind && markHeardAndShouldPlay(`event:${event.id}`)) happenings.push({ kind })
-    }
+    for (const { id, kind } of snapshot.events)
+      if (markHeardAndShouldPlay(`event:${id}`)) happenings.push({ kind })
     for (const [id, run] of Object.entries(snapshot.runs))
       if (run.runState === 'error' && markHeardAndShouldPlay(`failed:${id}:${run.inputId}`))
         happenings.push({ kind: 'failed' })
