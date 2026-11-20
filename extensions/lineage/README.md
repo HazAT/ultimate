@@ -34,7 +34,11 @@ documents, tools and model-facing text.
 - **Notify.** `notify { id, wake? }` waits until the target and its subagents are idle, then delivers `#id finished ·
   <title>` with its last own answer (at most 1500 characters): as a follow-up (`lineage.finished`), or with
   `wake: false` as a note. Calling again for the same id replaces the pending request; an answer already delivered
-  waits for the target's next one.
+  waits for the target's next one. `on: 'land'` waits instead until branch `id`'s workspace records a landing (at once
+  if it already did) and delivers `#id landed · <title>` with the target branch and sha (`lineage.finished` with
+  `landed`), or `#id concluded` when it was concluded without landing. It is checked on each `workspaces.landed` and
+  `conversations.concluded` event, survives restarts, and ends without delivering when the waiting conversation is
+  concluded.
 - **Catch-up on resume.** When an idle conversation gets input, a "Meanwhile in #R's tree" note goes in before it: new
   or updated abstracts, prompts without one, landings with divergence and breadcrumbs, notes, and any tally compaction,
   excluding its own activity. Within about 6000 tokens the newest stay in full and older ones collapse to one line.

@@ -196,7 +196,7 @@ export function NotifyCall({ call, core }: { call: ToolCallView; core: ReactNode
             <ConversationRef id={id} />
           </button>
         )}
-        <span className="shrink-0">finishes</span>
+        <span className="shrink-0">{call.args.on === 'land' ? 'lands' : 'finishes'}</span>
         {call.args.wake === false && (
           <span className="ml-auto shrink-0 text-[11px]" title="Leaves a note instead of waking">
             <span className="hidden sm:inline">as a note, </span>no wake-up

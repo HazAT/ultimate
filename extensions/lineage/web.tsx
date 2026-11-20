@@ -235,7 +235,9 @@ function Finished({ entry }: { entry: EntryRecord }) {
           type="button"
         >
           <ConversationRef id={from} title={title} />
-          <span className="shrink-0">finished</span>
+          <span className="shrink-0">
+            {FinishedEntry.is(entry) && entry.data.landed ? 'landed' : 'finished'}
+          </span>
         </button>
       </header>
       <div className="min-w-0 px-3 py-2.5 text-[13px] leading-relaxed">

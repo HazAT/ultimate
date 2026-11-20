@@ -70,7 +70,7 @@ const HELD_WAIT_PHASES: Record<string, string[]> = {
   'board.route': ['observe'],
   'board.settle': ['observe'],
   'conversations.summary': ['observe'],
-  'lineage.notify': ['wait'],
+  'lineage.notify': ['wait', 'waitForLanding'],
 }
 export const passive = (record: { kind: string; state: unknown }) => {
   const phase = (record.state as { checkpoint?: { phase?: string } }).checkpoint?.phase
