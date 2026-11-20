@@ -60,6 +60,8 @@ import {
 import { PlanDoc, ProgressDoc } from './refs.ts'
 import type { Epic, Estimate, Plan, Task, TaskLink } from './refs.ts'
 import { StatusIcon, TaskChip, statusOf, useOpenTask, useTaskOf } from './ui.tsx'
+import { PLAN_OPEN } from './status.ts'
+import type { PlanOpen } from './status.ts'
 import { ConversationTaskChip as TaskChipOf } from './ui.solid.tsx'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
@@ -658,13 +660,11 @@ function useAnchor(conversationId: ConversationId | undefined) {
   return anchor
 }
 
-type Open = { conversation: ConversationId; key: string } | null
-
 function PlanOverlay() {
   const { surface, conversationId } = useUltimate()
   const task = useTaskOf(conversationId)
   const anchor = useAnchor(conversationId)
-  const [request, setRequest] = useUiState<Open>('plan.open', null)
+  const [request, setRequest] = useUiState<PlanOpen>(PLAN_OPEN, null)
   useEffect(() => {
     const url = new URL(location.href)
     const key = url.searchParams.get('task')
@@ -700,7 +700,7 @@ function CoordinatorPlan({
   settle,
 }: {
   conversation: ConversationId
-  request: Open
+  request: PlanOpen
   settle: () => void
 }) {
   const plan = useDoc(PlanDoc)

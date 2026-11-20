@@ -1,5 +1,4 @@
 /** The plan's components for other extensions: the task chip of a conversation that works on a plan task. */
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
 import {
   CircleAlertIcon,
@@ -13,7 +12,8 @@ import {
 import { useCallback } from 'react'
 import type { SyntheticEvent } from 'react'
 import { cn, useDocOf, useUiState, useUltimate } from '@/sdk'
-import { statusDots } from './status.ts'
+import { openRequest, PLAN_OPEN, statusDots } from './status.ts'
+import type { PlanOpen } from './status.ts'
 import { TaskIndexDoc } from './refs.ts'
 import type { TaskLink } from './refs.ts'
 
@@ -59,14 +59,11 @@ export function useTaskOf(id: number | undefined): TaskLink | undefined {
 /** Show the task's coordinator and ask its plan panel to open the task (durable UI state `plan.open`). */
 export function useOpenTask() {
   const { switchConversation } = useUltimate()
-  const [, setOpen] = useUiState<{ conversation: ConversationId; key: string } | null>(
-    'plan.open',
-    null,
-  )
+  const [, setOpen] = useUiState<PlanOpen>(PLAN_OPEN, null)
   return useCallback(
     (task: Pick<TaskLink, 'coordinator' | 'key'>) => {
       switchConversation(task.coordinator)
-      setOpen({ conversation: task.coordinator, key: task.key })
+      setOpen(openRequest(task))
     },
     [switchConversation, setOpen],
   )

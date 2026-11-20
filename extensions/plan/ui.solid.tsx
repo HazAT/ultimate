@@ -5,7 +5,8 @@ import { Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { ROOT, cn, switchConversation, useDocOf, useUiState } from '@/sdk/solid'
-import { statusDots } from './status.ts'
+import { openRequest, PLAN_OPEN, statusDots } from './status.ts'
+import type { PlanOpen } from './status.ts'
 import { TaskIndexDoc } from './refs.ts'
 import type { TaskLink } from './refs.ts'
 
@@ -25,13 +26,10 @@ export function useTaskOf(
  * button: place it beside a row's button, not inside it.
  */
 export function TaskChip(props: { task: TaskLink; on?: string; class?: string }) {
-  const [, setOpen] = useUiState<{ conversation: ConversationId; key: string } | null>(
-    'plan.open',
-    null,
-  )
+  const [, setOpen] = useUiState<PlanOpen>(PLAN_OPEN, null)
   const open = () => {
     switchConversation(props.task.coordinator)
-    setOpen({ conversation: props.task.coordinator, key: props.task.key })
+    setOpen(openRequest(props.task))
   }
   return (
     <Button
