@@ -62,13 +62,19 @@ const solidPart = (children: () => JSX.Element): SolidPart => {
   return {
     mount: (host, placed) => {
       const rescoped = placed.conversation !== undefined && placed.conversation !== scoped
-      const view = () =>
-        rescoped ? (
-          <ConversationScope value={placed.conversation!}>
-            <Transcript value={placed.transcript ?? null}>{children()}</Transcript>
-          </ConversationScope>
+      const framed = () =>
+        placed.transcript ? (
+          <Transcript value={placed.transcript}>{children()}</Transcript>
+        ) : rescoped ? (
+          <Transcript value={null}>{children()}</Transcript>
         ) : (
           children()
+        )
+      const view = () =>
+        rescoped ? (
+          <ConversationScope value={placed.conversation!}>{framed()}</ConversationScope>
+        ) : (
+          framed()
         )
       let dispose: (() => void) | undefined
       const release = () => {

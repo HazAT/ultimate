@@ -310,6 +310,7 @@ it('runs a composer a React wrapper portals, scopes or hides as one live editor'
     await settle()
     flush()
   }
+  expect(document.querySelector('[data-probe]')?.textContent).toBe('from seventeen')
   await enter('portaled')
   act_(() => {
     scope.id = 18
