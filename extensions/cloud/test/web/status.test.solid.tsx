@@ -16,7 +16,7 @@ const harness = vi.hoisted(() => ({
   requests: [] as { path: string; args: unknown; source: string | null }[],
   state: { status: 'on', name: 'example' } as CloudState,
   join: undefined as unknown as JoinState,
-  joinFails: false,
+  joinFails: [] as ('secrets' | 'settings' | 'check')[],
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
@@ -46,9 +46,10 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     if (path === endpoint(JoinAction)) {
       const { url, machine } = args as { url: string; machine: string }
-      if (harness.joinFails) {
-        harness.join = { ...harness.join, missing: [] }
-        return Response.json({ result: { ok: false, step: 'settings', error: 'Settings locked' } })
+      const step = harness.joinFails.shift()
+      if (step) {
+        if (step !== 'check') harness.join = { ...harness.join, missing: [] }
+        return Response.json({ result: { ok: false, step, error: `Failed at ${step}` } })
       }
       const joined = { url, machine, host: new URL(url).host }
       harness.join = { url, machine, missing: [], joined }
@@ -93,7 +94,7 @@ const control = (label: string) =>
 
 beforeEach(({ onTestFinished }) => {
   harness.requests.length = 0
-  harness.joinFails = false
+  harness.joinFails = []
   harness.join = {
     machine: 'old-machine',
     missing: ['ULTIMATE_CLOUD_TOKEN', 'ULTIMATE_CLOUD_SNAPSHOT_KEY'],
@@ -209,25 +210,33 @@ it('lets an agent fill the four join fields and submits the exact JoinAction arg
   expect(container.querySelector('[data-cloud-join] input')).toBeNull()
 })
 
-it('asks a person before an agent retries a join whose secrets were already written', async () => {
-  harness.joinFails = true
-  await openJoinDialog()
-  const filled = await agent.act({
-    steps: [
-      { ref: 'Cloud URL', action: 'setValue', args: ['wss://cloud.example.test'] },
-      { ref: 'ULTIMATE_CLOUD_TOKEN', action: 'setValue', args: ['fake-token'] },
-      { ref: 'ULTIMATE_CLOUD_SNAPSHOT_KEY', action: 'setValue', args: ['fake-key'] },
-    ],
-  })
-  expect(filled.ok).toBe(true)
-  flush()
-  expect((await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })).ok).toBe(
-    true,
-  )
-  await settle()
-  flush()
-  const retry = await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
-  expect(retry.ok).toBe(false)
-  await settle()
-  expect(harness.requests.filter(({ path }) => path === endpoint(JoinAction))).toHaveLength(1)
-})
+it.each(['secrets', 'settings'] as const)(
+  'keeps asking a person before an agent retries a join that failed at %s, after any later failure',
+  async (step) => {
+    harness.joinFails = [step, 'check']
+    await openJoinDialog()
+    const filled = await agent.act({
+      steps: [
+        { ref: 'Cloud URL', action: 'setValue', args: ['wss://cloud.example.test'] },
+        { ref: 'ULTIMATE_CLOUD_TOKEN', action: 'setValue', args: ['fake-token'] },
+        { ref: 'ULTIMATE_CLOUD_SNAPSHOT_KEY', action: 'setValue', args: ['fake-key'] },
+      ],
+    })
+    expect(filled.ok).toBe(true)
+    flush()
+    const save = () => agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
+    expect((await save()).ok).toBe(true)
+    await settle()
+    flush()
+    expect((await save()).ok).toBe(false)
+    const button = [...document.querySelectorAll('button')].find(
+      (element) => element.textContent?.trim() === 'Save cloud connection',
+    )!
+    button.click()
+    await settle()
+    flush()
+    expect((await save()).ok).toBe(false)
+    await settle()
+    expect(harness.requests.filter(({ path }) => path === endpoint(JoinAction))).toHaveLength(2)
+  },
+)

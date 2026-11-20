@@ -159,12 +159,9 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
     const value = result()
     return value !== 'running' && value?.ok ? value : undefined
   })
-  const replacing = () => {
-    const last = result()
-    const wroteSecrets =
-      last !== undefined && last !== 'running' && !last.ok && last.step === 'settings'
-    return wroteSecrets || props.state.missing.length < Object.keys(secretNames).length
-  }
+  const [mayHaveWrittenSecrets, setMayHaveWrittenSecrets] = createSignal(false)
+  const replacing = () =>
+    mayHaveWrittenSecrets() || props.state.missing.length < Object.keys(secretNames).length
   const ready = () =>
     !running() && [url(), machine(), token(), snapshotKey()].every((value) => value.trim())
 
@@ -179,6 +176,7 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
         { conversationId: ROOT },
       )
       setResult(outcome)
+      if (outcome.ok || outcome.step !== 'check') setMayHaveWrittenSecrets(true)
       if (outcome.ok) {
         setToken('')
         setSnapshotKey('')
