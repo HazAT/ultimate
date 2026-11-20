@@ -18,6 +18,7 @@ const harness = vi.hoisted(() => ({
   calls: [] as Array<{ action: string; ids: number[] }>,
   writes: [] as UiUpdateRequest['ops'],
   fail: false,
+  hold: undefined as Promise<void> | undefined,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -31,7 +32,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       args: { ids },
     } = JSON.parse(init!.body as string) as { args: { ids: number[] } }
     harness.calls.push({ action, ids })
-    if (harness.fail) return Response.json({ error: 'server restarting' }, { status: 503 })
+    const fail = harness.fail
+    await harness.hold
+    if (fail) return Response.json({ error: 'server restarting' }, { status: 503 })
     const facts = action === 'describe' && ids.includes(8) ? { 8: { tool: 'Inspect' } } : {}
     return Response.json({ result: facts })
   }
@@ -79,6 +82,7 @@ beforeEach(() => {
   harness.calls.length = 0
   harness.writes.length = 0
   harness.fail = false
+  harness.hold = undefined
   store.start()
   stream().open()
   store.show(root)
@@ -144,21 +148,28 @@ it('continues a rail past a nested child only when its ancestor has a following 
   expect(rows[1].textContent).toContain('Inspect')
 })
 
-it('asks again for facts that failed once the connection comes back, and only for those', async () => {
+it('asks again on the new connection for facts whose request failed across a reconnect', async () => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  let release = () => {}
+  harness.hold = new Promise((resolve) => (release = resolve))
   harness.fail = true
   sendTasks(task(7), task(8, { kind: 'pi.tool' }))
   const panel = renderSolid(() => <TasksPanel />)
   await settle()
   flush()
-  harness.fail = false
-  harness.calls.length = 0
   stream().drop()
   flush()
   stream().open()
   await settle()
   flush()
+  harness.hold = undefined
+  harness.fail = false
+  release()
+  await settle()
+  flush()
   expect(harness.calls.map((call) => call.ids)).toEqual([
+    [7, 8],
+    [7, 8],
     [7, 8],
     [7, 8],
   ])
