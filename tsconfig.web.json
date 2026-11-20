@@ -40,6 +40,7 @@
     "extensions/phase/types.ts",
     "extensions/plan/body.ts",
     "extensions/plan/progress.ts",
+    "extensions/plan/status.ts",
     "extensions/recall/types.ts",
     "extensions/conversations/summary-model-ref.ts",
     "extensions/models/switches.ts",
