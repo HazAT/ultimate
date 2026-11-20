@@ -1108,13 +1108,7 @@ function RequestCard({ entry, line }: { entry: EntryRecord; line: VoiceLine }) {
   if (main === undefined) return null
   return (
     <div className="mt-3 first:mt-0" data-voice-line="forwarded" data-forwarded={state}>
-      <Bubble
-        at={line.at}
-        from={main}
-        lead={<Asked text={line.text} />}
-        message={undefined}
-        running={false}
-      >
+      <Bubble at={line.at} from={main} lead={<Asked text={line.text} />}>
         {state === 'working' ? (
           <Working main={main} since={line.at} />
         ) : state === 'failed' ? (
