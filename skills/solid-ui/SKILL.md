@@ -26,20 +26,22 @@ The toolchain, lint, these skills, and the SDK's Solid side. A `*.solid.tsx` fil
 rules below. An extension mounts a Solid component from its `web.tsx` with `island(Component)` from `@/sdk`, and the
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
 ([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Collapsible,
-Command, Dialog, DropdownMenu, HoverCard, Kbd and KbdGroup, NumberInput, Popover, Row and Rows, SegmentedControl,
-Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch and Tooltip. Import from
+Command, Dialog, DropdownMenu, HoverCard, Input and SecretInput (in `input.solid.tsx`), Kbd and KbdGroup, NumberInput,
+Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch
+and Tooltip. Import from
 `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component exists.
 `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status chips of
 setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension renders
 (mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
-`const McpDetails = island(Details)`. Icons come from `@lucide/solid`. A Solid part that needs what only React reads
+`const McpDetails = island(Details)`. Panels and overlays take islands too (`component: island(SecretsPanel)`).
+Icons come from `@lucide/solid`. A Solid part that needs what only React reads
 (another extension's React point, such as inbox's `Waiting`) takes it as a prop: the `web.tsx` keeps a small React
 wrapper that reads it and renders `<List inbox={entries.length} />` with `const List = island(TodoList)`; island
 passes its props on live, without a remount (`extensions/todos/web.tsx`).
 
 What cannot move before the core switch: tool, entry and document renderers, message actions and details, the
 `composer` wrapper, `link`, and anything that renders other extensions' React contributions (the Documents panel,
-the agent surface, the panel tabs). A slot item, a panel or an overlay of its own can move.
+the agent surface, the panel tabs) or a `provide` hook. A slot item, a panel or an overlay of its own can move.
 
 ## Ultimate's rules (on top of those skills)
 
@@ -93,6 +95,15 @@ the agent surface, the panel tabs). A slot item, a panel or an overlay of its ow
     `every` takes `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while a server connects), never a
     second reader or an effect that writes the interval.
   - Read a callback prop (`props.onValueChange`) into a local before calling it inside `writingAs`, as `Switch` does.
+  - An effect's apply half is untracked, so reading a store-backed doc or an accessor there trips
+    `STRICT_READ_UNTRACKED` and reads a value that never updates. Build a plain value in the compute half by reading
+    each field you use (`{ runState, answerId } = row`, messages mapped to the fields you need, `catchingUp()`), and
+    hand only that to the apply half, as `extensions/sounds/player.solid.tsx` does. Never `snapshot()` there: it
+    subscribes to nothing nested, and a doc row the SDK keeps by identity changes a field without the effect rerunning.
+  - A row per item of a changing id list (one doc read per busy conversation) is `mapArray(ids, (id) => …)`: each id
+    gets its own owner and reads, disposed when it leaves; no child components reporting up through callbacks.
+  - A form's native `onSubmit` loses the agent's attribution: start the request from the kit Button's `onClick`, which
+    runs in `writingAs`.
   - For a polled list whose objects are replaced on each fetch, `<For keyed={(row) => row.id}>` keeps each row's DOM
     by id and gives the child an item accessor. The default keys by object identity.
   - When extracting a browser helper to `.ts`, add it to `tsconfig.web.json`'s `include`. A `.ts` helper shared by
@@ -179,7 +190,7 @@ the agent surface, the panel tabs). A slot item, a panel or an overlay of its ow
   before `vi.useFakeTimers()`.
 - The store drops a `system` event whose text equals the last one; a test of a restart or rollback sends a changed
   `system` (a new `booted`), as the server does.
-- Agent test: one `createAgent()` (from `@ui-sdk/core/agent`) per file; find controls in `snapshot()` by label and act
+- Agent test: one `createAgent()` (from `@ui-sdk/solid/agent`) per file; find controls in `snapshot()` by label and act
   on the ref it returns, never an assumed `c1`, since other controls may mount; subscribe before `act`; assert the
   result's `ok`, the DOM, `details.source === 'agent'` in your handlers, and the events the subscription saw
   (`test/web/solid-harness.test.solid.tsx`). `act`'s `values` are keyed `"<ref> <label>"`. Use `expect(x)` without a

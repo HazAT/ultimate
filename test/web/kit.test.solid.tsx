@@ -154,8 +154,6 @@ it('lets an agent fill a text field and a secret it can never read back', async 
     </>
   ))
   await settle()
-  const secret = agent.snapshot().find((item) => item.label === 'API token')
-  expect(JSON.stringify(secret)).not.toContain('hunter2')
   const result = await agent.act({
     steps: [
       { ref: refFor('Machine name'), action: 'setValue', args: ['laptop'] },
@@ -174,6 +172,8 @@ it('lets an agent fill a text field and a secret it can never read back', async 
   container.querySelector<HTMLButtonElement>('[aria-label="Show API token"]')!.click()
   flush()
   expect(field.type).toBe('text')
+  expect(field.value).toBe('hunter2')
+  expect(JSON.stringify(agent.snapshot())).not.toContain('hunter2')
 })
 
 it('dims a disabled button that stays focusable', () => {

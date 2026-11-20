@@ -2998,6 +2998,346 @@
     },
     {
       "switch": {
+        "cold": 564.5,
+        "warm": 166.5
+      },
+      "stream": {
+        "median": 92,
+        "p95": 127,
+        "max": 643,
+        "taskMs": 4.4,
+        "events": 23
+      },
+      "previews": {
+        "scenarios": {
+          "keep-warm": {
+            "selectors": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 2,
+              "kb": 123,
+              "tokens": 3461,
+              "ms": 233,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 1,
+              "tokens": 292,
+              "ms": 97,
+              "ok": true
+            }
+          },
+          "pause": {
+            "selectors": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 2,
+              "kb": 129,
+              "tokens": 3461,
+              "ms": 223,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 2,
+              "tokens": 427,
+              "ms": 139,
+              "ok": true
+            }
+          },
+          "setup-read": {
+            "selectors": {
+              "calls": 2,
+              "steps": 1,
+              "screenshots": 2,
+              "kb": 138,
+              "tokens": 3459,
+              "ms": 173,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 1,
+              "tokens": 288,
+              "ms": 57,
+              "ok": true
+            }
+          }
+        }
+      },
+      "commit": "e335447a",
+      "sha": "e335447ac6ebfdf5fcc3394279993e8b76632a83",
+      "label": "0.8 C",
+      "date": "2026-11-20",
+      "committedAt": 1795135369,
+      "lines": {
+        "total": 51335,
+        "solid": 4561,
+        "react": 46774
+      },
+      "perExtension": {
+        "activity": {
+          "react": 547,
+          "solid": 0
+        },
+        "agent": {
+          "react": 150,
+          "solid": 0
+        },
+        "attachments": {
+          "react": 17,
+          "solid": 0
+        },
+        "automations": {
+          "react": 2367,
+          "solid": 185
+        },
+        "browser": {
+          "react": 229,
+          "solid": 0
+        },
+        "claude-code": {
+          "react": 87,
+          "solid": 0
+        },
+        "cloud": {
+          "react": 9,
+          "solid": 582
+        },
+        "codemode": {
+          "react": 246,
+          "solid": 0
+        },
+        "coding-tools": {
+          "react": 745,
+          "solid": 0
+        },
+        "context": {
+          "react": 798,
+          "solid": 0
+        },
+        "conversations": {
+          "react": 626,
+          "solid": 0
+        },
+        "diagrams": {
+          "react": 14,
+          "solid": 0
+        },
+        "documents": {
+          "react": 139,
+          "solid": 0
+        },
+        "dream": {
+          "react": 1545,
+          "solid": 0
+        },
+        "entries": {
+          "react": 2,
+          "solid": 0
+        },
+        "fast": {
+          "react": 48,
+          "solid": 0
+        },
+        "goal": {
+          "react": 533,
+          "solid": 0
+        },
+        "health": {
+          "react": 2,
+          "solid": 0
+        },
+        "inbox": {
+          "react": 665,
+          "solid": 0
+        },
+        "info": {
+          "react": 554,
+          "solid": 89
+        },
+        "instance": {
+          "react": 268,
+          "solid": 94
+        },
+        "keep-warm": {
+          "react": 5,
+          "solid": 87
+        },
+        "lineage": {
+          "react": 1252,
+          "solid": 0
+        },
+        "mcp": {
+          "react": 9,
+          "solid": 163
+        },
+        "messages": {
+          "react": 1879,
+          "solid": 0
+        },
+        "models": {
+          "react": 1874,
+          "solid": 0
+        },
+        "notices": {
+          "react": 63,
+          "solid": 0
+        },
+        "onboarding": {
+          "react": 1790,
+          "solid": 0
+        },
+        "parallel": {
+          "react": 380,
+          "solid": 0
+        },
+        "pause": {
+          "react": 208,
+          "solid": 331
+        },
+        "phase": {
+          "react": 82,
+          "solid": 0
+        },
+        "plan": {
+          "react": 1034,
+          "solid": 0
+        },
+        "projects": {
+          "react": 337,
+          "solid": 0
+        },
+        "prompt": {
+          "react": 61,
+          "solid": 0
+        },
+        "push": {
+          "react": 8,
+          "solid": 256
+        },
+        "questions": {
+          "react": 1190,
+          "solid": 0
+        },
+        "read-aloud": {
+          "react": 279,
+          "solid": 0
+        },
+        "recall": {
+          "react": 89,
+          "solid": 0
+        },
+        "reel": {
+          "react": 408,
+          "solid": 0
+        },
+        "review": {
+          "react": 1325,
+          "solid": 0
+        },
+        "secrets": {
+          "react": 25,
+          "solid": 410
+        },
+        "self": {
+          "react": 149,
+          "solid": 235
+        },
+        "setup": {
+          "react": 7,
+          "solid": 113
+        },
+        "share": {
+          "react": 73,
+          "solid": 0
+        },
+        "side-chat": {
+          "react": 782,
+          "solid": 0
+        },
+        "sidebar": {
+          "react": 2593,
+          "solid": 0
+        },
+        "sounds": {
+          "react": 25,
+          "solid": 415
+        },
+        "splash": {
+          "react": 1148,
+          "solid": 0
+        },
+        "status-line": {
+          "react": 359,
+          "solid": 0
+        },
+        "subagents": {
+          "react": 2133,
+          "solid": 0
+        },
+        "system": {
+          "react": 1260,
+          "solid": 0
+        },
+        "tailscale": {
+          "react": 12,
+          "solid": 314
+        },
+        "tasks": {
+          "react": 498,
+          "solid": 0
+        },
+        "theme": {
+          "react": 11,
+          "solid": 0
+        },
+        "todos": {
+          "react": 338,
+          "solid": 0
+        },
+        "ui": {
+          "react": 70,
+          "solid": 0
+        },
+        "update": {
+          "react": 5,
+          "solid": 454
+        },
+        "voice-live": {
+          "react": 1762,
+          "solid": 0
+        },
+        "voice": {
+          "react": 251,
+          "solid": 0
+        },
+        "watchdog": {
+          "react": 41,
+          "solid": 0
+        },
+        "wire": {
+          "react": 1158,
+          "solid": 0
+        },
+        "workspaces": {
+          "react": 1184,
+          "solid": 0
+        }
+      },
+      "bundleGzipKB": 2991,
+      "entryGzipKB": 457,
+      "summary": "Batch C: sounds player and pause hint on Solid; secrets and cloud moved whole; kit Input and SecretInput"
+    },
+    {
+      "switch": {
         "cold": 565,
         "warm": 155.5
       },
@@ -3074,7 +3414,7 @@
       },
       "commit": "c06f256c",
       "sha": "c06f256c334e87ecc6ed11c555ff8633fd8a83c3",
-      "label": "batch B",
+      "label": "0.8 B",
       "date": "2026-11-20",
       "committedAt": 1795135353,
       "lines": {
