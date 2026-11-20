@@ -4,7 +4,7 @@ import { createEffect, createMemo, createRoot, createSignal, For, onSettled, Sho
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
 import { api, cn, keepLast, prettyName, useAction, useExtensions, useViewport } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline, debounce } from '../../lib/timers.ts'
 import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.solid.tsx'
 import { shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
@@ -43,13 +43,14 @@ export function OpeningBar() {
 }
 
 const [visible, setVisible] = createRoot(() => createSignal(true))
+const shownNow = () => document.visibilityState === 'visible'
 
 function refetchWhenShown(...reads: { refetch: () => unknown }[]) {
   onSettled(() => {
+    setVisible(shownNow())
     const changed = () => {
-      const shown = document.visibilityState === 'visible'
-      setVisible(shown)
-      if (shown) for (const read of reads) void read.refetch()
+      setVisible(shownNow())
+      if (shownNow()) for (const read of reads) void read.refetch()
     }
     document.addEventListener('visibilitychange', changed)
     return () => document.removeEventListener('visibilitychange', changed)
@@ -85,12 +86,10 @@ function ProjectsRail() {
   )
   refetchWhenShown(list, shared)
   const [pinnedHere, setPinnedHere] = createSignal<boolean>()
-  createEffect(
-    () => shared.data()?.pinned,
-    (stored) => {
-      if (stored !== undefined) setPinnedHere(stored)
-    },
-  )
+  const stored = createMemo(() => shared.data()?.pinned)
+  createEffect(stored, (value) => {
+    if (value !== undefined) setPinnedHere(value)
+  })
   const pinned = () => pinnedHere() ?? false
   const pin = (next: boolean) => {
     setPinnedHere(next)
@@ -98,16 +97,12 @@ function ProjectsRail() {
   }
 
   const [hover, setHover] = createSignal(false)
-  let cancelHover: (() => void) | undefined
-  const enter = () => {
-    cancelHover?.()
-    cancelHover = deadline(HOVER_DELAY_MS, () => setHover(true))
-  }
+  const enter = debounce(HOVER_DELAY_MS, () => setHover(true))
   const leave = () => {
-    cancelHover?.()
+    enter.cancel()
     setHover(false)
   }
-  onSettled(() => () => cancelHover?.())
+  onSettled(() => enter.cancel)
 
   const projects = () => list.data() ?? []
   const loading = () => !list.data() && !list.error()
