@@ -36,13 +36,14 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { actions } from '../../../../web/src/sdk/actions.ts'
+import { actions, currentContext } from '../../../../web/src/sdk/actions.ts'
 import { store } from '../../../../web/src/sdk/client.ts'
 import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
 import { ModelButton, ThinkingButton } from '../../toolbar.solid.tsx'
 import { openLogin } from '../../state.ts'
+import models from '../../web.tsx'
 
 const agent = createAgent()
 const server = fakeSubscriptions(harness.sources)
@@ -187,7 +188,7 @@ it('lets an agent pick a model and a family by name, recording both writes as th
   ])
 })
 
-it('opens the model picker and configures reasoning for the side chat, not the shown conversation', async () => {
+it('targets the side chat from thinking controls and the picker, including after a provider login', async () => {
   const release = store.watchConversation(side)
   const container = renderSolid(() => (
     <>
@@ -196,6 +197,7 @@ it('opens the model picker and configures reasoning for the side chat, not the s
         <ThinkingButton />
       </ConversationScope>
       <ModelPicker />
+      <LoginDialog />
     </>
   ))
   try {
@@ -208,13 +210,39 @@ it('opens the model picker and configures reasoning for the side chat, not the s
     expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
     await expectDistinctAgentNames(agent)
     expect(await act('high effort', 'press')).toMatchObject({ ok: true })
+    const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
+    expect(cycle).toMatchObject({ keys: 'shift+tab', whileTyping: true })
+    await cycle.run(currentContext(side))
+    await cycle.run(currentContext())
+
     expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
+    expect(await act('Search model catalog', 'run', 'accounts/login')).toMatchObject({ ok: true })
+    expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
+    server.of(side)!.send('doc', {
+      kind: 'models.login',
+      value: {
+        flows: { 'flow-1': { provider: 'faux', type: 'api_key', status: 'complete', events: [] } },
+      },
+    })
+    await sync()
+    expect(await act('Pick a model', 'press')).toMatchObject({ ok: true })
     expect(container.querySelector('[data-highlighted][role="option"]')?.textContent).toContain(
       'orion',
     )
     expect(await act('Search model catalog', 'run', 'faux/atlas')).toMatchObject({ ok: true })
     expect(writes()).toEqual([
       { path: '/api/conversations/17/configure', body: { thinkingLevel: 'high' }, source: 'agent' },
+      {
+        path: '/api/conversations/17/configure',
+        body: { thinkingLevel: 'high' },
+        source: 'person',
+      },
+      { path: '/api/conversations/1/configure', body: { thinkingLevel: 'low' }, source: 'person' },
+      {
+        path: '/api/extensions/models/actions/login',
+        body: { args: { provider: 'faux', type: 'api_key' }, conversationId: 17 },
+        source: 'agent',
+      },
       {
         path: '/api/conversations/17/configure',
         body: { model: { provider: 'faux', modelId: 'atlas' } },
