@@ -61,12 +61,12 @@ export function Reading({
       </header>
       <h2 className="mt-3 text-[17px] leading-7 font-semibold tracking-[-0.01em]">{title}</h2>
       {body && (
-        <div className="mt-1 [&>div]:px-0 [&>div]:py-0 [&>div]:text-[15px] [&>div]:leading-6">
+        <div className="mt-1 [&>div>div]:px-0 [&>div>div]:py-0 [&>div>div]:text-[15px] [&>div>div]:leading-6">
           <Body text={body} />
         </div>
       )}
       {message?.images && typeof message.from === 'number' && (
-        <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-card/60 [&>div]:border-t-0">
+        <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-card/60 [&>div>div]:border-t-0">
           <MessageImages conversation={message.from} entry={message.images.entry} />
         </div>
       )}

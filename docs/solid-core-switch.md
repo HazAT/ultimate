@@ -4,6 +4,16 @@ The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in ext
 the React core or is a React hook the core calls, so it can only move once that core is Solid. Keep it current when a
 batch leaves a part React.
 
+**Done: P2's renderers.** Every transcript renderer of messages, questions, review, workspaces, conversations, goal,
+pause, self, setup and status-line is `island(C)`; goal, self, setup and status-line are whole. Solid renderers take the
+transcript's parts from `@/sdk/parts.solid.tsx` (`Card`, `Fold`, `MessageActions`, `UserView`, `useToolDuration`) and
+read another extension's point with its `Provided`, which renders an `island(C)` provider as Solid and a React one through
+the bridge; a React host's `Provided` renders an `island(C)` provider as an element. Points meant for `island(C)`
+providers take an object input (`MessageAnswers`, `MessageExtras`: `{ message }`; `LandingExtras`: `{ conversation }`).
+React callers outside the transcript (inbox's reading pane, side chat, voice-live, review's surface, sidebar, lineage)
+reach the moved parts through `island` wrappers in the owner's `ui.tsx`; voice-live keeps a small React `Bubble` shell
+because it passes React prompt and answer nodes into it.
+
 **Done: the transcript host (C2).** `web/src/app/transcript.solid.tsx` and its rows (tool calls, user turns, message
 actions, folds, work runs, the live status) are Solid, with its own scroll-to-bottom (`web/src/app/follow.ts`). Its
 renderer points keep their framework: a tool, entry, tool-line, message-action, message-detail, answer-label,
@@ -17,9 +27,8 @@ React providers through the same bridge until C4.
 **Done in P3:** the transcript renderers of subagents, context (whole: its slots too), browser, codemode, parallel,
 instance, todos, models, prompt, watchdog, recall, wire, read-aloud and automations are `island(C)`. A UI-valued point a
 Solid host reads is filled with `provide(Point, island(C))` and rendered with `Provided` from `@/sdk/parts.solid.tsx`
-(`ConversationTaskChip`, which plan fills). context keeps local Solid copies of conversations' `AgentMark` and
-coding-tools' `Diff` (`mark.solid.tsx`, `section-diff.solid.tsx`): move them to those extensions' `ui.solid.tsx` when
-those move, and delete the copies.
+(`ConversationTaskChip`, which plan fills). context keeps a local Solid copy of coding-tools' `Diff`
+(`section-diff.solid.tsx`): move it to coding-tools' `ui.solid.tsx` when coding-tools moves, and delete the copy.
 
 **Summary (after P3, before P2):** 39 rows (a row is one part or a group of one extension's parts). By core host:
 
@@ -37,25 +46,19 @@ breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
-| Extension     | Part                                                                                               | Where                   | Hook in the transcript       |
-| ------------- | -------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- |
-| goal          | tool renderer `goal` (`call.tsx`)                                                                  | `goal/web.tsx`          | tool calls                   |
-| self          | tool renderer `restart`                                                                            | `self/web.tsx`          | tool calls                   |
-| workspaces    | tool renderer `workspace`; entries `lineage.note` (landing card), `ultimate.lander`, lander report | `workspaces/web.tsx`    | tool calls, entries          |
-| goal          | entries `goal.started`, `goal.report` (with End hands-off), `goal.note` (model-only)               | `goal/cards.tsx`        | entries                      |
-| pause         | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held`                                | `pause/web.tsx`         | entries                      |
-| setup         | entry `setup.note` (model-only)                                                                    | `setup/web.tsx`         | entries                      |
-| automations   | provided `WaitTimers` (`useWaitTimers`)                                                            | `automations/web.tsx`   | messages' wait timers        |
-| conversations | entries `conversations.*` (`SummaryAction`)                                                        | `conversations/web.tsx` | entries                      |
-| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                        | `conversations/web.tsx` | empty transcript             |
-| status-line   | message detail `MessageUsage`                                                                      | `status-line/web.tsx`   | message bar                  |
-| codemode      | provided `MessageReference`                                                                        | `codemode/web.tsx`      | message actions              |
-| reel          | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card)    | `reel/web.tsx`          | message cards, inbox's cards |
-| questions     | provided `MessageAnswers`; the answer card agents cannot press yet                                 | `questions/web.tsx`     | message cards, inbox's cards |
-| tasks         | provided `RunStart` (a data hook)                                                                  | `tasks/web.tsx`         | the run timer                |
-| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                        | `pause/web.tsx`         | parked runs                  |
-| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                      | `subagents/web.tsx`     | error cards                  |
-| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`      | `review/web.tsx`        | the landing card, sidebar    |
+| Extension     | Part                                                                                           | Where                   | Hook in the transcript       |
+| ------------- | ---------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- |
+| automations   | provided `WaitTimers` (`useWaitTimers`)                                                        | `automations/web.tsx`   | messages' wait timers        |
+| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                    | `conversations/web.tsx` | empty transcript             |
+| codemode      | provided `MessageReference`                                                                    | `codemode/web.tsx`      | message actions              |
+| reel          | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`          | message cards, inbox's cards |
+| tasks         | provided `RunStart` (a data hook)                                                              | `tasks/web.tsx`         | the run timer                |
+| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                    | `pause/web.tsx`         | parked runs                  |
+| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                  | `subagents/web.tsx`     | error cards                  |
+| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`  | `review/web.tsx`        | the sidebar                  |
+| messages      | slot `OffscreenQuestions` (reads the React `useTranscriptScroll` refs to find cards offscreen) | `messages/web.tsx`      | top                          |
+| messages      | `MessageNavigation` overlay, `OpenMessages` (composer status)                                  | `messages/web.tsx`      | overlay, composer            |
+| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                 | `questions/web.tsx`     | overlay                      |
 
 ## The sidebar
 
@@ -91,13 +94,14 @@ breaks them unless they move to `island(C)` first.
 
 ## Other extensions' React points
 
-| Extension   | Part                                                                                                                                                | Where                    | Called by                                                           |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------- |
-| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`            | onboarding's React details (returns an island)                      |
-| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`           | workspaces' React landing card                                      |
-| workspaces  | `CommitCount`, `LandingCard` (React)                                                                                                                | `workspaces/landing.tsx` | the landing card in the transcript                                  |
-| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`                | subagents' Agents panel and definition form, onboarding's Get ready |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/`           | sidebar, system, its transcript entries                             |
+| Extension   | Part                                                                                                                                                | Where               | Called by                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`       | onboarding's React details (returns an island)                      |
+| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  |
+| side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    |
+| plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  |
+| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/`      | sidebar, system, its transcript entries                             |
 
 ## Shared state and keys
 

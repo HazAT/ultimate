@@ -14,7 +14,7 @@ import { cn, useAction } from '@/sdk'
 import { RangesAction } from './refs.ts'
 import type { ReviewRange } from './refs.ts'
 
-export const shortSpec = (spec: string) => spec.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
+import { shortSpec } from './comments.ts'
 
 export function Selector({
   spec,

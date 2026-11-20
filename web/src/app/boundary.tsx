@@ -315,9 +315,16 @@ function Provide<Input, Value>({
   input: Input
   render: (value: Value) => ReactNode
 }) {
+  const provider = useContext(ExtensionNameContext)
   if (!islandSolid(use)) return render(use(input))
   const Island = use as unknown as ComponentType<Input & object>
-  return render((<Island {...(input as Input & object)} />) as Value)
+  return render(
+    (
+      <ExtensionNameContext.Provider value={provider}>
+        <Island {...(input as Input & object)} />
+      </ExtensionNameContext.Provider>
+    ) as Value,
+  )
 }
 
 export function Slot({

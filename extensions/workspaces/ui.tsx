@@ -7,15 +7,8 @@
 export { stateLabel, useWorkspaceConversations, useWorkspaceIndex, useWorkspaces } from './data.tsx'
 export type { WorkspaceConversation } from './data.tsx'
 export { LanderReportEntry } from './refs.ts'
-export {
-  CommitCount,
-  LandedNote,
-  LandingExtras,
-  Open,
-  Review,
-  useGithubRepo,
-  useProjectRepo,
-} from './landing.tsx'
+export { LandedNote, LandingExtras, Review } from './landing-points.ts'
+export { CommitCount, Open, useGithubRepo, useProjectRepo } from './landing.tsx'
 export {
   CheckRan,
   InfoAction,

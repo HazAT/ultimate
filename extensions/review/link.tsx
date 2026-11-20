@@ -52,7 +52,10 @@ export function ReviewLink() {
   const wanted = useSyncExternalStore(subscribe, () => pendingReviewRequest)
   const [spec, setSpec] = useSpec()
   const { surface, showSurface } = useUltimate()
-  useEvent('review:open', (data) => openReview((data as { spec: string }).spec))
+  useEvent('review:open', (data) => {
+    const request = data as Request
+    openReview(request.spec, request.at)
+  })
   useEffect(() => {
     if (wanted === undefined) return
     pendingReviewRequest = undefined

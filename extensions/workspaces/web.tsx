@@ -1,98 +1,10 @@
-import type { EntryId } from '@earendil-works/pi-durable'
 import type { ReactNode } from 'react'
-import { ChevronRightIcon, GitMergeIcon } from 'lucide-react'
-import { MentionText } from '@/components/ai/message'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { cn, column, defineWebExtension, useConversation, useTranscript } from '@/sdk'
+import { GitMergeIcon } from 'lucide-react'
+import { cn, column, defineWebExtension, island, useConversation } from '@/sdk'
+import { WorkspaceCall } from './call.solid.tsx'
 import { useWorkspaceIndex } from './data.tsx'
-import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
-import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
-import { compareUrl } from '../../lib/compare.ts'
-import { NoteEntry } from '../entries/ui.tsx'
-import type { NoteData } from '../entries/refs.ts'
-
-function LandingNote({ id, data }: { id: EntryId; data: Extract<NoteData, { source: 'lander' }> }) {
-  const {
-    from,
-    at,
-    divergence,
-    sha,
-    base,
-    target,
-    title,
-    summary,
-    feature,
-    commits,
-    paths,
-    more,
-    pushed,
-    abstract,
-    submission,
-  } = data
-  const github = useGithubRepo()
-  const transcript = useTranscript()
-  const previousLandingForLegacyBase = base
-    ? undefined
-    : transcript.findLast(
-        (other) => NoteEntry.is(other) && other.id < id && other.data.source === 'lander',
-      )
-  const rangeBase =
-    base ??
-    (NoteEntry.is(previousLandingForLegacyBase) &&
-    previousLandingForLegacyBase.data.source === 'lander'
-      ? previousLandingForLegacyBase.data.sha
-      : undefined)
-  return (
-    <div data-lineage-note="lander">
-      <LandingCard
-        card={id}
-        sha={sha}
-        submission={submission}
-        from={from}
-        sourceEntry={at}
-        divergence={divergence}
-        headline={
-          <span className="flex flex-wrap items-center gap-x-2">
-            <span>
-              Landed {sha.slice(0, 7)} on {target}
-              {pushed ? ` · pushed to ${pushed}` : ''}
-            </span>
-            <CommitCount
-              className="text-muted-foreground"
-              count={commits.length + more}
-              href={github && rangeBase ? compareUrl(github, rangeBase, sha) : undefined}
-              range={rangeBase ? `${rangeBase}...${sha}` : undefined}
-            />
-          </span>
-        }
-        subject={{
-          ...(title ? { title } : {}),
-          ...(summary ? { summary } : {}),
-          ...(feature ? { feature } : {}),
-        }}
-        tone="landed"
-      >
-        {paths.length > 0 && (
-          <p className="break-words text-muted-foreground">Changed: {paths.join(', ')}</p>
-        )}
-        {abstract && (
-          <Collapsible className="group/state">
-            <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
-              <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/state:rotate-90" />
-              State at landing
-              <span className="text-muted-foreground/70">
-                · #{from}/{abstract.at}
-              </span>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-1 pl-4 font-sans text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
-              <MentionText text={abstract.text} />
-            </CollapsibleContent>
-          </Collapsible>
-        )}
-      </LandingCard>
-    </div>
-  )
-}
+import { LandingNote } from './landing-note.solid.tsx'
+import { LanderLogEntry, LanderReport } from './log.solid.tsx'
 
 function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
   const id = useConversation((conversation) => conversation.id)
@@ -114,15 +26,10 @@ function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
 
 export default defineWebExtension({
   composer: LanderComposer,
-  tools: { workspace: WorkspaceCall },
+  tools: { workspace: island(WorkspaceCall) },
   entries: {
-    'lineage.note': ({ entry, core }) =>
-      NoteEntry.is(entry) && entry.data.source === 'lander' ? (
-        <LandingNote id={entry.id} data={entry.data} />
-      ) : (
-        core
-      ),
-    'ultimate.lander': LanderLogEntry,
-    'workspaces.lander-report': LanderReport,
+    'lineage.note': island(LandingNote),
+    'ultimate.lander': island(LanderLogEntry),
+    'workspaces.lander-report': island(LanderReport),
   },
 })

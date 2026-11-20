@@ -6939,18 +6939,30 @@
       "summary": "The transcript host moves to Solid with its own scroll-to-bottom; renderers keep their framework, island(C) as Solid, React through a temporary bridge"
     },
     {
-      "switch": null,
-      "stream": null,
+      "switch": {
+        "cold": 745,
+        "warm": 316.5
+      },
+      "stream": {
+        "median": 37,
+        "p95": 48,
+        "max": 638,
+        "taskMs": 4.7,
+        "taskP95Ms": 8.4,
+        "mutations": 1,
+        "mutationsP95": 4,
+        "events": 23
+      },
       "previews": null,
-      "commit": "e0194473",
-      "sha": "e01944731d25f8c6c00c9b501df18d83d305ef40",
-      "label": "P3: transcript renderers",
+      "commit": "e73682c6",
+      "sha": "e73682c6274efcf56d5beb4541469351d10a6ad9",
+      "label": "C2 timing (main)",
       "date": "2026-11-20",
-      "committedAt": 1795192236,
+      "committedAt": 1795184850,
       "lines": {
-        "total": 54522,
-        "solid": 19892,
-        "react": 34630
+        "total": 53607,
+        "solid": 16231,
+        "react": 37376
       },
       "perExtension": {
         "activity": {
@@ -6966,12 +6978,12 @@
           "solid": 0
         },
         "automations": {
-          "react": 62,
-          "solid": 2369
+          "react": 275,
+          "solid": 2165
         },
         "browser": {
-          "react": 5,
-          "solid": 235
+          "react": 229,
+          "solid": 0
         },
         "claude-code": {
           "react": 22,
@@ -6982,20 +6994,20 @@
           "solid": 583
         },
         "codemode": {
-          "react": 26,
-          "solid": 251
+          "react": 246,
+          "solid": 0
         },
         "coding-tools": {
           "react": 745,
           "solid": 0
         },
         "context": {
-          "react": 13,
-          "solid": 982
+          "react": 798,
+          "solid": 0
         },
         "conversations": {
-          "react": 421,
-          "solid": 269
+          "react": 416,
+          "solid": 268
         },
         "diagrams": {
           "react": 3,
@@ -7034,8 +7046,8 @@
           "solid": 596
         },
         "instance": {
-          "react": 58,
-          "solid": 386
+          "react": 194,
+          "solid": 191
         },
         "keep-warm": {
           "react": 5,
@@ -7054,8 +7066,8 @@
           "solid": 35
         },
         "models": {
-          "react": 601,
-          "solid": 1401
+          "react": 690,
+          "solid": 1267
         },
         "notices": {
           "react": 3,
@@ -7066,8 +7078,8 @@
           "solid": 0
         },
         "parallel": {
-          "react": 5,
-          "solid": 408
+          "react": 380,
+          "solid": 0
         },
         "pause": {
           "react": 208,
@@ -7078,16 +7090,16 @@
           "solid": 0
         },
         "plan": {
-          "react": 1033,
-          "solid": 61
+          "react": 1030,
+          "solid": 55
         },
         "projects": {
           "react": 5,
           "solid": 355
         },
         "prompt": {
-          "react": 5,
-          "solid": 74
+          "react": 61,
+          "solid": 0
         },
         "push": {
           "react": 8,
@@ -7098,12 +7110,12 @@
           "solid": 0
         },
         "read-aloud": {
-          "react": 252,
-          "solid": 69
+          "react": 279,
+          "solid": 0
         },
         "recall": {
-          "react": 7,
-          "solid": 104
+          "react": 89,
+          "solid": 0
         },
         "reel": {
           "react": 408,
@@ -7150,8 +7162,8 @@
           "solid": 311
         },
         "subagents": {
-          "react": 1712,
-          "solid": 569
+          "react": 2133,
+          "solid": 0
         },
         "system": {
           "react": 1260,
@@ -7170,8 +7182,8 @@
           "solid": 0
         },
         "todos": {
-          "react": 22,
-          "solid": 346
+          "react": 85,
+          "solid": 265
         },
         "ui": {
           "react": 70,
@@ -7190,21 +7202,289 @@
           "solid": 288
         },
         "watchdog": {
-          "react": 6,
-          "solid": 45
+          "react": 41,
+          "solid": 0
         },
         "wire": {
-          "react": 56,
-          "solid": 1190
+          "react": 123,
+          "solid": 1121
         },
         "workspaces": {
-          "react": 955,
+          "react": 953,
           "solid": 356
         }
       },
-      "bundleGzipKB": 3181,
-      "entryGzipKB": 682,
-      "summary": "subagents, context and twelve more extensions' transcript renderers move to Solid island(C); the plan task chip returns through a Solid point"
+      "bundleGzipKB": 2986,
+      "entryGzipKB": 489,
+      "summary": "Timing on main after the transcript switch, quiet machine"
+    },
+    {
+      "switch": null,
+      "stream": null,
+      "previews": null,
+      "commit": "ee61d6e7",
+      "sha": "ee61d6e747e6dca179205949c755e7a2b33fd6b6",
+      "label": "P2",
+      "date": "2026-11-20",
+      "committedAt": 1795191946,
+      "lines": {
+        "total": 53588,
+        "solid": 20324,
+        "react": 33264
+      },
+      "perExtension": {
+        "activity": {
+          "react": 21,
+          "solid": 474
+        },
+        "agent": {
+          "react": 150,
+          "solid": 0
+        },
+        "attachments": {
+          "react": 17,
+          "solid": 0
+        },
+        "automations": {
+          "react": 275,
+          "solid": 2165
+        },
+        "browser": {
+          "react": 229,
+          "solid": 0
+        },
+        "claude-code": {
+          "react": 22,
+          "solid": 61
+        },
+        "cloud": {
+          "react": 9,
+          "solid": 583
+        },
+        "codemode": {
+          "react": 246,
+          "solid": 0
+        },
+        "coding-tools": {
+          "react": 745,
+          "solid": 0
+        },
+        "context": {
+          "react": 798,
+          "solid": 0
+        },
+        "conversations": {
+          "react": 236,
+          "solid": 416
+        },
+        "diagrams": {
+          "react": 3,
+          "solid": 16
+        },
+        "documents": {
+          "react": 139,
+          "solid": 0
+        },
+        "dream": {
+          "react": 1545,
+          "solid": 0
+        },
+        "entries": {
+          "react": 2,
+          "solid": 0
+        },
+        "fast": {
+          "react": 5,
+          "solid": 58
+        },
+        "goal": {
+          "react": 17,
+          "solid": 596
+        },
+        "health": {
+          "react": 2,
+          "solid": 0
+        },
+        "inbox": {
+          "react": 314,
+          "solid": 295
+        },
+        "info": {
+          "react": 20,
+          "solid": 596
+        },
+        "instance": {
+          "react": 194,
+          "solid": 191
+        },
+        "keep-warm": {
+          "react": 5,
+          "solid": 87
+        },
+        "lineage": {
+          "react": 1252,
+          "solid": 0
+        },
+        "mcp": {
+          "react": 9,
+          "solid": 163
+        },
+        "messages": {
+          "react": 607,
+          "solid": 1084
+        },
+        "models": {
+          "react": 690,
+          "solid": 1267
+        },
+        "notices": {
+          "react": 3,
+          "solid": 54
+        },
+        "onboarding": {
+          "react": 1802,
+          "solid": 0
+        },
+        "parallel": {
+          "react": 380,
+          "solid": 0
+        },
+        "pause": {
+          "react": 55,
+          "solid": 456
+        },
+        "phase": {
+          "react": 82,
+          "solid": 0
+        },
+        "plan": {
+          "react": 1030,
+          "solid": 55
+        },
+        "projects": {
+          "react": 5,
+          "solid": 355
+        },
+        "prompt": {
+          "react": 61,
+          "solid": 0
+        },
+        "push": {
+          "react": 8,
+          "solid": 256
+        },
+        "questions": {
+          "react": 46,
+          "solid": 991
+        },
+        "read-aloud": {
+          "react": 279,
+          "solid": 0
+        },
+        "recall": {
+          "react": 89,
+          "solid": 0
+        },
+        "reel": {
+          "react": 408,
+          "solid": 0
+        },
+        "review": {
+          "react": 1254,
+          "solid": 102
+        },
+        "secrets": {
+          "react": 25,
+          "solid": 410
+        },
+        "self": {
+          "react": 15,
+          "solid": 394
+        },
+        "setup": {
+          "react": 7,
+          "solid": 118
+        },
+        "share": {
+          "react": 3,
+          "solid": 85
+        },
+        "side-chat": {
+          "react": 782,
+          "solid": 0
+        },
+        "sidebar": {
+          "react": 2550,
+          "solid": 45
+        },
+        "sounds": {
+          "react": 25,
+          "solid": 416
+        },
+        "splash": {
+          "react": 1148,
+          "solid": 0
+        },
+        "status-line": {
+          "react": 11,
+          "solid": 420
+        },
+        "subagents": {
+          "react": 2133,
+          "solid": 0
+        },
+        "system": {
+          "react": 1260,
+          "solid": 0
+        },
+        "tailscale": {
+          "react": 12,
+          "solid": 314
+        },
+        "tasks": {
+          "react": 25,
+          "solid": 421
+        },
+        "theme": {
+          "react": 11,
+          "solid": 0
+        },
+        "todos": {
+          "react": 85,
+          "solid": 265
+        },
+        "ui": {
+          "react": 70,
+          "solid": 0
+        },
+        "update": {
+          "react": 5,
+          "solid": 454
+        },
+        "voice-live": {
+          "react": 1756,
+          "solid": 0
+        },
+        "voice": {
+          "react": 3,
+          "solid": 288
+        },
+        "watchdog": {
+          "react": 41,
+          "solid": 0
+        },
+        "wire": {
+          "react": 123,
+          "solid": 1121
+        },
+        "workspaces": {
+          "react": 209,
+          "solid": 1217
+        }
+      },
+      "bundleGzipKB": 3178,
+      "entryGzipKB": 490,
+      "summary": "Transcript renderers of messages, questions (answer card), workspaces, review, conversations, goal, pause, self, setup and status-line to Solid"
     }
   ],
   "previewUsage": [

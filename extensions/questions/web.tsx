@@ -1,11 +1,11 @@
 import { ROOT } from '@/sdk'
 import { useEffect } from 'react'
-import { defineWebExtension, provide, useDocOf, useUiState, writingAs } from '@/sdk'
+import { defineWebExtension, island, provide, useDocOf, useUiState, writingAs } from '@/sdk'
 import { MessageAnswers, MessagesDoc } from '../messages/ui.tsx'
-import { MessageQuestions } from './card.tsx'
-import { forgetSettled } from './open.tsx'
-import { CARDS_KEY } from './state.tsx'
-import type { CardState } from './state.tsx'
+import { HiddenQuestionEntry, MessageQuestions } from './card.solid.tsx'
+import { forgetSettled } from './open.ts'
+import { CARDS_KEY } from './state.ts'
+import type { CardState } from './state.ts'
 
 function CrossSurfaceDraftSweep() {
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
@@ -22,8 +22,8 @@ function CrossSurfaceDraftSweep() {
 export default defineWebExtension({
   slots: { overlay: [CrossSurfaceDraftSweep] },
   entries: {
-    'questions.asked': () => null,
-    'questions.answers': () => null,
+    'questions.asked': island(HiddenQuestionEntry),
+    'questions.answers': island(HiddenQuestionEntry),
   },
   commands: [
     {
@@ -32,5 +32,5 @@ export default defineWebExtension({
       run: (context) => context.openPanel('todos'),
     },
   ],
-  provides: [provide(MessageAnswers, ({ message }) => <MessageQuestions message={message} />)],
+  provides: [provide(MessageAnswers, island(MessageQuestions))],
 })

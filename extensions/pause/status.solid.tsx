@@ -188,7 +188,7 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
             state().paused ? 'Play: continue paused work' : 'Pause: stop starting new work'
           }
           class="h-7 font-sans text-[12px]"
-          data-agent-confirm={state().paused ? 'Continues all paused work.' : undefined}
+          data-agent-confirm={state().paused ? playConfirmation : undefined}
           data-pause-toggle
           onClick={props.toggle}
           size="sm"
@@ -265,6 +265,12 @@ export function Item() {
   )
 }
 
+export const playConfirmation = 'Continues all paused work.'
+export const playPausedWork = () =>
+  api
+    .action(PlayAction, null, { conversationId: ROOT })
+    .catch((error: unknown) => notify({ level: 'error', message: errorMessage(error) }))
+
 export function Play() {
   const doc = useDocOf(() => ROOT, PauseDoc)
   return (
@@ -272,13 +278,9 @@ export function Play() {
       <Button
         class="-mx-1 flex gap-1.5 rounded-sm px-1 font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal text-brand transition-colors hover:bg-accent"
         aria-label="Play paused work"
-        data-agent-confirm="Continues all paused work."
+        data-agent-confirm={playConfirmation}
         data-pause-play
-        onClick={() =>
-          api
-            .action(PlayAction, null, { conversationId: ROOT })
-            .catch((error: unknown) => notify({ level: 'error', message: errorMessage(error) }))
-        }
+        onClick={playPausedWork}
         size={null}
         variant={null}
       >

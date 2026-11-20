@@ -15,8 +15,8 @@ export const ConversationPhase = definePoint<
   ConversationId | undefined,
   { label: ReactNode; word: string; waiting: boolean } | undefined
 >('conversations.phase')
-/** Whether conversation `id` gets no summaries, so its transcript hides older summary lines (lineage: a root). */
-export const Unsummarized = definePoint<ConversationId, boolean>('conversations.unsummarized')
+export { Unsummarized } from './points.ts'
+
 /** The plan task conversation `id` works on (`plan` provides it): its chip and title. */
 export const ConversationTask = definePoint<
   ConversationId | undefined,

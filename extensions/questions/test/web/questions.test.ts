@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
-import { forgetSettled, keyCard, newestAsked, openQuestions, waiting } from '../../open.tsx'
-import { EMPTY_CARD } from '../../state.tsx'
+import { forgetSettled, keyCard, newestAsked, openQuestions, waiting } from '../../open.ts'
+import { EMPTY_CARD } from '../../state.ts'
 
 const question = { text: 'Keep the preview?', kind: 'confirm' as const }
 const open = {

@@ -1,30 +1,13 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
-import {
-  ArrowUpRightIcon,
-  CheckIcon,
-  SquareArrowOutUpRightIcon,
-  TriangleAlertIcon,
-  XIcon,
-} from 'lucide-react'
+import { ArrowUpRightIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { MentionText } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
-import {
-  AllProvided,
-  api,
-  definePoint,
-  Fold,
-  plural,
-  Provided,
-  useConversationSummary,
-  useUltimate,
-} from '@/sdk'
-import { FeatureTag, useStandingName } from '../conversations/ui.tsx'
+import { api, plural, Provided, useConversationSummary, useUltimate } from '@/sdk'
+import { Review } from './landing-points.ts'
 import { GithubAction, RepoAction } from './refs.ts'
 import type { GithubRepo } from './refs.ts'
-import type { ConversationSubject } from '../conversations/types.ts'
 
 export function Open({
   id,
@@ -86,17 +69,6 @@ export function useProjectRepo() {
   return value
 }
 
-export const Review = definePoint<string, (() => void) | undefined>('workspaces.review')
-
-export const LandedNote = definePoint<
-  { conversation: ConversationId; submission: string },
-  ReactNode | undefined
->('workspaces.landed-note')
-
-export const LandingExtras = definePoint<{ conversation: ConversationId }, ReactNode>(
-  'workspaces.landing-extras',
-)
-
 const external = (href: string, children: ReactNode, className?: string) => (
   <a
     className={cn(
@@ -151,134 +123,5 @@ export function CommitCount({
         )
       }
     </Provided>
-  )
-}
-
-function useStandingOrSubmittedSubject(from: ConversationId, subject?: ConversationSubject) {
-  const agent = useStandingName(from)
-  return agent ? { title: agent } : subject
-}
-
-export function Subject({
-  subject: given,
-  from,
-  className,
-}: {
-  subject?: ConversationSubject
-  from: ConversationId
-  className?: string
-}) {
-  const { switchConversation } = useUltimate()
-  const subject = useStandingOrSubmittedSubject(from, given)
-  return (
-    <span className={cn('flex min-w-0 items-center gap-1.5', className)}>
-      {subject?.feature && <FeatureTag className="shrink-0" feature={subject.feature} />}
-      <button
-        className="min-w-0 cursor-pointer truncate font-sans text-[12.5px] text-foreground hover:underline"
-        onClick={() => switchConversation(from)}
-        title={`Open #${from}`}
-        type="button"
-      >
-        {subject?.title ?? `#${from}`}
-      </button>
-      {subject?.title && <span className="shrink-0 text-muted-foreground/70">#{from}</span>}
-    </span>
-  )
-}
-
-export type LandingTone = 'landed' | 'pushFailed' | 'failed'
-const tones = {
-  landed: ['border-l-success/70', 'text-success', CheckIcon, 'landed'],
-  pushFailed: ['border-l-warning/70', 'text-warning', TriangleAlertIcon, 'push failed'],
-  failed: ['border-l-error/70', 'text-error', XIcon, 'not landed'],
-} as const
-
-export function LandingCard({
-  card: foldStateEntry,
-  tone,
-  headline,
-  subject,
-  from,
-  sha,
-  at,
-  divergence,
-  sourceEntry,
-  submission,
-  children,
-}: {
-  card: number
-  tone: LandingTone
-  headline: ReactNode
-  subject?: ConversationSubject
-  from: ConversationId
-  sha?: string
-  at?: ReactNode
-  divergence?: string
-  sourceEntry?: number
-  submission?: string
-  children?: ReactNode
-}) {
-  const [border, color, Icon, label] = tones[tone]
-  const named = useStandingOrSubmittedSubject(from, subject)
-  return (
-    <Fold
-      card={foldStateEntry}
-      summary={
-        <>
-          <Icon className={cn('size-3 shrink-0', color)} />
-          <span className={cn('shrink-0', color)}>{label}</span>
-          {named?.feature && <FeatureTag className="shrink-0" feature={named.feature} />}
-          <span className="min-w-0 truncate text-foreground/80">{named?.title ?? `#${from}`}</span>
-          {named?.title && <span className="shrink-0">#{from}</span>}
-          {sha && <span className="shrink-0">· {sha.slice(0, 7)}</span>}
-        </>
-      }
-    >
-      <section
-        className={cn(
-          'min-w-0 rounded-md border border-l-2 border-border bg-muted/20 font-mono text-[12px]',
-          border,
-        )}
-        data-landing={tone}
-      >
-        <header className="space-y-1 border-b border-border/60 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <Icon className={cn('size-3.5 shrink-0', color)} />
-            <Subject className="flex-1" from={from} subject={subject} />
-            {sourceEntry !== undefined && <Open id={from} entry={sourceEntry} />}
-          </div>
-          {subject?.summary && (
-            <p className="pl-5.5 font-sans text-[12.5px] leading-relaxed text-muted-foreground">
-              {subject.summary}
-            </p>
-          )}
-        </header>
-        <div className="space-y-1.5 px-3 py-2.5 pl-8.5">
-          <div className="flex items-start gap-2">
-            <span className="min-w-0 flex-1 break-words text-foreground/90">{headline}</span>
-            {at}
-          </div>
-          {divergence && (
-            <p className="flex items-baseline gap-2 text-muted-foreground">
-              <span className="shrink-0 text-[11px]">Diverged</span>
-              <span className="min-w-0 font-sans text-[12.5px] break-words">
-                <MentionText text={divergence} />
-              </span>
-            </p>
-          )}
-          {children}
-          {submission && tone !== 'failed' && (
-            <Provided input={{ conversation: from, submission }} point={LandedNote}>
-              {(note) => note}
-            </Provided>
-          )}
-          {tone !== 'failed' && (
-            <AllProvided input={{ conversation: from }} point={LandingExtras}>
-              {(extras) => extras}
-            </AllProvided>
-          )}
-        </div>
-      </section>
-    </Fold>
   )
 }

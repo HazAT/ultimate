@@ -25,7 +25,7 @@ import {
   useTranscript,
 } from '@/sdk/solid'
 import { DefinitionAction } from '../subagents/refs.ts'
-import { AgentMark } from './mark.solid.tsx'
+import { AgentMark } from '../conversations/ui.solid.tsx'
 import { modelLine } from './breakdown.ts'
 import type { Breakdown, Diff, Section, Tool } from './breakdown.ts'
 import { SectionDiff } from './section-diff.solid.tsx'

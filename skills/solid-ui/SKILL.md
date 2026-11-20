@@ -54,8 +54,8 @@ The libraries ship skills that match the pinned versions: read them, not your me
   point another extension renders stays React and returns an island (`provide(ExtensionDetails, …)` in
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
   wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
-  a moved part would render (`Review` in a commit count) gets a page-bus event its provider also listens to
-  (`events.emit('review:open', { spec })`), never a Solid copy of the point.
+  a moved part reads, it reads with `useProvided` or `Provided` from `@/sdk/parts.solid.tsx` (`Review` in
+  `CommitCount`, `extensions/workspaces/ui.solid.tsx`), never through a Solid copy of the point.
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
   own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
   `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
@@ -73,6 +73,23 @@ The libraries ship skills that match the pinned versions: read them, not your me
   `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` taking `{ entry, core, blocks }` as Solid
   props. React rows read `useTranscript()` and `useTranscriptScroll()` from one `TranscriptFrame` whose identity stays,
   so a streamed update re-renders none of them; Solid ones read `useTranscript()` from `@/sdk/solid`.
+- **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx` (P2): `Card`, `Fold` (its `label` names
+  the toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`,
+  `UserView`, `useToolDuration`. `@/sdk/solid` cannot re-export them: they import it, and `import/no-cycle` fails.
+- **Points across frameworks.** Read another extension's point in Solid with `Provided` (all providers, or `last`) or
+  `useProvided` from `@/sdk/parts.solid.tsx`. A provider written `provide(Point, island(C))` renders as Solid with the
+  point's input as props, in Solid hosts and React ones (`<Provided>`, `<AllProvided>`), under its own extension name;
+  under `<Provided>` a React hook provider mounts through the bridge with a copy of the input's plain objects and
+  arrays taken on any nested change, since board reconciliation updates fields like `message.state` in place;
+  `useProvided` passes its accessor's value as it is, so give it plain values. So a point meant for `island(C)` providers takes an
+  object input (`{ message }`, `{ conversation }`), and is defined in a `.ts` file both `ui.tsx` and `ui.solid.tsx`
+  re-export (`extensions/conversations/points.ts`): a definition reached through `@/sdk` drags browser module-scope
+  code into Node tests.
+- **React callers of a moved part** (inbox's reading pane, side chat) keep importing it from the owner's `ui.tsx`,
+  which exports `island(C)` under the old name; lint allows a `ui.tsx` to import its own `*.solid.tsx`. A React caller
+  that styles the part with direct-child selectors (`[&>div]:px-0`) now hits the island's `display: contents` host:
+  reach through it (`[&>div>div]`) or pass a `class`. A React caller passing React children into a Solid part cannot:
+  keep a small React shell for it (voice-live's `Bubble`).
 - **What waits for the core switch:** the composer wrapper, `provide` hooks, and anything that hosts other extensions'
   React. The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
@@ -184,7 +201,15 @@ Solid 2:
   `Set`). Give the effect a block body.
 - A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
   rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
-- A control in the transcript is a kit `Button`, never a bare `<button>`: the agent bridge sees only kit parts.
+- A control in the transcript is a kit `Button`, never a bare `<button>`: the agent bridge sees only kit parts. A
+  `Button` with `size={null} variant={null}` used for prose (an answer option, a question heading) still has the base
+  `whitespace-nowrap font-medium`: add `h-auto whitespace-normal font-normal text-left`, or long text stops wrapping.
+- Names repeat across cards: include the card (`Dismiss message 3`, `Send: answer to message 3`) and, for options, the
+  position (`Option 2 · Answered · question 2 · message 2`): labels equal after case and accent folding ("Resume",
+  "Résumé") resolve to the same control.
+- A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
+  Chromium: start it in `onSettled` (`extensions/questions/send.solid.tsx`).
+- `expectDistinctAgentNames` is async: `await` it, or the test passes whatever the names.
 - A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
   never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
   `node.remove()` breaks on a Solid return that is not one element.

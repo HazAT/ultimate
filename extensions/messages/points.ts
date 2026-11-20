@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { definePoint } from '@/sdk'
+import { definePoint } from '@/sdk/types.ts'
 import type { Message } from './refs.ts'
 import type { WaitFacts } from '../../lib/waits.ts'
 

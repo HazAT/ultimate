@@ -1,8 +1,10 @@
 import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, island, provide } from '@/sdk'
 import { SummaryModelDialog, summaryModelDialog } from './summary-model.solid.tsx'
 import { useStandingEmpty, useStandingPlaceholder } from './standing.tsx'
-import { SummaryAction } from './summary-entry.tsx'
+import { HiddenIdentity, SummaryAction } from './summary-entry.solid.tsx'
 import { MentionLink } from './mention.solid.tsx'
+
+const summary = island(SummaryAction)
 
 export default defineWebExtension({
   provides: [
@@ -11,13 +13,13 @@ export default defineWebExtension({
   ],
   link: MentionLink,
   entries: {
-    'conversations.identity': () => null,
-    'conversations.title-changed': SummaryAction,
-    'conversations.feature-changed': SummaryAction,
-    'conversations.intent-summarized': SummaryAction,
-    'conversations.summarized': SummaryAction,
-    'conversations.assessed': SummaryAction,
-    'conversations.summary-discarded': SummaryAction,
+    'conversations.identity': island(HiddenIdentity),
+    'conversations.title-changed': summary,
+    'conversations.feature-changed': summary,
+    'conversations.intent-summarized': summary,
+    'conversations.summarized': summary,
+    'conversations.assessed': summary,
+    'conversations.summary-discarded': summary,
   },
   slots: { overlay: [island(SummaryModelDialog)] },
   commands: [

@@ -4,6 +4,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 // (one per question, extensions/questions/question.tsx): with no positioned ancestor their containing block was the page,
 // so they laid themselves out at their static position below the window and stretched the document.
 import { join, resolve } from 'node:path'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { chromium } from 'playwright-core'
@@ -53,19 +54,31 @@ async function setup() {
   const route: FauxResponseFactory = (transcript) => {
     server.host.faux!.appendResponses([route])
     const last = transcript.messages.at(-1)!
-    if (last.role === 'user' && typeof last.content === 'string' && last.content.startsWith('ask'))
+    if (
+      last.role === 'user' &&
+      Array.isArray(last.content) &&
+      last.content[0]?.type === 'text' &&
+      last.content[0].text === 'ask the user'
+    )
       return fauxAssistantMessage(
         [
           fauxText(`${body}Five decisions before I go on.`),
           fauxToolCall('message', {
             to: 'user',
             text: `${body}Five decisions before I go on.`,
-            questions: Array.from({ length: 5 }, (_, index) => ({
+            images: 'latest',
+            questions: Array.from({ length: 5 }, (_, index): JsonValue => ({
               text: `Decision ${index + 1}: where should it sit, and how should it move?`,
-              kind: 'choice' as const,
+              kind: 'choice',
               ref: String(index + 1),
               options: [
-                { label: 'in the sidebar, under the project', key: 'a', recommended: true },
+                {
+                  label: 'in the sidebar, just under the project whose files are currently open',
+                  detail:
+                    'This keeps the decision close to the files without taking up room in the status line.',
+                  key: 'a',
+                  recommended: true,
+                },
                 { label: 'in the status line at the bottom', key: 'b', recommended: false },
               ],
             })),
@@ -83,15 +96,24 @@ async function setup() {
   await server.harness.commit(async (tx) => {
     ;(await tx.doc(Started, branch)).by = other
   }, context)
-  const say = async (content: string) =>
-    (
-      await (await server.harness.conversation(branch, context))!.submit(
-        { type: 'input', content },
-        context,
-      )
-    ).wait(context)
-  await say('one')
-  await say('ask the user')
+  const conversation = (await server.harness.conversation(branch, context))!
+  await (await conversation.submit({ type: 'input', content: 'one' }, context)).wait(context)
+  await (
+    await conversation.submit(
+      {
+        type: 'input',
+        content: [
+          { type: 'text', text: 'ask the user' },
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jK/cAAAAASUVORK5CYII=',
+          },
+        ],
+      },
+      context,
+    )
+  ).wait(context)
   const browser = await chromium.launch({
     executablePath: await browserBinary(),
     headless: true,
@@ -112,6 +134,8 @@ async function setup() {
 
 it('opens deep links and keeps scrolling and answer keys in the reading pane', async () => {
   const { server, browser, message } = await setup()
+  const clipped: string[] = []
+  const optionLines: Record<number, number> = {}
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 },
@@ -123,10 +147,41 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
     const row = page.locator(`[data-inbox-row="${message}"]`)
     await pane.waitFor()
     await page.waitForURL((url) => !url.searchParams.has('inbox'))
+    const prose = pane.getByText('Five decisions before I go on.')
+    const image = pane.getByRole('img', { name: 'Forwarded image 1' })
+    await image.waitFor()
+    const bodyStyle = await prose.evaluate((paragraph) => {
+      const wrapper = paragraph.closest('div.contents > div')!
+      const style = getComputedStyle(wrapper)
+      return [style.padding, style.fontSize, style.lineHeight]
+    })
+    const thumbnailBorder = await image.evaluate(
+      (img) => getComputedStyle(img.closest('button')!.parentElement!).borderTopWidth,
+    )
+    expect({ bodyStyle, thumbnailBorder }).toEqual({
+      bodyStyle: ['0px', '15px', '24px'],
+      thumbnailBorder: '0px',
+    })
     const { beyond, paneScrolls } = await layout(page)
     // The message and its card make the pane scroll: without that this test could pass with nothing to overflow.
     expect(paneScrolls).toBe(true)
     expect(beyond).toBeLessThanOrEqual(0)
+    clipped.push(
+      ...(await pane
+        .locator('fieldset button')
+        .evaluateAll((buttons) =>
+          buttons
+            .filter((button) => button.scrollWidth > button.clientWidth)
+            .map((button) => button.textContent ?? ''),
+        )),
+    )
+    optionLines[viewport.width] = await pane
+      .getByText('in the sidebar, just under the project whose files')
+      .first()
+      .evaluate(
+        (span) =>
+          span.getBoundingClientRect().height / parseFloat(getComputedStyle(span).lineHeight),
+      )
     if (viewport.width === 390) {
       await pane.getByRole('button', { name: 'Back to the Inbox' }).click()
       await pane.waitFor({ state: 'hidden' })
@@ -142,4 +197,7 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
     }
     await page.close()
   }
+  expect(clipped).toEqual([])
+  expect(optionLines[1440]).toBeLessThan(1.5)
+  expect(optionLines[390]).toBeGreaterThan(1.5)
 })

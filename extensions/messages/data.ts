@@ -1,14 +1,12 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import { formatTime } from '@/sdk'
+import { formatTime } from '@/sdk/format.ts'
 import { waitsOn } from '../../lib/waits.ts'
 import type { Wait, WaitFacts } from '../../lib/waits.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote, RemoteProgress } from './refs.ts'
-import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/ui.tsx'
-import { FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
-import { LanderReportEntry } from '../workspaces/ui.tsx'
-import { InstructionEntry, ReportEntry } from '../subagents/ui.tsx'
+import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/api.ts'
+import { LanderReportEntry } from '../workspaces/api.ts'
 
 export { isOpen, isOwed, openQuestion }
 
@@ -250,8 +248,7 @@ export function counterparts(
     case 'board.message':
     case 'board.reply':
     case 'lineage.finished': {
-      if (!MessageEntry.is(entry) && !ReplyEntry.is(entry) && !FinishedEntry.is(entry)) return []
-      const data: { from?: unknown } | undefined = entry.data
+      const data = entry.data as { from?: unknown } | undefined
       return idOf(data?.from)
     }
     case 'lineage.note': {
@@ -260,14 +257,12 @@ export function counterparts(
       return data?.source === 'lander' ? ['lander'] : idOf(data?.from)
     }
     case 'lineage.abstract': {
-      if (!AbstractEntry.is(entry)) return []
-      const data: { conversation?: unknown } | undefined = entry.data
+      const data = entry.data as { conversation?: unknown } | undefined
       return idOf(data?.conversation)
     }
     case 'subagents.report':
     case 'subagents.instruction': {
-      if (!InstructionEntry.is(entry) && !ReportEntry.is(entry)) return []
-      const data: { sender?: unknown } | undefined = entry.data
+      const data = entry.data as { sender?: unknown } | undefined
       return idOf(data?.sender)
     }
     case 'workspaces.lander-report':

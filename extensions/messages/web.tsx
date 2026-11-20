@@ -1,5 +1,5 @@
 import { parseConversationId } from '../../lib/ids.ts'
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
 import { useEffect, useState } from 'react'
 import {
@@ -8,6 +8,7 @@ import {
   ConversationKind,
   defineWebExtension,
   events,
+  island,
   provide,
   useConversation,
   useDocOf,
@@ -15,45 +16,18 @@ import {
   useReady,
   useUltimate,
 } from '@/sdk'
-import {
-  Address,
-  MessageInput,
-  BranchCall,
-  CompactAnswer,
-  MessageCall,
-  StretchSummary,
-} from './cards.tsx'
-import {
-  answeredMessages,
-  emptyMessages,
-  openQuestion,
-  scriptMessaged,
-  threadRow,
-  ultimateCompact,
-} from './data.tsx'
+import { CompactAnswer, MessageAnswerLabel, HiddenEntry } from './compact-answer.solid.tsx'
+import { openQuestion, scriptMessaged, threadRow, ultimateCompact } from './data.ts'
+import { MessageInput } from './message-input.solid.tsx'
+import { StretchSummary } from './stretch-summary.solid.tsx'
+import { BranchCall, MessageCall } from './tool-cards.solid.tsx'
 import { callerOf } from './caller.ts'
 import { OpenMessages } from './open.tsx'
-import { QuestionPointer } from './pointer.tsx'
+import { QuestionPointer } from './pointer.solid.tsx'
 import { OffscreenQuestions } from './waiting.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { MessagesDoc, CallerAction } from './refs.ts'
 import type { MessagesData } from './refs.ts'
-
-function MessageAnswerLabel({ entry }: { entry: EntryRecord }) {
-  const log = useDocOf(ROOT, MessagesDoc) ?? emptyMessages
-  const conversation = useConversation((value) => value.id)
-  const messages =
-    conversation === undefined ? [] : answeredMessages(log.messages, conversation, entry.id)
-  return messages.map((message) => (
-    <span
-      key={message.id}
-      className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-1 text-muted-foreground"
-    >
-      {message.reply ? '↩ sent to' : 'not sent · one-way from'}{' '}
-      <Address id={message.from} remote={message.remote} />
-    </span>
-  ))
-}
 
 function MessageNavigation() {
   const { id, entries, loading } = useConversation()
@@ -123,6 +97,8 @@ function MessageNavigation() {
 }
 
 const afterPinnedPromptOrder = 1
+const input = island(MessageInput)
+const hidden = island<{ entry: EntryRecord }>(HiddenEntry)
 
 export default defineWebExtension({
   slots: {
@@ -132,17 +108,15 @@ export default defineWebExtension({
     'transcript.top': [{ component: OffscreenQuestions, order: afterPinnedPromptOrder }],
   },
   entries: {
-    'board.message': MessageInput,
-    'board.reply': MessageInput,
-    'board.asked': attention(QuestionPointer),
-    'board.answered': () => null,
-
-    'board.wake': () => null,
-
-    'board.open': () => null,
-    'pi.assistant': CompactAnswer,
+    'board.message': input,
+    'board.reply': input,
+    'board.asked': attention(island(QuestionPointer)),
+    'board.answered': hidden,
+    'board.wake': hidden,
+    'board.open': hidden,
+    'pi.assistant': island(CompactAnswer),
   },
-  tools: { message: MessageCall, branch: BranchCall },
+  tools: { message: island(MessageCall), branch: island(BranchCall) },
   compact: {
     when: (conversation, docs) => ultimateCompact(conversation, docs[StandingDoc.kind]),
     tools: [
@@ -154,9 +128,9 @@ export default defineWebExtension({
     ],
     docs: ['board', StandingDoc.kind],
     thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
-    summary: StretchSummary,
+    summary: island(StretchSummary),
   },
-  answerLabels: [MessageAnswerLabel],
+  answerLabels: [island(MessageAnswerLabel)],
   provides: [
     provide(ConversationKind, (conversation) =>
       conversation?.label === 'coordinator' ? 'branch · coordinator' : undefined,

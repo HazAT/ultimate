@@ -124,9 +124,10 @@ const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(
 const solidSdk = 'web/src/sdk/solid.ts'
 const solidParts = 'web/src/sdk/parts.solid.tsx'
 const solidSdkEntry = (file: string) => file === solidSdk || file === solidParts
+const frameworkNeutralSdk = new Set(['web/src/sdk/island-mark.ts'])
 const reactSdk = (module: string) => {
   const file = repositoryPath(module)
-  return file.startsWith('web/src/sdk/') && !solidSdkEntry(file)
+  return file.startsWith('web/src/sdk/') && !solidSdkEntry(file) && !frameworkNeutralSdk.has(file)
 }
 const islandHost = (filename: string) =>
   /^(\.ultimate\/)?extensions\/[^/]+\/(web|ui)\.tsx$/.test(repositoryPath(filename))
@@ -268,7 +269,7 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` and `@/sdk/parts.solid.tsx` for Solid. */
+/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
 const sdkEntry = (filename: string) =>
   ['web/src/sdk/index.ts', solidSdk, solidParts].includes(repositoryPath(filename))
 /** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */

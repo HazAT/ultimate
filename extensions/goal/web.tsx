@@ -1,19 +1,15 @@
 import { defineWebExtension, island } from '@/sdk'
-import { GoalCall } from './call.tsx'
-import { ReportCard, StartedCard } from './cards.tsx'
+import { GoalCall } from './call.solid.tsx'
+import { ModelOnlyNote, ReportCard, StartedCard } from './cards.solid.tsx'
 import { HandsOff } from './chip.solid.tsx'
 import { GoalDialog, goalDialog } from './dialog.solid.tsx'
 
-function ModelOnlyNote() {
-  return null
-}
-
 export default defineWebExtension({
-  tools: { goal: GoalCall },
+  tools: { goal: island(GoalCall) },
   entries: {
-    'goal.started': StartedCard,
-    'goal.report': ReportCard,
-    'goal.note': ModelOnlyNote,
+    'goal.started': island(StartedCard),
+    'goal.report': island(ReportCard),
+    'goal.note': island(ModelOnlyNote),
   },
   slots: { 'statusline.right': [island(HandsOff)], overlay: [island(GoalDialog)] },
   commands: [

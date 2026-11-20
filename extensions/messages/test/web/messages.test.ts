@@ -1,6 +1,6 @@
 import type { EntryRecord, EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { accentOf } from '../../accent.tsx'
+import { accentOf } from '../../accent.ts'
 import { callerOf } from '../../caller.ts'
 import {
   answerTo,
@@ -23,7 +23,7 @@ import {
   threadRow,
   ultimateCompact,
   waitingOnUser,
-} from '../../data.tsx'
+} from '../../data.ts'
 import type { Message } from '../../refs.ts'
 import { questionsOf } from '../../waiting.tsx'
 
