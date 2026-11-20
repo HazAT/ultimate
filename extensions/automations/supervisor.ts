@@ -7,7 +7,17 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import {
+  access,
+  appendFile,
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -679,23 +689,33 @@ export function supervisor(
     delete sub.script!.failures
   }
   const automationsRoot = () => join(host.userHome, '.ultimate/automations')
-  function adoptable(from: string) {
-    const inside = relative(automationsRoot(), resolve(from))
+  async function adoptable(from: string) {
+    const root = await realpath(automationsRoot()).catch(() => resolve(automationsRoot()))
+    const source = await realpath(from).catch(() => resolve(from))
+    const inside = relative(root, source)
     if (!inside || inside.startsWith('..') || isAbsolute(inside))
       throw new Error(`adopt must name a script folder under ${automationsRoot()}`)
+    return source
   }
+  const present = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    )
   async function adopt(id: string, from: string) {
-    adoptable(from)
     const dir = folder(id)
+    const copiedRunMarksAFinishedAdoption = join(dir, 'run')
+    if (await present(copiedRunMarksAFinishedAdoption)) return
+    const source = await adoptable(from)
+    if (source === resolve(dir)) throw new Error(`Automation ${id} cannot adopt its own folder`)
     await mkdir(dir, { recursive: true })
-    await cp(join(from, 'run'), join(dir, 'run'), { force: false, errorOnExist: false })
-    await cp(join(from, 'state'), join(dir, 'state'), {
-      recursive: true,
-      force: false,
-      errorOnExist: false,
-    }).catch((error: unknown) => {
-      if (!isMissing(error)) throw error
-    })
+    await cp(join(source, 'state'), join(dir, 'state'), { recursive: true, force: true }).catch(
+      (error: unknown) => {
+        if (!isMissing(error)) throw error
+      },
+    )
+    await cp(join(source, 'run'), join(dir, 'run.adopting'), { force: true })
+    await rename(join(dir, 'run.adopting'), copiedRunMarksAFinishedAdoption)
   }
   async function effect(value: Effect) {
     if (value.action === 'resume') {

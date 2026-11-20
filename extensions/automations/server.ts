@@ -484,7 +484,7 @@ function backend(host: ExtensionHost) {
         throw new Error('key must be a non-empty string')
       if (args.adopt !== undefined && (args.ask === undefined || args.scope === 'project'))
         throw new Error('adopt is only for user scripts')
-      if (args.adopt !== undefined) scripts.adoptable(args.adopt)
+      if (args.adopt !== undefined) await scripts.adoptable(args.adopt)
     }
     if (args.event !== undefined) {
       const event = TRIGGER_EVENTS.find(({ name }) => name === args.event!.name)

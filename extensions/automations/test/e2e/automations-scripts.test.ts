@@ -456,11 +456,28 @@ it("adopts an earlier chapter's script: copies its run and state, runs it with n
   expect(briefs).toEqual([])
   await call(server, 'pause', sub.id)
 
-  // A crash after the create committed but before anything was copied: the next start copies it.
-  await rm(folder, { recursive: true, force: true })
+  // A file the script deleted from its state stays deleted on the next start: adoption copies once.
+  await writeFile(join(folder, 'state/lock'), 'held\n')
+  await rm(join(legacy, 'state/sha'))
+  await writeFile(join(legacy, 'state/lock'), 'old\n')
+  await rm(join(folder, 'state/lock'))
   await call(server, 'resume', sub.id)
   await until(async () => (await get()).fires === 2)
+  await expect(readFile(join(folder, 'state/lock'), 'utf8')).rejects.toThrow('ENOENT')
+  await call(server, 'pause', sub.id)
+
+  // A crash after the create committed but before anything was copied: the next start copies it.
+  await rm(folder, { recursive: true, force: true })
+  await writeFile(join(legacy, 'state/sha'), 'abc\n')
+  await call(server, 'resume', sub.id)
+  await until(async () => (await get()).fires === 3)
   expect(await readFile(join(folder, 'run'), 'utf8')).toContain('FIRE')
+  await call(server, 'pause', sub.id)
+
+  // Once copied, the earlier chapter's folder may go: the script still starts.
+  await rm(legacy, { recursive: true, force: true })
+  await call(server, 'resume', sub.id)
+  await until(async () => (await get()).fires === 4)
   await call(server, 'pause', sub.id)
 })
 
