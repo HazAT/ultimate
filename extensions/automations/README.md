@@ -20,7 +20,7 @@ Exactly one per automation:
   `of` no input for that long (`idleFor: 0` on update removes it). Dream ships two of these on `@ultimate`
   (`extensions/dream/README.md`).
 - **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it by hand until one
-  check succeeds and calls `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
+  check succeeds and its FIRE condition matches a real sample of the producer's output, and calls `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
   makes the first FIRE finish the automation. A recurring script may print `DONE [text]` and exit 0 to stop cleanly.
   Any other unplanned exit wakes only the watcher, to repair or escalate. The third failure in a row (a FIRE or an hour
   of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
