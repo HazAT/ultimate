@@ -131,18 +131,18 @@ own rendering as children. Its point's input carries `core`, the rendering so fa
 returns it, wraps it or replaces it, as entry renderers do; one that throws falls back to the rendering it got:
 
 ```tsx
-// context/ui.tsx
-export const CacheRebuiltLine = definePoint<
-  { entry: EntryRecord; bust: CacheBust; core: ReactNode },
+// web/src/sdk/types.ts
+export const EmptyTranscript = definePoint<
+  { conversation: ConversationId; core: ReactNode },
   ReactNode
->('context.cache-rebuilt')
-// context/web.tsx: <Rendered point={CacheRebuiltLine} input={{ entry, bust }}>{line}</Rendered>
-// my-extension/web.tsx: provide(CacheRebuiltLine, ({ bust, core }) => (bust.written > 100_000 ? <MyLine bust={bust} /> : core))
+>('ultimate.emptyTranscript')
+// the transcript: <Rendered point={EmptyTranscript} input={{ conversation }}>{empty}</Rendered>
+// conversations/web.tsx: provide(EmptyTranscript, ({ conversation, core }) => (standing(conversation) ? <Mark /> : core))
 ```
 
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
 branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
-winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (a `Rendered` point
-for what a transcript shows before its first message; conversations shows a standing agent's mark and title) and
+winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (the `Rendered` point
+above: what a transcript shows before its first message; conversations shows a standing agent's mark and title) and
 `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is the extension point above.
