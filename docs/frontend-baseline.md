@@ -35,8 +35,17 @@ dropped, so the file keeps every step. Per entry:
   The backfill ran on 2026-11-20 under heavy machine load (load average 15–20 from parallel branches), so a run's
   cold median spread up to 30% (585–790 ms at `a0638de4`); read the switch series as flat within that noise.
 - `stream` replaces the real model turn above: the scripted model streams one fixed 40-chunk reply, so every tree gets
-  the same `ops` events (23–25), and three runs repeat to the unit (`median` 92, `p95` 127). It counts React components
-  only.
+  the same `ops` events (23–25), and three runs repeat to the unit (`median` 92, `p95` 127). Per `ops` event it records:
+  - `median`, `p95`, `max`: React components rendered. Solid work is invisible to it, so it falls as the transcript
+    moves to Solid whether or not the page does less; it stays beside the others until C5 removes React.
+  - `mutations`, `mutationsP95` (from C0): DOM mutation records inside `[data-ui="transcript"]`, counted with a
+    MutationObserver, whichever framework made them. This is the comparable number across the core switch. At C0 a
+    streamed delta changes about one text node (median 1, p95 2) while React renders 92 components for it: the gap is
+    render work that produces no DOM change. A rise means a host now rewrites rows it used to keep.
+  - `taskMs`, `taskP95Ms` (from C0): main-thread time from the event until the next task, covering the handler, render
+    and commit of either framework. The median is the steady cost; the p95 is the slow events a reader feels as jank.
+    One run's p95 can jump with machine load (26.5 ms in one of three C0 runs, 6–7 ms in the other two), so read the
+    median of runs.
 - `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
   three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
   `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a
